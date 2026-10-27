@@ -231,7 +231,15 @@ product!(
     }
 );
 
-coded!(ScalarKind { Bool, Signed, Unsigned, Float, Text, Datetime, Exact });
+coded!(ScalarKind {
+    Bool,
+    Signed,
+    Unsigned,
+    Float,
+    Text,
+    Datetime,
+    Exact
+});
 variants!(Agg {
     0, 1, "len": Self::Len => {} => Self::Len;
     1, 2, "last": Self::Last => {} => Self::Last;

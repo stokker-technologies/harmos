@@ -167,11 +167,17 @@ where
         _ => Vec::new(),
     };
     let call = crate::operations::CallContext::from_portable(values).map_err(refusal)?;
-    let context = Arc::new(Context { context: token, generation_context: None, assignments, call: Arc::new(call) });
+    let context = Arc::new(Context {
+        context: token,
+        generation_context: None,
+        assignments,
+        call: Arc::new(call),
+    });
     let call = context.context().clone();
     let mut dependencies = crate::Dependencies::new();
+    dependencies.insert(Arc::new(harmos_sdk::operations::Calls(context.clone()))).map_err(refusal)?;
     dependencies.insert(context).map_err(refusal)?;
-    let context = crate::OperationContext::new(dependencies, call);
+    let context = harmos_sdk::operations::ExecutionContext::new(dependencies, call);
     let phase = table.lock().map_err(refusal)?.begin(command, Arc::new(context));
     // The Original Slot Owns Work While Both Instance And Table Borrows Are Free
     let answer = phase.await;
@@ -189,7 +195,10 @@ fn supported_observers<P: Declared>() -> Result<(), String> {
 
 pub fn refusal(error: impl std::fmt::Display) -> Refusal {
     let refusal = harmos_domain::Refusal::new(harmos_domain::UNREADABLE, error);
-    Refusal { code: refusal.code().to_string(), failure: refusal.failure().encode() }
+    Refusal {
+        code: refusal.code().to_string(),
+        failure: refusal.failure().encode(),
+    }
 }
 
 /* === Tests === */

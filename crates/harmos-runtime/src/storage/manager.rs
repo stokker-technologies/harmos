@@ -69,7 +69,9 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
     #[tracing::instrument(target = "harmos::storage", name = "storage.new", level = "debug", skip_all)]
     pub fn new(backends: StorageBackends, settings: StorageSettings) -> Result<Self> {
         let execution = harmos_storage::execution::Execution::new(executor::now, |duration| Box::pin(executor::sleep(duration)));
-        Ok(Self { engine: harmos_storage::StorageManager::with_execution(backends, settings, execution)? })
+        Ok(Self {
+            engine: harmos_storage::StorageManager::with_execution(backends, settings, execution)?,
+        })
     }
 }
 

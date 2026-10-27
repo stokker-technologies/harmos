@@ -56,7 +56,10 @@ async fn capture_survives_reload() {
             preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
         })
-        .attach_streams(Recorder { cursor: Cursor::ORIGIN, rows: rows.clone() })
+        .attach_streams(Recorder {
+            cursor: Cursor::ORIGIN,
+            rows: rows.clone(),
+        })
         .runtime()
         .await
         .unwrap();
@@ -78,14 +81,14 @@ async fn capture_survives_reload() {
                 dependencies.insert(Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() })).unwrap();
                 dependencies
             })
-            .implementation::<super::SampleDeclaration, Sampling>(),
+            .operation::<super::SampleDeclaration>(),
             Lanes::Open,
         ))
         .await
         .unwrap();
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
-    fixture.call::<<PublishPulse as harmos_runtime::RequestFor>::Operation>(PublishPulse { sample: 41 }).await.unwrap();
+    fixture.call::<PublishPulseDeclaration>(PublishPulseDeclaration { sample: 41 }).await.unwrap();
     let stream = fixture.runtime.streams.publication("meter.pulse", 1).unwrap();
     assert_eq!(stream.definition().owner(), Some("meter"));
     assert!(!stream.definition().schema().unwrap().root().unwrap().fields().is_empty());
@@ -94,7 +97,7 @@ async fn capture_survives_reload() {
     assert_eq!(stream.query(..).await.unwrap().count(), 1);
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
-    fixture.call::<<PublishPulse as harmos_runtime::RequestFor>::Operation>(PublishPulse { sample: 42 }).await.unwrap();
+    fixture.call::<PublishPulseDeclaration>(PublishPulseDeclaration { sample: 42 }).await.unwrap();
     let samples: Vec<_> = stream
         .query(..)
         .await
@@ -463,7 +466,11 @@ async fn catalog_precedes_initialization() {
         }
         inert.unwrap();
         let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let peer = Advertised { inner, observers, attached: attempts.clone() };
+        let peer = Advertised {
+            inner,
+            observers,
+            attached: attempts.clone(),
+        };
         let mut fixture = Managed::from_definition(peer, definitions.unwrap(), Lanes::Open, capacity, vec![], std::convert::identity).await;
         fixture.publication().await.unwrap();
         let failure = fixture.initialize().await.unwrap_err();
@@ -493,7 +500,11 @@ async fn catalog_order_admission() {
         observer.streams.reverse();
         observer.demand_keys.reverse();
     }
-    let peer = Advertised { inner, observers, attached: Arc::new(std::sync::atomic::AtomicUsize::new(0)) };
+    let peer = Advertised {
+        inner,
+        observers,
+        attached: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+    };
     let mut fixture = Managed::attach(
         peer,
         serde_json::to_vec(&seed.id).unwrap(),

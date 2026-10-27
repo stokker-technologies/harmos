@@ -26,7 +26,7 @@ use super::operations::{Lanes, Managed};
 use harmos_domain::plugin::Grant;
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::Invocation;
-use harmos_runtime::operations::{Operation, OperationPolicy, RetryPolicy, Visibility, WireTable};
+use harmos_runtime::operations::{OperationPolicy, RetryPolicy, WireTable};
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -58,7 +58,7 @@ struct Principal(&'static str);
 
 struct Bearers;
 
-// Selects The Scoped Grants Each Bearer Holds On The Called Operation; Unknown
+// Selects The Scoped Grants Each Bearer Holds On The Called Handler; Unknown
 // Bearers Are Denied.
 struct Holdings;
 
@@ -72,46 +72,28 @@ struct Fetch {
     value: u32,
 }
 
-#[harmos_runtime::operation(request = RemoteFetch, infer_request,
-    id = "gated_remote",
-
+#[harmos_runtime::operation(resources = [Runs], id = "gated.remote",
     policy = POLICY,
     response = Fetch,
-    visibility = Visibility::Host,
+    visibility = Host,
     grpc(package = "fixture.gated.v1", service = "Remote", method = "Fetch"),
-    grant = |request: &RemoteFetch| scoped("gated_remote", request.value),
+    grant = |request: &RemoteFetchDeclaration| scoped("gated.remote", request.value),
 )]
-struct RemoteFetchDeclaration;
-
-#[harmos_runtime::message]
 #[derive(Clone)]
-struct RemoteFetch {
+struct RemoteFetchDeclaration {
     value: u32,
 }
 
-struct RemoteFetching {
-    runs: Arc<Runs>,
-}
-
-#[harmos_runtime::operation(request = LocalFetch, infer_request,
-    id = "gated_local",
-
+#[harmos_runtime::operation(resources = [Runs], id = "gated.local",
     policy = POLICY,
     response = Fetch,
-    visibility = Visibility::Host,
+    visibility = Host,
     grpc(package = "fixture.gated.v1", service = "Local", method = "Fetch"),
-    grant = |request: &LocalFetch| scoped("gated_local", request.value),
+    grant = |request: &LocalFetchDeclaration| scoped("gated.local", request.value),
 )]
-struct LocalFetchDeclaration;
-
-#[harmos_runtime::message]
 #[derive(Clone)]
-struct LocalFetch {
+struct LocalFetchDeclaration {
     value: u32,
-}
-
-struct LocalFetching {
-    runs: Arc<Runs>,
 }
 
 /* === Enums === */
@@ -167,7 +149,10 @@ impl harmos_runtime::operations::authorization::Authorizer for Holdings {
             Some("lacking") => vec![],
             _ => return Ok(None),
         };
-        Ok(Some(Authorization::Restricted(Required { contract: provider.contract.clone(), grants })))
+        Ok(Some(Authorization::Restricted(Required {
+            contract: provider.contract.clone(),
+            grants,
+        })))
     }
 }
 
@@ -204,7 +189,7 @@ impl harmos_runtime::Plugin for Provider {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<RemoteFetchDeclaration, RemoteFetching>(),
+            .operation::<RemoteFetchDeclaration>(),
         )
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
@@ -215,39 +200,23 @@ impl harmos_runtime::Plugin for Provider {
     }
 }
 
-impl Operation for RemoteFetching {
-    type Request = <RemoteFetchDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <RemoteFetchDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for RemoteFetchDeclaration {
     type Error = Refusal;
-    type Endpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
-        let runs = context.dependency::<Runs>().expect("fixture dependency");
-        Ok(Self { runs })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut RemoteFetch, _: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<Fetch>, Refusal> {
-        self.runs.0.fetch_add(1, Ordering::SeqCst);
-        Ok(Fetch { value: request.value + 1 }.into())
+
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Fetch>, Refusal> {
+        let runs = ctx.resource::<Runs>();
+        runs.0.fetch_add(1, Ordering::SeqCst);
+        Ok(Fetch { value: self.value + 1 }.into())
     }
 }
 
-impl Operation for LocalFetching {
-    type Request = <LocalFetchDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <LocalFetchDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for LocalFetchDeclaration {
     type Error = harmos_runtime::Error;
-    type Endpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
-        let runs = context.dependency::<Runs>().expect("fixture dependency");
-        Ok(Self { runs })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut LocalFetch, _: &mut Self::Endpoints,
-    ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Fetch>> {
-        self.runs.0.fetch_add(1, Ordering::SeqCst);
-        Ok(Fetch { value: request.value + 1 }.into())
+
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Fetch>> {
+        let runs = ctx.resource::<Runs>();
+        runs.0.fetch_add(1, Ordering::SeqCst);
+        Ok(Fetch { value: self.value + 1 }.into())
     }
 }
 
@@ -320,7 +289,7 @@ async fn external_request_grants() {
                 dependencies.insert(local.clone()).unwrap();
                 dependencies
             })
-            .implementation::<LocalFetchDeclaration, LocalFetching>(),
+            .operation::<LocalFetchDeclaration>(),
             Lanes::Open,
         ))
         .await

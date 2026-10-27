@@ -53,7 +53,9 @@ pub fn validate(operations: &[OperationDefinition]) -> Result<(), Error> {
     for operation in operations {
         operation.validate().map_err(|source| Error::Invalid { source })?;
         if !ids.insert(&operation.id) {
-            return Err(Error::Invalid { source: crate::Error::DuplicateOperation { id: operation.id.as_str().to_owned() } });
+            return Err(Error::Invalid {
+                source: crate::Error::DuplicateOperation { id: operation.id.as_str().to_owned() },
+            });
         }
     }
     Ok(())

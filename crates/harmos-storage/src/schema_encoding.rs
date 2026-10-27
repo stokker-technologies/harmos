@@ -22,7 +22,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 // Local Imports
 use super::manager::encoded_size;
 use super::{SchemaKey, StorageCursor, StorageSchema};
-use crate::schema::graph::Schema;
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -55,24 +54,9 @@ enum Encoding {
 /* === Implementations === */
 
 impl StorageSchema {
-    // Empty definitions have the highest allocation-to-JSON ratio: each `[]`
-    // retains a vector header and traversal state. Include vector growth and the
-    // bounded field-name diagnostic buffer before asking the backend for a page.
-    pub fn decoding_memory_bytes(encoded_bytes: usize) -> Option<usize> {
-        encoded_bytes.checked_mul(36)?.checked_add(
-            4 * std::mem::size_of::<Schema>()
-                + 4 * std::mem::size_of::<Vec<harmos_domain::schema::graph::Field>>()
-                + harmos_domain::schema::MAX_NAME_BYTES,
-        )
-    }
-
     pub(super) fn encoded_bytes(&self) -> Result<usize> {
         self.schema.preparation(&harmos_domain::config::SchemaSettings::default()).map_err(|_| invalid())?;
         encoded_size(self)
-    }
-
-    pub fn encoding_memory_bytes(&self) -> Result<usize> {
-        self.schema.validation_memory_bytes(&harmos_domain::config::SchemaSettings::default()).map_err(|_| invalid())
     }
 }
 
@@ -102,11 +86,18 @@ impl<'de> Visitor<'de> for StorageVisitor {
         formatter.write_str("bounded graph_v1 storage metadata")
     }
     fn visit_map<A: MapAccess<'de>>(self, map: A) -> std::result::Result<Self::Value, A::Error> {
-        let mut input = Input { map, position: None, key: None, encoding: None };
+        let mut input = Input {
+            map,
+            position: None,
+            key: None,
+            encoding: None,
+        };
         // Forward Only The Graph Fields To The Canonical Seed Without Buffering
         // The JSON Object Or Allocating A Second Representation Of Its Fields.
-        let schema = crate::schema::graph::Seed { settings: &harmos_domain::config::SchemaSettings::default() }
-            .deserialize(serde::de::value::MapAccessDeserializer::new(&mut input))?;
+        let schema = crate::schema::graph::Seed {
+            settings: &harmos_domain::config::SchemaSettings::default(),
+        }
+        .deserialize(serde::de::value::MapAccessDeserializer::new(&mut input))?;
         let Encoding::GraphV1 = input.encoding.ok_or_else(|| A::Error::missing_field("encoding"))?;
         Ok(StorageSchema::new(
             input.position.ok_or_else(|| A::Error::missing_field("position"))?,
@@ -154,7 +145,10 @@ impl<'de, A: MapAccess<'de>> MapAccess<'de> for Input<A> {
 /* === Private Functions === */
 
 fn invalid() -> Error {
-    Error::InvalidInput { field: "storage schema", reason: "invalid shared schema preparation" }
+    Error::InvalidInput {
+        field: "storage schema",
+        reason: "invalid shared schema preparation",
+    }
 }
 
 /* === Tests === */

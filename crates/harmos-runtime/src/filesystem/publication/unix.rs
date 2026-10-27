@@ -76,6 +76,10 @@ pub(super) fn install(source: &Path, destination: &Path) -> io::Result<()> {
     sync_directory(parent(destination))
 }
 
+pub(super) fn install_opened(_: &File, source: &Path, destination: &Path) -> io::Result<()> {
+    install(source, destination)
+}
+
 pub(super) fn replace(source: &Path, destination: &Path) -> io::Result<()> {
     fs::rename(source, destination)?;
     sync_directory(parent(destination))

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/build/cargo.py; sha256:1a29971ffecb61eb3239f4f3e455ca9caa6e41611ac28825db2f82c31c43eeac
+# Rendered by stkr project update from templates/python/build/cargo.py; sha256:f347cf6979fc892513ff36de90878b85076dff5c33ee40db224485170faedbac
 # ***
 #
 # __PRODUCT_NAME__
@@ -123,7 +123,7 @@ def focused(directory: Path, operation: str, arguments: Sequence[str]) -> int:
     if operation == "test" and ("--release" in compiler_arguments or profile not in (None, "test")):
         raise ValueError("focused tests use Cargo's default test profile")
     if operation in ("build", "test", "run"):
-        clippy(directory, [argument for argument in compiler_arguments if argument != "--no-run"])
+        clippy(directory, [argument for argument in compiler_arguments if argument not in ("--no-run", "--no-fail-fast")])
     else:
         storage.preflight(directory)
     return subprocess.run(

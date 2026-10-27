@@ -48,30 +48,12 @@ const MAX_DEPTH: usize = 64;
 
 /* === Public Functions === */
 
-/// Bounds the owned row-vector allocation before encoding Arrow payloads.
-///
-/// Includes the outer Vec, its row slots and each exact encoded row capacity.
-/// Counting borrows Arrow values and uses only bounded stack scratch. The same
-/// schema/encoding validation and cumulative `max_bytes` limit apply as encoding.
-/// This does not include consumer codec decoding or its projected DTO allocations.
-#[tracing::instrument(name = "storage.arrow.encode_payloads_memory", level = "trace", skip_all, fields(rows = payload.len(), max_bytes = max_bytes.get(), outcome = "cancelled"))]
-pub fn encode_payloads_memory(schema: &Schema, payload: &StructArray, max_bytes: NonZeroUsize) -> Result<usize> {
-    let result: Result<usize> = (|| {
-        let mut count = payload_counter(payload.len(), max_bytes)?;
-        for row in 0..payload.len() {
-            encode_message(schema, schema.root, payload, row, 0, &mut count)?;
-        }
-        Ok(count.bytes)
-    })();
-    tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
-    result
-}
-
 #[tracing::instrument(name = "storage.arrow.encode_payloads", level = "trace", skip_all, fields(rows = payload.len(), max_bytes = max_bytes.get(), outcome = "cancelled"))]
 pub fn encode_payloads(schema: &Schema, payload: &StructArray, max_bytes: NonZeroUsize) -> Result<Vec<Vec<u8>>> {
     let result: Result<Vec<Vec<u8>>> = (|| {
-        let mut count = payload_counter(payload.len(), max_bytes)?;
-        let mut rows = Vec::with_capacity(payload.len());
+        let mut count = Counter { bytes: 0, limit: max_bytes.get() };
+        let mut rows = Vec::new();
+        rows.try_reserve_exact(payload.len()).map_err(|_| exhausted())?;
         for row in 0..payload.len() {
             let previous = count.bytes;
             encode_message(schema, schema.root, payload, row, 0, &mut count)?;
@@ -139,7 +121,11 @@ pub fn streams(scope: Option<&Identifier>, batch: &DecodedBatch, schema: &Schema
             if optional_id(metadata, "stream", row)?.is_some_and(|stream| stream != batch.destination) {
                 return Err(invalid());
             }
-            Ok(StreamInput { record, stream: batch.destination.clone(), sequence: sequence.value(row) })
+            Ok(StreamInput {
+                record,
+                stream: batch.destination.clone(),
+                sequence: sequence.value(row),
+            })
         })
         .collect()
 }
@@ -156,21 +142,16 @@ pub fn objects(batch: &DecodedBatch, schema: &Schema, max_key_bytes: NonZeroUsiz
             }
             let mut bytes = Vec::new();
             encode_message(schema, schema.root, payload, row, 0, &mut bytes)?;
-            Ok(ObjectValue { schema: batch.schema.clone(), item: ObjectKey::new(items.value(row), max_key_bytes)?, payload: bytes })
+            Ok(ObjectValue {
+                schema: batch.schema.clone(),
+                item: ObjectKey::new(items.value(row), max_key_bytes)?,
+                payload: bytes,
+            })
         })
         .collect()
 }
 
 /* === Private Functions === */
-
-fn payload_counter(rows: usize, max_bytes: NonZeroUsize) -> Result<Counter> {
-    let metadata = rows
-        .checked_mul(std::mem::size_of::<Vec<u8>>())
-        .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<Vec<u8>>>()))
-        .filter(|bytes| *bytes <= max_bytes.get())
-        .ok_or_else(exhausted)?;
-    Ok(Counter { bytes: metadata, limit: max_bytes.get() })
-}
 
 trait Sink {
     fn append(&mut self, value: &[u8]) -> Result<()>;
@@ -309,7 +290,10 @@ fn exhausted() -> Error {
     Error::ResourceExhausted { resource: "Arrow payload encoding bytes" }
 }
 fn invalid() -> Error {
-    Error::InvalidInput { field: "write Arrow batch", reason: "batch metadata or typed payload does not match its schema" }
+    Error::InvalidInput {
+        field: "write Arrow batch",
+        reason: "batch metadata or typed payload does not match its schema",
+    }
 }
 
 /* === Tests === */
@@ -325,7 +309,12 @@ mod tests {
     use std::sync::Arc;
 
     fn field(name: &str, tag: u32, kind: Kind, cardinality: Cardinality) -> Field {
-        Field { name: name.to_owned().into(), tag, kind, cardinality }
+        Field {
+            name: name.to_owned().into(),
+            tag,
+            kind,
+            cardinality,
+        }
     }
 
     fn schema() -> Schema {
@@ -369,52 +358,30 @@ mod tests {
         ])
     }
 
-    fn resident(rows: &[Vec<u8>], capacity: usize) -> usize {
-        std::mem::size_of::<Vec<Vec<u8>>>() + capacity * std::mem::size_of::<Vec<u8>>() + rows.iter().map(Vec::capacity).sum::<usize>()
-    }
     #[test]
-    fn payload_bound_capacities() {
+    fn payload_encoded_limits() {
         let schema = schema();
         let payload = payload(false);
-        let maximum = NonZeroUsize::new(1_000_000).unwrap();
-        let bound = encode_payloads_memory(&schema, &payload, maximum).unwrap();
-        let exact = NonZeroUsize::new(bound).unwrap();
-        let rows = encode_payloads(&schema, &payload, exact).unwrap();
-        assert_eq!(rows.len(), 2);
-        assert!(resident(&rows, rows.capacity()) <= bound);
-        assert_eq!(encode_payloads_memory(&schema, &payload, exact).unwrap(), bound);
-        let smaller = NonZeroUsize::new(bound - 1).unwrap();
-        assert!(matches!(encode_payloads_memory(&schema, &payload, smaller), Err(Error::ResourceExhausted { .. })));
-        assert!(matches!(encode_payloads(&schema, &payload, smaller), Err(Error::ResourceExhausted { .. })));
+        {
+            let rows = encode_payloads(&schema, &payload, NonZeroUsize::new(1_000_000).unwrap()).unwrap();
+            let length = rows.iter().map(Vec::len).sum::<usize>();
+            assert_eq!(rows.len(), 2);
+            let exact = NonZeroUsize::new(length).unwrap();
+            assert_eq!(encode_payloads(&schema, &payload, exact).unwrap(), rows);
+            let smaller = NonZeroUsize::new(length - 1).unwrap();
+            assert!(matches!(encode_payloads(&schema, &payload, smaller), Err(Error::ResourceExhausted { .. })));
+        }
     }
 
     #[test]
-    fn payload_bound_empty() {
-        let schema = Schema { root: 0, definitions: vec![vec![]] };
-        let payload = StructArray::new_empty_fields(0, None);
-        let maximum = NonZeroUsize::new(1024).unwrap();
-        let bound = encode_payloads_memory(&schema, &payload, maximum).unwrap();
-        let rows = encode_payloads(&schema, &payload, maximum).unwrap();
-        assert!(rows.is_empty());
-        assert_eq!(bound, resident(&rows, rows.capacity()));
-    }
-
-    #[test]
-    fn payload_bound_malformed() {
-        let schema = schema();
-        let payload = payload(true);
-        let maximum = NonZeroUsize::new(1_000_000).unwrap();
-        assert!(matches!(encode_payloads_memory(&schema, &payload, maximum), Err(Error::InvalidInput { .. })));
-        assert!(matches!(encode_payloads(&schema, &payload, maximum), Err(Error::InvalidInput { .. })));
-    }
-
-    #[test]
-    fn payload_bound_overflow() {
-        let schema = Schema { root: 0, definitions: vec![vec![]] };
-        // No Column Allocation Is Needed To Exercise The Row-Slot Overflow.
-        let payload = StructArray::new_empty_fields(usize::MAX, None);
-        let maximum = NonZeroUsize::new(usize::MAX).unwrap();
-        assert!(matches!(encode_payloads_memory(&schema, &payload, maximum), Err(Error::ResourceExhausted { .. })));
-        assert!(matches!(encode_payloads(&schema, &payload, maximum), Err(Error::ResourceExhausted { .. })));
+    fn payload_empty_and_malformed() {
+        let empty = Schema { root: 0, definitions: vec![vec![]] };
+        {
+            let maximum = NonZeroUsize::new(1_000_000).unwrap();
+            assert!(encode_payloads(&empty, &StructArray::new_empty_fields(0, None), maximum).unwrap().is_empty());
+            assert!(matches!(encode_payloads(&schema(), &payload(true), maximum), Err(Error::InvalidInput { .. })));
+            let oversized = StructArray::new_empty_fields(usize::MAX, None);
+            assert!(matches!(encode_payloads(&empty, &oversized, maximum), Err(Error::ResourceExhausted { .. })));
+        }
     }
 }

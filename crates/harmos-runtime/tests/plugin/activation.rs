@@ -28,21 +28,14 @@ use super::*;
 
 /* === Structs === */
 
-struct WireClient;
-#[harmos_runtime::operation(request = WireCall, infer_request,
-    harmos_path = harmos_runtime,
-    id = "run",
-
+#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], harmos_path = harmos_runtime,
+    id = "fixture.run",
     response = String,
-    visibility = Visibility::Shared,
-    policy = Run::<1, 100, false>::POLICY,
+    visibility = Shared,
+    policy = ClientRun::POLICY,
     grpc(package = "fixture.embedded.v1", service = "Client", method = "Run"),
 )]
-struct WireCallDeclaration;
-
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-
-struct WireCall {
+struct WireCallDeclaration {
     value: String,
 }
 
@@ -52,23 +45,14 @@ struct WireCall {
 
 /* === Implementations === */
 
-impl Operation for WireClient {
-    type Request = WireCall;
-    type Response = <WireCallDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::operations::Operation for WireCallDeclaration {
     type Error = Error;
-    type Endpoints = ();
 
-    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self> {
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut WireCall, _: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<String>> {
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<String>> {
+        let host = context.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
         let result: ::core::result::Result<String, Self::Error> = async move {
-            let response = context.call::<Run<0, 100, false>>(Run::<0, 100, false> { value: request.value.clone() }).await?;
+            let response = context.call::<ProviderRun>(ProviderRun { value: self.value.clone() }).await?;
             Ok(response.as_ref().clone())
         }
         .await;
@@ -97,24 +81,26 @@ async fn embedded_wire_contracts() {
         .unwrap();
     let mut provider = plan().ordered().iter().find(|definition| definition.id == "provider").unwrap().clone();
     provider.contributions = PluginContributions::default();
-    runtime.plugin.register_embedded(provider, Default::default(), registration::<0, 100, false>()).await.unwrap();
+    runtime.plugin.register_embedded(provider, Default::default(), registration::<ProviderRun>()).await.unwrap();
     let registered = runtime.plugin.status("provider").unwrap();
     assert_eq!(registered.attempts, 0);
-    let contracts = Contracts::of::<Operations<0, 100, false>>().unwrap();
+    let contracts = Contracts::of::<Operations<ProviderRun>>().unwrap();
     assert_eq!(registered.definition.as_ref().unwrap().contributions.wire_contracts, contracts);
-    assert!(runtime.operations.call_encoded("provider.run", request_payload()).await.is_err());
+    assert!(runtime.operations.call_encoded("provider.fixture.run", request_payload()).await.is_err());
 
     let mut client = plan().ordered().iter().find(|definition| definition.id == "client").unwrap().clone();
     client.artifact = PluginArtifact::Embedded { revision: "wire-client".into() };
-    client.contributions.required_contracts = Some(vec![Required { contract: contracts[0].clone(), grants: vec![] }]);
+    client.contributions.required_contracts = Some(vec![Required {
+        contract: contracts[0].clone(),
+        grants: vec![],
+    }]);
     runtime
         .plugin
         .register_embedded(
             client,
             Default::default(),
             harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
-                    .implementation::<WireCallDeclaration, WireClient>(),
+                harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<WireCallDeclaration>(),
                 Lanes::Open,
             ),
         )
@@ -155,7 +141,7 @@ async fn embedded_wire_contracts() {
     }
 
     let request = harmos_runtime::Message::encode(&RunRequest { value: "original provider".into() });
-    let response = runtime.operations.call_encoded("client.run", request).await.unwrap();
+    let response = runtime.operations.call_encoded("client.fixture.run", request).await.unwrap();
     assert_eq!(<String as harmos_runtime::Message>::decode(&response).unwrap(), "original provider");
 
     // A Changed Response Contract Cannot Replace The Live Generation.
@@ -165,20 +151,20 @@ async fn embedded_wire_contracts() {
         type Response = u64;
         type Input = harmos_runtime::operations::NoStream;
         type Output = harmos_runtime::operations::NoStream;
-        const ID: &'static str = "run";
-        const POLICY: harmos_runtime::OperationPolicy = Run::<0, 100, false>::POLICY;
+        const ID: &'static str = "fixture.run";
+        const POLICY: harmos_runtime::OperationPolicy = ProviderRun::POLICY;
     }
     let mut replacement = ready.definition.clone().unwrap();
     replacement.contributions.wire_contracts = vec![harmos_runtime::operations::WireDeclaration::of::<Incompatible>().contract().unwrap()];
     assert!(matches!(
-        runtime.plugin.reload_embedded(replacement, Default::default(), registration::<0, 100, false>()).await,
+        runtime.plugin.reload_embedded(replacement, Default::default(), registration::<ProviderRun>()).await,
         Err(Error::InvalidInput { field: "embedded plugin contracts", .. })
     ));
     assert_eq!(runtime.plugin.status("provider").unwrap(), ready);
 
     let mut replacement = ready.definition.clone().unwrap();
     replacement.artifact = PluginArtifact::Embedded { revision: "wire-provider-v2".into() };
-    runtime.plugin.reload_embedded(replacement, Default::default(), registration::<0, 100, false>()).await.unwrap();
+    runtime.plugin.reload_embedded(replacement, Default::default(), registration::<ProviderRun>()).await.unwrap();
     let reloaded = runtime.plugin.status("provider").unwrap();
     assert_ne!(reloaded.generation, ready.generation);
     assert_eq!(reloaded.attempts, 2);
@@ -186,13 +172,13 @@ async fn embedded_wire_contracts() {
     assert_ne!(runtime.grpc().methods()[0].generation, grpc_generation);
 
     assert_eq!(runtime.plugin.status("client").unwrap().attempts, 2);
-    let response = runtime.operations.call_encoded("client.run", request_payload()).await.unwrap();
+    let response = runtime.operations.call_encoded("client.fixture.run", request_payload()).await.unwrap();
     assert_eq!(<String as harmos_runtime::Message>::decode(&response).unwrap(), "");
     runtime.stop().await.unwrap();
     #[cfg(feature = "grpc")]
     assert!(runtime.grpc().methods().is_empty());
 
-    assert!(runtime.operations.call_encoded("client.run", request_payload()).await.is_err());
+    assert!(runtime.operations.call_encoded("client.fixture.run", request_payload()).await.is_err());
     assert!(matches!(runtime.plugin.cleanup().status(), PluginCleanupStatus::Settled));
 }
 
@@ -205,12 +191,12 @@ async fn owned_embedded_plugins() {
     let mut definition = plan().ordered().iter().find(|definition| definition.id == "provider").unwrap().clone();
     definition.artifact = PluginArtifact::Embedded { revision: "runtime-owned".into() };
     definition.contributions = PluginContributions::default();
-    handle.plugin.register_embedded(definition, Default::default(), registration::<0, 100, false>()).await.unwrap();
+    handle.plugin.register_embedded(definition, Default::default(), registration::<ProviderRun>()).await.unwrap();
     let registered = runtime.plugin.status("provider").unwrap();
     assert_eq!(registered.state, PluginState::Registered);
     assert_eq!(registered.attempts, 0);
     assert!(matches!(
-        runtime.operations.call::<Run<0, 100, false>>(Run::<0, 100, false> { value: "before".into() }).await,
+        runtime.operations.call::<ProviderRun>(ProviderRun { value: "before".into() }).await,
         Err(Error::NotRegistered { .. })
     ));
     runtime.plugin.initialize().await.unwrap();
@@ -219,12 +205,7 @@ async fn owned_embedded_plugins() {
     assert_eq!(ready.state, PluginState::Ready);
     assert_eq!(ready.attempts, 1);
     assert_eq!(
-        runtime
-            .operations
-            .call::<Run<0, 100, false>>(Run::<0, 100, false> { value: "shared runtime owner".into() })
-            .await
-            .unwrap()
-            .as_str(),
+        runtime.operations.call::<ProviderRun>(ProviderRun { value: "shared runtime owner".into() }).await.unwrap().as_str(),
         "shared runtime owner"
     );
     let generation = runtime.plugin.status("provider").unwrap().generation.unwrap();
@@ -233,26 +214,26 @@ async fn owned_embedded_plugins() {
     assert_ne!(reloaded.generation, Some(generation));
     assert_eq!(reloaded.attempts, 2);
     assert_eq!(
-        runtime.operations.call::<Run<0, 100, false>>(Run::<0, 100, false> { value: "after reload".into() }).await.unwrap().as_str(),
+        runtime.operations.call::<ProviderRun>(ProviderRun { value: "after reload".into() }).await.unwrap().as_str(),
         "after reload"
     );
     let mut replacement = reloaded.definition.clone().unwrap();
     replacement.artifact = PluginArtifact::Embedded { revision: "runtime-owned-v2".into() };
-    handle.plugin.reload_embedded(replacement.clone(), Default::default(), registration::<0, 100, false>()).await.unwrap();
+    handle.plugin.reload_embedded(replacement.clone(), Default::default(), registration::<ProviderRun>()).await.unwrap();
     let updated = runtime.plugin.status("provider").unwrap();
     assert_eq!(updated.attempts, 3);
     assert_ne!(updated.generation, reloaded.generation);
     assert_eq!(updated.active_definition, Some(replacement.clone()));
-    assert!(runtime.plugin.reload_embedded(replacement, Default::default(), registration::<0, 101, false>()).await.is_err());
+    assert!(runtime.plugin.reload_embedded(replacement, Default::default(), registration::<ChangedRun>()).await.is_err());
     assert_eq!(runtime.plugin.status("provider").unwrap(), updated);
     assert_eq!(
-        runtime.operations.call::<Run<0, 100, false>>(Run::<0, 100, false> { value: "after replacement".into() }).await.unwrap().as_str(),
+        runtime.operations.call::<ProviderRun>(ProviderRun { value: "after replacement".into() }).await.unwrap().as_str(),
         "after replacement"
     );
     runtime.plugin.remove("provider").await.unwrap();
     assert!(runtime.plugin.status("provider").is_none());
     assert!(matches!(
-        runtime.operations.call::<Run<0, 100, false>>(Run::<0, 100, false> { value: "removed".into() }).await,
+        runtime.operations.call::<ProviderRun>(ProviderRun { value: "removed".into() }).await,
         Err(Error::NotRegistered { .. })
     ));
     runtime.stop().await.unwrap();
@@ -280,7 +261,7 @@ async fn inert_preserves_graph() {
     assert_eq!(inert.state, PluginState::Registered);
     assert_eq!(inert.attempts, 0);
     assert!(inert.generation.is_none());
-    assert!(host.operations().call_encoded("provider.run", request_payload()).await.is_ok());
+    assert!(host.operations().call_encoded("provider.fixture.run", request_payload()).await.is_ok());
     assert!(matches!(session.apply_reload(frozen, &mut host).await.map_err(failure), Err(PluginFailure::StalePlan { .. })));
     let before: Vec<_> = session.statuses().collect();
     let mut replaced = definitions.clone();
@@ -315,7 +296,7 @@ async fn activation_failure_cleans() {
         ["fence:client,provider", "stop:client", "stop:provider", "start:provider", "start:client", "stop:client", "stop:provider"]
     );
     assert!(matches!(
-        host.operations().call_encoded("provider.run", request_payload()).await,
+        host.operations().call_encoded("provider.fixture.run", request_payload()).await,
         Err(Error::NotRegistered { domain: "operation", .. })
     ));
     host.fail_start = None;
@@ -330,14 +311,17 @@ async fn activation_failure_cleans() {
 #[tokio::test]
 async fn start_preserves_providers() {
     let mut session = session();
-    let mut host = Host { fail_start: Some("client".into()), ..Host::new().await };
+    let mut host = Host {
+        fail_start: Some("client".into()),
+        ..Host::new().await
+    };
     assert!(matches!(session.initialize(&mut host).await.map_err(failure),
         Err(PluginFailure::Start { artifact, cleanup, .. }) if artifact == "client" && cleanup.is_empty()));
     assert!(session.ready().any(|id| id == "provider"));
     assert!(!session.ready().any(|id| id == "client"));
-    assert!(host.operations().call_encoded("provider.run", request_payload()).await.is_ok());
+    assert!(host.operations().call_encoded("provider.fixture.run", request_payload()).await.is_ok());
     assert!(matches!(
-        host.operations().call_encoded("client.run", request_payload()).await,
+        host.operations().call_encoded("client.fixture.run", request_payload()).await,
         Err(Error::NotRegistered { domain: "operation", .. })
     ));
     assert!(!host.control.lock().unwrap().events.iter().any(|event| event == "stop:provider"));
@@ -356,7 +340,11 @@ async fn start_preserves_providers() {
 async fn initialization_retains_cleanup() {
     let mut session = session();
     let (started, mut starting) = tokio::sync::watch::channel(String::new());
-    let mut host = Host { block: Some("provider".to_owned()), started: Some(started), ..Host::new().await };
+    let mut host = Host {
+        block: Some("provider".to_owned()),
+        started: Some(started),
+        ..Host::new().await
+    };
     {
         let initialization = session.initialize(&mut host);
         tokio::pin!(initialization);
@@ -377,7 +365,7 @@ async fn initialization_retains_cleanup() {
     assert!(host.control.lock().unwrap().callers.contains_key("provider"));
     assert!(!session.ready().any(|id| id == "provider"));
     assert!(matches!(
-        host.operations().call_encoded("provider.run", request_payload()).await,
+        host.operations().call_encoded("provider.fixture.run", request_payload()).await,
         Err(Error::NotReady { domain: "operation plugin" })
     ));
     host.block = None;
@@ -402,7 +390,11 @@ async fn initialization_retains_cleanup() {
 async fn start_retains_backend() {
     let mut manager = session();
     let (started, mut starting) = tokio::sync::watch::channel(String::new());
-    let mut host = Host { block: Some("client".into()), started: Some(started), ..Host::new().await };
+    let mut host = Host {
+        block: Some("client".into()),
+        started: Some(started),
+        ..Host::new().await
+    };
     {
         let start = manager.initialize(&mut host);
         tokio::pin!(start);
@@ -422,8 +414,11 @@ async fn start_retains_backend() {
     assert!(host.control.lock().unwrap().callers.contains_key("client"));
     let caller = host.control.lock().unwrap().callers["client"].clone();
     let operations = host.operations().clone();
-    assert!(matches!(operations.call_encoded("client.run", request_payload()).await, Err(Error::NotReady { domain: "operation plugin" })));
-    assert!(host.call(&caller, "provider.run", request_payload()).await.is_ok());
+    assert!(matches!(
+        operations.call_encoded("client.fixture.run", request_payload()).await,
+        Err(Error::NotReady { domain: "operation plugin" })
+    ));
+    assert!(host.call(&caller, "provider.fixture.run", request_payload()).await.is_ok());
 
     // Final Manager Drop Settles Partial Setup Before Invalidating Callers.
     let cleanup = manager.cleanup();
@@ -438,11 +433,11 @@ async fn start_retains_backend() {
         }
     }
     assert!(matches!(
-        operations.call_encoded("client.run", request_payload()).await,
+        operations.call_encoded("client.fixture.run", request_payload()).await,
         Err(Error::NotRegistered { domain: "operation", .. })
     ));
     assert!(matches!(
-        host.call(&caller, "provider.run", request_payload()).await,
+        host.call(&caller, "provider.fixture.run", request_payload()).await,
         Err(Error::OperationCaller { source: DispatchError::Unavailable })
     ));
 }
@@ -478,16 +473,25 @@ async fn inventory_refuses_commit() {
     assert!(!manager.status("client").is_some_and(|status| status.generation.is_some()));
     assert!(host.control.lock().unwrap().events.iter().any(|event| event == "stop:client"));
     assert!(manager.caller("provider").is_ok());
-    assert!(!host.operations().definitions().iter().any(|definition| definition.id.as_str() == "client.run"));
+    assert!(!host.operations().definitions().iter().any(|definition| definition.id.as_str() == "client.fixture.run"));
     manager.shutdown(&mut host).await.unwrap();
 }
 
 #[tokio::test]
 async fn mismatch_cleans_backend() {
     let mut manager = session();
-    let mut host = Host { wrong_backend: Some("client".into()), ..Host::new().await };
+    let mut host = Host {
+        wrong_backend: Some("client".into()),
+        ..Host::new().await
+    };
     let error = manager.initialize(&mut host).await.unwrap_err();
-    assert!(matches!(failure(error), PluginFailure::Start { source: Error::InvalidInput { field: "plugin backend", .. }, .. }));
+    assert!(matches!(
+        failure(error),
+        PluginFailure::Start {
+            source: Error::InvalidInput { field: "plugin backend", .. },
+            ..
+        }
+    ));
     assert!(!host.control.lock().unwrap().events.iter().any(|event| event == "start:client"));
     assert!(host.control.lock().unwrap().events.iter().any(|event| event == "stop:client"));
     assert_eq!(manager.status("client").unwrap().state, PluginState::Failed);
@@ -506,9 +510,9 @@ async fn outbound_caller_ready() {
     manager.initialize(&mut host).await.unwrap();
     let caller = manager.caller("client").unwrap();
     assert_eq!(Some(caller.generation()), manager.status("client").unwrap().generation);
-    assert!(host.call(&caller, "provider.run", request_payload()).await.is_ok());
+    assert!(host.call(&caller, "provider.fixture.run", request_payload()).await.is_ok());
     assert!(matches!(
-        host.operations().call_encoded("client.run", request_payload()).await,
+        host.operations().call_encoded("client.fixture.run", request_payload()).await,
         Err(Error::NotRegistered { domain: "operation", .. })
     ));
     manager.shutdown(&mut host).await.unwrap();

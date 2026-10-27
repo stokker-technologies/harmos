@@ -22,13 +22,15 @@ use super::POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::{FileReference, FileSession, MutationId};
-use harmos_domain::operations::{ReplaySafety, Visibility};
+use harmos_domain::operations::ReplaySafety;
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
 /* === Macros === */
 
-product!(FinishFileRequest {
+product!(FinishFile {
     mutation: Nested<MutationId> => 1,
     session: Nested<FileSession> => 2,
 });
@@ -38,23 +40,16 @@ product!(FinishFileRequest {
 /* === Structs === */
 
 // Finish A Producing File Session Into An Immutable Reference.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FinishFileRequest {
-    pub mutation: MutationId,
-    pub session: FileSession,
-}
-
-#[harmos::operation(harmos_path = crate,
-    id = "storage_finish_file",
-    request = FinishFileRequest,
+#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
+    id = "storage.finish_file",
     response = FileReference,
     policy = POLICY,
-    infer_request,
-    visibility = Visibility::Host,
+    visibility = Host,
     replay = ReplaySafety::Idempotent)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FinishFile {
-    #[cfg(feature = "runtime")]
-    storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
+    pub mutation: MutationId,
+    pub session: FileSession,
 }
 
 /* === Enums === */
@@ -63,7 +58,7 @@ pub struct FinishFile {
 
 /* === Implementations === */
 
-impl MemorySize for FinishFileRequest {
+impl MemorySize for FinishFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.mutation.memory_size().saturating_sub(std::mem::size_of_val(&self.mutation)))
@@ -73,7 +68,6 @@ impl MemorySize for FinishFileRequest {
 
 #[cfg(feature = "runtime")]
 mod execution {
-    use super::*;
 
     // Standard Library Imports
 
@@ -84,26 +78,17 @@ mod execution {
     use harmos_sdk::operations::Operation;
     use harmos_storage::FileReference;
 
-    use harmos_storage::StorageManager;
-
     use crate::{Error, Result};
 
     impl Operation for super::FinishFile {
-        type Request = <FinishFile as harmos_domain::OperationDeclaration>::Request;
-        type Response = <FinishFile as harmos_domain::OperationDeclaration>::Response;
         type Error = Error;
-        type Endpoints = ();
-        async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
-            let storage = context.dependency::<StorageManager<harmos_storage::ErasedCatalog>>()?;
-            Ok(Self { storage })
-        }
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.finish_file", level = "trace", skip_all)]
-        async fn run(
-            &mut self, _: harmos_sdk::OperationContext, request: &mut Self::Request, _: &mut Self::Endpoints,
-        ) -> Result<harmos_sdk::operations::Response<FileReference>> {
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileReference>> {
+            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
+
             let result: ::core::result::Result<FileReference, Self::Error> =
-                async move { self.storage.finish_file_once(&request.mutation, &request.session).await.map_err(Into::into) }.await;
+                async move { storage.finish_file_once(&self.mutation, &self.session).await.map_err(Into::into) }.await;
             result.map(::core::convert::Into::into)
         }
 

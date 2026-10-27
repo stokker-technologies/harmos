@@ -49,8 +49,8 @@ target/build/dev/linux-x86_64/bin/schematic-cli --guest --advanced
 [advanced.rs](cli/src/advanced.rs) drains three analysis findings, joins the
 response, then starts another analysis and cancels it with settlement.
 
-The native catalog also exposes `AnalyzeUploadRequest { title }` (client stream of
-snapshots) and `AnalyzeExchangeRequest { title }` (snapshot input and finding output).
+The native catalog also exposes `AnalyzeUpload { title }` (client stream of
+snapshots) and `AnalyzeExchange { title }` (snapshot input and finding output).
 Both retain one shared analysis permit until input EOF or cancellation. Blank or
 oversized titles and invalid snapshots return an invalid-input failure. Each
 accepted snapshot publishes `AnalysisProgress { title, checked }` on the

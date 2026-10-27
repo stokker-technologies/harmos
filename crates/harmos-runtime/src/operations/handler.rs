@@ -79,6 +79,7 @@ pub struct Context<'a> {
     pub(crate) scope: Scope<'a>,
     pub(crate) operations: Manager,
     pub(super) admission: Admission,
+    pub(super) request_claims: Option<super::RequestClaims>,
     pub(super) source: Source,
     pub(super) origin: Origin,
 
@@ -88,6 +89,7 @@ pub struct Context<'a> {
 
 #[derive(Clone)]
 pub struct HostContext {
+    request_claims: Option<super::RequestClaims>,
     scope: super::scope::ScopeCore,
     id: OperationInstanceId,
     attempt: usize,
@@ -108,10 +110,11 @@ pub struct HostContext {
 
 impl OperationGeneration {
     pub(super) fn fresh() -> Result<Self> {
-        NEXT_GENERATION
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-            .map(Self)
-            .map_err(|_| Error::ResourceExhausted { resource: "operation provider generations" })
+        NEXT_GENERATION.try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1)).map(Self).map_err(|_| {
+            Error::ResourceExhausted {
+                resource: "operation provider generations",
+            }
+        })
     }
 
     pub fn value(self) -> u64 {
@@ -285,6 +288,7 @@ where
 impl Context<'_> {
     pub(crate) fn owned(&self) -> HostContext {
         HostContext {
+            request_claims: self.request_claims.clone(),
             scope: self.scope.owned(),
             id: self.id,
             attempt: self.attempt,
@@ -372,6 +376,20 @@ impl Context<'_> {
         self.operations.submit_scoped::<O, ()>((request.into(), ()), &self.scope, &self.admission, &self.source, None)
     }
 
+    pub fn request_claims(&self) -> Option<&super::RequestClaims> {
+        self.request_claims.as_ref()
+    }
+
+    pub fn submit_owned<O: OperationDeclaration>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
+        self.operations.submit_scoped::<O, ()>(
+            (super::binding::Request::owned(request, claims), ()),
+            &self.scope,
+            &self.admission,
+            &self.source,
+            None,
+        )
+    }
+
     pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(&self, request: O::Request, endpoints: P) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, P>((request.into(), endpoints), &self.scope, &self.admission, &self.source, None)
     }
@@ -406,8 +424,12 @@ impl Context<'_> {
 /* === Public Functions === */
 
 impl HostContext {
+    pub fn request_claims(&self) -> Option<&super::RequestClaims> {
+        self.request_claims.as_ref()
+    }
     pub fn borrow(&self) -> Context<'_> {
         Context {
+            request_claims: self.request_claims.clone(),
             scope: Scope::over(&self.scope),
             id: self.id,
             attempt: self.attempt,
@@ -430,7 +452,7 @@ impl harmos_sdk::operations::Host for HostContext {
         S::Row: harmos_domain::Message,
     {
         use harmos_domain::Message;
-        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::PublishRequest {
+        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::Publish {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: None,
@@ -463,16 +485,21 @@ impl harmos_sdk::operations::Host for HostContext {
         self.borrow().submit::<O>(request)
     }
 
+    async fn submit_owned<O: OperationDeclaration>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
+        self.borrow().submit_owned::<O>(request, claims)
+    }
+
     async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<super::Response<O::Response>> {
         self.borrow().submit::<O>(request)?.await
     }
 }
 
 pub(crate) fn fresh_instance() -> Result<OperationInstanceId> {
-    NEXT_INSTANCE
-        .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-        .map(OperationInstanceId::new)
-        .map_err(|_| Error::ResourceExhausted { resource: "operation instance identities" })
+    NEXT_INSTANCE.try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1)).map(OperationInstanceId::new).map_err(|_| {
+        Error::ResourceExhausted {
+            resource: "operation instance identities",
+        }
+    })
 }
 
 /* === Private Functions === */
@@ -510,7 +537,7 @@ impl harmos_sdk::operations::access::Discovery for HostContext {
         &self, after: Option<&str>, rows: usize, bytes: usize,
     ) -> std::result::Result<harmos_sdk::operations::access::DiscoveryPage, harmos_sdk::operations::access::AccessError> {
         let context = self.borrow();
-        let request = harmos_operations::host::CatalogRequest {
+        let request = harmos_operations::host::Catalog {
             kind: harmos_operations::host::CatalogKind::Operations,
             schema: None,
             after: after.map(str::to_owned),
@@ -530,7 +557,7 @@ impl harmos_sdk::operations::access::GrantAuthority for HostContext {
 #[cfg(feature = "plugin-sidecar")]
 impl harmos_sdk::operations::publication::PublicationHost for HostContext {
     fn publish<'a>(
-        &'a self, _: harmos_sdk::OperationContext, publication: harmos_sdk::operations::publication::Publication<'a>,
+        &'a self, _: harmos_sdk::operations::CallContext, publication: harmos_sdk::operations::publication::Publication<'a>,
     ) -> harmos_sdk::operations::publication::Published<'a> {
         Box::pin(async move {
             let context = self.borrow();

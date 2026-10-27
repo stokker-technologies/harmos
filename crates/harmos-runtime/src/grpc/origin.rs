@@ -103,7 +103,9 @@ impl std::str::FromStr for Origin {
 
 impl CrossOrigin {
     pub(super) fn new(allowed: &[Origin]) -> Option<Self> {
-        (!allowed.is_empty()).then(|| Self { origins: allowed.iter().map(|origin| origin.0.clone()).collect() })
+        (!allowed.is_empty()).then(|| Self {
+            origins: allowed.iter().map(|origin| origin.0.clone()).collect(),
+        })
     }
 }
 
@@ -127,7 +129,10 @@ impl<S> Layer<S> for CrossOrigin {
                 HeaderName::from_static("grpc-status-details-bin"),
             ])
             .max_age(MAX_AGE);
-        Gate { origins: self.origins.clone(), inner: cors.layer(inner) }
+        Gate {
+            origins: self.origins.clone(),
+            inner: cors.layer(inner),
+        }
     }
 }
 

@@ -7,7 +7,7 @@
  * ***
  */
 
-// HashFileRequest Declaration.
+// HashFile Declaration.
 
 /* === Modules === */
 
@@ -24,13 +24,15 @@ use super::IO_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::files::{ByteRange, FileHash, FileSource};
-use harmos_domain::operations::{ReplaySafety, Visibility};
+use harmos_domain::operations::ReplaySafety;
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
 /* === Macros === */
 
-product!(HashFileRequest {
+product!(HashFile {
     source: Nested<FileSource> => 1,
     range: Nested<ByteRange> => 2,
 });
@@ -39,25 +41,18 @@ product!(HashFileRequest {
 
 /* === Structs === */
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HashFileRequest {
-    pub source: FileSource,
-    pub range: ByteRange,
-}
-
-#[harmos::operation(harmos_path = crate,
-    id = "storage_hash_file",
-    request = HashFileRequest,
+#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
+    id = "storage.hash_file",
     response = FileHash,
     policy = IO_POLICY,
-    infer_request,
-    visibility = Visibility::Shared,
+    visibility = Shared,
     replay = ReplaySafety::Idempotent,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "HashFile"),
     grant = Self::grant_for)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HashFile {
-    #[cfg(feature = "runtime")]
-    storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
+    pub source: FileSource,
+    pub range: ByteRange,
 }
 
 /* === Enums === */
@@ -67,12 +62,12 @@ pub struct HashFile {
 /* === Implementations === */
 
 impl HashFile {
-    fn grant_for(request: &HashFileRequest) -> Option<harmos_domain::plugin::Grant> {
+    fn grant_for(request: &HashFile) -> Option<harmos_domain::plugin::Grant> {
         request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, scope))
     }
 }
 
-impl MemorySize for HashFileRequest {
+impl MemorySize for HashFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.source.memory_size().saturating_sub(std::mem::size_of_val(&self.source)))
@@ -82,7 +77,6 @@ impl MemorySize for HashFileRequest {
 
 #[cfg(feature = "runtime")]
 mod execution {
-    use super::*;
 
     // HashFile Runtime Handler.
 
@@ -94,24 +88,21 @@ mod execution {
     use crate::{Error, Result};
     use harmos_domain::model::storage::files::FileHash;
     use harmos_sdk::operations::Operation;
-    use harmos_storage::StorageManager;
 
     impl Operation for super::HashFile {
-        type Request = <HashFile as harmos_domain::OperationDeclaration>::Request;
-        type Response = <HashFile as harmos_domain::OperationDeclaration>::Response;
         type Error = Error;
-        type Endpoints = ();
-
-        async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
-            let storage = context.dependency::<StorageManager<harmos_storage::ErasedCatalog>>()?;
-            Ok(Self { storage })
-        }
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.hash_file", level = "trace", skip_all)]
-        async fn run(
-            &mut self, _: harmos_sdk::OperationContext, request: &mut Self::Request, _: &mut (),
-        ) -> Result<harmos_sdk::operations::Response<FileHash>> {
-            Ok(self.storage.hash_file(harmos_storage::FileRead { source: request.source.clone(), range: request.range }).await?.into())
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileHash>> {
+            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
+
+            Ok(storage
+                .hash_file(harmos_storage::FileRead {
+                    source: self.source.clone(),
+                    range: self.range,
+                })
+                .await?
+                .into())
         }
 
         fn classify(error: &Error) -> harmos_sdk::operations::FailureKind {

@@ -13,7 +13,7 @@ mod catalog;
 
 /* === Re-Exports === */
 
-pub use catalog::{Catalog, CatalogKind, CatalogPage, CatalogRequest};
+pub use catalog::{Catalog, CatalogKind, CatalogPage};
 pub use harmos_domain::model::operations::discovery::DiscoveredOperation;
 
 /* === Imports === */

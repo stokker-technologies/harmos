@@ -112,7 +112,11 @@ impl StagedRows {
 
 impl Activation {
     pub(crate) fn new(table: &Arc<Table>) -> Self {
-        Self { table: Arc::downgrade(table), state: Mutex::new(State::default()), leases: OnceLock::new() }
+        Self {
+            table: Arc::downgrade(table),
+            state: Mutex::new(State::default()),
+            leases: OnceLock::new(),
+        }
     }
 
     pub(super) fn retain_leases(&self, leases: Vec<Arc<super::PublicationLease>>) {

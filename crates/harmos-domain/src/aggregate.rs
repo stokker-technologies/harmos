@@ -201,8 +201,12 @@ impl Described for Aggregate {
 
 impl Described for Rank {
     const NAME: &'static str = "harmos::Aggregate::Percentile";
-    const FIELDS: &'static [Field] =
-        &[Field { name: Cow::Borrowed("rank"), tag: RANK, kind: Kind::U32, cardinality: Cardinality::Required }];
+    const FIELDS: &'static [Field] = &[Field {
+        name: Cow::Borrowed("rank"),
+        tag: RANK,
+        kind: Kind::U32,
+        cardinality: Cardinality::Required,
+    }];
     const MARKER: &'static [u8] = &declaration::encode::<{ declaration::encoded_len(Self::NAME, Self::FIELDS) }>(Self::NAME, Self::FIELDS);
 }
 
@@ -259,7 +263,12 @@ mod rank {
 }
 
 const fn variant(name: &'static str, tag: u32, payload: declaration::Definition) -> Field {
-    Field { name: Cow::Borrowed(name), tag, kind: Kind::Message { definition: payload }, cardinality: Cardinality::Variant }
+    Field {
+        name: Cow::Borrowed(name),
+        tag,
+        kind: Kind::Message { definition: payload },
+        cardinality: Cardinality::Variant,
+    }
 }
 
 // A zero rank is the proto3 default and stays off the wire.

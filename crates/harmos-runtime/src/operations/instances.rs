@@ -112,11 +112,19 @@ impl Instances {
     ) -> Arc<Self> {
         let (ordinary, ordinary_receiving) = Queue::new(settings.queued.get());
         let (lifecycle, lifecycle_receiving) = Queue::new(settings.lifecycle_queued.get());
-        let receiving = Receiving { ordinary: ordinary_receiving, lifecycle: lifecycle_receiving };
+        let receiving = Receiving {
+            ordinary: ordinary_receiving,
+            lifecycle: lifecycle_receiving,
+        };
         let supervisor = Task::spawn(move |stopping| dispatch(receiving, stopping.subscribe()));
         Arc::new(Self {
             lanes,
-            state: Mutex::new(State { closing: false, active: BTreeMap::new(), owners: BTreeMap::new(), residents: BTreeMap::new() }),
+            state: Mutex::new(State {
+                closing: false,
+                active: BTreeMap::new(),
+                owners: BTreeMap::new(),
+                residents: BTreeMap::new(),
+            }),
             ordinary,
             lifecycle,
             supervisor,
@@ -223,8 +231,20 @@ impl Instances {
         let queued = tracing::debug_span!(target: "harmos::operations", parent: &trace, "operations.queue", lane);
         let queued_driver = queued;
         let (deposit, prepared) = oneshot::channel();
-        let reservation = Reservation { outcome, deposit, control: instance.clone(), admission: admission.clone(), cause: None };
-        let execution = Execution { admission, submitted, cancelled, instance: instance.clone(), queue: queue_permit };
+        let reservation = Reservation {
+            outcome,
+            deposit,
+            control: instance.clone(),
+            admission: admission.clone(),
+            cause: None,
+        };
+        let execution = Execution {
+            admission,
+            submitted,
+            cancelled,
+            instance: instance.clone(),
+            queue: queue_permit,
+        };
         assert!(state.active.insert(id, instance.clone()).is_none(), "instance IDs are unique");
         let owner = self.clone();
         let control = instance.clone();
@@ -289,7 +309,13 @@ impl<O> Reservation<O> {
 impl Queue {
     fn new(capacity: usize) -> (Self, mpsc::Receiver<Submission>) {
         let (sending, receiving) = mpsc::channel(capacity);
-        (Self { sending, capacity: Arc::new(Semaphore::new(capacity)) }, receiving)
+        (
+            Self {
+                sending,
+                capacity: Arc::new(Semaphore::new(capacity)),
+            },
+            receiving,
+        )
     }
 }
 
@@ -319,7 +345,10 @@ async fn dispatch(mut receiving: Receiving, mut stopping: watch::Receiver<bool>)
                 running.push(Box::pin(async move { (submission.instance, task.await) }));
             }
             Event::Completed(instance, Err(source)) => {
-                instance.interrupted(Arc::new(Error::TaskFailed { domain: "operation instance", source: Arc::new(source) }));
+                instance.interrupted(Arc::new(Error::TaskFailed {
+                    domain: "operation instance",
+                    source: Arc::new(source),
+                }));
             }
             Event::Completed(_, Ok(())) => {}
             Event::Drained => return,

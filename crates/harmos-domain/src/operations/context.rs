@@ -109,7 +109,10 @@ impl CallContext {
         if self.values.contains_key(&kind) && self.portable_types.get(T::KEY) != Some(&kind) {
             return Err(ContextError::Duplicate { name: type_name::<T>().to_owned() });
         }
-        let replacement = CallValue { key: T::KEY.to_owned(), payload: value.encode() };
+        let replacement = CallValue {
+            key: T::KEY.to_owned(),
+            payload: value.encode(),
+        };
         let mut child = self.with_values(vec![replacement])?;
         child.values.insert(kind, Arc::new(value));
         child.portable_types.insert(T::KEY, kind);
@@ -172,7 +175,13 @@ impl CallContext {
     }
 
     pub fn portable(&self) -> Vec<CallValue> {
-        self.portable.iter().map(|(key, payload)| CallValue { key: key.clone(), payload: payload.to_vec() }).collect()
+        self.portable
+            .iter()
+            .map(|(key, payload)| CallValue {
+                key: key.clone(),
+                payload: payload.to_vec(),
+            })
+            .collect()
     }
 
     pub fn is_empty(&self) -> bool {

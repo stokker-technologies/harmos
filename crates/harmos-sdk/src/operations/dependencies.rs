@@ -37,7 +37,7 @@ pub struct Dependencies {
 }
 
 #[derive(Clone)]
-pub struct OperationContext {
+pub struct ExecutionContext {
     dependencies: Dependencies,
     pub call: CallContext,
 }
@@ -57,11 +57,11 @@ pub struct OperationAssignments {
 /* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
-pub enum DependencyError {
-    #[error("dependency `{name}` is already present")]
+pub enum ResourceError {
+    #[error("resource `{name}` is already present")]
     Duplicate { name: &'static str },
 
-    #[error("dependency `{name}` is missing")]
+    #[error("resource `{name}` is missing")]
     Missing { name: &'static str },
 }
 
@@ -74,31 +74,35 @@ impl Dependencies {
         Self::default()
     }
 
-    pub fn insert<T: Send + Sync + 'static>(&mut self, value: Arc<T>) -> Result<(), DependencyError> {
+    pub fn insert<T: Send + Sync + 'static>(&mut self, value: Arc<T>) -> Result<(), ResourceError> {
         let key = TypeId::of::<T>();
         if self.entries.contains_key(&key) {
-            return Err(DependencyError::Duplicate { name: type_name::<T>() });
+            return Err(ResourceError::Duplicate { name: type_name::<T>() });
         }
         Arc::make_mut(&mut self.entries).insert(key, value);
         Ok(())
     }
 
-    pub fn dependency<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, DependencyError> {
+    pub fn resource<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, ResourceError> {
         self.entries
             .get(&TypeId::of::<T>())
             .cloned()
             .and_then(|entry| entry.downcast().ok())
-            .ok_or(DependencyError::Missing { name: type_name::<T>() })
+            .ok_or(ResourceError::Missing { name: type_name::<T>() })
+    }
+
+    pub fn contains(&self, resource: TypeId) -> bool {
+        self.entries.contains_key(&resource)
     }
 }
 
-impl OperationContext {
+impl ExecutionContext {
     pub fn new(dependencies: Dependencies, call: CallContext) -> Self {
         Self { dependencies, call }
     }
 
-    pub fn dependency<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, DependencyError> {
-        self.dependencies.dependency::<T>()
+    pub fn resource<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, ResourceError> {
+        self.dependencies.resource::<T>()
     }
 
     pub fn dependencies(&self) -> &Dependencies {
@@ -137,12 +141,17 @@ impl OperationAssignments {
     }
 
     pub fn resolve<O: super::OperationDeclaration>(&self) -> Result<&AssignedOperation, super::ServingError> {
+        self.resolve_target(&super::Target::of::<O>())
+    }
+
+    pub fn resolve_target(&self, target: &super::Target) -> Result<&AssignedOperation, super::ServingError> {
+        let local = |entry: &&AssignedOperation| entry.operation.split_once('.').is_some_and(|(_, local)| local == target.id);
         let entry = self
             .entries
             .get()
-            .and_then(|entries| entries.iter().find(|entry| entry.operation.split_once('.').is_some_and(|(_, local)| local == O::ID)))
-            .ok_or(super::ServingError::Unassigned { operation: O::ID })?;
-        if entry.fingerprint != O::definition().fingerprint.0 {
+            .and_then(|entries| entries.iter().find(local))
+            .ok_or(super::ServingError::Unassigned { operation: target.id })?;
+        if entry.fingerprint != (target.definition)().fingerprint.0 {
             return Err(super::ServingError::Identity { operation: entry.operation.clone() });
         }
         Ok(entry)
@@ -166,9 +175,9 @@ mod tests {
         dependencies.insert(value.clone()).unwrap();
         let snapshot = dependencies.clone();
         dependencies.insert(Arc::new(9u64)).unwrap();
-        assert!(Arc::ptr_eq(&snapshot.dependency::<u32>().unwrap(), &value));
-        assert!(matches!(snapshot.dependency::<u64>(), Err(DependencyError::Missing { .. })));
-        assert!(matches!(dependencies.insert(Arc::new(8u32)), Err(DependencyError::Duplicate { .. })));
-        assert_eq!(*dependencies.dependency::<u32>().unwrap(), 7);
+        assert!(Arc::ptr_eq(&snapshot.resource::<u32>().unwrap(), &value));
+        assert!(matches!(snapshot.resource::<u64>(), Err(ResourceError::Missing { .. })));
+        assert!(matches!(dependencies.insert(Arc::new(8u32)), Err(ResourceError::Duplicate { .. })));
+        assert_eq!(*dependencies.resource::<u32>().unwrap(), 7);
     }
 }

@@ -57,7 +57,7 @@ struct Unsealed {
 
 pub(crate) enum Request<A: Application> {
     Commit {
-        transaction: A::Transaction,
+        transaction: crate::operations::Response<A::Transaction>,
         key: Option<RequestKey>,
         context: Context,
         reply: oneshot::Sender<Result<Receipt, Admission<A>>>,
@@ -176,7 +176,6 @@ async fn run_admissions<A: Application>(
                         return true;
                     }
 
-                    let transaction = Arc::new(transaction);
                     let draft = Unsealed::mint(&context, key.clone(), None, tracked.clock);
 
                     // Prepare against the pre-state, release it while reserving capture
@@ -259,8 +258,7 @@ async fn run_admissions<A: Application>(
                     };
 
                     let (state, position, inverse, prepared, permit) = sealed;
-                    let receipt =
-                        publish_group(tracked, stored, position, draft, Arc::clone(&transaction), prepared, capture.zip(permit)).await;
+                    let receipt = publish_group(tracked, stored, position, draft, transaction.clone(), prepared, capture.zip(permit)).await;
                     drop(state);
 
                     undos.record(position, context.principal.as_ref(), None, &transaction, inverse);
@@ -272,7 +270,13 @@ async fn run_admissions<A: Application>(
                     tracing::Span::current().record("frontier", receipt.frontier.0);
                     let _ = reply.send(Ok(receipt));
                 }
-                Request::Revert { principal, focus, direction, mut context, reply } => {
+                Request::Revert {
+                    principal,
+                    focus,
+                    direction,
+                    mut context,
+                    reply,
+                } => {
                     let chosen = match direction {
                         Direction::Undo => undos.undoable(&principal, &focus),
                         Direction::Redo => undos.redoable(&principal, &focus),
@@ -365,7 +369,7 @@ async fn run_admissions<A: Application>(
                     };
 
                     let (state, position, inverse, prepared, permit) = sealed;
-                    let receipt = publish_group(tracked, stored, position, draft, Arc::clone(&answer), prepared, capture.zip(permit)).await;
+                    let receipt = publish_group(tracked, stored, position, draft, answer.clone(), prepared, capture.zip(permit)).await;
                     drop(state);
 
                     undos.record(position, context.principal.as_ref(), Some(link), &answer, inverse);
@@ -374,7 +378,13 @@ async fn run_admissions<A: Application>(
                     tracing::Span::current().record("frontier", receipt.frontier.0);
                     let _ = reply.send(Ok(receipt));
                 }
-                Request::Record { value, prepared, preparation: _preparation, context, reply } => {
+                Request::Record {
+                    value,
+                    prepared,
+                    preparation: _preparation,
+                    context,
+                    reply,
+                } => {
                     if !context_fits(&context, None) {
                         tracing::Span::current().record("outcome", "refused");
                         let _ = reply.send(Err(PreparationError::Limit));
@@ -446,7 +456,10 @@ async fn run_admissions<A: Application>(
                     let position =
                         tracked.state.read().instrument(tracing::debug_span!(target: "harmos::state", "state.read_lock")).await.position;
 
-                    let _ = reply.send(At { value: undos.reversals(&principal, &focus), position });
+                    let _ = reply.send(At {
+                        value: undos.reversals(&principal, &focus),
+                        position,
+                    });
                 }
             }
             if let Some(capture) = capture {
@@ -473,7 +486,12 @@ async fn publish<A: Application>(
 
     {
         let mut tail = tracked.tail.write().await;
-        let entries = tail.push_group(vec![Entry { prepared: Some(prepared), position, metadata, value }]);
+        let entries = tail.push_group(vec![Entry {
+            prepared: Some(prepared),
+            position,
+            metadata,
+            value,
+        }]);
         // A storage worker may flush on another thread as soon as ownership
         // transfers. Publish the applied frontier before it can acknowledge save.
         tracked.applied.send_replace(position);
@@ -486,13 +504,18 @@ async fn publish<A: Application>(
     // `applied` on this same code path, so `wait_until_stored` needs no `cfg`.
     stored.send_replace(position);
 
-    Receipt { frontier: position, position, correlation }
+    Receipt {
+        frontier: position,
+        position,
+        correlation,
+    }
 }
 
 #[tracing::instrument(target = "harmos::state", name = "state.publish", level = "debug", skip_all, fields(position = position.0))]
 async fn publish_group<A: Application>(
-    tracked: &TrackedState<A>, stored: &watch::Sender<Position>, position: Position, draft: Unsealed, transaction: Arc<A::Transaction>,
-    prepared: PreparedCommit<A>, capture: Option<(&super::capture::Capture<A>, super::capture::Permit)>,
+    tracked: &TrackedState<A>, stored: &watch::Sender<Position>, position: Position, draft: Unsealed,
+    transaction: crate::operations::Response<A::Transaction>, prepared: PreparedCommit<A>,
+    capture: Option<(&super::capture::Capture<A>, super::capture::Permit)>,
 ) -> Receipt {
     let PreparedCommit { transaction: prepared, records } = prepared;
     let frontier = Position(position.0 + records.len() as u64);
@@ -500,7 +523,12 @@ async fn publish_group<A: Application>(
     metadata.commit = Some((position, frontier));
     let correlation = metadata.correlation;
     let mut entries = Vec::with_capacity(records.len() + 1);
-    entries.push(Entry { position, metadata: metadata.clone(), prepared: Some(prepared), value: Recorded::Transaction(transaction) });
+    entries.push(Entry {
+        position,
+        metadata: metadata.clone(),
+        prepared: Some(prepared),
+        value: Recorded::Transaction(transaction),
+    });
     metadata.causation = Some(CausationId(position));
     metadata.request = None;
     metadata.link = None;

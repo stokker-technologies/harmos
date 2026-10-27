@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-testing/references/runtime-and-carriers.md; sha256:1c1ba02bad27e6324d9752b4cdc1186fcbd6885869b2ee7f87be94b0271235c9 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-testing/references/runtime-and-carriers.md; sha256:780976738c599a82d9e571a63521fe80c1077f7a533632468d61d3d969ae986c -->
 
 # Runtime And Carriers
 
@@ -24,7 +24,8 @@ dependency configurations with the project's existing check mechanism.
 ## Context And Carrier Compatibility
 
 Native, sidecar and guest bodies implement the common SDK `Operation` trait
-with `OperationContext`. Dependency snapshots carry process-local resources;
+with `Context<'_, Self>` and request-consuming `run(self, ctx)`. Test retries with the original request clone and keep shared
+state in declared resources. Guest plugin lifecycle hooks use `harmos_guest::kit::Context`. Dependency snapshots carry process-local resources;
 sharing a declaration does not make those resources target-compatible. Check
 contract-only and runtime-enabled configurations separately, including actual
 guest dependency availability. A native test cannot prove guest buildability.

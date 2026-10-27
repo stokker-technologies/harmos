@@ -14,7 +14,10 @@
 /* === Imports === */
 
 #[cfg(feature = "runtime")]
-use crate::{Error, Operation, OperationContext, Response};
+use harmos_sdk::operations::instances::InstanceAccess;
+
+#[cfg(feature = "runtime")]
+use crate::{Error, Operation, Response};
 use harmos_domain::operations::instance::Id;
 
 /* === Constants === */
@@ -25,17 +28,19 @@ use harmos_domain::operations::instance::Id;
 
 /* === Structs === */
 
-#[harmos::message(harmos_path = crate)]
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [InstanceAccess],
+    id = "host.operations.status",
+    response = super::InstanceState,
+    policy = super::POLICY,
+    visibility = Shared,
+    grpc(package = "harmos.host.v1", service = "Operations", method = "Status"),
+)]
 #[derive(Clone, Default, PartialEq)]
-pub struct StatusRequest {
+pub struct Status {
     pub instance: u64,
 }
-
-#[harmos::operation(harmos_path = crate, id = "host_operations_status", request = StatusRequest,
-    response = super::InstanceState, policy = super::POLICY, infer_request,
-    visibility = harmos_domain::operations::Visibility::Shared,
-    grpc(package = "harmos.host.v1", service = "Operations", method = "Status"))]
-pub struct Status;
 
 /* === Enums === */
 
@@ -43,7 +48,7 @@ pub struct Status;
 
 /* === Implementations === */
 
-impl StatusRequest {
+impl Status {
     pub fn of(instance: Id) -> Self {
         Self { instance: instance.value() }
     }
@@ -51,19 +56,12 @@ impl StatusRequest {
 
 #[cfg(feature = "runtime")]
 impl Operation for Status {
-    type Request = StatusRequest;
-    type Response = super::InstanceState;
     type Error = Error;
-    type Endpoints = ();
-    async fn initialize(_: OperationContext) -> Result<Self, Error> {
-        Ok(Self)
-    }
-    async fn run(
-        &mut self, context: OperationContext, request: &mut Self::Request, output: &mut Self::Endpoints,
-    ) -> Result<Response<Self::Response>, Error> {
-        let access = context.dependency::<harmos_sdk::operations::instances::InstanceAccess>()?;
-        let instance = access.0.owned(Id::new(request.instance)).ok_or(Error::UnknownInstance(request.instance))?;
-        let _ = output;
+
+    async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<Response<super::InstanceState>, Error> {
+        let access = context.resource::<harmos_sdk::operations::instances::InstanceAccess>();
+
+        let instance = access.0.owned(Id::new(self.instance)).ok_or(Error::UnknownInstance(self.instance))?;
         Ok(super::InstanceState::from(instance.status()).into())
     }
 }
@@ -96,7 +94,12 @@ impl TryFrom<&InstanceState> for harmos_domain::operations::instance::Status {
             "" => None,
             outcome => Some(outcome.parse::<harmos_domain::operations::instance::Outcome>()?),
         };
-        Ok(Self { phase, outcome, cancellation_requested: state.cancellation_requested, attempt: state.attempt })
+        Ok(Self {
+            phase,
+            outcome,
+            cancellation_requested: state.cancellation_requested,
+            attempt: state.attempt,
+        })
     }
 }
 

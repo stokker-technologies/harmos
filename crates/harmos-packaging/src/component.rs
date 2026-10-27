@@ -94,8 +94,14 @@ mod tests {
 
     #[test]
     fn strips_debug_recursively_and_preserves_metadata() {
-        let metadata = CustomSection { name: "harmos".into(), data: (&b"identity"[..]).into() };
-        let debug = CustomSection { name: ".debug_info".into(), data: (&b"debug"[..]).into() };
+        let metadata = CustomSection {
+            name: "harmos".into(),
+            data: (&b"identity"[..]).into(),
+        };
+        let debug = CustomSection {
+            name: ".debug_info".into(),
+            data: (&b"debug"[..]).into(),
+        };
         let mut module = Module::new();
         module.section(&metadata).section(&debug);
         let mut expected_module = Module::new();

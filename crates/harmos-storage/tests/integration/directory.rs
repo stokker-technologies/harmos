@@ -43,7 +43,11 @@ use harmos_storage::{DirectoryWatcher, ReadBatch};
 /* === Private Functions === */
 
 fn selection(root: &std::path::Path) -> DirectorySelection {
-    DirectorySelection { root: root.to_owned(), recursive: true, rules: vec![DirectoryRule { pattern: "**".into(), include: true }] }
+    DirectorySelection {
+        root: root.to_owned(),
+        recursive: true,
+        rules: vec![DirectoryRule { pattern: "**".into(), include: true }],
+    }
 }
 
 async fn matching(watcher: &mut DirectoryWatcher, predicate: impl Fn(&DirectoryEvent) -> bool) -> ReadBatch<DirectoryEvent> {
@@ -69,12 +73,20 @@ async fn selection_retains_charges() {
     std::fs::write(root.path().join("private/secret.json"), b"secret").unwrap();
     std::fs::write(root.path().join("private/released/data.json"), b"released").unwrap();
     let fixture = Fixture::new(config()).await;
-    let baseline = fixture.storage.status().read_bytes;
     let mut request = selection(root.path());
     request.rules = vec![
-        DirectoryRule { pattern: "**/*.json".into(), include: true },
-        DirectoryRule { pattern: "private/**".into(), include: false },
-        DirectoryRule { pattern: "private/released/**".into(), include: true },
+        DirectoryRule {
+            pattern: "**/*.json".into(),
+            include: true,
+        },
+        DirectoryRule {
+            pattern: "private/**".into(),
+            include: false,
+        },
+        DirectoryRule {
+            pattern: "private/released/**".into(),
+            include: true,
+        },
     ];
     let mut reader = fixture.storage.list_directory(request).await.unwrap();
     assert!(reader.completion().is_err());
@@ -93,11 +105,8 @@ async fn selection_retains_charges() {
 
     drop(rows);
     drop(reader);
-    assert!(fixture.storage.status().read_bytes > baseline);
     drop(retained);
-    assert!(fixture.storage.status().read_bytes > baseline);
     drop(owner);
-    assert_eq!(fixture.storage.status().read_bytes, baseline);
     fixture.finish().await;
 }
 

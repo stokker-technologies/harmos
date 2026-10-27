@@ -45,7 +45,10 @@ use super::{Fixture, Lanes, config};
 /* === Public Functions === */
 
 pub(super) fn settings() -> StreamSettings {
-    StreamSettings { items: NonZeroUsize::new(4).unwrap(), bytes: NonZeroUsize::new(1024 * 1024).unwrap() }
+    StreamSettings {
+        items: NonZeroUsize::new(4).unwrap(),
+        bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
+    }
 }
 
 pub(super) fn batch(sequence: u64, destination: &str) -> DataBatch {
@@ -53,7 +56,12 @@ pub(super) fn batch(sequence: u64, destination: &str) -> DataBatch {
     let payload = StructArray::new(fields, vec![Arc::new(UInt64Array::from(vec![7, 11]))], None);
     let items = vec!["first", "second"];
     let data = envelope(payload, &items, &[0, 1]);
-    DataBatch { sequence, destination: Identifier::new(destination).unwrap(), schema: super::super::schema(), data: data.into() }
+    DataBatch {
+        sequence,
+        destination: Identifier::new(destination).unwrap(),
+        schema: super::super::schema(),
+        data: data.into(),
+    }
 }
 
 pub(super) fn envelope(payload: StructArray, items: &[&str], sequences: &[u64]) -> ArrowBatch {
@@ -98,7 +106,7 @@ async fn record_exchange_receipts() {
     let mut records = f
         .runtime
         .operations
-        .exchange::<WriteRecords>(harmos_operations::storage::WriteRecordsRequest { scope: None }, settings(), settings())
+        .exchange::<WriteRecords>(harmos_operations::storage::WriteRecords { scope: None }, settings(), settings())
         .unwrap();
     let first = batch(1, "bench");
     records.send_with(first.memory_size(), || Ok(first)).await.unwrap();
@@ -141,7 +149,7 @@ async fn cancelled_exchange_retains() {
     let mut stream = f
         .runtime
         .operations
-        .exchange::<WriteStreams>(harmos_operations::storage::WriteStreamsRequest { scope: None }, settings(), settings())
+        .exchange::<WriteStreams>(harmos_operations::storage::WriteStreams { scope: None }, settings(), settings())
         .unwrap();
     let first = batch(1, "voltage");
     stream.send(first).await.unwrap();

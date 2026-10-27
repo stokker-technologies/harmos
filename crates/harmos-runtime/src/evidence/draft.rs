@@ -113,7 +113,16 @@ impl std::fmt::Debug for Draft {
 
 impl Open {
     pub(crate) fn new(staged: Staged, vault: Arc<dyn Keeping>) -> Self {
-        let Staged { kind, version, scope, key, name, described, external, length } = staged;
+        let Staged {
+            kind,
+            version,
+            scope,
+            key,
+            name,
+            described,
+            external,
+            length,
+        } = staged;
 
         Self {
             kind,
@@ -125,7 +134,12 @@ impl Open {
             external,
             vault,
             writing: tokio::sync::Mutex::new(()),
-            growth: Mutex::new(Growth { length, watchers: None, finalizing: false, released: false }),
+            growth: Mutex::new(Growth {
+                length,
+                watchers: None,
+                finalizing: false,
+                released: false,
+            }),
         }
     }
 

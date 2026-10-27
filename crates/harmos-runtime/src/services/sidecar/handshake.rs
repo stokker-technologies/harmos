@@ -65,7 +65,14 @@ where
         &mut self, method: &str, params: Vec<u8>, within: Duration,
     ) -> Result<harmos_sidecar::FramePayload, String> {
         let id = self.mint();
-        if let Err(error) = self.send(Frame::Call { id, method: method.to_owned(), params: params.into() }).await {
+        if let Err(error) = self
+            .send(Frame::Call {
+                id,
+                method: method.to_owned(),
+                params: params.into(),
+            })
+            .await
+        {
             return Err(format!("the sidecar could not answer `{method}`: {error}"));
         }
 

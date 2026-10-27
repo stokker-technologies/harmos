@@ -11,10 +11,12 @@
 
 pub mod access;
 mod authored;
+mod calls;
 mod dependencies;
 pub mod instance;
 pub mod instances;
 pub mod lifecycle;
+mod operation;
 pub mod publication;
 pub mod registration;
 pub(crate) mod response;
@@ -26,10 +28,14 @@ mod surface;
 
 /* === Re-Exports === */
 
-pub use authored::{EndpointSet, InputEndpoint, Operation, OutputEndpoint};
-pub use dependencies::{AssignedOperation, Dependencies, DependencyError, OperationAssignments, OperationContext};
+#[doc(hidden)]
+pub use authored::Carrier;
+pub use authored::{EndpointSet, Executable, InputEndpoint, OutputEndpoint};
+pub use calls::{CallFuture, Caller, Calls, InvocationError, Target};
+pub use dependencies::{AssignedOperation, Dependencies, ExecutionContext, OperationAssignments, ResourceError};
 pub use harmos_domain::operations::*;
 pub use instance::Instance;
+pub use operation::{Authored, Context, Dependent, Operation, Resource, Shape, Streams};
 pub use registration::{NativeInstance, OperationFactory, RegistrationBatch, ServiceFactory, ServiceInstance};
 pub use response::Response;
 pub use serving::{
@@ -42,7 +48,7 @@ pub use serving::{WireEndpoints, WireStreamLimits, WireStreams};
 
 #[cfg(feature = "streaming")]
 pub use streaming::{Error as StreamError, StreamInput, StreamItem, StreamOutput, StreamPermit, StreamSettings, stream};
-pub use surface::Host;
+pub use surface::{Host, RequestClaims};
 
 /* === Imports === */
 

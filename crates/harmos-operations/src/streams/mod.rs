@@ -13,7 +13,7 @@ mod publish;
 
 /* === Re-Exports === */
 
-pub use publish::{FollowingRow, Publish, PublishRequest};
+pub use publish::{FollowingRow, Publish};
 
 /* === Imports === */
 

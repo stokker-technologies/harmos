@@ -17,11 +17,12 @@
 use std::{cmp::Ordering, num::NonZeroU128};
 
 // Third Party Imports
-use crate::signal::{Series, Summary};
 
 // Local Imports
+use super::order_stats::Values;
 use super::scalar::{self, Agg, ExactNumber, ScalarKind, ScalarValue};
 use crate::aggregate;
+use crate::signal::Summary;
 use crate::{Aggregate, Error, Result};
 
 /* === Constants === */
@@ -41,11 +42,7 @@ pub struct Accumulator {
     selected: Option<(u64, ScalarValue)>,
     total: ExactNumber,
     running: Summary,
-    scratch: Vec<ScalarValue>,
-}
-#[derive(Clone, Debug)]
-pub struct Scratch {
-    remaining: usize,
+    scratch: Values,
 }
 
 /* === Enums === */
@@ -54,11 +51,6 @@ pub struct Scratch {
 
 /* === Implementations === */
 
-impl Scratch {
-    pub fn new(slots: usize) -> Self {
-        Self { remaining: slots }
-    }
-}
 impl Accumulator {
     pub fn new(agg: Agg) -> Self {
         Self {
@@ -69,11 +61,11 @@ impl Accumulator {
             selected: None,
             total: ExactNumber::new(false, 0, NonZeroU128::MIN),
             running: Summary::new(),
-            scratch: Vec::new(),
+            scratch: Values::default(),
         }
     }
 
-    pub fn push(&mut self, capture: u64, value: &ScalarValue, scratch: &mut Scratch) -> Result<()> {
+    pub fn push(&mut self, capture: u64, value: &ScalarValue) -> Result<()> {
         value.check()?;
         self.rows = self.rows.checked_add(1).ok_or(invalid("row count overflow"))?;
         if self.agg == Agg::Last && !matches!(value, ScalarValue::Missing) {
@@ -132,33 +124,36 @@ impl Accumulator {
                 if !numeric_kind(value_kind) {
                     return Err(invalid("order statistic requires numbers"));
                 }
-                if self.scratch.len() == self.scratch.capacity() {
-                    let slots = self.scratch.capacity().max(4).min(scratch.remaining);
-                    if slots == 0 {
-                        return Err(invalid("order statistic values exceed admitted scratch"));
-                    }
-                    self.scratch.try_reserve_exact(slots).map_err(|_| invalid("order statistic scratch allocation failed"))?;
-                    scratch.remaining -= slots;
-                }
-                self.scratch.push(value.clone());
+                self.scratch.push(value)?;
             }
             Aggregate::Count => unreachable!("handled before type checks"),
         }
         Ok(())
     }
 
-    // Median and percentiles through `Series`, polling cancellation around
-    // the one sort that orders every retained value.
+    // Exact Disk Merge Passes Poll Cancellation Without Retaining The History.
     fn ordered(&mut self, statistic: Aggregate, check: &mut impl FnMut() -> Result<()>) -> Result<ScalarValue> {
-        let mut values: Vec<f64> = Vec::new();
-        values.try_reserve_exact(self.scratch.len()).map_err(|_| invalid("order statistic allocation failed"))?;
-        values.extend(self.scratch.iter().map(|value| approximate(value).expect("order statistic values are numeric")));
-        self.scratch = Vec::new();
-        check()?;
-        let mut series = Series::from(values);
-        series.sort();
-        check()?;
-        Ok(ScalarValue::Float(finite(aggregate::of_series(&series, statistic))?))
+        let rank = match statistic {
+            Aggregate::Percentile(rank) => f64::from(rank),
+            _ => 50.0,
+        };
+        let position = rank / 100.0 * (self.scratch.length - 1) as f64;
+        let (lower, upper) = self.scratch.ranks(
+            position.floor() as usize,
+            position.ceil() as usize,
+            |a, b| Ok(approximate(a).unwrap().total_cmp(&approximate(b).unwrap())),
+            check,
+        )?;
+        let (low, high) = (approximate(&lower).unwrap(), approximate(&upper).unwrap());
+        let fraction = position - position.floor();
+        let value = if fraction == 0.0 || low == high {
+            low
+        } else if low.signum() == high.signum() {
+            low + (high - low) * fraction
+        } else {
+            low * (1.0 - fraction) + high * fraction
+        };
+        Ok(ScalarValue::Float(finite(Some(value))?))
     }
 
     pub fn finish(mut self, check: &mut impl FnMut() -> Result<()>) -> Result<ScalarValue> {
@@ -185,21 +180,12 @@ impl Accumulator {
             Aggregate::Percentile(_) => self.ordered(statistic, check)?,
             Aggregate::Median if floating => self.ordered(statistic, check)?,
             Aggregate::Median => {
-                let mut order: Vec<usize> = Vec::new();
-                order.try_reserve_exact(self.scratch.len()).map_err(|_| invalid("median order allocation failed"))?;
-                order.extend(0..self.scratch.len());
-                let scratch = &self.scratch;
-                sort_values(&mut order, |a, b| {
-                    check()?;
-                    Ok(scratch[a].compare(&scratch[b])?)
-                })?;
-                let lower = &scratch[order[(order.len() - 1) / 2]];
-                let upper = &scratch[order[order.len() / 2]];
-                let midpoint = scalar::exact(lower)
+                let (lower, upper) =
+                    self.scratch.ranks((self.scratch.length - 1) / 2, self.scratch.length / 2, |a, b| Ok(a.compare(b)?), check)?;
+                let midpoint = scalar::exact(&lower)
                     .expect("median values are numeric")
-                    .checked_add(scalar::exact(upper).expect("median values are numeric"))?
+                    .checked_add(scalar::exact(&upper).expect("median values are numeric"))?
                     .divide(2)?;
-                self.scratch.clear();
                 integral(midpoint, self.kind)
             }
         })
@@ -280,10 +266,9 @@ mod tests {
     use super::*;
 
     fn fold(agg: Agg, values: &[ScalarValue]) -> ScalarValue {
-        let mut scratch = Scratch::new(values.len());
         let mut accumulator = Accumulator::new(agg);
         for (capture, value) in values.iter().enumerate() {
-            accumulator.push(capture as u64, value, &mut scratch).unwrap();
+            accumulator.push(capture as u64, value).unwrap();
         }
         accumulator.finish(&mut || Ok(())).unwrap()
     }
@@ -319,10 +304,29 @@ mod tests {
         assert!((float(Aggregate::Rms) - 21.25f64.sqrt()).abs() < 1e-12);
         assert_eq!(fold(Agg::Of(Aggregate::Median), &values), ScalarValue::Float(3.0));
         let mut accumulator = Accumulator::new(Agg::Of(Aggregate::Sum));
-        let mut scratch = Scratch::new(0);
-        accumulator.push(0, &ScalarValue::Unsigned(1), &mut scratch).unwrap();
-        assert!(accumulator.push(1, &ScalarValue::Text("x".into()), &mut scratch).is_err());
+        accumulator.push(0, &ScalarValue::Unsigned(1)).unwrap();
+        assert!(accumulator.push(1, &ScalarValue::Text("x".into())).is_err());
         let mut median = Accumulator::new(Agg::Of(Aggregate::Median));
-        assert!(median.push(0, &ScalarValue::Unsigned(1), &mut scratch).is_err());
+        median.push(0, &ScalarValue::Unsigned(1)).unwrap();
+    }
+    #[test]
+    fn spilled_statistics_preserve_exact_values_percentiles_and_clone_branches() {
+        let mut median = Accumulator::new(Agg::Of(Aggregate::Median));
+        median.push(0, &ScalarValue::Unsigned(9_007_199_254_740_993)).unwrap();
+        median.push(1, &ScalarValue::Unsigned(9_007_199_254_740_995)).unwrap();
+        let mut branch = median.clone();
+        median.push(2, &ScalarValue::Unsigned(9_007_199_254_740_997)).unwrap();
+        branch.push(2, &ScalarValue::Unsigned(9_007_199_254_740_991)).unwrap();
+        assert_eq!(median.finish(&mut || Ok(())).unwrap(), ScalarValue::Unsigned(9_007_199_254_740_995));
+        assert_eq!(branch.finish(&mut || Ok(())).unwrap(), ScalarValue::Unsigned(9_007_199_254_740_993));
+        let values = (0..7 * 24 * 60).map(|i| ((i * 19 % 101) as f64 - 50.0).sin()).collect::<Vec<_>>();
+        let series = crate::signal::Series::new(&values);
+        for rank in [0, 13, 50, 77, 100] {
+            let mut accumulator = Accumulator::new(Agg::Of(Aggregate::Percentile(rank)));
+            for (index, value) in values.iter().enumerate() {
+                accumulator.push(index as u64, &ScalarValue::Float(*value)).unwrap();
+            }
+            assert_eq!(accumulator.finish(&mut || Ok(())).unwrap(), ScalarValue::Float(series.percentile(f64::from(rank)).unwrap()));
+        }
     }
 }

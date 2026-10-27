@@ -35,6 +35,7 @@ use harmos_sidecar::{Activity, Instance};
 /* === Structs === */
 
 pub(crate) struct Native<R, H, F> {
+    pub(crate) schema_settings: Arc<crate::config::SchemaSettings>,
     pub(crate) instance: Instance<R, H>,
     pub(crate) factory: Arc<F>,
 }
@@ -80,7 +81,7 @@ where
                         row_metadata: entry.row_metadata(),
                         schema: entry.schema,
                         window: entry.window,
-                        row: crate::schema::graph::Schema::from_declaration(entry.row, &crate::config::SchemaSettings::default())
+                        row: crate::schema::graph::Schema::from_declaration(entry.row, &self.schema_settings)
                             .map_err(|source| Error::RecordSchema { source: source.into() })?,
                     })
                 })
@@ -111,7 +112,10 @@ where
         if let Err(source) = closed {
             let failure = Arc::new(failed(source));
             activation.retain(Retained(activity), Arc::clone(&failure));
-            return Err(Error::TaskFailed { domain: "native observer cleanup", source: failure });
+            return Err(Error::TaskFailed {
+                domain: "native observer cleanup",
+                source: failure,
+            });
         }
         match interrupted {
             None => Ok(()),
@@ -125,7 +129,10 @@ where
 /* === Private Functions === */
 
 fn failed(source: impl std::error::Error + Send + Sync + 'static) -> Error {
-    Error::TaskFailed { domain: "native observer", source: Arc::new(source) }
+    Error::TaskFailed {
+        domain: "native observer",
+        source: Arc::new(source),
+    }
 }
 
 /* === Tests === */

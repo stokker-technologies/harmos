@@ -78,15 +78,25 @@ impl Execution {
 
 impl Context {
     pub(crate) fn current() -> Self {
-        Self { span: tracing::Span::current(), dispatch: tracing::dispatcher::get_default(Clone::clone) }
+        Self {
+            span: tracing::Span::current(),
+            dispatch: tracing::dispatcher::get_default(Clone::clone),
+        }
     }
 
     pub(crate) fn with_span(span: tracing::Span) -> Self {
-        Self { span, dispatch: tracing::dispatcher::get_default(Clone::clone) }
+        Self {
+            span,
+            dispatch: tracing::dispatcher::get_default(Clone::clone),
+        }
     }
 
     pub(crate) async fn scope<F: Future>(&self, future: F) -> F::Output {
-        Scoped { context: self.clone(), future: Some(Box::pin(future)) }.await
+        Scoped {
+            context: self.clone(),
+            future: Some(Box::pin(future)),
+        }
+        .await
     }
 
     pub(crate) async fn result<T>(&self, span: tracing::Span, future: impl Future<Output = crate::Result<T>>) -> crate::Result<T> {

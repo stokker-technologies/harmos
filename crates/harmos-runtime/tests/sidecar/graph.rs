@@ -135,7 +135,9 @@ impl harmos_runtime::Plugin for Independent {
     type Error = Refusal;
     type Resources = Witness;
     fn prepare(key: String) -> Result<Self, Refusal> {
-        Ok(Self { resources: Witness::find(&key).ok_or_else(|| Refusal::of("the story witness is gone"))? })
+        Ok(Self {
+            resources: Witness::find(&key).ok_or_else(|| Refusal::of("the story witness is gone"))?,
+        })
     }
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         self.resources.mark("initialized");
@@ -241,7 +243,11 @@ impl Attach for Joined {
             waiting: None,
         });
         let cut = self.gate.cut.clone();
-        let read = CutRead { original: read, cut: Box::pin(async move { cut.notified().await }), closed: false };
+        let read = CutRead {
+            original: read,
+            cut: Box::pin(async move { cut.notified().await }),
+            closed: false,
+        };
         let mut attached = Attached::new(write, read).ending(ending);
         if let Some(control) = control {
             attached = attached.control(control);
@@ -275,9 +281,18 @@ impl Fixture {
         let client = Arc::new(Gate::default());
         let independent = Arc::new(Gate::default());
         let sources = [
-            Joined { source: Source::Provider(harmos_sidecar::PluginNative::new(capacity).unwrap()), gate: provider.clone() },
-            Joined { source: Source::Client(harmos_sidecar::PluginNative::new(capacity).unwrap()), gate: client.clone() },
-            Joined { source: Source::Independent(harmos_sidecar::PluginNative::new(capacity).unwrap()), gate: independent.clone() },
+            Joined {
+                source: Source::Provider(harmos_sidecar::PluginNative::new(capacity).unwrap()),
+                gate: provider.clone(),
+            },
+            Joined {
+                source: Source::Client(harmos_sidecar::PluginNative::new(capacity).unwrap()),
+                gate: client.clone(),
+            },
+            Joined {
+                source: Source::Independent(harmos_sidecar::PluginNative::new(capacity).unwrap()),
+                gate: independent.clone(),
+            },
         ];
         let definitions = sources
             .iter()
@@ -287,7 +302,7 @@ impl Fixture {
             })
             .collect::<Vec<_>>();
         let encoding_bytes = definitions.iter().map(|definition| definition.configuration.len() * 2).max().unwrap()
-            + std::mem::size_of::<harmos_operations::lifecycle::InitializeRequest>()
+            + std::mem::size_of::<harmos_operations::lifecycle::Initialize>()
             + 94;
         assert!(encoding_bytes <= 512);
         let encoding_bytes = encoding_bytes + 3072;
@@ -325,7 +340,14 @@ impl Fixture {
             )
             .unwrap();
         let lease = runtime.operations.submit_resident("local-graph").await.unwrap();
-        Self { runtime, _lease: lease, marks, client, provider, independent }
+        Self {
+            runtime,
+            _lease: lease,
+            marks,
+            client,
+            provider,
+            independent,
+        }
     }
     fn marks(&self, owner: &str) -> &Witness {
         &self.marks[owner]

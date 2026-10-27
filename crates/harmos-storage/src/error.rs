@@ -101,7 +101,11 @@ impl Error {
     }
 
     pub fn backend(operation: &'static str, kind: BackendFailure, source: impl std::error::Error + Send + Sync + 'static) -> Self {
-        Self::Backend { operation, kind, source: Box::new(source) }
+        Self::Backend {
+            operation,
+            kind,
+            source: Box::new(source),
+        }
     }
 }
 

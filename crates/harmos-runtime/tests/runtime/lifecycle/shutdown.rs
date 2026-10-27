@@ -72,11 +72,9 @@ struct Cancellation {
     finalized: AtomicUsize,
 }
 
-struct PendingCall(Arc<Cancellation>);
+struct PendingGuard(Arc<Cancellation>);
 
-#[harmos_runtime::operation(request = PendingContract, infer_request,
-    id = "shutdown_pending",
-
+#[harmos_runtime::operation(resources = [Cancellation], id = "shutdown.pending",
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(3),
         attempt_timeout: Duration::from_secs(2),
@@ -84,44 +82,27 @@ struct PendingCall(Arc<Cancellation>);
     },
     response = (),
 )]
-struct PendingContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct PendingContract {}
+struct PendingContractDeclaration {}
 
 #[harmos_runtime::catalog]
 enum Operations {
-    PendingContract(PendingContractDeclaration),
+    PendingContractDeclaration(PendingContractDeclaration),
 }
 
 use crate::runtime::probe::Lanes;
 
-impl harmos_runtime::operations::Operation for PendingCall {
-    type Request = PendingContract;
-    type Response = <PendingContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for PendingContractDeclaration {
     type Error = std::convert::Infallible;
-    type Endpoints = ();
-
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let trace = context.dependency::<Cancellation>().expect("fixture registers its dependency");
-        Ok(Self(trace))
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
+        let cancellation = ctx.resource::<Cancellation>();
+        let _guard = PendingGuard(cancellation.clone());
+        cancellation.started.notify_one();
+        std::future::pending().await
     }
-
-    async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _: &mut PendingContract, _: &mut (),
-    ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            self.0.started.notify_one();
-            std::future::pending().await
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+}
+impl Drop for PendingGuard {
+    fn drop(&mut self) {
         self.0.finalized.fetch_add(1, Ordering::SeqCst);
-        Ok(())
     }
 }
 
@@ -150,17 +131,20 @@ async fn services_stop_first() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<PendingContractDeclaration, PendingCall>(),
+            .operation::<PendingContractDeclaration>(),
             Lanes::Open,
         ))
         .await
         .unwrap();
-    let operation = runtime.operations.submit::<PendingContractDeclaration>(PendingContract {}).unwrap();
+    let operation = runtime.operations.submit::<PendingContractDeclaration>(PendingContractDeclaration {}).unwrap();
     trace.started.notified().await;
     runtime
         .operations
         .register_service(
-            harmos_runtime::services::ServiceDefinition { id: "caller".into(), policy: harmos_runtime::services::POLICY },
+            harmos_runtime::services::ServiceDefinition {
+                id: "caller".into(),
+                policy: harmos_runtime::services::POLICY,
+            },
             |_: Arc<()>| {
                 |mut context: harmos_runtime::services::ServiceContext<Editor>| async move {
                     context.ready();
@@ -199,7 +183,10 @@ async fn budget_retains_journal() {
     let release = Arc::new(Notify::new());
     let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
         .register(catalog())
-        .attach(HeldDrain { attempts: attempts.clone(), release: release.clone() })
+        .attach(HeldDrain {
+            attempts: attempts.clone(),
+            release: release.clone(),
+        })
         .runtime()
         .await
         .unwrap();
@@ -221,7 +208,10 @@ async fn shutdown_budget_shared() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let release = Arc::new(Notify::new());
     let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
-        .attach(HeldDrain { attempts: attempts.clone(), release: release.clone() })
+        .attach(HeldDrain {
+            attempts: attempts.clone(),
+            release: release.clone(),
+        })
         .runtime()
         .await
         .unwrap();

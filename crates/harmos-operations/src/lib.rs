@@ -17,13 +17,21 @@ pub mod lifecycle;
 pub mod storage;
 pub mod streams;
 
+pub mod operations {
+    pub use harmos_domain::operations::*;
+    #[cfg(feature = "lifecycle")]
+    pub use harmos_sdk::operations::Executable;
+}
+
 /* === Re-Exports === */
 
 #[cfg(feature = "runtime")]
 pub use error::Error;
 pub use harmos_domain::*;
 #[cfg(feature = "lifecycle")]
-pub use harmos_sdk::{Dependencies, DependencyError, Operation, OperationContext, RegistrationBatch, Response};
+pub use harmos_sdk::{
+    Context, Dependencies, Dependent, Executable, ExecutionContext, Operation, RegistrationBatch, Resource, ResourceError, Response,
+};
 pub use host::Host;
 pub use lifecycle::Lifecycle;
 pub use storage::Storage;
@@ -66,8 +74,8 @@ impl Builtins {
         batch.operations.extend(Lifecycle::registration(dependencies.clone()).operations);
         batch.operations.extend(Storage::registration(dependencies.clone()).operations);
         batch.operations.extend(Streams::registration(dependencies.clone()).operations);
-        batch.operations.extend(lifecycle::Initialize::registration(dependencies.clone()).operations);
-        batch.operations.extend(lifecycle::Shutdown::registration(dependencies).operations);
+        batch.operations.extend(harmos_sdk::RegistrationBatch::new(dependencies.clone()).operation::<lifecycle::Initialize>().operations);
+        batch.operations.extend(harmos_sdk::RegistrationBatch::new(dependencies).operation::<lifecycle::Shutdown>().operations);
         batch
     }
 }

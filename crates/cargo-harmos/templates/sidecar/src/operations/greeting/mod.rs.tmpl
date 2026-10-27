@@ -9,6 +9,8 @@
 
 // Greeting Contracts And Their Optional Execution.
 
+/* === --- === Definition Module === --- === */
+
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -28,14 +30,10 @@
 /* === Type Aliases === */
 
 /* === Structs === */
-#[harmos::message]
-pub struct GreetRequest {
+#[harmos::operation(resources = [], id = "greeting.greet", response = crate::domain::model::greeting::Greeting, policy = super::POLICY)]
+pub struct Greet {
     pub name: String,
 }
-
-#[harmos::operation(id = "greet", request = GreetRequest,
-    response = crate::domain::model::greeting::Greeting, policy = super::POLICY, infer_request)]
-pub struct Greet {}
 
 /* === Enums === */
 
@@ -43,26 +41,50 @@ pub struct Greet {}
 
 /* === Implementations === */
 
-#[cfg(feature = "runtime")]
-impl harmos::Operation for Greet {
-    type Request = GreetRequest;
-    type Response = crate::domain::model::greeting::Greeting;
-    type Error = std::io::Error;
-    type Endpoints = ();
-
-    async fn initialize(_: harmos::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self {})
-    }
-
-    async fn run(
-        &mut self, _: harmos::OperationContext, request: &mut GreetRequest, _: &mut (),
-    ) -> Result<harmos::Response<Self::Response>, Self::Error> {
-        Ok(crate::domain::model::greeting::Greeting::for_name(&request.name).into())
-    }
-}
-
 /* === Public Functions === */
 
 /* === Private Functions === */
 
 /* === Tests === */
+
+/* === --- === Runtime Module === --- === */
+
+#[cfg(feature = "runtime")]
+mod runtime {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    use super::Greet;
+    use crate::domain::model::greeting::Greeting;
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    impl harmos::Operation for Greet {
+        type Error = std::io::Error;
+
+        async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<Greeting>, Self::Error> {
+            Ok(Greeting::for_name(&self.name).into())
+        }
+    }
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}

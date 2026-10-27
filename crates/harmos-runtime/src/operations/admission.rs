@@ -72,7 +72,13 @@ impl Lanes {
         if bounded {
             held.push(lane);
         }
-        Ok(Admission { held: held.into(), _claim: Arc::new(Claim { lanes: Arc::downgrade(self), edges: dependencies }) })
+        Ok(Admission {
+            held: held.into(),
+            _claim: Arc::new(Claim {
+                lanes: Arc::downgrade(self),
+                edges: dependencies,
+            }),
+        })
     }
 }
 

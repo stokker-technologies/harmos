@@ -259,7 +259,10 @@ impl super::OperationDeclaration for Activation {
 impl Key {
     // The key of `definition`'s instance over the runtime's own resources.
     pub fn root(definition: impl Into<String>) -> Self {
-        Self { definition: definition.into(), scope: ROOT }
+        Self {
+            definition: definition.into(),
+            scope: ROOT,
+        }
     }
 }
 
@@ -406,7 +409,10 @@ impl Registry {
         state.admit()?;
         let id = registration.definition.id().to_owned();
         if state.definitions.contains_key(&id) || (!reserved && state.reserved.contains(&id)) {
-            return Err(Error::AlreadyRegistered { domain: registration.definition.kind().domain(), name: id });
+            return Err(Error::AlreadyRegistered {
+                domain: registration.definition.kind().domain(),
+                name: id,
+            });
         }
         state.reserved.remove(&id);
         state.definitions.insert(id, registration);
@@ -429,7 +435,10 @@ impl Registry {
         for (definition, runner) in entries {
             validate(&definition)?;
             if !ids.insert(definition.id().to_owned()) {
-                return Err(Error::AlreadyRegistered { domain: definition.kind().domain(), name: definition.id().to_owned() });
+                return Err(Error::AlreadyRegistered {
+                    domain: definition.kind().domain(),
+                    name: definition.id().to_owned(),
+                });
             }
             staged.push(Arc::new(Registration {
                 definition,
@@ -450,12 +459,20 @@ impl Registry {
             return Err(Error::Closing { domain: "resident scope" });
         }
         if let Some(entry) = staged.iter().find(|entry| state.definitions.contains_key(entry.definition.id())) {
-            return Err(Error::AlreadyRegistered { domain: entry.definition.kind().domain(), name: entry.definition.id().to_owned() });
+            return Err(Error::AlreadyRegistered {
+                domain: entry.definition.kind().domain(),
+                name: entry.definition.id().to_owned(),
+            });
         }
         for entry in &staged {
             state.definitions.insert(entry.definition.id().to_owned(), Arc::clone(entry));
         }
-        Ok(Staged { owner: Arc::downgrade(&self.shared), scope: Arc::clone(scope), entries: staged, published })
+        Ok(Staged {
+            owner: Arc::downgrade(&self.shared),
+            scope: Arc::clone(scope),
+            entries: staged,
+            published,
+        })
     }
 
     pub(crate) fn contains(&self, id: &str) -> bool {
@@ -479,11 +496,12 @@ impl Registry {
         if let Some(scope) = state.addresses.get(&address).and_then(|id| state.scopes.get(id)) {
             return Ok(Arc::clone(scope));
         }
-        let id = ScopeId(
-            NEXT_SCOPE
-                .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1))
-                .map_err(|_| Error::InvalidInput { field: "resident scope", reason: "identity space exhausted" })?,
-        );
+        let id = ScopeId(NEXT_SCOPE.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1)).map_err(|_| {
+            Error::InvalidInput {
+                field: "resident scope",
+                reason: "identity space exhausted",
+            }
+        })?);
         let scope = Arc::new(Scope {
             owner: Arc::downgrade(&self.shared.identity),
             id,
@@ -545,7 +563,10 @@ impl Registry {
             return Err(Error::Closing { domain: kind.scope() });
         }
         if registration.internal && !internal {
-            return Err(Error::InvalidInput { field: kind.definition(), reason: "infrastructure demand belongs to its runtime owner" });
+            return Err(Error::InvalidInput {
+                field: kind.definition(),
+                reason: "infrastructure demand belongs to its runtime owner",
+            });
         }
         if !registration.is_published() {
             return Err(Error::NotReady { domain: kind.catalog() });
@@ -554,9 +575,15 @@ impl Registry {
             return Err(Error::Closing { domain: kind.definition() });
         }
         if registration.scope.is_some_and(|owner| owner != scope.id) || registration.runner.resources() != resources {
-            return Err(Error::InvalidInput { field: kind.scope(), reason: "definition belongs to another resource scope or type" });
+            return Err(Error::InvalidInput {
+                field: kind.scope(),
+                reason: "definition belongs to another resource scope or type",
+            });
         }
-        let key = Key { definition: id.to_owned(), scope: scope.id };
+        let key = Key {
+            definition: id.to_owned(),
+            scope: scope.id,
+        };
         let demand = state.next()?;
         if let Some(entry) = state.instances.get_mut(&key) {
             let lifecycle = entry.running.settlement.lifecycle().status();
@@ -590,7 +617,12 @@ impl Registry {
         lifecycle.trace().record("operation", tracing::field::display(registration.definition.id()));
         lifecycle.trace().record("generation", tracing::field::debug(registration.generation));
         let _trace = lifecycle.trace().entered();
-        let report = Report { owner: Arc::downgrade(&self.shared), key: key.clone(), id: instance, kind };
+        let report = Report {
+            owner: Arc::downgrade(&self.shared),
+            key: key.clone(),
+            id: instance,
+            kind,
+        };
         let (task, settlement) = Arc::clone(&registration.runner).spawn(Start {
             resources: Arc::clone(&scope.resources),
             lifecycle: Arc::clone(&lifecycle),
@@ -667,7 +699,12 @@ impl Registry {
     pub(crate) async fn retire_scope(&self, scope: &Arc<Scope>) -> Result<Retirement> {
         self.check_scope(scope)?;
         if let Some(outcome) = scope.retirement.lock().expect("resident scope is healthy").clone() {
-            return Ok(Retirement { outcome, _scope: Arc::clone(scope), _running: Vec::new(), _definitions: Vec::new() });
+            return Ok(Retirement {
+                outcome,
+                _scope: Arc::clone(scope),
+                _running: Vec::new(),
+                _definitions: Vec::new(),
+            });
         }
         let (running, definitions) = {
             let mut state = self.state();
@@ -685,7 +722,10 @@ impl Registry {
             let mut state = self.state();
             if state.instances.iter().any(|(key, entry)| key.scope == scope.id && !entry.running.settlement.lifecycle().is_settled()) {
                 return Err(match &outcome {
-                    Err(source) => Error::TaskFailed { domain: "resident cleanup", source: source.clone() },
+                    Err(source) => Error::TaskFailed {
+                        domain: "resident cleanup",
+                        source: source.clone(),
+                    },
                     Ok(()) => Error::NotReady { domain: "resident cleanup" },
                 });
             }
@@ -709,7 +749,12 @@ impl Registry {
         };
         drop(detached);
         let outcome = scope.retirement.lock().expect("resident scope is healthy").get_or_insert(outcome).clone();
-        Ok(Retirement { outcome, _scope: original, _running: running, _definitions: definitions })
+        Ok(Retirement {
+            outcome,
+            _scope: original,
+            _running: running,
+            _definitions: definitions,
+        })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.unregister", level = "debug", skip_all)]
@@ -894,7 +939,10 @@ impl Registry {
 
     fn check_scope(&self, scope: &Scope) -> Result<()> {
         if !Weak::ptr_eq(&scope.owner, &Arc::downgrade(&self.shared.identity)) {
-            return Err(Error::InvalidInput { field: "resident scope", reason: "scope belongs to another manager" });
+            return Err(Error::InvalidInput {
+                field: "resident scope",
+                reason: "scope belongs to another manager",
+            });
         }
         Ok(())
     }
@@ -953,8 +1001,10 @@ impl State {
     }
 
     fn next(&mut self) -> Result<u64> {
-        self.next =
-            self.next.checked_add(1).ok_or(Error::InvalidInput { field: "resident identity", reason: "identity space exhausted" })?;
+        self.next = self.next.checked_add(1).ok_or(Error::InvalidInput {
+            field: "resident identity",
+            reason: "identity space exhausted",
+        })?;
         Ok(self.next)
     }
 
@@ -1096,7 +1146,10 @@ impl Report {
             entry.snapshot.failure = outcome.as_ref().err().cloned();
             if let Some(health) = &mut entry.snapshot.health {
                 if outcome.is_err() && !matches!(health, ServiceStatus::Inactive { .. }) {
-                    *health = ServiceStatus::Inactive { cause: crate::services::ServiceExit::Panicked, history: Vec::new() };
+                    *health = ServiceStatus::Inactive {
+                        cause: crate::services::ServiceExit::Panicked,
+                        history: Vec::new(),
+                    };
                 } else if outcome.is_ok() {
                     *health = ServiceStatus::Stopped;
                 }
@@ -1108,7 +1161,13 @@ impl Report {
 
 impl Lease {
     fn new(running: Running, demand: u64, generation: OperationGeneration) -> Self {
-        Self { running, demand, generation, released: false, joins_release: false }
+        Self {
+            running,
+            demand,
+            generation,
+            released: false,
+            joins_release: false,
+        }
     }
 
     pub(crate) fn id(&self) -> OperationInstanceId {
@@ -1232,7 +1291,10 @@ impl Staged {
             if entry.closing.load(Ordering::Acquire)
                 || !state.definitions.get(entry.definition.id()).is_some_and(|current| Arc::ptr_eq(current, entry))
             {
-                return Err(Error::NotRegistered { domain: "resident reservation", name: entry.definition.id().to_owned() });
+                return Err(Error::NotRegistered {
+                    domain: "resident reservation",
+                    name: entry.definition.id().to_owned(),
+                });
             }
         }
         self.published.store(true, Ordering::Release);

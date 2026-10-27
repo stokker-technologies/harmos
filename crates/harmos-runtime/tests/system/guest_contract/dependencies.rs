@@ -22,8 +22,8 @@ mod dependency_admission;
 
 // Local Imports
 use super::lifecycle::{GuestOperations, Lifecycle, Resources};
-use super::sandbox::{Echo, EchoOperation, Echoed, Fail, ProviderEcho, ProviderEchoOperation};
-use super::{Bank, GuestLanes, component_error, execution_error, retire_failed_guest, runtime};
+use super::sandbox::{EchoOperation, Echoed, ProviderEchoOperation};
+use super::{Bank, GuestLanes, component_error, retire_failed_guest, runtime};
 use harmos_runtime::Runtime;
 use harmos_runtime::operations::Host as _;
 use harmos_runtime::operations::{OperationDeclaration, OperationPolicy};
@@ -53,53 +53,28 @@ type DependencyBackends = harmos_runtime::plugin::PluginBackend<GuestResources, 
 #[derive(Default)]
 struct ProviderOwner {
     prepared: std::sync::atomic::AtomicUsize,
-    cleanup_attempts: std::sync::atomic::AtomicUsize,
-    cleanup_finished: std::sync::atomic::AtomicUsize,
     started: tokio::sync::Notify,
     cancelled: std::sync::Arc<tokio::sync::Notify>,
     observed: std::sync::Mutex<Vec<String>>,
-    hold_cleanup: std::sync::atomic::AtomicBool,
-    fail_cleanup: std::sync::atomic::AtomicBool,
-    cleanup_started: tokio::sync::Notify,
-    cleanup_release: tokio::sync::Notify,
 }
 
 struct Cancelled(std::sync::Arc<tokio::sync::Notify>);
 
-struct EmbeddedReading {
-    resources: std::sync::Arc<ProviderOwner>,
-    cleanup: bool,
-}
-
-#[harmos_runtime::operation(request = Forward, infer_request, id = "client_forward",  response = Echoed, policy = super::sandbox::EchoOperation::POLICY,
-    visibility = harmos_runtime::operations::Visibility::Shared)]
-struct ForwardDeclaration;
-
-#[harmos_runtime::message]
+#[harmos_runtime::operation(resources = [NativeClient, harmos_sidecar::Supervisor], operations = [EchoOperation], id = "client.forward",  response = Echoed, policy = super::sandbox::EchoOperation::POLICY,
+    visibility = Shared)]
 #[derive(Clone)]
-struct Forward {
+struct ForwardDeclaration {
     say: String,
 }
 
-struct NativeProvider(std::sync::Arc<ProviderOwner>);
-
 struct NativeClient;
-
-struct NativeReading {
-    resources: std::sync::Arc<NativeProvider>,
-    cleanup: bool,
-}
-
-struct NativeForwarding {
-    _resources: std::sync::Arc<NativeClient>,
-}
 
 struct NativeSeed {
     id: u64,
 }
 
 struct NativeProviderPlugin {
-    resources: std::sync::Arc<NativeProvider>,
+    resources: std::sync::Arc<ProviderOwner>,
 }
 
 struct NativeClientPlugin {
@@ -143,22 +118,68 @@ struct DependencyHost {
 
 #[harmos_runtime::catalog]
 enum ProviderOperations {
-    Echo(ProviderEchoOperation),
+    EchoOperation(ProviderEchoOperation),
 }
 
 #[harmos_runtime::catalog]
 enum ForwardOperations {
-    Forward(ForwardDeclaration),
+    ForwardDeclaration(ForwardDeclaration),
 }
 
 #[harmos_runtime::catalog]
 enum NativeRequirements {
-    Echo(EchoOperation),
+    EchoOperation(EchoOperation),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
+
+#[harmos_runtime::operation(codec = manual, resources = [ProviderOwner], id = ProviderEchoOperation::ID, response = Echoed,
+    policy = ProviderEchoOperation::POLICY, visibility = Shared)]
+#[derive(Clone)]
+struct ProviderRead(ProviderEchoOperation);
+
+impl harmos_runtime::Message for ProviderRead {
+    const CODEC: &'static str = <ProviderEchoOperation as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&self.0)
+    }
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&self.0)
+    }
+    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
+        <ProviderEchoOperation as harmos_runtime::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
+        <ProviderEchoOperation as harmos_runtime::Message>::decode(bytes).map(Self)
+    }
+}
+impl harmos_runtime::MemorySize for ProviderRead {
+    fn memory_size(&self) -> usize {
+        harmos_runtime::MemorySize::memory_size(&self.0)
+    }
+}
+impl harmos_runtime::schema::Described for ProviderRead {
+    const NAME: &'static str = <ProviderEchoOperation as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] = <ProviderEchoOperation as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <ProviderEchoOperation as harmos_runtime::schema::Described>::MARKER;
+}
+
+impl harmos_runtime::Operation for ProviderRead {
+    type Error = harmos_domain::Refusal;
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Echoed>, Self::Error> {
+        let resources = ctx.resource::<ProviderOwner>();
+        resources.prepared.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        resources.answer(&self.0).await.map(Into::into)
+    }
+}
+impl harmos_runtime::Operation for ForwardDeclaration {
+    type Error = harmos_domain::Refusal;
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Echoed>, Self::Error> {
+        ctx.resource::<harmos_sidecar::Supervisor>().call::<EchoOperation>(EchoOperation { say: self.say }).await.map_err(Self::Error::of)
+    }
+}
 
 impl Drop for Cancelled {
     fn drop(&mut self) {
@@ -166,34 +187,8 @@ impl Drop for Cancelled {
     }
 }
 
-impl harmos_runtime::operations::Operation for EmbeddedReading {
-    type Request = <ProviderEchoOperation as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <ProviderEchoOperation as harmos_runtime::OperationDeclaration>::Response;
-
-    type Error = harmos_domain::Refusal;
-    type Endpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let resources = context.dependency::<ProviderOwner>().unwrap();
-        resources.prepared.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        Ok(Self { resources, cleanup: false })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut ProviderEcho, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<Echoed>, Self::Error> {
-        let result: ::core::result::Result<Echoed, Self::Error> = async move {
-            self.cleanup = request.say == "physical-cleanup";
-            self.resources.answer(request).await
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        self.resources.cleanup(self.cleanup).await
-    }
-}
-
 impl ProviderOwner {
-    async fn answer(&self, state: &ProviderEcho) -> Result<Echoed, harmos_domain::Refusal> {
+    async fn answer(&self, state: &ProviderEchoOperation) -> Result<Echoed, harmos_domain::Refusal> {
         if state.say == "cancel" {
             let _cancelled = Cancelled(self.cancelled.clone());
             self.started.notify_one();
@@ -207,74 +202,6 @@ impl ProviderOwner {
         }
         self.observed.lock().unwrap().push(state.say.clone());
         Ok(Echoed { said: state.say.clone() })
-    }
-    async fn cleanup(&self, physical: bool) -> Result<(), harmos_domain::Refusal> {
-        use std::sync::atomic::Ordering;
-        if !physical {
-            return Ok(());
-        }
-        self.cleanup_attempts.fetch_add(1, Ordering::SeqCst);
-        if self.fail_cleanup.load(Ordering::SeqCst) {
-            return Err(harmos_domain::Refusal::new(1, "fixture physical cleanup refused"));
-        }
-        if self.hold_cleanup.swap(false, Ordering::SeqCst) {
-            self.cleanup_started.notify_one();
-            self.cleanup_release.notified().await;
-        }
-        self.cleanup_finished.fetch_add(1, Ordering::SeqCst);
-        Ok(())
-    }
-}
-
-impl harmos_runtime::operations::Operation for NativeReading {
-    type Request = <ProviderEchoOperation as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <ProviderEchoOperation as harmos_runtime::OperationDeclaration>::Response;
-
-    type Error = harmos_domain::Refusal;
-    type Endpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let resources = context.dependency::<NativeProvider>().unwrap();
-        resources.0.prepared.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        Ok(Self { resources, cleanup: false })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut ProviderEcho, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<Echoed>, Self::Error> {
-        let result: ::core::result::Result<Echoed, Self::Error> = async move {
-            self.cleanup = request.say == "physical-cleanup";
-            self.resources.0.answer(request).await
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        self.resources.0.cleanup(self.cleanup).await
-    }
-}
-
-impl harmos_runtime::operations::Operation for NativeForwarding {
-    type Request = <ForwardDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <ForwardDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
-    type Error = harmos_domain::Refusal;
-    type Endpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let resources = context.dependency::<NativeClient>().unwrap();
-        Ok(Self { _resources: resources })
-    }
-    async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut Forward, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<Echoed>, Self::Error> {
-        let result: ::core::result::Result<Echoed, Self::Error> = async move {
-            host.dependency::<harmos_sidecar::Supervisor>()
-                .unwrap()
-                .call::<EchoOperation>(Echo { say: request.say.clone() })
-                .await
-                .map(harmos_runtime::operations::Response::into_owned)
-                .map_err(Self::Error::of)
-        }
-        .await;
-        result.map(::core::convert::Into::into)
     }
 }
 
@@ -309,7 +236,7 @@ impl harmos_runtime::Plugin for NativeProviderPlugin {
     type Context = harmos_sidecar::Supervisor;
     type Config = u64;
     type Error = std::io::Error;
-    type Resources = NativeProvider;
+    type Resources = ProviderOwner;
     fn prepare(id: u64) -> Result<Self, Self::Error> {
         let provider = NATIVE_SEEDS
             .lock()
@@ -317,9 +244,9 @@ impl harmos_runtime::Plugin for NativeProviderPlugin {
             .remove(&id)
             .and_then(|resource| resource.upgrade())
             .ok_or_else(|| std::io::Error::other("the original native fixture resource is unavailable"))?;
-        Ok(Self { resources: std::sync::Arc::new(NativeProvider(provider)) })
+        Ok(Self { resources: provider })
     }
-    fn resources(&self) -> std::sync::Arc<NativeProvider> {
+    fn resources(&self) -> std::sync::Arc<ProviderOwner> {
         self.resources.clone()
     }
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -332,7 +259,7 @@ impl harmos_runtime::Plugin for NativeProviderPlugin {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<ProviderEchoOperation, NativeReading>(),
+            .operation::<ProviderRead>(),
         )
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -355,7 +282,9 @@ impl harmos_runtime::Plugin for NativeClientPlugin {
     type Error = std::io::Error;
     type Resources = NativeClient;
     fn prepare(_: ()) -> Result<Self, Self::Error> {
-        Ok(Self { resources: std::sync::Arc::new(NativeClient) })
+        Ok(Self {
+            resources: std::sync::Arc::new(NativeClient),
+        })
     }
     fn resources(&self) -> std::sync::Arc<NativeClient> {
         self.resources.clone()
@@ -370,7 +299,7 @@ impl harmos_runtime::Plugin for NativeClientPlugin {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<ForwardDeclaration, NativeForwarding>(),
+            .operation::<ForwardDeclaration>(),
         )
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -405,7 +334,12 @@ impl harmos_sidecar::Attach for NativeAttachment {
 
 impl DependencyHost {
     async fn new(runtime: &Runtime<Bank>, provider: std::sync::Arc<ProviderOwner>) -> Self {
-        Self { native_seed: None, guest: Lifecycle::sandbox(runtime).await, operations: runtime.operations.clone(), provider }
+        Self {
+            native_seed: None,
+            guest: Lifecycle::sandbox(runtime).await,
+            operations: runtime.operations.clone(),
+            provider,
+        }
     }
 }
 
@@ -446,7 +380,7 @@ impl harmos_runtime::plugin::PluginLifecycle for DependencyHost {
                             dependencies.insert(self.provider.clone()).unwrap();
                             dependencies
                         })
-                        .implementation::<ProviderEchoOperation, EmbeddedReading>(),
+                        .operation::<ProviderRead>(),
                         GuestLanes::Open,
                     ))
                 })?);
@@ -466,14 +400,20 @@ impl harmos_runtime::plugin::PluginLifecycle for DependencyHost {
                 resources.resident = Some(resident.clone());
                 let mut ready = resident.ready();
                 self.operations.register_service(
-                    harmos_runtime::services::ServiceDefinition { id: definition.id.clone(), policy: harmos_runtime::services::POLICY },
+                    harmos_runtime::services::ServiceDefinition {
+                        id: definition.id.clone(),
+                        policy: harmos_runtime::services::POLICY,
+                    },
                     move |_: std::sync::Arc<()>| resident.clone(),
                 )?;
                 resources.registered = true;
                 resources.lease = Some(self.operations.submit_resident(&definition.id).await?);
                 let handle = if definition.contributions.lifecycle.is_some() {
                     let native = resources.resident.as_ref().unwrap().staged_operations().await.map_err(|source| {
-                        harmos_runtime::Error::OperationFailed { operation: definition.id.clone(), source: std::sync::Arc::new(source) }
+                        harmos_runtime::Error::OperationFailed {
+                            operation: definition.id.clone(),
+                            source: std::sync::Arc::new(source),
+                        }
                     })?;
                     std::sync::Arc::new(native)
                 } else {
@@ -503,7 +443,7 @@ impl harmos_runtime::plugin::PluginLifecycle for DependencyHost {
                             &definition.configuration,
                             std::num::NonZeroUsize::new(
                                 2 * definition.configuration.len()
-                                    + std::mem::size_of::<harmos_operations::lifecycle::InitializeRequest>()
+                                    + std::mem::size_of::<harmos_operations::lifecycle::Initialize>()
                                     + 64
                                     + 30
                                     + 3072,
@@ -627,7 +567,10 @@ async fn native_dependency_candidate(
                 required_contracts: native_client().required_contracts().unwrap(),
                 ..Default::default()
             },
-            requires: vec![Requirement { id: "sandbox_guest".into(), version: "*".parse().unwrap() }],
+            requires: vec![Requirement {
+                id: "sandbox_guest".into(),
+                version: "*".parse().unwrap(),
+            }],
         });
     }
     PluginDefinitions::new(definitions, []).unwrap()

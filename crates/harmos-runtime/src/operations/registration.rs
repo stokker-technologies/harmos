@@ -94,11 +94,19 @@ pub trait RegistrationExt {
 
 impl RegistrationExt for harmos_sdk::RegistrationBatch {
     fn lane<L: Lane>(self, lane: L) -> Registration<L> {
-        Registration { batch: self, lane: Some(lane), defaults: std::collections::BTreeMap::new() }
+        Registration {
+            batch: self,
+            lane: Some(lane),
+            defaults: std::collections::BTreeMap::new(),
+        }
     }
 
     fn defaults<L: Lane>(self) -> Registration<L> {
-        Registration { batch: self, lane: None, defaults: std::collections::BTreeMap::new() }
+        Registration {
+            batch: self,
+            lane: None,
+            defaults: std::collections::BTreeMap::new(),
+        }
     }
 }
 
@@ -111,7 +119,9 @@ impl<L: Lane> Registration<L> {
 
 impl CatalogBinding {
     pub(crate) fn new<L: Lane>(registration: Registration<L>) -> Self {
-        Self { bind: Arc::new(move |operations| operations.register_native(registration.clone())) }
+        Self {
+            bind: Arc::new(move |operations| operations.register_native(registration.clone())),
+        }
     }
     pub(crate) fn bind(&self, operations: &Manager) -> Result<()> {
         (self.bind)(operations)
@@ -125,9 +135,17 @@ impl Manager {
             return Err(Error::Closing { domain: "plugin scope" });
         }
         if scope.has_committed() {
-            return Err(Error::InvalidInput { field: "operation catalog", reason: "plugin generation is already committed" });
+            return Err(Error::InvalidInput {
+                field: "operation catalog",
+                reason: "plugin generation is already committed",
+            });
         }
-        let mut bindings = Bindings { operations: self, owner: scope.owner(), scope: Some(scope), entries: Vec::new() };
+        let mut bindings = Bindings {
+            operations: self,
+            owner: scope.owner(),
+            scope: Some(scope),
+            entries: Vec::new(),
+        };
         configure(&mut bindings)?;
         scope.validate_operations(bindings.entries.iter().map(|entry| entry.declared()))?;
         scope.validate_wire_contracts(bindings.entries.iter().filter_map(|entry| entry.contract.as_ref()))?;
@@ -154,7 +172,11 @@ impl Manager {
             self.remove_settled(&bindings.entries);
             return Err(error);
         }
-        Ok(PluginRegistration { scope: receipt_scope, operations: self.clone(), entries: bindings.entries })
+        Ok(PluginRegistration {
+            scope: receipt_scope,
+            operations: self.clone(),
+            entries: bindings.entries,
+        })
     }
 }
 
@@ -170,14 +192,17 @@ impl Bindings<'_> {
     pub(super) fn stage_implementation<D, O>(&mut self, lane: &'static str, dependencies: harmos_sdk::Dependencies) -> Result<()>
     where
         D: OperationDeclaration,
-        O: harmos_sdk::Operation<Request = D::Request, Response = D::Response>,
+        O: harmos_sdk::operations::Carrier<Declaration = D>,
     {
         let contract = harmos_sdk::operations::WireDeclaration::of::<D>()
-            .contract()
-            .map_err(|source| Error::OperationFailed { operation: D::ID.to_owned(), source: Arc::new(source) })?;
+            .contract_with_settings(&self.operations.schema_settings)
+            .map_err(|source| Error::OperationFailed {
+                operation: D::ID.to_owned(),
+                source: Arc::new(source),
+            })?;
         let wire = (contract.input().is_none() && contract.output().is_none())
             .then_some(crate::operations::wire::dispatch_native as crate::operations::wire::Dispatch);
-        let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).implementation::<D, O>();
+        let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).carrier::<D, O>();
         let factory = batch.operations.pop().expect("one native implementation");
         let mut entry = self.operations.binding_erased(self.owner, lane, Arc::new(factory), D::definition(), wire, self.scope.cloned())?;
         #[cfg(feature = "grpc")]
@@ -224,7 +249,10 @@ impl Bindings<'_> {
         let projected = &self.entries[previous..];
         if projected.len() != definitions.len() || projected.iter().zip(definitions).any(|(entry, declared)| entry.declared() != declared) {
             self.entries.truncate(previous);
-            return Err(Error::InvalidInput { field: "operation catalog", reason: "metadata and handler projections differ" });
+            return Err(Error::InvalidInput {
+                field: "operation catalog",
+                reason: "metadata and handler projections differ",
+            });
         }
         Ok(())
     }

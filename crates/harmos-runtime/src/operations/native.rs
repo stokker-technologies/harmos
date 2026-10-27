@@ -24,11 +24,12 @@ use std::sync::{
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 // Local Imports
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
-use super::{Context, Manager, Operation};
+use super::{Context, Manager};
 use crate::catalog::{Catalog, Member, Visitor};
 use crate::operations::{FailureKind, OperationDeclaration, OperationDefinition, OperationPolicy, RetryPolicy, WireAnswer, WireCommand};
 use crate::services::{NativeEndpoint, SidecarError};
 use crate::{Error, Identifier, Message, Result, operations::Lane};
+use harmos_sdk::operations::Carrier;
 
 /* === Constants === */
 
@@ -117,7 +118,7 @@ enum Selection {
 #[derive(Debug, thiserror::Error)]
 pub enum NativeError {
     #[error(transparent)]
-    Dependency(#[from] harmos_sdk::DependencyError),
+    Dependency(#[from] harmos_sdk::ResourceError),
 
     #[error(transparent)]
     Stream(#[from] super::RemoteStreamError),
@@ -216,7 +217,12 @@ impl<E> Message for Encoded<E> {
     }
 
     fn decode(bytes: &[u8]) -> std::result::Result<Self, crate::MessageError> {
-        Ok(Self { payload: bytes.to_vec(), grpc: false, capacity: None, endpoints: PhantomData })
+        Ok(Self {
+            payload: bytes.to_vec(),
+            grpc: false,
+            capacity: None,
+            endpoints: PhantomData,
+        })
     }
 }
 
@@ -277,6 +283,12 @@ impl<E: 'static> crate::grpc::Wire<Encoded<E>> for Forwarded {
         Ok(())
     }
 
+    fn encode_admitted(
+        value: &Encoded<E>, bytes: &mut Vec<u8>, limit: usize, admit: &mut dyn FnMut(usize) -> std::result::Result<(), tonic::Status>,
+    ) -> std::result::Result<(), tonic::Status> {
+        crate::grpc::encode_bytes(&value.payload, bytes, limit, admit)
+    }
+
     fn decode_admitted<C>(
         input: harmos_sdk::grpc::DecodeInput<'_>, admit: impl FnOnce(usize) -> std::result::Result<C, tonic::Status>,
     ) -> std::result::Result<(Encoded<E>, C), tonic::Status> {
@@ -285,7 +297,15 @@ impl<E: 'static> crate::grpc::Wire<Encoded<E>> for Forwarded {
             .checked_add(payload.len())
             .ok_or_else(|| tonic::Status::invalid_argument("forwarded request size overflows"))?;
         let claim = admit(bytes)?;
-        Ok((Encoded { payload: payload.to_vec(), grpc: true, capacity: None, endpoints: PhantomData }, claim))
+        Ok((
+            Encoded {
+                payload: payload.to_vec(),
+                grpc: true,
+                capacity: None,
+                endpoints: PhantomData,
+            },
+            claim,
+        ))
     }
 }
 
@@ -294,6 +314,12 @@ impl crate::grpc::Wire<Opaque> for Forwarded {
     fn encode(value: &Opaque, bytes: &mut Vec<u8>) -> std::result::Result<(), crate::MessageError> {
         bytes.extend_from_slice(&value.0);
         Ok(())
+    }
+
+    fn encode_admitted(
+        value: &Opaque, bytes: &mut Vec<u8>, limit: usize, admit: &mut dyn FnMut(usize) -> std::result::Result<(), tonic::Status>,
+    ) -> std::result::Result<(), tonic::Status> {
+        crate::grpc::encode_bytes(&value.0, bytes, limit, admit)
     }
 
     fn decode_admitted<C>(
@@ -322,10 +348,14 @@ impl Native {
     }
 
     pub fn stage_sdk(&self, operations: &Manager, lane: impl Lane) -> Result<super::PluginSdkRegistration> {
-        let scope = self
-            .scope()
-            .ok_or(Error::InvalidInput { field: "SDK lifecycle", reason: "native endpoint has no original plugin generation" })?;
-        let pair = scope.lifecycle().ok_or(Error::InvalidInput { field: "SDK lifecycle", reason: "generation has no frozen SDK pair" })?;
+        let scope = self.scope().ok_or(Error::InvalidInput {
+            field: "SDK lifecycle",
+            reason: "native endpoint has no original plugin generation",
+        })?;
+        let pair = scope.lifecycle().ok_or(Error::InvalidInput {
+            field: "SDK lifecycle",
+            reason: "generation has no frozen SDK pair",
+        })?;
         let native = Arc::new(Self { endpoint: Arc::clone(&self.endpoint) });
         let capacity = Arc::new(Semaphore::new(1));
         let entries = pair
@@ -355,33 +385,40 @@ impl Native {
                 Ok(entry)
             })
             .collect::<Result<Vec<_>>>()?;
-        let entries: [Arc<super::manager::Entry>; 2] =
-            entries.try_into().map_err(|_| Error::InvalidInput { field: "SDK lifecycle", reason: "expected exactly two entries" })?;
+        let entries: [Arc<super::manager::Entry>; 2] = entries.try_into().map_err(|_| Error::InvalidInput {
+            field: "SDK lifecycle",
+            reason: "expected exactly two entries",
+        })?;
         super::PluginSdkRegistration::new(operations.clone(), scope, entries, crate::plugin::PluginKind::Sidecar)
     }
 }
 
-impl<O, E> Operation for NativeOperation<O, E>
+impl<O, E> Carrier for NativeOperation<O, E>
 where
     O: OperationDeclaration,
     E: super::StreamEndpoints,
 {
-    type Request = <O as OperationDeclaration>::Request;
-    type Response = <O as OperationDeclaration>::Response;
+    type Declaration = O;
     type Error = NativeError;
-    type Endpoints = E;
+    type StreamEndpoints = E;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize(context: harmos_sdk::OperationContext) -> std::result::Result<Self, NativeError> {
-        let native = context.dependency::<Native>()?;
-        Ok(Self { native, state: None, epoch: 0, transferred: AtomicBool::new(false), _operation: PhantomData })
+    async fn bind(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, NativeError> {
+        let native = context.resource::<Native>()?;
+        Ok(Self {
+            native,
+            state: None,
+            epoch: 0,
+            transferred: AtomicBool::new(false),
+            _operation: PhantomData,
+        })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn run(
-        &mut self, context: harmos_sdk::OperationContext, request: &mut O::Request, endpoints: &mut Self::Endpoints,
+    async fn attempt(
+        &mut self, context: harmos_sdk::ExecutionContext, request: &mut O::Request, endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<crate::operations::Response<O::Response>, NativeError> {
-        let host = context.dependency::<super::HostContext>()?;
+        let host = context.resource::<super::HostContext>()?;
         let context = host.borrow();
         let result: ::core::result::Result<O::Response, Self::Error> = async move {
             if self.state.is_none() {
@@ -502,9 +539,21 @@ impl Native {
             let fingerprint = state.fingerprint;
             let generation = context.generation.value();
             let command = if state.grpc {
-                WireCommand::PrepareGrpc { invocation, operation, fingerprint, generation, payload }
+                WireCommand::PrepareGrpc {
+                    invocation,
+                    operation,
+                    fingerprint,
+                    generation,
+                    payload,
+                }
             } else {
-                WireCommand::Prepare { invocation, operation, fingerprint, generation, payload }
+                WireCommand::Prepare {
+                    invocation,
+                    operation,
+                    fingerprint,
+                    generation,
+                    payload,
+                }
             };
             let answer = self.endpoint.phase(command).await?;
             let answer = match answer {
@@ -535,11 +584,24 @@ impl Native {
         let mut token = [0; 32];
         getrandom::fill(&mut token)?;
         let (requests, mut incoming) = mpsc::channel::<ChildRequest>(CHILD_REQUESTS);
-        let children = Children { context: token, requests, submitted: Default::default() };
+        let children = Children {
+            context: token,
+            requests,
+            submitted: Default::default(),
+        };
         let command = match phase {
             Phase::Initialize => WireCommand::Initialize { invocation, context: token },
-            Phase::Stream(epoch) => WireCommand::StreamAttempt { invocation, epoch, context: token, values: context.context().portable() },
-            Phase::Attempt => WireCommand::Attempt { invocation, context: token, values: context.context().portable() },
+            Phase::Stream(epoch) => WireCommand::StreamAttempt {
+                invocation,
+                epoch,
+                context: token,
+                values: context.context().portable(),
+            },
+            Phase::Attempt => WireCommand::Attempt {
+                invocation,
+                context: token,
+                values: context.context().portable(),
+            },
         };
         let running = self.endpoint.attempt(command, children);
         tokio::pin!(running);
@@ -630,23 +692,28 @@ impl Shape for (super::StreamInput<Opaque>, super::StreamOutput<Opaque>) {
     type Output = crate::operations::Stream<Opaque>;
 }
 
-impl<E: super::StreamEndpoints + Shape> Operation for EncodedOperation<E> {
-    type Request = <Encoded<E> as OperationDeclaration>::Request;
-    type Response = <Encoded<E> as OperationDeclaration>::Response;
+impl<E: super::StreamEndpoints + Shape> Carrier for EncodedOperation<E> {
+    type Declaration = Encoded<E>;
     type Error = NativeError;
-    type Endpoints = E;
+    type StreamEndpoints = E;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize(context: harmos_sdk::OperationContext) -> std::result::Result<Self, NativeError> {
-        let binding = context.dependency::<Binding>()?;
-        Ok(Self { binding, state: None, epoch: 0, transferred: AtomicBool::new(false), endpoints: PhantomData })
+    async fn bind(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, NativeError> {
+        let binding = context.resource::<Binding>()?;
+        Ok(Self {
+            binding,
+            state: None,
+            epoch: 0,
+            transferred: AtomicBool::new(false),
+            endpoints: PhantomData,
+        })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn run(
-        &mut self, context: harmos_sdk::OperationContext, request: &mut Encoded<E>, endpoints: &mut Self::Endpoints,
+    async fn attempt(
+        &mut self, context: harmos_sdk::ExecutionContext, request: &mut Encoded<E>, endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<crate::operations::Response<Opaque>, NativeError> {
-        let host = context.dependency::<super::HostContext>()?;
+        let host = context.resource::<super::HostContext>()?;
         let context = host.borrow();
         let result: ::core::result::Result<Opaque, Self::Error> = async {
             if self.state.is_none() {
@@ -783,8 +850,10 @@ impl super::Bindings<'_> {
     where
         C: Catalog<crate::operations::Declarations> + Catalog<NativeBindings>,
     {
-        let scope =
-            self.scope.ok_or(Error::InvalidInput { field: "native operation scope", reason: "native inventory requires stage_plugin" })?;
+        let scope = self.scope.ok_or(Error::InvalidInput {
+            field: "native operation scope",
+            reason: "native inventory requires stage_plugin",
+        })?;
         validate_inventory(&native, scope)?;
         let lane_name = lane.name();
         let previous = self.entries.len();
@@ -817,13 +886,16 @@ impl super::Bindings<'_> {
                 .iter()
                 .position(|definition| definition == entry.declared())
                 .expect("exact typed contract belongs to the validated native inventory");
-            let handler =
-                Arc::new(Binding { native: Arc::clone(&native), selection: Selection::Provided(index), capacity: Arc::clone(&capacity) });
+            let handler = Arc::new(Binding {
+                native: Arc::clone(&native),
+                selection: Selection::Provided(index),
+                capacity: Arc::clone(&capacity),
+            });
             let entry = Arc::get_mut(entry).expect("new typed native entry has one owner");
             if entry.contract.as_ref().is_some_and(|contract| contract.input().is_none() && contract.output().is_none()) {
                 let mut dependencies = harmos_sdk::Dependencies::new();
                 dependencies.insert(Arc::clone(&handler))?;
-                let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).implementation::<Encoded<()>, EncodedOperation>();
+                let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).carrier::<Encoded<()>, EncodedOperation>();
                 let factory = batch.operations.pop().expect("one encoded implementation");
                 let encoded = super::authored::factory::<Encoded<()>, ()>(self.operations, factory);
                 entry.native_binding = Some(Arc::new(encoded));
@@ -840,11 +912,16 @@ impl super::Bindings<'_> {
     }
 
     pub fn register_native(&mut self, lane: impl Lane, native: Arc<Native>, capacity: NonZeroUsize) -> Result<()> {
-        let scope =
-            self.scope.ok_or(Error::InvalidInput { field: "native operation scope", reason: "native inventory requires stage_plugin" })?;
+        let scope = self.scope.ok_or(Error::InvalidInput {
+            field: "native operation scope",
+            reason: "native inventory requires stage_plugin",
+        })?;
         let entries = bindings(self.operations, lane.name(), native, capacity, scope)?;
         if let Some(entry) = entries.iter().find(|entry| self.entries.iter().any(|previous| previous.id() == entry.id())) {
-            return Err(Error::AlreadyRegistered { domain: "operation", name: entry.id().to_owned() });
+            return Err(Error::AlreadyRegistered {
+                domain: "operation",
+                name: entry.id().to_owned(),
+            });
         }
         self.entries.extend(entries);
         Ok(())
@@ -863,8 +940,11 @@ pub(super) fn bindings(
         .iter()
         .enumerate()
         .map(|(index, definition)| {
-            let handler =
-                Arc::new(Binding { native: Arc::clone(&native), selection: Selection::Provided(index), capacity: Arc::clone(&capacity) });
+            let handler = Arc::new(Binding {
+                native: Arc::clone(&native),
+                selection: Selection::Provided(index),
+                capacity: Arc::clone(&capacity),
+            });
             let mut contracts = native.endpoint.contracts().iter().filter(|contract| contract.operation().id == definition.id);
             let contract = contracts.next().filter(|contract| contract.operation() == definition).cloned();
             let exact_contract = if contracts.next().is_none() { contract } else { None };
@@ -883,8 +963,11 @@ fn observe_entry(
         return Ok(None);
     };
     let definition = contract.operation();
-    let handler =
-        Arc::new(Binding { native: Arc::clone(native), selection: Selection::Observe(definition.clone()), capacity: Arc::clone(capacity) });
+    let handler = Arc::new(Binding {
+        native: Arc::clone(native),
+        selection: Selection::Observe(definition.clone()),
+        capacity: Arc::clone(capacity),
+    });
     native_entry(operations, lane, handler, definition, Some(contract.clone()), scope).map(Some)
 }
 
@@ -925,12 +1008,14 @@ pub(super) fn dispatch(
     parent: Option<super::wire::Parent<'_>>, input: super::wire::EncodedInput,
 ) -> Result<super::EncodedInvocation> {
     submission.preparation = input.preparation;
-    let binding = submission
-        .entry
-        .native
-        .as_ref()
-        .ok_or(Error::InvalidInput { field: "native operation", reason: "encoded native admission requires its original binding" })?;
-    let failure = |source: NativeError| Error::OperationFailed { operation: submission.entry.id().to_owned(), source: Arc::new(source) };
+    let binding = submission.entry.native.as_ref().ok_or(Error::InvalidInput {
+        field: "native operation",
+        reason: "encoded native admission requires its original binding",
+    })?;
+    let failure = |source: NativeError| Error::OperationFailed {
+        operation: submission.entry.id().to_owned(),
+        source: Arc::new(source),
+    };
     let capacity = match input.native_capacity {
         Some(capacity) => capacity,
         None => binding.reserve().map_err(failure)?,
@@ -941,7 +1026,12 @@ pub(super) fn dispatch(
             "operation request exceeds the native frame limit",
         ))));
     }
-    let request = Encoded { grpc: false, payload: input.payload, capacity: Some(capacity), endpoints: PhantomData };
+    let request = Encoded {
+        grpc: false,
+        payload: input.payload,
+        capacity: Some(capacity),
+        endpoints: PhantomData,
+    };
     // Bytes Are Already Encoded; The Selected Remote WireTable Owns Decoding.
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
@@ -1003,9 +1093,10 @@ where
 }
 
 fn validate_inventory(native: &Native, scope: &crate::plugin::PluginScope) -> Result<()> {
-    let selected = native
-        .scope()
-        .ok_or(Error::InvalidInput { field: "native operation scope", reason: "native endpoint has no admitted plugin generation" })?;
+    let selected = native.scope().ok_or(Error::InvalidInput {
+        field: "native operation scope",
+        reason: "native endpoint has no admitted plugin generation",
+    })?;
     if !selected.same_activation(scope) {
         return Err(Error::InvalidInput {
             field: "native operation scope",

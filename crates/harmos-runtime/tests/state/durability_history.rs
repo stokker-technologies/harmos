@@ -74,7 +74,11 @@ async fn state_matches_replay() {
     let rebuilt = replayed
         .state
         .state()
-        .read(|ledger| Ledger { balance: ledger.balance, applications: ledger.applications, payouts: ledger.payouts.clone() })
+        .read(|ledger| Ledger {
+            balance: ledger.balance,
+            applications: ledger.applications,
+            payouts: ledger.payouts.clone(),
+        })
         .await
         .expect("boot replay rebuilt the same state");
 
@@ -120,7 +124,14 @@ async fn refusals_distinguish_origin() {
     assert!(matches!(origin_ahead, Err(Error::OriginAhead)));
     assert!(matches!(sourceless.as_slice(), [Err(Error::BeyondTail)]));
 
-    let anchor = Origin::at(Ledger { balance: 3, applications: 2, payouts: Vec::new() }, Position(2));
+    let anchor = Origin::at(
+        Ledger {
+            balance: 3,
+            applications: 2,
+            payouts: Vec::new(),
+        },
+        Position(2),
+    );
     let exact = runtime.state.state().at(anchor, Position(2)).await.expect("the caller's exact anchor needs no source");
     assert_eq!(exact.value.balance, 3);
     runtime.stop().await.unwrap();

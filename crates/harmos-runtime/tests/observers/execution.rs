@@ -246,7 +246,11 @@ async fn drop_cleans_callback() {
     let manager = &runtime.operations;
     manager.register_native_observer(declaration(), |_| Host { token: 73, behavior: Behavior::Hang }).unwrap();
     let (events, mut received) = mpsc::unbounded_channel();
-    let resources = Arc::new(Resources { events, identities: None, stop_gate: None });
+    let resources = Arc::new(Resources {
+        events,
+        identities: None,
+        stop_gate: None,
+    });
     let lease = manager.submit_with_resources_at("execution.watch", resources.clone()).await.unwrap();
     entered(&mut received).await;
     drop(lease);
@@ -262,7 +266,11 @@ async fn drop_cleans_callback() {
 #[tokio::test]
 async fn cancellation_drops_init() {
     let (events, mut received) = mpsc::unbounded_channel();
-    let resources = Arc::new(Resources { events, identities: None, stop_gate: None });
+    let resources = Arc::new(Resources {
+        events,
+        identities: None,
+        stop_gate: None,
+    });
     let mut task = Observing::start(Instance::<Resources, ()>::of::<NeverStarts>().activate(resources, ()).unwrap());
     assert_eq!(next(&mut received).await, Event::Opened);
     task.shutdown().await.unwrap();
@@ -316,7 +324,11 @@ async fn restart_fresh_identity() {
     for _ in 0..2 {
         let (events, _received) = mpsc::unbounded_channel();
         let (identities, mut observed) = mpsc::unbounded_channel();
-        let resources = Arc::new(Resources { events, identities: Some(identities), stop_gate: None });
+        let resources = Arc::new(Resources {
+            events,
+            identities: Some(identities),
+            stop_gate: None,
+        });
         let activity = declaration.activate(resources, Host { token: 73, behavior: Behavior::FailFirst }).unwrap();
         let activation = activity.activation_id();
         assert_eq!(activity.observer_id(), declaration.id());

@@ -50,7 +50,12 @@ struct Inner {
 
 impl Context {
     pub(crate) fn seeded(seed: u64) -> Self {
-        Self { inner: Arc::new(Inner { state: Mutex::new(seed), draws: Mutex::new(Vec::new()) }) }
+        Self {
+            inner: Arc::new(Inner {
+                state: Mutex::new(seed),
+                draws: Mutex::new(Vec::new()),
+            }),
+        }
     }
 
     pub(crate) async fn scope<F: Future>(&self, future: F) -> F::Output {

@@ -45,6 +45,10 @@ use std::sync::Arc;
 use std::{sync::Mutex, time::Duration};
 
 // The Request Carries The Shared Event Log, So It Stays In Process.
+#[harmos_runtime::operation(codec = manual, resources = [harmos_runtime::operations::HostContext], id = "borrowed.request", response = u32, policy = OperationPolicy { timeout: Duration::from_secs(2), attempt_timeout: Duration::from_secs(1),
+    retries: RetryPolicy::OnTransient { max_retries: 1,
+        backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None } } })]
+#[derive(Clone)]
 struct Request {
     value: u32,
     events: Arc<Mutex<Vec<&'static str>>>,
@@ -61,88 +65,25 @@ impl Drop for Request {
     }
 }
 
-impl harmos_runtime::RequestFor for Request {
-    type Operation = Self;
-}
-
-impl OperationDeclaration for Request {
-    type Request = Self;
-    type Response = u32;
-    type Input = NoStream;
-    type Output = NoStream;
-    const ID: &'static str = "borrowed_request";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(1),
-        retries: RetryPolicy::OnTransient {
-            max_retries: 1,
-            backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
-        },
-    };
-}
-struct Read {
-    events: Arc<Mutex<Vec<&'static str>>>,
-    address: Option<usize>,
-}
-impl Operation for Read {
-    type Request = <Request as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <Request as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for Request {
     type Error = std::io::Error;
-    type Endpoints = ();
-
-    async fn initialize(_context: harmos_runtime::OperationContext) -> std::io::Result<Self> {
-        let events = _context.dependency::<Mutex<Vec<&'static str>>>().expect("fixture registers its dependency");
-        let constructed: std::io::Result<Self> = async move {
-            events.lock().unwrap().push("new");
-            Ok(Self { events, address: None })
+    async fn run(mut self, ctx: harmos_runtime::Context<'_, Self>) -> std::io::Result<harmos_runtime::Response<u32>> {
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
+        self.events.lock().unwrap().push("run");
+        assert_eq!(self.value, 19);
+        self.value += 1;
+        if host.borrow().attempt() == 0 {
+            return Err(std::io::Error::other("retry"));
         }
-        .await;
-        let mut operation = constructed?;
-        let started: std::io::Result<()> = async {
-            let operation = &mut operation;
-            operation.events.lock().unwrap().push("initialize");
-            Ok(())
-        }
-        .await;
-        started?;
-        Ok(operation)
+        Ok(self.value.into())
     }
-    async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Request, _: &mut Self::Endpoints,
-    ) -> std::io::Result<harmos_runtime::operations::Response<u32>> {
-        let result: ::core::result::Result<u32, Self::Error> = async move {
-            self.events.lock().unwrap().push("run");
-            let address = std::ptr::from_ref(request) as usize;
-            if let Some(original) = self.address {
-                assert_eq!(original, address);
-            }
-            self.address = Some(address);
-            request.value += 1;
-            if request.value == 20 {
-                return Err(std::io::Error::other("retry"));
-            }
-            Ok(request.value)
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-    async fn stop(&mut self) -> std::io::Result<()> {
-        self.events.lock().unwrap().push("stop");
-        Ok(())
-    }
-    async fn cleanup(&mut self) -> std::io::Result<()> {
-        let mut events = self.events.lock().unwrap();
-        assert!(!events.contains(&"request dropped"));
-        events.push("finalize");
-        Ok(())
-    }
-    fn classify(_: &Self::Error) -> harmos_runtime::operations::FailureKind {
-        harmos_runtime::operations::FailureKind::Transient
+    fn classify(_: &Self::Error) -> FailureKind {
+        FailureKind::Transient
     }
 }
 
 #[tokio::test(start_paused = true)]
-async fn request_outlives_cleanup() {
+async fn retries_clone_the_original_request() {
     let runtime = harmos_runtime::Runtime::<crate::operations::probe::Editor>::builder(crate::operations::probe::Sheet::default(), ())
         .register(crate::operations::probe::Lanes::catalog())
         .runtime()
@@ -157,16 +98,16 @@ async fn request_outlives_cleanup() {
                 dependencies.insert(events.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Request, Read>(),
+            .operation::<Request>(),
             crate::operations::probe::Lanes::Open,
         ))
         .await
         .unwrap();
     let request = Request { value: 19, events: events.clone() };
     let call = runtime.operation(request).start().await.unwrap();
-    assert_eq!(*call.join().await.unwrap(), 21);
+    assert_eq!(*call.join().await.unwrap(), 20);
     runtime.stop().await.unwrap();
-    assert_eq!(*events.lock().unwrap(), ["new", "initialize", "run", "run", "stop", "finalize", "request dropped"]);
+    assert_eq!(*events.lock().unwrap(), ["run", "request dropped", "run", "request dropped", "request dropped"]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -189,21 +130,20 @@ async fn transfer_blocks_retry() {
                 dependencies.insert(runs.clone()).unwrap();
                 dependencies
             })
-            .implementation::<StreamingDeclarationDeclaration, Streaming>(),
+            .operation::<Streaming>(),
             crate::operations::probe::Lanes::Open,
         ))
         .await
         .unwrap();
-    let settings =
-        harmos_runtime::operations::StreamSettings { items: NonZeroUsize::new(2).unwrap(), bytes: NonZeroUsize::new(8).unwrap() };
-    for mode in [0, 1, 2, 3] {
+    let settings = harmos_runtime::operations::StreamSettings {
+        items: NonZeroUsize::new(2).unwrap(),
+        bytes: NonZeroUsize::new(8).unwrap(),
+    };
+    for mode in [0, 1, 2] {
         runs.store(0, Ordering::SeqCst);
         let (send, input) = harmos_runtime::operations::stream::<u32>(settings).unwrap();
-        let (output, mut receive) = harmos_runtime::operations::stream::<u32>(settings).unwrap();
-        let instance = runtime
-            .operations
-            .submit_endpoints::<StreamingDeclarationDeclaration, _>(StreamingDeclaration { mode }, (input, output))
-            .unwrap();
+        let (output, receive) = harmos_runtime::operations::stream::<u32>(settings).unwrap();
+        let instance = runtime.operations.submit_endpoints::<Streaming, _>(Streaming { mode }, (input, output)).unwrap();
         if mode == 2 {
             // The input item arrives while the failed attempt waits to retry.
             drop(
@@ -224,55 +164,28 @@ async fn transfer_blocks_retry() {
     runtime.stop().await.unwrap();
 }
 
-#[harmos_runtime::operation(request = StreamingDeclaration, infer_request,
-    harmos_path = harmos_runtime,
-    id = "streaming",
-
+#[harmos_runtime::operation(harmos_path = harmos_runtime, resources = [std::sync::atomic::AtomicUsize],
+    id = "borrowed.streaming",
     response = (),
     policy = Request::POLICY,
     input = u32,
     output = u32
 )]
-struct StreamingDeclarationDeclaration;
-
-#[harmos_runtime::message]
-
-struct StreamingDeclaration {
+struct Streaming {
     mode: u32,
 }
-struct Streaming(Arc<std::sync::atomic::AtomicUsize>, bool);
+
 impl harmos_runtime::Operation for Streaming {
-    type Request = StreamingDeclaration;
-    type Response = ();
-    type Endpoints = (harmos_runtime::operations::StreamInput<u32>, harmos_runtime::operations::StreamOutput<u32>);
     type Error = std::io::Error;
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self(context.dependency::<std::sync::atomic::AtomicUsize>().map_err(std::io::Error::other)?, false))
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut StreamingDeclaration, endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<harmos_runtime::Response<()>, std::io::Error> {
-        let (_, output) = endpoints;
-        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        // Provider Transfer May Be Known Before Any Local Item Is Delivered.
-        self.1 = request.mode == 3;
-        if request.mode == 1 {
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::io::Result<harmos_runtime::Response<()>> {
+        ctx.resource::<std::sync::atomic::AtomicUsize>().fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let (_, output) = ctx.streams();
+        if self.mode == 1 {
             output.send_with(4, || Ok(7)).await.map_err(std::io::Error::other)?;
         }
         Err(std::io::Error::other("transient stream failure"))
     }
-    fn transferred(&self) -> bool {
-        self.1
-    }
-    fn classify(_: &std::io::Error) -> harmos_runtime::operations::FailureKind {
-        harmos_runtime::operations::FailureKind::Transient
-    }
-    #[cfg(any())]
-    async fn stop(&mut self) -> std::result::Result<(), std::io::Error> {
-        panic!("disabled lifecycle hook must use the trait default")
-    }
-    #[cfg_attr(all(), cfg_attr(all(), cfg(any())))]
-    async fn cleanup(&mut self) -> std::result::Result<(), std::io::Error> {
-        panic!("disabled lifecycle hook must use the trait default")
+    fn classify(_: &Self::Error) -> FailureKind {
+        FailureKind::Transient
     }
 }

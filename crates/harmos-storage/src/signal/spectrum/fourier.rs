@@ -50,7 +50,11 @@ pub struct Estimate {
 
 impl Default for Welch {
     fn default() -> Self {
-        Self { resolution: 100.0, overlap: 0.5, taper: Taper::Hann }
+        Self {
+            resolution: 100.0,
+            overlap: 0.5,
+            taper: Taper::Hann,
+        }
     }
 }
 
@@ -73,7 +77,10 @@ impl Welch {
 
         if segments <= 1 || segment >= total {
             let single = transform(samples, rate, self.taper);
-            return Estimate { step: single.step, magnitude: super::magnitude(&single.real, &single.imag) };
+            return Estimate {
+                step: single.step,
+                magnitude: super::magnitude(&single.real, &single.imag),
+            };
         }
 
         let bins = segment / 2 + 1;
@@ -121,7 +128,11 @@ impl Welch {
 pub fn transform(samples: &[f64], rate: f64, taper: Taper) -> Spectrum {
     let length = samples.len();
     if length == 0 || rate <= 0.0 {
-        return Spectrum { step: 0.0, real: Vec::new(), imag: Vec::new() };
+        return Spectrum {
+            step: 0.0,
+            real: Vec::new(),
+            imag: Vec::new(),
+        };
     }
 
     let bins = length / 2 + 1;
@@ -167,7 +178,10 @@ pub fn reconstruct(spectrum: &Spectrum, band: Option<Band>) -> Vec<f64> {
         // half of it.
         let scale = if index == 0 || index == bins - 1 { length as f64 } else { length as f64 / 2.0 };
 
-        buffer[index] = Complex { re: real * coefficient * scale, im: imag * coefficient * scale };
+        buffer[index] = Complex {
+            re: real * coefficient * scale,
+            im: imag * coefficient * scale,
+        };
     }
 
     for index in 1..bins - 1 {

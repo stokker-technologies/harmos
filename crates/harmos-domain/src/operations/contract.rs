@@ -63,6 +63,7 @@ struct DecodedContract {
     grpc: Option<super::Grpc>,
 }
 
+#[derive(Clone)]
 pub struct WireDeclaration {
     pub operation: Entry,
     pub codec: &'static str,
@@ -125,6 +126,32 @@ impl Codec {
 }
 
 impl WireDeclaration {
+    pub const fn copied(&self) -> Self {
+        let grpc = match &self.grpc {
+            None => None,
+            Some(grpc) => {
+                let (std::borrow::Cow::Borrowed(package), std::borrow::Cow::Borrowed(service), std::borrow::Cow::Borrowed(method)) =
+                    (&grpc.package, &grpc.service, &grpc.method)
+                else {
+                    panic!("static gRPC declarations must borrow names");
+                };
+                Some(super::Grpc::new(package, service, method))
+            }
+        };
+        Self {
+            operation: self.operation,
+            codec: self.codec,
+            response_codec: self.response_codec,
+            input_codec: self.input_codec,
+            output_codec: self.output_codec,
+            request: self.request,
+            response: self.response,
+            input: self.input,
+            output: self.output,
+            grpc,
+        }
+    }
+
     pub const fn of<O: OperationDeclaration>() -> Self {
         Self {
             operation: Entry::of::<O>(),
@@ -141,6 +168,10 @@ impl WireDeclaration {
     }
 
     pub fn contract(&self) -> Result<Contract, ContractError> {
+        self.contract_with_settings(&SchemaSettings::default())
+    }
+
+    pub fn contract_with_settings(&self, settings: &SchemaSettings) -> Result<Contract, ContractError> {
         let operation = self.operation.definition()?;
         for codec in [Some(self.codec), Some(self.response_codec), self.input_codec, self.output_codec].into_iter().flatten() {
             if codec != "harmos.postcard.v1" {
@@ -154,12 +185,13 @@ impl WireDeclaration {
         if let Some(output) = self.output {
             roots.push(("output", output));
         }
-        let schema = Schema::from_declarations(&roots, &SchemaSettings::default()).map_err(|source| ContractError::Schema {
+        let schema = Schema::from_declarations(&roots, settings).map_err(|source| ContractError::Schema {
             id: operation.id.to_string(),
             direction: "contract",
             source: source.into(),
         })?;
-        Contract::new(operation.clone(), operation.fingerprint, Codec::Postcard, schema)?.with_grpc(self.grpc.clone())
+        Contract::new_with_settings(operation.clone(), operation.fingerprint, Codec::Postcard, schema, settings)?
+            .with_grpc(self.grpc.clone())
     }
 }
 
@@ -167,19 +199,25 @@ impl Contract {
     pub fn new(
         operation: OperationDefinition, fingerprint: crate::Fingerprint, codec: Codec, schema: Schema,
     ) -> Result<Self, ContractError> {
+        Self::new_with_settings(operation, fingerprint, codec, schema, &SchemaSettings::default())
+    }
+
+    pub fn new_with_settings(
+        operation: OperationDefinition, fingerprint: crate::Fingerprint, codec: Codec, schema: Schema, settings: &SchemaSettings,
+    ) -> Result<Self, ContractError> {
         operation.validate()?;
-        Self::canonical(operation, fingerprint, codec, schema)
+        Self::canonical(operation, fingerprint, codec, schema, settings)
     }
 
     fn canonical(
-        operation: OperationDefinition, fingerprint: crate::Fingerprint, codec: Codec, schema: Schema,
+        operation: OperationDefinition, fingerprint: crate::Fingerprint, codec: Codec, schema: Schema, settings: &SchemaSettings,
     ) -> Result<Self, ContractError> {
         let invalid = |source: schema::graph::Error| ContractError::Schema {
             id: operation.id.to_string(),
             direction: "contract",
             source: source.into(),
         };
-        schema.prepare(&SchemaSettings::default()).map_err(invalid)?;
+        schema.prepare(settings).map_err(invalid)?;
         let directions = schema.root().map_err(invalid)?;
         let fields = directions.fields();
         let valid = (2..=4).contains(&fields.len())
@@ -198,7 +236,13 @@ impl Contract {
                 reason: "expected request, response, and optional input/output roots",
             }));
         }
-        let contract = Self { operation, fingerprint, codec, schema, grpc: None };
+        let contract = Self {
+            operation,
+            fingerprint,
+            codec,
+            schema,
+            grpc: None,
+        };
         let computed = contract.computed_fingerprint()?;
         if fingerprint != computed || contract.operation.fingerprint != computed {
             return Err(ContractError::Fingerprint { id: contract.operation.id.to_string() });
@@ -242,8 +286,12 @@ impl Contract {
                 direction: "request",
                 source: source.into(),
             })?;
-            let request_fingerprint = crate::schema::identity::fingerprint(request_root, Codec::Postcard.id())
-                .map_err(|source| ContractError::Schema { id: action.id().into(), direction: "request", source: source.into() })?;
+            let request_fingerprint =
+                crate::schema::identity::fingerprint(request_root, Codec::Postcard.id()).map_err(|source| ContractError::Schema {
+                    id: action.id().into(),
+                    direction: "request",
+                    source: source.into(),
+                })?;
             let fingerprint =
                 crate::schema::identity::operation(action.id(), request_fingerprint, <() as crate::Portable>::fingerprint(), None, None);
             let operation = OperationDefinition {
@@ -256,8 +304,12 @@ impl Contract {
             };
             let schema =
                 Schema::from_declarations(&[("request", request), ("response", <() as Described>::DEFINITION)], &SchemaSettings::default())
-                    .map_err(|source| ContractError::Schema { id: action.id().into(), direction: "contract", source: source.into() })?;
-            let contract = Self::canonical(operation, fingerprint, Codec::Postcard, schema)?;
+                    .map_err(|source| ContractError::Schema {
+                        id: action.id().into(),
+                        direction: "contract",
+                        source: source.into(),
+                    })?;
+            let contract = Self::canonical(operation, fingerprint, Codec::Postcard, schema, &SchemaSettings::default())?;
             cache.get_or_init(|| contract)
         };
         let mut contract = template.clone();
@@ -281,8 +333,12 @@ impl Contract {
             &[("request", <O::Request as Described>::DEFINITION), ("response", <O::Response as Described>::DEFINITION)],
             &SchemaSettings::default(),
         )
-        .map_err(|source| ContractError::Schema { id: operation.id.to_string(), direction: "contract", source: source.into() })?;
-        Self::canonical(operation.clone(), operation.fingerprint, Codec::Postcard, schema)
+        .map_err(|source| ContractError::Schema {
+            id: operation.id.to_string(),
+            direction: "contract",
+            source: source.into(),
+        })?;
+        Self::canonical(operation.clone(), operation.fingerprint, Codec::Postcard, schema, &SchemaSettings::default())
     }
 
     pub fn operation(&self) -> &OperationDefinition {
@@ -318,16 +374,19 @@ impl Contract {
     }
 
     pub fn compatible(&self, requirement: &Self) -> bool {
+        self.compatible_with_settings(requirement, &SchemaSettings::default())
+    }
+
+    pub fn compatible_with_settings(&self, requirement: &Self, settings: &SchemaSettings) -> bool {
         self.operation.id == requirement.operation.id
             && self.fingerprint == requirement.fingerprint
             && self.codec == requirement.codec
             && ["request", "response", "input", "output"].into_iter().all(|name| {
                 match (self.direction(name), requirement.direction(name)) {
                     (None, None) => true,
-                    (Some(left), Some(right)) => self
-                        .schema
-                        .equivalent(left.index(), &requirement.schema, right.index(), &SchemaSettings::default())
-                        .unwrap_or(false),
+                    (Some(left), Some(right)) => {
+                        self.schema.equivalent(left.index(), &requirement.schema, right.index(), settings).unwrap_or(false)
+                    }
                     _ => false,
                 }
             })
@@ -372,8 +431,8 @@ impl TryFrom<DecodedContract> for Contract {
         let refused = || crate::Error::ReservedOperation { id: decoded.operation.id.to_string() }.into();
         let expected = match decoded.operation.id.as_str() {
             crate::observers::Control::ID => crate::observers::contract()?,
-            "harmos_initialize" => Descriptor::new(Action::Initialize, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
-            "harmos_shutdown" => Descriptor::new(Action::Shutdown, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
+            "harmos.initialize" => Descriptor::new(Action::Initialize, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
+            "harmos.shutdown" => Descriptor::new(Action::Shutdown, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
             _ => return Err(refused()),
         };
         let identity_matches =

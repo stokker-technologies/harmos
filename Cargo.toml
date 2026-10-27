@@ -32,24 +32,24 @@ harmos-storage = { path = "crates/harmos-storage", version = "0.1.1", default-fe
 # Git
 
 # Error Handling
-thiserror = { version = "2", default-features = false }
+thiserror = { version = "2.0.21", default-features = false }
 
 # Logging
-tracing = { version = "0.1", default-features = false }
+tracing = { version = "0.1.44", default-features = false }
 tracing-perfetto-file = { version = "0.1.1", default-features = false }
-tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "registry", "std"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "registry", "std"] }
 
 # Utilities
-bytes = { version = "1.12", default-features = false }
+bytes = { version = "1.12.1", default-features = false }
 getrandom = { version = "0.4.3", default-features = false }
-heck = { version = "0.5", default-features = false }
-libc = { version = "0.2", default-features = false }
-petgraph = { version = "0.8", default-features = false }
-rustfft = { version = "6.4", default-features = false }
-semver = { version = "1", default-features = false }
-sha2 = { version = "0.11.0", default-features = false }
-time = { version = "0.3", default-features = false, features = ["formatting", "parsing", "serde"] }
-wasmtime = { version = "=49.0.2", default-features = false, features = [
+heck = { version = "0.5.0", default-features = false }
+libc = { version = "0.2.191", default-features = false }
+petgraph = { version = "0.8.3", default-features = false }
+rustfft = { version = "6.4.1", default-features = false }
+semver = { version = "1.0.28", default-features = false }
+sha2 = { version = "0.11.1", default-features = false }
+time = { version = "0.3.55", default-features = false, features = ["formatting", "parsing", "serde"] }
+wasmtime = { version = "=50.0.0", default-features = false, features = [
   "async",
   "component-model",
   "component-model-async",
@@ -58,69 +58,69 @@ wasmtime = { version = "=49.0.2", default-features = false, features = [
   "runtime",
   "std",
 ] }
-windows-sys = { version = "0.61", default-features = false, features = [
+windows-sys = { version = "0.61.2", default-features = false, features = [
   "Win32_Foundation",
   "Win32_System_Pipes",
   "Win32_System_SystemInformation",
 ] }
 
 # Serialization
-arrow-array = { version = "=59.3.0", default-features = false }
-arrow-buffer = { version = "=59.3.0", default-features = false }
-arrow-data = { version = "=59.3.0", default-features = false }
-arrow-ipc = { version = "=59.3.0", default-features = false }
-arrow-schema = { version = "=59.3.0", default-features = false }
-arrow-select = { version = "=59.3.0", default-features = false }
-base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
+arrow-array = { version = "=60.0.0", default-features = false }
+arrow-buffer = { version = "=60.0.0", default-features = false }
+arrow-data = { version = "=60.0.0", default-features = false }
+arrow-ipc = { version = "=60.0.0", default-features = false }
+arrow-schema = { version = "=60.0.0", default-features = false }
+arrow-select = { version = "=60.0.0", default-features = false }
+base64 = { version = "0.23.1", default-features = false, features = ["alloc"] }
 flatbuffers = { version = "=25.12.19", default-features = false }
-postcard = { version = "1.1", default-features = false, features = ["alloc"] }
-prost = { version = "0.14", default-features = false }
-prost-reflect = { version = "0.16", default-features = false }
-protoc-bin-vendored = { version = "3", default-features = false }
-serde = { version = "1", default-features = false, features = ["derive"] }
-serde_json = { version = "1", default-features = false }
-wit-bindgen = { version = "=0.62.0", default-features = false }
-wit-component = { version = "=0.261.0", default-features = false }
-wasm-encoder = { version = "=0.261.0", default-features = false }
-wasmparser = { version = "=0.261.0", default-features = false }
+postcard = { version = "1.1.3", default-features = false, features = ["alloc"] }
+prost = { version = "0.14.4", default-features = false }
+prost-reflect = { version = "0.16.5", default-features = false }
+protoc-bin-vendored = { version = "3.3.0", default-features = false }
+serde = { version = "1.0.229", default-features = false, features = ["derive"] }
+serde_json = { version = "1.0.154", default-features = false }
+wit-bindgen = { version = "=0.63.0", default-features = false }
+wit-component = { version = "=0.262.0", default-features = false }
+wasm-encoder = { version = "=0.262.0", default-features = false }
+wasmparser = { version = "=0.262.0", default-features = false }
 
 # Configuration
-clap = { version = "4", default-features = false }
+clap = { version = "4.6.7", default-features = false }
 
 # Filesystem
-notify = { version = "8.2.0", default-features = false }
-same-file = { version = "1", default-features = false }
+notify = { version = "8.2.1", default-features = false }
+same-file = { version = "1.0.6", default-features = false }
 tar = { version = "0.4.46", default-features = false }
-tempfile = { version = "3", default-features = false }
+tempfile = { version = "3.27.0", default-features = false }
 
 # Parsing
-memchr = { version = "2", default-features = false }
+memchr = { version = "2.8.3", default-features = false }
 proc-macro-crate = { version = "3.5.0", default-features = false }
-proc-macro2 = { version = "1", default-features = false }
-quote = { version = "1", default-features = false }
-syn = { version = "3", default-features = false, features = ["full"] }
+proc-macro2 = { version = "1.0.107", default-features = false }
+quote = { version = "1.0.47", default-features = false }
+syn = { version = "3.0.9", default-features = false, features = ["full"] }
 
 # Concurrency
 ctrlc = { version = "3.5.2", default-features = false }
 process-wrap = { version = "10.0.1", default-features = false }
 
 # Async
-futures-core = { version = "0.3", default-features = false }
-futures-util = { version = "0.3", default-features = false, features = ["std"] }
-tokio = { version = "1", default-features = false, features = ["sync"] }
-tokio-stream = { version = "0.1", default-features = false }
+futures-core = { version = "0.3.34", default-features = false }
+futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
+tokio = { version = "1.54.1", default-features = false, features = ["sync"] }
+tokio-stream = { version = "0.1.19", default-features = false }
 
 # Networking
-http-body = { version = "1", default-features = false }
-http-body-util = { version = "0.1", default-features = false }
-hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
-tonic = { version = "0.14.6", default-features = false }
-tonic-prost = { version = "0.14.6", default-features = false }
-tonic-prost-build = { version = "0.14.6", default-features = false }
-tonic-reflection = { version = "0.14.6", default-features = false }
-tonic-web = { version = "0.14.6", default-features = false }
-tower = { version = "0.5", default-features = false, features = ["util"] }
-tower-http = { version = "0.7", default-features = false, features = ["cors"] }
+http-body = { version = "1.1.0", default-features = false }
+http-body-util = { version = "0.1.5", default-features = false }
+hyper-util = { version = "0.1.21", default-features = false, features = ["tokio"] }
+tonic = { version = "0.14.7", default-features = false }
+tonic-prost = { version = "0.14.7", default-features = false }
+tonic-prost-build = { version = "0.14.7", default-features = false }
+tonic-reflection = { version = "0.14.7", default-features = false }
+tonic-web = { version = "0.14.7", default-features = false }
+tower = { version = "0.5.3", default-features = false, features = ["util"] }
+tower-http = { version = "0.7.1", default-features = false, features = ["cors"] }
 
 # Storage
 

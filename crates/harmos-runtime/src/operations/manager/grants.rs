@@ -20,13 +20,19 @@ mod tests {
     #[test]
     fn plugin_grants_preserved() {
         let contract = WireDeclaration::of::<Catalog>().contract().unwrap();
-        let allowed = Grant::of("host_catalog", "allowed");
-        let refused = Grant::of("host_catalog", "refused");
+        let allowed = Grant::of("host.catalog", "allowed");
+        let refused = Grant::of("host.catalog", "refused");
         let foreign = Grant::of("other.operation", "allowed");
         let mut authority = GrantAuthority {
             owner: "host".into(),
-            operation: "host_catalog".into(),
-            plugin: Some(("caller".into(), Some(Required { contract: contract.clone(), grants: vec![allowed.clone()] }))),
+            operation: "host.catalog".into(),
+            plugin: Some((
+                "caller".into(),
+                Some(Required {
+                    contract: contract.clone(),
+                    grants: vec![allowed.clone()],
+                }),
+            )),
             external: Some(Authorization::Full(contract)),
         };
 

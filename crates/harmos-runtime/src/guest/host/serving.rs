@@ -70,13 +70,22 @@ enum Finalization<A: Application> {
 impl<A: Application> Active<A> {
     pub fn serve(mut self) -> Result<Serving<A>, Error> {
         if !self.store.data().active {
-            return Err(Error::Denied { code: "revoked", message: "serve".to_owned() });
+            return Err(Error::Denied {
+                code: "revoked",
+                message: "serve".to_owned(),
+            });
         }
         let instance = self.routing.take();
         let publications = self.store.data().publications.values().cloned().collect();
         let session = Session::start(self);
         let revocation = instance.as_ref().map(PluginEndpoint::revocation);
-        Ok(Serving { instance, session: Some(session), publications, revocation, finalization: None })
+        Ok(Serving {
+            instance,
+            session: Some(session),
+            publications,
+            revocation,
+            finalization: None,
+        })
     }
 }
 
@@ -129,7 +138,9 @@ impl<A: Application> Serving<A> {
                     let guarded = std::future::poll_fn(|context| {
                         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| finalizing.as_mut().poll(context))) {
                             Ok(poll) => poll,
-                            Err(_) => std::task::Poll::Ready(Err(Error::Guest { message: "guest cleanup machinery panicked".to_owned() })),
+                            Err(_) => std::task::Poll::Ready(Err(Error::Guest {
+                                message: "guest cleanup machinery panicked".to_owned(),
+                            })),
                         }
                     });
                     let mut guarded = std::pin::pin!(guarded);
@@ -146,8 +157,10 @@ impl<A: Application> Serving<A> {
             })));
         }
         if let Some(Finalization::Pending(task)) = &mut self.finalization {
-            let (cleanup, outcome) =
-                task.await.map_err(|source| crate::Error::TaskFailed { domain: "guest finalization", source: Arc::new(source) })?;
+            let (cleanup, outcome) = task.await.map_err(|source| crate::Error::TaskFailed {
+                domain: "guest finalization",
+                source: Arc::new(source),
+            })?;
             self.finalization = Some(match outcome {
                 Ok(()) => {
                     drop(cleanup);
@@ -158,9 +171,10 @@ impl<A: Application> Serving<A> {
         }
         match &self.finalization {
             Some(Finalization::Complete) => Ok(()),
-            Some(Finalization::Failed(_, source)) => {
-                Err(crate::Error::TaskFailed { domain: "guest finalization", source: Arc::clone(source) })
-            }
+            Some(Finalization::Failed(_, source)) => Err(crate::Error::TaskFailed {
+                domain: "guest finalization",
+                source: Arc::clone(source),
+            }),
             _ => unreachable!("the original ending receipt was awaited"),
         }
     }

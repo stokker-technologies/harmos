@@ -91,9 +91,11 @@ async fn callbacks_guard_admission() {
         assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 1);
         drop(bytes);
 
-        #[harmos_runtime::operation(request = super::super::cases::Echo, response = u32, id = "fixture_echo",
-            visibility = Visibility::Shared, policy = super::super::cases::EchoDeclaration::POLICY)]
-        struct Changed;
+        #[harmos_runtime::operation(response = u32, id = "fixture.echo",
+            visibility = Shared, policy = super::super::cases::EchoDeclaration::POLICY)]
+        struct Changed {
+            pub value: String,
+        }
         let changed = WireDeclaration::of::<Changed>();
         assert!(matches!(
             runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &changed.contract().unwrap()),
@@ -126,17 +128,12 @@ async fn callbacks_guard_admission() {
 
 #[tokio::test]
 async fn preparation_credit_held() {
-    let credit = Credit::start(false).await;
+    let credit = Credit::start().await;
     let invocation = credit.target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(Text::from("block").encode())).unwrap();
     credit.cleanup.started.notified().await;
     credit.assert_held();
     invocation.cancel();
-    credit.cleanup.finalizing.notified().await;
-    credit.assert_held();
-    credit.cleanup.fail.store(true, Ordering::SeqCst);
-    credit.cleanup.release.notify_one();
-    assert!(matches!(invocation.await, Err(Error::OperationFinalization { .. })));
-    credit.assert_held();
+    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     credit.settle().await;
 }
 
@@ -221,7 +218,13 @@ async fn unregister_cancel_retained() {
 fn assert_registration_conflict(result: Result<()>) {
     let error = result.unwrap_err();
     let Error::PluginLifecycle { source } = error else { panic!("unexpected registration error: {error:?}") };
-    assert!(matches!(source.as_ref(), harmos_runtime::plugin::PluginFailure::Start { source: Error::AlreadyRegistered { .. }, .. }));
+    assert!(matches!(
+        source.as_ref(),
+        harmos_runtime::plugin::PluginFailure::Start {
+            source: Error::AlreadyRegistered { .. },
+            ..
+        }
+    ));
 }
 
 #[tokio::test]
@@ -232,17 +235,17 @@ async fn plugin_caller_authorization() {
     host.call_during_setup = true;
     manager.initialize(&mut host).await.unwrap();
     let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
-    assert_eq!(caller.call::<SharedDeclaration>(Shared(request())).await.unwrap().value, 7);
+    assert_eq!(caller.call::<Shared>(Shared(request())).await.unwrap().value, 7);
     // Parent is shared; its resource-owner context can call its private child.
-    assert_eq!(caller.call::<Parent>(ParentRequest(request())).await.unwrap().value, 7);
-    let (requests, mut decoded) = harmos_runtime::operations::stream(harmos_runtime::operations::StreamSettings {
+    assert_eq!(caller.call::<Parent>(Parent(request())).await.unwrap().value, 7);
+    let (requests, decoded) = harmos_runtime::operations::stream(harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::new(1).unwrap(),
         bytes: NonZeroUsize::new(4096).unwrap(),
     })
     .unwrap();
     requests.send_with(4096, || Ok(Shared(request()))).await.unwrap();
     let charged = decoded.recv().await.unwrap();
-    assert_eq!(caller.submit_charged::<SharedDeclaration, _>(charged, ()).unwrap().await.unwrap().value, 7);
+    assert_eq!(caller.submit_charged::<Shared, _>(charged, ()).unwrap().await.unwrap().value, 7);
     drop(requests.reserve(4096).await.unwrap());
     #[cfg(feature = "grpc")]
     {
@@ -271,7 +274,7 @@ async fn plugin_caller_authorization() {
         assert!(matches!(source.submit_endpoints::<Compute, _>(request(), input), Err(Error::OperationUnauthorized { .. })));
         assert!(output.is_closed());
         // Each Operation Charges Its Own Request Type.
-        let (requests, mut decoded) = harmos_runtime::operations::stream(harmos_runtime::operations::StreamSettings {
+        let (requests, decoded) = harmos_runtime::operations::stream(harmos_runtime::operations::StreamSettings {
             items: NonZeroUsize::new(1).unwrap(),
             bytes: NonZeroUsize::new(4096).unwrap(),
         })
@@ -283,22 +286,22 @@ async fn plugin_caller_authorization() {
     }
     for source in ["transitive", "unrelated"] {
         let source = runtime.operations.caller(&host.callers[source]).unwrap();
-        assert!(matches!(source.submit::<SharedDeclaration>(Shared(request())), Err(Error::OperationUnauthorized { .. })));
+        assert!(matches!(source.submit::<Shared>(Shared(request())), Err(Error::OperationUnauthorized { .. })));
     }
     assert_eq!(host.owner.prepared.load(std::sync::atomic::Ordering::SeqCst), prepared);
     assert_eq!(runtime.operations.caller(&host.callers["fixture"]).unwrap().call::<Compute>(request()).await.unwrap().value, 7);
     manager.shutdown(&mut host).await.unwrap();
-    assert!(matches!(caller.submit::<SharedDeclaration>(Shared(request())), Err(Error::OperationCaller { .. })));
+    assert!(matches!(caller.submit::<Shared>(Shared(request())), Err(Error::OperationCaller { .. })));
     let (output, input) = harmos_runtime::operations::stream::<u32>(harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::new(1).unwrap(),
         bytes: NonZeroUsize::new(4).unwrap(),
     })
     .unwrap();
-    assert!(matches!(caller.submit_endpoints::<SharedDeclaration, _>(Shared(request()), input), Err(Error::OperationCaller { .. })));
+    assert!(matches!(caller.submit_endpoints::<Shared, _>(Shared(request()), input), Err(Error::OperationCaller { .. })));
     assert!(output.is_closed());
     requests.send_with(4096, || Ok(Shared(request()))).await.unwrap();
     let charged = decoded.recv().await.unwrap();
-    assert!(matches!(caller.submit_charged::<SharedDeclaration, _>(charged, ()), Err(Error::OperationCaller { .. })));
+    assert!(matches!(caller.submit_charged::<Shared, _>(charged, ()), Err(Error::OperationCaller { .. })));
     drop(requests.reserve(4096).await.unwrap());
     #[cfg(feature = "grpc")]
     {
@@ -318,8 +321,8 @@ async fn operation_cache_partitioned() {
     let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
     let keyed = || Shared(Request { keyed: true, ..request() });
     let host_response = runtime.operation(keyed()).run().await.unwrap();
-    let first = caller.call::<SharedDeclaration>(keyed()).await.unwrap();
-    let again = caller.call::<SharedDeclaration>(keyed()).await.unwrap();
+    let first = caller.call::<Shared>(keyed()).await.unwrap();
+    let again = caller.call::<Shared>(keyed()).await.unwrap();
     assert!(!host_response.ptr_eq(&first));
     assert!(first.ptr_eq(&again));
     assert_eq!(host.owner.runs.load(std::sync::atomic::Ordering::SeqCst), 2);
@@ -328,9 +331,9 @@ async fn operation_cache_partitioned() {
     let mut next = with_clients(true).definitions().cloned().collect::<Vec<_>>();
     next.iter_mut().find(|definition| definition.id == "client").unwrap().configuration = br#"{"revision":2}"#.to_vec();
     manager.reload(PluginDefinitions::new(next, []).unwrap(), &mut host).await.unwrap();
-    assert!(matches!(caller.submit::<SharedDeclaration>(keyed()), Err(Error::OperationCaller { .. })));
+    assert!(matches!(caller.submit::<Shared>(keyed()), Err(Error::OperationCaller { .. })));
     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
-    let next = replacement.call::<SharedDeclaration>(keyed()).await.unwrap();
+    let next = replacement.call::<Shared>(keyed()).await.unwrap();
     assert!(!first.ptr_eq(&next));
     assert!(host_response.ptr_eq(&runtime.operation(keyed()).run().await.unwrap()));
     manager.shutdown(&mut host).await.unwrap();
@@ -345,9 +348,9 @@ async fn requirement_revokes_operation() {
     manager.initialize(&mut host).await.unwrap();
     let old = runtime.operations.caller(&host.callers["client"]).unwrap();
     manager.reload(with_clients(false), &mut host).await.unwrap();
-    assert!(matches!(old.submit::<SharedDeclaration>(Shared(request())), Err(Error::OperationCaller { .. })));
+    assert!(matches!(old.submit::<Shared>(Shared(request())), Err(Error::OperationCaller { .. })));
     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
-    assert!(matches!(replacement.submit::<SharedDeclaration>(Shared(request())), Err(Error::OperationUnauthorized { .. })));
+    assert!(matches!(replacement.submit::<Shared>(Shared(request())), Err(Error::OperationUnauthorized { .. })));
     assert_eq!(runtime.operation(Shared(request())).run().await.unwrap().value, 7);
     manager.shutdown(&mut host).await.unwrap();
     runtime.stop().await.unwrap();
@@ -362,9 +365,16 @@ async fn queued_operations_recheck() {
     let source = runtime.operations.caller(&host.callers["client"]).unwrap();
     let opened = Arc::new(tokio::sync::Notify::new());
     let gate = Arc::new(tokio::sync::Notify::new());
-    let held = runtime.operation(Shared(Request { gate: Some((opened.clone(), gate.clone())), ..request() })).start().await.unwrap();
+    let held = runtime
+        .operation(Shared(Request {
+            gate: Some((opened.clone(), gate.clone())),
+            ..request()
+        }))
+        .start()
+        .await
+        .unwrap();
     opened.notified().await;
-    let queued = source.submit::<SharedDeclaration>(Shared(request())).unwrap();
+    let queued = source.submit::<Shared>(Shared(request())).unwrap();
     manager.reload(with_clients(false), &mut host).await.unwrap();
 
     gate.notify_one();
@@ -388,7 +398,7 @@ async fn unmanaged_endpoint_refused() {
 
 #[tokio::test]
 async fn encoded_calls_authorized() {
-    use super::super::cases::{EchoDeclaration as Echo, Nested, NestedDeclaration, PrivateEchoDeclaration as PrivateEcho};
+    use super::super::cases::{EchoDeclaration as Echo, NestedDeclaration, PrivateEchoDeclaration as PrivateEcho};
     use harmos_runtime::Message;
     let runtime = runtime().await;
     let mut manager = PluginManager::new(with_clients(true)).unwrap();
@@ -405,7 +415,7 @@ async fn encoded_calls_authorized() {
         "own:1"
     );
     // The client's shared parent invokes its own private child as the bound owner.
-    assert_eq!(&*client.call::<NestedDeclaration>(Nested::from("nested")).await.unwrap(), "nested:1");
+    assert_eq!(&*client.call::<NestedDeclaration>(NestedDeclaration::from("nested")).await.unwrap(), "nested:1");
     let prepared = host.owner.prepared.load(std::sync::atomic::Ordering::SeqCst);
     // Malformed payloads must not replace authorization failures with codec errors.
     assert!(matches!(client.submit_encoded(&format!("fixture.{}", PrivateEcho::ID), vec![0xff]), Err(Error::OperationUnauthorized { .. })));
@@ -486,46 +496,44 @@ async fn activation_refuses_incomplete() {
 
 #[tokio::test(start_paused = true)]
 async fn preparation_credit_expired() {
-    let credit = Credit::start(true).await;
+    let credit = Credit::start().await;
     let invocation = credit.target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(Text::from("expire").encode())).unwrap();
-    credit.cleanup.finalizing.notified().await;
-    assert_eq!(credit.cleanup.attempted.load(Ordering::SeqCst), 0);
+    credit.cleanup.started.notified().await;
+    assert_eq!(credit.cleanup.attempted.load(Ordering::SeqCst), 1);
     credit.assert_held();
-    credit.cleanup.release.notify_one();
-    credit.cleanup.failed.notified().await;
-    credit.assert_held();
-    let outcome = invocation.await;
-    assert!(matches!(outcome,
-        Err(Error::OperationFinalization { outcome: Some(ref error), .. })
-            if matches!(error.as_ref(), Error::OperationRefused(harmos_runtime::Refusal::TimedOut))
-    ));
+    tokio::time::advance(CleanupDeclaration::POLICY.timeout).await;
+    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
     credit.settle().await;
 }
 
 #[tokio::test]
 async fn provider_selection_reload() {
     let runtime = runtime().await;
-    let mut host = SelectedHost { operations: runtime.operations.clone(), scopes: BTreeMap::new(), callers: BTreeMap::new() };
+    let mut host = SelectedHost {
+        operations: runtime.operations.clone(),
+        scopes: BTreeMap::new(),
+        callers: BTreeMap::new(),
+    };
     let mut manager = PluginManager::new(selected_candidate("first", true)).unwrap();
     manager.initialize(&mut host).await.unwrap();
     let contract = WireDeclaration::of::<SelectedDeclaration>().contract().unwrap();
     let first = runtime.operations.capture_callback(&host.scopes["first"], &contract).unwrap();
     let second = runtime.operations.capture_callback(&host.scopes["second"], &contract).unwrap();
     let old_client = runtime.operations.caller(&host.callers["client"]).unwrap();
-    assert_eq!(old_client.call::<SelectedDeclaration>(Selected::from("before")).await.unwrap().as_str(), "first:before");
+    assert_eq!(old_client.call::<SelectedDeclaration>(SelectedDeclaration::from("before")).await.unwrap().as_str(), "first:before");
     assert!(matches!(
-        runtime.operation(Selected::from("ambiguous")).run().await,
+        runtime.operation(SelectedDeclaration::from("ambiguous")).run().await,
         Err(Error::InvalidInput { field: "operation provider", .. })
     ));
     let first_generation = host.scopes["first"].generation();
     let second_generation = host.scopes["second"].generation();
 
     manager.reload(selected_candidate("second", true), &mut host).await.unwrap();
-    assert!(matches!(old_client.submit::<SelectedDeclaration>(Selected::from("stale")), Err(Error::OperationCaller { .. })));
+    assert!(matches!(old_client.submit::<SelectedDeclaration>(SelectedDeclaration::from("stale")), Err(Error::OperationCaller { .. })));
     assert_eq!(host.scopes["first"].generation(), first_generation);
     assert_eq!(host.scopes["second"].generation(), second_generation);
     let client = runtime.operations.caller(&host.callers["client"]).unwrap();
-    assert_eq!(client.call::<SelectedDeclaration>(Selected::from("after")).await.unwrap().as_str(), "second:after");
+    assert_eq!(client.call::<SelectedDeclaration>(SelectedDeclaration::from("after")).await.unwrap().as_str(), "second:after");
     let first_payload = first.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("callback").encode())).unwrap().await.unwrap();
     assert_eq!(String::decode(&first_payload).unwrap(), "first:callback");
 
@@ -538,7 +546,7 @@ async fn provider_selection_reload() {
         second.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("surviving").encode())).unwrap().await.unwrap();
     assert_eq!(String::decode(&second_payload).unwrap(), "second:surviving");
     assert_eq!(host.scopes["second"].generation(), second_generation);
-    assert_eq!(client.call::<SelectedDeclaration>(Selected::from("unchanged")).await.unwrap().as_str(), "second:unchanged");
+    assert_eq!(client.call::<SelectedDeclaration>(SelectedDeclaration::from("unchanged")).await.unwrap().as_str(), "second:unchanged");
     manager.shutdown(&mut host).await.unwrap();
     assert!(matches!(
         second.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("closed").encode())),
@@ -555,9 +563,18 @@ where
 {
     use tonic::codec::Codec as _;
     let capacity = NonZeroUsize::new(4096).unwrap();
-    let decode = harmos_runtime::grpc::DecodeSettings { message_bytes: capacity, retained_bytes: capacity };
-    let encode = harmos_runtime::grpc::EncodeSettings { message_bytes: capacity, buffer_bytes: capacity };
-    let channel = harmos_runtime::operations::StreamSettings { items: NonZeroUsize::new(1).unwrap(), bytes: capacity };
+    let decode = harmos_runtime::grpc::DecodeSettings {
+        message_bytes: capacity,
+        retained_bytes: capacity,
+    };
+    let encode = harmos_runtime::grpc::EncodeSettings {
+        message_bytes: capacity,
+        buffer_bytes: capacity,
+    };
+    let channel = harmos_runtime::operations::StreamSettings {
+        items: NonZeroUsize::new(1).unwrap(),
+        bytes: capacity,
+    };
     let settings = harmos_runtime::grpc::server::Settings {
         calls: NonZeroUsize::new(8).unwrap(),
         decode,

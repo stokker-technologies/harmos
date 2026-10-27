@@ -18,8 +18,6 @@ use std::num::NonZeroUsize;
 // Third Party Imports
 // Local Imports
 use super::*;
-use crate::MemorySize;
-use crate::storage::capacity::{Pool, Reservation};
 
 /* === Constants === */
 
@@ -65,13 +63,7 @@ impl<C> StorageManager<C> {
         if !state.ready || state.status.closed {
             return Err(Error::NotReady { domain: "storage" });
         }
-        let (snapshot, bytes) = state.capture_file_snapshot(through, self.inner.settings.budget.read_memory_bytes.get(), 0)?;
-        if bytes == 0 {
-            return Ok(None);
-        }
-        state.read_bytes += bytes;
-        state.collect();
-        Ok(Some(FileSave { snapshot: snapshot.retained(Reservation::charged(&self.inner, Pool::Read, bytes).retain()) }))
+        Ok(state.capture_file_snapshot(through)?.map(|snapshot| FileSave { snapshot }))
     }
 
     // The Caller Holds Lifecycle Ownership Across Backend Access.
@@ -88,56 +80,35 @@ impl<C> StorageManager<C> {
         if !self.inner.primary.supports_file_sessions() {
             return Ok(());
         }
-        // Reserve Before Asking The Backend To Allocate Its Complete Bounded Set.
-        let capacity = self.inner.settings.budget.read_memory_bytes.get();
-        let bytes = capacity / 2;
-        let limits = ReadLimits { rows: crate::storage::config::MAX_FILES, bytes: NonZeroUsize::new(bytes).ok_or_else(size_error)? };
-        let reservation = {
-            let mut state = self.inner.state.lock().unwrap();
-            state.collect();
-            if state.status.read_bytes > capacity - bytes {
-                return Err(Error::ResourceExhausted { resource: "file recovery memory" });
-            }
-            state.read_bytes += bytes;
-            state.collect();
-            Reservation::charged_lifecycle(&self.inner, Pool::Read, bytes)
+        // Recover The Complete Bounded Checkpoint Set.
+        let bytes = super::super::config::MAX_BATCH_BYTES;
+        let limits = ReadLimits {
+            rows: crate::storage::config::MAX_FILES,
+            bytes: NonZeroUsize::new(bytes).ok_or_else(size_error)?,
         };
-        let memory = reservation.retain();
-        let checkpoints =
-            self.inner.bounded("primary.recover_productions", self.inner.primary.recover_productions(limits, memory.clone())).await?;
-        if checkpoints.len() > limits.rows.get() || checkpoints.memory_size() > bytes {
-            return Err(Error::InvalidInput { field: "file recovery", reason: "backend exceeded recovery bounds" });
+        let checkpoints = self.inner.bounded("primary.recover_productions", self.inner.primary.recover_productions(limits)).await?;
+        if checkpoints.len() > limits.rows.get()
+            || checkpoints.iter().try_fold(0usize, |total, checkpoint| encoded_size(checkpoint).map(|size| total.saturating_add(size)))?
+                > bytes
+        {
+            return Err(Error::InvalidInput {
+                field: "file recovery",
+                reason: "backend exceeded recovery bounds",
+            });
         }
-        let write_bytes = checkpoints.iter().try_fold(0usize, |total, checkpoint| {
-            let (_, bytes) = file_bytes(&checkpoint.metadata, &checkpoint.session.history)?;
-            total.checked_add(bytes).ok_or_else(size_error)
-        })?;
-        let mut write_reservation = {
-            let mut state = self.inner.state.lock().unwrap();
-            state.collect();
-            if write_bytes >= self.inner.settings.request.max_pending_write_bytes.get()
-                || state.status.pending_bytes > self.inner.settings.request.max_pending_write_bytes.get() - write_bytes
-            {
-                return Err(Error::ResourceExhausted { resource: "recovered file production" });
-            }
-            state.scratch_bytes += write_bytes;
-            state.collect();
-            Reservation::charged(&self.inner, Pool::Write, write_bytes)
-        };
         let mut restored = std::collections::BTreeMap::new();
         let mut names = std::collections::BTreeSet::new();
-        let mut total = 0usize;
         for checkpoint in checkpoints {
             self.inner.primary.history().check(&checkpoint.session.history)?;
             let hash = checkpoint.restore_hash()?;
             if !names.insert(checkpoint.session.id.clone()) {
-                return Err(Error::InvalidInput { field: "file recovery", reason: "duplicate file identity" });
+                return Err(Error::InvalidInput {
+                    field: "file recovery",
+                    reason: "duplicate file identity",
+                });
             }
-            let (reference_bytes, base_bytes) = file_bytes(&checkpoint.metadata, &checkpoint.session.history)?;
-            total = total.checked_add(base_bytes).ok_or_else(size_error)?;
-            if reference_bytes > self.inner.settings.max_batch_bytes().get()
-                || total >= self.inner.settings.request.max_pending_write_bytes.get()
-            {
+            let reference_bytes = file_bytes(&checkpoint.metadata, &checkpoint.session.history)?;
+            if reference_bytes > self.inner.settings.max_batch_bytes().get() {
                 return Err(Error::ResourceExhausted { resource: "recovered file production" });
             }
             let id = NEXT_FILE.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1)).map_err(|_| size_error())?;
@@ -151,7 +122,10 @@ impl<C> StorageManager<C> {
                 context: crate::execution::Context::current(),
                 queued: Some(tracing::debug_span!("storage.file.queue")),
                 metadata: Arc::new(checkpoint.metadata),
-                staging: StagedFile { history: checkpoint.session.history, id: checkpoint.session.id },
+                staging: StagedFile {
+                    history: checkpoint.session.history,
+                    id: checkpoint.session.id,
+                },
                 session: Some(Session::recovered(
                     checkpoint.session.generation,
                     crate::storage::config::FILE_SESSION_TIMEOUT,
@@ -167,7 +141,7 @@ impl<C> StorageManager<C> {
                 abandoned: false,
                 in_flight: false,
                 retrying: false,
-                base_bytes,
+
                 reference_bytes,
             };
             restored.insert(id, file);
@@ -175,13 +149,14 @@ impl<C> StorageManager<C> {
         {
             let mut state = self.inner.state.lock().unwrap();
             if !state.files.is_empty() {
-                return Err(Error::AlreadyRegistered { domain: "file recovery", name: "active productions".into() });
+                return Err(Error::AlreadyRegistered {
+                    domain: "file recovery",
+                    name: "active productions".into(),
+                });
             }
-            state.scratch_bytes -= write_reservation.disown();
             state.files = restored;
             state.collect();
         }
-        drop(memory);
         Ok(())
     }
 
@@ -197,46 +172,29 @@ impl<C> StorageManager<C> {
 }
 
 impl State {
-    pub(crate) fn capture_file_snapshot(
-        &mut self, through: Option<&StorageCursor>, capacity: usize, extra: usize,
-    ) -> Result<(FileSnapshot, usize)> {
+    pub(crate) fn capture_file_snapshot(&mut self, through: Option<&StorageCursor>) -> Result<Option<FileSnapshot>> {
         let selected = |file: &&FileState| file.session.is_some() && file.progress.lock().unwrap().ready;
         let count = self.files.values().filter(selected).count();
-        if count == 0 && self.receipts.snapshot_bytes() == 0 && extra == 0 {
-            return Ok((
-                FileSnapshot {
-                    context: crate::execution::Context::current(),
-                    frontier: self.status.saved.sequence,
-                    sources: Vec::new(),
-                    checkpoints: crate::StorageBatch::new(Vec::new()),
-                    receipts: crate::StorageBatch::new(Vec::new()),
-                },
-                extra,
-            ));
+        if count == 0 && self.receipts.is_empty() {
+            return Ok(None);
         }
-        let bytes = self.files.values().filter(selected).try_fold(
-            std::mem::size_of::<FileSave>()
-                .checked_add(extra)
-                .ok_or_else(size_error)?
-                .checked_add(self.receipts.snapshot_bytes())
-                .ok_or_else(size_error)?,
-            |bytes, file| bytes.checked_add(file.base_bytes.checked_mul(2).ok_or_else(size_error)?).ok_or_else(size_error),
-        )?;
-
         self.collect();
-        if bytes > capacity || self.status.read_bytes > capacity - bytes {
-            return Err(Error::ResourceExhausted { resource: "file checkpoint memory" });
-        }
-
         let mut checkpoints = Vec::with_capacity(count);
         let mut sources = Vec::with_capacity(count);
         for file in self.files.values().filter(selected) {
             let queued = file.context.sync(|| tracing::debug_span!("storage.file.checkpoint.queue", file = %file.staging.id));
-            sources.push(CheckpointSource { context: file.context.clone(), queued: std::sync::Mutex::new(Some(queued)) });
+            sources.push(CheckpointSource {
+                context: file.context.clone(),
+                queued: std::sync::Mutex::new(Some(queued)),
+            });
             let session = file.session.as_ref().expect("selected session");
             checkpoints.push(FileCheckpoint::new(
                 (*file.metadata).clone(),
-                FileSession { history: file.staging.history.clone(), id: file.staging.id.clone(), generation: session.generation },
+                FileSession {
+                    history: file.staging.history.clone(),
+                    id: file.staging.id.clone(),
+                    generation: session.generation,
+                },
                 file.length,
                 &file.hash,
             ));
@@ -244,29 +202,23 @@ impl State {
         let receipts = self.receipts.snapshot(through);
         for receipt in &receipts {
             let span = tracing::debug_span!("storage.receipt.checkpoint.queue", mutation = %receipt.mutation.key, window = %receipt.mutation.window);
-            sources.push(CheckpointSource { context: crate::execution::Context::current(), queued: std::sync::Mutex::new(Some(span)) });
+            sources.push(CheckpointSource {
+                context: crate::execution::Context::current(),
+                queued: std::sync::Mutex::new(Some(span)),
+            });
         }
         self.collect();
-        Ok((
-            FileSnapshot {
-                context: crate::execution::Context::current(),
-                frontier: self.status.saved.sequence,
-                sources,
-                checkpoints: crate::StorageBatch::new(checkpoints),
-                receipts: crate::StorageBatch::new(receipts),
-            },
-            bytes,
-        ))
+        Ok(Some(FileSnapshot {
+            context: crate::execution::Context::current(),
+            frontier: self.status.saved.sequence,
+            sources,
+            checkpoints: crate::StorageBatch::new(checkpoints),
+            receipts: crate::StorageBatch::new(receipts),
+        }))
     }
 }
 
 impl FileSnapshot {
-    fn retained(mut self, memory: crate::arrow::RetainedMemory) -> Self {
-        self.checkpoints = self.checkpoints.retain_memory(memory.clone());
-        self.receipts = self.receipts.retain_memory(memory);
-        self
-    }
-
     #[tracing::instrument(name = "storage.staging.checkpoint.persist", level = "debug", skip_all)]
     pub(crate) async fn persist(&self, inner: &Arc<super::super::manager::Inner>) -> Result<()> {
         let context = self.context.clone();
@@ -293,20 +245,16 @@ impl FileSnapshot {
             }
 
             let result = async {
-            for index in 0..self.checkpoints.len() {
-                let checkpoint = &self.checkpoints.as_slice()[index];
-                inner
-                .bounded("primary.save_production", inner.primary.save_production(self.checkpoints.slice(index..index + 1)))
-                .await
-                .inspect_err(|_error| {
-                    tracing::error!(file = %checkpoint.session.id, generation = checkpoint.session.generation, offset = checkpoint.length, reason = "file checkpoint failed", "storage save failed");
-                })?;
+                if !self.checkpoints.is_empty() {
+                    inner.bounded("primary.save_production", inner.primary.save_production(self.checkpoints.clone())).await?;
+                }
+                if !self.receipts.is_empty() {
+                    inner.bounded("primary.save_mutations", inner.primary.save_mutations(self.receipts.clone())).await?;
+                    inner.state.lock().unwrap().receipts.saved(self.receipts.as_slice());
+                }
+                Ok(())
             }
-            if !self.receipts.is_empty() {
-                inner.bounded("primary.save_mutations", inner.primary.save_mutations(self.receipts.clone())).await?;
-            }
-            Ok(())
-            }.await;
+            .await;
             let outcome = if result.is_ok() { "completed" } else { "failed" };
             for contribution in &contributions {
                 contribution.sync(|| {

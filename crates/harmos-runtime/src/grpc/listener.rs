@@ -114,7 +114,13 @@ pub(super) trait Host: Send + Sync {
 
 impl Resources {
     pub(super) fn new(settings: Settings, routes: tonic::service::Routes, middleware: Vec<Arc<dyn Middleware>>) -> Self {
-        Self { settings, routes, middleware: middleware.into(), stopping: watch::channel(false).0, address: Mutex::new(None) }
+        Self {
+            settings,
+            routes,
+            middleware: middleware.into(),
+            stopping: watch::channel(false).0,
+            address: Mutex::new(None),
+        }
     }
 }
 
@@ -185,11 +191,21 @@ impl<A: Application> Host for Owner<A> {
             self.operations.register_service::<A, _, _, _>(
                 ServiceDefinition {
                     id: service.clone(),
-                    policy: crate::ServicePolicy { stop_timeout: resources.settings.shutdown_timeout, restart: RestartPolicy::Never },
+                    policy: crate::ServicePolicy {
+                        stop_timeout: resources.settings.shutdown_timeout,
+                        restart: RestartPolicy::Never,
+                    },
                 },
                 |resources: Arc<Resources>| Listener { resources, task: None },
             )?;
-            self.current().insert(generation, Current { service: service.clone(), resources: resources.clone(), lease: None });
+            self.current().insert(
+                generation,
+                Current {
+                    service: service.clone(),
+                    resources: resources.clone(),
+                    lease: None,
+                },
+            );
             let mut starting = Starting { owner: self, generation, ready: false };
             if self.closing.load(Ordering::Acquire) {
                 self.retire(generation).await?;
@@ -424,7 +440,10 @@ impl AsyncWrite for Connection {
 /* === Private Functions === */
 
 fn failure(source: impl std::error::Error + Send + Sync + 'static) -> Error {
-    Error::TaskFailed { domain: "gRPC listener", source: Arc::new(source) }
+    Error::TaskFailed {
+        domain: "gRPC listener",
+        source: Arc::new(source),
+    }
 }
 
 /* === Tests === */

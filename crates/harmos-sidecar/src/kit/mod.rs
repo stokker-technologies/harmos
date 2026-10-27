@@ -32,7 +32,7 @@ pub mod __private {
 
 /* === Re-Exports === */
 
-pub use harmos_sdk::{Dependencies, Operation, OperationContext, RegistrationBatch, Service};
+pub use harmos_sdk::{Dependencies, ExecutionContext, Operation, RegistrationBatch, Service};
 
 pub use catalog::{CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT};
 pub use host::{CallError, PublicationError, Supervisor};
@@ -352,7 +352,12 @@ async fn dispatch_requests(
             }
             request = requests.recv() => request,
         };
-        let Some(Incoming { frame: request, mut cancelled, consumption }) = request else {
+        let Some(Incoming {
+            frame: request,
+            mut cancelled,
+            consumption,
+        }) = request
+        else {
             break;
         };
         let id = match &request {
@@ -491,7 +496,10 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
         };
         if let Some(serving) = &opening.serving {
             if serving.owner != owner {
-                return Answered::Frame(Frame::Refusal { id, refusal: Refusal::of("carrier owner assignment cannot change") });
+                return Answered::Frame(Frame::Refusal {
+                    id,
+                    refusal: Refusal::of("carrier owner assignment cannot change"),
+                });
             }
         } else {
             match (opening.prepare)(&owner) {
@@ -501,18 +509,27 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
         }
         return match serde_json::to_vec(&opening.catalog) {
             Ok(result) => Answered::Frame(Frame::Answer { id, result: result.into() }),
-            Err(error) => Answered::Frame(Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) }),
+            Err(error) => Answered::Frame(Frame::Refusal {
+                id,
+                refusal: Refusal::new(UNREADABLE, error.to_string()),
+            }),
         };
     }
     if method == crate::operations::WIRE_METHOD {
         let command = match crate::operations::WireCommand::decode(&params) {
             Ok(command) => command,
             Err(error) => {
-                return Answered::Frame(Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) });
+                return Answered::Frame(Frame::Refusal {
+                    id,
+                    refusal: Refusal::new(UNREADABLE, error.to_string()),
+                });
             }
         };
         let Some(serving) = &opening.serving else {
-            return Answered::Frame(Frame::Refusal { id, refusal: Refusal::of("carrier owner has not been assigned") });
+            return Answered::Frame(Frame::Refusal {
+                id,
+                refusal: Refusal::of("carrier owner has not been assigned"),
+            });
         };
         let table = &serving.operations;
         let operation_host = match &command {
@@ -524,21 +541,28 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
         let operation_host = match operation_host {
             Ok(operation_host) => operation_host,
             Err(error) => {
-                return Answered::Frame(Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) });
+                return Answered::Frame(Frame::Refusal {
+                    id,
+                    refusal: Refusal::new(UNREADABLE, error.to_string()),
+                });
             }
         };
         let phase = match table.lock() {
             Ok(mut table) => {
                 let call = operation_host.context().clone();
                 let mut dependencies = crate::Dependencies::new();
-                if let Err(error) = dependencies.insert(Arc::new(operation_host)) {
+                let caller = Arc::new(harmos_sdk::operations::Calls(Arc::new(operation_host.clone())));
+                if let Err(error) = dependencies.insert(caller).and_then(|()| dependencies.insert(Arc::new(operation_host))) {
                     return Answered::Frame(Frame::Refusal { id, refusal: Refusal::of(error) });
                 }
-                let context = crate::OperationContext::new(dependencies, call);
+                let context = crate::ExecutionContext::new(dependencies, call);
                 table.begin(command, Arc::new(context))
             }
             Err(error) => {
-                return Answered::Frame(Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) });
+                return Answered::Frame(Frame::Refusal {
+                    id,
+                    refusal: Refusal::new(UNREADABLE, error.to_string()),
+                });
             }
         };
         return Answered::Deferred(Box::pin(async move {
@@ -556,7 +580,10 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
             match answer.encode() {
                 Ok(result) => Frame::Answer { id, result: result.into() },
                 Err(harmos_sdk::operations::WireCodecError::Oversized) => oversized_reply(id),
-                Err(error) => Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) },
+                Err(error) => Frame::Refusal {
+                    id,
+                    refusal: Refusal::new(UNREADABLE, error.to_string()),
+                },
             }
         }));
     }

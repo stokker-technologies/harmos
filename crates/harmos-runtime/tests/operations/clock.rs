@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 // Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::Runtime;
-use harmos_runtime::operations::{Operation, RetryPolicy};
+use harmos_runtime::operations::RetryPolicy;
 
 /* === Constants === */
 
@@ -34,23 +34,15 @@ use harmos_runtime::operations::{Operation, RetryPolicy};
 
 /* === Structs === */
 
-struct Measure;
-
-#[harmos_runtime::operation(request = MeasureContract, infer_request,
-    response = Measured,
-    id = "clock_measure",
-
+#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], response = Measured,
+    id = "clock.measure",
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(600),
         attempt_timeout: Duration::from_secs(600),
         retries: RetryPolicy::Never,
     },
 )]
-struct MeasureContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct MeasureContract {
+struct MeasureContractDeclaration {
     wait_nanos: u64,
 }
 
@@ -65,35 +57,28 @@ struct Measured {
 
 #[harmos_runtime::catalog]
 enum Operations {
-    MeasureContract(MeasureContractDeclaration),
+    MeasureContractDeclaration(MeasureContractDeclaration),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl Operation for Measure {
-    type Request = MeasureContract;
-    type Response = <MeasureContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::operations::Operation for MeasureContractDeclaration {
     type Error = std::convert::Infallible;
-    type Endpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let _resources = context.dependency::<()>().expect("fixture registers its dependency");
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::OperationContext, wait: &mut MeasureContract, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<Measured>, Self::Error> {
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Measured>, Self::Error> {
+        let host = context.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
         let result: ::core::result::Result<Measured, Self::Error> = async move {
             let scope = context.scope();
             let scoped = scope.now();
             let wall = Instant::now();
-            tokio::time::sleep(Duration::from_nanos(wait.wait_nanos)).await;
-            Ok(Measured { scoped_nanos: nanos(scope.now() - scoped), wall_nanos: nanos(wall.elapsed()) })
+            tokio::time::sleep(Duration::from_nanos(self.wait_nanos)).await;
+            Ok(Measured {
+                scoped_nanos: nanos(scope.now() - scoped),
+                wall_nanos: nanos(wall.elapsed()),
+            })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -157,7 +142,7 @@ async fn clock_measures_script() {
                 dependencies.insert(Arc::new(())).unwrap();
                 dependencies
             })
-            .implementation::<MeasureContractDeclaration, Measure>(),
+            .operation::<MeasureContractDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -165,7 +150,7 @@ async fn clock_measures_script() {
     let scripted = Duration::from_secs(300);
 
     let answer = runtime
-        .operation(MeasureContract { wait_nanos: nanos(scripted) })
+        .operation(MeasureContractDeclaration { wait_nanos: nanos(scripted) })
         .start()
         .await
         .unwrap()
@@ -178,7 +163,7 @@ async fn clock_measures_script() {
     // Deterministic, not merely virtual: the same script measures the same
     // duration every time it is run.
     let again = runtime
-        .operation(MeasureContract { wait_nanos: nanos(scripted) })
+        .operation(MeasureContractDeclaration { wait_nanos: nanos(scripted) })
         .start()
         .await
         .unwrap()

@@ -63,7 +63,10 @@ impl Nominal {
         // Configure And Start A Real Temporary Journal.
         let directory = tempfile::tempdir().unwrap();
         let data = JsonStorage::new(
-            JsonStorageSettings { root: directory.path().to_path_buf(), max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() },
+            JsonStorageSettings {
+                root: directory.path().to_path_buf(),
+                max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+            },
             history(),
         );
         let storage: StorageManager = StorageManager::new(data.into_backends(state_settings()), storage_settings()).unwrap();
@@ -79,15 +82,34 @@ impl Nominal {
             storage.write_stream((batch).to_vec()).await.unwrap();
         }
         let durable = storage.flush().await.unwrap();
-        Self { _directory: directory, storage, schema, samples, durable }
+        Self {
+            _directory: directory,
+            storage,
+            schema,
+            samples,
+            durable,
+        }
     }
 
     fn query(&self, selection: StreamSelection, transforms: Vec<Transform>) -> Query {
-        Query { at: self.durable.clone(), source: Source::Stream(selection), transforms, slice: RowSlice::default() }
+        Query {
+            at: self.durable.clone(),
+            source: Source::Stream(selection),
+            transforms,
+            slice: RowSlice::default(),
+        }
     }
 
     fn all(&self, after: u64) -> StreamSelection {
-        StreamSelection { schema: self.schema.clone(), scope: None, item: None, stream: None, source_start: None, source_end: None, after }
+        StreamSelection {
+            schema: self.schema.clone(),
+            scope: None,
+            item: None,
+            stream: None,
+            source_start: None,
+            source_end: None,
+            after,
+        }
     }
 
     // One Half-Open Period Of The Experiment Scope.
@@ -111,7 +133,13 @@ impl Nominal {
 
 fn project(fields: &[(&str, &str)]) -> Transform {
     Transform::Project(Project {
-        fields: fields.iter().map(|(field, name)| Projection { field: (*field).into(), name: (*name).into() }).collect(),
+        fields: fields
+            .iter()
+            .map(|(field, name)| Projection {
+                field: (*field).into(),
+                name: (*name).into(),
+            })
+            .collect(),
     })
 }
 
@@ -146,7 +174,10 @@ async fn positions(storage: &StorageManager, query: Query) -> Vec<(u64, u64)> {
 
 async fn read_range(storage: &StorageManager, file: &FileReference, range: ByteRange) -> Vec<u8> {
     let mut reader = storage
-        .read_file(FileRead { source: harmos_domain::model::storage::files::FileSource::Stored(file.clone()), range })
+        .read_file(FileRead {
+            source: harmos_domain::model::storage::files::FileSource::Stored(file.clone()),
+            range,
+        })
         .await
         .unwrap();
     let mut bytes = Vec::new();
@@ -179,7 +210,11 @@ async fn stream_values_roundtrip() {
         let ordinal = column::<arrow_array::UInt64Array>(&batch, "ordinal");
         let value = column::<arrow_array::Float64Array>(&batch, "value");
         for row in 0..batch.num_rows() {
-            received.push(Sample { phase: phase.value(row), ordinal: ordinal.value(row), value: value.value(row) });
+            received.push(Sample {
+                phase: phase.value(row),
+                ordinal: ordinal.value(row),
+                value: value.value(row),
+            });
         }
     }
     assert_eq!(received, n.samples);
@@ -212,8 +247,15 @@ async fn period_aggregates_rms() {
     // One Half-Open Period Aggregates Every Selected Sample Per Phase.
     let n = Nominal::new().await;
     let aggregate = Transform::Aggregate(Aggregate {
-        groups: vec![Projection { field: "payload.phase".into(), name: "phase".into() }],
-        measures: vec![Measure { field: "payload.value".into(), statistic: harmos_domain::Aggregate::Rms, name: "rms".into() }],
+        groups: vec![Projection {
+            field: "payload.phase".into(),
+            name: "phase".into(),
+        }],
+        measures: vec![Measure {
+            field: "payload.value".into(),
+            statistic: harmos_domain::Aggregate::Rms,
+            name: "rms".into(),
+        }],
     });
     let mut phases = 0;
     for batch in batches(&n.storage, n.query(n.period(), vec![aggregate])).await {
@@ -230,7 +272,10 @@ async fn period_aggregates_rms() {
 async fn histogram_counts_inputs() {
     // Histograms Count Every Selected Input Into Closed-Ended Bins.
     let n = Nominal::new().await;
-    let histogram = Transform::Histogram(Histogram { field: "payload.value".into(), edges: vec![-12.0, -6.0, 0.0, 6.0, 12.0] });
+    let histogram = Transform::Histogram(Histogram {
+        field: "payload.value".into(),
+        edges: vec![-12.0, -6.0, 0.0, 6.0, 12.0],
+    });
     let mut counts = Vec::new();
     for batch in batches(&n.storage, n.query(n.period(), vec![histogram])).await {
         counts.extend_from_slice(column::<arrow_array::UInt64Array>(&batch, "count").values());
@@ -259,8 +304,12 @@ async fn histogram_counts_inputs() {
 async fn downsample_bounds_rows() {
     // Display Downsampling Delivers A Bounded, Non-Empty Plan.
     let n = Nominal::new().await;
-    let downsample =
-        Transform::Downsample(Downsample { max_rows: 32, algorithm: Algorithm::Extrema, axis: None, value: Some("payload.value".into()) });
+    let downsample = Transform::Downsample(Downsample {
+        max_rows: 32,
+        algorithm: Algorithm::Extrema,
+        axis: None,
+        value: Some("payload.value".into()),
+    });
     let displayed: usize = batches(&n.storage, n.query(n.period(), vec![downsample])).await.iter().map(|batch| batch.num_rows()).sum();
     assert!(displayed > 0 && displayed <= 32);
     n.finish().await;
@@ -300,4 +349,42 @@ async fn file_ranges_read() {
         assert!(beyond.is_err());
     }
     n.finish().await;
+}
+
+#[tokio::test]
+async fn native_stream_reads_preserve_snapshot_and_cursor() {
+    let fixture = Nominal::new().await;
+    let expected = positions(
+        &fixture.storage,
+        fixture.query(fixture.period(), vec![project(&[("_storage.position", "position"), ("payload.ordinal", "ordinal")])]),
+    )
+    .await;
+    let mut reader = fixture
+        .storage
+        .read_stream(StreamRead {
+            at: fixture.durable.clone(),
+            selection: fixture.period(),
+        })
+        .await
+        .unwrap();
+    let mut actual = Vec::new();
+    while let Some(page) = reader.next().await.unwrap() {
+        assert!(page.len() <= storage_settings().response.batch_rows.get());
+        for row in page.iter() {
+            assert_eq!(row.record.schema, fixture.schema);
+            actual.push((row.record.position.sequence, row.sequence));
+        }
+    }
+    assert_eq!(actual, expected);
+    assert!(reader.next().await.unwrap().is_none());
+    let after = actual[actual.len() / 2].0;
+    let mut selection = fixture.period();
+    selection.after = after;
+    let mut reader = fixture.storage.read_stream(StreamRead { at: fixture.durable.clone(), selection }).await.unwrap();
+    let mut resumed = Vec::new();
+    while let Some(page) = reader.next().await.unwrap() {
+        resumed.extend(page.iter().map(|row| (row.record.position.sequence, row.sequence)));
+    }
+    assert_eq!(resumed, actual.into_iter().filter(|row| row.0 > after).collect::<Vec<_>>());
+    fixture.finish().await;
 }

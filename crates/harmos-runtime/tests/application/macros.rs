@@ -201,16 +201,12 @@ mod unified_plugins {
     use harmos_runtime::__private::{PluginDeclared, PluginInventory};
     use harmos_runtime::operations::{Contracts, OperationPolicy, RetryPolicy, ServingError, WireTable};
 
-    #[harmos_runtime::operation(request = Echo, infer_request, id = "fixture_unified_echo",  response = (), policy = POLICY)]
-    struct EchoDeclaration;
-
-    #[harmos_runtime::message]
-
+    #[harmos_runtime::operation(id = "fixture.unified.echo",  response = (), policy = POLICY)]
     struct Echo {}
 
     #[harmos_runtime::catalog]
     enum Leaves {
-        Echo(EchoDeclaration),
+        Echo(Echo),
     }
     #[harmos_runtime::catalog]
     enum Selected {
@@ -369,13 +365,13 @@ mod unified_plugins {
         assert_eq!(
             required[1].grants,
             [
-                harmos_domain::plugin::Grant::of("host_operations_status", "reading"),
-                harmos_domain::plugin::Grant::of("host_operations_status", "power"),
+                harmos_domain::plugin::Grant::of("host.operations.status", "reading"),
+                harmos_domain::plugin::Grant::of("host.operations.status", "power"),
             ]
         );
         // A grant names the operation it permits and, for a scoped
         // operation, the stream; the retired kinded shape is refused.
-        assert_eq!(serde_json::to_string(&required[1].grants[0]).unwrap(), r#"{"operation":"host_operations_status","scope":"reading"}"#);
+        assert_eq!(serde_json::to_string(&required[1].grants[0]).unwrap(), r#"{"operation":"host.operations.status","scope":"reading"}"#);
         assert!(serde_json::from_str::<harmos_domain::plugin::Grant>(r#"{"survey":"reading"}"#).is_err());
         assert_eq!(declaration.config, "SdkInitialization");
         let provides = Contracts::of::<ObserverOperations>().unwrap();
@@ -520,7 +516,7 @@ mod unified_plugins {
     impl harmos_runtime::Plugin for Guest {
         type Config = ();
         type Error = Infallible;
-        type Context = harmos_runtime::guest::Context;
+        type Context = harmos_runtime::guest::kit::Context;
         type Resources = ();
         fn resources(&self) -> std::sync::Arc<()> {
             std::sync::Arc::new(())
@@ -655,7 +651,7 @@ mod unified_plugins {
     impl harmos_runtime::Plugin for ListeningGuest {
         type Config = ();
         type Error = Infallible;
-        type Context = harmos_runtime::guest::Context;
+        type Context = harmos_runtime::guest::kit::Context;
         type Resources = ();
         fn resources(&self) -> std::sync::Arc<()> {
             std::sync::Arc::new(())
@@ -930,7 +926,10 @@ fn definitions_of<A: harmos_runtime::Application>(catalog: impl Registration<A>)
 async fn studio() -> Runtime<Studio> {
     // A sheet that already has a name, so undoing back to it is a change the
     // application's own `check` accepts.
-    let origin = Sheet { title: "origin".to_owned(), applications: 0 };
+    let origin = Sheet {
+        title: "origin".to_owned(),
+        applications: 0,
+    };
 
     Runtime::<Studio>::builder(origin, ())
         .register(Change::catalog())

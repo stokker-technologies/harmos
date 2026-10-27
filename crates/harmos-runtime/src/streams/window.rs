@@ -393,7 +393,12 @@ impl Window {
                 .ok_or(super::ReadError::Limit("pinned bytes"))?;
             rows.push_back((*position, Arc::clone(row)));
         }
-        Ok(Box::new(Frozen { cut: super::ReadCut::Window { delivered: crate::storage::Cursor(ring.last) }, rows: rows.into_iter() }))
+        Ok(Box::new(Frozen {
+            cut: super::ReadCut::Window {
+                delivered: crate::storage::Cursor(ring.last),
+            },
+            rows: rows.into_iter(),
+        }))
     }
 
     pub(crate) fn since(&self, frontier: u64) -> Advanced {
@@ -402,7 +407,11 @@ impl Window {
         let rows: Vec<_> =
             ring.rows.iter().filter(|(_, sequence, ..)| *sequence > frontier).map(|(_, _, stamp, row)| (*stamp, Arc::clone(row))).collect();
         let missed = ring.next.saturating_sub(frontier).saturating_sub(rows.len() as u64);
-        Advanced { missed, rows, frontier: ring.next.max(frontier) }
+        Advanced {
+            missed,
+            rows,
+            frontier: ring.next.max(frontier),
+        }
     }
 
     pub(super) fn latest_locked(&self) -> u64 {
@@ -444,7 +453,14 @@ impl Window {
             if selected.len() == limit {
                 selected.pop();
             }
-            selected.insert(index, ListenerCandidate { cursor: *cursor, sequence: *sequence, source });
+            selected.insert(
+                index,
+                ListenerCandidate {
+                    cursor: *cursor,
+                    sequence: *sequence,
+                    source,
+                },
+            );
         }
     }
 

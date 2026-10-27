@@ -141,7 +141,10 @@ impl Default for ReadLimits {
 
 impl Default for PageLimits {
     fn default() -> Self {
-        Self { max_rows: 256, max_encoded_bytes: 256 * 1024 }
+        Self {
+            max_rows: 256,
+            max_encoded_bytes: 256 * 1024,
+        }
     }
 }
 
@@ -155,7 +158,15 @@ impl<S: serde::Serialize + Send + Sync + 'static> RowReader<S> {
             return Err(ReadError::Limit("positive page limits"));
         }
         let Some(mut owned) = self.owned.take() else {
-            return if self.done { Ok(RowPage { rows: Vec::new(), encoded_bytes: 0, complete: true }) } else { Err(ReadError::Closed) };
+            return if self.done {
+                Ok(RowPage {
+                    rows: Vec::new(),
+                    encoded_bytes: 0,
+                    complete: true,
+                })
+            } else {
+                Err(ReadError::Closed)
+            };
         };
         let partition = self.partition.take();
         let mut pending = self.pending.take();
@@ -170,7 +181,11 @@ impl<S: serde::Serialize + Send + Sync + 'static> RowReader<S> {
         let cancelled = Arc::new(AtomicBool::new(false));
         let _cancel = Cancel(cancelled.clone());
         let result = tokio::task::spawn_blocking(move || {
-            let mut page = RowPage { rows: Vec::new(), encoded_bytes: 0usize, complete: false };
+            let mut page = RowPage {
+                rows: Vec::new(),
+                encoded_bytes: 0usize,
+                complete: false,
+            };
             loop {
                 if cancelled.load(Ordering::Acquire) {
                     return Err(ReadError::Closed);
@@ -197,7 +212,10 @@ impl<S: serde::Serialize + Send + Sync + 'static> RowReader<S> {
                             row.value
                         };
                         let value = row_value.downcast::<S>().map_err(|_| ReadError::Unreadable("source row type mismatch".into()))?;
-                        break Some(Ready { row: At { value, position: row.position }, encoded_bytes });
+                        break Some(Ready {
+                            row: At { value, position: row.position },
+                            encoded_bytes,
+                        });
                     },
                 };
                 let Some(ready) = next else {

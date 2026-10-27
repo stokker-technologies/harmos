@@ -27,10 +27,8 @@ use std::path::Path;
 use std::sync::Arc;
 // Third Party Imports
 // Local Imports
-use crate::arrow::RetainedMemory;
-use crate::capacity::{Held, Pool, Refusal, Reservation};
-use crate::manager::{ENTRY_OVERHEAD, Inner};
-use crate::{Error, MemorySize, Message, ReadBatch, Result, StorageManager};
+use crate::manager::Inner;
+use crate::{Error, Message, ReadBatch, Result, StorageManager};
 use harmos_domain::model::storage::{DirectoryCompletion, DirectoryEntry, DirectoryEvent, DirectorySelection};
 
 /* === Constants === */
@@ -43,7 +41,6 @@ use harmos_domain::model::storage::{DirectoryCompletion, DirectoryEntry, Directo
 
 struct Selection {
     value: DirectorySelection,
-    _memory: RetainedMemory,
 }
 
 /* === Enums === */
@@ -70,30 +67,20 @@ impl<C> StorageManager<C> {
 
 /* === Private Functions === */
 
-fn item<T: MemorySize + Message>(inner: &Arc<Inner>, held: &Held, value: T) -> Result<ReadBatch<T>> {
-    retained_item(inner, value, Reservation::empty(inner, Pool::Read, held))
-}
-
-fn retained_item<T: MemorySize + Message>(inner: &Arc<Inner>, value: T, mut memory: Reservation) -> Result<ReadBatch<T>> {
+fn item<T: Message>(inner: &Arc<Inner>, value: T) -> Result<ReadBatch<T>> {
     if value.encoded_size() > inner.settings.response.batch_bytes.get() {
         return Err(Error::ResourceExhausted { resource: "directory response bytes" });
     }
-    let bytes = value.memory_size().saturating_add(ENTRY_OVERHEAD);
-    if bytes > memory.bytes() {
-        memory.try_grow(bytes - memory.bytes()).map_err(Refusal::into_error)?;
-    }
-    memory.shrink_to(bytes);
-    Ok(ReadBatch::new(value, memory))
+    Ok(ReadBatch::new(value))
 }
 
-async fn selection(inner: &Arc<Inner>, mut value: DirectorySelection, held: &Held) -> Result<Arc<Selection>> {
+async fn selection(mut value: DirectorySelection) -> Result<Arc<Selection>> {
     let path = value.root.clone();
     let context = crate::execution::Context::current();
     value.root =
         tokio::task::spawn_blocking(move || context.blocking(|| crate::local::validate_local_path(&path))).await.map_err(join_error)??;
-    let bytes = value.memory_size().saturating_add(ENTRY_OVERHEAD);
-    let memory = Reservation::try_new(inner, Pool::Read, held, bytes).map(Reservation::retain).map_err(Refusal::into_error)?;
-    Ok(Arc::new(Selection { value, _memory: memory }))
+
+    Ok(Arc::new(Selection { value }))
 }
 
 fn relative(root: &Path, path: &Path, recursive: bool) -> Result<Option<String>> {
@@ -104,8 +91,10 @@ fn relative(root: &Path, path: &Path, recursive: bool) -> Result<Option<String>>
     let mut result = String::new();
     for component in relative.components() {
         let std::path::Component::Normal(value) = component else { return Ok(None) };
-        let value =
-            value.to_str().ok_or(Error::InvalidInput { field: "directory entry", reason: "path cannot be represented as UTF-8" })?;
+        let value = value.to_str().ok_or(Error::InvalidInput {
+            field: "directory entry",
+            reason: "path cannot be represented as UTF-8",
+        })?;
         if !result.is_empty() {
             result.push('/');
         }

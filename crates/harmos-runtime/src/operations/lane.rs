@@ -115,7 +115,11 @@ impl Lanes {
     pub(crate) fn freeze(declared: LaneSet) -> Result<Self, String> {
         let mut lanes = BTreeMap::from([(
             RESIDENT,
-            Admission { name: RESIDENT, width: usize::MAX, semaphore: Arc::new(Semaphore::new(Semaphore::MAX_PERMITS)) },
+            Admission {
+                name: RESIDENT,
+                width: usize::MAX,
+                semaphore: Arc::new(Semaphore::new(Semaphore::MAX_PERMITS)),
+            },
         )]);
 
         for (name, capacity) in declared.entries() {

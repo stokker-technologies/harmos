@@ -64,14 +64,32 @@ pub fn run(criterion: &mut Criterion, _: &tokio::runtime::Runtime) {
             (
                 "rms",
                 Transform::Aggregate(Aggregate {
-                    groups: vec![Projection { field: "phase".into(), name: "phase".into() }],
-                    measures: vec![Measure { field: "value".into(), statistic: harmos_runtime::Aggregate::Rms, name: "rms".into() }],
+                    groups: vec![Projection {
+                        field: "phase".into(),
+                        name: "phase".into(),
+                    }],
+                    measures: vec![Measure {
+                        field: "value".into(),
+                        statistic: harmos_runtime::Aggregate::Rms,
+                        name: "rms".into(),
+                    }],
                 }),
             ),
-            ("histogram", Transform::Histogram(Histogram { field: "value".into(), edges: vec![-12.0, -6.0, 0.0, 6.0, 12.0] })),
+            (
+                "histogram",
+                Transform::Histogram(Histogram {
+                    field: "value".into(),
+                    edges: vec![-12.0, -6.0, 0.0, 6.0, 12.0],
+                }),
+            ),
             (
                 "downsample",
-                Transform::Downsample(Downsample { max_rows: 128, algorithm: Algorithm::Extrema, axis: None, value: Some("value".into()) }),
+                Transform::Downsample(Downsample {
+                    max_rows: 128,
+                    algorithm: Algorithm::Extrema,
+                    axis: None,
+                    value: Some("value".into()),
+                }),
             ),
         ];
         group.throughput(Throughput::Elements(samples.len() as u64));

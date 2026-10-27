@@ -89,8 +89,12 @@ impl<A: Application> PluginHost<A> {
             .map_err(|source| failed(loaded.declaration().id.as_str(), source))?;
         definition.requires = settings.requires.clone();
         let declarations = Declarations::of::<C>().map_err(|source| failed(&definition.id, source))?;
-        harmos_domain::inventory::operations::validate_match(&declarations, &definition.contributions.operations)
-            .map_err(|_| Error::InvalidInput { field: "guest operation catalog", reason: "catalog must match the inspected component" })?;
+        harmos_domain::inventory::operations::validate_match(&declarations, &definition.contributions.operations).map_err(|_| {
+            Error::InvalidInput {
+                field: "guest operation catalog",
+                reason: "catalog must match the inspected component",
+            }
+        })?;
         let grants = settings.host_operations.iter().cloned().collect();
         let operations = self.shared.operations.clone();
         let initialization_timeout = settings.initialization_timeout;
@@ -156,9 +160,9 @@ where
                 self.initialized = true;
                 Ok(())
             };
-            crate::supervision::executor::timeout(timeout, starting)
-                .await
-                .map_err(|_| Error::NotReady { domain: "guest plugin initialization timeout" })?
+            crate::supervision::executor::timeout(timeout, starting).await.map_err(|_| Error::NotReady {
+                domain: "guest plugin initialization timeout",
+            })?
         })
     }
 
@@ -217,7 +221,10 @@ where
 /* === Private Functions === */
 
 fn failed(id: &str, source: impl std::error::Error + Send + Sync + 'static) -> Error {
-    Error::OperationFailed { operation: id.to_owned(), source: Arc::new(source) }
+    Error::OperationFailed {
+        operation: id.to_owned(),
+        source: Arc::new(source),
+    }
 }
 
 /* === Tests === */

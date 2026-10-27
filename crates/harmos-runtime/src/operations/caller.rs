@@ -46,7 +46,7 @@ use crate::operations::OperationDeclaration;
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 #[derive(Clone)]
 pub struct Caller {
-    pub(super) operations: Manager,
+    pub(crate) operations: Manager,
     pub(super) source: PluginCaller,
 }
 
@@ -131,7 +131,10 @@ pub(super) enum Identity {
 impl Manager {
     pub fn caller(&self, source: &PluginCaller) -> Result<Caller> {
         Source::Plugin(source.clone()).check()?;
-        Ok(Caller { operations: self.clone(), source: source.clone() })
+        Ok(Caller {
+            operations: self.clone(),
+            source: source.clone(),
+        })
     }
 }
 
@@ -151,7 +154,10 @@ impl Caller {
 
     #[cfg(feature = "grpc")]
     pub(crate) fn with_context(&self, context: super::CallContext) -> Self {
-        Self { operations: self.operations.with_context(context), source: self.source.clone() }
+        Self {
+            operations: self.operations.with_context(context),
+            source: self.source.clone(),
+        }
     }
 
     pub fn generation(&self) -> PluginGeneration {
@@ -188,7 +194,10 @@ impl Caller {
 impl Source {
     #[cfg(feature = "grpc")]
     pub(super) fn external(self) -> Result<Self> {
-        Ok(Self::External { source: Box::new(self), id: super::handler::fresh_instance()? })
+        Ok(Self::External {
+            source: Box::new(self),
+            id: super::handler::fresh_instance()?,
+        })
     }
 
     pub(super) fn check(&self) -> Result<Origin> {
@@ -227,9 +236,10 @@ impl Source {
         };
         Ok(Origin {
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-            identity: scope
-                .as_ref()
-                .map_or(Identity::Host, |scope| Identity::Plugin { owner: scope.owner_identity(), generation: scope.generation() }),
+            identity: scope.as_ref().map_or(Identity::Host, |scope| Identity::Plugin {
+                owner: scope.owner_identity(),
+                generation: scope.generation(),
+            }),
             #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
             identity: Identity::Host,
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
@@ -258,7 +268,10 @@ impl Source {
     ) -> Self {
         #[cfg(feature = "grpc")]
         if let Self::External { source, id } = self {
-            return Self::External { source: Box::new(source.for_attempt(entry, _scope, _origin)), id: *id };
+            return Self::External {
+                source: Box::new(source.for_attempt(entry, _scope, _origin)),
+                id: *id,
+            };
         }
         // A Host Provider Serving A Plugin Requirement Acts For That Caller
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]

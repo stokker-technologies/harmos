@@ -70,7 +70,10 @@ impl Application for SchematicEditor {
 /* === Public Functions === */
 
 pub fn builder(origin: impl Into<Origin>, resources: ()) -> Builder<SchematicEditor> {
-    let settings = harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()), ..Default::default() };
+    let settings = harmos::operations::Settings {
+        preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()),
+        ..Default::default()
+    };
     harmos::Runtime::builder(origin, resources)
         .register(Transactions::catalog())
         .register(Records::catalog())

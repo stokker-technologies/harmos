@@ -45,8 +45,14 @@ use harmos_storage::{query::RecordSelection, *};
 /* === Private Functions === */
 
 fn backend(root: &Path) -> JsonStorage {
-    let history = StoreHistory { store: Identifier::new("json-test").unwrap(), epoch: Identifier::new("first").unwrap() };
-    let settings = JsonStorageSettings { root: root.to_owned(), max_entry_bytes: NonZeroUsize::new(4096).unwrap() };
+    let history = StoreHistory {
+        store: Identifier::new("json-test").unwrap(),
+        epoch: Identifier::new("first").unwrap(),
+    };
+    let settings = JsonStorageSettings {
+        root: root.to_owned(),
+        max_entry_bytes: NonZeroUsize::new(4096).unwrap(),
+    };
     JsonStorage::new(settings, history)
 }
 
@@ -91,13 +97,22 @@ async fn typed_replay() {
 
     let reopened = backend(directory.path());
     assert_eq!(reopened.open().await.unwrap(), first.position);
-    let memory = crate::manager::memory::read().await;
-    let snapshot = reopened.open_snapshot(&first.position, memory.clone()).await.unwrap();
-    let selection = RecordSelection { schema: first.schema.clone(), scope: None, item: None, source_start: None, source_end: None };
-    let page = ScanPage { after: 0, rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(4096).unwrap() };
-    assert_eq!(reopened.read_records(&snapshot, &selection, page, memory.clone()).await.unwrap(), vec![first]);
+    let snapshot = reopened.open_snapshot(&first.position).await.unwrap();
+    let selection = RecordSelection {
+        schema: first.schema.clone(),
+        scope: None,
+        item: None,
+        source_start: None,
+        source_end: None,
+    };
+    let page = ScanPage {
+        after: 0,
+        rows: NonZeroUsize::new(1).unwrap(),
+        bytes: NonZeroUsize::new(4096).unwrap(),
+    };
+    assert_eq!(reopened.read_records(&snapshot, &selection, page).await.unwrap(), vec![first]);
     reopened.release_snapshot(&snapshot).await.unwrap();
-    assert!(reopened.read_records(&snapshot, &selection, page, memory.clone()).await.is_err());
+    assert!(reopened.read_records(&snapshot, &selection, page).await.is_err());
     reopened.close().await.unwrap();
 }
 
@@ -131,66 +146,4 @@ async fn truncated_commit() {
 
     let reopened = backend(directory.path());
     assert!(reopened.open().await.is_err());
-}
-
-#[tokio::test]
-async fn decode_requires_admission() {
-    use crate::manager::backend::{Data, Recovery, history, storage_settings};
-    use sha2::Digest;
-    use std::sync::Arc;
-    let directory = tempfile::tempdir().unwrap();
-    let storage = backend(directory.path());
-    storage.open().await.unwrap();
-    let mut row = record(storage.history(), 1);
-    row.payload = vec![7; 768];
-    storage.write_records(StorageBatch::new(vec![row.clone()])).await.unwrap();
-    let generous = crate::manager::memory::read().await;
-    let snapshot = storage.open_snapshot(&row.position, generous.clone()).await.unwrap();
-    let selection = RecordSelection { schema: row.schema.clone(), scope: None, item: None, source_start: None, source_end: None };
-    let page = ScanPage { after: 0, rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(4096).unwrap() };
-    let decoded = storage.read_records(&snapshot, &selection, page, generous.clone()).await.unwrap();
-    assert_eq!(decoded, vec![row.clone()]);
-    assert!(decoded.memory_size() <= generous.bytes());
-    drop(decoded);
-
-    // Preserve Framing Integrity While Making Typed Byte Decoding Invalid.
-    let mut value = serde_json::to_value(&row).unwrap();
-    value["payload"] = serde_json::to_value(vec![256_u16; 768]).unwrap();
-    let body = serde_json::to_vec(&value).unwrap();
-    let digest: [u8; 32] = sha2::Sha256::digest(&body).into();
-    let digits = b"0123456789abcdef";
-    let mut checksum = Vec::with_capacity(64);
-    for byte in digest {
-        checksum.push(digits[(byte >> 4) as usize]);
-        checksum.push(digits[(byte & 15) as usize]);
-    }
-    let segment = std::fs::read_dir(directory.path().join("data")).unwrap().next().unwrap().unwrap().path();
-    let original = std::fs::read(&segment).unwrap();
-    let header = original.iter().position(|byte| *byte == b'\n').unwrap() + 1;
-    let mut changed = original[..header].to_vec();
-    changed.extend_from_slice(b"{\"value\":");
-    changed.extend_from_slice(&body);
-    changed.extend_from_slice(b",\"sha256\":\"");
-    changed.extend_from_slice(&checksum);
-    changed.extend_from_slice(b"\"}\n");
-    std::fs::write(segment, changed).unwrap();
-
-    let mut settings = storage_settings();
-    settings.budget.read_memory_bytes = NonZeroUsize::new(16 * 1024).unwrap();
-    settings.response.batch_bytes = NonZeroUsize::new(4096).unwrap();
-    let admission = StorageManager::<()>::new(
-        StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
-        settings,
-    )
-    .unwrap();
-    let limited = admission.read_memory(NonZeroUsize::MIN).await.unwrap();
-    let refused = storage.read_records(&snapshot, &selection, page, limited.clone()).await.unwrap_err();
-    assert!(matches!(refused, Error::ResourceExhausted { .. }));
-    assert!(limited.bytes() <= 16 * 1024);
-
-    let decoded = storage.read_records(&snapshot, &selection, page, generous.clone()).await.unwrap_err();
-    assert!(matches!(decoded, Error::Backend { kind: BackendFailure::Corrupt, source, .. }
-        if source.downcast_ref::<serde_json::Error>().is_some_and(serde_json::Error::is_data)));
-    storage.release_snapshot(&snapshot).await.unwrap();
-    storage.close().await.unwrap();
 }

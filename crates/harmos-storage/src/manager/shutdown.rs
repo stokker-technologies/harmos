@@ -121,7 +121,10 @@ impl<C> StorageManager<C> {
 
     pub(super) fn check_raw_recovery(&self) -> Result<()> {
         if self.inner.state.lock().unwrap().journal_saved.is_some() {
-            return Err(Error::InvalidInput { field: "recovery ownership", reason: "managed journal owns recovery writes" });
+            return Err(Error::InvalidInput {
+                field: "recovery ownership",
+                reason: "managed journal owns recovery writes",
+            });
         }
         Ok(())
     }

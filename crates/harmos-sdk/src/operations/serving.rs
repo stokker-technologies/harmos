@@ -35,7 +35,7 @@ use std::task::{Poll, Waker};
 use serde::{Deserialize, Serialize};
 use tracing::Instrument;
 // Local Imports
-use super::{Contract, ContractError, FailureKind, OperationContext, OperationDefinition, RegistrationBatch};
+use super::{Contract, ContractError, ExecutionContext, FailureKind, OperationDefinition, RegistrationBatch};
 use crate::QualifiedId;
 
 /* === Constants === */
@@ -94,13 +94,14 @@ pub struct WireChildControl {
 
 pub struct WireTable {
     owner: String,
-    handlers: BTreeMap<String, Handler>,
+    handlers: BTreeMap<String, Route>,
     retired: BTreeMap<String, u64>,
     services: BTreeMap<String, super::registration::ServiceFactory>,
     prepared: BTreeMap<u64, Arc<Slot>>,
     capacity: Option<NonZeroUsize>,
     closed: bool,
     ordinary_closed: bool,
+    provided: Vec<std::any::TypeId>,
 
     #[cfg(feature = "streaming")]
     stream_limits: Option<WireStreamLimits>,
@@ -130,7 +131,8 @@ struct Loan {
     finished: bool,
 }
 
-struct Handler {
+struct Route {
+    callees: &'static [super::WireDeclaration],
     lifecycle: bool,
     // Lifecycle actions and the observe control are built in: they serve the
     // plugin's machinery and never appear in its declared catalog.
@@ -224,6 +226,9 @@ pub enum ServingError {
     #[error(transparent)]
     Declaration(#[from] crate::Error),
 
+    #[error("operation `{operation}` declares resource `{resource}` that its registration does not provide")]
+    Resource { operation: String, resource: &'static str },
+
     #[error("operation `{operation}` has no bound carrier handler")]
     Unknown { operation: String },
 
@@ -293,8 +298,8 @@ trait Prepared: Send {
     fn grant(&self) -> Option<crate::plugin::Grant> {
         None
     }
-    fn initialize<'a>(&'a mut self, context: &'a OperationContext) -> Finished<'a>;
-    fn attempt<'a>(&'a mut self, context: &'a OperationContext) -> Answer<'a>;
+    fn bind<'a>(&'a mut self, context: &'a ExecutionContext) -> Finished<'a>;
+    fn attempt<'a>(&'a mut self, context: &'a ExecutionContext) -> Answer<'a>;
     fn finalize(&mut self) -> Finished<'_>;
 }
 
@@ -330,9 +335,19 @@ impl WireTable {
             capacity: None,
             closed: false,
             ordinary_closed: false,
+            provided: Vec::new(),
             #[cfg(feature = "streaming")]
             stream_limits: None,
         })
+    }
+
+    // The Carrier Supplies These Resources To Every Attempt's Execution Context.
+    pub fn provide(&mut self, resource: std::any::TypeId) {
+        self.provided.push(resource);
+    }
+
+    pub fn provided(&self) -> &[std::any::TypeId] {
+        &self.provided
     }
 
     pub fn capacity(&mut self, capacity: NonZeroUsize) {
@@ -352,6 +367,7 @@ impl WireTable {
         }
         let mut staged = Self::new(&self.owner)?;
         staged.capacity = self.capacity;
+        staged.provided.clone_from(&self.provided);
         #[cfg(feature = "streaming")]
         {
             staged.stream_limits = self.stream_limits;
@@ -427,6 +443,33 @@ impl WireTable {
         Ok(())
     }
 
+    pub fn validate_callees(&self, assignments: &[u8]) -> Result<(), ServingError> {
+        let assignments: Vec<super::AssignedOperation> =
+            if assignments.is_empty() { Vec::new() } else { postcard::from_bytes(assignments).map_err(|_| ServingError::Catalog)? };
+        for route in self.handlers.values() {
+            for callee in route.callees {
+                let id = callee.operation.id;
+                let fingerprint = (callee.operation.fingerprint)().map_err(|_| ServingError::Catalog)?;
+                let local = QualifiedId::qualify(&self.owner, id).map_err(|_| ServingError::Catalog)?;
+                let actual = self
+                    .handlers
+                    .get(local.as_str())
+                    .map(|entry| entry.definition.fingerprint.0)
+                    .or_else(|| {
+                        assignments
+                            .iter()
+                            .find(|entry| entry.operation.split_once('.').is_some_and(|(_, name)| name == id))
+                            .map(|entry| entry.fingerprint)
+                    })
+                    .ok_or(ServingError::Unassigned { operation: id })?;
+                if actual != fingerprint.0 {
+                    return Err(ServingError::Identity { operation: id.to_owned() });
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn validate_contracts(&self, contracts: &[Contract]) -> Result<(), ServingError> {
         if contracts.len() != self.handlers.values().filter(|handler| !handler.builtin).count() {
             return Err(ServingError::Catalog);
@@ -493,7 +536,12 @@ impl WireTable {
             resident: handler.resident,
             #[cfg(feature = "streaming")]
             streams: prepared.streams(),
-            state: Mutex::new(SlotState { prepared: Some(prepared), finished: false, cancelled: false, waiters: Vec::new() }),
+            state: Mutex::new(SlotState {
+                prepared: Some(prepared),
+                finished: false,
+                cancelled: false,
+                waiters: Vec::new(),
+            }),
         };
         self.prepared.insert(invocation, Arc::new(slot));
         Ok(answer)
@@ -509,7 +557,7 @@ impl WireTable {
     }
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.initialize", level = "trace", skip_all, fields(invocation))]
-    pub async fn initialize(&mut self, invocation: u64, context: &OperationContext) -> Result<(), ServingError> {
+    pub async fn bind(&mut self, invocation: u64, context: &ExecutionContext) -> Result<(), ServingError> {
         if self.closed {
             return Err(ServingError::Closing);
         }
@@ -517,11 +565,11 @@ impl WireTable {
         if self.ordinary_closed && !slot.lifecycle {
             return Err(ServingError::Closing);
         }
-        slot.initialize(invocation, context).await
+        slot.bind(invocation, context).await
     }
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.attempt", level = "trace", skip_all, fields(invocation))]
-    pub async fn attempt(&mut self, invocation: u64, context: &OperationContext) -> Result<Vec<u8>, ServingError> {
+    pub async fn attempt(&mut self, invocation: u64, context: &ExecutionContext) -> Result<Vec<u8>, ServingError> {
         if self.closed {
             return Err(ServingError::Closing);
         }
@@ -567,7 +615,11 @@ impl WireTable {
                     }
                     WireCommand::StreamFinish { epoch, .. } => wire_answer(streams.finish_input(epoch).map(|()| Vec::new())),
                     WireCommand::StreamReceive { epoch, .. } => match guarded(streams.receive(epoch)).await {
-                        Ok(payload) => WireAnswer::Stream { epoch, transferred: streams.transferred(), payload },
+                        Ok(payload) => WireAnswer::Stream {
+                            epoch,
+                            transferred: streams.transferred(),
+                            payload,
+                        },
                         Err(error) => wire_answer(Err(error)),
                     },
                     _ => unreachable!("only stream traffic bypasses the phase loan"),
@@ -577,7 +629,7 @@ impl WireTable {
     }
 
     pub fn begin(
-        &mut self, command: WireCommand, context: Arc<OperationContext>,
+        &mut self, command: WireCommand, context: Arc<ExecutionContext>,
     ) -> Pin<Box<dyn Future<Output = WireAnswer> + Send + 'static>> {
         let (invocation, phase) = command_identity(&command);
         let span = tracing::debug_span!(target: "harmos::carrier", "carrier.receive", invocation, phase, outcome = tracing::field::Empty);
@@ -595,11 +647,23 @@ impl WireTable {
             }
         };
         let command = match command {
-            WireCommand::PrepareGrpc { invocation, operation, fingerprint, generation, payload } => {
+            WireCommand::PrepareGrpc {
+                invocation,
+                operation,
+                fingerprint,
+                generation,
+                payload,
+            } => {
                 let result = span.in_scope(|| self.prepare_codec(invocation, &operation, fingerprint, generation, payload, true));
                 return Box::pin(async move { wire_answer(result) }.instrument(span).in_current_context());
             }
-            WireCommand::Prepare { invocation, operation, fingerprint, generation, payload } => {
+            WireCommand::Prepare {
+                invocation,
+                operation,
+                fingerprint,
+                generation,
+                payload,
+            } => {
                 let result = span.in_scope(|| self.prepare(invocation, &operation, fingerprint, generation, payload));
                 return Box::pin(async move { wire_answer(result) }.instrument(span).in_current_context());
             }
@@ -613,7 +677,7 @@ impl WireTable {
             async move {
                 let result = match command {
                     WireCommand::Initialize { invocation, .. } => match slot {
-                        Some(slot) => slot.initialize(invocation, &context).await.map(|()| Vec::new()),
+                        Some(slot) => slot.bind(invocation, &context).await.map(|()| Vec::new()),
                         None => Err(ServingError::Missing { invocation }),
                     },
                     WireCommand::Attempt { invocation, .. } => match slot {
@@ -711,7 +775,7 @@ impl WireTable {
     }
 
     #[tracing::instrument(target = "harmos::carrier", name = "carrier.answer", level = "debug", skip_all, fields(invocation = command_identity(&command).0, phase = command_identity(&command).1))]
-    pub async fn answer(&mut self, command: WireCommand, context: &OperationContext) -> WireAnswer {
+    pub async fn answer(&mut self, command: WireCommand, context: &ExecutionContext) -> WireAnswer {
         if command.is_stream_traffic() {
             return self.traffic(command).await;
         }
@@ -725,13 +789,21 @@ impl WireTable {
             return wire_answer(slot.attempt(invocation, context, Some(epoch)).await);
         }
         let result = match command {
-            WireCommand::PrepareGrpc { invocation, operation, fingerprint, generation, payload } => {
-                self.prepare_codec(invocation, &operation, fingerprint, generation, payload, true)
-            }
-            WireCommand::Prepare { invocation, operation, fingerprint, generation, payload } => {
-                self.prepare(invocation, &operation, fingerprint, generation, payload)
-            }
-            WireCommand::Initialize { invocation, .. } => self.initialize(invocation, context).await.map(|()| Vec::new()),
+            WireCommand::PrepareGrpc {
+                invocation,
+                operation,
+                fingerprint,
+                generation,
+                payload,
+            } => self.prepare_codec(invocation, &operation, fingerprint, generation, payload, true),
+            WireCommand::Prepare {
+                invocation,
+                operation,
+                fingerprint,
+                generation,
+                payload,
+            } => self.prepare(invocation, &operation, fingerprint, generation, payload),
+            WireCommand::Initialize { invocation, .. } => self.bind(invocation, context).await.map(|()| Vec::new()),
             WireCommand::Attempt { invocation, .. } => self.attempt(invocation, context).await,
             WireCommand::StreamAttempt { .. }
             | WireCommand::StreamSend { .. }
@@ -798,7 +870,11 @@ impl Slot {
                 return Poll::Ready(None);
             }
             if let Some(prepared) = state.prepared.take() {
-                return Poll::Ready(Some(Loan { slot: Arc::clone(self), prepared: Some(prepared), finished: false }));
+                return Poll::Ready(Some(Loan {
+                    slot: Arc::clone(self),
+                    prepared: Some(prepared),
+                    finished: false,
+                }));
             }
             *waiter.lock().expect("invocation waiter lock") = Some(context.waker().clone());
             state.waiters.retain(|entry| entry.strong_count() != 0);
@@ -813,13 +889,13 @@ impl Slot {
 
 impl Slot {
     #[tracing::instrument(target = "harmos::streams", name = "streams.initialize", level = "trace", skip_all, fields(invocation))]
-    async fn initialize(self: &Arc<Self>, invocation: u64, context: &OperationContext) -> Result<(), ServingError> {
+    async fn bind(self: &Arc<Self>, invocation: u64, context: &ExecutionContext) -> Result<(), ServingError> {
         let mut loan = self.borrow().await.ok_or(ServingError::Missing { invocation })?;
-        self.active(loan.prepared.as_mut().expect("loaned invocation state").initialize(context)).await
+        self.active(loan.prepared.as_mut().expect("loaned invocation state").bind(context)).await
     }
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.attempt", level = "trace", skip_all, fields(invocation))]
-    async fn attempt(self: &Arc<Self>, invocation: u64, context: &OperationContext, epoch: Option<u64>) -> Result<Vec<u8>, ServingError> {
+    async fn attempt(self: &Arc<Self>, invocation: u64, context: &ExecutionContext, epoch: Option<u64>) -> Result<Vec<u8>, ServingError> {
         let mut loan = self.borrow().await.ok_or(ServingError::Missing { invocation })?;
         #[cfg(feature = "streaming")]
         let attempt = match (&self.streams, epoch) {
@@ -931,9 +1007,9 @@ fn wire_answer(result: Result<Vec<u8>, ServingError>) -> WireAnswer {
     match result {
         Ok(payload) => WireAnswer::Ready { payload },
         Err(ServingError::Handler(failure)) => WireAnswer::Failed { failure },
-        Err(error) => {
-            WireAnswer::Failed { failure: crate::Failure::originate(error.classification(), &error, crate::failure::Origin::Plugin) }
-        }
+        Err(error) => WireAnswer::Failed {
+            failure: crate::Failure::originate(error.classification(), &error, crate::failure::Origin::Plugin),
+        },
     }
 }
 
@@ -960,7 +1036,12 @@ mod tests {
             resident: false,
             #[cfg(feature = "streaming")]
             streams: None,
-            state: Mutex::new(SlotState { prepared: None, finished: false, cancelled: false, waiters: Vec::new() }),
+            state: Mutex::new(SlotState {
+                prepared: None,
+                finished: false,
+                cancelled: false,
+                waiters: Vec::new(),
+            }),
         };
         let mut active = Box::pin(slot.active(std::future::pending::<Result<(), ServingError>>()));
         let mut context = std::task::Context::from_waker(Waker::noop());

@@ -24,7 +24,7 @@ use super::config::MAX_MUTATIONS;
 use super::manager::{Inner, State, Target};
 use super::receipts::ReceiptState;
 use super::{MutationId, MutationReceipt, MutationValue, StagedFile, StorageManager};
-use crate::{Error, Identifier, MemorySize, Result};
+use crate::{Error, Identifier, Result};
 
 /* === Constants === */
 
@@ -36,7 +36,6 @@ use crate::{Error, Identifier, MemorySize, Result};
 
 pub(super) struct Deletion {
     pub(super) work: Arc<DeleteWork>,
-    pub(super) bytes: usize,
     failure: Option<Arc<Error>>,
 }
 
@@ -122,20 +121,8 @@ impl<C> StorageManager<C> {
                             if state.deletions.len() >= MAX_MUTATIONS.get() {
                                 return Err(exhausted());
                             }
-                            let bytes = crate::btree_map_memory::<MutationId, Deletion>(1)
-                                .saturating_add(std::mem::size_of::<DeleteWork>())
-                                .saturating_add(std::mem::size_of::<MutationReceipt>())
-                                .saturating_add(std::mem::size_of::<MutationValue>())
-                                .saturating_add(mutation.memory_size().saturating_mul(2))
-                                .saturating_add(file.memory_size().saturating_mul(2))
-                                .saturating_add(2 * std::mem::size_of::<usize>());
-                            state.collect();
-                            let capacity = self.inner.settings.budget.read_memory_bytes.get();
-                            if bytes > capacity || state.status.read_bytes > capacity - bytes {
-                                return Err(exhausted());
-                            }
                             let outcome = MutationValue::Deleted(file.clone());
-                            state.receipts.insert(mutation, fingerprint, outcome.memory_size())?;
+                            state.receipts.insert(mutation, fingerprint)?;
                             let owner = state.receipts.completion(mutation);
                             completion = Some(owner);
                             let receipt = state.receipts.prepared(mutation, outcome);
@@ -148,10 +135,8 @@ impl<C> StorageManager<C> {
                                         queued: std::sync::Mutex::new(Some(tracing::debug_span!("storage.deletion.queue"))),
                                         target,
                                         file: file.clone(),
-                                        receipt: crate::StorageBatch::new(vec![receipt])
-                                            .retained(crate::batch::WriteCharge::read(&self.inner, bytes)),
+                                        receipt: crate::StorageBatch::new(vec![receipt]),
                                     }),
-                                    bytes,
                                     failure: None,
                                 },
                             );
@@ -241,12 +226,6 @@ impl State {
         for deletion in self.deletions.values_mut().filter(|deletion| deletion.work.target.index >= index) {
             deletion.failure = Some(source.clone());
         }
-    }
-}
-
-impl Drop for Deletion {
-    fn drop(&mut self) {
-        self.work.receipt.retire();
     }
 }
 

@@ -54,7 +54,11 @@ impl Files {
         fs::create_dir_all(root).map_err(io)?;
         let lease = OpenOptions::new().create(true).truncate(false).read(true).write(true).open(root.join("state.lock")).map_err(io)?;
         lease.try_lock().map_err(|error| Error::backend("lock state storage", BackendFailure::Conflict, error))?;
-        Ok(Self { root: root.to_owned(), _lease: lease, opener })
+        Ok(Self {
+            root: root.to_owned(),
+            _lease: lease,
+            opener,
+        })
     }
 
     #[tracing::instrument(name = "storage.state.file.journal", level = "debug", skip_all)]
@@ -75,27 +79,6 @@ impl Files {
             Read::End | Read::Incomplete => return Err(corrupt("incomplete state checkpoint")),
         };
         if !matches!(format::read::<serde_json::Value>(&mut reader, maximum)?, Read::End) {
-            return Err(corrupt("state checkpoint contains trailing records"));
-        }
-        Ok(Some(value))
-    }
-
-    #[tracing::instrument(name = "storage.state.file.snapshot_retained", level = "debug", skip_all)]
-    pub(super) fn snapshot_retained(
-        &self, maximum: usize, memory: &crate::arrow::RetainedMemory, base: usize,
-    ) -> Result<Option<crate::state::RecoverySnapshot>> {
-        let file = match File::open(self.root.join("state.json")) {
-            Ok(file) => file,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => return Err(io(error)),
-        };
-        memory.try_grow_to(8192usize.saturating_add(base))?;
-        let mut reader = BufReader::new(file);
-        let value = match format::read_retained(&mut reader, maximum, memory, base)? {
-            Read::Value(value) => value,
-            Read::End | Read::Incomplete => return Err(corrupt("incomplete state checkpoint")),
-        };
-        if !std::io::BufRead::fill_buf(&mut reader).map_err(io)?.is_empty() {
             return Err(corrupt("state checkpoint contains trailing records"));
         }
         Ok(Some(value))

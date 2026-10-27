@@ -106,7 +106,10 @@ fn required<O>(grants: Vec<Grant>) -> Required
 where
     O: OperationDeclaration,
 {
-    Required { contract: WireDeclaration::of::<O>().contract().unwrap(), grants }
+    Required {
+        contract: WireDeclaration::of::<O>().contract().unwrap(),
+        grants,
+    }
 }
 
 fn plugin(id: &str, required: Vec<Required>) -> PluginDefinition {
@@ -116,17 +119,30 @@ fn plugin(id: &str, required: Vec<Required>) -> PluginDefinition {
         artifact: PluginArtifact::Embedded { revision: "fixture".into() },
         requires: Vec::new(),
         configuration: b"null".to_vec(),
-        contributions: PluginContributions { required_contracts: Some(required), ..PluginContributions::default() },
+        contributions: PluginContributions {
+            required_contracts: Some(required),
+            ..PluginContributions::default()
+        },
     }
 }
 
-fn query(fixture: &Fixture, schema: SchemaKey) -> harmos_operations::storage::QueryRequest {
-    harmos_operations::storage::QueryRequest {
+fn query(fixture: &Fixture, schema: SchemaKey) -> harmos_operations::storage::Query {
+    harmos_operations::storage::Query {
         at: fixture.storage.cursor_saved(),
-        source: Source::Records(RecordSelection { schema, scope: None, item: None, source_start: None, source_end: None }),
+        source: Source::Records(RecordSelection {
+            schema,
+            scope: None,
+            item: None,
+            source_start: None,
+            source_end: None,
+        }),
         transforms: vec![Transform::Aggregate(AggregateTransform {
             groups: vec![],
-            measures: vec![Measure { field: "payload.value".into(), statistic: Aggregate::Count, name: "count".into() }],
+            measures: vec![Measure {
+                field: "payload.value".into(),
+                statistic: Aggregate::Count,
+                name: "count".into(),
+            }],
         })],
         slice: RowSlice { offset: 0, limit: None },
     }
@@ -167,7 +183,10 @@ async fn write_grants_enforced() {
         ))
         .await
         .unwrap();
-    let mut host = Host { operations: fixture.runtime.operations.clone(), callers: BTreeMap::new() };
+    let mut host = Host {
+        operations: fixture.runtime.operations.clone(),
+        callers: BTreeMap::new(),
+    };
     let definitions = PluginDefinitions::new(
         [plugin("writer", vec![required::<WriteRecords>(vec![Grant::of(WriteRecords::ID, "bench")])]), plugin("bystander", Vec::new())],
         [],
@@ -182,7 +201,7 @@ async fn write_grants_enforced() {
     super::writes::seed(&fixture).await;
     let mut exchange = writer
         .exchange::<WriteRecords>(
-            harmos_operations::storage::WriteRecordsRequest { scope: None },
+            harmos_operations::storage::WriteRecords { scope: None },
             super::writes::settings(),
             super::writes::settings(),
         )
@@ -203,7 +222,8 @@ async fn write_grants_enforced() {
         matches!(
             &failure,
             Error::OperationFailed { source, .. }
-                if matches!(source.downcast_ref::<Error>(), Some(Error::OperationUnauthorized { .. }))
+                if matches!(source.downcast_ref::<harmos_operations::Error>(), Some(harmos_operations::Error::Access(cause))
+                    if matches!(cause.downcast_ref::<Error>(), Some(Error::OperationUnauthorized { .. })))
         ),
         "unexpected write failure: {failure:?}"
     );
@@ -211,7 +231,7 @@ async fn write_grants_enforced() {
     assert_eq!(fixture.storage.cursor_accepted(), *cursor);
     assert!(matches!(
         bystander.exchange::<WriteRecords>(
-            harmos_operations::storage::WriteRecordsRequest { scope: None },
+            harmos_operations::storage::WriteRecords { scope: None },
             super::writes::settings(),
             super::writes::settings()
         ),
@@ -235,9 +255,16 @@ async fn query_grants_enforced() {
         ))
         .await
         .unwrap();
-    let mut host = Host { operations: fixture.runtime.operations.clone(), callers: BTreeMap::new() };
+    let mut host = Host {
+        operations: fixture.runtime.operations.clone(),
+        callers: BTreeMap::new(),
+    };
     let schema = super::super::schema();
-    let other = SchemaKey { id: Identifier::new("other").unwrap(), version: NonZeroU32::MIN, ..schema.clone() };
+    let other = SchemaKey {
+        id: Identifier::new("other").unwrap(),
+        version: NonZeroU32::MIN,
+        ..schema.clone()
+    };
     let survey = |schema: &SchemaKey| Grant::of(Query::ID, query(&fixture, schema.clone()).source.grant_scope());
     let definitions =
         PluginDefinitions::new([plugin("reducer", vec![required::<Query>(vec![survey(&schema)])]), plugin("bystander", Vec::new())], [])

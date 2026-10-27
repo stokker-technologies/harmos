@@ -158,7 +158,12 @@ impl<A: Application> CallbackDeclaration<A> {
         let (sender, mut receiver) = mpsc::unbounded_channel::<Group<A>>();
         let (signal, _) = watch::channel(false);
         let (progress, _) = watch::channel(Ok(origin));
-        let shared = Arc::new(Shared { failed, signal, progress, capacity: Arc::new(Semaphore::new(self.limits.pending_bytes as usize)) });
+        let shared = Arc::new(Shared {
+            failed,
+            signal,
+            progress,
+            capacity: Arc::new(Semaphore::new(self.limits.pending_bytes as usize)),
+        });
         let mut guard = Failure { shared: shared.clone(), clean: false };
         let mut consumer = self.consumer;
         let worker = tokio::spawn(async move {
@@ -181,7 +186,12 @@ impl<A: Application> CallbackDeclaration<A> {
             guard.clean = true;
             drop(guard);
         });
-        Callback { sender, shared, limits: self.limits, worker }
+        Callback {
+            sender,
+            shared,
+            limits: self.limits,
+            worker,
+        }
     }
 }
 

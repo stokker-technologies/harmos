@@ -117,7 +117,11 @@ impl<T: Message + MemorySize + 'static> StreamEndpoints for StreamInput<T> {
                 if item.encoded_size() > WireCommand::LIMIT {
                     return Err(RemoteStreamError::Protocol("stream item exceeds frame limit").into());
                 }
-                let command = WireCommand::StreamSend { invocation, epoch, payload: item.encode() };
+                let command = WireCommand::StreamSend {
+                    invocation,
+                    epoch,
+                    payload: item.encode(),
+                };
                 acknowledge(peer.stream_phase(command).await?).map_err(P::Error::from)?;
                 // The Original Item Claim Is Retained Until Provider Admission.
                 drop(item);
@@ -139,7 +143,11 @@ impl<T: Message + MemorySize + 'static> StreamEndpoints for StreamOutput<T> {
         loop {
             let answer = peer.stream_phase(WireCommand::StreamReceive { invocation, epoch }).await?;
             let payload = match answer {
-                WireAnswer::Stream { epoch: received, transferred: observed, payload } if received == epoch => {
+                WireAnswer::Stream {
+                    epoch: received,
+                    transferred: observed,
+                    payload,
+                } if received == epoch => {
                     if observed {
                         transferred.store(true, Ordering::Release);
                     }

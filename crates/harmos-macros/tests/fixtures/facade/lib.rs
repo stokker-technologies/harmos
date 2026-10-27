@@ -11,11 +11,11 @@
 
 pub mod __harmos {
     pub use harmos::{
-        __private, MemorySize, Message, MessageError, Metadata, OperationDeclaration, OperationDefinition, OperationPolicy, RequestFor,
-        RowMetadata, StreamField, StreamSpec,
+        __private, MemorySize, Message, MessageError, Metadata, OperationDeclaration, OperationDefinition, OperationPolicy, RowMetadata,
+        StreamField, StreamSpec,
     };
     #[cfg(feature = "runtime")]
-    pub use harmos::{Dependencies, Operation, OperationContext, RegistrationBatch, Response};
+    pub use harmos::{Context, Dependencies, Dependent, Operation, ExecutionContext, RegistrationBatch, Resource, Response};
     pub use harmos::{builtins, catalog, guest, listeners, model, operations, plugin, schema, sidecar, streams};
 }
 

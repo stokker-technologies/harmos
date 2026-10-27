@@ -106,7 +106,11 @@ impl RecordProjection for Projection {
         Box::pin(async move {
             let schema = waveforms::schema();
             let item = Identifier::new(format!("observed-{}", entry.position.0)).unwrap();
-            let payload = harmos_runtime::Message::encode(&waveforms::Sample { phase: 0, ordinal: entry.position.0, value: 1.0 });
+            let payload = harmos_runtime::Message::encode(&waveforms::Sample {
+                phase: 0,
+                ordinal: entry.position.0,
+                value: 1.0,
+            });
             output.push(record(&schema, &item, &payload)).await
         })
     }
@@ -184,14 +188,26 @@ async fn journal_awaits_data() {
     let data = Arc::new(Data::new(history()));
     let state = Arc::new(Recovery::new(history()));
     let policy = config();
-    let storage: StorageManager =
-        StorageManager::new(StorageBackends { primary: data.clone(), state: state.clone() }, policy.clone()).unwrap();
+    let storage: StorageManager = StorageManager::new(
+        StorageBackends {
+            primary: data.clone(),
+            state: state.clone(),
+        },
+        policy.clone(),
+    )
+    .unwrap();
     let runtime = Runtime::<Model>::builder(0, ())
         .register(Transactions::catalog())
         .register(Records::catalog())
         .managed_storage(harmos_runtime::config::ManagedStorageSettings {
-            replay: ReadLimits { rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(64 * 1024).unwrap() },
-            capture: ReadLimits { rows: NonZeroUsize::new(4).unwrap(), bytes: NonZeroUsize::new(16 * 1024).unwrap() },
+            replay: ReadLimits {
+                rows: NonZeroUsize::new(1).unwrap(),
+                bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+            },
+            capture: ReadLimits {
+                rows: NonZeroUsize::new(4).unwrap(),
+                bytes: NonZeroUsize::new(16 * 1024).unwrap(),
+            },
             snapshots: None,
             journal_tail: 1024,
         })

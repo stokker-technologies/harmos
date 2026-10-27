@@ -71,7 +71,11 @@ impl Directory {
             fs::create_dir_all(root.path().join(place)).expect("the scratch directory is writable");
         }
 
-        Self { root: Arc::clone(root), ceiling: CEILING, cadence: CADENCE }
+        Self {
+            root: Arc::clone(root),
+            ceiling: CEILING,
+            cadence: CADENCE,
+        }
     }
 
     pub fn reading(mut self, bytes: usize) -> Self {

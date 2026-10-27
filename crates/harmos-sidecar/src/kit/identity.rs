@@ -46,7 +46,10 @@ impl Identity {
     pub(super) fn new(observer: &'static str) -> io::Result<Self> {
         let mut bytes = [0; 16];
         getrandom::fill(&mut bytes)?;
-        Ok(Self { observer, activation: ActivationId(bytes) })
+        Ok(Self {
+            observer,
+            activation: ActivationId(bytes),
+        })
     }
 }
 

@@ -164,12 +164,14 @@ impl MemorySize for FileHash {
 
 impl ByteRange {
     pub fn end(self, length: u64) -> Result<u64> {
-        let remaining = length
-            .checked_sub(self.offset)
-            .ok_or(Error::InvalidInput { field: "file byte range", reason: "offset exceeds the immutable file length" })?;
-        self.offset
-            .checked_add(self.limit.unwrap_or(remaining).min(remaining))
-            .ok_or(Error::InvalidInput { field: "file byte range", reason: "byte range overflow" })
+        let remaining = length.checked_sub(self.offset).ok_or(Error::InvalidInput {
+            field: "file byte range",
+            reason: "offset exceeds the immutable file length",
+        })?;
+        self.offset.checked_add(self.limit.unwrap_or(remaining).min(remaining)).ok_or(Error::InvalidInput {
+            field: "file byte range",
+            reason: "byte range overflow",
+        })
     }
 }
 impl MemorySize for ByteRange {

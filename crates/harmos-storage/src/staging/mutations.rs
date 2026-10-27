@@ -69,9 +69,7 @@ impl<C> StorageManager<C> {
             if file.command.is_some() || file.in_flight {
                 return Ok(false);
             }
-            let outcome =
-                MutationValue::Producer(FileProducer { session: FileSession { generation: next, ..token.clone() }, length: file.length });
-            reserve(state, mutation, fingerprint, outcome.memory_size(), 0, &self.inner.settings)?;
+            reserve(state, mutation, fingerprint, 0, &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
             file.mutation = Some(Mutation { id: mutation.clone(), kind: Kind::Resume });
             file.command = Some(Command::Resume { expected: token.generation, next });
@@ -198,19 +196,15 @@ fn active<'a>(state: &'a State, token: &FileSession) -> Result<(u64, &'a FileSta
 }
 
 fn reserve(
-    state: &mut State, mutation: &MutationId, fingerprint: [u8; 32], outcome_bytes: usize, command_bytes: usize, settings: &StorageSettings,
+    state: &mut State, mutation: &MutationId, fingerprint: [u8; 32], command_bytes: usize, settings: &StorageSettings,
 ) -> Result<()> {
-    let bytes = mutation
-        .memory_size()
-        .checked_add(std::mem::size_of::<Mutation>() - std::mem::size_of::<MutationId>())
-        .and_then(|bytes| bytes.checked_add(command_bytes))
-        .ok_or_else(size_error)?;
+    let bytes = command_bytes;
     if bytes > settings.request.max_pending_write_bytes.get().saturating_sub(state.status.pending_bytes)
         || state.status.pending_batches >= settings.request.max_pending_write_batches.get()
     {
         return Err(Error::ResourceExhausted { resource: "file mutation command" });
     }
-    state.receipts.insert(mutation, fingerprint, outcome_bytes)
+    state.receipts.insert(mutation, fingerprint)
 }
 
 fn invalid(reason: &'static str) -> Error {

@@ -16,7 +16,7 @@ pub(crate) mod host;
 
 /* === Re-Exports === */
 
-pub use harmos_guest::operations;
+pub use harmos_guest::{kit, operations};
 
 pub use harmos_guest::operations::{CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 

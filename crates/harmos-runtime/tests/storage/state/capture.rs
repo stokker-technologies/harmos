@@ -161,10 +161,21 @@ impl RecordProjection for IncrementalProjection {
 
 impl Store {
     fn new() -> Self {
-        Self { data: Arc::new(Data::new(history())), recovery: Arc::new(Recovery::new(history())), calls: Arc::new(AtomicUsize::new(0)) }
+        Self {
+            data: Arc::new(Data::new(history())),
+            recovery: Arc::new(Recovery::new(history())),
+            calls: Arc::new(AtomicUsize::new(0)),
+        }
     }
     fn manager(&self, config: StorageSettings) -> StorageManager {
-        StorageManager::new(StorageBackends { primary: self.data.clone(), state: self.recovery.clone() }, config).unwrap()
+        StorageManager::new(
+            StorageBackends {
+                primary: self.data.clone(),
+                state: self.recovery.clone(),
+            },
+            config,
+        )
+        .unwrap()
     }
     async fn boot(&self, storage: &StorageManager, capture: ReadLimits, duplicate: bool) -> Runtime<Model> {
         Runtime::<Model>::builder(0, ())
@@ -192,7 +203,10 @@ impl Store {
 /* === Private Functions === */
 
 fn limits(rows: usize, bytes: usize) -> ReadLimits {
-    ReadLimits { rows: NonZeroUsize::new(rows).unwrap(), bytes: NonZeroUsize::new(bytes).unwrap() }
+    ReadLimits {
+        rows: NonZeroUsize::new(rows).unwrap(),
+        bytes: NonZeroUsize::new(bytes).unwrap(),
+    }
 }
 
 // Captured Payloads Are Opaque Bytes; Inspect The Backend's Durable Records.
@@ -317,7 +331,10 @@ async fn primary_stop_retries() {
 async fn capture_requires_managed() {
     assert!(
         Runtime::<Model>::builder(0, ())
-            .store_records(Projection { calls: Arc::new(AtomicUsize::new(0)), duplicate: false })
+            .store_records(Projection {
+                calls: Arc::new(AtomicUsize::new(0)),
+                duplicate: false
+            })
             .runtime()
             .await
             .is_err()
@@ -374,7 +391,10 @@ async fn reconciliation_saves_capture() {
             snapshots: None,
             journal_tail: 1024,
         })
-        .store_records(Projection { calls: store.calls.clone(), duplicate: false })
+        .store_records(Projection {
+            calls: store.calls.clone(),
+            duplicate: false,
+        })
         .reconcile(|_, storage| async move {
             storage.write_schema(schema(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await?;
             Ok(())
@@ -410,8 +430,12 @@ async fn capture_coalesces_writes() {
     store.ready(&storage).await;
     store.data.control.write_sizes.lock().unwrap().clear();
     store.recovery.control.write_sizes.lock().unwrap().clear();
-    for _ in 0..2000 {
+    for index in 0..2000 {
         runtime.state.commit(Advance { panic: false }).await.unwrap();
+        if (index + 1) % 32 == 0 {
+            storage.flush().await.unwrap();
+            storage.flush_recovery().await.unwrap();
+        }
     }
     storage.flush().await.unwrap();
     storage.flush_recovery().await.unwrap();
@@ -451,7 +475,8 @@ async fn recovery_failure_retries() {
     store.recovery.control.block_write.store(false, Ordering::SeqCst);
     store.recovery.control.write_release.notify_one();
     assert!(flushing.await.unwrap().is_err());
-    assert!(storage.status().pending_bytes < attempting);
+    // The Retry Retains Exactly The Accepted Write Payload.
+    assert_eq!(storage.status().pending_bytes, attempting);
     assert!(storage.status().pending_bytes <= admitted);
     storage.flush().await.unwrap();
     storage.flush_recovery().await.unwrap();
@@ -527,7 +552,11 @@ async fn partial_projection_refused() {
                 snapshots: None,
                 journal_tail: 1024,
             })
-            .store_records(IncrementalProjection { calls: store.calls.clone(), data: store.data.clone(), cancel })
+            .store_records(IncrementalProjection {
+                calls: store.calls.clone(),
+                data: store.data.clone(),
+                cancel,
+            })
             .runtime_with_storage(&storage)
             .await
             .unwrap();

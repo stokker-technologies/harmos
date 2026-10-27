@@ -26,7 +26,6 @@ use super::caller::Source;
 use super::{CallContext, Context, ContextError, ContextValue, Manager, OperationDeclaration, Response, Running};
 use super::{EndpointSet, Lane, RetryPolicy};
 use crate::{Error, Result};
-use harmos_domain::RequestFor;
 
 /* === Constants === */
 
@@ -59,7 +58,13 @@ enum Target {
 
 impl<O: OperationDeclaration, L: Lane> Invocation<O, L> {
     pub(crate) fn new(operations: Manager, request: O::Request) -> Self {
-        Self { target: Target::Host(operations), request, retry: None, lane: None, endpoints: () }
+        Self {
+            target: Target::Host(operations),
+            request,
+            retry: None,
+            lane: None,
+            endpoints: (),
+        }
     }
 }
 
@@ -75,12 +80,21 @@ impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
     }
 
     pub fn endpoints<F: EndpointSet>(self, endpoints: F) -> Invocation<O, L, F> {
-        Invocation { target: self.target, request: self.request, retry: self.retry, lane: self.lane, endpoints }
+        Invocation {
+            target: self.target,
+            request: self.request,
+            retry: self.retry,
+            lane: self.lane,
+            endpoints,
+        }
     }
 
     pub async fn start(self) -> Result<Running<O>> {
         if E::item_types() != super::item_types::<O>() {
-            return Err(Error::InvalidInput { field: "operation endpoints", reason: "endpoint items differ from the declaration" });
+            return Err(Error::InvalidInput {
+                field: "operation endpoints",
+                reason: "endpoint items differ from the declaration",
+            });
         }
         let mut request = super::binding::Request::from(self.request);
         request.retry = self.retry;
@@ -100,12 +114,14 @@ impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl crate::plugin::PluginScope {
-    pub fn operation<R: RequestFor, L: Lane>(&self, request: R) -> Invocation<R::Operation, L> {
-        self.operation_for::<R::Operation, L>(request)
-    }
-
-    pub fn operation_for<O: OperationDeclaration, L: Lane>(&self, request: O::Request) -> Invocation<O, L> {
-        Invocation { target: Target::Plugin(self.clone()), request, retry: None, lane: None, endpoints: () }
+    pub fn operation<O: OperationDeclaration<Request = O>, L: Lane>(&self, request: O) -> Invocation<O, L> {
+        Invocation {
+            target: Target::Plugin(self.clone()),
+            request,
+            retry: None,
+            lane: None,
+            endpoints: (),
+        }
     }
 
     pub async fn register<L: Lane>(&self, mut registration: super::Registration<L>) -> Result<()> {
@@ -167,11 +183,7 @@ impl<A: crate::Application> crate::Runtime<A> {
         self.operations.unregister(id).await
     }
 
-    pub fn operation<R: RequestFor>(&self, request: R) -> Invocation<R::Operation, A::Lanes> {
-        self.operation_for::<R::Operation>(request)
-    }
-
-    pub fn operation_for<O: OperationDeclaration>(&self, request: O::Request) -> Invocation<O, A::Lanes> {
+    pub fn operation<O: OperationDeclaration<Request = O>>(&self, request: O) -> Invocation<O, A::Lanes> {
         Invocation::new(self.operations.execution(), request)
     }
 }
@@ -204,11 +216,7 @@ impl<A: crate::Application> crate::runtime::Handle<A> {
         self.operations.unregister(id).await
     }
 
-    pub fn operation<R: RequestFor>(&self, request: R) -> Invocation<R::Operation, A::Lanes> {
-        self.operation_for::<R::Operation>(request)
-    }
-
-    pub fn operation_for<O: OperationDeclaration>(&self, request: O::Request) -> Invocation<O, A::Lanes> {
+    pub fn operation<O: OperationDeclaration<Request = O>>(&self, request: O) -> Invocation<O, A::Lanes> {
         Invocation::new(self.operations.execution(), request)
     }
 }
@@ -221,7 +229,7 @@ impl<L: Lane> harmos_sdk::operations::Host for super::OperationManager<L> {
         S::Row: harmos_domain::Message,
     {
         use harmos_domain::Message;
-        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::PublishRequest {
+        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::Publish {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: None,
@@ -252,6 +260,12 @@ impl<L: Lane> harmos_sdk::operations::Host for super::OperationManager<L> {
         std::future::ready(Manager::submit::<O>(self, request))
     }
 
+    fn submit_owned<O: OperationDeclaration>(
+        &self, request: O::Request, claims: super::RequestClaims,
+    ) -> impl Future<Output = Result<Running<O>>> + Send {
+        std::future::ready(Manager::submit_owned::<O>(self, request, claims))
+    }
+
     fn call<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Response<O::Response>>> + Send {
         let submitted = Manager::submit::<O>(self, request);
         async move { submitted?.await }
@@ -266,7 +280,7 @@ impl harmos_sdk::operations::Host for Manager {
         S::Row: harmos_domain::Message,
     {
         use harmos_domain::Message;
-        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::PublishRequest {
+        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::Publish {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: None,
@@ -297,6 +311,12 @@ impl harmos_sdk::operations::Host for Manager {
         std::future::ready(Manager::submit::<O>(self, request))
     }
 
+    fn submit_owned<O: OperationDeclaration>(
+        &self, request: O::Request, claims: super::RequestClaims,
+    ) -> impl Future<Output = Result<Running<O>>> + Send {
+        std::future::ready(Manager::submit_owned::<O>(self, request, claims))
+    }
+
     fn call<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Response<O::Response>>> + Send {
         let submitted = Manager::submit::<O>(self, request);
         async move { submitted?.await }
@@ -311,7 +331,7 @@ impl harmos_sdk::operations::Host for Context<'_> {
         S::Row: harmos_domain::Message,
     {
         use harmos_domain::Message;
-        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::PublishRequest {
+        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::Publish {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: None,
@@ -342,6 +362,12 @@ impl harmos_sdk::operations::Host for Context<'_> {
 
     fn submit<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Running<O>>> + Send {
         std::future::ready(Context::submit::<O>(self, request))
+    }
+
+    fn submit_owned<O: OperationDeclaration>(
+        &self, request: O::Request, claims: super::RequestClaims,
+    ) -> impl Future<Output = Result<Running<O>>> + Send {
+        std::future::ready(Context::submit_owned::<O>(self, request, claims))
     }
 
     fn call<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Response<O::Response>>> + Send {
@@ -384,37 +410,31 @@ mod tests {
         type Resources = ();
     }
 
-    struct Probe;
-    impl OperationDeclaration for Probe {
-        type Request = u64;
-        type Response = u64;
-        type Input = super::super::NoStream;
-        type Output = super::super::NoStream;
-        const ID: &'static str = "probe";
-        const POLICY: crate::OperationPolicy = crate::OperationPolicy {
+    #[crate::operation(harmos_path = crate, resources = [AtomicUsize, crate::operations::HostContext],
+        id = "test.probe", response = u64,
+        policy = crate::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
             retries: RetryPolicy::Never,
-        };
+        },
+    )]
+    struct Probe {
+        value: u64,
     }
 
-    impl harmos_sdk::Operation for Probe {
-        type Request = u64;
-        type Response = u64;
+    impl crate::Operation for Probe {
         type Error = std::io::Error;
-        type Endpoints = ();
 
-        async fn initialize(context: harmos_sdk::OperationContext) -> std::io::Result<Self> {
-            context.dependency::<AtomicUsize>().map_err(std::io::Error::other)?.fetch_add(1, Ordering::SeqCst);
-            Ok(Self)
-        }
-
-        async fn run(&mut self, _: harmos_sdk::OperationContext, request: &mut u64, _: &mut ()) -> std::io::Result<Response<u64>> {
-            if *request != 0 {
-                *request -= 1;
+        async fn run(self, ctx: crate::Context<'_, Self>) -> std::io::Result<Response<u64>> {
+            let host = ctx.resource::<crate::operations::HostContext>();
+            let attempt = host.borrow().attempt();
+            if attempt == 0 {
+                ctx.resource::<AtomicUsize>().fetch_add(1, Ordering::SeqCst);
+            }
+            if u64::try_from(attempt).unwrap() < self.value {
                 return Err(std::io::Error::other("retry this request"));
             }
-            Ok((*request).into())
+            Ok(0.into())
         }
 
         fn classify(_: &std::io::Error) -> super::super::FailureKind {
@@ -426,10 +446,10 @@ mod tests {
 
     impl harmos_sdk::Service for Idle {
         type Error = std::io::Error;
-        async fn initialize(_: harmos_sdk::OperationContext) -> std::io::Result<Self> {
+        async fn initialize(_: harmos_sdk::ExecutionContext) -> std::io::Result<Self> {
             Ok(Self)
         }
-        async fn run(&mut self, _: harmos_sdk::OperationContext) -> std::io::Result<()> {
+        async fn run(&mut self, _: harmos_sdk::ExecutionContext) -> std::io::Result<()> {
             std::future::pending().await
         }
     }
@@ -441,7 +461,10 @@ mod tests {
         dependencies.insert(Arc::new(AtomicUsize::new(0))).unwrap();
         let batch = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Probe>().service::<Idle>(
             "idle",
-            crate::ServicePolicy { stop_timeout: std::time::Duration::from_secs(1), restart: crate::RestartPolicy::Never },
+            crate::ServicePolicy {
+                stop_timeout: std::time::Duration::from_secs(1),
+                restart: crate::RestartPolicy::Never,
+            },
         );
         assert!(runtime.register(batch.clone().operation::<Probe>().defaults()).await.is_err());
         assert!(runtime.operations.definition(Probe::ID).is_err());
@@ -450,7 +473,7 @@ mod tests {
         assert!(runtime.operations.definition(Probe::ID).is_ok());
         assert!(runtime.operations.resident.definition("host.idle").is_some());
         runtime.unregister(&crate::QualifiedId::parse("host.idle").unwrap()).await.unwrap();
-        runtime.unregister(&crate::QualifiedId::parse("host.probe").unwrap()).await.unwrap();
+        runtime.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
         runtime.stop().await.unwrap();
     }
 
@@ -460,17 +483,20 @@ mod tests {
         let mut dependencies = harmos_sdk::Dependencies::new();
         dependencies.insert(Arc::new(AtomicUsize::new(0))).unwrap();
         let operation = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Probe>();
-        let policy = crate::ServicePolicy { stop_timeout: std::time::Duration::from_secs(1), restart: crate::RestartPolicy::Never };
-        let service = harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).service::<Idle>("probe", policy);
-        assert!(runtime.register(operation.clone().service::<Idle>("probe", policy).defaults()).await.is_err());
+        let policy = crate::ServicePolicy {
+            stop_timeout: std::time::Duration::from_secs(1),
+            restart: crate::RestartPolicy::Never,
+        };
+        let service = harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).service::<Idle>("test.probe", policy);
+        assert!(runtime.register(operation.clone().service::<Idle>("test.probe", policy).defaults()).await.is_err());
         assert!(runtime.operations.definition(Probe::ID).is_err());
-        assert!(!runtime.operations.resident.contains("host.probe"));
+        assert!(!runtime.operations.resident.contains("host.test.probe"));
         runtime.operations.register(operation.clone().defaults()).await.unwrap();
         assert!(runtime.services().register(service.clone()).await.is_err());
-        runtime.unregister(&crate::QualifiedId::parse("host.probe").unwrap()).await.unwrap();
+        runtime.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
         runtime.services().register(service).await.unwrap();
         assert!(runtime.operations.register(operation.defaults()).await.is_err());
-        runtime.unregister(&crate::QualifiedId::parse("host.probe").unwrap()).await.unwrap();
+        runtime.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
         runtime.stop().await.unwrap();
     }
 
@@ -489,25 +515,28 @@ mod tests {
         assert!(runtime.operations.definition("different").is_err());
         runtime.operations.register(batch.defaults()).await.unwrap();
         assert!(matches!(
-            runtime.operations.call_encoded("host.probe", Vec::new()).await,
+            runtime.operations.call_encoded("host.test.probe", Vec::new()).await,
             Err(Error::InvalidInput { field: "operation preparation bytes", .. })
         ));
-        let invocation = runtime.operation_for::<Probe>(1);
+        let invocation = runtime.operation(Probe { value: 1 });
         assert_eq!(initialized.load(Ordering::SeqCst), 0);
         assert!(invocation.run().await.is_err());
         assert_eq!(initialized.load(Ordering::SeqCst), 1);
 
         let retry = RetryPolicy::OnTransient {
             max_retries: 1,
-            backoff: crate::Backoff::Fixed { delay: std::time::Duration::from_millis(1), jitter: crate::Jitter::None },
+            backoff: crate::Backoff::Fixed {
+                delay: std::time::Duration::from_millis(1),
+                jitter: crate::Jitter::None,
+            },
         };
-        assert_eq!(*runtime.operation_for::<Probe>(1).retry(retry).run().await.unwrap(), 0);
+        assert_eq!(*runtime.operation(Probe { value: 1 }).retry(retry).run().await.unwrap(), 0);
         assert_eq!(initialized.load(Ordering::SeqCst), 2);
-        assert!(runtime.operation_for::<Probe>(1).run().await.is_err());
+        assert!(runtime.operation(Probe { value: 1 }).run().await.is_err());
         assert_eq!(initialized.load(Ordering::SeqCst), 3);
         assert_eq!(runtime.operations.definition(Probe::ID).unwrap().policy.retries, RetryPolicy::Never);
-        runtime.operations.unregister(&crate::QualifiedId::parse("host.probe").unwrap()).await.unwrap();
-        assert!(runtime.operation_for::<Probe>(0).start().await.is_err());
+        runtime.operations.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
+        assert!(runtime.operation(Probe { value: 0 }).start().await.is_err());
         runtime.stop().await.unwrap();
     }
 }

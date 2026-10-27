@@ -96,7 +96,11 @@ pub fn run(arguments: Arguments) -> Result<(), crate::error::Error> {
         operations: arguments.operation,
     };
     let contracts = artifacts.operation_contracts().map_err(python::Error::from)?;
-    let catalog = python::Catalog { contracts: &contracts, settings: &settings, protoc: &arguments.protoc };
+    let catalog = python::Catalog {
+        contracts: &contracts,
+        settings: &settings,
+        protoc: &arguments.protoc,
+    };
     let output = python::generate(catalog, &arguments.output)?;
     println!("{}", output.display());
     Ok(())

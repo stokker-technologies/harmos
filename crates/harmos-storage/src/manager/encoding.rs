@@ -35,30 +35,26 @@ use super::*;
 /* === Implementations === */
 
 impl RecordWriteBytes for RecordWrite<'_> {
-    fn resident_bytes(&self, history: &crate::StoreHistory) -> Result<usize> {
-        [
-            self.payload.len(),
-            self.schema.id.as_str().len(),
-            self.scope.map_or(0, |value| value.as_str().len()),
-            self.item.as_str().len(),
-            self.source.map_or(0, |value| value.as_str().len()),
-            history.store.as_str().len(),
-            history.epoch.as_str().len(),
-            std::mem::size_of::<StoredRecord>(),
-            ENTRY_OVERHEAD,
-        ]
-        .into_iter()
-        .try_fold(0usize, |bytes, next| bytes.checked_add(next))
-        .ok_or(Error::InvalidInput { field: "storage admission", reason: "size overflow" })
+    fn encoded_bytes(&self, history: &crate::StoreHistory) -> Result<usize> {
+        let value = StoredRecord {
+            position: StorageCursor {
+                history: history.clone(),
+                sequence: u64::MAX,
+            },
+            schema: self.schema.clone(),
+            scope: self.scope.cloned(),
+            item: self.item.clone(),
+            source: self.source.cloned(),
+            source_time: self.source_time,
+            payload: self.payload,
+        };
+        encoded_size(&value)
     }
 }
 
 impl RecordWriteBytes for RecordInput {
-    fn resident_bytes(&self, history: &crate::StoreHistory) -> Result<usize> {
-        let metadata = self.borrowed().resident_bytes(history)?;
-        metadata
-            .checked_add(self.payload.capacity() - self.payload.len())
-            .ok_or(Error::InvalidInput { field: "storage admission", reason: "size overflow" })
+    fn encoded_bytes(&self, history: &crate::StoreHistory) -> Result<usize> {
+        self.borrowed().encoded_bytes(history)
     }
 }
 
@@ -99,34 +95,49 @@ impl Write for Counter {
 
 pub fn encoded_size<T: Serialize + ?Sized>(value: &T) -> Result<usize> {
     let mut counter = Counter(0);
-    serde_json::to_writer(&mut counter, value)
-        .map_err(|_| Error::InvalidInput { field: "storage payload", reason: "cannot measure encoded size" })?;
+    serde_json::to_writer(&mut counter, value).map_err(|_| Error::InvalidInput {
+        field: "storage payload",
+        reason: "cannot measure encoded size",
+    })?;
     Ok(counter.0)
 }
 
-pub(crate) fn recovery_preparation_bytes(
-    payload: usize, history: &crate::StoreHistory, data_history: &crate::StoreHistory,
-) -> Result<usize> {
-    let capacity = payload
-        .checked_mul(4)
-        .and_then(|bytes| bytes.checked_add(128))
-        .ok_or(Error::InvalidInput { field: "managed recovery", reason: "size overflow" })?;
-    recovery_resident_bytes(capacity, history, data_history)
-}
-
-pub(crate) fn recovery_resident_bytes(payload: usize, history: &crate::StoreHistory, data_history: &crate::StoreHistory) -> Result<usize> {
-    [
-        payload,
-        history.store.as_str().len(),
-        history.epoch.as_str().len(),
-        data_history.store.as_str().len(),
-        data_history.epoch.as_str().len(),
-        std::mem::size_of::<RecoveryEntry>(),
-        ENTRY_OVERHEAD,
-    ]
-    .into_iter()
-    .try_fold(0usize, |bytes, next| bytes.checked_add(next))
-    .ok_or(Error::InvalidInput { field: "managed recovery", reason: "size overflow" })
+pub(crate) fn recovery_encoded_bound(payload: usize, history: &crate::StoreHistory, data_history: &crate::StoreHistory) -> Result<usize> {
+    let entry = RecoveryEntry {
+        required_data: StorageCursor {
+            history: data_history.clone(),
+            sequence: u64::MAX,
+        },
+        position: RecoveryPosition {
+            history: history.clone(),
+            sequence: u64::MAX,
+        },
+        payload: Vec::new(),
+    };
+    let encoded = payload
+        .checked_div(3)
+        .and_then(|groups| groups.checked_mul(4))
+        .and_then(|bytes| {
+            bytes.checked_add(match payload % 3 {
+                0 => 0,
+                1 => 2,
+                _ => 3,
+            })
+        })
+        .ok_or(Error::InvalidInput {
+            field: "managed recovery",
+            reason: "encoded size overflow",
+        })?;
+    let snapshot = RecoverySnapshot {
+        required_data: entry.required_data.clone(),
+        through: entry.position.clone(),
+        payload: Vec::new(),
+    };
+    let header = encoded_size(&entry)?.max(encoded_size(&snapshot)?);
+    header.checked_add(encoded).ok_or(Error::InvalidInput {
+        field: "managed recovery",
+        reason: "encoded size overflow",
+    })
 }
 
 /* === Private Functions === */

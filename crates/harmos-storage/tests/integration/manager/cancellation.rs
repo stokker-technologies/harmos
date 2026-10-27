@@ -49,8 +49,14 @@ async fn start() -> (Arc<Data>, StorageManager) {
     settings.request.max_active_queries = NonZeroUsize::new(1).unwrap();
     settings.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
     let data = Arc::new(Data::new(history()));
-    let storage: StorageManager =
-        StorageManager::new(StorageBackends { primary: data.clone(), state: Arc::new(Recovery::new(history())) }, settings).unwrap();
+    let storage: StorageManager = StorageManager::new(
+        StorageBackends {
+            primary: data.clone(),
+            state: Arc::new(Recovery::new(history())),
+        },
+        settings,
+    )
+    .unwrap();
     super::fixture::start(&storage).await;
     (data, storage)
 }
@@ -103,7 +109,10 @@ async fn cancelled_query_releases() {
     settings.request.max_active_queries = NonZeroUsize::MIN;
     settings.request.max_pending_write_batches = NonZeroUsize::MIN;
     let data = JsonStorage::new(
-        JsonStorageSettings { root: directory.path().to_path_buf(), max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() },
+        JsonStorageSettings {
+            root: directory.path().to_path_buf(),
+            max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+        },
         history(),
     );
     let backends = data.into_backends(super::fixture::state_settings());

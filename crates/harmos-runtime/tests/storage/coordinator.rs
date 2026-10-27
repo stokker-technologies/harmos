@@ -57,7 +57,11 @@ async fn admission_durability_distinct() {
     assert_eq!(f.storage.write_records(vec![record(&key, &item, &[3])]).await.unwrap().sequence, 2);
     assert_eq!(
         f.storage
-            .write_stream(vec![StreamInput { stream: stream.clone(), sequence: 99, record: record(&key, &item, &[4]) }])
+            .write_stream(vec![StreamInput {
+                stream: stream.clone(),
+                sequence: 99,
+                record: record(&key, &item, &[4])
+            }])
             .await
             .unwrap()
             .sequence,
@@ -167,8 +171,14 @@ async fn partial_open_remains() {
     let data = Arc::new(Data::new(history()));
     let recovery = Arc::new(Recovery::new(history()));
     recovery.control.fail_open.store(true, Ordering::SeqCst);
-    let storage: StorageManager =
-        StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, config()).unwrap();
+    let storage: StorageManager = StorageManager::new(
+        StorageBackends {
+            primary: data.clone(),
+            state: recovery.clone(),
+        },
+        config(),
+    )
+    .unwrap();
     assert!(storage.start(&runtime).await.is_err());
     assert!(data.control.open.load(Ordering::SeqCst));
     storage.close().await.unwrap();
@@ -215,7 +225,11 @@ async fn snapshots_require_flush() {
     let f = Fixture::new(config()).await;
     let through = f.storage.write_recovery(vec![b"one".to_vec(), b"two".to_vec()]).await.unwrap();
     f.storage.flush_recovery().await.unwrap();
-    let snapshot = RecoverySnapshot { required_data: f.storage.cursor_saved(), through: through.clone(), payload: vec![5] };
+    let snapshot = RecoverySnapshot {
+        required_data: f.storage.cursor_saved(),
+        through: through.clone(),
+        payload: vec![5],
+    };
     f.storage.write_snapshot(snapshot.clone()).await.unwrap();
     f.storage.flush_recovery().await.unwrap();
     assert_eq!(f.recovery.control.flushes.lock().unwrap().as_slice(), &[2, 2]);
@@ -223,7 +237,14 @@ async fn snapshots_require_flush() {
     let after = RecoveryPosition { sequence: 0, ..through.clone() };
     let page = f
         .storage
-        .read_recovery(&after, &through, ReadLimits { rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(1024).unwrap() })
+        .read_recovery(
+            &after,
+            &through,
+            ReadLimits {
+                rows: NonZeroUsize::new(1).unwrap(),
+                bytes: NonZeroUsize::new(1024).unwrap(),
+            },
+        )
         .await
         .unwrap();
     assert_eq!(page.entries.len(), 1);

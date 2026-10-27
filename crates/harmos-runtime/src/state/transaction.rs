@@ -77,7 +77,11 @@ pub(crate) mod dispatch {
 
     impl<A: Application, W> Default for Dispatch<A, W> {
         fn default() -> Self {
-            Self { transactions: BTreeMap::new(), decoders: BTreeMap::new(), records: BTreeMap::new() }
+            Self {
+                transactions: BTreeMap::new(),
+                decoders: BTreeMap::new(),
+                records: BTreeMap::new(),
+            }
         }
     }
 

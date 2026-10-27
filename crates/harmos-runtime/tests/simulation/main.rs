@@ -110,7 +110,7 @@ use std::time::Duration;
 
 // Local Imports
 use harmos_runtime::operations::WireTable;
-use harmos_runtime::operations::{Operation, OperationPolicy, RetryPolicy};
+use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::sidecar::{Notice, Supervised};
 use harmos_runtime::simulation::entropy;
 use harmos_runtime::{
@@ -133,9 +133,7 @@ type IdleManaged =
 
 /* === Structs === */
 
-#[harmos_runtime::operation(request = Pending, infer_request,
-    id = "sim_pending",
-
+#[harmos_runtime::operation(id = "sim.pending",
     response = (),
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30),
@@ -143,15 +141,9 @@ type IdleManaged =
         retries: RetryPolicy::Never,
     }
 )]
-struct PendingDeclaration;
+struct PendingDeclaration {}
 
-#[harmos_runtime::message]
-
-struct Pending {}
-
-#[harmos_runtime::operation(request = Answering, infer_request,
-    id = "sim_answering",
-
+#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "sim.answering",
     response = u64,
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30),
@@ -159,18 +151,12 @@ struct Pending {}
         retries: RetryPolicy::Never,
     }
 )]
-struct AnsweringDeclaration;
-
-#[harmos_runtime::message]
-
-struct Answering {
+struct AnsweringDeclaration {
     answer: u64,
 }
 
 // The Draw Log Is Shared With The Scenario, So The Request Stays In Process.
-#[harmos_runtime::operation(request = Drawing, infer_request,
-    id = "sim_drawing",
-
+#[harmos_runtime::operation(codec = manual, id = "sim.drawing",
     response = u64,
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30),
@@ -178,9 +164,8 @@ struct Answering {
         retries: RetryPolicy::Never,
     }
 )]
-struct DrawingDeclaration;
-
-struct Drawing {
+#[derive(Clone)]
+struct DrawingDeclaration {
     draws: Arc<Mutex<Vec<u64>>>,
 }
 
@@ -198,9 +183,7 @@ struct Divergent;
 #[derive(Clone)]
 struct DivergentCatalog;
 
-#[harmos_runtime::operation(request = TimingItsOwnWait, infer_request,
-    id = "sim_timingitsownwait",
-
+#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "sim.timingitsownwait",
     response = u64,
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30),
@@ -208,11 +191,7 @@ struct DivergentCatalog;
         retries: RetryPolicy::Never,
     }
 )]
-struct TimingItsOwnWaitDeclaration;
-
-#[harmos_runtime::message]
-
-struct TimingItsOwnWait {
+struct TimingItsOwnWaitDeclaration {
     wait_ms: u64,
 }
 
@@ -237,49 +216,26 @@ use support::Lanes;
 
 /* === Implementations === */
 
-impl Operation for Pending {
-    type Endpoints = ();
-    type Request = Pending;
-    type Response = <PendingDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for PendingDeclaration {
     type Error = Infallible;
 
-    async fn initialize(_context: harmos_runtime::OperationContext) -> Result<Pending, Infallible> {
-        Ok(Self {})
+    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
+        std::future::pending().await
     }
+}
 
-    async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, _request: &mut Pending, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Infallible> {
-        let host = _context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+impl harmos_runtime::operations::Operation for AnsweringDeclaration {
+    type Error = Infallible;
+
+    async fn run(self, _context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
+        let host = _context.resource::<harmos_runtime::operations::HostContext>();
         let _context = host.borrow();
-        let result: ::core::result::Result<(), Self::Error> = async move { std::future::pending().await }.await;
+        let result: ::core::result::Result<u64, Self::Error> = async move { Ok(self.answer) }.await;
         result.map(::core::convert::Into::into)
     }
 }
 
-struct Answer;
-
-impl Operation for Answer {
-    type Endpoints = ();
-    type Request = Answering;
-    type Response = <AnsweringDeclaration as harmos_runtime::OperationDeclaration>::Response;
-    type Error = Infallible;
-
-    async fn initialize(_context: harmos_runtime::OperationContext) -> Result<Self, Infallible> {
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, request: &mut Answering, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
-        let host = _context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
-        let _context = host.borrow();
-        let result: ::core::result::Result<u64, Self::Error> = async move { Ok(request.answer) }.await;
-        result.map(::core::convert::Into::into)
-    }
-}
-
-impl harmos_runtime::Message for Drawing {
+impl harmos_runtime::Message for DrawingDeclaration {
     const CODEC: &'static str = "fixture.native";
     fn encode(&self) -> Vec<u8> {
         unreachable!("the in-process draw request is never encoded")
@@ -295,44 +251,27 @@ impl harmos_runtime::Message for Drawing {
     }
 }
 
-impl harmos_runtime::MemorySize for Drawing {
+impl harmos_runtime::MemorySize for DrawingDeclaration {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
     }
 }
 
-impl harmos_runtime::schema::Described for Drawing {
-    const NAME: &'static str = concat!(module_path!(), "::Drawing");
+impl harmos_runtime::schema::Described for DrawingDeclaration {
+    const NAME: &'static str = concat!(module_path!(), "::DrawingDeclaration");
     const FIELDS: &'static [harmos_runtime::schema::Field] = &[];
     const MARKER: &'static [u8] = &harmos_runtime::schema::declaration::encode::<
         { harmos_runtime::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
     >(Self::NAME, Self::FIELDS);
 }
 
-struct Draw;
-
-impl Operation for Draw {
-    type Endpoints = ();
-    type Request = Drawing;
-    type Response = <DrawingDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for DrawingDeclaration {
     type Error = Infallible;
 
-    async fn initialize(_context: harmos_runtime::OperationContext) -> Result<Self, Infallible> {
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, request: &mut Drawing, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
-        let host = _context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
-        let _context = host.borrow();
-        let result: ::core::result::Result<u64, Self::Error> = async move {
-            let draw = entropy();
-            request.draws.lock().expect("draw lock is healthy").push(draw);
-            Ok(draw)
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u64>, Self::Error> {
+        let draw = entropy();
+        self.draws.lock().expect("draw lock is healthy").push(draw);
+        Ok(draw.into())
     }
 }
 
@@ -369,30 +308,23 @@ impl Registration<Divergent> for DivergentCatalog {
             Ok(None)
         }
 
-        Catalog::Transactions { definitions: vec![(Kind::Transaction, DefinitionId::new("sim.divergent"), 1)], decode, inverses: None }
+        Catalog::Transactions {
+            definitions: vec![(Kind::Transaction, DefinitionId::new("sim.divergent"), 1)],
+            decode,
+            inverses: None,
+        }
     }
 }
 
-struct TimeWait;
-
-impl Operation for TimeWait {
-    type Endpoints = ();
-    type Request = TimingItsOwnWait;
-    type Response = <TimingItsOwnWaitDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::operations::Operation for TimingItsOwnWaitDeclaration {
     type Error = Infallible;
 
-    async fn initialize(_context: harmos_runtime::OperationContext) -> Result<Self, Infallible> {
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut TimingItsOwnWait, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
+        let host = context.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
         let result: ::core::result::Result<u64, Self::Error> = async move {
             let started = context.scope().now();
-            tokio::time::sleep(Duration::from_millis(request.wait_ms)).await;
+            tokio::time::sleep(Duration::from_millis(self.wait_ms)).await;
             Ok(u64::try_from((context.scope().now() - started).as_nanos()).expect("the scripted wait fits in u64 nanoseconds"))
         }
         .await;
@@ -416,7 +348,14 @@ impl harmos_runtime::services::Resident<Bank> for Capturing {
     async fn run(&mut self, mut context: harmos_runtime::services::ServiceContext<Bank>) -> Result<(), std::io::Error> {
         let evidence = context.evidence().clone();
         let inherited = evidence.list("run").len() as i64;
-        context.state().commit(Deposit { account: support::HOUSE, amount: inherited.max(0) }).await.ok();
+        context
+            .state()
+            .commit(Deposit {
+                account: support::HOUSE,
+                amount: inherited.max(0),
+            })
+            .await
+            .ok();
 
         let key = format!("boot-{inherited}.log");
         let draft = evidence.open::<Capture>("run", key, ()).await.map_err(std::io::Error::other)?;
@@ -557,10 +496,10 @@ fn bank(seed: u64) -> Builder<Bank> {
         .register(Lanes::catalog())
         .with_registration(harmos_runtime::RegistrationExt::lane(
             harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
-                .implementation::<PendingDeclaration, Pending>()
-                .implementation::<AnsweringDeclaration, Answer>()
-                .implementation::<DrawingDeclaration, Draw>()
-                .implementation::<TimingItsOwnWaitDeclaration, TimeWait>(),
+                .operation::<PendingDeclaration>()
+                .operation::<AnsweringDeclaration>()
+                .operation::<DrawingDeclaration>()
+                .operation::<TimingItsOwnWaitDeclaration>(),
             Lanes::Serial,
         ))
         .entropy_seed(seed)
@@ -578,7 +517,7 @@ fn scripted(seed: u64) -> SimulatedRuntime<Bank> {
 
 fn scripted_wait(seed: u64) -> Duration {
     let mut sim = bank(seed).simulate().expect("the simulation boots");
-    let timed = sim.submit::<TimingItsOwnWaitDeclaration>(TimingItsOwnWait { wait_ms: 750 }).unwrap();
+    let timed = sim.submit::<TimingItsOwnWaitDeclaration>(TimingItsOwnWaitDeclaration { wait_ms: 750 }).unwrap();
     sim.advance_ms(400);
     sim.advance_ms(350);
 
@@ -600,7 +539,7 @@ fn entropy_run(seed: u64) -> (SimulatedRuntime<Bank>, Vec<u64>) {
         })
         .simulate()
         .expect("the simulation boots");
-    let handle = sim.submit::<DrawingDeclaration>(Drawing { draws: Arc::clone(&draws) }).unwrap();
+    let handle = sim.submit::<DrawingDeclaration>(DrawingDeclaration { draws: Arc::clone(&draws) }).unwrap();
     sim.settle(handle).expect("the entropy job settles");
     let values = draws.lock().expect("draw lock is healthy").clone();
     (sim, values)
@@ -679,7 +618,7 @@ fn backoff_delays_restart() {
 #[test]
 fn attempt_deadline_expires() {
     let mut sim = bank(7).simulate().expect("the simulation boots");
-    let deadline = sim.submit::<PendingDeclaration>(Pending {}).unwrap();
+    let deadline = sim.submit::<PendingDeclaration>(PendingDeclaration {}).unwrap();
     sim.advance_ms(5);
     assert!(matches!(sim.settle(deadline), Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
 }
@@ -728,7 +667,7 @@ fn full_script_replays() {
     sim.commit(alice(), Deposit { account: support::HOUSE, amount: 3 }).expect("commit lands");
     sim.record(alice(), Noted("full script".to_owned())).expect("record lands");
     sim.publish(pulse(8)).expect("publish lands");
-    let job = sim.submit::<AnsweringDeclaration>(Answering { answer: 13 }).unwrap();
+    let job = sim.submit::<AnsweringDeclaration>(AnsweringDeclaration { answer: 13 }).unwrap();
     assert_eq!(*sim.settle(job).expect("operation settles"), 13);
     sim.advance_ms(1);
     sim.fault("adapter", "reset").expect("fault is delivered");

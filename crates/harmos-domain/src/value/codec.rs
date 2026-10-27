@@ -191,7 +191,12 @@ impl PostcardValue for Value {
 /* === Private Functions === */
 
 const fn field(name: &'static str, tag: u32, kind: Kind, cardinality: Cardinality) -> Field {
-    Field { name: Cow::Borrowed(name), tag, kind, cardinality }
+    Field {
+        name: Cow::Borrowed(name),
+        tag,
+        kind,
+        cardinality,
+    }
 }
 
 const fn message(definition: Definition) -> Kind {

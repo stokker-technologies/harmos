@@ -62,6 +62,13 @@ different integration boundary.
 
 Use `harmos-sidecar` for native process carriers and `harmos-guest` for Wasm
 components. Both share SDK contracts without depending on the full host runtime.
+Guest operations import `harmos_guest::{Context, Operation, Response}`: these are the SDK types, with no host runtime dependency.
+`run(self, ctx: Context<'_, Self>)` consumes the request. Declare resources and callees with `resources = [...]` and
+`operations = [...]`; use infallible `ctx.resource::<T>()`, `ctx.operation(request)` and the derived `ctx.streams()`.
+Guest plugin lifecycle hooks instead use `harmos_guest::kit::Context`. Initialize shared resources in the plugin lifecycle,
+then supply them in the registration dependency snapshot. Authored operations have no initialization hook or mutable handler state.
+A required remote operation needs only its declaration, including in a runtime-enabled carrier crate.
+
 Host composition uses `harmos`; `plugin-sidecar` and `plugin-guest` select
 the corresponding host facilities and imply `plugin`.
 

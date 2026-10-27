@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/tools/rustfmt.toml; sha256:4d0dedc557701bef9d7ca50ca8875ca9ed566977aab7fc5d80387ea6b0a3cac0
+# Rendered by stkr project update from templates/tools/rustfmt.toml; sha256:2158f9b04388a8b3322acd46935c43a86bfc9d1e17c460842d685984081e0254
 # ***
 #
 # Harmos
@@ -15,3 +15,6 @@
 max_width = 140
 fn_params_layout = "Compressed"
 use_small_heuristics = "Max"
+# Struct literals wider than 40 characters break one field per line, so a literal reads as a record even under the
+# maximum small heuristics.
+struct_lit_width = 40

@@ -85,7 +85,7 @@ state, transactions and operations. Optional Cargo features select plugin,
 transport and simulation capabilities. The default facade exposes portable contracts;
 enable `runtime` for SDK execution and, on native targets, host runtime facilities.
 The [operations guide](.agents/skills/harmos-authoring/references/operations.md)
-shows one operation file with separate request and implementation types.
+shows one operation file where the request implements consuming execution with declared resources and child operations.
 
 Structured operation and storage tracing supports performance investigation;
 applications control collection. See [Performance](docs/product-guide.md#performance).

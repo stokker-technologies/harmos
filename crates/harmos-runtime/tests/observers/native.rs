@@ -52,11 +52,42 @@ struct Counts {
 
 struct Watch<const PANIC: bool>(Arc<Counts>);
 
+#[harmos_runtime::message]
+struct ConfiguredRow {
+    value: String,
+}
+
+struct ConfiguredWatch;
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::sidecar::StreamSpec for ConfiguredRow {
+    type Row = Self;
+    const ID: &'static str = "schema-budget.row";
+    const VERSION: u32 = 1;
+    const WINDOW: usize = 1;
+}
+
+impl Observer<()> for ConfiguredWatch {
+    type Resources = ();
+    type Error = Error;
+    const ID: &'static str = "schema-budget.native";
+    const INTERVAL: Duration = Duration::from_millis(5);
+    const STREAMS: &'static [harmos_runtime::sidecar::inventory::publications::Entry] =
+        &[harmos_runtime::sidecar::inventory::publications::Entry::of::<ConfiguredRow>()];
+
+    async fn initialize(_: &()) -> Result<Self, Error> {
+        Ok(Self)
+    }
+
+    async fn observe(&mut self, _: &ObserverContext<'_, (), ()>) -> Result<(), Error> {
+        Ok(())
+    }
+}
 
 impl Counts {
     fn new() -> Arc<Self> {
@@ -123,6 +154,33 @@ impl<const PANIC: bool> Drop for Watch<PANIC> {
 
 fn watch<const PANIC: bool>() -> Instance<Arc<Counts>, ()> {
     Instance::<Arc<Counts>, ()>::of::<Watch<PANIC>>()
+}
+
+#[tokio::test]
+async fn native_observer_definition_uses_supplied_schema_snapshot() {
+    for accepted in [true, false] {
+        let mut settings = harmos_runtime::config::SchemaSettings::default();
+        if !accepted {
+            settings.preparation_bytes = std::num::NonZeroUsize::new(1).unwrap();
+        }
+        let runtime = harmos_runtime::Runtime::<super::Bank>::builder(super::Ledger::default(), ())
+            .schema_settings(settings)
+            .register(super::catalog())
+            .runtime()
+            .await
+            .unwrap();
+        let result = runtime.operations.register_native_observer(Instance::<(), ()>::of::<ConfiguredWatch>(), |_| ());
+        assert_eq!(result.is_ok(), accepted);
+        let definitions = runtime.operations.resident_definitions();
+        let present = definitions.iter().any(|definition| {
+            matches!(
+                definition,
+                harmos_runtime::operations::resident::Definition::Observer(observer) if observer.id == "schema-budget.native"
+            )
+        });
+        assert_eq!(present, accepted);
+        runtime.stop().await.unwrap();
+    }
 }
 
 #[tokio::test]

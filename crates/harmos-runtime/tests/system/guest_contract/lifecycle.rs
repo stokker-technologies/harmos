@@ -25,7 +25,7 @@ use super::{Bank, sandbox as wire};
 use harmos_runtime::Runtime;
 use harmos_runtime::guest::Host;
 use harmos_runtime::operations::{
-    Context, EncodedInvocation, Operation, OperationDeclaration, PluginRegistration, PluginSdkRegistration, WireDeclaration,
+    Context, EncodedInvocation, OperationDeclaration, PluginRegistration, PluginSdkRegistration, WireDeclaration,
 };
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginLifecycleAuthority,
@@ -46,12 +46,67 @@ pub(super) type Manager = PluginManager<Resources, (), Resources>;
 #[derive(Default)]
 struct Domain;
 
-struct Echo {
-    _resources: Arc<Domain>,
+#[harmos_runtime::operation(codec = manual, resources = [Domain], id = <wire::ProviderEchoOperation as OperationDeclaration>::ID, response = wire::Echoed,
+    policy = <wire::ProviderEchoOperation as OperationDeclaration>::POLICY, visibility = Shared)]
+#[derive(Clone)]
+struct Echo(wire::ProviderEchoOperation);
+
+impl harmos_runtime::Message for Echo {
+    const CODEC: &'static str = <wire::ProviderEchoOperation as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&self.0)
+    }
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&self.0)
+    }
+    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
+        <wire::ProviderEchoOperation as harmos_runtime::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
+        <wire::ProviderEchoOperation as harmos_runtime::Message>::decode(bytes).map(Self)
+    }
+}
+impl harmos_runtime::MemorySize for Echo {
+    fn memory_size(&self) -> usize {
+        harmos_runtime::MemorySize::memory_size(&self.0)
+    }
+}
+impl harmos_runtime::schema::Described for Echo {
+    const NAME: &'static str = <wire::ProviderEchoOperation as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] = <wire::ProviderEchoOperation as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <wire::ProviderEchoOperation as harmos_runtime::schema::Described>::MARKER;
 }
 
-struct Publish {
-    _resources: Arc<Domain>,
+#[harmos_runtime::operation(codec = manual, resources = [Domain, harmos_runtime::operations::HostContext], id = <harmos_operations::streams::Publish as OperationDeclaration>::ID, response = (),
+    policy = <harmos_operations::streams::Publish as OperationDeclaration>::POLICY, visibility = Shared)]
+#[derive(Clone)]
+struct Publish(harmos_operations::streams::Publish);
+
+impl harmos_runtime::Message for Publish {
+    const CODEC: &'static str = <harmos_operations::streams::Publish as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&self.0)
+    }
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&self.0)
+    }
+    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
+        <harmos_operations::streams::Publish as harmos_runtime::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
+        <harmos_operations::streams::Publish as harmos_runtime::Message>::decode(bytes).map(Self)
+    }
+}
+impl harmos_runtime::MemorySize for Publish {
+    fn memory_size(&self) -> usize {
+        harmos_runtime::MemorySize::memory_size(&self.0)
+    }
+}
+impl harmos_runtime::schema::Described for Publish {
+    const NAME: &'static str = <harmos_operations::streams::Publish as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] =
+        <harmos_operations::streams::Publish as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <harmos_operations::streams::Publish as harmos_runtime::schema::Described>::MARKER;
 }
 
 #[derive(Default)]
@@ -100,47 +155,34 @@ enum ProviderOperations {
 
 /* === Implementations === */
 
-impl Operation for Echo {
-    type Request = <wire::ProviderEchoOperation as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <wire::ProviderEchoOperation as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for Echo {
     type Error = harmos_runtime::Error;
-    type Endpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
-        let resources = context.dependency::<Domain>().expect("fixture dependency");
-        Ok(Self { _resources: resources })
-    }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut wire::ProviderEcho, _endpoints: &mut Self::Endpoints,
+        self, ctx: harmos_runtime::Context<'_, Self>,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<wire::Echoed>> {
+        let request = self.0;
+        let _resources = ctx.resource::<Domain>();
         let result: ::core::result::Result<wire::Echoed, Self::Error> = async move {
             // The Waiting Probe Asks For An Answer That Never Comes Before Its Deadline
             if request.say == "slow" {
                 std::future::pending::<()>().await;
             }
-            Ok(wire::Echoed { said: format!("provider:{}", request.say) })
+            Ok(wire::Echoed {
+                said: format!("provider:{}", request.say),
+            })
         }
         .await;
         result.map(::core::convert::Into::into)
     }
 }
 
-impl Operation for Publish {
-    type Request = <harmos_operations::streams::Publish as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <harmos_operations::streams::Publish as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for Publish {
     type Error = harmos_runtime::Error;
-    type Endpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
-        let resources = context.dependency::<Domain>().expect("fixture dependency");
-        Ok(Self { _resources: resources })
-    }
-    async fn run(
-        &mut self, context: harmos_runtime::OperationContext, row: &mut harmos_operations::streams::PublishRequest,
-        _endpoints: &mut Self::Endpoints,
-    ) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
+        let mut row = self.0;
+        let _resources = ctx.resource::<Domain>();
         let result: ::core::result::Result<(), Self::Error> = async move {
-            let host = context.dependency::<harmos_runtime::operations::HostContext>()?;
+            let host = ctx.resource::<harmos_runtime::operations::HostContext>();
             let context = host.borrow();
             let scope = guest_scope(&context)?;
             if row.sequence.is_some() || row.published_unix_micros.is_some() || row.context.is_some() || !row.following.is_empty() {
@@ -203,7 +245,7 @@ where
                             dependencies.insert(Arc::new(Domain)).unwrap();
                             dependencies
                         })
-                        .implementation::<wire::ProviderEchoOperation, Echo>(),
+                        .operation::<Echo>(),
                         self.lane,
                     ))
                 })?);
@@ -247,11 +289,7 @@ impl Resources {
                 authority,
                 &definition.configuration,
                 NonZeroUsize::new(
-                    2 * definition.configuration.len()
-                        + std::mem::size_of::<harmos_operations::lifecycle::InitializeRequest>()
-                        + 64
-                        + 30
-                        + 3072,
+                    2 * definition.configuration.len() + std::mem::size_of::<harmos_operations::lifecycle::Initialize>() + 64 + 30 + 3072,
                 )
                 .unwrap(),
             )?,
@@ -335,7 +373,7 @@ impl Lifecycle<GuestOperations> {
                     dependencies.insert(Arc::new(Domain)).unwrap();
                     dependencies
                 })
-                .implementation::<harmos_operations::streams::Publish, Publish>(),
+                .operation::<Publish>(),
                 lane,
             ))
             .await
@@ -425,8 +463,8 @@ pub(super) async fn serve_host(runtime: &Runtime<Bank>, lane: super::GuestLanes)
                 dependencies.insert(Arc::new(Domain)).unwrap();
                 dependencies
             })
-            .implementation::<harmos_operations::streams::Publish, Publish>(),
-            lane.clone(),
+            .operation::<Publish>(),
+            lane,
         ))
         .await
         .unwrap();
@@ -438,7 +476,7 @@ pub(super) async fn serve_host(runtime: &Runtime<Bank>, lane: super::GuestLanes)
                 dependencies.insert(Arc::new(Domain)).unwrap();
                 dependencies
             })
-            .implementation::<wire::ProviderEchoOperation, Echo>(),
+            .operation::<Echo>(),
             lane,
         ))
         .await
@@ -446,13 +484,17 @@ pub(super) async fn serve_host(runtime: &Runtime<Bank>, lane: super::GuestLanes)
 }
 
 fn guest_error(source: harmos_runtime::guest::Error) -> harmos_runtime::Error {
-    harmos_runtime::Error::OperationFailed { operation: "sandbox_guest".into(), source: Arc::new(source) }
+    harmos_runtime::Error::OperationFailed {
+        operation: "sandbox_guest".into(),
+        source: Arc::new(source),
+    }
 }
 
 fn guest_scope<'a>(context: &'a Context<'_>) -> harmos_runtime::Result<&'a PluginScope> {
-    context
-        .caller_scope()
-        .ok_or(harmos_runtime::Error::InvalidInput { field: "guest caller", reason: "the original guest scope is required" })
+    context.caller_scope().ok_or(harmos_runtime::Error::InvalidInput {
+        field: "guest caller",
+        reason: "the original guest scope is required",
+    })
 }
 
 /* === Tests === */

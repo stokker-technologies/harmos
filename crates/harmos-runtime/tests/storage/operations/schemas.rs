@@ -20,7 +20,6 @@ use std::sync::Arc;
 
 // Third Party Imports
 use harmos_operations::storage::Query;
-use harmos_operations::storage::QueryRequest;
 use harmos_runtime::Identifier;
 use harmos_runtime::schema::Cardinality;
 use harmos_runtime::schema::graph::{Field, Kind, Schema};
@@ -65,7 +64,12 @@ fn schema(name: &str) -> SchemaInput {
                     kind: Kind::Message { definition: 1 },
                 }],
                 vec![
-                    Field { name: Cow::Borrowed("value"), tag: 1, cardinality: Cardinality::Required, kind: Kind::F64 },
+                    Field {
+                        name: Cow::Borrowed("value"),
+                        tag: 1,
+                        cardinality: Cardinality::Required,
+                        kind: Kind::F64,
+                    },
                     Field {
                         name: Cow::Borrowed("next"),
                         tag: 2,
@@ -78,9 +82,12 @@ fn schema(name: &str) -> SchemaInput {
     )
     .unwrap()
 }
-fn request(f: &Fixture, name: &str) -> harmos_operations::storage::WriteSchemaRequest {
-    harmos_operations::storage::WriteSchemaRequest {
-        mutation: MutationId { window: f.storage.mutation_window().unwrap().id, key: Identifier::new(name).unwrap() },
+fn request(f: &Fixture, name: &str) -> harmos_operations::storage::WriteSchema {
+    harmos_operations::storage::WriteSchema {
+        mutation: MutationId {
+            window: f.storage.mutation_window().unwrap().id,
+            key: Identifier::new(name).unwrap(),
+        },
         schema: schema(name),
     }
 }
@@ -111,7 +118,7 @@ async fn schema_registry_roundtrip() {
     conflict.schema.key.version = NonZeroU32::new(2).unwrap();
     assert!(f.runtime.operation(conflict).run().await.is_err());
     let at = f.storage.flush().await.unwrap();
-    let query = QueryRequest {
+    let query = Query {
         at: at.clone(),
         source: Source::Schemas(SchemaSelection { schema: Some(request.schema.key.clone()) }),
         transforms: vec![],
@@ -122,7 +129,10 @@ async fn schema_registry_roundtrip() {
         .operations
         .download::<Query>(
             query,
-            harmos_runtime::operations::StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(64 * 1024).unwrap() },
+            harmos_runtime::operations::StreamSettings {
+                items: NonZeroUsize::MIN,
+                bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+            },
         )
         .unwrap();
     let mut announced = false;

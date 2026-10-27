@@ -61,7 +61,14 @@ impl<T: Send + Sync + 'static> Response<T> {
     }
 
     pub fn from_owner<U: Borrow<T> + Send + Sync + 'static>(owner: Arc<U>) -> Self {
-        Self { erased: ErasedResponse { owner, projection: project::<T, U>, payload: TypeId::of::<T>() }, payload: PhantomData }
+        Self {
+            erased: ErasedResponse {
+                owner,
+                projection: project::<T, U>,
+                payload: TypeId::of::<T>(),
+            },
+            payload: PhantomData,
+        }
     }
 
     pub fn ptr_eq(&self, other: &Self) -> bool {
@@ -107,7 +114,10 @@ impl<T: Send + Sync + 'static> From<Arc<T>> for Response<T> {
 
 impl<T: Send + Sync + 'static> Clone for Response<T> {
     fn clone(&self) -> Self {
-        Self { erased: self.erased.clone(), payload: PhantomData }
+        Self {
+            erased: self.erased.clone(),
+            payload: PhantomData,
+        }
     }
 }
 

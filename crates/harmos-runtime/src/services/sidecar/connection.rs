@@ -121,7 +121,10 @@ impl Endpoint {
 
     pub(crate) fn bind_capacity(&self, limit: NonZeroUsize) -> crate::Result<Arc<Semaphore>> {
         if limit.get() > Semaphore::MAX_PERMITS {
-            return Err(crate::Error::InvalidInput { field: "native operation capacity", reason: "capacity exceeds the semaphore limit" });
+            return Err(crate::Error::InvalidInput {
+                field: "native operation capacity",
+                reason: "capacity exceeds the semaphore limit",
+            });
         }
         let mut capacity = self.capacity.lock().expect("native operation capacity poisoned");
         if let Some((original, semaphore)) = capacity.as_ref() {
@@ -171,7 +174,7 @@ impl Endpoint {
         let mut ended = self.ended.clone();
         tokio::select! {
             ingested = lease.ingested() => ingested.map_err(|source| crate::Error::OperationFailed {
-                operation: "host_publish".into(),
+                operation: "host.publish".into(),
                 source: Arc::new(source),
             })?,
             _ = ended.wait_for(|ended| *ended) => {
@@ -185,13 +188,15 @@ impl Endpoint {
         if !self.accepts() || !self.plugin.as_ref().is_some_and(|original| original.same_activation(scope)) {
             return Err(crate::Error::Closing { domain: "native publication connection" });
         }
-        let first = request
-            .sequence
-            .ok_or(crate::Error::InvalidInput { field: "native publication", reason: "the original producer sequence is required" })?;
+        let first = request.sequence.ok_or(crate::Error::InvalidInput {
+            field: "native publication",
+            reason: "the original producer sequence is required",
+        })?;
         let rows = 1 + request.following.len() as u64;
-        first
-            .checked_add(rows - 1)
-            .ok_or(crate::Error::InvalidInput { field: "native publication", reason: "the producer sequence must not overflow" })?;
+        first.checked_add(rows - 1).ok_or(crate::Error::InvalidInput {
+            field: "native publication",
+            reason: "the producer sequence must not overflow",
+        })?;
         let head = (std::mem::take(request.payload), request.published_unix_micros);
         // Each Following Delta Rebuilds A Row's Stamp From Its Predecessor's.
         let mut previous = request.published_unix_micros;
@@ -199,11 +204,10 @@ impl Endpoint {
         for row in std::mem::take(request.following) {
             let stamp = match (previous, row.published_delta_micros) {
                 (_, None) => None,
-                (Some(previous), Some(delta)) => Some(
-                    previous
-                        .checked_add(delta)
-                        .ok_or(crate::Error::InvalidInput { field: "native publication", reason: "a row stamp must not overflow" })?,
-                ),
+                (Some(previous), Some(delta)) => Some(previous.checked_add(delta).ok_or(crate::Error::InvalidInput {
+                    field: "native publication",
+                    reason: "a row stamp must not overflow",
+                })?),
                 (None, Some(_)) => {
                     return Err(crate::Error::InvalidInput {
                         field: "native publication",
@@ -216,7 +220,11 @@ impl Endpoint {
         }
         let mut batch: Vec<_> = std::iter::once(head)
             .chain(following)
-            .map(|(payload, published_unix_micros)| crate::streams::PublicationRow { payload, published_unix_micros, context: None })
+            .map(|(payload, published_unix_micros)| crate::streams::PublicationRow {
+                payload,
+                published_unix_micros,
+                context: None,
+            })
             .collect();
         // Every Row Carries The Call Context; The Last Row Takes The Original.
         if let Some((last, rest)) = batch.split_last_mut() {
@@ -228,10 +236,10 @@ impl Endpoint {
         let staged = {
             let mut sequences = self.sequences.lock().expect("native publication sequence poisoned");
             let previous = sequences.get(request.stream).copied().unwrap_or(0);
-            let missed = first
-                .checked_sub(previous)
-                .and_then(|advance| advance.checked_sub(1))
-                .ok_or(crate::Error::InvalidInput { field: "native publication", reason: "the producer sequence must strictly advance" })?;
+            let missed = first.checked_sub(previous).and_then(|advance| advance.checked_sub(1)).ok_or(crate::Error::InvalidInput {
+                field: "native publication",
+                reason: "the producer sequence must strictly advance",
+            })?;
             let staged = lease.stage_rows_in(context, batch, first, missed);
             // Rows Before A Refused Row Stay Staged; The Rest Count As Missed.
             if let Some(advanced) = (staged.staged.len() as u64).checked_sub(1) {
@@ -243,7 +251,10 @@ impl Endpoint {
             permit.send(Arrival::Publications(staged.staged));
         }
         match staged.refused {
-            Some(source) => Err(crate::Error::OperationFailed { operation: "host_publish".into(), source: Arc::new(source) }),
+            Some(source) => Err(crate::Error::OperationFailed {
+                operation: "host.publish".into(),
+                source: Arc::new(source),
+            }),
             None => Ok(()),
         }
     }
@@ -295,7 +306,11 @@ impl Endpoint {
             }
             error => SidecarError::Malformed(error.to_string()),
         })?;
-        let frame = Frame::Call { id: u64::MAX, method: WIRE_METHOD.to_owned(), params: params.into() };
+        let frame = Frame::Call {
+            id: u64::MAX,
+            method: WIRE_METHOD.to_owned(),
+            params: params.into(),
+        };
         if !frame.fits() {
             return Err(SidecarError::refused(Frame::OVERSIZED, "operation control exceeds the native frame limit"));
         }

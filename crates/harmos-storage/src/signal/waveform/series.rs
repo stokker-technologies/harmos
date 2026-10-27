@@ -173,13 +173,19 @@ impl<'a> From<&'a [f64]> for Series<'a> {
 impl From<Vec<f64>> for Series<'static> {
     fn from(mut values: Vec<f64>) -> Self {
         values.retain(|value| value.is_finite());
-        Self { values: Cow::Owned(values), sorted: false }
+        Self {
+            values: Cow::Owned(values),
+            sorted: false,
+        }
     }
 }
 
 impl FromIterator<f64> for Series<'static> {
     fn from_iter<I: IntoIterator<Item = f64>>(values: I) -> Self {
-        Self { values: Cow::Owned(finite(values)), sorted: false }
+        Self {
+            values: Cow::Owned(finite(values)),
+            sorted: false,
+        }
     }
 }
 

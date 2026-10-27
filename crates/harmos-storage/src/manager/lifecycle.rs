@@ -51,7 +51,10 @@ impl<C> StorageManager<C> {
                     return Ok(());
                 }
                 if state.ready {
-                    return Err(Error::AlreadyRegistered { domain: "storage", name: WORKER_NAME.into() });
+                    return Err(Error::AlreadyRegistered {
+                        domain: "storage",
+                        name: WORKER_NAME.into(),
+                    });
                 }
             }
             self.acquire_locked(&mut lifecycle).await?;
@@ -142,7 +145,10 @@ impl<C> StorageManager<C> {
         }
         if let Some(current) = &state.service_owner {
             if !Arc::ptr_eq(current, &owner) {
-                return Err(Error::AlreadyRegistered { domain: "storage owner", name: WORKER_NAME.to_owned() });
+                return Err(Error::AlreadyRegistered {
+                    domain: "storage owner",
+                    name: WORKER_NAME.to_owned(),
+                });
             }
         } else {
             state.service_owner = Some(owner);

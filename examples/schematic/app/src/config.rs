@@ -46,7 +46,10 @@ pub struct Settings {
 
 impl Settings {
     pub fn new(recordings: impl Into<PathBuf>) -> Self {
-        Self { journal_sync_entries: NonZeroUsize::new(1).unwrap(), recordings: recordings.into() }
+        Self {
+            journal_sync_entries: NonZeroUsize::new(1).unwrap(),
+            recordings: recordings.into(),
+        }
     }
 
     pub fn from_env() -> Result<Self, ConfigError> {

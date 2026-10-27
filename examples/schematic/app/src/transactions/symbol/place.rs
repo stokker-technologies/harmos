@@ -54,7 +54,14 @@ impl Transaction<Schematic> for PlaceSymbol {
     }
 
     fn apply(&self, schematic: &mut Schematic) {
-        schematic.symbols.insert(self.symbol, Symbol { reference: self.reference.clone(), position: self.at, rotation: self.rotation });
+        schematic.symbols.insert(
+            self.symbol,
+            Symbol {
+                reference: self.reference.clone(),
+                position: self.at,
+                rotation: self.rotation,
+            },
+        );
     }
 }
 

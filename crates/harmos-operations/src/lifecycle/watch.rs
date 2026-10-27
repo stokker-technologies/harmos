@@ -14,7 +14,10 @@
 /* === Imports === */
 
 #[cfg(feature = "runtime")]
-use crate::{Error, Operation, OperationContext, Response};
+use harmos_sdk::operations::instances::InstanceAccess;
+
+#[cfg(feature = "runtime")]
+use crate::{Error, Operation, Response};
 use harmos_domain::operations::instance::Id;
 
 /* === Constants === */
@@ -25,17 +28,20 @@ use harmos_domain::operations::instance::Id;
 
 /* === Structs === */
 
-#[harmos::message(harmos_path = crate)]
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [InstanceAccess],
+    id = "host.operations.watch",
+    response = super::InstanceState,
+    output = super::InstanceState,
+    policy = super::WATCH_POLICY,
+    visibility = Shared,
+    grpc(package = "harmos.host.v1", service = "Operations", method = "Watch"),
+)]
 #[derive(Clone, Default, PartialEq)]
-pub struct WatchRequest {
+pub struct Watch {
     pub instance: u64,
 }
-
-#[harmos::operation(harmos_path = crate, id = "host_operations_watch", request = WatchRequest,
-    response = super::InstanceState, output = super::InstanceState, policy = super::WATCH_POLICY, infer_request,
-    visibility = harmos_domain::operations::Visibility::Shared,
-    grpc(package = "harmos.host.v1", service = "Operations", method = "Watch"))]
-pub struct Watch;
 
 /* === Enums === */
 
@@ -43,7 +49,7 @@ pub struct Watch;
 
 /* === Implementations === */
 
-impl WatchRequest {
+impl Watch {
     pub fn of(instance: Id) -> Self {
         Self { instance: instance.value() }
     }
@@ -51,18 +57,13 @@ impl WatchRequest {
 
 #[cfg(feature = "runtime")]
 impl Operation for Watch {
-    type Request = WatchRequest;
-    type Response = super::InstanceState;
     type Error = Error;
-    type Endpoints = harmos_sdk::operations::StreamOutput<super::InstanceState>;
-    async fn initialize(_: OperationContext) -> Result<Self, Error> {
-        Ok(Self)
-    }
-    async fn run(
-        &mut self, context: OperationContext, request: &mut Self::Request, output: &mut Self::Endpoints,
-    ) -> Result<Response<Self::Response>, Error> {
-        let access = context.dependency::<harmos_sdk::operations::instances::InstanceAccess>()?;
-        let instance = access.0.owned(Id::new(request.instance)).ok_or(Error::UnknownInstance(request.instance))?;
+
+    async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<Response<super::InstanceState>, Error> {
+        let access = context.resource::<harmos_sdk::operations::instances::InstanceAccess>();
+        let output = context.streams();
+
+        let instance = access.0.owned(Id::new(self.instance)).ok_or(Error::UnknownInstance(self.instance))?;
         use harmos_domain::MemorySize;
         let mut changes = instance.subscribe();
         drop(instance);

@@ -27,21 +27,18 @@
 
 /* === Structs === */
 
-#[harmos::message]
-#[derive(Clone, Debug, PartialEq)]
-pub struct ValidateSchematicRequest {
-    pub schematic: schematic_domain::model::Snapshot,
-}
-
 #[harmos::operation(
-    id = "schematic_validate",
-    request = ValidateSchematicRequest, infer_request, response = Validation,
+    id = "schematic.validate",
+    response = Validation,
     policy = crate::POLICY,
-    visibility = harmos::operations::Visibility::Shared,
+    visibility = Shared,
     replay = harmos::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "Validate"),
 )]
-pub struct ValidateSchematic {}
+#[derive(Clone, Debug, PartialEq)]
+pub struct ValidateSchematic {
+    pub schematic: schematic_domain::model::Snapshot,
+}
 
 #[harmos::message]
 #[derive(Clone, Debug, PartialEq)]
@@ -57,19 +54,10 @@ pub struct Validation {
 
 #[cfg(feature = "runtime")]
 impl harmos::Operation for ValidateSchematic {
-    type Request = ValidateSchematicRequest;
-    type Response = Validation;
     type Error = crate::Error;
-    type Endpoints = ();
 
-    async fn initialize(_: harmos::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self {})
-    }
-
-    async fn run(
-        &mut self, _: harmos::OperationContext, request: &mut Self::Request, _: &mut Self::Endpoints,
-    ) -> Result<harmos::Response<Self::Response>, Self::Error> {
-        let diagnostics = request.schematic.diagnostics();
+    async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<Validation>, Self::Error> {
+        let diagnostics = self.schematic.diagnostics();
         Ok(Validation { diagnostics }.into())
     }
 }

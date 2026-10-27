@@ -37,7 +37,7 @@ use super::*;
 /* === Public Functions === */
 
 #[tracing::instrument(name = "storage.staging.perform.perform", level = "debug", skip_all)]
-pub(crate) async fn perform(inner: &crate::manager::Inner, action: &FileAction) -> Result<FileCompleted> {
+pub(crate) async fn perform(inner: &Arc<crate::manager::Inner>, action: &FileAction) -> Result<FileCompleted> {
     match action {
         FileAction::Create { id, metadata, staging, resumable } => {
             let actual = if *resumable {
@@ -49,7 +49,10 @@ pub(crate) async fn perform(inner: &crate::manager::Inner, action: &FileAction) 
                 if let Some(file) = inner.state.lock().unwrap().files.get_mut(id) {
                     file.extra = Some(actual);
                 }
-                return Err(Error::InvalidInput { field: "file staging", reason: "backend changed staging identity" });
+                return Err(Error::InvalidInput {
+                    field: "file staging",
+                    reason: "backend changed staging identity",
+                });
             }
             Ok(FileCompleted::Created)
         }
@@ -61,15 +64,28 @@ pub(crate) async fn perform(inner: &crate::manager::Inner, action: &FileAction) 
             inner.bounded("primary.write_file", inner.primary.write_file(staging, *offset, bytes.clone())).await?;
             Ok(FileCompleted::Written)
         }
-        FileAction::Finish { staging, metadata, target, length, sha256, .. } => {
-            let position = StorageCursor { history: inner.primary.history().clone(), sequence: target.sequence };
+        FileAction::Finish {
+            staging,
+            metadata,
+            target,
+            length,
+            sha256,
+            ..
+        } => {
+            let position = StorageCursor {
+                history: inner.primary.history().clone(),
+                sequence: target.sequence,
+            };
             let reference = inner.bounded("primary.finish_file", inner.primary.finish_file(staging, &position, *length, *sha256)).await?;
             if reference.position != position
                 || reference.metadata != **metadata
                 || reference.length != *length
                 || reference.sha256 != *sha256
             {
-                return Err(Error::InvalidInput { field: "file finish", reason: "backend changed immutable file reference" });
+                return Err(Error::InvalidInput {
+                    field: "file finish",
+                    reason: "backend changed immutable file reference",
+                });
             }
             Ok(FileCompleted::Finished(Box::new(reference)))
         }

@@ -27,24 +27,21 @@
 
 /* === Structs === */
 
-#[harmos::message]
+#[harmos::operation(
+    id = "schematic.list.directories",
+    response = Directories,
+    policy = crate::POLICY,
+    visibility = Shared,
+    grpc(package = "schematic.v1", service = "Schematic", method = "ListDirectories"),
+)]
 #[derive(Clone, Debug, PartialEq)]
-pub struct ListDirectoriesRequest {}
+pub struct ListDirectories {}
 
 #[harmos::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Directories {
     pub directories: Vec<String>,
 }
-
-#[harmos::operation(
-    id = "schematic_list_directories",
-    request = ListDirectoriesRequest, infer_request, response = Directories,
-    policy = crate::POLICY,
-    visibility = harmos::operations::Visibility::Shared,
-    grpc(package = "schematic.v1", service = "Schematic", method = "ListDirectories"),
-)]
-pub struct ListDirectories {}
 
 /* === Enums === */
 
@@ -54,18 +51,9 @@ pub struct ListDirectories {}
 
 #[cfg(feature = "runtime")]
 impl harmos::Operation for ListDirectories {
-    type Request = ListDirectoriesRequest;
-    type Response = Directories;
     type Error = crate::Error;
-    type Endpoints = ();
 
-    async fn initialize(_: harmos::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self {})
-    }
-
-    async fn run(
-        &mut self, _: harmos::OperationContext, _: &mut Self::Request, _: &mut (),
-    ) -> Result<harmos::Response<Directories>, Self::Error> {
+    async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<Directories>, Self::Error> {
         let entries = std::fs::read_dir(".")?;
         let mut directories = Vec::new();
         for entry in entries {

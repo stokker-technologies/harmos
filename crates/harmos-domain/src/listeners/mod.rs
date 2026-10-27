@@ -130,14 +130,20 @@ impl Source {
 
     fn validate(&self) -> Result<(), Error> {
         if self.id().trim().is_empty() || self.id().chars().any(char::is_control) {
-            return Err(Error::Source { reason: "source identities must be nonempty and contain no control characters" });
+            return Err(Error::Source {
+                reason: "source identities must be nonempty and contain no control characters",
+            });
         }
         match self {
             Self::Record { version: 0, .. } => {
-                return Err(Error::Source { reason: "record semantic version must be positive" });
+                return Err(Error::Source {
+                    reason: "record semantic version must be positive",
+                });
             }
             Self::Stream { schema_ordinal: 0, .. } => {
-                return Err(Error::Source { reason: "stream schema ordinal must be positive" });
+                return Err(Error::Source {
+                    reason: "stream schema ordinal must be positive",
+                });
             }
             _ => {}
         }
@@ -156,8 +162,16 @@ impl SourceDeclaration {
     pub fn source(&self) -> Result<Source, Error> {
         let row = Schema::from_declaration(self.row(), &SchemaSettings::default()).map_err(schema::Error::from)?;
         Ok(match self {
-            Self::Record { id, version, .. } => Source::Record { id: Cow::Borrowed(id), version: *version, row },
-            Self::Stream { id, schema_ordinal, .. } => Source::Stream { id: Cow::Borrowed(id), schema_ordinal: *schema_ordinal, row },
+            Self::Record { id, version, .. } => Source::Record {
+                id: Cow::Borrowed(id),
+                version: *version,
+                row,
+            },
+            Self::Stream { id, schema_ordinal, .. } => Source::Stream {
+                id: Cow::Borrowed(id),
+                schema_ordinal: *schema_ordinal,
+                row,
+            },
         })
     }
 }
@@ -179,11 +193,15 @@ impl Definition {
             || operation.policy.retries != RetryPolicy::Never
             || operation.replay != ReplaySafety::Unknown
         {
-            return Err(Error::Callback { reason: "callbacks must be Shared, Never retry or restart, and Unknown replay safety" });
+            return Err(Error::Callback {
+                reason: "callbacks must be Shared, Never retry or restart, and Unknown replay safety",
+            });
         }
         let matches = delivery::matches(callback.request(), source.schema(), &SchemaSettings::default()).map_err(schema::Error::from)?;
         if !matches || !callback.response().fields().is_empty() {
-            return Err(Error::Callback { reason: "callback request must be exactly Delivery<Row> for this source, with a unit response" });
+            return Err(Error::Callback {
+                reason: "callback request must be exactly Delivery<Row> for this source, with a unit response",
+            });
         }
         Ok(Self { id, source, callback })
     }
@@ -249,7 +267,9 @@ fn collect(
             return Err(Error::Duplicate { id: definition.id.to_string() });
         }
         if !callbacks.insert(definition.callback.operation().id.clone()) {
-            return Err(Error::Duplicate { id: definition.callback.operation().id.to_string() });
+            return Err(Error::Duplicate {
+                id: definition.callback.operation().id.to_string(),
+            });
         }
         definitions.push(definition);
         Ok(())

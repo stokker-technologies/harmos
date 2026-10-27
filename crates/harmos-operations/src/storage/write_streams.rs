@@ -23,13 +23,17 @@ use harmos_domain::Identifier;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Id, Optional, product};
 use harmos_domain::model::storage::{DataBatch, WriteCompletion, WriteReceipt};
-use harmos_domain::operations::{ReplaySafety, Visibility};
+use harmos_domain::operations::ReplaySafety;
+#[cfg(feature = "runtime")]
+use harmos_sdk::operations::access::GrantAccess;
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
 /* === Macros === */
 
-product!(WriteStreamsRequest {
+product!(WriteStreams {
     scope: Optional<Id> => 1,
 });
 
@@ -38,25 +42,22 @@ product!(WriteStreamsRequest {
 /* === Structs === */
 
 // Admit Streamed Arrow Batches Of Stream Rows Into One Optional Scope.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteStreamsRequest {
-    pub scope: Option<Identifier>,
-}
-
-#[harmos::operation(harmos_path = crate,
-    id = "storage_write_streams",
-    request = WriteStreamsRequest,
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [StorageManager<ErasedCatalog>, GrantAccess],
+    codec = manual,
+    id = "storage.write_streams",
     response = WriteCompletion,
     policy = IO_POLICY,
-    infer_request,
     input = DataBatch,
     output = WriteReceipt,
-    visibility = Visibility::Shared,
+    visibility = Shared,
     replay = ReplaySafety::Unknown,
-    grpc(package = "harmos.storage.v1", service =  "Storage", method =  "WriteStreams"))]
+    grpc(package = "harmos.storage.v1", service =  "Storage", method =  "WriteStreams"),
+)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WriteStreams {
-    #[cfg(feature = "runtime")]
-    storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
+    pub scope: Option<Identifier>,
 }
 
 /* === Enums === */
@@ -65,7 +66,7 @@ pub struct WriteStreams {
 
 /* === Implementations === */
 
-impl MemorySize for WriteStreamsRequest {
+impl MemorySize for WriteStreams {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.scope.memory_size().saturating_sub(std::mem::size_of_val(&self.scope)))
     }
@@ -80,27 +81,20 @@ mod execution {
     // Third Party Imports
     // Local Imports
     use crate::{Error, Result};
-    use harmos_sdk::operations::{Operation, OperationDeclaration, StreamInput, StreamOutput};
-    use harmos_storage::StorageManager;
-    use harmos_storage::writes::{DataBatch, WriteCompletion, WriteReceipt};
+    use harmos_sdk::operations::{Operation, OperationDeclaration};
+    use harmos_storage::writes::WriteCompletion;
 
     impl Operation for super::WriteStreams {
-        type Request = <WriteStreams as harmos_domain::OperationDeclaration>::Request;
-        type Response = <WriteStreams as harmos_domain::OperationDeclaration>::Response;
         type Error = Error;
-        type Endpoints = (StreamInput<DataBatch>, StreamOutput<WriteReceipt>);
 
-        async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
-            let storage = context.dependency::<StorageManager<harmos_storage::ErasedCatalog>>()?;
-            Ok(Self { storage })
-        }
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<WriteCompletion>> {
+            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
+            let grants = context.resource::<harmos_sdk::operations::access::GrantAccess>();
+            let endpoints = context.streams();
 
-        async fn run(
-            &mut self, ctx: harmos_sdk::OperationContext, request: &mut Self::Request, endpoints: &mut Self::Endpoints,
-        ) -> Result<harmos_sdk::operations::Response<WriteCompletion>> {
-            let host = ctx.dependency::<harmos_sdk::operations::access::GrantAccess>()?;
+            let host = grants;
             let ctx = &host.0;
-            let completion = exchange(&self.storage, ctx, request.scope.as_ref(), endpoints, WriteKind::Streams, WriteStreams::ID).await?;
+            let completion = exchange(&storage, ctx, self.scope.as_ref(), endpoints, WriteKind::Streams, WriteStreams::ID).await?;
             Ok(completion.into())
         }
 

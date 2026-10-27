@@ -24,9 +24,8 @@ use std::sync::{Arc, Mutex};
 // Third Party Imports
 use tokio::task::JoinHandle;
 // Local Imports
-use super::{DirectoryCompletion, DirectoryEntry, Selection, join_error, relative, retained_item, selection};
-use crate::capacity::{Held, Pool, Refusal, Reservation};
-use crate::manager::{ENTRY_OVERHEAD, Inner};
+use super::{DirectoryCompletion, DirectoryEntry, Selection, item, join_error, relative, selection};
+use crate::manager::Inner;
 use crate::{Error, ReadBatch, Result};
 use harmos_domain::model::storage::DirectorySelection;
 
@@ -36,7 +35,7 @@ use harmos_domain::model::storage::DirectorySelection;
 
 /* === Type Aliases === */
 
-type Scanned = (DirectoryEntry, Reservation);
+type Scanned = DirectoryEntry;
 type Pending = JoinHandle<Result<Option<Scanned>>>;
 
 /* === Structs === */
@@ -51,7 +50,7 @@ pub struct DirectoryReader {
 
 struct Scan {
     inner: Arc<Inner>,
-    held: Held,
+
     selection: Arc<Selection>,
     stack: Vec<Frame>,
     visited: usize,
@@ -63,7 +62,6 @@ struct Scan {
 struct Frame {
     directory: ReadDir,
     _path: PathBuf,
-    _memory: Reservation,
 }
 
 /* === Enums === */
@@ -74,16 +72,15 @@ struct Frame {
 
 impl DirectoryReader {
     pub(super) async fn new(inner: Arc<Inner>, value: DirectorySelection) -> Result<Self> {
-        let held = Held::default();
-        let selected = selection(&inner, value, &held).await?;
-        Self::selected(inner, selected, held).await
+        let selected = selection(value).await?;
+        Self::selected(inner, selected).await
     }
 
-    pub(super) async fn selected(inner: Arc<Inner>, selection: Arc<Selection>, held: Held) -> Result<Self> {
+    pub(super) async fn selected(inner: Arc<Inner>, selection: Arc<Selection>) -> Result<Self> {
         let cancelled = Arc::new(AtomicBool::new(false));
         let scan = Scan {
             inner: Arc::clone(&inner),
-            held: held.clone(),
+
             selection,
             stack: Vec::new(),
             visited: 0,
@@ -104,11 +101,17 @@ impl DirectoryReader {
         }
         .await
         .map_err(join_error)??;
-        Ok(Self { context: crate::execution::Context::current(), inner, state: Arc::new(Mutex::new(scan)), pending: None, cancelled })
+        Ok(Self {
+            context: crate::execution::Context::current(),
+            inner,
+            state: Arc::new(Mutex::new(scan)),
+            pending: None,
+            cancelled,
+        })
     }
 
     pub async fn next(&mut self) -> Result<Option<ReadBatch<DirectoryEntry>>> {
-        self.next_value().await?.map(|(value, memory)| retained_item(&self.inner, value, memory)).transpose()
+        self.next_value().await?.map(|value| item(&self.inner, value)).transpose()
     }
 
     pub fn completion(&self) -> Result<DirectoryCompletion> {
@@ -148,11 +151,9 @@ impl Drop for DirectoryReader {
 
 impl Scan {
     fn enter(&mut self, path: &Path) -> Result<()> {
-        let bytes = path.as_os_str().len().saturating_mul(6).saturating_add(std::mem::size_of::<Frame>() * 2 + ENTRY_OVERHEAD);
-        let memory = Reservation::try_new(&self.inner, Pool::Read, &self.held, bytes).map_err(Refusal::into_error)?;
         let path = crate::local::validate_local_path(path)?;
         let directory = fs::read_dir(&path).map_err(crate::local::io_error)?;
-        self.stack.push(Frame { directory, _path: path, _memory: memory });
+        self.stack.push(Frame { directory, _path: path });
         Ok(())
     }
 
@@ -175,8 +176,7 @@ impl Scan {
                 return Err(Error::ResourceExhausted { resource: "directory entries" });
             }
             let name = entry.file_name();
-            let bytes = frame._path.capacity().saturating_add(name.capacity()).saturating_mul(3).saturating_add(ENTRY_OVERHEAD);
-            let memory = Reservation::try_new(&self.inner, Pool::Read, &self.held, bytes).map_err(Refusal::into_error)?;
+
             let path = frame._path.join(name);
             let metadata = match fs::symlink_metadata(&path) {
                 Ok(metadata) => metadata,
@@ -194,8 +194,12 @@ impl Scan {
                 continue;
             }
             self.entries += 1;
-            let entry = DirectoryEntry { path, directory: metadata.is_dir(), length: if metadata.is_file() { metadata.len() } else { 0 } };
-            return Ok(Some((entry, memory)));
+            let entry = DirectoryEntry {
+                path,
+                directory: metadata.is_dir(),
+                length: if metadata.is_file() { metadata.len() } else { 0 },
+            };
+            return Ok(Some(entry));
         }
     }
 }

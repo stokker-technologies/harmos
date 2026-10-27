@@ -43,15 +43,29 @@ pub(super) struct Session {
 
 impl Session {
     pub(super) fn new(execution: crate::execution::Execution) -> Self {
-        Self { execution, generation: 1, disconnected: false, deadline: None, reason: "producer abandoned" }
+        Self {
+            execution,
+            generation: 1,
+            disconnected: false,
+            deadline: None,
+            reason: "producer abandoned",
+        }
     }
 
     pub(super) fn token(timeout: Duration, execution: crate::execution::Execution) -> Self {
-        Self { deadline: Some(execution.now() + timeout), ..Self::new(execution) }
+        Self {
+            deadline: Some(execution.now() + timeout),
+            ..Self::new(execution)
+        }
     }
 
     pub(super) fn recovered(generation: u64, timeout: Duration, execution: crate::execution::Execution) -> Self {
-        Self { generation, disconnected: true, deadline: Some(execution.now() + timeout), ..Self::new(execution) }
+        Self {
+            generation,
+            disconnected: true,
+            deadline: Some(execution.now() + timeout),
+            ..Self::new(execution)
+        }
     }
 
     pub(super) fn resumed(&mut self, generation: u64, timeout: Duration, disconnected: bool) {
@@ -84,7 +98,10 @@ impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.staging.session.produce_file", level = "debug", skip_all)]
     pub async fn produce_file(&self, metadata: FileMetadata) -> Result<StorageFile> {
         if !self.inner.primary.supports_file_sessions() {
-            return Err(Error::InvalidInput { field: "file session", reason: "backend does not support resumable file sessions" });
+            return Err(Error::InvalidInput {
+                field: "file session",
+                reason: "backend does not support resumable file sessions",
+            });
         }
         self.create(metadata, true).await
     }
@@ -111,27 +128,45 @@ impl<C> StorageManager<C> {
                 state.expire_files();
                 let Some((id, file)) = state.files.iter_mut().find(|(_, file)| file.staging.id == token.id) else {
                     tracing::error!(file = %token.id, generation = token.generation, reason = "session unavailable or expired", "file resume rejected");
-                    return Err(Error::InvalidInput { field: "file resume", reason: "session unavailable or expired" });
+                    return Err(Error::InvalidInput {
+                        field: "file resume",
+                        reason: "session unavailable or expired",
+                    });
                 };
-                let session = file
-                    .session
-                    .as_mut()
-                    .ok_or(Error::InvalidInput { field: "file resume", reason: "private staging is not resumable" })?;
+                let session = file.session.as_mut().ok_or(Error::InvalidInput {
+                    field: "file resume",
+                    reason: "private staging is not resumable",
+                })?;
                 if claimed && session.generation == next && !file.abandoned {
                     session.connect();
                     let mut token = token.clone();
                     token.generation = next;
-                    Some(StorageFile { manager: self.erased(), id: *id, progress: file.progress.clone(), session: Some(token) })
+                    Some(StorageFile {
+                        manager: self.erased(),
+                        id: *id,
+                        progress: file.progress.clone(),
+                        session: Some(token),
+                        append: None,
+                    })
                 } else {
                     if session.generation != token.generation || file.abandoned {
                         tracing::error!(file = %token.id, generation = token.generation, offset = file.length, reason = "expired or fenced producer", "file resume rejected");
-                        return Err(Error::InvalidInput { field: "file resume", reason: "expired or fenced producer" });
+                        return Err(Error::InvalidInput {
+                            field: "file resume",
+                            reason: "expired or fenced producer",
+                        });
                     }
                     if matches!(file.command, Some(Command::Finish { .. } | Command::Abort)) {
-                        return Err(Error::InvalidInput { field: "file resume", reason: "production is ending" });
+                        return Err(Error::InvalidInput {
+                            field: "file resume",
+                            reason: "production is ending",
+                        });
                     }
                     if !claimed && matches!(file.command, Some(Command::Resume { .. })) {
-                        return Err(Error::InvalidInput { field: "file resume", reason: "another resume owns the transition" });
+                        return Err(Error::InvalidInput {
+                            field: "file resume",
+                            reason: "another resume owns the transition",
+                        });
                     }
                     if file.command.is_none() && !file.in_flight {
                         file.context = crate::execution::Context::current();
@@ -166,7 +201,10 @@ impl StorageFile {
             && token.generation != self.progress.lock().unwrap().generation
         {
             tracing::error!(file = %token.id, generation = token.generation, reason = "producer fenced", "file operation rejected");
-            return Err(Error::InvalidInput { field: "file session", reason: "producer fenced" });
+            return Err(Error::InvalidInput {
+                field: "file session",
+                reason: "producer fenced",
+            });
         }
         Ok(())
     }
@@ -186,7 +224,10 @@ impl FileState {
             }
             _ => {
                 tracing::error!(file = %self.staging.id, offset = self.length, reason = "producer disconnected, expired or fenced", "file operation rejected");
-                Err(Error::InvalidInput { field: "file session", reason: "producer disconnected, expired or fenced" })
+                Err(Error::InvalidInput {
+                    field: "file session",
+                    reason: "producer disconnected, expired or fenced",
+                })
             }
         }
     }

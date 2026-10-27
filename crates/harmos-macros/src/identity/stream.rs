@@ -401,7 +401,16 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
         ));
     }
 
-    Ok(Declaration { id, presentation, window, track, axis, batch, row, harmos: HarmosPath::resolve(harmos_path) })
+    Ok(Declaration {
+        id,
+        presentation,
+        window,
+        track,
+        axis,
+        batch,
+        row,
+        harmos: HarmosPath::resolve(harmos_path),
+    })
 }
 
 fn tuple(value: &Expr) -> Result<Tuple, Error> {

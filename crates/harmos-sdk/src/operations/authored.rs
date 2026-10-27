@@ -19,8 +19,7 @@ use std::future::Future;
 // Third Party Imports
 
 // Local Imports
-use super::{FailureKind, OperationContext};
-use crate::Portable;
+use super::{ExecutionContext, FailureKind, OperationDeclaration};
 
 /* === Constants === */
 
@@ -73,17 +72,20 @@ pub trait OutputEndpoint: Send + Sized + 'static {
     }
 }
 
-pub trait Operation: Send + Sized + 'static {
-    type Request: Portable;
-    type Response: Portable;
+// The Instance Contract Behind Every Registered Operation: Carrier Proxies,
+// Lifecycle Built-Ins And Authored Operations Through `Authored`.
+#[doc(hidden)]
+pub trait Carrier: Send + Sized + 'static {
+    type Declaration: OperationDeclaration;
     type Error: std::error::Error + Send + Sync + 'static;
-    type Endpoints: EndpointSet;
+    type StreamEndpoints: EndpointSet;
 
-    fn initialize(context: OperationContext) -> impl Future<Output = Result<Self, Self::Error>> + Send;
+    fn bind(context: ExecutionContext) -> impl Future<Output = Result<Self, Self::Error>> + Send;
 
-    fn run(
-        &mut self, context: OperationContext, request: &mut Self::Request, endpoints: &mut Self::Endpoints,
-    ) -> impl Future<Output = Result<super::Response<Self::Response>, Self::Error>> + Send;
+    fn attempt(
+        &mut self, context: ExecutionContext, request: &mut <Self::Declaration as OperationDeclaration>::Request,
+        endpoints: &mut Self::StreamEndpoints,
+    ) -> impl Future<Output = Result<super::Response<<Self::Declaration as OperationDeclaration>::Response>, Self::Error>> + Send;
 
     fn stop(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
         async { Ok(()) }
@@ -100,6 +102,14 @@ pub trait Operation: Send + Sized + 'static {
     fn classify(_error: &Self::Error) -> FailureKind {
         FailureKind::Permanent
     }
+}
+
+// Selects The Carrier That Executes A Declaration.
+pub trait Executable: OperationDeclaration {
+    type Carrier: Carrier<Declaration = Self>;
+
+    // Registration Verifies The Carrier Resources.
+    const RESOURCES: &'static [super::Resource] = &[];
 }
 
 /* === Implementations === */

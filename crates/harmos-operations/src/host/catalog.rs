@@ -14,19 +14,31 @@
 /* === Imports === */
 
 // Standard Library Imports
+#[cfg(feature = "runtime")]
+use std::{num::NonZeroUsize, sync::Arc};
 
 // Third Party Imports
+#[cfg(feature = "runtime")]
+use serde::Serialize;
 
 // Local Imports
+#[cfg(feature = "runtime")]
+use crate::{Error, Operation, Response};
 use harmos_domain::model::storage::codec::{Bytes, Code, Id, Index, Optional, Text, coded, product};
 use harmos_domain::plugin::Grant;
 use harmos_domain::{Identifier, MemorySize};
+#[cfg(feature = "runtime")]
+use harmos_sdk::operations::access::DiscoveryAccess;
+#[cfg(feature = "runtime")]
+use harmos_storage::{
+    ErasedCatalog, IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection,
+};
 
 /* === Constants === */
 
 /* === Macros === */
 
-product!(CatalogRequest {
+product!(Catalog {
     kind: Code<CatalogKind> => 1,
     schema: Optional<Id> => 2,
     after: Optional<Text> => 3,
@@ -42,8 +54,22 @@ coded!(CatalogKind { Operations, Schemas, Streams, Objects });
 
 /* === Structs === */
 
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [
+        Option<Arc<StorageManager<ErasedCatalog>>>,
+        DiscoveryAccess,
+    ],
+    codec = manual,
+    id = "host.catalog",
+    response = CatalogPage,
+    policy = super::POLICY,
+    visibility = Shared,
+    grant = Catalog::required_grant,
+    grpc(package = "harmos.host.v1", service = "Host", method = "Catalog"),
+)]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CatalogRequest {
+pub struct Catalog {
     pub kind: CatalogKind,
     pub schema: Option<Identifier>,
     pub after: Option<String>,
@@ -73,7 +99,7 @@ pub enum CatalogKind {
 
 /* === Implementations === */
 
-impl CatalogRequest {
+impl Catalog {
     // Stored Data Follows The Storage Read Grant Grammar; Operation Discovery
     // Keeps Its Per-Contract Conditional Access.
     pub fn required_grant(&self) -> Option<Grant> {
@@ -90,7 +116,7 @@ impl CatalogRequest {
     }
 }
 
-impl MemorySize for CatalogRequest {
+impl MemorySize for Catalog {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.schema.as_ref().map_or(0, |schema| schema.as_str().len()))
@@ -110,62 +136,46 @@ impl MemorySize for CatalogPage {
 
 /* === Tests === */
 
-#[harmos::operation(harmos_path = crate, id = "host_catalog", request = CatalogRequest,
- response = CatalogPage, policy = super::POLICY, infer_request,
- visibility = harmos_domain::operations::Visibility::Shared, grant = CatalogRequest::required_grant,
- grpc(package = "harmos.host.v1", service = "Host", method = "Catalog"))]
-pub struct Catalog {
-    #[cfg(feature = "runtime")]
-    storage: std::sync::Arc<Option<std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>>>,
-}
-
-#[cfg(feature = "runtime")]
-use {
-    crate::{Error, Operation, Response},
-    harmos_storage::{
-        ErasedCatalog, IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection,
-    },
-    serde::Serialize,
-    std::{num::NonZeroUsize, sync::Arc},
-};
 #[cfg(feature = "runtime")]
 type Result<T> = std::result::Result<T, Error>;
 #[cfg(feature = "runtime")]
 impl Operation for Catalog {
-    type Request = CatalogRequest;
-    type Response = CatalogPage;
     type Error = Error;
-    type Endpoints = ();
 
-    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
-        let storage = context.dependency::<Option<Arc<StorageManager<ErasedCatalog>>>>()?;
-        Ok(Self { storage })
-    }
+    async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<Response<CatalogPage>> {
+        let storage = context.resource::<Option<std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>>>();
+        let access = context.resource::<harmos_sdk::operations::access::DiscoveryAccess>();
 
-    async fn run(
-        &mut self, context: harmos_sdk::OperationContext, request: &mut CatalogRequest, _: &mut Self::Endpoints,
-    ) -> Result<Response<CatalogPage>> {
-        let host = context.dependency::<harmos_sdk::operations::access::DiscoveryAccess>()?;
+        let host = access;
 
-        let page = match request.kind {
+        let page = match self.kind {
             CatalogKind::Operations => {
-                let (rows, bytes) = request.limits()?;
-                let (entries, next) = host.0.discover(request.after.as_deref(), rows, bytes).map_err(Error::Access)?;
+                let (rows, bytes) = self.limits()?;
+                let (entries, next) = host.0.discover(self.after.as_deref(), rows, bytes).map_err(Error::Access)?;
                 CatalogPage { entries, next }
             }
             CatalogKind::Schemas => {
-                let schema = request.schema.clone();
-                stored::<StorageSchema>(self.storage()?, &SchemaSelection { schema: None }, request, |entry| {
-                    schema.as_ref().is_none_or(|schema| schema == &entry.key.id)
-                })
+                let schema = self.schema.clone();
+                stored::<StorageSchema>(
+                    storage.as_deref().as_ref().ok_or(Error::NotReady { domain: "catalog storage" })?,
+                    &SchemaSelection { schema: None },
+                    &self,
+                    |entry| schema.as_ref().is_none_or(|schema| schema == &entry.key.id),
+                )
                 .await?
             }
             CatalogKind::Streams | CatalogKind::Objects => {
                 let selection = IdentitySelection {
-                    kind: if request.kind == CatalogKind::Streams { IdentityKind::Streams } else { IdentityKind::Objects },
-                    schema: request.schema.clone(),
+                    kind: if self.kind == CatalogKind::Streams { IdentityKind::Streams } else { IdentityKind::Objects },
+                    schema: self.schema.clone(),
                 };
-                stored::<StoredIdentity>(self.storage()?, &selection, request, |_| true).await?
+                stored::<StoredIdentity>(
+                    storage.as_deref().as_ref().ok_or(Error::NotReady { domain: "catalog storage" })?,
+                    &selection,
+                    &self,
+                    |_| true,
+                )
+                .await?
             }
         };
         Ok(page.into())
@@ -173,15 +183,8 @@ impl Operation for Catalog {
 }
 
 #[cfg(feature = "runtime")]
-impl Catalog {
-    fn storage(&self) -> Result<&StorageManager<ErasedCatalog>> {
-        self.storage.as_deref().ok_or(Error::NotReady { domain: "catalog storage" })
-    }
-}
-
-#[cfg(feature = "runtime")]
 async fn stored<T>(
-    storage: &StorageManager<ErasedCatalog>, selection: &T::Selection, request: &CatalogRequest, keep: impl Fn(&T) -> bool,
+    storage: &StorageManager<ErasedCatalog>, selection: &T::Selection, request: &Catalog, keep: impl Fn(&T) -> bool,
 ) -> Result<CatalogPage>
 where
     T: harmos_storage::follow::Entry,
@@ -192,7 +195,10 @@ where
         .as_deref()
         .map(str::parse::<u64>)
         .transpose()
-        .map_err(|_| Error::InvalidInput { field: "catalog cursor", reason: "cursor must be a storage position" })?
+        .map_err(|_| Error::InvalidInput {
+            field: "catalog cursor",
+            reason: "cursor must be a storage position",
+        })?
         .unwrap_or(0);
     let limits = ReadLimits {
         rows: NonZeroUsize::new(rows).expect("validated catalog rows"),
@@ -229,7 +235,7 @@ fn write(bytes: &mut Vec<u8>, entry: &impl Serialize) -> std::result::Result<(),
     serde_json::to_writer(bytes, entry)
 }
 
-impl CatalogRequest {
+impl Catalog {
     pub fn limits(&self) -> std::result::Result<(usize, usize), harmos_domain::MessageError> {
         let rows = self.rows.unwrap_or(64);
         let bytes = self.bytes.unwrap_or(64 * 1024);

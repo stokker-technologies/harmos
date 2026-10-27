@@ -59,7 +59,11 @@ pub struct Consumption {
 
 impl ReceiveCredit {
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { ledger: Mutex::new(Ledger::default()), released: watch::channel(0).0, closed: watch::channel(false).0 })
+        Arc::new(Self {
+            ledger: Mutex::new(Ledger::default()),
+            released: watch::channel(0).0,
+            closed: watch::channel(false).0,
+        })
     }
 
     #[tracing::instrument(target = "harmos::carrier", name = "sidecar.credit.admit", level = "trace", skip_all, fields(wire_bytes = encoded))]
@@ -77,7 +81,11 @@ impl ReceiveCredit {
             return Err(invalid("peer exceeded sidecar byte credit"));
         }
         ledger.received = received;
-        Ok(Consumption { credit: self.clone(), charge, acknowledged: false })
+        Ok(Consumption {
+            credit: self.clone(),
+            charge,
+            acknowledged: false,
+        })
     }
 
     pub fn released(&self) -> watch::Receiver<u64> {

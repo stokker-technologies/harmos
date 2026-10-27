@@ -14,7 +14,10 @@
 /* === Imports === */
 
 #[cfg(feature = "runtime")]
-use crate::{Error, Operation, OperationContext, Response};
+use harmos_sdk::operations::instances::InstanceAccess;
+
+#[cfg(feature = "runtime")]
+use crate::{Error, Operation, Response};
 use harmos_domain::operations::instance::Id;
 
 /* === Constants === */
@@ -25,17 +28,19 @@ use harmos_domain::operations::instance::Id;
 
 /* === Structs === */
 
-#[harmos::message(harmos_path = crate)]
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [InstanceAccess],
+    id = "host.operations.cancel",
+    response = super::InstanceState,
+    policy = super::POLICY,
+    visibility = Shared,
+    grpc(package = "harmos.host.v1", service = "Operations", method = "Cancel"),
+)]
 #[derive(Clone, Default, PartialEq)]
-pub struct CancelRequest {
+pub struct Cancel {
     pub instance: u64,
 }
-
-#[harmos::operation(harmos_path = crate, id = "host_operations_cancel", request = CancelRequest,
-    response = super::InstanceState, policy = super::POLICY, infer_request,
-    visibility = harmos_domain::operations::Visibility::Shared,
-    grpc(package = "harmos.host.v1", service = "Operations", method = "Cancel"))]
-pub struct Cancel;
 
 /* === Enums === */
 
@@ -43,7 +48,7 @@ pub struct Cancel;
 
 /* === Implementations === */
 
-impl CancelRequest {
+impl Cancel {
     pub fn of(instance: Id) -> Self {
         Self { instance: instance.value() }
     }
@@ -51,20 +56,13 @@ impl CancelRequest {
 
 #[cfg(feature = "runtime")]
 impl Operation for Cancel {
-    type Request = CancelRequest;
-    type Response = super::InstanceState;
     type Error = Error;
-    type Endpoints = ();
-    async fn initialize(_: OperationContext) -> Result<Self, Error> {
-        Ok(Self)
-    }
-    async fn run(
-        &mut self, context: OperationContext, request: &mut Self::Request, output: &mut Self::Endpoints,
-    ) -> Result<Response<Self::Response>, Error> {
-        let access = context.dependency::<harmos_sdk::operations::instances::InstanceAccess>()?;
-        let instance = access.0.owned(Id::new(request.instance)).ok_or(Error::UnknownInstance(request.instance))?;
+
+    async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<Response<super::InstanceState>, Error> {
+        let access = context.resource::<harmos_sdk::operations::instances::InstanceAccess>();
+
+        let instance = access.0.owned(Id::new(self.instance)).ok_or(Error::UnknownInstance(self.instance))?;
         instance.cancel();
-        let _ = output;
         Ok(super::InstanceState::from(instance.status()).into())
     }
 }

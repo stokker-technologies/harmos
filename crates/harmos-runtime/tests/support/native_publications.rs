@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 // Local Imports
-use harmos_runtime::operations::{Operation, OperationDeclaration, OperationPolicy, RetryPolicy, Visibility, WireTable};
+use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RetryPolicy, WireTable};
 use harmos_runtime::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
 use harmos_runtime::sidecar::{Attach, Notice, Refusal, Supervised, Supervisor};
 use harmos_runtime::{Message, Runtime, services::ServiceContext, services::ServiceStatus};
@@ -59,18 +59,12 @@ pub struct Sample {
 }
 
 // One Producer Run: `rows` Rows In Calls Of `batch` Rows Each.
-#[harmos_runtime::operation(request = Publish, infer_request,
-    id = "publication_publish",
-
+#[harmos_runtime::operation(resources = [Supervisor], id = "publication.publish",
     policy = POLICY,
     response = Timings,
-    visibility = Visibility::Shared,
+    visibility = Shared,
 )]
-pub struct PublishDeclaration;
-
-#[harmos_runtime::message]
-
-pub struct Publish {
+pub struct PublishDeclaration {
     pub rows: u32,
     pub batch: u32,
 }
@@ -83,13 +77,11 @@ pub struct Timings {
 
 pub struct Producer;
 
-struct Publishing;
-
 /* === Enums === */
 
 #[harmos_runtime::catalog]
 pub enum Operations {
-    Publish(PublishDeclaration),
+    PublishDeclaration(PublishDeclaration),
 }
 
 #[harmos_runtime::lanes]
@@ -132,9 +124,7 @@ impl harmos_runtime::Plugin for Producer {
         Arc::new(())
     }
     fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).implementation::<PublishDeclaration, Publishing>(),
-        )
+        table.register(harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<PublishDeclaration>())
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         Ok(())
@@ -144,22 +134,15 @@ impl harmos_runtime::Plugin for Producer {
     }
 }
 
-impl Operation for Publishing {
-    type Request = Publish;
-    type Response = <PublishDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::operations::Operation for PublishDeclaration {
     type Error = Refusal;
-    type Endpoints = ();
-    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
-        Ok(Self)
-    }
-    async fn run(
-        &mut self, host: harmos_runtime::OperationContext, burst: &mut Publish, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<Timings>, Refusal> {
-        let host = host.dependency::<Supervisor>().expect("carrier context");
+
+    async fn run(self, host: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Timings>, Refusal> {
+        let host = host.resource::<Supervisor>();
         let result: ::core::result::Result<Timings, Self::Error> = async move {
             let publisher = host.publisher::<Producer>();
-            let size = burst.batch.max(1) as usize;
-            let rows: Vec<_> = (0..u64::from(burst.rows)).map(|value| Sample { value }).collect();
+            let size = self.batch.max(1) as usize;
+            let rows: Vec<_> = (0..u64::from(self.rows)).map(|value| Sample { value }).collect();
             let mut calls = Vec::with_capacity(rows.len().div_ceil(size) * 8);
             let mut batch = publisher.batch::<Sample>();
             for chunk in rows.chunks(size) {
@@ -275,12 +258,12 @@ impl Fixture {
         Self { runtime, _lease: lease }
     }
 
-    // Publish `rows` rows in calls of `batch` rows; answers each call's latency.
+    // PublishDeclaration `rows` rows in calls of `batch` rows; answers each call's latency.
     pub async fn publish(&self, rows: u32, batch: u32) -> Vec<Duration> {
         let bytes = self
             .runtime
             .operations
-            .call_encoded(&format!("publication_producer.{}", PublishDeclaration::ID), Publish { rows, batch }.encode())
+            .call_encoded(&format!("publication_producer.{}", PublishDeclaration::ID), PublishDeclaration { rows, batch }.encode())
             .await
             .unwrap();
         Timings::decode(&bytes).unwrap().durations()

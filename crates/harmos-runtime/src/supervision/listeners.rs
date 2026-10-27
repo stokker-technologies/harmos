@@ -64,7 +64,10 @@ impl Listener {
     where
         F: Future<Output = Result<()>> + Send + 'static,
     {
-        let delivery = Arc::new(Delivery { pending: AsyncMutex::new(None), failure: Mutex::new(None) });
+        let delivery = Arc::new(Delivery {
+            pending: AsyncMutex::new(None),
+            failure: Mutex::new(None),
+        });
         let task = Task::spawn({
             let delivery = Arc::clone(&delivery);
             let scope = scope.clone();
@@ -88,7 +91,12 @@ impl Listener {
                 }
             }
         });
-        Self { scope: scope.clone(), task, delivery, cleaned: AtomicBool::new(false) }
+        Self {
+            scope: scope.clone(),
+            task,
+            delivery,
+            cleaned: AtomicBool::new(false),
+        }
     }
 
     pub(crate) fn scope(&self) -> &PluginScope {
@@ -110,7 +118,10 @@ impl Listener {
 
     pub(crate) async fn shutdown(&self) -> Result<()> {
         self.stop();
-        self.task.settle().await.map_err(|source| Error::OperationFailed { operation: self.scope.owner().to_owned(), source })?;
+        self.task.settle().await.map_err(|source| Error::OperationFailed {
+            operation: self.scope.owner().to_owned(),
+            source,
+        })?;
         let mut pending = self.delivery.pending.lock().await;
         if let Some(original) = pending.as_ref() {
             original.invocation.cancel();

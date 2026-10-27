@@ -35,7 +35,7 @@ use crate::operations::OperationDeclaration;
 
 #[derive(Clone)]
 pub struct GrpcBinding {
-    pub(super) operations: Manager,
+    pub(crate) operations: Manager,
     pub(super) entry: Arc<Entry>,
 }
 
@@ -54,7 +54,10 @@ pub struct GrpcMethod {
 
 impl GrpcBinding {
     pub(crate) fn with_context(&self, context: CallContext) -> Self {
-        Self { operations: self.operations.with_context(context), entry: self.entry.clone() }
+        Self {
+            operations: self.operations.with_context(context),
+            entry: self.entry.clone(),
+        }
     }
 
     pub(crate) fn handler(&self) -> Option<crate::grpc::routing::Handler> {
@@ -66,11 +69,10 @@ impl GrpcBinding {
     }
 
     pub(crate) fn native_factory(&self) -> Result<harmos_sdk::operations::OperationFactory> {
-        self.entry
-            .binding
-            .downcast_ref::<harmos_sdk::operations::OperationFactory>()
-            .cloned()
-            .ok_or(crate::Error::InvalidInput { field: "gRPC native binding", reason: "native factory required" })
+        self.entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>().cloned().ok_or(crate::Error::InvalidInput {
+            field: "gRPC native binding",
+            reason: "native factory required",
+        })
     }
 
     pub(crate) fn submit_native(
@@ -84,11 +86,19 @@ impl GrpcBinding {
         let name = self.entry.id().to_owned();
         let prepared = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| factory.prepare_grpc(&payload, limits)))
             .map_err(|_| crate::Error::OperationPanicked { operation: name.clone() })?
-            .map_err(|source| crate::Error::OperationFailed { operation: name, source: Arc::new(source) })?;
+            .map_err(|source| crate::Error::OperationFailed {
+                operation: name,
+                source: Arc::new(source),
+            })?;
         let streams = prepared.streams.clone();
         let invocation = super::wire::dispatch_prepared(
             &self.operations,
-            Submission { submitted: crate::supervision::executor::now(), entry: self.entry.clone(), cause: None, preparation: None },
+            Submission {
+                submitted: crate::supervision::executor::now(),
+                entry: self.entry.clone(),
+                cause: None,
+                preparation: None,
+            },
             source,
             None,
             prepared,
@@ -105,7 +115,12 @@ impl GrpcBinding {
             None,
             &[],
             &Source::Host.external()?,
-            Submission { submitted: crate::supervision::executor::now(), entry: self.entry.clone(), cause: None, preparation: None },
+            Submission {
+                submitted: crate::supervision::executor::now(),
+                entry: self.entry.clone(),
+                cause: None,
+                preparation: None,
+            },
         )
     }
 }

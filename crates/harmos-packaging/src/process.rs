@@ -139,7 +139,11 @@ impl Process {
         let stdout = stdout.join().map_err(|_| std::io::Error::other("Cargo stdout reader panicked"));
         let stderr = stderr.join().map_err(|_| std::io::Error::other("Cargo stderr reader panicked"));
         cleanup?;
-        Ok(Output { status: status?, stdout: stdout??, stderr: stderr?? })
+        Ok(Output {
+            status: status?,
+            stdout: stdout??,
+            stderr: stderr??,
+        })
     }
 }
 

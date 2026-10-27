@@ -71,11 +71,17 @@ pub fn edges(x: &[f64], y: &[f64], low: f64, high: f64) -> Vec<Edge> {
 
         match state {
             Level::Beneath if current > high => {
-                found.push(Edge { at: crossed(x, index, high, previous, current), rising: true });
+                found.push(Edge {
+                    at: crossed(x, index, high, previous, current),
+                    rising: true,
+                });
                 state = Level::Above;
             }
             Level::Above if current < low => {
-                found.push(Edge { at: crossed(x, index, low, previous, current), rising: false });
+                found.push(Edge {
+                    at: crossed(x, index, low, previous, current),
+                    rising: false,
+                });
                 state = Level::Beneath;
             }
             Level::Between => state = level(current, low, high),

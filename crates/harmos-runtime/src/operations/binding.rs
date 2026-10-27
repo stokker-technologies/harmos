@@ -52,7 +52,7 @@ pub(super) struct Request<T> {
     pub(super) retry: Option<super::RetryPolicy>,
     pub(super) lane: Option<&'static str>,
     pub(super) context: Arc<std::sync::OnceLock<super::CallContext>>,
-    pub(super) retention: Option<super::streaming::RequestClaims>,
+    pub(super) retention: Option<super::RequestClaims>,
     pub(super) binding: Option<Arc<dyn std::any::Any + Send + Sync>>,
     pub(super) grant: Option<harmos_domain::plugin::Grant>,
     pub(super) key: Option<super::CacheKey>,
@@ -83,6 +83,13 @@ impl<T> From<T> for Request<T> {
     }
 }
 impl<T> Request<T> {
+    pub(super) fn owned(value: T, claims: super::RequestClaims) -> Self {
+        Self {
+            retention: Some(claims),
+            ..Self::from(value)
+        }
+    }
+
     pub(super) fn charged(item: super::StreamItem<T>) -> Result<Self> {
         let (value, claims) = item.into_request()?;
         Ok(Self {

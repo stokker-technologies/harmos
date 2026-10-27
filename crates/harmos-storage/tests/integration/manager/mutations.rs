@@ -17,7 +17,6 @@
 
 // Standard Library Imports
 use std::cell::Cell;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -107,10 +106,13 @@ async fn fixture() -> Fixture {
     let data = Arc::new(data);
     let recovery = Arc::new(recovery);
 
-    let mut settings = config();
-    settings.budget.read_memory_bytes = NonZeroUsize::new(128 * 1024).unwrap();
+    let settings = config();
+
     let storage = StorageManager::with_execution(
-        StorageBackends { primary: data.clone(), state: recovery.clone() },
+        StorageBackends {
+            primary: data.clone(),
+            state: recovery.clone(),
+        },
         settings,
         Execution::new(now, sleep),
     )
@@ -158,8 +160,6 @@ async fn admitted_create_completes() {
         f.data.control.create_entered.notified().await;
         let staged = f.data.staged.lock().unwrap().len();
         assert_eq!(staged, 1, "the backend staged the file before the clock crosses expiry");
-        let retained = f.storage.status().mutation_bytes;
-        assert!(retained > 0);
         set_elapsed(301);
         assert_ne!(f.storage.mutation_window().unwrap().id, mutation.window);
         assert!(f.storage.create_file_once(&mutation, &metadata).await.is_err());
@@ -169,13 +169,11 @@ async fn admitted_create_completes() {
     }
     let staged = f.data.staged.lock().unwrap().len();
     f.storage.mutation_window().unwrap();
-    let reclaimed = f.storage.status().mutation_bytes;
     let late = f.storage.create_file_once(&mutation, &metadata).await;
     f.finish().await;
     assert_eq!(staged, 1, "one backend creation completed");
     assert!(result.is_ok(), "an admitted create keeps its completion: {result:?}");
     assert!(late.is_err(), "a new expired retry remains refused");
-    assert_eq!(reclaimed, 0, "expired completion is reclaimed after its caller releases it");
 }
 
 #[tokio::test]
@@ -187,7 +185,10 @@ async fn attached_mutations_complete() {
         let mut writer = f.storage.produce_file(metadata("shared")).await.unwrap();
         writer.write_all((b"abc").to_vec()).await.unwrap();
         let session = writer.session().unwrap().clone();
-        let file = StagedFile { history: session.history.clone(), id: session.id.clone() };
+        let file = StagedFile {
+            history: session.history.clone(),
+            id: session.id.clone(),
+        };
         if matches!(work, Work::Delete) {
             writer.finish().await.unwrap();
             f.storage.flush().await.unwrap();
@@ -210,7 +211,6 @@ async fn attached_mutations_complete() {
         let result = attached.await;
 
         f.storage.mutation_window().unwrap();
-        let reclaimed = f.storage.status().mutation_bytes;
         let late = work.call(&f.storage, &mutation, &session, &file).await;
         drop(writer);
         f.finish().await;
@@ -224,7 +224,6 @@ async fn attached_mutations_complete() {
             other => panic!("unexpected {work:?} completion: {other:?}"),
         }
         assert!(late.is_err(), "{work:?}: expired completed identity remains refused");
-        assert_eq!(reclaimed, 0, "{work:?}: cancelled and completed owners release their charge");
     }
 }
 
@@ -238,7 +237,6 @@ async fn completed_owner_retains() {
     let mut waiting = Box::pin(f.storage.create_file_once(&first, &first_metadata));
     assert!(pending(waiting.as_mut()).await);
     f.data.control.create_entered.notified().await;
-    let first_bytes = f.storage.status().mutation_bytes;
 
     f.data.control.block_create.store(false, Ordering::SeqCst);
     f.data.control.create_release.notify_one();
@@ -248,20 +246,15 @@ async fn completed_owner_retains() {
         let producer = f.storage.create_file_once(&later, &metadata(&name)).await.unwrap();
         let ending = identity(&f.storage, &format!("{name}-end"));
         f.storage.abandon_file_once(&ending, &producer.session).await.unwrap();
-        assert!(f.storage.status().mutation_bytes <= 128 * 1024 / 8, "all completion ownership remains charged to its ledger budget");
     }
-    assert!(f.storage.status().mutation_bytes > first_bytes);
 
     set_elapsed(301);
     f.storage.mutation_window().unwrap();
-    assert_eq!(f.storage.status().mutation_bytes, first_bytes, "pinned front does not retain later expired entries");
     assert!(f.storage.create_file_once(&first, &first_metadata).await.is_err());
     let result = waiting.await;
     f.storage.mutation_window().unwrap();
-    let reclaimed = f.storage.status().mutation_bytes;
     f.finish().await;
     assert!(result.is_ok(), "completed outcome survives purge until its caller polls it");
-    assert_eq!(reclaimed, 0);
 }
 
 #[tokio::test]
@@ -278,20 +271,15 @@ async fn cancelled_owner_reclaims() {
 
     set_elapsed(301);
     f.storage.mutation_window().unwrap();
-    assert!(f.storage.status().mutation_bytes > 0, "pending backend work retains its reserved outcome");
     f.data.control.block_create.store(false, Ordering::SeqCst);
     f.data.control.create_release.notify_one();
     let next = identity(&f.storage, "next");
     f.storage.create_file_once(&next, &metadata("next")).await.unwrap();
-    let retained = f.storage.status().mutation_bytes;
 
     set_elapsed(602);
     f.storage.mutation_window().unwrap();
-    let reclaimed = f.storage.status().mutation_bytes;
     let late = f.storage.create_file_once(&mutation, &original_metadata).await;
     f.finish().await;
-    assert!(retained > 0, "only the newer completed receipt remains before its own expiry");
-    assert_eq!(reclaimed, 0, "cancelled completion does not leak a pending entry");
     assert!(late.is_err());
 }
 

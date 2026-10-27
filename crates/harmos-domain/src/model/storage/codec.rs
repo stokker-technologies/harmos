@@ -464,7 +464,9 @@ macro_rules! wide {
         impl Value for $adapter {
             const NAME: &'static str = concat!(module_path!(), "::", stringify!($adapter));
             type Native = $native;
-            const KIND: Kind = Kind::Message { definition: <Self as Described>::DEFINITION };
+            const KIND: Kind = Kind::Message {
+                definition: <Self as Described>::DEFINITION,
+            };
             fn postcard_write(value: &$native, bytes: &mut Vec<u8>) {
                 let (high, low): ($high, u64) = ($split)(*value);
                 PostcardValue::write(&high, bytes);
@@ -506,8 +508,12 @@ wide!(WideSigned, i128, i64, Signed, |value: i128| ((value >> 64) as i64, value 
 // One Message Holding A Single Field At Tag 1; Absence Reads As Empty.
 impl<A: Value> Described for Wrap<A> {
     const NAME: &'static str = <Self as Value>::NAME;
-    const FIELDS: &'static [Field] =
-        &[crate::schema::declaration::Field { name: Cow::Borrowed("value"), tag: 1, kind: A::KIND, cardinality: A::CARDINALITY }];
+    const FIELDS: &'static [Field] = &[crate::schema::declaration::Field {
+        name: Cow::Borrowed("value"),
+        tag: 1,
+        kind: A::KIND,
+        cardinality: A::CARDINALITY,
+    }];
     const MARKER: &'static [u8] = declaration::encode_buffer::<2048>(<Self as Described>::NAME, Self::FIELDS)
         .split_at(declaration::encoded_len(<Self as Described>::NAME, Self::FIELDS))
         .0;
@@ -515,7 +521,9 @@ impl<A: Value> Described for Wrap<A> {
 impl<A: Value> Value for Wrap<A> {
     const NAME: &'static str = declaration::Name::new(concat!(module_path!(), "::", stringify!(Wrap)), &[A::NAME]).as_str();
     type Native = A::Native;
-    const KIND: Kind = Kind::Message { definition: <Self as Described>::DEFINITION };
+    const KIND: Kind = Kind::Message {
+        definition: <Self as Described>::DEFINITION,
+    };
     fn postcard_write(value: &A::Native, bytes: &mut Vec<u8>) {
         A::postcard_write(value, bytes);
     }

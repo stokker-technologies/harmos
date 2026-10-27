@@ -36,7 +36,7 @@ use serde::{Deserialize, Serialize};
 pub struct QualifiedId(String);
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-#[error("identity `{value}` must contain exactly two lowercase portable segments")]
+#[error("identity `{value}` must be a lowercase portable owner segment followed by dotted local segments")]
 pub struct IdentityError {
     pub value: String,
 }
@@ -71,7 +71,7 @@ impl QualifiedId {
     }
 
     pub fn qualify(owner: &str, local: &str) -> Result<Self, IdentityError> {
-        if !segment(owner) || !segment(local) {
+        if !segment(owner) || !dotted(local) {
             return Err(IdentityError { value: format!("{owner}.{local}") });
         }
         Ok(Self(format!("{owner}.{local}")))
@@ -135,6 +135,31 @@ pub const fn segment(value: &str) -> bool {
     while index < bytes.len() {
         if !(bytes[index].is_ascii_lowercase() || bytes[index].is_ascii_digit() || bytes[index] == b'_') {
             return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+// One Or More Portable Segments Joined By Single Dots.
+pub const fn dotted(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let mut start = 0;
+    let mut index = 0;
+    while index <= bytes.len() {
+        if index == bytes.len() || bytes[index] == b'.' {
+            let length = index - start;
+            if length == 0 || !bytes[start].is_ascii_lowercase() {
+                return false;
+            }
+            let mut cursor = start + 1;
+            while cursor < index {
+                if !(bytes[cursor].is_ascii_lowercase() || bytes[cursor].is_ascii_digit() || bytes[cursor] == b'_') {
+                    return false;
+                }
+                cursor += 1;
+            }
+            start = index + 1;
         }
         index += 1;
     }
@@ -213,9 +238,20 @@ mod tests {
     #[test]
     fn qualified_segments() {
         assert_eq!(QualifiedId::qualify("host", "read_2").unwrap().as_str(), "host.read_2");
-        for value in ["read", "host.read.extra", ".read", "host.", "Host.read", "host.read-file", "host.2read", "host.read\0"] {
+        assert_eq!(QualifiedId::parse("host.storage.read_file").unwrap().as_str(), "host.storage.read_file");
+        for value in ["read", "host..read", ".read", "host.", "Host.read", "host.read-file", "host.2read", "host.read\0"] {
             assert!(QualifiedId::parse(value).is_err(), "{value:?}");
         }
         assert!(QualifiedId::qualify("owner.other", "read").is_err());
+    }
+
+    #[test]
+    fn dotted_local_segments() {
+        for value in ["read", "storage.read_file", "host.operations.cancel", "a0.b_2"] {
+            assert!(super::dotted(value), "{value:?}");
+        }
+        for value in ["", ".read", "read.", "read..file", "Read", "read.2file", "read.file-name", "read.é"] {
+            assert!(!super::dotted(value), "{value:?}");
+        }
     }
 }

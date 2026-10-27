@@ -132,7 +132,10 @@ async fn open(pending: u32, max: u32, fail: bool, tail: usize) -> (Runtime<Model
         .register(Facts::catalog())
         .tail(tail)
         .require_capture(
-            CaptureLimits { pending_bytes: pending, max_group_bytes: max },
+            CaptureLimits {
+                pending_bytes: pending,
+                max_group_bytes: max,
+            },
             Consumer { offered, release: release.clone(), fail },
         )
         .unwrap()
@@ -144,6 +147,33 @@ async fn open(pending: u32, max: u32, fail: bool, tail: usize) -> (Runtime<Model
 
 async fn group(observed: &mut mpsc::UnboundedReceiver<Group>) -> Group {
     observed.recv().await.unwrap()
+}
+
+#[tokio::test]
+async fn owned_transaction_survives_capture_after_tail_eviction() {
+    let (runtime, mut observed, release) = open(4096, 4096, false, 1).await;
+    let owner = Arc::new(Changes::Add(Add(1)));
+    let retained = Arc::downgrade(&owner);
+    let transaction = harmos_runtime::operations::Response::from_owner(owner);
+    runtime.state.commit_owned(transaction).await.unwrap();
+    let (first, _) = group(&mut observed).await;
+
+    runtime.state.commit(Add(2)).await.unwrap();
+    release.add_permits(1);
+    let (second, _) = group(&mut observed).await;
+    assert!(retained.upgrade().is_some());
+    let Recorded::Transaction(transaction) = &first[0].value else {
+        panic!("expected transaction");
+    };
+    let original = retained.upgrade().unwrap();
+    assert!(std::ptr::eq(transaction.as_ref(), original.as_ref()));
+    drop(original);
+
+    drop(first);
+    assert!(retained.upgrade().is_none());
+    release.add_permits(1);
+    drop(second);
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -279,7 +309,13 @@ async fn queued_groups_outlive() {
 async fn panic_fails_capture() {
     let runtime = Runtime::<Model>::builder(0, ())
         .register(Facts::catalog())
-        .require_capture(CaptureLimits { pending_bytes: 4096, max_group_bytes: 4096 }, Panics)
+        .require_capture(
+            CaptureLimits {
+                pending_bytes: 4096,
+                max_group_bytes: 4096,
+            },
+            Panics,
+        )
         .unwrap()
         .runtime()
         .await

@@ -93,7 +93,10 @@ pub enum Error {
 
 impl Section {
     pub const fn new(namespace: &'static str, payload: &'static str) -> Self {
-        Self { namespace: Cow::Borrowed(namespace), payload: Cow::Borrowed(payload) }
+        Self {
+            namespace: Cow::Borrowed(namespace),
+            payload: Cow::Borrowed(payload),
+        }
     }
 
     pub fn decode<T: DeserializeOwned>(&self) -> serde_json::Result<T> {
@@ -115,7 +118,11 @@ impl TryFrom<Decoded> for Manifest {
         if value.kind.as_deref().is_some_and(|kind| kind != "contributions") {
             return Err(Error::Identity);
         }
-        let manifest = Self { facility: value.facility, owner: value.owner, sections: value.sections };
+        let manifest = Self {
+            facility: value.facility,
+            owner: value.owner,
+            sections: value.sections,
+        };
         validate(&manifest)?;
         Ok(manifest)
     }
@@ -146,8 +153,10 @@ pub fn validate(manifest: &Manifest) -> Result<(), Error> {
         if !crate::artifact_subset(&section.namespace) || !namespaces.insert(&section.namespace) {
             return Err(Error::Namespace { namespace: section.namespace.to_string() });
         }
-        serde_json::from_str::<IgnoredAny>(&section.payload)
-            .map_err(|source| Error::Payload { namespace: section.namespace.to_string(), source })?;
+        serde_json::from_str::<IgnoredAny>(&section.payload).map_err(|source| Error::Payload {
+            namespace: section.namespace.to_string(),
+            source,
+        })?;
     }
     Ok(())
 }

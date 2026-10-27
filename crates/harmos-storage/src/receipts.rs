@@ -14,7 +14,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -29,15 +29,6 @@ use super::{FileProducer, MutationId, MutationWindow, StorageManager, StoreHisto
 use crate::{Error, Identifier, MemorySize, Result};
 
 /* === Constants === */
-
-const ID_COPIES: usize = 5;
-const COMPLETION_BYTES: usize = 2 * std::mem::size_of::<usize>();
-const NODE_SHARE: usize = node_bytes().div_ceil(4);
-// The Map And Order Headers Plus The Root Node, Charged While Any Receipt Is Held.
-const LEDGER_BASE: usize = std::mem::size_of::<BTreeMap<MutationId, Entry>>() + std::mem::size_of::<VecDeque<MutationId>>() + node_bytes();
-// Smallest Possible Receipt Charge, Bounding Recovered Row Counts.
-const ENTRY_MINIMUM: usize =
-    ID_COPIES * std::mem::size_of::<MutationId>() + std::mem::size_of::<MutationValue>() + NODE_SHARE + COMPLETION_BYTES;
 
 /* === Macros === */
 
@@ -62,8 +53,7 @@ pub(super) struct Receipts {
     entries: BTreeMap<MutationId, Entry>,
     // Admission Order, Oldest First, For Expiry And Eviction.
     order: VecDeque<MutationId>,
-    bytes: usize,
-    bound: NonZeroUsize,
+    unsaved: BTreeSet<MutationId>,
 }
 
 struct Entry {
@@ -71,7 +61,7 @@ struct Entry {
     deadline: Instant,
     expires_at: SystemTime,
     value: Option<MutationValue>,
-    bytes: usize,
+
     completion: Arc<()>,
 }
 
@@ -107,7 +97,7 @@ impl Entry {
 }
 
 impl Receipts {
-    pub(super) fn new(retention: Duration, bound: NonZeroUsize, execution: crate::execution::Execution) -> Result<Self> {
+    pub(super) fn new(retention: Duration, execution: crate::execution::Execution) -> Result<Self> {
         let now = execution.now();
         let wall = SystemTime::now();
         Ok(Self {
@@ -117,15 +107,14 @@ impl Receipts {
             expires_at: wall + retention,
             entries: BTreeMap::new(),
             order: VecDeque::new(),
-            bytes: 0,
-            bound,
+            unsaved: BTreeSet::new(),
         })
     }
 
     pub(super) fn recovery_limits(&self) -> super::ReadLimits {
         super::ReadLimits {
-            rows: NonZeroUsize::new(self.bound.get() / ENTRY_MINIMUM).unwrap_or(NonZeroUsize::MIN),
-            bytes: self.bound.saturating_add(std::mem::size_of::<Vec<MutationReceipt>>()),
+            rows: super::config::MAX_MUTATIONS,
+            bytes: NonZeroUsize::new(super::config::MAX_BATCH_BYTES).unwrap(),
         }
     }
 
@@ -137,7 +126,11 @@ impl Receipts {
             self.deadline = now + retention;
             self.expires_at = SystemTime::now().checked_add(retention).ok_or_else(expired)?;
         }
-        Ok(MutationWindow { history: history.clone(), id: self.window.clone(), expires_at: self.expires_at })
+        Ok(MutationWindow {
+            history: history.clone(),
+            id: self.window.clone(),
+            expires_at: self.expires_at,
+        })
     }
 
     pub(super) fn lookup(&self, id: &MutationId, fingerprint: &[u8; 32], completion: Option<&Completion>) -> Result<ReceiptState> {
@@ -150,7 +143,10 @@ impl Receipts {
             }
             if entry.fingerprint != *fingerprint {
                 tracing::error!(window = %id.window, mutation = %id.key, reason = "identity reused with different request", "storage mutation rejected");
-                return Err(Error::InvalidInput { field: "storage mutation", reason: "identity reused with different request" });
+                return Err(Error::InvalidInput {
+                    field: "storage mutation",
+                    reason: "identity reused with different request",
+                });
             }
             return Ok(match &entry.value {
                 Some(value) => ReceiptState::Complete(value.clone()),
@@ -168,27 +164,40 @@ impl Receipts {
         Completion(self.entries.get(id).expect("admitted receipt").completion.clone())
     }
 
-    pub(super) fn insert(&mut self, id: &MutationId, fingerprint: [u8; 32], outcome_bytes: usize) -> Result<()> {
+    pub(super) fn insert(&mut self, id: &MutationId, fingerprint: [u8; 32]) -> Result<()> {
         self.purge(self.execution.now());
         if !matches!(self.lookup(id, &fingerprint, None)?, ReceiptState::Missing) {
-            return Err(Error::AlreadyRegistered { domain: "storage mutation", name: id.key.to_string() });
+            return Err(Error::AlreadyRegistered {
+                domain: "storage mutation",
+                name: id.key.to_string(),
+            });
         }
-        let bytes = charge(id, outcome_bytes)?;
-        while self.bytes.saturating_add(LEDGER_BASE).saturating_add(bytes) > self.bound.get() {
+        while self.entries.len() >= super::config::MAX_MUTATIONS.get() {
             self.evict_oldest()?;
         }
         self.order.push_back(id.clone());
         self.entries.insert(
             id.clone(),
-            Entry { fingerprint, deadline: self.deadline, expires_at: self.expires_at, value: None, bytes, completion: Arc::new(()) },
+            Entry {
+                fingerprint,
+                deadline: self.deadline,
+                expires_at: self.expires_at,
+                value: None,
+                completion: Arc::new(()),
+            },
         );
-        self.bytes += bytes;
+
         Ok(())
     }
 
     pub(super) fn prepared(&self, id: &MutationId, value: MutationValue) -> MutationReceipt {
         let entry = self.entries.get(id).expect("admitted receipt");
-        MutationReceipt { mutation: id.clone(), fingerprint: entry.fingerprint, expires_at: entry.expires_at, value }
+        MutationReceipt {
+            mutation: id.clone(),
+            fingerprint: entry.fingerprint,
+            expires_at: entry.expires_at,
+            value,
+        }
     }
 
     pub(super) fn complete(&mut self, id: &MutationId, value: MutationValue) {
@@ -196,35 +205,36 @@ impl Receipts {
         if entry.value.is_some() {
             return;
         }
-        // Admission Reserved The Largest Possible Outcome Before Mutating.
-        assert!(charge(id, value.memory_size()).is_ok_and(|bytes| bytes <= entry.bytes));
         entry.value = Some(value);
+        self.unsaved.insert(id.clone());
     }
 
-    pub(super) fn snapshot_bytes(&self) -> usize {
-        if self.entries.is_empty() { 0 } else { self.bytes + LEDGER_BASE }
+    pub(super) fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 
     pub(super) fn clear(&mut self) {
         self.entries = BTreeMap::new();
         self.order = VecDeque::new();
-        self.bytes = 0;
+        self.unsaved.clear();
     }
 
     // Drop The Oldest Completed Receipt; Pending Receipts Still Await Their Outcome.
     fn evict_oldest(&mut self) -> Result<()> {
         let index = self.order.iter().position(|id| self.entries.get(id).is_some_and(Entry::reclaimable)).ok_or_else(exhausted)?;
         let id = self.order.remove(index).expect("ordered receipt");
-        let entry = self.entries.remove(&id).expect("ordered receipt");
-        self.bytes -= entry.bytes;
+        self.entries.remove(&id).expect("ordered receipt");
+        self.unsaved.remove(&id);
+
         Ok(())
     }
 
     pub(super) fn snapshot(&self, through: Option<&super::StorageCursor>) -> Vec<MutationReceipt> {
         let now = self.execution.now();
-        let count = self.entries.values().filter(|entry| entry.value.is_some() && now < entry.deadline).count();
+        let count = self.unsaved.len();
         let mut receipts = Vec::with_capacity(count);
-        for (mutation, entry) in &self.entries {
+        for mutation in &self.unsaved {
+            let Some(entry) = self.entries.get(mutation) else { continue };
             if let Some(value) = &entry.value
                 && now < entry.deadline
                 && match value {
@@ -246,13 +256,24 @@ impl Receipts {
         receipts
     }
 
+    pub(super) fn saved(&mut self, receipts: &[MutationReceipt]) {
+        for receipt in receipts {
+            if self
+                .entries
+                .get(&receipt.mutation)
+                .is_some_and(|entry| entry.fingerprint == receipt.fingerprint && entry.value.as_ref() == Some(&receipt.value))
+            {
+                self.unsaved.remove(&receipt.mutation);
+            }
+        }
+    }
+
     pub(super) fn restore(&mut self, mut receipts: Vec<MutationReceipt>) -> Result<()> {
         let now = self.execution.now();
         let wall = SystemTime::now();
         receipts.sort_by_key(|receipt| receipt.expires_at);
         let mut restored = BTreeMap::new();
         let mut order = VecDeque::with_capacity(receipts.len());
-        let mut total = 0usize;
         for receipt in receipts {
             let Ok(remaining) = receipt.expires_at.duration_since(wall) else {
                 continue;
@@ -261,37 +282,43 @@ impl Receipts {
             if remaining.is_zero() {
                 continue;
             }
-            let bytes = charge(&receipt.mutation, receipt.value.memory_size())?;
-            total = total.checked_add(bytes).ok_or_else(exhausted)?;
             let entry = Entry {
                 fingerprint: receipt.fingerprint,
                 deadline: now + remaining,
                 expires_at: receipt.expires_at,
                 value: Some(receipt.value),
-                bytes,
+
                 completion: Arc::new(()),
             };
             order.push_back(receipt.mutation.clone());
             if restored.insert(receipt.mutation, entry).is_some() {
-                return Err(Error::InvalidInput { field: "mutation recovery", reason: "duplicate receipt identity" });
+                return Err(Error::InvalidInput {
+                    field: "mutation recovery",
+                    reason: "duplicate receipt identity",
+                });
             }
         }
+        self.unsaved.clear();
         self.entries = restored;
         self.order = order;
-        self.bytes = total;
-        while self.snapshot_bytes() > self.bound.get() {
+        while self.entries.len() > super::config::MAX_MUTATIONS.get() {
             self.evict_oldest()?;
         }
         Ok(())
     }
 
-    // Pending Work And Attached Callers Retain Their Charged Outcome Independently
+    // Pending Work And Attached Callers Retain Their Outcome Independently
     // Of Retry Eligibility. A Pinned Front Must Not Hold Later Expired Receipts.
     pub(super) fn purge(&mut self, now: Instant) {
+        // Admission And Recovery Order Deadlines; No Later Entry Can Expire First.
+        if self.order.front().and_then(|id| self.entries.get(id)).is_some_and(|entry| now < entry.deadline) {
+            return;
+        }
         self.order.retain(|id| {
             let remove = self.entries.get(id).is_none_or(|entry| now >= entry.deadline && entry.reclaimable());
-            if remove && let Some(entry) = self.entries.remove(id) {
-                self.bytes -= entry.bytes;
+            if remove {
+                self.entries.remove(id);
+                self.unsaved.remove(id);
             }
             !remove
         });
@@ -309,11 +336,17 @@ impl<C> StorageManager<C> {
         }
         let limits = self.inner.state.lock().unwrap().receipts.recovery_limits();
         let bytes = limits.bytes.get();
-        let memory = super::capacity::Reservation::lifecycle(&self.inner, super::capacity::Pool::Read, bytes)?.retain();
-        let receipts =
-            self.inner.bounded("primary.recover_mutations", self.inner.primary.recover_mutations(limits, memory.clone())).await?;
-        if receipts.len() > limits.rows.get() || receipts.memory_size() > bytes {
-            return Err(Error::InvalidInput { field: "mutation recovery", reason: "backend exceeded recovery bounds" });
+        let receipts = self.inner.bounded("primary.recover_mutations", self.inner.primary.recover_mutations(limits)).await?;
+        if receipts.len() > limits.rows.get()
+            || receipts
+                .iter()
+                .try_fold(0usize, |total, receipt| super::manager::encoded_size(receipt).map(|size| total.saturating_add(size)))?
+                > bytes
+        {
+            return Err(Error::InvalidInput {
+                field: "mutation recovery",
+                reason: "backend exceeded recovery bounds",
+            });
         }
         for receipt in &receipts {
             if let MutationValue::Deleted(file) = &receipt.value {
@@ -322,22 +355,29 @@ impl<C> StorageManager<C> {
             if let MutationValue::Cursor(cursor) = &receipt.value {
                 let state = self.inner.state.lock().unwrap();
                 if !state.status.saved.covers(cursor)? {
-                    return Err(Error::InvalidInput { field: "mutation recovery", reason: "receipt exceeds saved data frontier" });
+                    return Err(Error::InvalidInput {
+                        field: "mutation recovery",
+                        reason: "receipt exceeds saved data frontier",
+                    });
                 }
             }
             if let MutationValue::Producer(producer) = &receipt.value {
                 self.inner.primary.history().check(&producer.session.history)?;
                 if producer.session.generation == 0 {
-                    return Err(Error::InvalidInput { field: "mutation recovery", reason: "zero producer generation" });
+                    return Err(Error::InvalidInput {
+                        field: "mutation recovery",
+                        reason: "zero producer generation",
+                    });
                 }
             }
         }
         for receipt in &receipts {
             if let MutationValue::Reference(reference) = &receipt.value {
                 self.inner.primary.history().check(&reference.position.history)?;
-                reference
-                    .check_native()
-                    .map_err(|_| Error::InvalidInput { field: "mutation recovery", reason: "invalid completed file reference" })?;
+                reference.check_native().map_err(|_| Error::InvalidInput {
+                    field: "mutation recovery",
+                    reason: "invalid completed file reference",
+                })?;
             }
         }
         let mut state = self.inner.state.lock().unwrap();
@@ -366,7 +406,10 @@ impl<C> StorageManager<C> {
 
     pub fn mutation_window(&self) -> Result<MutationWindow> {
         if !self.inner.primary.supports_mutation_receipts() {
-            return Err(Error::InvalidInput { field: "storage mutations", reason: "backend does not support mutation receipts" });
+            return Err(Error::InvalidInput {
+                field: "storage mutations",
+                reason: "backend does not support mutation receipts",
+            });
         }
         let mut state = self.inner.state.lock().unwrap();
         if !state.ready || state.status.closing {
@@ -440,45 +483,66 @@ impl MemorySize for MutationReceipt {
 
 fn epoch() -> Result<Identifier> {
     let mut bytes = [0u8; 16];
-    getrandom::fill(&mut bytes)
-        .map_err(|source| Error::OperationFailed { operation: "storage retry window".into(), source: Arc::new(source) })?;
+    getrandom::fill(&mut bytes).map_err(|source| Error::OperationFailed {
+        operation: "storage retry window".into(),
+        source: Arc::new(source),
+    })?;
     let name = bytes.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
-    Identifier::new(name).map_err(|_| Error::InvalidInput { field: "storage retry window", reason: "invalid generated identity" })
-}
-
-// One Entry's Amortized Share: Std B-Tree Nodes Below The Root Hold At Least Five
-// Entries And Internal Nodes Add At Most A Quarter More, So A Quarter Node Per
-// Entry Covers Every Node But The Root, Which `LEDGER_BASE` Charges Once. The
-// Identity Is Copied Into The Map Key, The Admission Order, Snapshots And Saves.
-fn charge(id: &MutationId, outcome_bytes: usize) -> Result<usize> {
-    id.memory_size()
-        .checked_mul(ID_COPIES)
-        .and_then(|bytes| bytes.checked_add(outcome_bytes))
-        .and_then(|bytes| bytes.checked_add(NODE_SHARE))
-        .and_then(|bytes| bytes.checked_add(COMPLETION_BYTES))
-        .ok_or_else(exhausted)
-}
-
-const fn node_bytes() -> usize {
-    let alignment = max(max(std::mem::align_of::<MutationId>(), std::mem::align_of::<Entry>()), std::mem::align_of::<usize>());
-    (std::mem::size_of::<MutationId>() + std::mem::size_of::<Entry>()) * 11
-        + 13 * std::mem::size_of::<usize>()
-        + 2 * std::mem::size_of::<u16>()
-        + 5 * alignment
-}
-
-const fn max(left: usize, right: usize) -> usize {
-    if left > right { left } else { right }
+    Identifier::new(name).map_err(|_| Error::InvalidInput {
+        field: "storage retry window",
+        reason: "invalid generated identity",
+    })
 }
 
 fn rejected() -> Error {
-    Error::InvalidInput { field: "file mutation", reason: "owned production ended without the requested result" }
+    Error::InvalidInput {
+        field: "file mutation",
+        reason: "owned production ended without the requested result",
+    }
 }
 fn exhausted() -> Error {
     Error::ResourceExhausted { resource: "storage mutation receipts" }
 }
 fn expired() -> Error {
-    Error::InvalidInput { field: "storage mutation", reason: "retry window expired or unknown; reconcile state before issuing new work" }
+    Error::InvalidInput {
+        field: "storage mutation",
+        reason: "retry window expired or unknown; reconcile state before issuing new work",
+    }
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn receipt_checkpoints_keep_unsaved_outcomes_until_success() {
+        let mut receipts = Receipts::new(MUTATION_RETENTION, crate::execution::Execution::default()).unwrap();
+        let first = MutationId {
+            window: receipts.window.clone(),
+            key: Identifier::new("first").unwrap(),
+        };
+        receipts.insert(&first, [1; 32]).unwrap();
+        receipts.complete(&first, MutationValue::Rejected);
+        let captured = receipts.snapshot(None);
+        assert_eq!(captured.len(), 1);
+        assert_eq!(receipts.snapshot(None), captured);
+        let second = MutationId {
+            window: receipts.window.clone(),
+            key: Identifier::new("second").unwrap(),
+        };
+        receipts.insert(&second, [2; 32]).unwrap();
+        receipts.complete(&second, MutationValue::Rejected);
+        receipts.saved(&captured);
+        let pending = receipts.snapshot(None);
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].mutation, second);
+        assert!(matches!(receipts.lookup(&first, &[1; 32], None).unwrap(), ReceiptState::Complete(MutationValue::Rejected)));
+        receipts.saved(&pending);
+        assert!(receipts.snapshot(None).is_empty());
+        receipts.restore(captured).unwrap();
+        assert!(receipts.snapshot(None).is_empty());
+        assert!(matches!(receipts.lookup(&first, &[1; 32], None).unwrap(), ReceiptState::Complete(MutationValue::Rejected)));
+    }
+}

@@ -107,7 +107,12 @@ pub enum CodecError {
 
 impl Failure {
     pub fn new(code: operations::FailureKind, cause: impl Into<String>) -> Self {
-        Self(Box::new(Record { code, cause: cause.into(), context: Context::default(), diagnostics: None }))
+        Self(Box::new(Record {
+            code,
+            cause: cause.into(),
+            context: Context::default(),
+            diagnostics: None,
+        }))
     }
 
     // Writes the cause once from an error chain. A failure already carried in

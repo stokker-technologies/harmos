@@ -32,7 +32,7 @@ use std::time::Duration;
 use sha2::{Digest, Sha256};
 
 // Local Imports
-use super::manager::{ENTRY_OVERHEAD, Operation, Pending, State, Target, encoded_size};
+use super::manager::{Operation, Pending, State, Target, encoded_size};
 use super::*;
 use crate::{Error, Result};
 use session::Session;
@@ -52,6 +52,7 @@ pub struct StorageFile {
     id: u64,
     progress: Arc<Mutex<Progress>>,
     session: Option<FileSession>,
+    append: Option<(u64, crate::FileChunk, u64)>,
 }
 
 struct CancelProduction {
@@ -88,7 +89,7 @@ pub(super) struct FileState {
     abandoned: bool,
     in_flight: bool,
     retrying: bool,
-    base_bytes: usize,
+
     reference_bytes: usize,
 }
 
@@ -141,13 +142,17 @@ impl FileAction {
 
 /* === Private Functions === */
 
-fn file_bytes(metadata: &FileMetadata, history: &StoreHistory) -> Result<(usize, usize)> {
-    let reference = encoded_size(metadata)?
-        .checked_add(encoded_size(history)?)
-        .and_then(|size| size.checked_add(ENTRY_OVERHEAD))
-        .ok_or_else(size_error)?;
-    let base = reference.checked_mul(8).ok_or_else(size_error)?;
-    Ok((reference, base))
+fn file_bytes(metadata: &FileMetadata, history: &StoreHistory) -> Result<usize> {
+    let reference = FileReference {
+        position: StorageCursor {
+            history: history.clone(),
+            sequence: u64::MAX,
+        },
+        metadata: metadata.clone(),
+        length: u64::MAX,
+        sha256: [255; 32],
+    };
+    encoded_size(&reference)
 }
 
 fn closed() -> Error {
@@ -155,7 +160,10 @@ fn closed() -> Error {
 }
 
 fn size_error() -> Error {
-    Error::InvalidInput { field: "file admission", reason: "size or position overflow" }
+    Error::InvalidInput {
+        field: "file admission",
+        reason: "size or position overflow",
+    }
 }
 
 fn admission(state: &State) -> Result<()> {

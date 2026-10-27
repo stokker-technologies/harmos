@@ -94,10 +94,15 @@ impl PluginScope {
             return Ok(*context);
         }
         let mut context = [0; 32];
-        getrandom::fill(&mut context)
-            .map_err(|source| Error::OperationFailed { operation: "plugin generation context".to_owned(), source: Arc::new(source) })?;
+        getrandom::fill(&mut context).map_err(|source| Error::OperationFailed {
+            operation: "plugin generation context".to_owned(),
+            source: Arc::new(source),
+        })?;
         if context == [0; 32] {
-            return Err(Error::InvalidInput { field: "plugin generation context", reason: "zero random context" });
+            return Err(Error::InvalidInput {
+                field: "plugin generation context",
+                reason: "zero random context",
+            });
         }
         let _ = self.generation_context.set(context);
         Ok(*self.generation_context.get().expect("generation context issued once"))
@@ -273,7 +278,12 @@ impl PluginScope {
     pub(super) fn with_listeners(mut self, listeners: &[harmos_domain::listeners::Definition]) -> Self {
         self.listeners = Arc::from(listeners.to_vec());
         self.phase.send_if_modified(|phase| {
-            let Phase::Staged { record_listeners_bound, stream_listeners_bound, .. } = phase else {
+            let Phase::Staged {
+                record_listeners_bound,
+                stream_listeners_bound,
+                ..
+            } = phase
+            else {
                 return false;
             };
             *record_listeners_bound =
@@ -433,7 +443,10 @@ impl PluginScope {
     pub(crate) fn bind_streams(&self) -> bool {
         let mut bound = false;
         self.phase.send_if_modified(|phase| {
-            let Phase::Staged { streams_bound, streams_abandoned: false, .. } = phase else {
+            let Phase::Staged {
+                streams_bound, streams_abandoned: false, ..
+            } = phase
+            else {
                 return false;
             };
             bound = true;
@@ -483,7 +496,10 @@ impl PluginScope {
         if actual.len() != self.operations.len()
             || self.operations.iter().any(|(id, declared)| actual.get(id).is_none_or(|actual| *actual != declared))
         {
-            return Err(Error::InvalidInput { field: "operation catalog", reason: "bindings differ from the admitted plugin inventory" });
+            return Err(Error::InvalidInput {
+                field: "operation catalog",
+                reason: "bindings differ from the admitted plugin inventory",
+            });
         }
         Ok(())
     }
@@ -491,7 +507,12 @@ impl PluginScope {
     pub(crate) fn bind_operations(&self) -> Result<()> {
         let mut bound = false;
         self.phase.send_if_modified(|phase| {
-            if let Phase::Staged { operations_bound, operations_abandoned: false, .. } = phase {
+            if let Phase::Staged {
+                operations_bound,
+                operations_abandoned: false,
+                ..
+            } = phase
+            {
                 bound = true;
                 let changed = !*operations_bound;
                 *operations_bound = true;
@@ -508,7 +529,10 @@ impl PluginScope {
 
     pub(crate) fn unbind_operations(&self) {
         self.phase.send_if_modified(|phase| {
-            if let Phase::Staged { operations_bound, operations_abandoned, .. } = phase {
+            if let Phase::Staged {
+                operations_bound, operations_abandoned, ..
+            } = phase
+            {
                 if self.operations.is_empty() {
                     return false;
                 }
@@ -696,7 +720,7 @@ impl PluginScope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Application, OperationDeclaration, RegistrationExt};
+    use crate::{Application, RegistrationExt};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[crate::lanes]
@@ -715,51 +739,36 @@ mod tests {
         type Resources = ();
     }
 
-    struct Read;
-    impl OperationDeclaration for Read {
-        type Request = ();
-        type Response = u64;
-        type Input = crate::operations::NoStream;
-        type Output = crate::operations::NoStream;
-        const ID: &'static str = "read";
-        const VISIBILITY: crate::operations::Visibility = crate::operations::Visibility::Private;
-        const POLICY: crate::OperationPolicy = crate::OperationPolicy {
+    #[crate::operation(harmos_path = crate, resources = [AtomicUsize], id = "test.read", response = u64,
+        policy = crate::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
             retries: crate::RetryPolicy::Never,
-        };
-    }
+        },
+    )]
+    struct Read;
 
-    impl harmos_sdk::Operation for Read {
-        type Request = ();
-        type Response = u64;
-        type Error = harmos_sdk::DependencyError;
-        type Endpoints = ();
+    impl crate::Operation for Read {
+        type Error = std::convert::Infallible;
 
-        async fn initialize(context: harmos_sdk::OperationContext) -> std::result::Result<Self, Self::Error> {
-            context.dependency::<AtomicUsize>()?.fetch_add(1, Ordering::SeqCst);
-            Ok(Self)
-        }
-
-        async fn run(
-            &mut self, _: harmos_sdk::OperationContext, _: &mut (), _: &mut (),
-        ) -> std::result::Result<crate::Response<u64>, Self::Error> {
+        async fn run(self, ctx: crate::Context<'_, Self>) -> std::result::Result<crate::Response<u64>, Self::Error> {
+            ctx.resource::<AtomicUsize>().fetch_add(1, Ordering::SeqCst);
             Ok(7.into())
         }
     }
 
     struct Worker(Arc<AtomicUsize>);
     impl harmos_sdk::services::Service for Worker {
-        type Error = harmos_sdk::DependencyError;
-        async fn initialize(context: harmos_sdk::OperationContext) -> std::result::Result<Self, Self::Error> {
-            assert_eq!(context.dependency::<PluginScope>()?.owner(), "worker");
-            assert!(context.dependency::<crate::services::ServiceContext<Model>>().is_err());
-            let calls = context.dependency::<AtomicUsize>()?;
+        type Error = harmos_sdk::ResourceError;
+        async fn initialize(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, Self::Error> {
+            assert_eq!(context.resource::<PluginScope>()?.owner(), "worker");
+            assert!(context.resource::<crate::services::ServiceContext<Model>>().is_err());
+            let calls = context.resource::<AtomicUsize>()?;
             calls.fetch_add(1, Ordering::SeqCst);
-            context.dependency::<tokio::sync::Notify>()?.notify_one();
+            context.resource::<tokio::sync::Notify>()?.notify_one();
             Ok(Self(calls))
         }
-        async fn run(&mut self, _: harmos_sdk::OperationContext) -> std::result::Result<(), Self::Error> {
+        async fn run(&mut self, _: harmos_sdk::ExecutionContext) -> std::result::Result<(), Self::Error> {
             std::future::pending().await
         }
         async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
@@ -794,7 +803,7 @@ mod tests {
         receipt.shutdown().await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert!(runtime.operations.resident_definition("worker.service").is_none());
-        assert!(scope.operation_for::<Read, Lanes>(()).start().await.is_err());
+        assert!(scope.operation::<Read, Lanes>(Read).start().await.is_err());
         runtime.stop().await.unwrap();
     }
 
@@ -808,14 +817,14 @@ mod tests {
         let mut dependencies = harmos_sdk::Dependencies::new();
         dependencies.insert(initialized.clone()).unwrap();
         let batch = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Read>();
-        let invocation = scope.operation_for::<Read, Lanes>(());
+        let invocation = scope.operation::<Read, Lanes>(Read);
         scope.register(batch.clone().defaults::<Lanes>()).await.unwrap();
         assert_eq!(initialized.load(Ordering::SeqCst), 0);
         assert_eq!(*invocation.run().await.unwrap(), 7);
         assert_eq!(initialized.load(Ordering::SeqCst), 1);
         assert!(scope.unregister(&crate::QualifiedId::parse("host.read").unwrap()).await.is_err());
 
-        let stale = scope.operation_for::<Read, Lanes>(());
+        let stale = scope.operation::<Read, Lanes>(Read);
         receipt.shutdown().await.unwrap();
         assert!(stale.start().await.is_err());
         assert!(scope.register(batch.defaults::<Lanes>()).await.is_err());

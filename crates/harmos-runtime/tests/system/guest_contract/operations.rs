@@ -19,11 +19,11 @@
 
 // Local Imports
 use super::lifecycle::{GuestOperations, Lifecycle, Manager, serve_host};
-use super::sandbox::{Counts, Read, Stage};
+use super::sandbox::{CountsOperation, ReadOperation, Stage};
 use super::schematic::model::{Connection, Point, Snapshot};
 use super::{GuestLanes, corner, route, runtime, sandbox, support};
 use harmos_runtime::Message;
-use harmos_runtime::operations::{ComponentError, ComponentOperation, FailureKind, OperationDeclaration};
+use harmos_runtime::operations::{ComponentError, ComponentOperation};
 use schematic_operations::schematic::{analyze, propose, validate};
 
 /* === Constants === */
@@ -47,10 +47,12 @@ use support::Lanes;
 /* === Private Functions === */
 
 fn pending_settings() -> harmos_runtime::config::PluginSettings {
+    let host_operations = ["host.publish", "provider.echo"];
+    let host_operations = host_operations.map(|id| harmos_runtime::Identifier::new(id).unwrap());
     harmos_runtime::config::PluginSettings {
         configuration: serde_json::to_vec("shutdown-pending").unwrap(),
         shutdown_timeout: std::time::Duration::from_millis(20),
-        host_operations: ["host_publish", "provider_echo"].map(|id| harmos_runtime::Identifier::new(id).unwrap()).to_vec(),
+        host_operations: host_operations.to_vec(),
         ..Default::default()
     }
 }
@@ -71,6 +73,7 @@ async fn inert_plan_denies() {
     assert!(manager.caller("schematic_tools").is_err());
     assert!(matches!(runtime.operation(route(4)).run().await, Err(harmos_runtime::Error::NotRegistered { domain: "operation", .. })));
     assert!(manager.initialize(&mut lifecycle).await.is_err(), "a unit configuration refuses an object");
+
     manager.shutdown(&mut lifecycle).await.unwrap();
 
     let plan = manager.plan_reload(lifecycle.candidate(()).await).unwrap();
@@ -79,6 +82,7 @@ async fn inert_plan_denies() {
     assert!(manager.caller("schematic_tools").is_ok());
     let response = runtime.operation(route(3)).run().await.unwrap();
     assert_eq!(response.points, corner(3));
+
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
@@ -95,10 +99,17 @@ async fn declared_operation_roundtrip() {
     assert_eq!(answered.points, corner(3));
 
     // A Straight Route Collapses Its Corner Onto The Start
-    let operation = ["schematic", "route"].join(".");
+    let operation = ["schematic_tools", "schematic", "route"].join(".");
     let encoded = runtime
         .operations
-        .call_encoded(&operation, propose::ProposeRouteRequest { from: Point { x: 0, y: 0 }, to: Point { x: 0, y: 4 } }.encode())
+        .call_encoded(
+            &operation,
+            propose::ProposeRoute {
+                from: Point { x: 0, y: 0 },
+                to: Point { x: 0, y: 4 },
+            }
+            .encode(),
+        )
         .await
         .unwrap();
     assert_eq!(propose::Route::decode(encoded.as_slice()).unwrap().points, [Point { x: 0, y: 0 }, Point { x: 0, y: 4 }]);
@@ -108,13 +119,17 @@ async fn declared_operation_roundtrip() {
     ));
 
     let validated = runtime
-        .operation(validate::ValidateSchematicRequest {
-            schematic: Snapshot { symbols: vec![1, 1], connections: vec![Connection { from: 1, to: 2 }] },
+        .operation(validate::ValidateSchematic {
+            schematic: Snapshot {
+                symbols: vec![1, 1],
+                connections: vec![Connection { from: 1, to: 2 }],
+            },
         })
         .run()
         .await
         .unwrap();
     assert_eq!(validated.diagnostics, ["Duplicate Symbol IDs", "Connection 1 To 2 References A Missing Symbol"]);
+
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
@@ -126,8 +141,9 @@ async fn wrong_catalog_refused() {
     let runtime = runtime().await;
     serve_host(&runtime, GuestLanes::Open).await;
     let host = harmos_runtime::guest::Host::new(&runtime).unwrap();
-    let refused =
-        runtime.plugin.register_guest::<()>(host.load(&sandbox()).unwrap(), pending_settings(), GuestLanes::Open).await.unwrap_err();
+    let bytes = sandbox();
+    let loaded = host.load(&bytes).unwrap();
+    let refused = runtime.plugin.register_guest::<()>(loaded, pending_settings(), GuestLanes::Open).await.unwrap_err();
     assert!(matches!(refused, harmos_runtime::Error::InvalidInput { field: "guest operation catalog", .. }));
     assert!(runtime.plugin.status("sandbox_guest").is_none());
     runtime.stop().await.unwrap();
@@ -140,7 +156,9 @@ async fn shutdown_retains_cleanup() {
     let runtime = runtime().await;
     serve_host(&runtime, GuestLanes::Open).await;
     let host = harmos_runtime::guest::Host::new(&runtime).unwrap();
-    runtime.plugin.register_guest::<GuestOperations>(host.load(&sandbox()).unwrap(), pending_settings(), GuestLanes::Open).await.unwrap();
+    let bytes = sandbox();
+    let loaded = host.load(&bytes).unwrap();
+    runtime.plugin.register_guest::<GuestOperations>(loaded, pending_settings(), GuestLanes::Open).await.unwrap();
     runtime.plugin.initialize().await.unwrap();
     let ready = runtime.plugin.status("sandbox_guest").unwrap();
     assert_eq!(ready.attempts, 1);
@@ -154,7 +172,7 @@ async fn shutdown_retains_cleanup() {
     assert_eq!(failed.attempts, 1);
     assert!(failed.next_retry.is_none());
     assert!(failed.cleanup_pending);
-    assert!(runtime.operation(Read { value: "fenced".into() }).run().await.is_err());
+    assert!(runtime.operation(ReadOperation { value: "fenced".into() }).run().await.is_err());
 
     // Each Later Stop Resumes The Retained Cleanup Until The Guest's Own Shutdown Deadline Settles It, Without Another Attempt
     let mut settled = false;
@@ -176,79 +194,36 @@ async fn overlay_preserves_parent() {
     let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("normal").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
+
     let mut context = harmos_runtime::operations::CallContext::default();
     context.insert_portable(Stage { id: "parent".into() }).unwrap();
     let caller = runtime.operations.with_context(context.clone());
-    let answer = caller.call::<<Read as harmos_runtime::RequestFor>::Operation>(Read { value: "context-parent".into() }).await.unwrap();
+    let answer = caller.call::<ReadOperation>(ReadOperation { value: "context-parent".into() }).await.unwrap();
     assert_eq!(answer.value, "parent:child");
     assert_eq!(context.value::<Stage>().unwrap().unwrap().id, "parent");
+
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
-async fn phases_retain_capacity() {
+async fn request_clones_and_resource_attempts() {
     let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("normal").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    assert_eq!(runtime.operation(Read { value: "value".into() }).run().await.unwrap().value.as_str(), "value:2");
 
-    // Retain Both Original Receipts While Their Physical Cleanup Owns The Table
-    let mut first = runtime.operations.submit::<super::sandbox::ReadOperation>(Read { value: "cleanup".into() }).unwrap();
-    let first_error = (&mut first).await.unwrap_err();
-    let mut second = runtime.operations.submit::<super::sandbox::ReadOperation>(Read { value: "cleanup".into() }).unwrap();
-    let second_error = (&mut second).await.unwrap_err();
-    assert_ne!(first.id(), second.id());
-    for error in [first_error, second_error] {
-        let harmos_runtime::Error::OperationFinalization { operation, outcome, source } = error else {
-            panic!("failed cleanup must retain the original operation owner")
-        };
-        assert_eq!(operation, super::sandbox::ReadOperation::ID);
-        assert!(outcome.is_none(), "the original retry completed before physical cleanup failed");
-        let harmos_runtime::Error::OperationFailed { source, .. } = source.as_ref() else {
-            panic!("the original finalization handler error is preserved")
-        };
-        assert!(matches!(source.downcast_ref::<ComponentError>(),
-        Some(ComponentError::Remote(failure))
-            if failure.code() == FailureKind::Transient
-                && failure.cause().contains("first cleanup retained")));
+    for value in ["first", "second", "third"] {
+        let response = runtime.operation(ReadOperation { value: value.into() }).run().await.unwrap();
+        assert_eq!(response.value, format!("{value}:2"));
     }
-    let error = runtime.operation(Read { value: "later".into() }).run().await.unwrap_err();
-    let harmos_runtime::Error::OperationFailed { source, .. } = error else {
-        panic!("both failed cleanup owners must still charge the original capacity")
-    };
-    assert!(matches!(source.downcast_ref::<ComponentError>(),
-    Some(ComponentError::Preparation(failure))
-        if failure.cause() == "carrier invocation capacity is exhausted"));
+    let counts = runtime.operation(CountsOperation { value: "counts".into() }).run().await.unwrap();
+    assert_eq!(counts.value, "6");
 
-    // The Reserved SDK Slot Settles Those Same Ordinary States Before Retirement
-    let original = lifecycle.component();
     manager.shutdown(&mut lifecycle).await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(original.clone()).unwrap();
-                dependencies
-            })
-            .implementation::<super::sandbox::ReadOperation, ComponentOperation<super::sandbox::ReadOperation>>(),
-            GuestLanes::Open,
-        ))
-        .await
-        .unwrap();
-    let retired =
-        runtime.operations.submit_from::<super::sandbox::ReadOperation>("host", Read { value: "later".into() }).unwrap().await.unwrap_err();
-    let harmos_runtime::Error::OperationFailed { source, .. } = retired else { panic!("the retained generation must refuse execution") };
-    assert!(matches!(source.downcast_ref::<ComponentError>(), Some(ComponentError::Unavailable)));
-    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", super::sandbox::ReadOperation::ID).unwrap()).await.unwrap();
-    manager.reload(lifecycle.candidate("normal").await, &mut lifecycle).await.unwrap();
-    assert_eq!(runtime.operation(Read { value: "later".into() }).run().await.unwrap().value.as_str(), "later:2");
-    manager.shutdown(&mut lifecycle).await.unwrap();
-    drop((first, second, original, manager, lifecycle));
+    drop((manager, lifecycle));
     runtime.stop().await.unwrap();
 }
 
@@ -259,12 +234,13 @@ async fn exact_live_bindings() {
     let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("mismatch").await).unwrap();
     let error = manager.initialize(&mut lifecycle).await.unwrap_err();
+
     let mut source = Some(&error as &dyn std::error::Error);
     let mut refused_catalog = false;
     while let Some(error) = source {
-        if let Some(ComponentError::Remote(failure)) = error.downcast_ref::<ComponentError>() {
-            refused_catalog |= failure.cause().contains("carrier handler definitions differ from the selected operation catalog");
-        }
+        let remote = error.downcast_ref::<ComponentError>();
+        refused_catalog |= matches!(remote, Some(ComponentError::Remote(failure))
+            if failure.cause().contains("carrier handler definitions differ from the selected operation catalog"));
         source = if let Some(harmos_runtime::Error::OperationFailed { source, .. }) = error.downcast_ref::<harmos_runtime::Error>() {
             Some(source.as_ref())
         } else {
@@ -272,6 +248,7 @@ async fn exact_live_bindings() {
         };
     }
     assert!(refused_catalog, "SDK initialization must refuse the actual missing binding: {error}");
+
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
@@ -281,64 +258,29 @@ async fn exact_live_bindings() {
 async fn children_retire_authority() {
     let _report = crate::report::system();
     for serial in [false, true] {
-        let runtime = harmos_runtime::Runtime::<support::Bank>::builder(support::Ledger::default(), ())
-            .operation_settings(harmos_runtime::operations::Settings {
-                preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
-                ..Default::default()
-            })
-            .register(Lanes::catalog())
-            .runtime()
-            .await
-            .unwrap();
-        let lane = if serial { Lanes::Serial } else { Lanes::Open };
-        let mut lifecycle = Lifecycle::sandbox_in(&runtime, lane).await;
-        let mut manager = Manager::new(lifecycle.candidate("children").await).unwrap();
-        manager.initialize(&mut lifecycle).await.unwrap();
-        let result = runtime.operation(Read { value: "parent".into() }).run().await;
-        if serial {
-            assert!(matches!(result, Err(harmos_runtime::Error::OperationFailed { .. })));
-        } else {
-            assert_eq!(result.unwrap().value.as_str(), "parent:2:stale:leaf:1");
-        }
-        manager.shutdown(&mut lifecycle).await.unwrap();
-        drop((manager, lifecycle));
-        runtime.stop().await.unwrap();
+        children_in_lane(serial).await;
     }
 }
 
-#[tokio::test]
-async fn initialization_cleans_failure() {
-    let _report = crate::report::system();
-    let runtime = runtime().await;
-    let mut lifecycle = Lifecycle::sandbox(&runtime).await;
-    let mut manager = Manager::new(lifecycle.candidate("initialize-fail").await).unwrap();
+async fn children_in_lane(serial: bool) {
+    let preparation_bytes = std::num::NonZeroUsize::new(4096);
+    let runtime = harmos_runtime::Runtime::<support::Bank>::builder(support::Ledger::default(), ())
+        .operation_settings(harmos_runtime::operations::Settings { preparation_bytes, ..Default::default() })
+        .register(Lanes::catalog())
+        .runtime()
+        .await
+        .unwrap();
+    let lane = if serial { Lanes::Serial } else { Lanes::Open };
+    let mut lifecycle = Lifecycle::sandbox_in(&runtime, lane).await;
+    let mut manager = Manager::new(lifecycle.candidate("children").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let mut invocation = runtime.operations.submit::<super::sandbox::ReadOperation>(Read { value: "initialize-fail".into() }).unwrap();
-    let error = (&mut invocation).await.unwrap_err();
-    let harmos_runtime::Error::OperationFailed { source, .. } = error else { panic!("original initialization error") };
-    assert!(
-        matches!(source.downcast_ref::<ComponentError>(), Some(ComponentError::Preparation(failure)) if failure.code() == FailureKind::Transient && failure.cause().contains("partial initialization failed"))
-    );
-    assert_eq!(invocation.status().phase(), harmos_runtime::operations::OperationPhase::Settled);
-    let counts = runtime.operation(Counts { value: "counts".into() }).run().await.unwrap();
-    // A failed initialization owns its partial acquisitions: no stop or cleanup.
-    assert_eq!(counts.value, "1:0:0:0");
-    manager.shutdown(&mut lifecycle).await.unwrap();
-    drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
-}
+    let result = runtime.operation(ReadOperation { value: "parent".into() }).run().await;
+    if serial {
+        assert!(matches!(result, Err(harmos_runtime::Error::OperationFailed { .. })));
+    } else {
+        assert_eq!(result.unwrap().value.as_str(), "parent:2:stale:leaf:1");
+    }
 
-#[tokio::test]
-async fn initialization_children_retired() {
-    let _report = crate::report::system();
-    let runtime = runtime().await;
-    let mut lifecycle = Lifecycle::sandbox(&runtime).await;
-    let mut manager = Manager::new(lifecycle.candidate("initialize-child").await).unwrap();
-    manager.initialize(&mut lifecycle).await.unwrap();
-    let result = runtime.operation(Read { value: "initialize-child".into() }).run().await.unwrap();
-    assert_eq!(result.value, "initialize-child:2");
-    let counts = runtime.operation(Counts { value: "counts".into() }).run().await.unwrap();
-    assert_eq!(counts.value, "2:3:2:2");
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
@@ -358,15 +300,16 @@ async fn wire_alias_refused() {
         dependencies.insert(lifecycle.component()).unwrap();
         dependencies
     })
-    .implementation::<propose::ProposeRoute, ComponentOperation<propose::ProposeRoute>>();
+    .carrier::<propose::ProposeRoute, ComponentOperation<propose::ProposeRoute>>();
     batch.operations[0].definition.id = harmos_runtime::Identifier::new("aliased_route").unwrap();
     let refused = runtime.operations.register(harmos_runtime::RegistrationExt::lane(batch, GuestLanes::Open)).await.unwrap_err();
-    assert!(matches!(refused, harmos_runtime::Error::OperationFailed { ref source, .. }
+    assert!(matches!(refused, harmos_runtime::Error::OperationFailed {ref source, ..}
         if matches!(source.downcast_ref::<harmos_runtime::operations::ServingError>(), Some(harmos_runtime::operations::ServingError::Catalog))));
     assert!(matches!(
         runtime.operations.submit_at::<propose::ProposeRoute>("aliased_route", route(3)),
         Err(harmos_runtime::Error::NotRegistered { .. })
     ));
+
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
@@ -384,6 +327,7 @@ async fn grpc_original_owner() {
     assert!(runtime.grpc().methods().is_empty());
     manager.initialize(&mut lifecycle).await.unwrap();
     assert_eq!(runtime.grpc().methods().len(), 3);
+
     let settings = harmos_runtime::grpc::Settings {
         address: "127.0.0.1:0".parse().unwrap(),
         operations: harmos_runtime::grpc::server::Settings::default(),
@@ -398,26 +342,27 @@ async fn grpc_original_owner() {
     };
     let attached = runtime.grpc().attach(settings).await.unwrap();
     let address = attached.local_addr();
-    let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
+    let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap();
+    let channel = endpoint.connect().await.unwrap();
     let mut client = tonic::client::Grpc::new(channel);
     client.ready().await.unwrap();
+
     let settings = harmos_runtime::grpc::server::Settings::default();
     let codec = harmos_runtime::grpc::Codec::<
         harmos_runtime::grpc::Transcoded,
         propose::Route,
-        harmos_runtime::operations::Response<propose::ProposeRouteRequest>,
+        harmos_runtime::operations::Response<propose::ProposeRoute>,
     >::new(settings.decode, settings.encode)
     .unwrap();
+    let request = harmos_runtime::operations::Response::new(route(3));
+    let request = tonic::Request::new(request);
     let response = client
-        .unary(
-            tonic::Request::new(harmos_runtime::operations::Response::new(route(3))),
-            tonic::codegen::http::uri::PathAndQuery::from_static("/schematic.v1.Schematic/ProposeRoute"),
-            codec,
-        )
+        .unary(request, tonic::codegen::http::uri::PathAndQuery::from_static("/schematic.v1.Schematic/ProposeRoute"), codec)
         .await
         .unwrap()
         .into_inner();
     assert_eq!(response.points, corner(3));
+
     manager.shutdown(&mut lifecycle).await.unwrap();
     assert!(runtime.grpc().methods().is_empty());
     runtime.stop().await.unwrap();
@@ -430,18 +375,24 @@ async fn stream_lifecycle_preserved() {
     let mut lifecycle = Lifecycle::schematic(&runtime);
     let mut manager = Manager::new(lifecycle.candidate(()).await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
+
     let settings = harmos_runtime::operations::StreamSettings {
         items: std::num::NonZeroUsize::MIN,
         bytes: std::num::NonZeroUsize::new(4096).unwrap(),
     };
-    let request =
-        analyze::AnalyzeSchematicRequest { schematic: Snapshot { symbols: vec![1, 2], connections: vec![Connection { from: 1, to: 2 }] } };
+    let request = analyze::AnalyzeSchematic {
+        schematic: Snapshot {
+            symbols: vec![1, 2],
+            connections: vec![Connection { from: 1, to: 2 }],
+        },
+    };
     let mut download = runtime.operations.download::<analyze::AnalyzeSchematic>(request, settings).unwrap();
     for expected in ["2 symbols", "1 connections", "Analysis complete"] {
         assert_eq!(download.next().await.unwrap().unwrap().text, expected);
     }
     assert!(download.next().await.unwrap().is_none());
     assert_eq!(download.join().await.unwrap().checked, 3);
+
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();

@@ -88,11 +88,26 @@ pub trait Policy: 'static {
 pub struct InitializationSchema;
 pub struct ShutdownSchema;
 impl Described for InitializationSchema {
-    const NAME: &'static str = "harmos.lifecycle.InitializeRequest";
+    const NAME: &'static str = "harmos.lifecycle.Initialize";
     const FIELDS: &'static [Field] = &[
-        Field { name: Cow::Borrowed("config_json"), tag: 1, kind: Kind::Bytes, cardinality: Cardinality::Required },
-        Field { name: Cow::Borrowed("generation_context"), tag: 2, kind: Kind::Bytes, cardinality: Cardinality::Required },
-        Field { name: Cow::Borrowed("assignments"), tag: 3, kind: Kind::Bytes, cardinality: Cardinality::Required },
+        Field {
+            name: Cow::Borrowed("config_json"),
+            tag: 1,
+            kind: Kind::Bytes,
+            cardinality: Cardinality::Required,
+        },
+        Field {
+            name: Cow::Borrowed("generation_context"),
+            tag: 2,
+            kind: Kind::Bytes,
+            cardinality: Cardinality::Required,
+        },
+        Field {
+            name: Cow::Borrowed("assignments"),
+            tag: 3,
+            kind: Kind::Bytes,
+            cardinality: Cardinality::Required,
+        },
     ];
     const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
         { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
@@ -100,7 +115,7 @@ impl Described for InitializationSchema {
 }
 
 impl Described for ShutdownSchema {
-    const NAME: &'static str = "harmos.lifecycle.ShutdownRequest";
+    const NAME: &'static str = "harmos.lifecycle.Shutdown";
     const FIELDS: &'static [Field] = &[];
     const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
         { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
@@ -142,7 +157,11 @@ impl From<Descriptor> for Contract {
 
 impl From<Descriptor> for EncodedDescriptor {
     fn from(descriptor: Descriptor) -> Self {
-        Self { action: descriptor.action, fingerprint: descriptor.contract.fingerprint(), policy: descriptor.contract.operation().policy }
+        Self {
+            action: descriptor.action,
+            fingerprint: descriptor.contract.fingerprint(),
+            policy: descriptor.contract.operation().policy,
+        }
     }
 }
 
@@ -167,8 +186,8 @@ impl TryFrom<EncodedDescriptor> for Descriptor {
 impl Action {
     pub const fn id(self) -> &'static str {
         match self {
-            Self::Initialize => "harmos_initialize",
-            Self::Shutdown => "harmos_shutdown",
+            Self::Initialize => "harmos.initialize",
+            Self::Shutdown => "harmos.shutdown",
         }
     }
     pub const fn request(self) -> crate::schema::declaration::Definition {

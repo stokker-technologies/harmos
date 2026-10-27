@@ -84,6 +84,14 @@ pub(super) fn install(source: &Path, destination: &Path) -> io::Result<()> {
     move_file(source, destination, false)
 }
 
+pub(super) fn install_opened(file: &File, source: &Path, destination: &Path) -> io::Result<()> {
+    let destination = wide(destination)?;
+    move_file_write_through(source, &destination, false)?;
+    // The Original Writable Handle Now Names The Destination. Flush Its
+    // Metadata After The Rename Just As The Handle-Based Install Does.
+    file.sync_all()
+}
+
 pub(super) fn replace(source: &Path, destination: &Path) -> io::Result<()> {
     move_file(source, destination, true)
 }
@@ -119,7 +127,9 @@ pub(super) fn remove(path: &Path) -> io::Result<()> {
     }
     // SAFETY: ReOpenFile Returned A Fresh Owned Handle; File Closes It Once.
     let deletion = unsafe { File::from_raw_handle(deletion) };
-    let disposition = FILE_DISPOSITION_INFO_EX { Flags: FILE_DISPOSITION_FLAG_DELETE | FILE_DISPOSITION_FLAG_POSIX_SEMANTICS };
+    let disposition = FILE_DISPOSITION_INFO_EX {
+        Flags: FILE_DISPOSITION_FLAG_DELETE | FILE_DISPOSITION_FLAG_POSIX_SEMANTICS,
+    };
     // SAFETY: The Owned Handle And Initialized Fixed-Size Disposition Remain
     // Valid For This Synchronous Call. Unsupported POSIX Removal Is An Error.
     if unsafe {

@@ -38,11 +38,26 @@ use harmos_runtime::storage::{ReadLimits, RecoveryPosition, StorageCursor};
 
 /* === Private Functions === */
 
+fn unsupported_header(history: &harmos_runtime::storage::StoreHistory) -> Vec<u8> {
+    use sha2::Digest;
+
+    let value = serde_json::json!({
+        "version": 2,
+        "after": RecoveryPosition {
+            history: history.clone(),
+            sequence: 0,
+        },
+    });
+    let json = serde_json::to_vec(&value).unwrap();
+    let digest = sha2::Sha256::digest(&json);
+    let hex = digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    [b"{\"value\":".as_slice(), &json, b",\"sha256\":\"", hex.as_bytes(), b"\"}\n"].concat()
+}
+
 /* === Tests === */
 
 #[tokio::test]
 async fn checkpoint_survives_reopen() {
-    let memory = super::super::memory::read().await;
     let root = tempfile::tempdir().unwrap();
     let history = crate::storage::history();
     let settings = crate::storage::state_settings();
@@ -51,12 +66,20 @@ async fn checkpoint_survives_reopen() {
     let required_data = StorageCursor { history: history.clone(), sequence: 0 };
     assert_eq!(backend.open().await.unwrap(), at(0));
     let entries = (1..=3)
-        .map(|sequence| RecoveryEntry { position: at(sequence), required_data: required_data.clone(), payload: vec![sequence as u8] })
+        .map(|sequence| RecoveryEntry {
+            position: at(sequence),
+            required_data: required_data.clone(),
+            payload: vec![sequence as u8],
+        })
         .collect::<Vec<_>>();
     backend.write_entries(harmos_storage::StorageBatch::new(entries.clone())).await.unwrap();
     assert_eq!(backend.flush(&at(3)).await.unwrap(), at(3));
     backend.write_entries(harmos_storage::StorageBatch::new(entries.clone())).await.unwrap();
-    let snapshot = RecoverySnapshot { through: at(2), required_data, payload: b"checkpoint".to_vec() };
+    let snapshot = RecoverySnapshot {
+        through: at(2),
+        required_data,
+        payload: b"checkpoint".to_vec(),
+    };
     backend.write_snapshot(harmos_storage::StorageBatch::new(vec![snapshot.clone()])).await.unwrap();
     backend.close().await.unwrap();
 
@@ -67,17 +90,19 @@ async fn checkpoint_survives_reopen() {
 
     let reopened = FileBackend::new(root.path().to_owned(), history, settings);
     assert_eq!(reopened.open().await.unwrap().sequence, 3);
-    assert_eq!(
-        reopened.read_snapshot(std::num::NonZeroUsize::new(1024 * 1024).unwrap(), memory.clone()).await.unwrap(),
-        Some(snapshot.clone())
-    );
-    let through = RecoveryPosition { history: snapshot.through.history.clone(), sequence: 3 };
+    assert_eq!(reopened.read_snapshot(std::num::NonZeroUsize::new(1024 * 1024).unwrap()).await.unwrap(), Some(snapshot.clone()));
+    let through = RecoveryPosition {
+        history: snapshot.through.history.clone(),
+        sequence: 3,
+    };
     let page = reopened
         .read_entries(
             &snapshot.through,
             &through,
-            ReadLimits { rows: std::num::NonZeroUsize::new(64).unwrap(), bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap() },
-            memory.clone(),
+            ReadLimits {
+                rows: std::num::NonZeroUsize::new(64).unwrap(),
+                bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap(),
+            },
         )
         .await
         .unwrap();
@@ -119,7 +144,6 @@ async fn corruption_refused_preserved() {
 
 #[tokio::test]
 async fn state_root_exclusive() {
-    let memory = super::super::memory::read().await;
     let root = tempfile::tempdir().unwrap();
     let history = crate::storage::history();
     let settings = crate::storage::state_settings();
@@ -144,8 +168,10 @@ async fn state_root_exclusive() {
         .read_entries(
             &after,
             &position,
-            ReadLimits { rows: std::num::NonZeroUsize::new(64).unwrap(), bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap() },
-            memory.clone(),
+            ReadLimits {
+                rows: std::num::NonZeroUsize::new(64).unwrap(),
+                bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap(),
+            },
         )
         .await
         .unwrap();
@@ -159,7 +185,6 @@ async fn state_root_exclusive() {
 
 #[tokio::test]
 async fn limits_bound_records() {
-    let memory = super::super::memory::read().await;
     let history = crate::storage::history();
     let at = |sequence| RecoveryPosition { history: history.clone(), sequence };
     let entry = |sequence, bytes: usize| RecoveryEntry {
@@ -204,12 +229,20 @@ async fn limits_bound_records() {
 
     let reopened = FileBackend::new(root.path().to_owned(), history.clone(), settings);
     assert_eq!(reopened.open().await.unwrap(), at(1));
-    assert_eq!(
-        reopened.read_snapshot(NonZeroUsize::new(checkpoint_bytes as usize).unwrap(), memory.clone()).await.unwrap(),
-        Some(snapshot(3000))
-    );
+    assert_eq!(reopened.read_snapshot(NonZeroUsize::new(checkpoint_bytes as usize).unwrap()).await.unwrap(), Some(snapshot(3000)));
     // A Caller Bound Covers The Snapshot Value, Not The Integrity Envelope.
     let value_bytes = serde_json::to_vec(&snapshot(3000)).unwrap().len();
-    assert_eq!(reopened.read_snapshot(NonZeroUsize::new(value_bytes).unwrap(), memory.clone()).await.unwrap(), Some(snapshot(3000)));
+    assert_eq!(reopened.read_snapshot(NonZeroUsize::new(value_bytes).unwrap()).await.unwrap(), Some(snapshot(3000)));
     reopened.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn unsupported_format_refused() {
+    let root = tempfile::tempdir().unwrap();
+    let history = crate::storage::history();
+    std::fs::write(root.path().join("state.jsonl"), unsupported_header(&history)).unwrap();
+
+    let backend = FileBackend::new(root.path().to_owned(), history, crate::storage::state_settings());
+    let error = backend.open().await.unwrap_err();
+    assert!(error.to_string().contains("fresh state root"), "{error}");
 }

@@ -23,7 +23,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::operations::{Operation, RetryPolicy, Visibility};
+use harmos_runtime::operations::RetryPolicy;
 
 /* === Constants === */
 
@@ -35,20 +35,15 @@ use harmos_runtime::operations::{Operation, RetryPolicy, Visibility};
 
 pub struct Model;
 
-#[harmos_runtime::operation(request = Echo, infer_request,
-    id = "benchmark_echo",  response = Payload,
-    visibility = Visibility::Shared,
+#[harmos_runtime::operation(resources = [], id = "benchmark.echo",  response = Payload,
+    visibility = Shared,
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30), attempt_timeout: Duration::from_secs(30),
         retries: RetryPolicy::Never,
     },
     grpc(package = "benchmark.v1", service = "Commands", method = "Echo"),
 )]
-pub struct EchoDeclaration;
-
-#[harmos_runtime::message]
-
-pub struct Echo {
+pub struct EchoDeclaration {
     pub bytes: Vec<u8>,
 }
 
@@ -56,8 +51,6 @@ pub struct Echo {
 pub struct Payload {
     pub bytes: Vec<u8>,
 }
-
-pub struct Echoing;
 
 /* === Enums === */
 
@@ -80,20 +73,11 @@ impl harmos_runtime::Application for Model {
     type Resources = ();
 }
 
-impl Operation for Echoing {
-    type Request = Echo;
-    type Response = <EchoDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::operations::Operation for EchoDeclaration {
     type Error = Infallible;
-    type Endpoints = ();
 
-    async fn initialize(_context: harmos_runtime::OperationContext) -> Result<Self, Infallible> {
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Echo, _: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<Payload>, Infallible> {
-        let bytes = std::mem::take(&mut request.bytes);
+    async fn run(mut self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Payload>, Infallible> {
+        let bytes = std::mem::take(&mut self.bytes);
         Ok(Payload { bytes }.into())
     }
 }
@@ -106,8 +90,14 @@ pub fn wire_settings() -> harmos_runtime::grpc::server::Settings {
     let direction = harmos_runtime::operations::StreamSettings { items: nz(16), bytes };
     harmos_runtime::grpc::server::Settings {
         calls: nz(64),
-        decode: harmos_runtime::grpc::DecodeSettings { message_bytes: message, retained_bytes: bytes },
-        encode: harmos_runtime::grpc::EncodeSettings { message_bytes: message, buffer_bytes: nz(8192) },
+        decode: harmos_runtime::grpc::DecodeSettings {
+            message_bytes: message,
+            retained_bytes: bytes,
+        },
+        encode: harmos_runtime::grpc::EncodeSettings {
+            message_bytes: message,
+            buffer_bytes: nz(8192),
+        },
         input: direction,
         output: direction,
         opening_timeout: Duration::from_secs(5),

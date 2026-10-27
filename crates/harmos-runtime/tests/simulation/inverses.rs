@@ -111,7 +111,11 @@ impl Registration<Amplifier> for Faithful {
 
 impl Registration<Amplifier> for Wrong {
     fn register(self) -> Catalog<Amplifier> {
-        Catalog::Transactions { definitions: declared(), decode: decode_nothing, inverses: Some(|change, _before| Some(SetGain(change.0))) }
+        Catalog::Transactions {
+            definitions: declared(),
+            decode: decode_nothing,
+            inverses: Some(|change, _before| Some(SetGain(change.0))),
+        }
     }
 }
 

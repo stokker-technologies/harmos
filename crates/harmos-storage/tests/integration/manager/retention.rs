@@ -63,20 +63,41 @@ impl Revisions {
     async fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
         let data = JsonStorage::new(
-            JsonStorageSettings { root: directory.path().to_path_buf(), max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() },
+            JsonStorageSettings {
+                root: directory.path().to_path_buf(),
+                max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+            },
             history(),
         );
         let storage = StorageManager::<Objects>::new(data.into_backends(super::fixture::state_settings()), storage_settings()).unwrap();
         super::fixture::start(&storage).await;
 
         // Two Revisions Of One Object Are Durable At Distinct Cursors.
-        let first = Experiment { id: "experiment".into(), label: "first".into() };
+        let first = Experiment {
+            id: "experiment".into(),
+            label: "first".into(),
+        };
         let first_receipt = storage.write_object(&first).await.unwrap();
         let earlier = storage.flush().await.unwrap();
-        let second_receipt = storage.write_object(&Experiment { id: first.id.clone(), label: "second".into() }).await.unwrap();
+        let second_receipt = storage
+            .write_object(&Experiment {
+                id: first.id.clone(),
+                label: "second".into(),
+            })
+            .await
+            .unwrap();
         let durable = storage.flush().await.unwrap();
         let encoded = Objects::encode(&first, NonZeroUsize::new(16 * 1024).unwrap()).unwrap();
-        Self { _directory: directory, storage, first, first_receipt, second_receipt, earlier, durable, schema: encoded.schema }
+        Self {
+            _directory: directory,
+            storage,
+            first,
+            first_receipt,
+            second_receipt,
+            earlier,
+            durable,
+            schema: encoded.schema,
+        }
     }
 
     async fn finish(self) {
@@ -94,9 +115,16 @@ async fn labels<C>(
     let mut reader = storage
         .query(Query {
             at: at.clone(),
-            source: Source::Objects(ObjectSelection { schema: Some(schema.clone()), key: None, versions }),
+            source: Source::Objects(ObjectSelection {
+                schema: Some(schema.clone()),
+                key: None,
+                versions,
+            }),
             transforms: vec![Transform::Project(Project {
-                fields: vec![Projection { field: "payload.label".into(), name: "label".into() }],
+                fields: vec![Projection {
+                    field: "payload.label".into(),
+                    name: "label".into(),
+                }],
             })],
             slice: RowSlice::default(),
         })
@@ -140,13 +168,25 @@ async fn reads_pin_cursor() {
 async fn release_reclaims_history() {
     // A Controlled Result Gate Separates Reclamation From Its Acknowledgement.
     let data = Arc::new(Data::<Objects>::with_catalog(history()));
-    let backends = StorageBackends { primary: data.clone(), state: Arc::new(Recovery::new(history())) };
+    let backends = StorageBackends {
+        primary: data.clone(),
+        state: Arc::new(Recovery::new(history())),
+    };
     let storage = StorageManager::<Objects>::new(backends, storage_settings()).unwrap();
     super::fixture::start(&storage).await;
-    let first = Experiment { id: "experiment".into(), label: "first".into() };
+    let first = Experiment {
+        id: "experiment".into(),
+        label: "first".into(),
+    };
     storage.write_object(&first).await.unwrap();
     let earlier = storage.flush().await.unwrap();
-    storage.write_object(&Experiment { id: first.id.clone(), label: "second".into() }).await.unwrap();
+    storage
+        .write_object(&Experiment {
+            id: first.id.clone(),
+            label: "second".into(),
+        })
+        .await
+        .unwrap();
     let durable = storage.flush().await.unwrap();
     let encoded = Objects::encode(&first, NonZeroUsize::new(16 * 1024).unwrap()).unwrap();
 

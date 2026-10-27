@@ -22,13 +22,14 @@ use std::sync::{
 // Third Party Imports
 use tokio::sync::mpsc;
 // Local Imports
+use super::Context;
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
-use super::{Context, Operation};
 use crate::catalog::{Catalog, Member, Visitor};
 use crate::guest::Error as GuestError;
 use crate::guest::host::session::Endpoint;
 use crate::operations::{Declarations, FailureKind, OperationDeclaration, OperationDefinition, WireAnswer, WireCommand};
 use crate::{Error, Identifier, Message, operations::Lane};
+use harmos_sdk::operations::Carrier;
 
 /* === Constants === */
 
@@ -81,7 +82,7 @@ enum Phase {
 #[derive(Debug, thiserror::Error)]
 pub enum ComponentError {
     #[error(transparent)]
-    Dependency(#[from] harmos_sdk::DependencyError),
+    Dependency(#[from] harmos_sdk::ResourceError),
 
     #[error(transparent)]
     Stream(#[from] super::RemoteStreamError),
@@ -157,27 +158,32 @@ impl Component {
     }
 }
 
-impl<O, E> Operation for ComponentOperation<O, E>
+impl<O, E> Carrier for ComponentOperation<O, E>
 where
     O: OperationDeclaration,
     E: super::StreamEndpoints,
 {
-    type Request = <O as OperationDeclaration>::Request;
-    type Response = <O as OperationDeclaration>::Response;
+    type Declaration = O;
     type Error = ComponentError;
-    type Endpoints = E;
+    type StreamEndpoints = E;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self, ComponentError> {
-        let component = context.dependency::<Component>()?;
-        Ok(Self { component, state: None, epoch: 0, transferred: AtomicBool::new(false), _operation: PhantomData })
+    async fn bind(context: harmos_sdk::ExecutionContext) -> Result<Self, ComponentError> {
+        let component = context.resource::<Component>()?;
+        Ok(Self {
+            component,
+            state: None,
+            epoch: 0,
+            transferred: AtomicBool::new(false),
+            _operation: PhantomData,
+        })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn run(
-        &mut self, context: harmos_sdk::OperationContext, request: &mut O::Request, endpoints: &mut Self::Endpoints,
+    async fn attempt(
+        &mut self, context: harmos_sdk::ExecutionContext, request: &mut O::Request, endpoints: &mut Self::StreamEndpoints,
     ) -> Result<crate::operations::Response<O::Response>, ComponentError> {
-        let host = context.dependency::<super::HostContext>()?;
+        let host = context.resource::<super::HostContext>()?;
         let context = host.borrow();
         let result: ::core::result::Result<O::Response, Self::Error> = async move {
             if self.state.is_none() {
@@ -261,9 +267,10 @@ impl super::Bindings<'_> {
     where
         C: Catalog<Declarations> + Catalog<ComponentBindings>,
     {
-        let scope = self
-            .scope
-            .ok_or(Error::InvalidInput { field: "component operation scope", reason: "component inventory requires stage_plugin" })?;
+        let scope = self.scope.ok_or(Error::InvalidInput {
+            field: "component operation scope",
+            reason: "component inventory requires stage_plugin",
+        })?;
         if !component.scope().is_some_and(|selected| selected.same_activation(scope)) {
             return Err(Error::InvalidInput {
                 field: "component operation scope",
@@ -287,7 +294,13 @@ impl Component {
             let operation = format!("{}.{}", scope.owner(), state.operation);
             let fingerprint = state.fingerprint;
             let generation = context.generation.value();
-            let command = WireCommand::Prepare { invocation, operation, fingerprint, generation, payload };
+            let command = WireCommand::Prepare {
+                invocation,
+                operation,
+                fingerprint,
+                generation,
+                payload,
+            };
             let answer = self.endpoint.phase(command, None).await?;
             let answer = match answer {
                 WireAnswer::Failed { failure } => {
@@ -319,11 +332,24 @@ impl Component {
         let mut token = [0; 32];
         getrandom::fill(&mut token)?;
         let (requests, mut incoming) = mpsc::channel::<ChildRequest>(CHILD_REQUESTS);
-        let children = Children { context: token, requests, submitted: Default::default() };
+        let children = Children {
+            context: token,
+            requests,
+            submitted: Default::default(),
+        };
         let command = match phase {
             Phase::Initialize => WireCommand::Initialize { invocation, context: token },
-            Phase::Stream(epoch) => WireCommand::StreamAttempt { invocation, epoch, context: token, values: context.context().portable() },
-            Phase::Attempt => WireCommand::Attempt { invocation, context: token, values: context.context().portable() },
+            Phase::Stream(epoch) => WireCommand::StreamAttempt {
+                invocation,
+                epoch,
+                context: token,
+                values: context.context().portable(),
+            },
+            Phase::Attempt => WireCommand::Attempt {
+                invocation,
+                context: token,
+                values: context.context().portable(),
+            },
         };
         let running = self.endpoint.phase(command, Some(children));
         tokio::pin!(running);
@@ -373,16 +399,22 @@ impl Component {
     }
 
     pub fn stage_sdk(&self, operations: &super::Manager, lane: impl Lane) -> crate::Result<super::PluginSdkRegistration> {
-        let scope = self
-            .scope()
-            .ok_or(Error::InvalidInput { field: "SDK lifecycle", reason: "guest endpoint has no original plugin generation" })?;
-        let pair = scope.lifecycle().ok_or(Error::InvalidInput { field: "SDK lifecycle", reason: "generation has no frozen SDK pair" })?;
+        let scope = self.scope().ok_or(Error::InvalidInput {
+            field: "SDK lifecycle",
+            reason: "guest endpoint has no original plugin generation",
+        })?;
+        let pair = scope.lifecycle().ok_or(Error::InvalidInput {
+            field: "SDK lifecycle",
+            reason: "generation has no frozen SDK pair",
+        })?;
         let component = Arc::new(Self { endpoint: Arc::clone(&self.endpoint) });
         let entries = pair
             .iter()
             .map(|descriptor| {
-                let handler =
-                    Arc::new(SdkBinding { component: Arc::clone(&component), definition: descriptor.contract().operation().clone() });
+                let handler = Arc::new(SdkBinding {
+                    component: Arc::clone(&component),
+                    definition: descriptor.contract().operation().clone(),
+                });
                 let definition = descriptor.contract().operation().clone();
                 let mut entry = operations.bind_native::<super::sdk::Encoded, SdkOperation>(
                     scope.owner(),
@@ -400,29 +432,30 @@ impl Component {
                 Ok(entry)
             })
             .collect::<crate::Result<Vec<_>>>()?;
-        let entries =
-            entries.try_into().map_err(|_| Error::InvalidInput { field: "SDK lifecycle", reason: "expected exactly two entries" })?;
+        let entries = entries.try_into().map_err(|_| Error::InvalidInput {
+            field: "SDK lifecycle",
+            reason: "expected exactly two entries",
+        })?;
         super::PluginSdkRegistration::new(operations.clone(), scope, entries, crate::plugin::PluginKind::Guest)
     }
 }
 
-impl Operation for SdkOperation {
-    type Request = <super::sdk::Encoded as OperationDeclaration>::Request;
-    type Response = <super::sdk::Encoded as OperationDeclaration>::Response;
+impl Carrier for SdkOperation {
+    type Declaration = super::sdk::Encoded;
     type Error = ComponentError;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self, ComponentError> {
-        let binding = context.dependency::<SdkBinding>()?;
+    async fn bind(context: harmos_sdk::ExecutionContext) -> Result<Self, ComponentError> {
+        let binding = context.resource::<SdkBinding>()?;
         Ok(Self { binding, state: None })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn run(
-        &mut self, context: harmos_sdk::OperationContext, payload: &mut super::sdk::Encoded, _endpoints: &mut Self::Endpoints,
+    async fn attempt(
+        &mut self, context: harmos_sdk::ExecutionContext, payload: &mut super::sdk::Encoded, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<crate::operations::Response<Vec<u8>>, ComponentError> {
-        let host = context.dependency::<super::HostContext>()?;
+        let host = context.resource::<super::HostContext>()?;
         let context = host.borrow();
         let result: ::core::result::Result<Vec<u8>, Self::Error> = async {
             if self.state.is_none() {
@@ -517,7 +550,10 @@ fn sdk_dispatch(
     let invocation = invocation.unguarded();
     let outcome = Box::pin(async move {
         let payload = invocation.await?;
-        payload.try_unwrap().map_err(|_| Error::InvalidInput { field: "SDK response", reason: "uncached SDK response unexpectedly shared" })
+        payload.try_unwrap().map_err(|_| Error::InvalidInput {
+            field: "SDK response",
+            reason: "uncached SDK response unexpectedly shared",
+        })
     });
     Ok(super::EncodedInvocation { id, generation, outcome, control })
 }
@@ -544,10 +580,11 @@ fn ready(answer: WireAnswer) -> Result<Vec<u8>, ComponentError> {
     match answer {
         WireAnswer::Ready { payload } => Ok(payload),
         WireAnswer::Failed { failure } => Err(ComponentError::Remote(failure)),
-        WireAnswer::Stream { .. } => {
-            Err(GuestError::Malformed { method: "operate".to_owned(), message: "unexpected stream response to unary phase".to_owned() }
-                .into())
+        WireAnswer::Stream { .. } => Err(GuestError::Malformed {
+            method: "operate".to_owned(),
+            message: "unexpected stream response to unary phase".to_owned(),
         }
+        .into()),
     }
 }
 

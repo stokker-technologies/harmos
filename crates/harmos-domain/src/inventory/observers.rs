@@ -164,9 +164,15 @@ pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str, grants: &[S
 
 pub fn select_manifest(manifests: Vec<Manifest>, facility: &str, owner: &str, grants: &[StreamDeclaration]) -> Result<Manifest, Error> {
     let mut matching = manifests.into_iter().filter(|manifest| manifest.facility == facility && manifest.owner == owner);
-    let manifest = matching.next().ok_or_else(|| Error::Missing { facility: facility.into(), owner: owner.into() })?;
+    let manifest = matching.next().ok_or_else(|| Error::Missing {
+        facility: facility.into(),
+        owner: owner.into(),
+    })?;
     if matching.next().is_some() {
-        return Err(Error::Duplicate { facility: facility.into(), owner: owner.into() });
+        return Err(Error::Duplicate {
+            facility: facility.into(),
+            owner: owner.into(),
+        });
     }
 
     validate(&manifest.observers, grants)?;

@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/transport.md; sha256:69885da2116585600fa656691a0f94afa4c351fa3e5859022e6a61565e3b4997 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/transport.md; sha256:1eff5995240635bfe704d0b575112286dcb954a9e13c0a6b514323cc9ccab9c4 -->
 
 # Transport And Generated Contracts
 
@@ -8,15 +8,12 @@ same behavior over gRPC does not require another operation or forwarding handler
 This declaration fragment assumes a product-owned `Reading` and `POLICY`:
 
 ```rust
-#[harmos::message]
-pub struct ReadRequest { pub channel: u32 }
-
 #[harmos::operation(
-    id = "read", request = ReadRequest, response = Reading,
-    policy = POLICY, infer_request,
+    id = "instrument.read", response = Reading,
+    policy = POLICY,
     grpc(package = "instrument.v1", service = "Instrument", method = "Read"),
 )]
-pub struct Read {}
+pub struct Read { pub channel: u32 }
 ```
 
 The runtime's gRPC facility exposes that contract. `harmos-domain` owns the

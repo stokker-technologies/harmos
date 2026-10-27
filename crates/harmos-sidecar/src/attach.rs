@@ -164,7 +164,11 @@ impl Ending {
         F: FnOnce() -> U + Send + 'static,
         U: Future<Output = std::io::Result<()>> + Send + 'static,
     {
-        Self::new(Terminal { start: Some(Box::new(move || Box::pin(end()))), work: None, result: None })
+        Self::new(Terminal {
+            start: Some(Box::new(move || Box::pin(end()))),
+            work: None,
+            result: None,
+        })
     }
 
     pub async fn settle(&mut self) -> std::io::Result<()> {
@@ -209,7 +213,13 @@ impl End for ProcessEnd {
 
 impl Attached {
     pub fn new(write: impl AsyncWrite + Send + Unpin + 'static, read: impl AsyncRead + Send + Unpin + 'static) -> Self {
-        Self { control: None, write: Box::new(write), read: Box::new(read), diagnostics: None, end: None }
+        Self {
+            control: None,
+            write: Box::new(write),
+            read: Box::new(read),
+            diagnostics: None,
+            end: None,
+        }
     }
 
     pub fn control(mut self, channel: crate::transport::Io) -> Self {
@@ -263,8 +273,10 @@ impl Executable {
             return Err(ExecutableError::NotFile { path: program });
         }
         let bytes = std::fs::read(&program).map_err(|source| ExecutableError::Unreadable { path: program.clone(), source })?;
-        let declaration = Declaration::inspect(&bytes, Facility::Sidecar)
-            .map_err(|source| ExecutableError::Declaration { path: program.clone(), source: Box::new(source) })?;
+        let declaration = Declaration::inspect(&bytes, Facility::Sidecar).map_err(|source| ExecutableError::Declaration {
+            path: program.clone(),
+            source: Box::new(source),
+        })?;
         Ok(Self {
             program,
             declaration,

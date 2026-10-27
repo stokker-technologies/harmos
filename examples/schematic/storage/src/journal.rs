@@ -489,7 +489,12 @@ impl<A: Wire> Source<A> for Jsonl<A> {
         log.written = log.written.max(origin);
         log.checkpoint = log.checkpoint.max(origin);
 
-        Ok(Recovery { commits, frontier: log.written, entries, encoded })
+        Ok(Recovery {
+            commits,
+            frontier: log.written,
+            entries,
+            encoded,
+        })
     }
 
     async fn read(&mut self, after: Position, through: Position) -> Result<Recovery<A>, Error> {
@@ -535,7 +540,12 @@ impl<A: Wire> Source<A> for Jsonl<A> {
             }
         }
 
-        Ok(Recovery { commits, frontier: through, entries, encoded })
+        Ok(Recovery {
+            commits,
+            frontier: through,
+            entries,
+            encoded,
+        })
     }
 
     async fn prune(&mut self, beneath: Position) {
@@ -612,7 +622,11 @@ impl Log {
     }
 
     fn create(path: &Path, generation: u64, origin: Position) -> io::Result<Self> {
-        let header = wire::Header { schema: SCHEMA, generation, origin: origin.0 };
+        let header = wire::Header {
+            schema: SCHEMA,
+            generation,
+            origin: origin.0,
+        };
         let mut file = File::create(path)?;
         header.write(&mut file)?;
         file.sync_all()?;
@@ -766,7 +780,11 @@ impl Log {
         let mut temporary = self.path.as_os_str().to_owned();
         temporary.push(".prune~");
         let temporary = PathBuf::from(temporary);
-        let header = wire::Header { schema: SCHEMA, generation: self.generation, origin: beneath.0 };
+        let header = wire::Header {
+            schema: SCHEMA,
+            generation: self.generation,
+            origin: beneath.0,
+        };
         let mut fresh = File::create(&temporary)?;
         header.write(&mut fresh)?;
         for line in retained {
@@ -875,7 +893,12 @@ fn decoded<A: Wire>(envelope: Envelope<serde_json::Value>) -> Result<Option<Enve
                     id: id.clone(),
                     version,
                     metadata: envelope.metadata,
-                    payload: Payload { prepared: None, id, version, value: Recorded::System(fact) },
+                    payload: Payload {
+                        prepared: None,
+                        id,
+                        version,
+                        value: Recorded::System(fact),
+                    },
                 }));
             }
             Ok(None) => {}
@@ -888,7 +911,11 @@ fn decoded<A: Wire>(envelope: Envelope<serde_json::Value>) -> Result<Option<Enve
         }
     }
 
-    let prepared = harmos::state::Prepared { id: envelope.id.clone(), version: envelope.version, payload: envelope.payload.clone() };
+    let prepared = harmos::state::Prepared {
+        id: envelope.id.clone(),
+        version: envelope.version,
+        payload: envelope.payload.clone(),
+    };
     let read = A::decode(envelope.kind, &envelope.id, envelope.version, &envelope.payload);
     let mut payload = match (envelope.kind, read) {
         (_, Ok(Some(payload))) => payload,

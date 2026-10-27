@@ -39,6 +39,10 @@ impl Manager {
         self.admit::<O, ()>((request.into(), ()), None, &[], &Source::Host, None)
     }
 
+    pub fn submit_owned<O: OperationDeclaration>(&self, request: O::Request, claims: super::super::RequestClaims) -> Result<Running<O>> {
+        self.admit::<O, ()>((crate::operations::binding::Request::owned(request, claims), ()), None, &[], &Source::Host, None)
+    }
+
     pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(&self, request: O::Request, endpoints: P) -> Result<Running<O>> {
         self.admit::<O, P>((request.into(), endpoints), None, &[], &Source::Host, None)
     }
@@ -96,7 +100,18 @@ impl Manager {
         let submitted = executor::now();
         let origin = source.check()?;
         let entry = self.entry_as(id, &origin)?;
-        self.admit_entry::<O, P>(input, scope, ancestors, source, Submission { submitted, entry, cause, preparation: None })
+        self.admit_entry::<O, P>(
+            input,
+            scope,
+            ancestors,
+            source,
+            Submission {
+                submitted,
+                entry,
+                cause,
+                preparation: None,
+            },
+        )
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.admit_entry", level = "debug", skip_all, fields(operation = %submission.entry.definition.id, provider = %submission.entry.owner, generation = ?submission.entry.generation, lane = submission.entry.lane, outcome = "refused"))]
@@ -118,7 +133,10 @@ impl Manager {
         let authority = entry.grant_authority(&origin, authorization);
         authority.admit(O::grant(&request.value).or(request.grant.take()).as_ref())?;
         // Encoded bindings carry the authority to the provider's prepared grant.
-        let origin = Origin { grants: Some(Arc::new(authority)), ..origin };
+        let origin = Origin {
+            grants: Some(Arc::new(authority)),
+            ..origin
+        };
         // Authoring Callbacks Run Outside Registry/Pending Locks. Recheck The Provider.
         source.check()?;
         entry.available_to(&origin)?;
@@ -145,8 +163,10 @@ impl Manager {
             reason: "identity belongs to a different operation or endpoint type",
         })?;
         let lane = request.lane.unwrap_or(entry.lane);
-        let bounded =
-            self.instances.lane_bounded(lane).ok_or_else(|| Error::NotRegistered { domain: "operation lane", name: lane.to_owned() })?;
+        let bounded = self.instances.lane_bounded(lane).ok_or_else(|| Error::NotRegistered {
+            domain: "operation lane",
+            name: lane.to_owned(),
+        })?;
         let mut policy = entry.definition.policy;
         if let Some(retry) = request.retry {
             policy.retries = retry;

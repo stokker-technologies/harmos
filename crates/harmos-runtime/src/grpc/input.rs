@@ -104,7 +104,10 @@ where
             let forward = async move {
                 tokio::pin!(incoming);
                 while let Some(item) = incoming.next().await {
-                    let item = item.map_err(|source| Error::TaskFailed { domain: "gRPC input", source: Arc::new(source) })?;
+                    let item = item.map_err(|source| Error::TaskFailed {
+                        domain: "gRPC input",
+                        source: Arc::new(source),
+                    })?;
                     output.send_item(item).await?;
                 }
                 Ok::<(), Error>(())
@@ -126,7 +129,10 @@ where
         pending.delivered = true;
         match forwarded {
             Ok(()) => result.map_err(|error| InputError::Operation(Box::new(error))),
-            Err(source) => Err(InputError::Forward { source: Box::new(source), settlement: result.err().map(Box::new) }),
+            Err(source) => Err(InputError::Forward {
+                source: Box::new(source),
+                settlement: result.err().map(Box::new),
+            }),
         }
     }
 }

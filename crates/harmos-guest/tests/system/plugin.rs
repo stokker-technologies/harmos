@@ -22,7 +22,7 @@ use wasmtime::{Config, Engine, Store};
 use super::{Stub, support};
 use harmos_guest::Message;
 use harmos_guest::operations::{WireAnswer, WireCommand};
-use harmos_operations::lifecycle::InitializeRequest;
+use harmos_operations::lifecycle::Initialize;
 
 /* === Constants === */
 
@@ -104,7 +104,13 @@ impl Session {
                 WireAnswer::Ready { payload } if payload.is_empty()
             ));
         }
-        let answer = self.phase(WireCommand::Attempt { invocation, context: [0; 32], values: Vec::new() }).await;
+        let answer = self
+            .phase(WireCommand::Attempt {
+                invocation,
+                context: [0; 32],
+                values: Vec::new(),
+            })
+            .await;
         let WireAnswer::Ready { payload } = answer else { panic!("{answer:?}") };
         assert!(matches!(self.phase(WireCommand::Finalize { invocation }).await, WireAnswer::Ready { .. }));
         payload
@@ -133,14 +139,20 @@ async fn sdk_lifecycle_retained() {
     let mut store = Store::new(&engine, Stub::default());
     let bindings = Plugin::instantiate_async(&mut store, &component, &linker).await.unwrap();
     let mut session = Session { store, bindings };
-    let route = || Request { from: Point { x: 0, y: 0 }, to: Point { x: 3, y: 4 } }.encode();
+    let route = || {
+        Request {
+            from: Point { x: 0, y: 0 },
+            to: Point { x: 3, y: 4 },
+        }
+        .encode()
+    };
 
     assert!(
         matches!(
             session
                 .phase(WireCommand::Prepare {
                     invocation: 1,
-                    operation: "sandbox_guest.schematic_route".to_owned(),
+                    operation: "sandbox_guest.schematic.route".to_owned(),
                     fingerprint: (harmos_domain::operations::Entry::of::<schematic_operations::schematic::ProposeRoute>().fingerprint)()
                         .unwrap()
                         .0,
@@ -158,12 +170,12 @@ async fn sdk_lifecycle_retained() {
             session
                 .phase(WireCommand::Prepare {
                     invocation: 7,
-                    operation: "sandbox_guest.harmos_initialize".to_owned(),
+                    operation: "sandbox_guest.harmos.initialize".to_owned(),
                     fingerprint: (harmos_domain::operations::Entry::of::<harmos_operations::lifecycle::Initialize>().fingerprint)()
                         .unwrap()
                         .0,
                     generation: 1,
-                    payload: InitializeRequest {
+                    payload: Initialize {
                         config_json: br#""unexpected""#.to_vec(),
                         generation_context: Vec::new(),
                         assignments: Vec::new()
@@ -178,7 +190,13 @@ async fn sdk_lifecycle_retained() {
     assert!(matches!(session.phase(WireCommand::Initialize { invocation: 7, context: [0; 32] }).await, WireAnswer::Ready { .. }));
     assert!(
         matches!(
-            session.phase(WireCommand::Attempt { invocation: 7, context: [0; 32], values: Vec::new() }).await,
+            session
+                .phase(WireCommand::Attempt {
+                    invocation: 7,
+                    context: [0; 32],
+                    values: Vec::new()
+                })
+                .await,
             WireAnswer::Failed { .. }
         ),
         "the first run validates configuration before plugin initialization"
@@ -195,7 +213,7 @@ async fn sdk_lifecycle_retained() {
             session
                 .phase(WireCommand::Prepare {
                     invocation: 8,
-                    operation: "sandbox_guest.schematic_route".to_owned(),
+                    operation: "sandbox_guest.schematic.route".to_owned(),
                     fingerprint: (harmos_domain::operations::Entry::of::<schematic_operations::schematic::ProposeRoute>().fingerprint)()
                         .unwrap()
                         .0,
@@ -207,7 +225,11 @@ async fn sdk_lifecycle_retained() {
         ),
         "metadata collection does not initialize resources or ordinary handlers"
     );
-    let request = InitializeRequest { config_json: b"null".to_vec(), generation_context: Vec::new(), assignments: Vec::new() };
+    let request = Initialize {
+        config_json: b"null".to_vec(),
+        generation_context: Vec::new(),
+        assignments: Vec::new(),
+    };
     assert!(session.call::<harmos_operations::lifecycle::Initialize>(2, request.encode()).await.is_empty());
     let routed = session.call::<schematic_operations::schematic::ProposeRoute>(3, route()).await;
     assert_eq!(Response::decode(&routed).unwrap().points, [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 },]);
@@ -217,7 +239,7 @@ async fn sdk_lifecycle_retained() {
             session
                 .phase(WireCommand::Prepare {
                     invocation: 5,
-                    operation: "sandbox_guest.schematic_route".to_owned(),
+                    operation: "sandbox_guest.schematic.route".to_owned(),
                     fingerprint: (harmos_domain::operations::Entry::of::<schematic_operations::schematic::ProposeRoute>().fingerprint)()
                         .unwrap()
                         .0,

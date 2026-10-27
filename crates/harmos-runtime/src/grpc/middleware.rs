@@ -96,7 +96,13 @@ impl Session {
         entries: Arc<[Arc<dyn Middleware>]>,
     ) -> Self {
         Self {
-            call: Invocation { path, metadata, extensions, peer, context: CallContext::default() },
+            call: Invocation {
+                path,
+                metadata,
+                extensions,
+                peer,
+                context: CallContext::default(),
+            },
             entries,
             entered: 0,
             observed: false,
@@ -146,7 +152,10 @@ impl Drop for Session {
 async fn guarded(mut future: Enter<'_>) -> Result<()> {
     std::future::poll_fn(|context| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| future.as_mut().poll(context))) {
         Ok(result) => result,
-        Err(_) => std::task::Poll::Ready(Err(crate::Error::InvalidInput { field: "gRPC middleware", reason: "middleware entry panicked" })),
+        Err(_) => std::task::Poll::Ready(Err(crate::Error::InvalidInput {
+            field: "gRPC middleware",
+            reason: "middleware entry panicked",
+        })),
     })
     .await
 }

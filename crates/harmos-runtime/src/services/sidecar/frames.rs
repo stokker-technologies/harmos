@@ -58,7 +58,10 @@ where
                 Absorbed::Carried
             }
             Arrival::Frame(Frame::Refusal { id, refusal }) => {
-                let refused = SidecarError::Refused { code: refusal.code(), failure: refusal.into_failure() };
+                let refused = SidecarError::Refused {
+                    code: refusal.code(),
+                    failure: refusal.into_failure(),
+                };
                 self.settle(id, Err(refused));
                 Absorbed::Carried
             }
@@ -137,7 +140,9 @@ where
                                             },
                                         )
                                     } else {
-                                        Err(crate::Error::Closing { domain: "native attempt or generation context" })
+                                        Err(crate::Error::Closing {
+                                            domain: "native attempt or generation context",
+                                        })
                                     } {
                                         Ok(invocation) => Box::pin(async move {
                                             crate::operations::children::lifecycle(invocation, cancelled)
@@ -166,7 +171,12 @@ where
                             };
                             self.routed_tasks.insert(
                                 id,
-                                RoutedTask { running: executor::task(future), token, cancellation: Some(cancellation), failure: None },
+                                RoutedTask {
+                                    running: executor::task(future),
+                                    token,
+                                    cancellation: Some(cancellation),
+                                    failure: None,
+                                },
                             );
                             return Absorbed::Carried;
                         }
@@ -198,7 +208,12 @@ where
                             };
                             self.routed_tasks.insert(
                                 id,
-                                RoutedTask { running: executor::task(future), token, cancellation: Some(cancellation), failure: None },
+                                RoutedTask {
+                                    running: executor::task(future),
+                                    token,
+                                    cancellation: Some(cancellation),
+                                    failure: None,
+                                },
                             );
                             return Absorbed::Carried;
                         }

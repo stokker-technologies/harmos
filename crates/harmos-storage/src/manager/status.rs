@@ -76,7 +76,10 @@ impl<C> StorageManager<C> {
 
     pub fn check_state_dependency(&self, required: &StorageCursor) -> Result<()> {
         if !self.cursor_saved().covers(required)? {
-            return Err(Error::InvalidInput { field: "state evidence dependency", reason: "required primary evidence is not durable" });
+            return Err(Error::InvalidInput {
+                field: "state evidence dependency",
+                reason: "required primary evidence is not durable",
+            });
         }
         Ok(())
     }
@@ -91,7 +94,13 @@ impl<C> StorageManager<C> {
         while let Error::Persistence { source } = cause {
             cause = source.as_ref();
         }
-        if !matches!(cause, Error::Backend { kind: crate::BackendFailure::Transient, .. }) {
+        if !matches!(
+            cause,
+            Error::Backend {
+                kind: crate::BackendFailure::Transient,
+                ..
+            }
+        ) {
             return false;
         }
         state.status.failure = None;
@@ -99,14 +108,6 @@ impl<C> StorageManager<C> {
         drop(state);
         self.inner.notify();
         true
-    }
-
-    #[tracing::instrument(name = "storage.manager.status.reserve_arrow_memory", level = "trace", skip_all, fields(bytes = bytes, outcome = "cancelled"))]
-    pub fn reserve_arrow_memory(&self, bytes: usize) -> Result<RetainedMemory> {
-        let result: Result<RetainedMemory> =
-            Reservation::try_new(&self.inner, Pool::Read, &Held::default(), bytes).map(Reservation::retain).map_err(Refusal::into_error);
-        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
-        result
     }
 
     pub fn write_receipt_capacity(&self) -> usize {
@@ -123,12 +124,31 @@ impl<C> StorageManager<C> {
     pub async fn release_object_history(&self, schema: &SchemaKey, item: &crate::ObjectKey, through: &StorageCursor) -> Result<()> {
         self.inner.primary.history().check(&through.history)?;
         if !self.status().saved.covers(through)? {
-            return Err(Error::InvalidInput { field: "object retention", reason: "release exceeds durable frontier" });
+            return Err(Error::InvalidInput {
+                field: "object retention",
+                reason: "release exceeds durable frontier",
+            });
         }
         self.inner.bounded("primary.release_object_history", self.inner.primary.release_object_history(schema, item, through)).await?;
         self.inner.state.lock().unwrap().objects_pruned = 0;
         self.inner.notify();
         Ok(())
+    }
+}
+
+impl<C> StorageManager<C> {
+    pub(crate) fn position(&self, sequence: u64) -> StorageCursor {
+        StorageCursor {
+            history: self.inner.primary.history().clone(),
+            sequence,
+        }
+    }
+
+    pub(super) fn recovery_position(&self, sequence: u64) -> RecoveryPosition {
+        RecoveryPosition {
+            history: self.inner.recovery.history().clone(),
+            sequence,
+        }
     }
 }
 
@@ -145,7 +165,10 @@ mod tests {
 
     fn storage() -> StorageManager {
         StorageManager::new(
-            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
+            crate::StorageBackends {
+                primary: Arc::new(Data::<()>::new(history())),
+                state: Arc::new(Recovery::new(history())),
+            },
             storage_settings(),
         )
         .unwrap()

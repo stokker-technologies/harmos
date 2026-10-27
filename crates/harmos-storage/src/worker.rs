@@ -269,7 +269,7 @@ impl Worker {
                     let mut state = inner.state.lock().unwrap();
                     match &action {
                         Action::Write(entry, _) => (Some(entry.context.clone()), None),
-                        Action::Snapshot(SnapshotAction::Open(id, _, _) | SnapshotAction::Release(id, _, _)) => {
+                        Action::Snapshot(SnapshotAction::Open(id, _) | SnapshotAction::Release(id, _)) => {
                             state.snapshots.get_mut(id).map(|held| (Some(held.context.clone()), held.queued.take())).unwrap_or((None, None))
                         }
                         Action::File(file) => state
@@ -300,7 +300,7 @@ impl Worker {
                         Some(context) => context.scope(future).await,
                         None => future.await,
                     };
-                    // Reservation Destructors Must Run Outside The State Mutex.
+                    // Release Completed Work Outside The State Mutex.
                     if let Action::Write(_, batch) = &mut action {
                         batch.take();
                     }
@@ -350,7 +350,6 @@ impl Worker {
                     if let Some(id) = failure_id {
                         failures.remove(&id);
                     }
-                    let mut retired_snapshot = None;
                     let mut state = inner.state.lock().unwrap();
                     // A Peer Completion Cannot Clear Another Action's Failure.
                     state.status.failure = failures.values().next().map(|failure| Arc::clone(&failure.source));
@@ -374,9 +373,8 @@ impl Worker {
                                 None => publish(),
                             }
                         }
-                        (Action::Snapshot(SnapshotAction::Release(_, _, memory)), Completed::Released(id)) => {
+                        (Action::Snapshot(SnapshotAction::Release(_, _)), Completed::Released(id)) => {
                             state.snapshot_removed(id);
-                            retired_snapshot = Some(memory);
                         }
                         (Action::Write(_, _), Completed::Write { data, saved, recovery }) => {
                             if let Some(target) = data {
@@ -422,7 +420,6 @@ impl Worker {
                     }
                     state.collect();
                     drop(state);
-                    drop(retired_snapshot);
                 }
                 Err(error) => {
                     let attempts = if generation == retry_generation { attempts.saturating_add(1) } else { 1 };
@@ -465,7 +462,15 @@ impl Worker {
                             id
                         }
                     };
-                    failures.insert(id, Failed { action: Some(action), source, attempts, retry_at });
+                    failures.insert(
+                        id,
+                        Failed {
+                            action: Some(action),
+                            source,
+                            attempts,
+                            retry_at,
+                        },
+                    );
                     state.status.failure = failures.values().next().map(|failure| Arc::clone(&failure.source));
                     state.collect();
                 }
@@ -497,29 +502,33 @@ impl Operation {
     pub(super) fn encoded_batch_bytes(&self) -> Result<usize> {
         fn sum<T: serde::Serialize>(values: &[T]) -> Result<usize> {
             values.iter().try_fold(0usize, |bytes, value| {
-                bytes
-                    .checked_add(super::manager::encoded_size(value)?)
-                    .ok_or(Error::InvalidInput { field: "storage admission", reason: "encoded batch size overflow" })
+                bytes.checked_add(super::manager::encoded_size(value)?).ok_or(Error::InvalidInput {
+                    field: "storage admission",
+                    reason: "encoded batch size overflow",
+                })
             })
         }
         match self {
             Self::Schema(values) => values.as_slice().iter().try_fold(0usize, |bytes, value| {
-                bytes
-                    .checked_add(value.encoded_bytes()?)
-                    .ok_or(Error::InvalidInput { field: "storage admission", reason: "encoded schema size overflow" })
+                bytes.checked_add(value.encoded_bytes()?).ok_or(Error::InvalidInput {
+                    field: "storage admission",
+                    reason: "encoded schema size overflow",
+                })
             }),
             Self::ObjectGroup { schemas, objects, .. } => {
                 for object in objects.as_slice() {
                     object.version.check_position(&object.position)?;
                 }
                 let schema_bytes = schemas.as_slice().iter().try_fold(0usize, |bytes, value| {
-                    bytes
-                        .checked_add(value.encoded_bytes()?)
-                        .ok_or(Error::InvalidInput { field: "storage admission", reason: "encoded schema size overflow" })
+                    bytes.checked_add(value.encoded_bytes()?).ok_or(Error::InvalidInput {
+                        field: "storage admission",
+                        reason: "encoded schema size overflow",
+                    })
                 })?;
-                schema_bytes
-                    .checked_add(sum(objects.as_slice())?)
-                    .ok_or(Error::InvalidInput { field: "storage admission", reason: "encoded batch size overflow" })
+                schema_bytes.checked_add(sum(objects.as_slice())?).ok_or(Error::InvalidInput {
+                    field: "storage admission",
+                    reason: "encoded batch size overflow",
+                })
             }
             Self::Records(values) => sum(values.as_slice()),
             Self::Stream(values) => sum(values.as_slice()),
@@ -584,22 +593,11 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
             .await
             .map(Completed::Pruned),
         Action::File(action) => super::staging::perform(inner, action).await.map(Completed::File),
-        Action::Snapshot(SnapshotAction::Open(id, at, memory)) => {
-            let opened = async {
-                let snapshot = inner.bounded("primary.open_snapshot", inner.primary.open_snapshot(at, memory.clone())).await?;
-                let bytes = snapshot
-                    .token
-                    .capacity()
-                    .checked_mul(3)
-                    .and_then(|bytes| bytes.checked_add(super::manager::ENTRY_OVERHEAD))
-                    .ok_or(Error::ResourceExhausted { resource: "snapshot token memory" })?;
-                memory.grow_to(bytes).await.map_err(crate::capacity::Refusal::into_error)?;
-                Ok(snapshot)
-            }
-            .await;
+        Action::Snapshot(SnapshotAction::Open(id, at)) => {
+            let opened = inner.bounded("primary.open_snapshot", inner.primary.open_snapshot(at)).await;
             Ok(Completed::Opened(*id, opened))
         }
-        Action::Snapshot(SnapshotAction::Release(id, snapshot, _)) => {
+        Action::Snapshot(SnapshotAction::Release(id, snapshot)) => {
             if let Some(snapshot) = snapshot {
                 inner.bounded("primary.release_snapshot", inner.primary.release_snapshot(snapshot)).await?;
             }
@@ -608,7 +606,13 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
         Action::Write(entry, batch) => {
             let future = async {
                 let operation = batch.as_ref().map_or(&entry.operation, |batch| &batch.operation);
-                let target = batch.as_ref().map_or(Target { index: entry.index, sequence: operation.sequence() }, |batch| batch.target);
+                let target = batch.as_ref().map_or(
+                    Target {
+                        index: entry.index,
+                        sequence: operation.sequence(),
+                    },
+                    |batch| batch.target,
+                );
                 match operation {
                     Operation::Recovery(entries) => {
                         let saved = inner.state.lock().unwrap().status.saved.clone();
@@ -621,7 +625,11 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
                             }
                         }
                         inner.bounded("recovery.write_entries", inner.recovery.write_entries(entries.clone())).await?;
-                        Ok(Completed::Write { data: None, saved: None, recovery: Some(target) })
+                        Ok(Completed::Write {
+                            data: None,
+                            saved: None,
+                            recovery: Some(target),
+                        })
                     }
                     Operation::Snapshot(snapshot) => {
                         if snapshot.len() != 1 {
@@ -637,11 +645,19 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
                             });
                         }
                         inner.bounded("recovery.write_snapshot", inner.recovery.write_snapshot(snapshot.clone())).await?;
-                        Ok(Completed::Write { data: None, saved: None, recovery: Some(target) })
+                        Ok(Completed::Write {
+                            data: None,
+                            saved: None,
+                            recovery: Some(target),
+                        })
                     }
                     _ => {
                         let saved = write_data(inner, operation).await?;
-                        Ok(Completed::Write { data: Some(target), saved: Some(saved), recovery: None })
+                        Ok(Completed::Write {
+                            data: Some(target),
+                            saved: Some(saved),
+                            recovery: None,
+                        })
                     }
                 }
             };
@@ -656,7 +672,10 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
         }
 
         Action::Recovery(target) => {
-            let through = RecoveryPosition { history: inner.recovery.history().clone(), sequence: target.sequence };
+            let through = RecoveryPosition {
+                history: inner.recovery.history().clone(),
+                sequence: target.sequence,
+            };
             let saved = inner.bounded("recovery.flush", inner.recovery.flush(&through)).await?;
             let written = inner.state.lock().unwrap().recovery_written.sequence;
             if !saved.covers(&through)? || saved.sequence > written {

@@ -175,7 +175,11 @@ impl Prepared {
             return Err(PreparationError::Limit);
         }
         let (id, version) = fact.identify();
-        let prepared = Self { id, version, payload: serde_json::json!(fact.payload) };
+        let prepared = Self {
+            id,
+            version,
+            payload: serde_json::json!(fact.payload),
+        };
         if prepared.bytes()? > Records::MAX_BYTES {
             return Err(PreparationError::Limit);
         }

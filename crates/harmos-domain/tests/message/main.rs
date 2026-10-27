@@ -197,7 +197,10 @@ fn names_never_shadow() {
 
 #[test]
 fn names_survive_reordering() {
-    let original = Original { value: u64::MAX, payload: vec![0, 128, 255] };
+    let original = Original {
+        value: u64::MAX,
+        payload: vec![0, 128, 255],
+    };
     let bytes = crate::encode(&original);
     let reordered = grpc::decode::<Reordered>(DecodeInput::new(&bytes)).unwrap();
     assert_eq!(reordered.value, original.value);
@@ -298,8 +301,16 @@ fn sizes_count_capacity() {
     let rows_heap = rows.capacity() * std::mem::size_of::<Original>() + rows[0].payload.capacity();
     let mut name = String::with_capacity(80);
     name.push_str("sample");
-    let mut value =
-        Nested { row, optional: Some(Original { value: 9, payload: Vec::with_capacity(32) }), rows, r#type: name, ..Default::default() };
+    let mut value = Nested {
+        row,
+        optional: Some(Original {
+            value: 9,
+            payload: Vec::with_capacity(32),
+        }),
+        rows,
+        r#type: name,
+        ..Default::default()
+    };
     let expected = std::mem::size_of::<Nested>() + row_heap + 32 + rows_heap + 80;
     assert_eq!(value.memory_size(), expected);
     assert_eq!(value.encoded_size(), harmos_domain::Message::encode(&value).len());
@@ -445,7 +456,10 @@ fn variant_merge_payload() {
     }
     assert_eq!(
         grpc::decode::<MergedChoice>(DecodeInput::new(&wire)).unwrap(),
-        MergedChoice::Pair { left: "first".into(), right: "second".into() }
+        MergedChoice::Pair {
+            left: "first".into(),
+            right: "second".into()
+        }
     );
 }
 
@@ -460,7 +474,11 @@ fn variants_preserve_raw() {
 fn validation_accepts_generated() {
     use grpc::Validator;
     use harmos_domain::schema::Described;
-    let value = Choices { selected: Choice::Text("checked".into()), optional: Some(Choice::Empty), history: vec![Choice::Empty] };
+    let value = Choices {
+        selected: Choice::Text("checked".into()),
+        optional: Some(Choice::Empty),
+        history: vec![Choice::Empty],
+    };
     let validator = Validator::from_schema(
         &harmos_domain::schema::graph::Schema::from_declaration(Choices::DEFINITION, &harmos_domain::config::SchemaSettings::default())
             .unwrap(),

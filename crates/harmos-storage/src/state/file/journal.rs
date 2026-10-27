@@ -17,7 +17,7 @@
 
 // Standard Library Imports
 use std::fs::File;
-use std::io::{BufReader, Seek, SeekFrom, Write};
+use std::io::{BufReader, Read as _, Seek, SeekFrom, Write};
 use std::path::Path;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,7 @@ use crate::{BackendFailure, Error, Result};
 
 /* === Constants === */
 
-// Format 2 Encodes Payloads As Base64; Earlier Roots Are Refused, Never Migrated.
+// The Development Format Has One Baseline.
 const VERSION: u32 = 1;
 // Headers Hold Only A Position, So Their Bound Is Harmos-Owned.
 const HEADER_BYTES: usize = 4096;
@@ -43,6 +43,10 @@ const HEADER_BYTES: usize = 4096;
 pub(super) struct StateLog {
     files: Files,
     file: File,
+    offsets: File,
+    first: u64,
+    #[cfg(test)]
+    decoded: usize,
     poisoned: bool,
     history: StoreHistory,
     saved: u64,
@@ -66,7 +70,9 @@ struct Header {
 
 impl StateLog {
     #[tracing::instrument(name = "storage.state.file.open", level = "debug", skip_all)]
-    pub(super) fn open(root: &Path, history: StoreHistory, settings: StorageStateSettings, opener: JournalOpener) -> Result<Self> {
+    pub(super) fn open(
+        root: &Path, history: StoreHistory, settings: StorageStateSettings, opener: JournalOpener, check: &mut impl FnMut() -> Result<()>,
+    ) -> Result<Self> {
         let entry_bytes = settings.max_entry_bytes.get();
         let checkpoint_bytes = settings.max_checkpoint_bytes.get();
         let files = Files::open(root, opener)?;
@@ -75,7 +81,10 @@ impl StateLog {
         let mut file = files.journal()?;
         let created = file.metadata().map_err(io)?.len() == 0;
         if created {
-            let header = Header { version: VERSION, after: RecoveryPosition { history: history.clone(), sequence: 0 } };
+            let header = Header {
+                version: VERSION,
+                after: RecoveryPosition { history: history.clone(), sequence: 0 },
+            };
             format::write(&mut file, &header, HEADER_BYTES)?;
             file.sync_all().map_err(io)?;
             files.sync_directory()?;
@@ -97,8 +106,14 @@ impl StateLog {
         if header.after.sequence > base {
             return Err(corrupt("state journal begins beyond checkpoint"));
         }
-        let mut saved = header.after.sequence;
+        let mut offsets = tempfile::tempfile().map_err(io)?;
+        let first = header.after.sequence;
+        let mut saved = first;
         loop {
+            check()?;
+            if saved > first && (saved - first) % 16_384 == 0 {
+                tracing::debug!(sequence = saved, "State Journal Index Progress");
+            }
             let start = reader.stream_position().map_err(io)?;
             match format::read::<RecoveryEntry>(&mut reader, entry_bytes)? {
                 Read::End => break,
@@ -112,6 +127,7 @@ impl StateLog {
                     if saved.checked_add(1) != Some(entry.position.sequence) {
                         return Err(corrupt("state journal positions are not consecutive"));
                     }
+                    offsets.write_all(&start.to_le_bytes()).map_err(io)?;
                     saved = entry.position.sequence;
                 }
             }
@@ -119,7 +135,20 @@ impl StateLog {
         if saved < base {
             return Err(corrupt("state journal does not reach checkpoint"));
         }
-        Ok(Self { files, file, poisoned: false, history, saved, base, entry_bytes, checkpoint_bytes })
+        Ok(Self {
+            files,
+            file,
+            offsets,
+            first,
+            #[cfg(test)]
+            decoded: 0,
+            poisoned: false,
+            history,
+            saved,
+            base,
+            entry_bytes,
+            checkpoint_bytes,
+        })
     }
 
     #[tracing::instrument(name = "storage.state.file.check", level = "debug", skip_all)]
@@ -132,7 +161,10 @@ impl StateLog {
 
     #[tracing::instrument(name = "storage.state.file.position", level = "debug", skip_all)]
     pub(super) fn position(&self) -> RecoveryPosition {
-        RecoveryPosition { history: self.history.clone(), sequence: self.saved }
+        RecoveryPosition {
+            history: self.history.clone(),
+            sequence: self.saved,
+        }
     }
 
     #[tracing::instrument(name = "storage.state.file.snapshot", level = "debug", skip_all)]
@@ -141,23 +173,15 @@ impl StateLog {
         self.files.snapshot(bound.min(self.checkpoint_bytes))
     }
 
-    #[tracing::instrument(name = "storage.state.file.snapshot_retained", level = "debug", skip_all)]
-    pub(super) fn snapshot_retained(
-        &self, maximum: usize, memory: &crate::arrow::RetainedMemory, base: usize,
-    ) -> Result<Option<RecoverySnapshot>> {
-        let bound = maximum.saturating_add(format::OVERHEAD);
-        self.files.snapshot_retained(bound.min(self.checkpoint_bytes), memory, base)
-    }
-
     #[tracing::instrument(name = "storage.state.file.page", level = "debug", skip_all)]
-    pub(super) fn page(
-        &mut self, after: &RecoveryPosition, through: &RecoveryPosition, limits: ReadLimits, memory: &crate::arrow::RetainedMemory,
-        base: usize,
-    ) -> Result<RecoveryPage> {
+    pub(super) fn page(&mut self, after: &RecoveryPosition, through: &RecoveryPosition, limits: ReadLimits) -> Result<RecoveryPage> {
         self.history.check(&after.history)?;
         self.history.check(&through.history)?;
         if after.sequence < self.base {
-            return Err(Error::Gap { requested: after.sequence, available: self.base });
+            return Err(Error::Gap {
+                requested: after.sequence,
+                available: self.base,
+            });
         }
         if after.sequence > through.sequence || through.sequence > self.saved {
             return Err(invalid("state read range is outside retained history"));
@@ -165,11 +189,17 @@ impl StateLog {
         let mut entries = Vec::new();
         let mut bytes = 0usize;
         let mut last = after.sequence;
-        memory.try_grow_to(base.saturating_add(8192 + HEADER_BYTES * 4))?;
-        let mut reader = self.reader()?;
+
+        let mut reader = self.reader_after(after.sequence)?;
         loop {
-            let retained = base.saturating_add(crate::MemorySize::memory_size(&entries));
-            let entry = match format::read_retained::<RecoveryEntry>(&mut reader, self.entry_bytes, memory, retained)? {
+            if last == through.sequence {
+                break;
+            }
+            #[cfg(test)]
+            {
+                self.decoded += 1;
+            }
+            let entry = match format::read::<RecoveryEntry>(&mut reader, self.entry_bytes)? {
                 Read::End => break,
                 Read::Incomplete => return Err(corrupt("live state journal has incomplete tail")),
                 Read::Value(entry) => entry,
@@ -188,23 +218,15 @@ impl StateLog {
                 }
                 break;
             }
-            if entries.len() == entries.capacity() {
-                let replacement = entries
-                    .capacity()
-                    .checked_mul(2)
-                    .map(|capacity| capacity.max(4))
-                    .and_then(|capacity| capacity.checked_mul(std::mem::size_of::<RecoveryEntry>()))
-                    .and_then(|bytes| bytes.checked_add(retained))
-                    .and_then(|bytes| bytes.checked_add(crate::MemorySize::memory_size(&entry)))
-                    .and_then(|bytes| bytes.checked_add(8192))
-                    .ok_or_else(|| invalid("state page memory overflow"))?;
-                memory.try_grow_to(replacement)?;
-            }
+            entries.try_reserve(1).map_err(|_| invalid("state page allocation failed"))?;
             bytes += size;
             last = entry.position.sequence;
             entries.push(entry);
         }
-        let next = (last < through.sequence).then(|| RecoveryPosition { history: self.history.clone(), sequence: last });
+        let next = (last < through.sequence).then(|| RecoveryPosition {
+            history: self.history.clone(),
+            sequence: last,
+        });
         let page = RecoveryPage { entries, next };
         page.check(after, through, limits, |entry| crate::storage::manager::encoded_size(entry).unwrap_or(usize::MAX))?;
         Ok(page)
@@ -224,7 +246,7 @@ impl StateLog {
                     return Err(invalid("state retry precedes retained journal"));
                 }
                 let mut same = false;
-                self.scan(|stored| {
+                self.scan_after(sequence - 1, |stored| {
                     if stored.position.sequence == sequence {
                         same = stored == *entry;
                         return Ok(false);
@@ -257,7 +279,16 @@ impl StateLog {
             self.poisoned = false;
             return Err(error);
         }
+        // The Rebuildable Disk Index Never Retains One Heap Entry Per Journal Row.
+        self.poisoned = true;
+        self.offsets.seek(SeekFrom::End(0)).map_err(io)?;
+        let mut offset = start;
+        for line in &lines {
+            self.offsets.write_all(&offset.to_le_bytes()).map_err(io)?;
+            offset = offset.checked_add(line.len() as u64).ok_or_else(|| invalid("state journal offset overflow"))?;
+        }
         self.saved = next;
+        self.poisoned = false;
         Ok(())
     }
 
@@ -291,7 +322,14 @@ impl StateLog {
         let history = self.history.clone();
         let maximum = self.entry_bytes;
         let replaced = self.files.replace_journal(|writer| {
-            format::write(writer, &Header { version: VERSION, after: snapshot.through.clone() }, HEADER_BYTES)?;
+            format::write(
+                writer,
+                &Header {
+                    version: VERSION,
+                    after: snapshot.through.clone(),
+                },
+                HEADER_BYTES,
+            )?;
             loop {
                 match format::read::<RecoveryEntry>(&mut reader, maximum)? {
                     Read::End => break,
@@ -311,6 +349,22 @@ impl StateLog {
         // Rename May Succeed Before Directory Sync Fails; Always Reopen The Named File.
         self.poisoned = true;
         self.file = self.files.journal()?;
+        let mut reader = self.reader()?;
+        let header = {
+            reader.seek(SeekFrom::Start(0)).map_err(io)?;
+            header(&mut reader, &self.history)?
+        };
+        let mut offsets = tempfile::tempfile().map_err(io)?;
+        loop {
+            let offset = reader.stream_position().map_err(io)?;
+            match format::read::<RecoveryEntry>(&mut reader, self.entry_bytes)? {
+                Read::End => break,
+                Read::Incomplete => return Err(corrupt("replaced state journal has incomplete tail")),
+                Read::Value(_) => offsets.write_all(&offset.to_le_bytes()).map_err(io)?,
+            }
+        }
+        self.first = header.after.sequence;
+        self.offsets = offsets;
         self.poisoned = false;
         replaced
     }
@@ -323,9 +377,28 @@ impl StateLog {
         Ok(reader)
     }
 
+    // Sequence Offsets Are Rebuilt Once At Open And Replaced With Compaction.
+    fn reader_after(&mut self, after: u64) -> Result<BufReader<File>> {
+        let offset = if after >= self.saved {
+            self.file.metadata().map_err(io)?.len()
+        } else {
+            let index = after
+                .checked_sub(self.first)
+                .and_then(|index| index.checked_mul(8))
+                .ok_or_else(|| invalid("state journal index overflow"))?;
+            self.offsets.seek(SeekFrom::Start(index)).map_err(io)?;
+            let mut bytes = [0; 8];
+            self.offsets.read_exact(&mut bytes).map_err(io)?;
+            u64::from_le_bytes(bytes)
+        };
+        let mut reader = BufReader::with_capacity(256 * 1024, self.file.try_clone().map_err(io)?);
+        reader.seek(SeekFrom::Start(offset)).map_err(io)?;
+        Ok(reader)
+    }
+
     #[tracing::instrument(name = "storage.state.file.scan", level = "debug", skip_all)]
-    fn scan(&self, mut visit: impl FnMut(RecoveryEntry) -> Result<bool>) -> Result<()> {
-        let mut reader = self.reader()?;
+    fn scan_after(&mut self, after: u64, mut visit: impl FnMut(RecoveryEntry) -> Result<bool>) -> Result<()> {
+        let mut reader = self.reader_after(after)?;
         loop {
             match format::read::<RecoveryEntry>(&mut reader, self.entry_bytes)? {
                 Read::End => return Ok(()),
@@ -349,6 +422,13 @@ fn header(reader: &mut BufReader<File>, history: &StoreHistory) -> Result<Header
     let Read::Value(header) = format::read::<Header>(reader, HEADER_BYTES)? else {
         return Err(corrupt("state journal header is incomplete"));
     };
+    if header.version != VERSION {
+        return Err(Error::backend(
+            "open state root",
+            BackendFailure::Unsupported,
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "unsupported state format; open a fresh state root"),
+        ));
+    }
     history.check(&header.after.history)?;
     Ok(header)
 }
@@ -358,3 +438,134 @@ fn conflict(reason: &'static str) -> Error {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Identifier, StorageCursor};
+    use std::{fs::OpenOptions, num::NonZeroUsize, sync::Arc};
+
+    fn settings() -> StorageStateSettings {
+        StorageStateSettings {
+            max_entry_bytes: NonZeroUsize::new(4096).unwrap(),
+            max_checkpoint_bytes: NonZeroUsize::new(4096).unwrap(),
+        }
+    }
+
+    fn open(path: &Path, history: &StoreHistory) -> StateLog {
+        StateLog::open(
+            path,
+            history.clone(),
+            settings(),
+            Arc::new(|path| OpenOptions::new().create(true).truncate(false).read(true).write(true).open(path)),
+            &mut || Ok(()),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn seven_day_recovery_seeks_and_compacts_without_rescanning_prefixes() {
+        let root = tempfile::tempdir().unwrap();
+        let history = StoreHistory {
+            store: Identifier::new("journal.test").unwrap(),
+            epoch: Identifier::new("one").unwrap(),
+        };
+        let mut journal = open(root.path(), &history);
+        let per_day = 24 * 60;
+        for day in 0..7 {
+            let entries = (0..per_day)
+                .map(|minute| {
+                    let sequence = (day * per_day + minute + 1) as u64;
+                    RecoveryEntry {
+                        position: RecoveryPosition { history: history.clone(), sequence },
+                        required_data: StorageCursor { history: history.clone(), sequence: 0 },
+                        payload: sequence.to_le_bytes().to_vec(),
+                    }
+                })
+                .collect::<Vec<_>>();
+            journal.append(&entries).unwrap();
+        }
+        let through = journal.position();
+        drop(journal);
+        let mut journal = open(root.path(), &history);
+        assert_eq!(journal.offsets.metadata().unwrap().len(), through.sequence * 8);
+        let limits = ReadLimits {
+            rows: NonZeroUsize::new(31).unwrap(),
+            bytes: NonZeroUsize::new(16 * 1024).unwrap(),
+        };
+        let mut after = RecoveryPosition { history: history.clone(), sequence: 0 };
+        let mut pages = 0;
+        while after.sequence < through.sequence {
+            let page = journal.page(&after, &through, limits).unwrap();
+            for (index, entry) in page.entries.iter().enumerate() {
+                assert_eq!(entry.position.sequence, after.sequence + index as u64 + 1);
+                assert_eq!(entry.payload, entry.position.sequence.to_le_bytes());
+            }
+            after = page.entries.last().unwrap().position.clone();
+            pages += 1;
+        }
+        assert!(journal.decoded <= through.sequence as usize + pages);
+        // Arbitrary Retry Pages Also Seek Directly Rather Than Replaying History.
+        journal.decoded = 0;
+        let retry_after = RecoveryPosition {
+            history: history.clone(),
+            sequence: through.sequence - 3,
+        };
+        assert_eq!(journal.page(&retry_after, &through, limits).unwrap().entries.len(), 3);
+        assert_eq!(journal.decoded, 3);
+        let old_journal = std::fs::read(root.path().join("state.jsonl")).unwrap();
+        let checkpoint = RecoveryPosition {
+            history: history.clone(),
+            sequence: through.sequence - 10,
+        };
+        let snapshot = RecoverySnapshot {
+            through: checkpoint.clone(),
+            required_data: StorageCursor { history: history.clone(), sequence: 0 },
+            payload: vec![7],
+        };
+        journal.checkpoint(&snapshot).unwrap();
+        assert_eq!(journal.offsets.metadata().unwrap().len(), 10 * 8);
+        assert_eq!(journal.page(&checkpoint, &through, limits).unwrap().entries.len(), 10);
+        drop(journal);
+        // A Crash After Snapshot Publication But Before Journal Replacement.
+        std::fs::write(root.path().join("state.jsonl"), old_journal).unwrap();
+        let mut journal = open(root.path(), &history);
+        assert_eq!(journal.snapshot(4096).unwrap(), Some(snapshot));
+        assert_eq!(journal.page(&checkpoint, &through, limits).unwrap().entries.len(), 10);
+        assert_eq!(journal.decoded, 10);
+        assert!(matches!(journal.page(&retry_after, &checkpoint, limits), Err(Error::InvalidInput { .. })));
+    }
+    #[test]
+    fn index_open_cancellation_preserves_the_durable_journal() {
+        let root = tempfile::tempdir().unwrap();
+        let history = StoreHistory {
+            store: Identifier::new("cancel.test").unwrap(),
+            epoch: Identifier::new("one").unwrap(),
+        };
+        let mut journal = open(root.path(), &history);
+        let entries = (1..=8)
+            .map(|sequence| RecoveryEntry {
+                position: RecoveryPosition { history: history.clone(), sequence },
+                required_data: StorageCursor { history: history.clone(), sequence: 0 },
+                payload: vec![sequence as u8],
+            })
+            .collect::<Vec<_>>();
+        journal.append(&entries).unwrap();
+        drop(journal);
+        let durable = std::fs::read(root.path().join("state.jsonl")).unwrap();
+        let mut polls = 0;
+        let cancelled = StateLog::open(
+            root.path(),
+            history.clone(),
+            settings(),
+            Arc::new(|path| OpenOptions::new().read(true).write(true).open(path)),
+            &mut || {
+                polls += 1;
+                if polls == 3 { Err(Error::Closing { domain: "test cancellation" }) } else { Ok(()) }
+            },
+        );
+        assert!(matches!(cancelled, Err(Error::Closing { .. })));
+        assert_eq!(std::fs::read(root.path().join("state.jsonl")).unwrap(), durable);
+        assert_eq!(open(root.path(), &history).position().sequence, 8);
+    }
+}

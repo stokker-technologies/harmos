@@ -32,8 +32,8 @@ type Result<T> = ::std::result::Result<T, MessageError>;
 
 /* === Structs === */
 
-// Intentionally Neither Clone Nor Default Nor Prost Message
-#[derive(Debug, PartialEq)]
+// Manual Codec Without Default Or Prost Message
+#[derive(Clone, Debug, PartialEq)]
 struct Native {
     value: u64,
     payload: Vec<u8>,
@@ -149,7 +149,12 @@ fn custom_codec_default() {
 
 #[test]
 fn fields_keep_types() {
-    let value = Required { row: native(7), optional: Some(native(8)), rows: vec![native(9)], label: "sample".into() };
+    let value = Required {
+        row: native(7),
+        optional: Some(native(8)),
+        rows: vec![native(9)],
+        label: "sample".into(),
+    };
     let bytes = crate::encode(&value);
     assert_eq!(grpc::decode::<Required>(DecodeInput::new(&bytes)).unwrap(), value);
     assert!(grpc::decode::<Required>(DecodeInput::new(&[])).is_err());
@@ -182,7 +187,12 @@ fn fields_merge_domain() {
 
 #[test]
 fn encoding_matches_protobuf() {
-    let value = Required { row: native(7), optional: None, rows: vec![], label: String::new() };
+    let value = Required {
+        row: native(7),
+        optional: None,
+        rows: vec![],
+        label: String::new(),
+    };
     let tag = Required::FIELDS.iter().find(|field| field.name == "row").unwrap().tag;
     let mut expected = Vec::new();
     frame(tag, &crate::encode(&Wire { value: 7, payload: vec![1, 255] }), &mut expected);
@@ -205,7 +215,12 @@ fn debug_preserves_secret() {
 
 #[test]
 fn debug_preserves_wire() {
-    let original = Choice::Selected { row: Native { value: 7, payload: b"private-token".to_vec() } };
+    let original = Choice::Selected {
+        row: Native {
+            value: 7,
+            payload: b"private-token".to_vec(),
+        },
+    };
     let bytes = crate::encode(&original);
     let redacted = grpc::decode::<RedactedChoice>(DecodeInput::new(&bytes)).unwrap();
     assert_eq!(format!("{redacted:?}"), "RedactedChoice([REDACTED])");
@@ -219,7 +234,12 @@ fn debug_preserves_wire() {
 
 #[test]
 fn composition_preserves_domain() {
-    let value = Required { row: native(7), optional: Some(native(8)), rows: vec![native(9)], label: "postcard".into() };
+    let value = Required {
+        row: native(7),
+        optional: Some(native(8)),
+        rows: vec![native(9)],
+        label: "postcard".into(),
+    };
     let encoded = harmos_domain::Message::encode(&value);
     let bound = <Required as harmos_domain::Message>::decoding_memory(&encoded).unwrap();
     let decoded = <Required as harmos_domain::Message>::decode(&encoded).unwrap();

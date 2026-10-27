@@ -172,7 +172,12 @@ impl Driver {
 
 impl PluginCleanup {
     pub(super) fn new() -> Self {
-        Self { shared: Arc::new(ClosingState { status: watch::channel(PluginCleanupStatus::Waiting).0, retry: Notify::new() }) }
+        Self {
+            shared: Arc::new(ClosingState {
+                status: watch::channel(PluginCleanupStatus::Waiting).0,
+                retry: Notify::new(),
+            }),
+        }
     }
 
     pub fn status(&self) -> PluginCleanupStatus {

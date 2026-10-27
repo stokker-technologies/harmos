@@ -36,27 +36,29 @@ static PROVIDER_SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<P
 /* === Macros === */
 
 macro_rules! forward {
-    ($name:ident, $declaration:ident, $id:literal) => {
-        #[harmos_runtime::operation(request = $name, infer_request, id = $id, policy = AmplifyDeclaration::POLICY, response = Amplified)]
-        struct $declaration;
-
-        #[harmos_runtime::message]
+    ($name:ident, $id:literal, [$($callee:ty),*]) => {
+        #[harmos_runtime::operation(resources = [Forwarder, Supervisor], operations = [$($callee),*], id = $id, policy = AmplifyDeclaration::POLICY, response = Amplified)]
         #[derive(Clone, PartialEq)]
         struct $name {
             value: i64,
         }
 
-        impl Forwarded for $name {
-            fn value(&self) -> i64 {
-                self.value
+        impl harmos_runtime::Operation for $name {
+            type Error = Refusal;
+            async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Amplified>, Self::Error> {
+                ctx.resource::<Supervisor>().call::<AmplifyDeclaration>(AmplifyDeclaration { value: self.value }).await
+                    .map_err(|error| match error {
+                        harmos_sidecar::CallError::Refused { code, failure } => Refusal::failed(code, failure),
+                        error => Refusal::of(error),
+                    })
             }
         }
     };
 }
 
-forward!(Forward, ForwardDeclaration, "caller_forward");
+forward!(Forward, "caller.forward", [AmplifyDeclaration]);
 
-forward!(UnauthorizedForward, UnauthorizedForwardDeclaration, "unauthorized_forward");
+forward!(UnauthorizedForward, "unauthorized.forward", []);
 
 /* === Type Aliases === */
 
@@ -76,8 +78,35 @@ struct Publishing {
     publish_on_cleanup: bool,
 }
 
-struct PublishingCall {
-    _resources: Arc<()>,
+#[harmos_runtime::operation(codec = manual, resources = [Supervisor], id = PublishPulseDeclaration::ID, response = (),
+    policy = PublishPulseDeclaration::POLICY, visibility = Shared)]
+#[derive(Clone)]
+struct PublishingCall(PublishPulseDeclaration);
+
+impl harmos_runtime::Message for PublishingCall {
+    const CODEC: &'static str = <PublishPulseDeclaration as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&self.0)
+    }
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&self.0)
+    }
+    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
+        <PublishPulseDeclaration as harmos_runtime::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
+        <PublishPulseDeclaration as harmos_runtime::Message>::decode(bytes).map(Self)
+    }
+}
+impl harmos_runtime::MemorySize for PublishingCall {
+    fn memory_size(&self) -> usize {
+        harmos_runtime::MemorySize::memory_size(&self.0)
+    }
+}
+impl harmos_runtime::schema::Described for PublishingCall {
+    const NAME: &'static str = <PublishPulseDeclaration as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] = <PublishPulseDeclaration as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <PublishPulseDeclaration as harmos_runtime::schema::Described>::MARKER;
 }
 
 struct DroppedHandler(Arc<tokio::sync::Notify>);
@@ -91,7 +120,6 @@ struct Provider {
     prepared: AtomicUsize,
     attempts: AtomicUsize,
     finalized: AtomicUsize,
-    fail_cleanup: AtomicBool,
 }
 
 struct ProviderSeed {
@@ -112,9 +140,7 @@ struct UnauthorizedEndpoint {
 
 struct Forwarder;
 
-#[harmos_runtime::operation(request = Retry, infer_request,
-    id = "retry",
-
+#[harmos_runtime::operation(resources = [Provider], id = "provider.retry",
     policy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
@@ -128,11 +154,8 @@ struct Forwarder;
     },
     response = Amplified,
 )]
-struct RetryDeclaration;
-
-#[harmos_runtime::message]
 #[derive(Clone, PartialEq)]
-struct Retry {
+struct RetryDeclaration {
     value: i64,
 }
 
@@ -181,18 +204,38 @@ struct Host {
     notices: Arc<NoticeLog>,
 }
 
-struct Amplifying {
-    resources: Arc<Provider>,
+#[harmos_runtime::operation(codec = manual, resources = [Provider], id = AmplifyDeclaration::ID, response = Amplified,
+    policy = AmplifyDeclaration::POLICY, visibility = Shared)]
+#[derive(Clone)]
+struct Amplifying(AmplifyDeclaration);
+
+impl harmos_runtime::Message for Amplifying {
+    const CODEC: &'static str = <AmplifyDeclaration as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&self.0)
+    }
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&self.0)
+    }
+    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
+        <AmplifyDeclaration as harmos_runtime::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
+        <AmplifyDeclaration as harmos_runtime::Message>::decode(bytes).map(Self)
+    }
+}
+impl harmos_runtime::MemorySize for Amplifying {
+    fn memory_size(&self) -> usize {
+        harmos_runtime::MemorySize::memory_size(&self.0)
+    }
+}
+impl harmos_runtime::schema::Described for Amplifying {
+    const NAME: &'static str = <AmplifyDeclaration as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] = <AmplifyDeclaration as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <AmplifyDeclaration as harmos_runtime::schema::Described>::MARKER;
 }
 
-struct Retrying {
-    resources: Arc<Provider>,
-}
-
-struct Forwarding<F> {
-    _resources: Arc<Forwarder>,
-    forwarded: std::marker::PhantomData<fn() -> F>,
-}
+struct RetryGuard(Arc<Provider>);
 
 /* === Enums === */
 
@@ -209,31 +252,26 @@ enum PublishingOperations {
 
 #[harmos_runtime::catalog]
 enum DependentRequirements {
-    Amplify(AmplifyDeclaration),
+    AmplifyDeclaration(AmplifyDeclaration),
 }
 
 #[harmos_runtime::catalog]
 enum ProviderOperations {
-    Amplify(AmplifyDeclaration),
-    Retry(RetryDeclaration),
+    AmplifyDeclaration(AmplifyDeclaration),
+    RetryDeclaration(RetryDeclaration),
 }
 
 #[harmos_runtime::catalog]
 enum CallerOperations {
-    Forward(ForwardDeclaration),
+    Forward(Forward),
 }
 
 #[harmos_runtime::catalog]
 enum UnauthorizedOperations {
-    Forward(UnauthorizedForwardDeclaration),
+    Forward(UnauthorizedForward),
 }
 
 /* === Traits === */
-
-// The Two Forwarding Operations Share One Handler Body.
-trait Forwarded: harmos_runtime::Portable + Send + Sync + 'static {
-    fn value(&self) -> i64;
-}
 
 /* === Implementations === */
 
@@ -276,7 +314,7 @@ impl harmos_runtime::Plugin for ProviderEndpoint {
                 dependencies.insert(self.resources.clone()).unwrap();
                 dependencies
             })
-            .implementation::<AmplifyDeclaration, Amplifying>(),
+            .operation::<Amplifying>(),
         )?;
         table.register(
             harmos_runtime::RegistrationBatch::new({
@@ -284,7 +322,7 @@ impl harmos_runtime::Plugin for ProviderEndpoint {
                 dependencies.insert(self.resources.clone()).unwrap();
                 dependencies
             })
-            .implementation::<RetryDeclaration, Retrying>(),
+            .operation::<RetryDeclaration>(),
         )
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
@@ -322,7 +360,7 @@ impl harmos_runtime::Plugin for CallerEndpoint {
                 dependencies.insert(self.resources.clone()).unwrap();
                 dependencies
             })
-            .implementation::<ForwardDeclaration, Forwarding<Forward>>(),
+            .operation::<Forward>(),
         )
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
@@ -360,7 +398,7 @@ impl harmos_runtime::Plugin for UnauthorizedEndpoint {
                 dependencies.insert(self.resources.clone()).unwrap();
                 dependencies
             })
-            .implementation::<UnauthorizedForwardDeclaration, Forwarding<UnauthorizedForward>>(),
+            .operation::<UnauthorizedForward>(),
         )
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
@@ -380,20 +418,11 @@ impl harmos_operations::lifecycle::Policy for Publishing {
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-impl harmos_runtime::operations::Operation for PublishingCall {
-    type Request = <PublishPulseDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <PublishPulseDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for PublishingCall {
     type Error = Refusal;
-    type Endpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
-        let resources = context.dependency::<()>().expect("fixture dependency");
-        Ok(Self { _resources: resources })
-    }
-    async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut PublishPulse, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
-        let host = host.dependency::<Supervisor>().expect("carrier context");
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
+        let host = ctx.resource::<Supervisor>();
+        let request = self.0;
         let result: ::core::result::Result<(), Self::Error> = async move {
             host.publisher::<Publishing>().publish_on::<MeterPulse>(&support::pulse(request.sample)).await.map_err(Refusal::from)
         }
@@ -409,7 +438,10 @@ impl harmos_runtime::Plugin for Publishing {
     type Error = Refusal;
     type Resources = ();
     fn prepare(publish_on_cleanup: bool) -> Result<Self, Refusal> {
-        Ok(Self { resources: Arc::new(()), publish_on_cleanup })
+        Ok(Self {
+            resources: Arc::new(()),
+            publish_on_cleanup,
+        })
     }
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         for sample in [41, 42] {
@@ -431,7 +463,7 @@ impl harmos_runtime::Plugin for Publishing {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<PublishPulseDeclaration, PublishingCall>(),
+            .operation::<PublishingCall>(),
         )
     }
     async fn stop(&mut self, context: &Self::Context) -> Result<(), Refusal> {
@@ -468,9 +500,9 @@ impl harmos_runtime::Plugin for Dependent {
         Ok(Self { resources: Arc::new(()), notify })
     }
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Refusal> {
-        context.call::<<Amplify as harmos_runtime::RequestFor>::Operation>(Amplify { value: 11 }).await.map_err(Refusal::from)?;
+        context.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 11 }).await.map_err(Refusal::from)?;
         if self.notify {
-            context.call::<<Sample as harmos_runtime::RequestFor>::Operation>(Sample { value: 99 }).await.map_err(Refusal::from)?;
+            context.call::<SampleDeclaration>(SampleDeclaration { value: 99 }).await.map_err(Refusal::from)?;
         }
         Ok(())
     }
@@ -481,10 +513,7 @@ impl harmos_runtime::Plugin for Dependent {
         Ok(())
     }
     async fn stop(&mut self, context: &Self::Context) -> Result<(), Refusal> {
-        context
-            .call::<<Amplify as harmos_runtime::RequestFor>::Operation>(Amplify { value: 22 })
-            .await
-            .expect("provider remains available through cleanup");
+        context.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 22 }).await.expect("provider remains available through cleanup");
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {
@@ -498,95 +527,46 @@ impl Drop for DroppedHandler {
     }
 }
 
-impl harmos_runtime::operations::Operation for Amplifying {
-    type Request = <AmplifyDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <AmplifyDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for Amplifying {
     type Error = Refusal;
-    type Endpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
-        let resources = context.dependency::<Provider>().expect("fixture dependency");
-        Ok(Self { resources })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Amplify, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
+        let request = self.0;
+        let resources = ctx.resource::<Provider>();
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
             if request.value == 0 {
-                let _drop = DroppedHandler(self.resources.dropped.clone());
-                self.resources.started.notify_one();
+                let _drop = DroppedHandler(resources.dropped.clone());
+                resources.started.notify_one();
                 std::future::pending::<()>().await;
             }
-            self.resources.observed.lock().unwrap().push(request.value);
-            Ok(Amplified { value: request.value * self.resources.multiplier })
+            resources.observed.lock().unwrap().push(request.value);
+            Ok(Amplified {
+                value: request.value * resources.multiplier,
+            })
         }
         .await;
         result.map(::core::convert::Into::into)
     }
 }
 
-impl harmos_runtime::operations::Operation for Retrying {
-    type Request = <RetryDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <RetryDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for RetryDeclaration {
     type Error = Refusal;
-    type Endpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
-        let resources = context.dependency::<Provider>().expect("fixture dependency");
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Amplified>, Self::Error> {
+        let resources = ctx.resource::<Provider>();
         resources.prepared.fetch_add(1, Ordering::SeqCst);
-        Ok(Self { resources })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Retry, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
-        let result: ::core::result::Result<Amplified, Self::Error> = async move {
-            self.resources.attempts.fetch_add(1, Ordering::SeqCst);
-            request.value += 1;
-            if request.value == 2 {
-                return Err(Refusal::of("one transient failure"));
-            }
-            Ok(Amplified { value: request.value })
+        let _guard = RetryGuard(resources.clone());
+        let attempt = resources.attempts.fetch_add(1, Ordering::SeqCst);
+        if attempt.is_multiple_of(2) {
+            return Err(Refusal::of("one transient failure"));
         }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-    async fn cleanup(&mut self) -> Result<(), Refusal> {
-        if self.resources.fail_cleanup.load(Ordering::SeqCst) {
-            return Err(Refusal::of("retained cleanup"));
-        }
-        self.resources.finalized.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+        Ok(Amplified { value: self.value + 2 }.into())
     }
     fn classify(_: &Refusal) -> harmos_runtime::operations::FailureKind {
         harmos_runtime::operations::FailureKind::Transient
     }
 }
-
-impl<F: Forwarded> harmos_runtime::operations::Operation for Forwarding<F> {
-    type Request = F;
-    type Response = Amplified;
-
-    type Error = Refusal;
-    type Endpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
-        let resources = context.dependency::<Forwarder>().expect("fixture dependency");
-        Ok(Self { _resources: resources, forwarded: std::marker::PhantomData })
-    }
-    async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut F, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
-        let host = host.dependency::<Supervisor>().expect("carrier context");
-        let result: ::core::result::Result<Amplified, Self::Error> = async move {
-            host.call::<<Amplify as harmos_runtime::RequestFor>::Operation>(Amplify { value: request.value() })
-                .await
-                .map(harmos_runtime::operations::Response::into_owned)
-                .map_err(|error| match error {
-                    harmos_sidecar::CallError::Refused { code, failure } => Refusal::failed(code, failure),
-                    error => Refusal::of(error),
-                })
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+impl Drop for RetryGuard {
+    fn drop(&mut self) {
+        self.0.finalized.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -692,7 +672,12 @@ impl Host {
                 }
             });
             let mut resident: Resident = Supervised::new(
-                Attachment { id: "caller".into(), lifecycle: self.lifecycle, publishing: true, canonical: self.canonical },
+                Attachment {
+                    id: "caller".into(),
+                    lifecycle: self.lifecycle,
+                    publishing: true,
+                    canonical: self.canonical,
+                },
                 handler,
             );
             if self.project_publications {
@@ -718,7 +703,10 @@ impl PluginLifecycle for Host {
         self.operations.validate_requirements(candidate)
     }
     fn prepare(&mut self, _: &PluginDefinition) -> harmos_runtime::Result<Backends> {
-        Ok(PluginBackend::Sidecar(Resources { services: Some(self.operations.clone()), ..Resources::default() }))
+        Ok(PluginBackend::Sidecar(Resources {
+            services: Some(self.operations.clone()),
+            ..Resources::default()
+        }))
     }
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> harmos_runtime::Result<()> {
         Ok(())
@@ -739,7 +727,12 @@ impl PluginLifecycle for Host {
                 }
             });
             Supervised::new(
-                Attachment { id: definition.id.clone(), lifecycle: self.lifecycle, publishing: false, canonical: self.canonical },
+                Attachment {
+                    id: definition.id.clone(),
+                    lifecycle: self.lifecycle,
+                    publishing: false,
+                    canonical: self.canonical,
+                },
                 handler,
             )
             .routed(router)
@@ -752,13 +745,11 @@ impl PluginLifecycle for Host {
             })?;
         resources.registered = true;
         resources.lease = Some(self.operations.submit_resident(&definition.id).await?);
-        let native = resources
-            .resident
-            .as_ref()
-            .unwrap()
-            .staged_operations()
-            .await
-            .map_err(|source| harmos_runtime::Error::OperationFailed { operation: definition.id.clone(), source: Arc::new(source) })?;
+        let native =
+            resources.resident.as_ref().unwrap().staged_operations().await.map_err(|source| harmos_runtime::Error::OperationFailed {
+                operation: definition.id.clone(),
+                source: Arc::new(source),
+            })?;
         let handle = Arc::new(native);
         resources.registration = Some(self.operations.stage_plugin(handle.scope().unwrap(), |bindings| {
             if self.dynamic {
@@ -816,7 +807,10 @@ impl PluginLifecycle for Host {
             match start {
                 PublicationStart::Commit => {}
                 PublicationStart::Refuse => {
-                    return Err(harmos_runtime::Error::InvalidInput { field: "fixture activation", reason: "startup refused" });
+                    return Err(harmos_runtime::Error::InvalidInput {
+                        field: "fixture activation",
+                        reason: "startup refused",
+                    });
                 }
                 PublicationStart::Pause(started) => {
                     started.notify_one();

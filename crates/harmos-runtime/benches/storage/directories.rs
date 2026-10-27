@@ -125,7 +125,14 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
 /* === Private Functions === */
 
 fn selection(root: &Path) -> DirectorySelection {
-    DirectorySelection { root: root.to_owned(), recursive: true, rules: vec![DirectoryRule { pattern: "**/*.dat".into(), include: true }] }
+    DirectorySelection {
+        root: root.to_owned(),
+        recursive: true,
+        rules: vec![DirectoryRule {
+            pattern: "**/*.dat".into(),
+            include: true,
+        }],
+    }
 }
 
 /* === Tests === */

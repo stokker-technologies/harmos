@@ -101,11 +101,13 @@ pub use harmos_domain::{DefinitionId, Identified};
 pub use harmos_storage::signal;
 
 pub use harmos_domain::{
-    Backoff, Digest, Fingerprint, Jitter, OperationDeclaration, OperationDefinition, OperationPolicy, Portable, QualifiedId, RequestFor,
-    RestartPolicy, RetryPolicy, ServicePolicy,
+    Backoff, Digest, Fingerprint, Jitter, OperationDeclaration, OperationDefinition, OperationPolicy, Portable, QualifiedId, RestartPolicy,
+    RetryPolicy, ServicePolicy,
 };
 pub use harmos_sdk::operations::{EndpointSet, Response};
-pub use harmos_sdk::{Dependencies, DependencyError, Operation, OperationContext, RegistrationBatch, Service};
+pub use harmos_sdk::{
+    Context, Dependencies, Dependent, Executable, ExecutionContext, Operation, RegistrationBatch, Resource, ResourceError, Service,
+};
 pub use operations::refusal::Refusal;
 pub use operations::{Invocation, Lane, Registration, RegistrationExt, Running};
 pub use runtime::{Builder, Handle, Runtime};

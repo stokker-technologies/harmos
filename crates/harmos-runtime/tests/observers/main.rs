@@ -134,7 +134,12 @@ impl Control {
 impl ObserverBackend for Backend {
     type Resources = Control;
     fn definition(&self) -> harmos_runtime::Result<ObserverDefinition> {
-        Ok(ObserverDefinition { id: self.id.into(), interval: Duration::from_millis(5), streams: vec![], demand_keys: vec![] })
+        Ok(ObserverDefinition {
+            id: self.id.into(),
+            interval: Duration::from_millis(5),
+            streams: vec![],
+            demand_keys: vec![],
+        })
     }
 
     async fn run(&self, resources: Arc<Control>, mut activation: ObserverActivation) -> harmos_runtime::Result<()> {
@@ -171,15 +176,20 @@ impl Drop for Reentrant {
 impl ObserverBackend for FinalPublication {
     type Resources = harmos_runtime::state::StateManager<Bank>;
     fn definition(&self) -> harmos_runtime::Result<ObserverDefinition> {
-        Ok(ObserverDefinition { id: "final".into(), interval: Duration::from_secs(1), streams: vec![], demand_keys: vec![] })
+        Ok(ObserverDefinition {
+            id: "final".into(),
+            interval: Duration::from_secs(1),
+            streams: vec![],
+            demand_keys: vec![],
+        })
     }
     async fn run(&self, journal: Arc<Self::Resources>, mut activation: ObserverActivation) -> harmos_runtime::Result<()> {
         activation.ready();
         activation.stopping().await;
-        journal
-            .commit(support::deposit(9))
-            .await
-            .map_err(|source| Error::TaskFailed { domain: "observer final publication", source: Arc::new(source) })?;
+        journal.commit(support::deposit(9)).await.map_err(|source| Error::TaskFailed {
+            domain: "observer final publication",
+            source: Arc::new(source),
+        })?;
         Ok(())
     }
 }
@@ -188,7 +198,12 @@ impl ObserverBackend for ReentrantBackend {
     type Resources = ();
     fn definition(&self) -> harmos_runtime::Result<ObserverDefinition> {
         let _ = self.0.manager.resident_definitions();
-        Ok(ObserverDefinition { id: "retained".into(), interval: Duration::from_secs(1), streams: vec![], demand_keys: vec![] })
+        Ok(ObserverDefinition {
+            id: "retained".into(),
+            interval: Duration::from_secs(1),
+            streams: vec![],
+            demand_keys: vec![],
+        })
     }
     async fn run(&self, _: Arc<()>, _: ObserverActivation) -> harmos_runtime::Result<()> {
         unreachable!("definition stays inert")
@@ -225,7 +240,14 @@ impl Observing {
         };
         // The caller's span and subscriber follow the observation onto its task.
         let task = tokio::spawn(observing.in_current_span().with_current_subscriber());
-        Self { observer, activation, ready, interrupt: Some(interrupt), task: Some(task), activity: None }
+        Self {
+            observer,
+            activation,
+            ready,
+            interrupt: Some(interrupt),
+            task: Some(task),
+            activity: None,
+        }
     }
 
     fn is_ready(&self) -> bool {
@@ -595,7 +617,10 @@ async fn runtime_retains_failure() {
     assert_eq!(bad.completed.load(Ordering::SeqCst), 1);
     assert!(matches!(
         manager.resident(&a_key).unwrap().failure.as_deref(),
-        Some(Error::Backend { kind: harmos_runtime::BackendFailure::Conflict, .. })
+        Some(Error::Backend {
+            kind: harmos_runtime::BackendFailure::Conflict,
+            ..
+        })
     ));
     assert!(a.release().await.is_err());
     b.release().await.unwrap();
@@ -620,7 +645,10 @@ async fn backend_panic_joined() {
 async fn shutdown_drops_unused() {
     let runtime = runtime().await;
     let dropped = Arc::new(AtomicBool::new(false));
-    let resources = Arc::new(Reentrant { manager: runtime.operations.clone(), dropped: dropped.clone() });
+    let resources = Arc::new(Reentrant {
+        manager: runtime.operations.clone(),
+        dropped: dropped.clone(),
+    });
     let weak = Arc::downgrade(&resources);
     // Staging an empty catalog opens the scope without activating anything.
     drop(runtime.operations.stage_observers(&resources, std::iter::empty::<Unused>()).unwrap());
@@ -669,7 +697,10 @@ async fn shutdown_releases_factories() {
     let dropped = Arc::new(AtomicBool::new(false));
     runtime
         .operations
-        .register_observer(ReentrantBackend(Reentrant { manager: runtime.handle().operations, dropped: dropped.clone() }))
+        .register_observer(ReentrantBackend(Reentrant {
+            manager: runtime.handle().operations,
+            dropped: dropped.clone(),
+        }))
         .unwrap();
     runtime.stop().await.unwrap();
     assert!(dropped.load(Ordering::SeqCst));
@@ -726,7 +757,11 @@ async fn retirement_replays_failure() {
         };
         assert!(matches!(
             source.downcast_ref::<Error>(),
-            Some(Error::Backend { operation: "observer cleanup", kind: harmos_runtime::BackendFailure::Conflict, .. })
+            Some(Error::Backend {
+                operation: "observer cleanup",
+                kind: harmos_runtime::BackendFailure::Conflict,
+                ..
+            })
         ));
     }
     assert_eq!(control.completed.load(Ordering::Acquire), 1);

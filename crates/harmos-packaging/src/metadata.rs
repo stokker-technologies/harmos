@@ -173,7 +173,11 @@ impl Inputs {
             .or_else(|| std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from))
             .unwrap_or_else(|| directory.join("target"));
         let target = if target.is_absolute() { target } else { directory.join(target) };
-        Ok(Self { roots: BTreeSet::from([directory]), files: BTreeSet::from([manifest]), excluded: BTreeSet::from([target]) })
+        Ok(Self {
+            roots: BTreeSet::from([directory]),
+            files: BTreeSet::from([manifest]),
+            excluded: BTreeSet::from([target]),
+        })
     }
 
     pub(super) fn relevant(&self, path: &Path) -> bool {

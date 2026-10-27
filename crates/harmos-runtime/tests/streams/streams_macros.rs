@@ -177,8 +177,20 @@ async fn streams_publish_query() {
     runtime.streams.publish(streams::Pulse(7));
     runtime.streams.publish(streams::Pulse(8));
 
-    assert_eq!(next(&mut watching).await, Some(Item::Row(At { value: streams::Pulse(7), position: Position::ORIGIN })));
-    assert_eq!(next(&mut watching).await, Some(Item::Row(At { value: streams::Pulse(8), position: Position::ORIGIN })));
+    assert_eq!(
+        next(&mut watching).await,
+        Some(Item::Row(At {
+            value: streams::Pulse(7),
+            position: Position::ORIGIN
+        }))
+    );
+    assert_eq!(
+        next(&mut watching).await,
+        Some(Item::Row(At {
+            value: streams::Pulse(8),
+            position: Position::ORIGIN
+        }))
+    );
 
     let queried: Vec<_> = runtime
         .streams
@@ -210,7 +222,12 @@ fn generated_catalog_registers() {
 
 #[test]
 fn declared_coordinates_carry() {
-    let row = streams::Capture { take: streams::Take(3), lens: streams::Lens(9), ordinal: 41, value: -7 };
+    let row = streams::Capture {
+        take: streams::Take(3),
+        lens: streams::Lens(9),
+        ordinal: 41,
+        value: -7,
+    };
 
     assert_eq!(row.track(), (streams::Take(3), streams::Lens(9)), "the declaration's depth and component types are the row's own");
     assert_eq!(<streams::Capture as Tracked>::TRACK, ["take", "lens"]);

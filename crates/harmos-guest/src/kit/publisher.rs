@@ -62,13 +62,19 @@ impl From<PublishError> for harmos_domain::Refusal {
 
 impl<P> Clone for Publisher<P> {
     fn clone(&self) -> Self {
-        Self { context: self.context.clone(), _plugin: PhantomData }
+        Self {
+            context: self.context.clone(),
+            _plugin: PhantomData,
+        }
     }
 }
 
 impl Context {
     pub fn publisher<P: Declared>(&self) -> Publisher<P> {
-        Publisher { context: self.clone(), _plugin: PhantomData }
+        Publisher {
+            context: self.clone(),
+            _plugin: PhantomData,
+        }
     }
 }
 
@@ -81,7 +87,7 @@ impl<P: Declared> Publisher<P> {
             return Err(PublishError::UndeclaredStream);
         }
         self.context.calling_context()?;
-        let request = harmos_operations::streams::PublishRequest {
+        let request = harmos_operations::streams::Publish {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: None,

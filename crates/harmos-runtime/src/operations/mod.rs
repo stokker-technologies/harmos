@@ -30,6 +30,7 @@ mod finalization;
 mod grpc;
 mod handler;
 pub(crate) mod instances;
+mod invocation;
 pub(crate) mod lane;
 mod manager;
 pub mod middleware;
@@ -62,13 +63,14 @@ pub use grpc::GrpcBinding;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcMethod;
 pub use harmos_sdk::operations::{
-    Backoff, CHILD_METHOD, CacheKey, CacheKeyError, CallValue, Codec, ContextError, ContextValue, Contract, ContractError, Contracts,
-    Declarations, Direction, Entry, FailureKind, Grpc, Jitter, MAX_CACHE_KEY_BYTES, NoStream, Operation, OperationDeclaration,
-    OperationDefinition, OperationPolicy, PORTABLE_BYTES, PORTABLE_VALUES, PolicyError, ReplaySafety, RestartPolicy, RetryPolicy,
-    ServingError, Stream, Visibility, WIRE_METHOD, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError,
-    WireCommand, WireDeclaration, WireEndpoints, WireStreamLimits, WireStreams, WireTable, item_types,
+    Backoff, CHILD_METHOD, CacheKey, CacheKeyError, CallValue, Callees, Codec, ContextError, ContextValue, Contract, ContractError,
+    Contracts, Declarations, Dependent, Direction, Entry, Executable, FailureKind, Grpc, InvocationError, Invokes, Jitter,
+    MAX_CACHE_KEY_BYTES, NoStream, Operation, OperationDeclaration, OperationDefinition, OperationPolicy, PORTABLE_BYTES, PORTABLE_VALUES,
+    PolicyError, ReplaySafety, Requires, Resource, RestartPolicy, RetryPolicy, ServingError, Stream, Visibility, WIRE_METHOD, WireAnswer,
+    WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand, WireDeclaration, WireEndpoints,
+    WireStreamLimits, WireStreams, WireTable, item_types,
 };
-pub use harmos_sdk::operations::{CallContext, Host, Instance, Response, instance};
+pub use harmos_sdk::operations::{CallContext, Host, Instance, RequestClaims, Response, instance};
 pub use lane::{Capacity, Lane, LaneSet};
 #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 pub use remote::{RemoteStreamError, StreamEndpoints, StreamPeer};

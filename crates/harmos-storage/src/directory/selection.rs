@@ -101,8 +101,14 @@ mod tests {
     fn ancestor_rules_order() {
         let rules = vec![
             DirectoryRule { pattern: "**".into(), include: true },
-            DirectoryRule { pattern: "private/**".into(), include: false },
-            DirectoryRule { pattern: "private/released/**".into(), include: true },
+            DirectoryRule {
+                pattern: "private/**".into(),
+                include: false,
+            },
+            DirectoryRule {
+                pattern: "private/released/**".into(),
+                include: true,
+            },
         ];
         assert!(!selected("private/secret.bin", &rules));
         assert!(selected("private/released/data.bin", &rules));

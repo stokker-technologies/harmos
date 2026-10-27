@@ -17,7 +17,7 @@
 // Third Party Imports
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::parse::Parser;
+use syn::parse::{Parse, Parser};
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Error, Meta, Token, Type};
 // Local Imports
@@ -52,11 +52,27 @@ fn arguments(input: syn::parse::ParseStream<'_>) -> Result<Punctuated<Meta, Toke
 fn argument(input: syn::parse::ParseStream<'_>) -> Result<Meta, Error> {
     let fork = input.fork();
     let path: syn::Path = fork.parse()?;
-    if ["request", "response", "input", "output"].iter().any(|name| path.is_ident(name)) {
+    if ["response", "input", "output"].iter().any(|name| path.is_ident(name)) {
         let path = input.parse()?;
         let eq_token = input.parse()?;
         let value: Type = input.parse()?;
-        return Ok(Meta::NameValue(syn::MetaNameValue { path, eq_token, value: syn::Expr::Verbatim(quote!(#value)) }));
+        return Ok(Meta::NameValue(syn::MetaNameValue {
+            path,
+            eq_token,
+            value: syn::Expr::Verbatim(quote!(#value)),
+        }));
+    }
+    if path.is_ident("resources") || path.is_ident("operations") {
+        let path = input.parse()?;
+        let eq_token = input.parse()?;
+        let content;
+        syn::bracketed!(content in input);
+        let types = content.parse_terminated(Type::parse, Token![,])?;
+        return Ok(Meta::NameValue(syn::MetaNameValue {
+            path,
+            eq_token,
+            value: syn::Expr::Verbatim(quote!([#types])),
+        }));
     }
     input.parse()
 }

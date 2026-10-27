@@ -66,7 +66,9 @@ pub(super) fn export(
 
     // Prefix File Identities Without Changing Protobuf Type Names Or RPC Paths.
     let pool = DescriptorPool::decode(artifacts.descriptors())?;
-    let mut set = FileDescriptorSet { file: pool.files().map(|file| file.file_descriptor_proto().clone()).collect() };
+    let mut set = FileDescriptorSet {
+        file: pool.files().map(|file| file.file_descriptor_proto().clone()).collect(),
+    };
     let prefix = format!("{}/_wire/", settings.module);
     for file in &mut set.file {
         validate_file(file)?;

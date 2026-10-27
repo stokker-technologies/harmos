@@ -66,7 +66,10 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<(
 /* === Private Functions === */
 
 fn failed(source: impl std::error::Error + Send + Sync + 'static) -> Error {
-    Error::OperationFailed { operation: NAME.into(), source: Arc::new(source) }
+    Error::OperationFailed {
+        operation: NAME.into(),
+        source: Arc::new(source),
+    }
 }
 
 /* === Tests === */

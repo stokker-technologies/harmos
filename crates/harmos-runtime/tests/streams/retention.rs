@@ -96,7 +96,11 @@ impl Prunable {
 
 impl Snapshot {
     fn new(save: impl FnMut() -> io::Result<()> + Send + 'static) -> Self {
-        Self { taken: Position::ORIGIN, durable: Position::ORIGIN, save: Box::new(save) }
+        Self {
+            taken: Position::ORIGIN,
+            durable: Position::ORIGIN,
+            save: Box::new(save),
+        }
     }
 }
 

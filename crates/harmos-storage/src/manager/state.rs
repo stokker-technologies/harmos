@@ -37,33 +37,37 @@ use super::*;
 impl State {
     pub(crate) fn data_target(&self, through: &StorageCursor) -> Result<Target> {
         if !self.status.accepted.covers(through)? {
-            return Err(Error::InvalidInput { field: "storage cursor", reason: "cursor is ahead of admission" });
+            return Err(Error::InvalidInput {
+                field: "storage cursor",
+                reason: "cursor is ahead of admission",
+            });
         }
         if self.status.saved.covers(through)? {
-            return Ok(Target { index: self.data_flushed, sequence: self.status.saved.sequence });
+            return Ok(Target {
+                index: self.data_flushed,
+                sequence: self.status.saved.sequence,
+            });
         }
         let entry = self
             .queue
             .iter()
             .find(|entry| entry.operation.domain() == Domain::Data && entry.operation.sequence() >= through.sequence)
-            .ok_or(Error::InvalidInput { field: "storage cursor", reason: "admitted cursor has no pending owner" })?;
-        Ok(Target { index: entry.index, sequence: entry.operation.sequence() })
+            .ok_or(Error::InvalidInput {
+                field: "storage cursor",
+                reason: "admitted cursor has no pending owner",
+            })?;
+        Ok(Target {
+            index: entry.index,
+            sequence: entry.operation.sequence(),
+        })
     }
 
     pub(crate) fn collect(&mut self) {
         let now = self.execution.now();
         self.receipts.purge(now);
-        self.status.mutation_bytes = self.receipts.snapshot_bytes();
         self.status.pending_batches =
             self.reserved_batches + self.queue.len() + self.files.values().filter(|file| file.pending_batch()).count();
-        self.status.pending_bytes = self.reserved
-            + self.scratch_bytes
-            + self.retained_write_bytes.load(std::sync::atomic::Ordering::SeqCst)
-            + self.queue.bytes()
-            + self.files.values().map(|file| file.bytes()).sum::<usize>();
-        self.status.read_bytes = self.read_bytes
-            + self.deletions.values().map(|deletion| deletion.bytes).sum::<usize>()
-            + self.retained_read_bytes.load(std::sync::atomic::Ordering::SeqCst);
+        self.status.pending_bytes = self.reserved + self.queue.bytes() + self.files.values().map(|file| file.bytes()).sum::<usize>();
     }
 
     pub(crate) fn needs_write(&self, entry: &Pending) -> bool {
@@ -111,9 +115,10 @@ impl Inner {
 
     #[tracing::instrument(name = "storage.backend", level = "debug", skip_all, fields(method = method, outcome = "cancelled"))]
     pub(crate) async fn bounded<T>(&self, method: &'static str, future: StorageFuture<'_, T>) -> Result<T> {
+        let timeout = if method == "recovery.open" { crate::config::RECOVERY_TIMEOUT } else { IO_TIMEOUT };
         let result = self
             .execution
-            .timeout(IO_TIMEOUT, future)
+            .timeout(timeout, future)
             .await
             .map_err(|_| {
                 Error::backend(

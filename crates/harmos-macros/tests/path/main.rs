@@ -116,7 +116,10 @@ fn crate_builds_against() {
         author(&rustc, &fixtures, &dependencies, &output, &facade, "facade_catalog_with_override.rs", &["runtime", "mismatched_payload"]);
     let stderr = String::from_utf8_lossy(&mismatched.stderr);
     assert!(!mismatched.status.success(), "mismatched response payload unexpectedly compiled");
-    assert!(stderr.contains("type mismatch resolving"), "unexpected payload diagnostic:\n{stderr}");
+    assert!(
+        stderr.contains("error[E0271]") && stderr.contains("Result<Response<()>") && stderr.contains("Result<Response<u64>"),
+        "unexpected payload diagnostic:\n{stderr}"
+    );
 
     for fixture in [
         "facade_message_without_override.rs",

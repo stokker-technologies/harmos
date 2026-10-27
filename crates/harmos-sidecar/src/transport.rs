@@ -168,17 +168,27 @@ impl Packet {
             Body::Call { id, method, params } => {
                 let method = method.to_owned();
                 let range = payload_range(&bytes, params)?;
-                Self::Frame(Frame::Call { id, method, params: FramePayload::from_range(bytes, range) })
+                Self::Frame(Frame::Call {
+                    id,
+                    method,
+                    params: FramePayload::from_range(bytes, range),
+                })
             }
             Body::Cancel { id, preceding } => Self::Cancellation { id, preceding },
             Body::Push { method, params } => {
                 let method = method.to_owned();
                 let range = payload_range(&bytes, params)?;
-                Self::Frame(Frame::Push { method, params: FramePayload::from_range(bytes, range) })
+                Self::Frame(Frame::Push {
+                    method,
+                    params: FramePayload::from_range(bytes, range),
+                })
             }
             Body::Answer { id, result } => {
                 let range = payload_range(&bytes, result)?;
-                Self::Frame(Frame::Answer { id, result: FramePayload::from_range(bytes, range) })
+                Self::Frame(Frame::Answer {
+                    id,
+                    result: FramePayload::from_range(bytes, range),
+                })
             }
             Body::Refusal { id, refusal } => Self::Frame(Frame::Refusal { id, refusal: refusal.into_owned() }),
             Body::Credit { consumed } => Self::Credit(consumed),
@@ -193,7 +203,10 @@ impl Packet {
             }
             Self::Frame(Frame::Push { method, params }) => Body::Push { method, params },
             Self::Frame(Frame::Answer { id, result }) => Body::Answer { id: *id, result },
-            Self::Frame(Frame::Refusal { id, refusal }) => Body::Refusal { id: *id, refusal: std::borrow::Cow::Borrowed(refusal) },
+            Self::Frame(Frame::Refusal { id, refusal }) => Body::Refusal {
+                id: *id,
+                refusal: std::borrow::Cow::Borrowed(refusal),
+            },
             Self::Credit(consumed) => Body::Credit { consumed: *consumed },
             Self::Cancellation { id, preceding } => Body::Cancel { id: *id, preceding: *preceding },
         })
@@ -339,7 +352,13 @@ mod tests {
 
     impl PrefixReader {
         fn new(bytes: Vec<u8>, maximum: usize) -> Self {
-            Self { bytes, position: 0, maximum, reads: 0, interrupted: false }
+            Self {
+                bytes,
+                position: 0,
+                maximum,
+                reads: 0,
+                interrupted: false,
+            }
         }
     }
 
@@ -422,8 +441,15 @@ mod tests {
     async fn scalar_frames_coalesce() {
         let mut scratch = Vec::new();
         for frame in [
-            Frame::Call { id: 1, method: "call".into(), params: vec![23; 4096].into() },
-            Frame::Push { method: "push".into(), params: vec![23; 8192].into() },
+            Frame::Call {
+                id: 1,
+                method: "call".into(),
+                params: vec![23; 4096].into(),
+            },
+            Frame::Push {
+                method: "push".into(),
+                params: vec![23; 8192].into(),
+            },
             Frame::Answer { id: 2, result: vec![23; 32_768].into() },
         ] {
             let packet = Packet::Frame(frame);
@@ -439,11 +465,17 @@ mod tests {
     #[tokio::test]
     async fn scalar_partial_bulk() {
         let packet = Packet::Frame(Frame::Answer { id: 1, result: vec![7; 4096].into() });
-        let mut writer = ScalarWriter { maximum: Some(3), ..ScalarWriter::default() };
+        let mut writer = ScalarWriter {
+            maximum: Some(3),
+            ..ScalarWriter::default()
+        };
         write_with(&mut writer, &packet, &mut Vec::new()).await.unwrap();
         assert_eq!(writer.bytes, packet.encode().unwrap());
 
-        let packet = Packet::Frame(Frame::Answer { id: 2, result: vec![7; COALESCE_BYTES].into() });
+        let packet = Packet::Frame(Frame::Answer {
+            id: 2,
+            result: vec![7; COALESCE_BYTES].into(),
+        });
         let mut writer = ScalarWriter::default();
         let mut scratch = Vec::new();
         write_with(&mut writer, &packet, &mut scratch).await.unwrap();
@@ -472,8 +504,15 @@ mod tests {
     #[test]
     fn payload_keeps_backing() {
         for frame in [
-            Frame::Call { id: 1, method: "call".into(), params: vec![23; 4096].into() },
-            Frame::Push { method: "push".into(), params: vec![23; 4096].into() },
+            Frame::Call {
+                id: 1,
+                method: "call".into(),
+                params: vec![23; 4096].into(),
+            },
+            Frame::Push {
+                method: "push".into(),
+                params: vec![23; 4096].into(),
+            },
             Frame::Answer { id: 2, result: vec![23; 4096].into() },
         ] {
             let encoded = Packet::Frame(frame).encode().unwrap();

@@ -29,7 +29,7 @@ const PREFIX: &[u8] = b"\0HARMOS:ARTIFACT:V1:";
 
 const OWNED: [&str; 5] = ["contracts", "contributions", "publications", "listeners", "observers"];
 
-const SHARED: [&str; 3] = ["schematic_analyze", "schematic_route", "schematic_validate"];
+const SHARED: [&str; 3] = ["schematic.analyze", "schematic.route", "schematic.validate"];
 
 /* === Macros === */
 
@@ -121,11 +121,11 @@ fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>, required: 
 fn artifacts_embed_metadata() {
     let native = SHARED
         .into_iter()
-        .chain(["schematic_analyze_exchange", "schematic_analyze_upload", "schematic_list_directories"])
+        .chain(["schematic.analyze.exchange", "schematic.analyze.upload", "schematic.list.directories"])
         .collect::<BTreeSet<_>>();
     let portable = SHARED.into_iter().collect::<BTreeSet<_>>();
     // Only The Native Sidecar Publishes Analysis Progress, Through The Host
-    let publishing = BTreeSet::from(["host_publish"]);
+    let publishing = BTreeSet::from(["host.publish"]);
     let progress = BTreeSet::from(["schematic.analysis_progress"]);
     let none = BTreeSet::new();
 

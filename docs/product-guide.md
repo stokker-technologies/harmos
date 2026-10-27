@@ -49,7 +49,12 @@ features imply `runtime`.
 The `harmos` facade composes `harmos-domain` and `harmos-runtime`.
 Applications compose the runtime through `harmos`. Shared portable declarations use `harmos-domain`. Async plugin and client execution
 uses `harmos-sdk`; native plugins add
-`harmos-sidecar` and guests add `harmos-guest`. Build scripts and development tools
+`harmos-sidecar` and guests add `harmos-guest`. Guest operations use the same
+`harmos_guest::{Operation, Context, Response}` types as the SDK: the operation is the request, and
+`async fn run(self, ctx: Context<'_, Self>) -> Result<Response<T>, Self::Error>` is its only required method.
+Declare `resources` and `operations` on the operation; access them with `ctx.resource::<T>()` and `ctx.operation(request)`.
+`ctx.streams()` exposes the derived endpoints. Use dotted IDs and `visibility = Shared` or `Host` when needed; the default is `Private`.
+Plugin lifecycle hooks use `harmos_guest::kit::Context` and own shared resource initialization. Build scripts and development tools
 use `harmos-packaging`, which depends on the domain without hosting engines.
 `harmos-storage` owns the Arrow query and persistence engine plus signal kernels;
 `harmos-runtime` composes that engine with host lifecycle and managed state.
@@ -203,7 +208,7 @@ maxima of 256 rows and 4 MiB. `CatalogPage::entries` is a UTF-8 JSON array of th
 kind's entries: operation metadata (original contracts, provider
 owners and generations, selected grants and current gRPC availability), stored
 schemas or stored identities. The `next` cursor continues a bounded page. Stored
-kinds need the storage manager and a `host_catalog` grant scoped `schemas:*`,
+kinds need the storage manager and a `host.catalog` grant scoped `schemas:*`,
 `streams:*` or `objects:*` (`<kind>:schema:<id>` with `schema`); listing
 operations needs no grant. The operation listing applies original readiness and caller
 visibility/dependency rules; `conditional_access` means invocation still checks
@@ -246,11 +251,10 @@ singular `local_addr()` returns an address only when exactly one listener is
 active. Register shared services and middleware before attachment; they remain
 frozen while any listener is active.
 
-Storage uses explicit budget, request, response and filesystem settings, with no defaults:
+Storage uses explicit request, response and filesystem settings, with no defaults:
 
 ```rust
 let settings = StorageSettings {
-    budget: StorageBudget { read_memory_bytes },
     request: StorageRequestSettings {
         max_pending_queries,
         max_active_queries,
@@ -307,13 +311,10 @@ predecessors. Recovery writes consume `StorageBatch<RecoveryEntry>` and snapshot
 consume a singleton `StorageBatch<RecoverySnapshot>`, preserving shared ownership
 through retries and blocking filesystem work.
 
-Backend reads receive an owned `RetainedMemory` guard. Move it into blocking
-work and retain it with the completed result until the awaiting caller takes
-ownership; cancellation must not release the charge while that work still owns
-data. Admit additional parsing scratch with `try_grow_to` before allocation.
-Direct backend callers obtain a guard through `StorageManager::read_memory`
-and keep a clone for as long as they retain the returned data. Manager readers
-return shared owners that retain these charges automatically.
+Backend readers return shared page owners. Blocking work retains its input and
+output owners through cancellation and completion. Query concurrency, serialized
+page sizes and pending writes remain bounded by the configured request and response
+settings. Consumers own budgets for their retained results and conversion scratch.
 
 File operations share `FileSource::Stored(reference)` and `FileSource::Local(path)`.
 `ReadFile` streams a selected byte range; `HashFile` returns its byte count and
@@ -326,6 +327,20 @@ boundaries, path-scoped grants or extra per-plugin allowlists for local sources.
 Normal operation exposure and existing stored-file scope grants still apply.
 Transport paths use UTF-8 and reject unrepresentable paths; native readers retain
 the host path representation. Symlink traversal is rejected.
+
+Native `read_opened_file(file, range)` reads the supplied process-local handle,
+preserving its original inode even when its pathname is replaced. On Windows,
+the handle must permit a separate read open; exclusive handles are rejected so
+native reads can keep the caller's cursor independent without reopening by path.
+The shared
+`ReadSession` supports this reader, `follow_file`, `follow_production` and
+`file_progress` alongside retained metadata. `capture_opened_file(file, target,
+range, consistency)` synchronously returns an `OpenedCapture` that owns the
+original handle and `StorageFile`. Its asynchronous `finish` retains setup,
+copy progress and exact pending bytes across errors and caller cancellation.
+Existing producer prefixes are compared before a suffix is appended;
+`acknowledged()` reports completed copy progress. Stable capture detects source
+changes but does not freeze concurrent writers into an atomic snapshot.
 
 `FollowFile` starts at `Beginning`, `End` or `At(offset)` and streams data with
 explicit truncation/replacement events. Staged-production observation uses the
@@ -392,7 +407,7 @@ schema to emit.
 
 ```rust
 let mut reader = storage
-    .read_objects(ObjectRead::<Experiment> {
+    .read_objects::<Experiment>(ObjectRead {
         at: at.clone(),
         key: None,
         versions: ObjectVersions::Latest,
@@ -408,69 +423,34 @@ let pages = storage
     .await?; // ReadBatch<Vec<ReadBatch<Vec<StoredRecord<Reading>>>>>
 ```
 
-Typed `next()` results retain each page and its memory charge. `collect()` retains
-a collection of those pages without copying their records; its outer length is
-the page count. Borrow rows with `pages.iter().flat_map(|page| page.iter())`.
-For owned conversion, `page.try_map(additional_peak, convert_owned)` returns a
-new retained batch. The callback consumes the unique input; strong or weak
-aliases are refused. Bound all new output allocations and simultaneous conversion
-scratch before calling it. Admission is nonblocking and precedes the callback;
-Harmos accounts private owner growth. Existing charges remain retained without
-automatic shrinking, and failure consumes this handle. Nested pages must retain
-or map their own guards. Conversion errors and external captures must not retain
-payloads. The callback error type implements `From<harmos::storage::Error>`.
+Typed `next()` results share their page backing. `collect()` retains pages without
+copying records; its outer length is the page count. Borrow rows with
+`pages.iter().flat_map(|page| page.iter())`. `page.try_map(convert_owned)` and
+`left.try_map_with(right, combine_owned)` consume unique owners into new results;
+strong aliases refuse the move. The callback error implements
+`From<harmos::storage::Error>`. Consumers bound their own conversion allocations.
 
-`left.try_map_with(right, additional_peak, combine_owned)` moves two unique
-payloads into one retained result. It preserves every input claim and admits
-internal guard storage before allocation. This supports folding command pages
-into a retained parent object without cloning payloads or detaching their guards.
-Use one read session for dependent inputs; combining owners does not retroactively
-merge independent admission groups. Both handles are consumed on failure.
+Read directly through the storage manager with explicit cursors and versions.
+Drop a reader to release its active query slot. Retained pages remain valid after
+the reader is dropped. Queries use temporary disk-backed Arrow pages for global
+sorting and reductions, retaining their query slot through output. Cancellation
+stops detached reduction work and releases temporary files.
 
-Use one `storage.read_session()` when a read retains results while starting other
-object, record, Arrow or file reads. Pass that session to all participating helpers; its
-`read_objects`, `read_records`, `read_object`, `query` and `read_file` calls share admission dependencies.
-Explicit cursors and versions still select the data: a session is not a snapshot.
-Grouped reader creation returns resource exhaustion when an active query slot is
-unavailable. Independent manager reads retain their queued admission behavior.
+Native callers can attach their own allocation owner with
+`operations::RequestClaims::retain(owner)` and submit using `Host::call_owned` or
+`submit_owned`. Accepted work retains that owner after caller cancellation.
+Guest and sidecar bindings refuse process-local claims.
 
-`session.collection::<Vec<ProjectedRow>>()` creates an empty retained collection
-for bounded pagination. Grow it with `try_map`, reserving the full replacement
-Vec backing before allocation; child pages keep their own charges. Stop reading
-at the selected limit and drop the reader to release its active query slot.
-Retained results remain valid after the reader and session are dropped. Do not
-use an independent `read_memory` reservation for a collection that subsequent
-reads depend on: it does not establish the shared admission dependency.
-
-For mutable metadata, `session.try_memory(payload_bytes)` reserves a nonblocking
-claim including private scaffolding. Keep the claim with the table it covers and
-call `try_grow_by(additional_peak)` before allocating or mutating. Refusal preserves
-the existing claim and table. `bytes()` includes scaffolding; `try_grow_to(total)`
-is an absolute high-water operation, not an atomic increment across aliases.
-
-`ArrowBatch::try_map` consumes its RecordBatch handle into a retained DTO result,
-admitting new allocations and scratch first. Immutable Arrow buffer aliases keep
-the shared charge; batches created by unadmitted decoding utilities refuse this
-projection. `arrow::encode_payloads_memory(schema, payload, encoding, max_bytes)`
-counts output collection and row storage using the encoding walker without heap
-scratch. First admit and retain encoded rows, then inspect their bytes for the
-consumer codec decoding bound and admit the typed projection separately.
-`FileReadBatch::try_map` delegates to its unique retained owner, so
-existing file-slice aliases refuse an owned move. Runtime query streaming retains
-the Arrow source until destination admission, then converts to IPC inside the
-admitted send closure.
+`ArrowBatch::try_map(convert_owned)` projects a RecordBatch into a shared result.
+`FileReadBatch::try_map` requires a unique owner. Direct Arrow projections decode
+only selected payload fields, and repeated reads can reuse immutable Arrow pages.
 
 `harmos::filesystem::input::read(path, limit)` bounds regular-file reads.
 `harmos::filesystem::publication` owns staged atomic installation, replacement,
 removal and explicit durability confirmation across Unix and Windows.
 
-Before a write whose receipt must remain in pending ownership, use
-`storage.object_receipts_memory(count)` for the producer's response bound, add
-caller-owned pending/response scaffolding, and preclaim through the same session.
-Move the final receipt's cursor and claim into pending ownership before the next
-await. Retry durability or delivery using that receipt; reissuing an ordinary
-`write_object_group` creates new revisions. The bound uses declared producer
-history and covers receipt-vector capacity and both history copies per receipt.
+Keep write receipts with pending work and retry durability or delivery using
+those receipts; reissuing an ordinary `write_object_group` creates new revisions.
 Stored objects can enforce domain invariants through `StoredObject::validate`;
 object encoding, decoding and catalog validation apply the same check.
 
@@ -520,89 +500,161 @@ producer and clears the disconnected deadline. Finish, abort and storage shutdow
 still retire production; existing file-count and memory budgets remain enforced.
 A viewer owns its subscription, while the original service owns production.
 
-An operation declaration and its implementation share one vertical file. The
-request is a separate portable message; live resources are runtime-only fields.
-This example assumes a resource crate whose `Error` converts `DependencyError`:
+One file owns each operation. Its definition division contains messages, the operation struct, policy, contract implementations and
+contract tests. The runtime division follows the definition's Tests section and contains its own complete skeleton, including runtime-only
+tests. Shared models remain in the product domain; resource libraries are optional execution dependencies.
 
 ```rust
-#[cfg(feature = "runtime")]
-use {device::{Device, Error}, harmos::{Operation, OperationContext, Response}, std::sync::Arc};
+/* === --- === Definition Module === --- === */
 
-#[harmos::message]
-pub struct ReadRequest { pub channel: u32 }
+/* === Modules === */
 
-#[harmos::message]
-pub struct ReadResponse { pub value: f64 }
 
-#[harmos::operation(id = "read", request = ReadRequest, response = ReadResponse,
-    policy = crate::POLICY, infer_request)]
-pub struct Read {
-    #[cfg(feature = "runtime")]
-    device: Arc<Device>,
-}
+/* === Re-Exports === */
+
+
+/* === Imports === */
 
 #[cfg(feature = "runtime")]
-impl Operation for Read {
-    type Request = ReadRequest;
-    type Response = ReadResponse;
-    type Error = Error;
-    type Endpoints = ();
+use device::Device;
 
-    async fn initialize(context: OperationContext) -> Result<Self, Error> {
-        Ok(Self { device: context.dependency::<Device>()? })
+/* === Constants === */
+
+const POLICY: harmos::OperationPolicy = crate::POLICY;
+
+/* === Macros === */
+
+
+/* === Type Aliases === */
+
+
+/* === Structs === */
+
+#[harmos::message]
+pub struct Reading { pub value: f64 }
+
+#[harmos::operation(id = "temperature.read", response = Reading, policy = POLICY,
+    visibility = Shared, resources = [Device])]
+pub struct Read { pub channel: u32 }
+
+/* === Enums === */
+
+
+/* === Traits === */
+
+
+/* === Implementations === */
+
+
+/* === Public Functions === */
+
+
+/* === Private Functions === */
+
+
+/* === Tests === */
+
+
+/* === --- === Runtime Module === --- === */
+
+#[cfg(feature = "runtime")]
+mod runtime {
+    /* === Modules === */
+
+
+    /* === Re-Exports === */
+
+
+    /* === Imports === */
+
+    use super::*;
+    use harmos::{Context, Operation, Response};
+
+    /* === Constants === */
+
+
+    /* === Macros === */
+
+
+    /* === Type Aliases === */
+
+
+    /* === Structs === */
+
+
+    /* === Enums === */
+
+
+    /* === Traits === */
+
+
+    /* === Implementations === */
+
+    impl Operation for Read {
+        type Error = device::Error;
+
+        async fn run(self, ctx: Context<'_, Self>) -> Result<Response<Reading>, Self::Error> {
+            let device = ctx.resource::<Device>();
+            Ok(Reading { value: device.read(self.channel).await? }.into())
+        }
     }
 
-    async fn run(&mut self, _: OperationContext, request: &mut ReadRequest,
-        _: &mut ()) -> Result<Response<ReadResponse>, Error> {
-        Ok(ReadResponse { value: self.device.read(request.channel).await? }.into())
-    }
+    /* === Public Functions === */
+
+
+    /* === Private Functions === */
+
+
+    /* === Tests === */
 }
 ```
 
-The operations crate depends on `harmos` with `default-features = false` and
-uses `runtime = ["harmos/runtime", "dep:device"]`. Shared models remain in the
-product domain; independent resource libraries stay optional dependencies.
-Cargo feature unification can enable runtime elsewhere in a dependency graph.
+The operations crate uses `harmos` with `default-features = false` and
+`runtime = ["harmos/runtime", "dep:device"]`. A unit operation struct is a unit request. `response` defaults to `()` and
+`visibility` to `Private`; `Shared` and `Host` are short visibility forms. The operation struct is the request message;
+its runtime implementation declares only `Error` and consuming `run` (plus optional error classification).
+
+For a platform-only operation, put `#[cfg(windows)]` on its `mod` declaration and its catalog variant. The catalog preserves
+variant attributes for both portable projections and runtime registration. Short built-ins may keep their gated implementation inline.
 
 ```rust
-#[harmos::catalog]
-pub enum Operations { Read(temperature::read::Read) }
+#[cfg(windows)]
+mod desktop;
 
-let definitions = Operations::catalog();
+#[harmos::catalog]
+pub enum Operations {
+    Read(temperature::read::Read),
+    #[cfg(windows)]
+    Desktop(desktop::Inspect),
+}
+
 let mut dependencies = harmos::Dependencies::new();
 dependencies.insert(device)?;
 use harmos::RegistrationExt;
 runtime.register(Operations::registration(dependencies).lane(Lane::Interactive)).await?;
-let reading = runtime.operation(ReadRequest { channel: 3 }).retry(retry).run().await?;
-let pending = runtime.operation_for::<Read>(ReadRequest { channel: 3 }).start().await?;
-let reading = pending.join().await?;
-runtime.unregister(&harmos::QualifiedId::parse("host.read")?).await?;
+let reading = runtime.operation(Read { channel: 3 }).retry(retry).lane(Lane::Interactive).run().await?;
 ```
 
-`Application::Lanes` names the application's closed lane enum. Registration
-uses `.lane(lane)` or `.defaults::<Lane>()`, with optional
-`.default_lane_for::<Read>(lane)` member overrides. Builders are inert until
-`start` or `run`. Request-specific retry overrides leave the declaration unchanged.
-`infer_request` generates one `RequestFor` implementation; omit it when the
-same request serves several operations and invoke with `operation_for`.
+`ctx.call()` exposes portable call metadata. `ctx.resource::<T>()` returns `Arc<T>` infallibly for a type listed in `resources`.
+`operations = [other::Read]` permits `ctx.operation(other::Read { channel: 3 }).await`; catalogs aggregate these callees into
+plugin requirements. Explicit grants still belong to the plugin. There are three verification layers:
 
-Streaming declarations add `input = Item` or `output = Item`. Implementations
-use typed `StreamInput`, `StreamOutput` or their pair as `Endpoints`, passed
-through the invocation's `.endpoints(...)` method. Native and carrier handlers
-implement the same `Operation` trait and obtain resources through
-`OperationContext::dependency`. Portable call metadata remains separate from
-those process-local dependencies. Carrier dependencies must support their target.
+- Compile: generated `Requires<T>` and `Invokes<T>` bounds reject undeclared resource and operation access.
+- Activation: the complete registration requires all resources and callee contracts. Cross-plugin calls require `Shared`, or `Host`
+  for a host caller; missing targets and incompatible fingerprints are refused before execution.
+- Run: operation errors, deadlines and carrier faults remain fallible.
 
-`Message` exposes `CODEC`, `encode`, `encode_into`, `encoded_size`, `decode`
-and `decoding_memory`. `Portable::fingerprint()` identifies the complete typed
-contract; `digest()` identifies a payload, including exact floating-point bits.
-Operation definitions use fingerprints rather than manual operation versions.
-Stored application schema and journal versions retain their existing formats.
+`input = Item` and `output = Item` derive `StreamEndpoints`: `()` for unary calls, `StreamInput<Item>`, `StreamOutput<Item>`,
+or their pair. Borrow endpoints with `ctx.streams() -> &Self::StreamEndpoints`; input receives serialize through an asynchronous mutex.
+Invocation builders accept `.endpoints(...)` and remain inert until `.start()` or `.run()`.
 
-Operations initialize lazily with `initialize(OperationContext) -> Result<Self, Error>`.
-`run` returns `Response<T>`; `stop` settles work and `cleanup` releases resources.
-Services implement the separate `Service` trait, using the same context and
-lifecycle verbs. The runtime's service context is named `ServiceContext`.
+IDs use dotted segments `segment(.segment)*`, each `[a-z][a-z0-9_]*`. The runtime prepends the owner once:
+`temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `host.operations.cancel`, `harmos.initialize`
+and `storage.append_file`. `codec = manual` preserves an explicitly authored message codec.
+
+`Message` supplies encoding and decoding; `Portable` supplies structural fingerprints and payload digests. Retries run a clone
+of the original operation request. Large payloads belong in streams. The low-level `Carrier` lifecycle is used for carrier proxies
+and lifecycle controls; services retain their separate `Service` lifecycle.
 
 `OperationPolicy` controls overall timeout, attempt timeout and request retries.
 Resident restart behavior belongs to `ServicePolicy { stop_timeout, restart }`
@@ -615,8 +667,7 @@ runtime.register(entries.defaults::<Lane>()).await?;
 runtime.unregister(&harmos::QualifiedId::parse("host.poller")?).await?;
 ```
 
-The host assigns provider owners. Local IDs use lowercase letters, digits and
-underscores, starting with a letter; routing uses `owner.local_id` exactly once.
+The host assigns provider owners. Local IDs use dotted lowercase segments; routing uses `owner.local_id` exactly once.
 Registration validates a whole batch before publishing it. Withdrawal rejects
 new calls, cancels active work and awaits bounded cleanup. Failed cleanup retains
 the closing owner, and another `unregister` resumes settlement. Re-registration
@@ -796,7 +847,7 @@ The operations crate enables all built-in execution with `runtime`, which includ
 feature for the two SDK plugin controls, without linking host storage into a
 Wasm component. It never depends on `harmos-runtime`. Runtime composition supplies SDK-owned
 instance, discovery, publication, lifecycle and grant-access handles through
-`OperationContext`, along with the erased storage engine. State owners retain
+`ExecutionContext`, along with the erased storage engine. State owners retain
 authorization, generation fencing and resource lifecycle ownership.
 
 Protocol, artifact, envelope, journal and schema formats are v1. Only current

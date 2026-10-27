@@ -75,9 +75,10 @@ pub struct OperationManager<L: Lane> {
 #[derive(Clone)]
 pub struct Manager {
     pub(crate) registry: Arc<Registry>,
+    pub(super) schema_settings: Arc<crate::config::SchemaSettings>,
     pub(super) instances: Arc<Instances>,
     pub(super) lanes: Arc<Lanes>,
-    pub(super) preparation: Option<Arc<Semaphore>>,
+    pub(crate) preparation: Option<Arc<Semaphore>>,
     pub(super) context: Arc<std::sync::OnceLock<super::CallContext>>,
     pub(crate) resident: super::resident::Registry,
 }
@@ -85,6 +86,7 @@ pub struct Manager {
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 #[derive(Clone)]
 pub(crate) struct WeakOperationManager {
+    schema_settings: std::sync::Weak<crate::config::SchemaSettings>,
     registry: Weak<Registry>,
     instances: Weak<Instances>,
     lanes: Weak<Lanes>,
@@ -212,6 +214,7 @@ impl std::fmt::Debug for WeakOperationManager {
 impl WeakOperationManager {
     pub(crate) fn upgrade(&self) -> Option<Manager> {
         Some(Manager {
+            schema_settings: self.schema_settings.upgrade()?,
             registry: self.registry.upgrade()?,
             instances: self.instances.upgrade()?,
             lanes: self.lanes.upgrade()?,
@@ -229,6 +232,7 @@ impl WeakOperationManager {
 impl Manager {
     pub(crate) fn downgrade(&self) -> WeakOperationManager {
         WeakOperationManager {
+            schema_settings: Arc::downgrade(&self.schema_settings),
             registry: Arc::downgrade(&self.registry),
             instances: Arc::downgrade(&self.instances),
             lanes: Arc::downgrade(&self.lanes),

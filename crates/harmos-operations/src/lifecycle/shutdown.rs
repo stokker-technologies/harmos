@@ -23,11 +23,12 @@ use harmos_domain::{MemorySize, schema::Described};
 
 /* === Structs === */
 
+#[harmos::operation(harmos_path = crate, codec = manual, id = "harmos.shutdown", response = (), policy = super::POLICY, )]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub struct ShutdownRequest {}
+pub struct Shutdown {}
 
-#[harmos::operation(harmos_path = crate, id = "harmos_shutdown", request = ShutdownRequest, response = (), policy = super::POLICY, infer_request)]
-pub struct Shutdown {
+#[cfg(feature = "lifecycle")]
+pub struct Control {
     #[cfg(feature = "lifecycle")]
     instance: Box<dyn harmos_sdk::operations::lifecycle::LifecycleInstance>,
 }
@@ -38,32 +39,33 @@ pub struct Shutdown {
 
 /* === Implementations === */
 
-harmos_domain::postcard_product!(ShutdownRequest {});
-impl Described for ShutdownRequest {
+harmos_domain::postcard_product!(Shutdown {});
+impl Described for Shutdown {
     const NAME: &'static str = <harmos_domain::model::operations::lifecycle::ShutdownSchema as Described>::NAME;
     const FIELDS: &'static [harmos_domain::schema::declaration::Field] =
         <harmos_domain::model::operations::lifecycle::ShutdownSchema as Described>::FIELDS;
     const MARKER: &'static [u8] = <harmos_domain::model::operations::lifecycle::ShutdownSchema as Described>::MARKER;
 }
 
-impl MemorySize for ShutdownRequest {
+impl MemorySize for Shutdown {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
     }
 }
 
 #[cfg(feature = "lifecycle")]
-impl crate::Operation for Shutdown {
-    type Request = ShutdownRequest;
-    type Response = ();
+impl harmos_sdk::operations::Carrier for Control {
+    type Declaration = Shutdown;
     type Error = super::ControlError;
-    type Endpoints = ();
-    async fn initialize(context: crate::OperationContext) -> Result<Self, Self::Error> {
-        let access = context.dependency::<harmos_sdk::operations::lifecycle::LifecycleAccess>()?;
-        Ok(Self { instance: access.0.clone().begin(super::Action::Shutdown) })
+    type StreamEndpoints = ();
+    async fn bind(context: crate::ExecutionContext) -> Result<Self, Self::Error> {
+        let access = context.resource::<harmos_sdk::operations::lifecycle::LifecycleAccess>()?;
+        Ok(Self {
+            instance: access.0.clone().begin(super::Action::Shutdown),
+        })
     }
-    async fn run(
-        &mut self, context: crate::OperationContext, request: &mut ShutdownRequest, _: &mut (),
+    async fn attempt(
+        &mut self, context: crate::ExecutionContext, request: &mut Shutdown, _: &mut (),
     ) -> Result<crate::Response<()>, Self::Error> {
         let _ = &request;
         self.instance.run(context, &[], &[], &[]).await.map_err(super::ControlError::Access)?;
@@ -79,3 +81,8 @@ impl crate::Operation for Shutdown {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(feature = "lifecycle")]
+impl crate::Executable for Shutdown {
+    type Carrier = Control;
+}

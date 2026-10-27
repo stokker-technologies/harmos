@@ -101,7 +101,11 @@ fn contract_scenario() {
                 // The artifact moved on without this sidecar — saved elsewhere, or by a
                 // half-landed save whose reset never ran. Either way it belongs to
                 // generation 1 and the book in hand is generation 2.
-                let elsewhere = Ledger { balance: 500, applications: 1, payouts: Vec::new() };
+                let elsewhere = Ledger {
+                    balance: 500,
+                    applications: 1,
+                    payouts: Vec::new(),
+                };
                 write(&artifact, 2, Position(9), &elsewhere);
 
                 let saved = read(&artifact);

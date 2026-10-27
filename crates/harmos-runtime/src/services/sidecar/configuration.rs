@@ -51,13 +51,19 @@ impl Drop for DemandLease {
 
 impl<A: Application> Clone for Inbound<A> {
     fn clone(&self) -> Self {
-        Self { streams: self.streams.clone(), demands: self.demands.clone() }
+        Self {
+            streams: self.streams.clone(),
+            demands: self.demands.clone(),
+        }
     }
 }
 
 impl<A: Application> Default for Inbound<A> {
     fn default() -> Self {
-        Self { streams: BTreeMap::new(), demands: BTreeMap::new() }
+        Self {
+            streams: BTreeMap::new(),
+            demands: BTreeMap::new(),
+        }
     }
 }
 

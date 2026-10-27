@@ -110,8 +110,15 @@ impl Remote {
 
     pub(super) fn configure(&self, operations: Manager, scope: crate::plugin::PluginScope) -> crate::Result<()> {
         self.control
-            .set(ControlContext { operations, scope, binding: OnceLock::new() })
-            .map_err(|_| crate::Error::InvalidInput { field: "observer control", reason: "original transport was already configured" })
+            .set(ControlContext {
+                operations,
+                scope,
+                binding: OnceLock::new(),
+            })
+            .map_err(|_| crate::Error::InvalidInput {
+                field: "observer control",
+                reason: "original transport was already configured",
+            })
     }
 
     pub(super) fn capture_control(&self) -> crate::Result<()> {
@@ -173,8 +180,10 @@ impl ObserverBackend for Backend {
         if let Some(provider) = &remote.provider {
             activation.depend_on(provider)?;
         }
-        let control =
-            harmos_domain::observers::ControlRequest { observer: self.definition.id.clone(), generation: activation.id().value() };
+        let control = harmos_domain::observers::ControlRequest {
+            observer: self.definition.id.clone(),
+            generation: activation.id().value(),
+        };
         let children = activation.child_settlement();
         let mut invocation = match remote.observe(&children, &control) {
             Ok(invocation) => invocation,
@@ -219,7 +228,10 @@ impl ObserverBackend for Backend {
         if let Some(failure) = control.status().cleanup_failure().cloned() {
             children.forget(&control);
             activation.retain(RetainedControl(control), Arc::clone(&failure));
-            return Err(crate::Error::TaskFailed { domain: "remote observer cleanup", source: failure });
+            return Err(crate::Error::TaskFailed {
+                domain: "remote observer cleanup",
+                source: failure,
+            });
         }
         match result {
             Ok(_) => Ok(()),
@@ -233,7 +245,16 @@ impl ObserverBackend for Backend {
 
 impl Session {
     pub(super) fn new(remote: Arc<Remote>, operations: Manager, end: Option<harmos_sidecar::attach::Ending>) -> Self {
-        Self { closing: Some(Closing { remote, operations, scope: None, end, ending_failure: None }), outcome: None }
+        Self {
+            closing: Some(Closing {
+                remote,
+                operations,
+                scope: None,
+                end,
+                ending_failure: None,
+            }),
+            outcome: None,
+        }
     }
 
     // Bind retirement of this connection's observers to the session.
@@ -242,7 +263,10 @@ impl Session {
         if closing.scope.is_some() {
             return Err("native observer scope already bound".to_owned());
         }
-        let original = Arc::new(Retirement { operations: closing.operations.clone(), remote: Arc::clone(&closing.remote) });
+        let original = Arc::new(Retirement {
+            operations: closing.operations.clone(),
+            remote: Arc::clone(&closing.remote),
+        });
         closing.remote.retirement.set(Arc::downgrade(&original)).map_err(|_| "native observer retirement already bound".to_owned())?;
         closing.scope = Some(original);
         Ok(())
@@ -387,7 +411,10 @@ pub(super) async fn demand(
 /* === Private Functions === */
 
 fn failure(error: impl std::error::Error + Send + Sync + 'static) -> crate::Error {
-    crate::Error::TaskFailed { domain: "remote observer", source: Arc::new(error) }
+    crate::Error::TaskFailed {
+        domain: "remote observer",
+        source: Arc::new(error),
+    }
 }
 
 /* === Tests === */

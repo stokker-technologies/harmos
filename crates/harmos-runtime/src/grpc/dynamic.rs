@@ -189,7 +189,10 @@ impl Operation {
         bytes.extend_from_slice(&header[..prefix]);
         message.encode(&mut bytes).map_err(|error| invalid(error.to_string()))?;
         validator.validate(&bytes[prefix..]).map_err(|error| invalid(error.to_string()))?;
-        Ok(Payload { binding: Arc::clone(&self.binding), bytes })
+        Ok(Payload {
+            binding: Arc::clone(&self.binding),
+            bytes,
+        })
     }
 }
 

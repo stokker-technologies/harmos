@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex, Weak};
 
 // Local Imports
 use super::{Attachment, Context as PluginContext, Error, Plugin};
-use crate::operations::{Contract, OperationContext, ServingError, WireTable};
+use crate::operations::{Contract, ExecutionContext, ServingError, WireTable};
 use harmos_domain::model::operations::lifecycle;
 
 /* === Constants === */
@@ -112,13 +112,24 @@ impl<P: Plugin> Owner<P> {
         crate::inventory::operations::validate(&definitions).map_err(|error| Error::Inventory(Arc::new(error)))?;
         let mut serving = WireTable::new(assigned_owner).map_err(|error| Error::Serving(Arc::new(error)))?;
         serving.capacity(capacity);
+        serving.provide(std::any::TypeId::of::<P::Context>());
+        serving.provide(std::any::TypeId::of::<crate::operations::Calls>());
         let table = Arc::new(Mutex::new(serving));
         let owner = Arc::new(Self {
-            slot: Arc::new(Mutex::new(Slot { plugin: None, phase: Phase::Empty, attachment: None, generation_context: None })),
+            slot: Arc::new(Mutex::new(Slot {
+                plugin: None,
+                phase: Phase::Empty,
+                attachment: None,
+                generation_context: None,
+            })),
             table: Arc::downgrade(&table),
             contracts: contracts.into(),
             observers: observers.into(),
-            retirement: Mutex::new(Retirement { state: None, active: false, finished: false }),
+            retirement: Mutex::new(Retirement {
+                state: None,
+                active: false,
+                finished: false,
+            }),
         });
         Ok((owner, table))
     }
@@ -152,7 +163,11 @@ impl<P: Plugin> Owner<P> {
                 None => self.prepare_shutdown()?,
             };
             retirement.active = true;
-            RetirementLoan { owner: Arc::clone(self), state: Some(state), finished: false }
+            RetirementLoan {
+                owner: Arc::clone(self),
+                state: Some(state),
+                finished: false,
+            }
         };
         loan.state.as_mut().ok_or(Error::Phase)?.finalize().await?;
         loan.finished = true;
@@ -255,7 +270,10 @@ impl<P: Plugin> Owner<P> {
             let mut table = table.lock().map_err(|_| Error::Poisoned)?;
             let plugin = state.plugin.as_ref().ok_or(Error::Phase)?;
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                plugin.bind_operations(&mut table).and_then(|()| table.validate_contracts(&self.contracts))
+                plugin
+                    .bind_operations(&mut table)
+                    .and_then(|()| table.validate_contracts(&self.contracts))
+                    .and_then(|()| table.validate_callees(&state.assignments))
             }))
             .map_err(|_| Error::Panicked)
             .and_then(|result| result.map_err(|error| Error::Serving(Arc::new(error))))
@@ -299,7 +317,7 @@ impl<P: Plugin> crate::operations::lifecycle::PluginLifecycle for Owner<P> {
 }
 impl<P: Plugin> crate::operations::lifecycle::LifecycleInstance for LifecycleInvocation<P> {
     fn run<'a>(
-        &'a mut self, context: OperationContext, config: &'a [u8], generation: &'a [u8], assignments: &'a [u8],
+        &'a mut self, context: ExecutionContext, config: &'a [u8], generation: &'a [u8], assignments: &'a [u8],
     ) -> crate::operations::lifecycle::Transition<'a> {
         Box::pin(async move {
             let result: Result<(), Error<P>> = async {
@@ -308,7 +326,7 @@ impl<P: Plugin> crate::operations::lifecycle::LifecycleInstance for LifecycleInv
                         if self.state.is_none() {
                             self.state = Some(self.owner.prepare_initialize(config, generation, assignments)?);
                         }
-                        let carrier = context.dependency::<P::Context>().map_err(|error| Error::Dependency(Arc::new(error)))?;
+                        let carrier = context.resource::<P::Context>().map_err(|error| Error::Resource(Arc::new(error)))?;
                         self.owner.initialize(self.state.as_mut().ok_or(Error::Phase)?, &carrier).await
                     }
                     lifecycle::Action::Shutdown => {
@@ -317,7 +335,7 @@ impl<P: Plugin> crate::operations::lifecycle::LifecycleInstance for LifecycleInv
                         }
                         let state = self.state.as_mut().ok_or(Error::Phase)?;
                         if state.work.is_none() && state.result.is_none() {
-                            let carrier = context.dependency::<P::Context>().map_err(|error| Error::Dependency(Arc::new(error)))?;
+                            let carrier = context.resource::<P::Context>().map_err(|error| Error::Resource(Arc::new(error)))?;
                             state.context =
                                 Some(state.generation_context.map_or_else(|| (*carrier).clone(), |token| carrier.with_generation(token)));
                             state.start_shutdown()?;

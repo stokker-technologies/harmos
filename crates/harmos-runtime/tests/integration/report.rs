@@ -203,7 +203,11 @@ async fn native_causal_lifetimes() {
         child.follows_from(&source);
         (root, source, child)
     });
-    let report = capture::Report { guard: Some(Arc::clone(&guard)), story: Some(root), dispatch: Some(dispatch.clone()) };
+    let report = capture::Report {
+        guard: Some(Arc::clone(&guard)),
+        story: Some(root),
+        dispatch: Some(dispatch.clone()),
+    };
     let (entered, ready) = tokio::sync::oneshot::channel();
     let (release, waiting) = tokio::sync::oneshot::channel();
     tracing::dispatcher::with_default(&dispatch, || drop(source));
@@ -291,7 +295,11 @@ fn flush_preserves_failure() {
     });
     assert!(guard.flush().is_err());
     assert!(guard.flush().is_err());
-    let report = capture::Report { guard: Some(Arc::new(guard)), story: None, dispatch: None };
+    let report = capture::Report {
+        guard: Some(Arc::new(guard)),
+        story: None,
+        dispatch: None,
+    };
     let drop_report = || drop(report);
     let dropping = std::panic::AssertUnwindSafe(drop_report);
     assert!(std::panic::catch_unwind(dropping).is_err());
@@ -303,7 +311,11 @@ fn unwind_flushes_artifact() {
     let (layer, guard) = PerfettoLayer::builder(output.clone()).build();
     let subscriber = tracing_subscriber::registry().with(layer);
     let unwind = std::panic::AssertUnwindSafe(|| {
-        let _report = capture::Report { guard: Some(Arc::new(guard)), story: None, dispatch: None };
+        let _report = capture::Report {
+            guard: Some(Arc::new(guard)),
+            story: None,
+            dispatch: None,
+        };
         tracing::subscriber::with_default(subscriber, || {
             let _span = tracing::debug_span!("unwinding_report").entered();
             panic!("controlled story failure");

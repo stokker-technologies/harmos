@@ -48,7 +48,13 @@ pub struct FileCheckpoint {
 
 impl FileCheckpoint {
     pub(super) fn new(metadata: FileMetadata, session: FileSession, length: u64, hash: &Sha256) -> Self {
-        Self { metadata, session, length, hash_format: 1, hash_state: hash.serialize().to_vec() }
+        Self {
+            metadata,
+            session,
+            length,
+            hash_format: 1,
+            hash_state: hash.serialize().to_vec(),
+        }
     }
 
     pub fn sha256(&self) -> Result<[u8; 32]> {
@@ -92,7 +98,10 @@ impl MemorySize for FileCheckpoint {
 /* === Private Functions === */
 
 fn invalid() -> Error {
-    Error::InvalidInput { field: "file checkpoint", reason: "invalid metadata, generation or hash state" }
+    Error::InvalidInput {
+        field: "file checkpoint",
+        reason: "invalid metadata, generation or hash state",
+    }
 }
 
 /* === Tests === */

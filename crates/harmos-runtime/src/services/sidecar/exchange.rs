@@ -123,7 +123,11 @@ where
                         continue;
                     }
                     let id = self.mint();
-                    let frame = Frame::Call { id, method: request.method, params: request.params };
+                    let frame = Frame::Call {
+                        id,
+                        method: request.method,
+                        params: request.params,
+                    };
                     if !frame.fits() {
                         let _ = request.answer.send(Err(SidecarError::refused(
                             Frame::OVERSIZED,
@@ -148,7 +152,16 @@ where
     }
 
     pub(super) async fn step(&mut self, requests: &mut mpsc::UnboundedReceiver<Request>) -> Step {
-        let Self { inbound, returned, context, pending, deliveries, delivery_turn, manager_owned_stop, .. } = self;
+        let Self {
+            inbound,
+            returned,
+            context,
+            pending,
+            deliveries,
+            delivery_turn,
+            manager_owned_stop,
+            ..
+        } = self;
         let mut stopping = std::pin::pin!(context.stopping());
 
         std::future::poll_fn(|cx| {

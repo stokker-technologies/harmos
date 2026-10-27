@@ -50,7 +50,14 @@ impl Mirror {
         let checkpoint = Arc::new(AtomicU64::new(0));
         let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
 
-        (Self { checkpoint: Arc::clone(&checkpoint), seen: Arc::clone(&seen), ceiling: None }, (checkpoint, seen))
+        (
+            Self {
+                checkpoint: Arc::clone(&checkpoint),
+                seen: Arc::clone(&seen),
+                ceiling: None,
+            },
+            (checkpoint, seen),
+        )
     }
 
     pub(crate) fn stalled_at(ceiling: Position) -> (Self, Watched) {

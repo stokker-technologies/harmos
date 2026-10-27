@@ -1,8 +1,8 @@
 # Consumer Workspace
 
 This is a recommended consumer layout, not a claim that an existing example
-already has these exact directories. All product crates, including interfaces,
-live under `crates/`. Keep only populated crates and modules.
+already has these exact directories. Product crates and a single sidecar or guest live under `crates/`. Several plugins use
+`plugins/sidecars/<name>` and `plugins/guests/<name>`, each with `publish = false`. Keep only populated crates and modules.
 
 ```text
 product/
@@ -63,8 +63,7 @@ composition and resource construction remain in the runtime. Interfaces enable
 the operations crate's `runtime` feature only when they execute its factories.
 
 `runtime.rs` is an illustrative cohesive assembly module, not a mandatory
-filename. Operation groups can contain several related operations; do not
-require one file per operation. Resource modules need not mirror the domain
+filename. Use one file per operation, with complete definition and runtime skeletons. Resource modules need not mirror the domain
 tree. `product-automation` and `product-grpc` illustrate independent external
 clients, not required crates.
 

@@ -43,12 +43,18 @@ pub mod __private {
 
 /* === Re-Exports === */
 
+pub(crate) use codec::encode_bytes;
 pub use codec::{Codec, Encode, EncodeSettings, Encoder, Transcoded, Wire};
 
 pub use decoding::{DecodeSettings, Decoder};
 pub use envelope::{InputEnvelope, OutputEnvelope};
+pub use envelope::{
+    PreparedFrame, input_payload_limit, input_payload_limit_admitted, output_item_len, output_item_len_admitted, output_payload_limit,
+    output_payload_limit_admitted, prepare_input_item, prepare_input_request,
+};
 pub use generation::{GenerateError, GeneratedService, Method, generate_server};
 pub use harmos_packaging::proto::{DescriptorError, descriptor};
+pub use harmos_sdk::grpc::{encoded_len, encoded_len_admitted};
 
 pub use input::{InputError, input, open};
 
@@ -277,7 +283,11 @@ impl Opening {
 pub fn stream<O: crate::operations::OperationDeclaration>(
     instance: crate::operations::Running<O>, items: crate::operations::StreamInput<<O::Output as crate::operations::Direction>::Item>,
 ) -> ResponseStream<O, <O::Output as crate::operations::Direction>::Item> {
-    ResponseStream { pending: Box::pin(response(instance)), items: Some(items.into_receiver()), result: None }
+    ResponseStream {
+        pending: Box::pin(response(instance)),
+        items: Some(items.into_receiver()),
+        result: None,
+    }
 }
 
 pub fn exchange<O, S>(
@@ -290,7 +300,11 @@ where
         + Send
         + 'static,
 {
-    ResponseStream { pending: Box::pin(self::input(instance, input, incoming)), items: Some(output.into_receiver()), result: None }
+    ResponseStream {
+        pending: Box::pin(self::input(instance, input, incoming)),
+        items: Some(output.into_receiver()),
+        result: None,
+    }
 }
 
 pub fn response<O: crate::operations::OperationDeclaration>(

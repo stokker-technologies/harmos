@@ -239,7 +239,10 @@ pub async fn streams_ac006_concurrent_waveform_measurement() {
         let mut sequence = 0_u64;
         for (rows, rest) in PHASES {
             for _ in 0..rows {
-                published_streams.publish(Waveform { captured_at_ns: sequence * 40_000, sample: (sequence as i16).wrapping_mul(31) });
+                published_streams.publish(Waveform {
+                    captured_at_ns: sequence * 40_000,
+                    sample: (sequence as i16).wrapping_mul(31),
+                });
                 sequence += 1;
             }
             std::thread::sleep(rest);

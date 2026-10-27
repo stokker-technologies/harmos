@@ -69,6 +69,15 @@ impl Authority {
         Self::TrustedHost(operations.execution())
     }
 
+    fn preparation(&self) -> Option<Arc<tokio::sync::Semaphore>> {
+        match self {
+            Self::TrustedHost(operations) => operations.preparation.clone(),
+            Self::Binding(binding) => binding.operations.preparation.clone(),
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            Self::Plugin(caller) => caller.operations.preparation.clone(),
+        }
+    }
+
     fn contextual<T>(&self, request: &Request<T>) -> Self {
         let Some(context) = request.extensions().get::<super::inbound::TrustedContext>() else {
             return self.clone();
@@ -199,10 +208,14 @@ where
             return error.into_http();
         }
         let codec = match Codec::<W, O::Request, crate::operations::Response<O::Response>>::new(settings.decode, settings.encode) {
-            Ok(codec) => codec,
+            Ok(codec) => codec.with_preparation(authority.preparation()),
             Err(error) => return error.into_http(),
         };
-        let call = Endpoint::<O> { authority, settings, operation: PhantomData };
+        let call = Endpoint::<O> {
+            authority,
+            settings,
+            operation: PhantomData,
+        };
         codec.server().unary(call, request).await
     })
 }
@@ -221,10 +234,14 @@ where
             Event<StreamItem<<O::Output as crate::operations::Direction>::Item>, crate::operations::Response<O::Response>>,
         >::new(settings.decode, settings.encode)
         {
-            Ok(codec) => codec,
+            Ok(codec) => codec.with_preparation(authority.preparation()),
             Err(error) => return error.into_http(),
         };
-        let call = Endpoint::<O> { authority, settings, operation: PhantomData };
+        let call = Endpoint::<O> {
+            authority,
+            settings,
+            operation: PhantomData,
+        };
         codec.server().server_streaming(call, request).await
     })
 }
@@ -243,10 +260,14 @@ where
             crate::operations::Response<O::Response>,
         >::new(settings.decode, settings.encode)
         {
-            Ok(codec) => codec,
+            Ok(codec) => codec.with_preparation(authority.preparation()),
             Err(error) => return error.into_http(),
         };
-        let call = Endpoint::<O> { authority, settings, operation: PhantomData };
+        let call = Endpoint::<O> {
+            authority,
+            settings,
+            operation: PhantomData,
+        };
         codec.server().client_streaming(call, request).await
     })
 }
@@ -268,10 +289,14 @@ where
             Event<StreamItem<<O::Output as crate::operations::Direction>::Item>, crate::operations::Response<O::Response>>,
         >::new(settings.decode, settings.encode)
         {
-            Ok(codec) => codec,
+            Ok(codec) => codec.with_preparation(authority.preparation()),
             Err(error) => return error.into_http(),
         };
-        let call = Endpoint::<O> { authority, settings, operation: PhantomData };
+        let call = Endpoint::<O> {
+            authority,
+            settings,
+            operation: PhantomData,
+        };
         codec.server().streaming(call, request).await
     })
 }

@@ -125,7 +125,7 @@ impl Host for Supervisor {
     where
         S::Row: Message,
     {
-        self.publication::<S>(std::slice::from_ref(row), &[self.now()], None).await.map_err(|error| match error {
+        self.publication::<S>(&[row.encode()], &[self.now()], None).await.map_err(|error| match error {
             super::PublishError::Publication(error) => CallError::Publication(error),
             super::PublishError::Call(error) => error,
         })
@@ -143,8 +143,22 @@ impl Host for Supervisor {
 
     async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<OperationInstance<O>, CallError> {
         let bytes = self.child_call::<O>(&request, true).await?;
-        let id = u64::decode(bytes.as_slice()).map_err(|error| CallError::Malformed { method: O::ID, message: error.to_string() })?;
-        Ok(OperationInstance { host: self.clone(), id: Id::new(id), released: false, _operation: PhantomData })
+        let id = u64::decode(bytes.as_slice()).map_err(|error| CallError::Malformed {
+            method: O::ID,
+            message: error.to_string(),
+        })?;
+        Ok(OperationInstance {
+            host: self.clone(),
+            id: Id::new(id),
+            released: false,
+            _operation: PhantomData,
+        })
+    }
+
+    async fn submit_owned<O: OperationDeclaration>(
+        &self, _: O::Request, _: harmos_sdk::operations::RequestClaims,
+    ) -> Result<OperationInstance<O>, CallError> {
+        Err(CallError::LocalResources { method: O::ID })
     }
 
     async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<Response<O::Response>, CallError> {
@@ -160,12 +174,18 @@ impl Host for Supervisor {
 /* === Private Functions === */
 
 fn decode_response<O: OperationDeclaration>(bytes: &[u8]) -> Result<Response<O::Response>, CallError> {
-    let response = O::Response::decode(bytes).map_err(|error| CallError::Malformed { method: O::ID, message: error.to_string() })?;
+    let response = O::Response::decode(bytes).map_err(|error| CallError::Malformed {
+        method: O::ID,
+        message: error.to_string(),
+    })?;
     Ok(Response::new(response))
 }
 
 fn decode_status(bytes: &[u8]) -> Result<Status, CallError> {
-    let malformed = |message: String| CallError::Malformed { method: harmos_sdk::operations::CHILD_METHOD, message };
+    let malformed = |message: String| CallError::Malformed {
+        method: harmos_sdk::operations::CHILD_METHOD,
+        message,
+    };
     let state = InstanceState::decode(bytes).map_err(|error| malformed(error.to_string()))?;
     Status::try_from(&state).map_err(|error| malformed(error.to_string()))
 }

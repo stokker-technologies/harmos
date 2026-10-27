@@ -122,7 +122,14 @@ impl Bucket {
         let mut summary = Summary::new();
         summary.push(point.value);
 
-        Self { field: field.into(), first: point, last: point, min: point, max: point, summary }
+        Self {
+            field: field.into(),
+            first: point,
+            last: point,
+            min: point,
+            max: point,
+            summary,
+        }
     }
 
     pub fn merge(&self, later: &Self) -> Self {
@@ -157,7 +164,13 @@ impl Tier {
     pub(crate) fn channel(capacity: usize) -> (Self, mpsc::Receiver<Request>) {
         let (sender, receiver) = mpsc::channel(capacity.max(1));
 
-        (Self { sender, readers: Arc::new(tokio::sync::Semaphore::new(capacity.max(1))) }, receiver)
+        (
+            Self {
+                sender,
+                readers: Arc::new(tokio::sync::Semaphore::new(capacity.max(1))),
+            },
+            receiver,
+        )
     }
 
     pub(crate) fn reader_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, crate::streams::ReadError> {
@@ -170,7 +183,15 @@ impl Tier {
     ) -> Result<Opened, crate::streams::ReadError> {
         let (reply, answer) = oneshot::channel();
         self.sender
-            .send(Request::Reader { stream, track, start, end, limits, permit, reply })
+            .send(Request::Reader {
+                stream,
+                track,
+                start,
+                end,
+                limits,
+                permit,
+                reply,
+            })
             .await
             .map_err(|_| crate::streams::ReadError::Closed)?;
         answer.await.map_err(|_| crate::streams::ReadError::Closed)

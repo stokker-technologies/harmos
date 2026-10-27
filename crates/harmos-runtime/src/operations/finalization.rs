@@ -61,7 +61,11 @@ impl crate::supervision::cleanup::Resource for Retained {
 /* === Public Functions === */
 
 pub(super) fn failed(operation: &str, outcome: Option<Arc<Error>>, source: Arc<Error>) -> Error {
-    Error::OperationFinalization { operation: operation.to_owned(), outcome, source }
+    Error::OperationFinalization {
+        operation: operation.to_owned(),
+        outcome,
+        source,
+    }
 }
 
 /* === Private Functions === */

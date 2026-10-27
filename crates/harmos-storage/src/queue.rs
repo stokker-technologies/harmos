@@ -78,7 +78,6 @@ impl PendingQueue {
                 && entry.operation.domain() == domain
                 && (sequence == u64::MAX || entry.operation.sequence() <= sequence)
             {
-                entry.retire();
                 *bytes -= entry.bytes;
                 false
             } else {

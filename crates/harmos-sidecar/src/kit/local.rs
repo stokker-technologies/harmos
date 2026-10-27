@@ -93,7 +93,13 @@ pub(crate) fn binary(opening: Opening) -> Attached {
         })
         .await
     });
-    let ending = Ending::new(LocalEnd { opening: Some(opening), stop: Some(stop), task: Some(task), work: None, completed: false });
+    let ending = Ending::new(LocalEnd {
+        opening: Some(opening),
+        stop: Some(stop),
+        task: Some(task),
+        work: None,
+        completed: false,
+    });
     let (read, write) = split(here);
     let (control_read, control_write) = split(control_here);
     Attached::new(write, read).control((Box::new(control_read), Box::new(control_write))).ending(ending)

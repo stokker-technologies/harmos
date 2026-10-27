@@ -77,7 +77,10 @@ impl<A: Application> Runtime<A> {
             if let Some(current) = self.storage.get()
                 && !current.same_instance(&storage)
             {
-                return Err(Error::AlreadyRegistered { domain: "runtime storage", name: "primary".to_owned() });
+                return Err(Error::AlreadyRegistered {
+                    domain: "runtime storage",
+                    name: "primary".to_owned(),
+                });
             }
             storage.claim_owner(self.operations.resident_identity())?;
             self.storage.get_or_init(|| storage)
@@ -90,10 +93,10 @@ impl<A: Application> Runtime<A> {
     }
 
     pub async fn stop_with_timeout(&self, timeout: Duration) -> Result<Position> {
-        let deadline = tokio::time::Instant::now()
-            .checked_add(timeout)
-            .filter(|_| !timeout.is_zero())
-            .ok_or(Error::InvalidInput { field: "runtime shutdown timeout", reason: "must be positive and representable" })?;
+        let deadline = tokio::time::Instant::now().checked_add(timeout).filter(|_| !timeout.is_zero()).ok_or(Error::InvalidInput {
+            field: "runtime shutdown timeout",
+            reason: "must be positive and representable",
+        })?;
         match tokio::time::timeout_at(deadline, self.stop()).await {
             Ok(result) => result,
             Err(_) => {
@@ -139,7 +142,11 @@ impl<A: Application> Runtime<A> {
                     outcome: outcome.clone(),
                     progress: progress.clone(),
                 };
-                *stopping = Stopping::Closing { cleanup: Arc::new(Cleanup::new(original)), outcome, progress };
+                *stopping = Stopping::Closing {
+                    cleanup: Arc::new(Cleanup::new(original)),
+                    outcome,
+                    progress,
+                };
             }
             let Stopping::Closing { cleanup, outcome, .. } = &*stopping else {
                 unreachable!("shutdown retains its driver before awaiting it");
@@ -205,12 +212,18 @@ impl<A: Application> Shutdown<A> {
             if let Err(source) = observers
                 && settled.is_ok()
             {
-                settled = Err(Failure { domain: "observer", source: Arc::new(source) });
+                settled = Err(Failure {
+                    domain: "observer",
+                    source: Arc::new(source),
+                });
             }
             if let Err(source) = services
                 && settled.is_ok()
             {
-                settled = Err(Failure { domain: "service", source: Arc::new(source) });
+                settled = Err(Failure {
+                    domain: "service",
+                    source: Arc::new(source),
+                });
             }
             self.handles.streams.close();
             self.state = Drain::Drained(settled);
@@ -231,7 +244,10 @@ impl<A: Application> Shutdown<A> {
         if let Err(source) = services
             && settled.is_ok()
         {
-            settled = Err(Failure { domain: "service", source: Arc::new(source) });
+            settled = Err(Failure {
+                domain: "service",
+                source: Arc::new(source),
+            });
         }
         self.outcome.set(settled).unwrap_or_else(|_| unreachable!("shutdown publishes its outcome once"));
         Ok(())
@@ -275,13 +291,19 @@ async fn joined(supervisor: &mut JoinHandle<Position>, journal_handles: &Weak<()
             supervisor.await
         }
     }
-    .map_err(|source| Failure { domain: "journal supervisor", source: Arc::new(source) })
+    .map_err(|source| Failure {
+        domain: "journal supervisor",
+        source: Arc::new(source),
+    })
 }
 
 fn outcome(settled: &Outcome) -> Result<Position> {
     match settled {
         Ok(position) => Ok(*position),
-        Err(failure) => Err(Error::TaskFailed { domain: failure.domain, source: failure.source.clone() }),
+        Err(failure) => Err(Error::TaskFailed {
+            domain: failure.domain,
+            source: failure.source.clone(),
+        }),
     }
 }
 

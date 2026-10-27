@@ -62,7 +62,10 @@ pub fn load(runtime: &Runtime, component: &[u8]) -> Result<Loaded<SchematicEdito
 /* === Private Functions === */
 
 pub(super) fn failure(source: impl std::error::Error + Send + Sync + 'static) -> harmos::Error {
-    harmos::Error::OperationFailed { operation: NAME.into(), source: Arc::new(source) }
+    harmos::Error::OperationFailed {
+        operation: NAME.into(),
+        source: Arc::new(source),
+    }
 }
 
 /* === Tests === */

@@ -51,7 +51,10 @@ pub(crate) struct Intake {
 
 impl Ingest {
     pub(crate) fn new() -> Self {
-        Self { taken: watch::channel(BTreeMap::new()).0, next: AtomicU64::new(0) }
+        Self {
+            taken: watch::channel(BTreeMap::new()).0,
+            next: AtomicU64::new(0),
+        }
     }
 
     pub(crate) fn engage(self: &Arc<Self>, resume: u64) -> Intake {

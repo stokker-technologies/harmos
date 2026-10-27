@@ -69,6 +69,16 @@ impl HarmosPath {
     pub(crate) fn resolve(explicit: Option<Path>) -> Self {
         explicit.map(Self).unwrap_or_else(Self::catalog)
     }
+
+    pub(crate) fn execution_gate(&self) -> TokenStream {
+        let Some(segment) = self.0.segments.last() else { return TokenStream::new() };
+        let mut name = segment.ident.to_string();
+        if name == "crate" {
+            name = std::env::var("CARGO_PKG_NAME").unwrap_or_default().replace('-', "_");
+        }
+        let execution = matches!(name.as_str(), "harmos_runtime" | "harmos_sdk");
+        if execution { TokenStream::new() } else { quote::quote!(#[cfg(feature = "runtime")]) }
+    }
 }
 
 impl ToTokens for HarmosPath {

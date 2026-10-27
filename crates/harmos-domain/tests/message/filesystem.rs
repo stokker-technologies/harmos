@@ -15,10 +15,7 @@
 
 use harmos_domain::model::storage::*;
 use harmos_domain::{MemorySize, Message};
-use harmos_operations::storage::{
-    CaptureFileRequest, FollowFileRequest, FollowProductionRequest, HashFileRequest, ListDirectoryRequest, ReadFileRequest,
-    WatchDirectoryRequest,
-};
+use harmos_operations::storage::{CaptureFile, FollowFile, FollowProduction, HashFile, ListDirectory, ReadFile, WatchDirectory};
 use std::path::PathBuf;
 
 /* === Constants === */
@@ -57,20 +54,33 @@ fn directory_contract_roundtrips() {
         root: PathBuf::from("data/measurements"),
         recursive: true,
         rules: vec![
-            DirectoryRule { pattern: "**/*.bin".into(), include: true },
-            DirectoryRule { pattern: "private/**".into(), include: false },
+            DirectoryRule {
+                pattern: "**/*.bin".into(),
+                include: true,
+            },
+            DirectoryRule {
+                pattern: "private/**".into(),
+                include: false,
+            },
         ],
     };
-    roundtrip(ListDirectoryRequest { selection: selection.clone() });
-    roundtrip(WatchDirectoryRequest { selection, include_existing: true });
-    let entry = DirectoryEntry { path: "measurements/run.bin".into(), directory: false, length: 8192 };
+    roundtrip(ListDirectory { selection: selection.clone() });
+    roundtrip(WatchDirectory { selection, include_existing: true });
+    let entry = DirectoryEntry {
+        path: "measurements/run.bin".into(),
+        directory: false,
+        length: 8192,
+    };
     for event in [
         DirectoryEvent::Existing(entry.clone()),
         DirectoryEvent::Created(entry.clone()),
         DirectoryEvent::Modified(entry),
         DirectoryEvent::InitialScanComplete,
         DirectoryEvent::Removed { path: "old.bin".into() },
-        DirectoryEvent::Renamed { from: "old.bin".into(), to: "new.bin".into() },
+        DirectoryEvent::Renamed {
+            from: "old.bin".into(),
+            to: "new.bin".into(),
+        },
         DirectoryEvent::RescanRequired,
     ] {
         roundtrip(event);
@@ -80,8 +90,10 @@ fn directory_contract_roundtrips() {
 
 #[test]
 fn file_contract_roundtrips() {
-    let history =
-        StoreHistory { store: harmos_domain::Identifier::new("files").unwrap(), epoch: harmos_domain::Identifier::new("first").unwrap() };
+    let history = StoreHistory {
+        store: harmos_domain::Identifier::new("files").unwrap(),
+        epoch: harmos_domain::Identifier::new("first").unwrap(),
+    };
     let metadata = FileMetadata {
         id: harmos_domain::Identifier::new("source").unwrap(),
         scope: None,
@@ -98,16 +110,24 @@ fn file_contract_roundtrips() {
     let range = ByteRange { offset: 1, limit: Some(2) };
     for source in [FileSource::Stored(file), FileSource::Local(PathBuf::from("measurements/échantillon.bin"))] {
         roundtrip(source.clone());
-        roundtrip(ReadFileRequest { source: source.clone(), range });
-        roundtrip(HashFileRequest { source: source.clone(), range });
+        roundtrip(ReadFile { source: source.clone(), range });
+        roundtrip(HashFile { source: source.clone(), range });
         for consistency in [CaptureConsistency::Bounded, CaptureConsistency::Stable] {
-            roundtrip(CaptureFileRequest { source: source.clone(), range, metadata: metadata.clone(), consistency });
+            roundtrip(CaptureFile {
+                source: source.clone(),
+                range,
+                metadata: metadata.clone(),
+                consistency,
+            });
         }
         for start in [FollowStart::Beginning, FollowStart::End, FollowStart::At(2)] {
-            roundtrip(FollowFileRequest { source: source.clone(), start });
+            roundtrip(FollowFile { source: source.clone(), start });
         }
     }
-    roundtrip(FollowProductionRequest { file: StagedFile { history, id: metadata.id }, offset: 2 });
+    roundtrip(FollowProduction {
+        file: StagedFile { history, id: metadata.id },
+        offset: 2,
+    });
     roundtrip(FileHash { bytes_read: 12345, sha256: [0xa5; 32] });
     roundtrip(FileEvent::Data(FileBatch { offset: 1000, bytes: vec![1, 2, 3] }));
     roundtrip(FileEvent::Truncated { length: 2 });

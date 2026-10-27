@@ -20,6 +20,7 @@ use std::collections::BTreeSet;
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::quote;
+use syn::parse::Parse;
 use syn::{Attribute, Error, Expr, ItemStruct, Type};
 
 // Local Imports
@@ -41,14 +42,15 @@ use crate::path::HarmosPath;
 
 /* === Public Functions === */
 
-pub(crate) fn structure(attribute: TokenStream, item: ItemStruct, sdk: &HarmosPath) -> Result<TokenStream, Error> {
+pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &HarmosPath) -> Result<TokenStream, Error> {
     if !item.generics.params.is_empty() {
         return Err(Error::new_spanned(&item.generics, "an operation implementation struct cannot be generic"));
     }
     let attribute: Attribute = syn::parse_quote!(#[operation(#attribute)]);
     let mut seen = BTreeSet::new();
-    let mut request = None::<Type>;
-    let mut infer_request = false;
+    let mut resources = Vec::<Type>::new();
+    let mut operations = Vec::<Type>::new();
+    let mut manual = false;
     let mut response = None::<Type>;
     let mut input = None::<Type>;
     let mut output = None::<Type>;
@@ -69,8 +71,21 @@ pub(crate) fn structure(attribute: TokenStream, item: ItemStruct, sdk: &HarmosPa
             return Err(meta.error("operation metadata fields cannot repeat"));
         }
         match name.as_str() {
-            "request" => request = Some(meta.value()?.parse()?),
-            "infer_request" => infer_request = true,
+            "resources" | "operations" => {
+                let content;
+                let value = meta.value()?;
+                syn::bracketed!(content in value);
+                let types = content.parse_terminated(Type::parse, syn::Token![,])?;
+                let target = if name == "resources" { &mut resources } else { &mut operations };
+                target.extend(types);
+            }
+            "codec" => {
+                let codec: syn::Ident = meta.value()?.parse()?;
+                if codec != "manual" {
+                    return Err(meta.error("codec accepts only manual"));
+                }
+                manual = true;
+            }
             "response" => response = Some(meta.value()?.parse()?),
             "input" => input = Some(meta.value()?.parse()?),
             "output" => output = Some(meta.value()?.parse()?),
@@ -87,30 +102,39 @@ pub(crate) fn structure(attribute: TokenStream, item: ItemStruct, sdk: &HarmosPa
         }
         Ok(())
     })?;
-    let missing =
-        |field| Error::new_spanned(&attribute, format!("operation requires `{field}` (request, response and policy are required)"));
-    let request = request.ok_or_else(|| missing("request"))?;
-    let response = response.ok_or_else(|| missing("response"))?;
+    let missing = |field| Error::new_spanned(&attribute, format!("operation requires `{field}`"));
+    let response = response.unwrap_or_else(|| syn::parse_quote!(()));
     let policy = policy.ok_or_else(|| missing("policy"))?;
-    let name = &item.ident;
+    let name = item.ident.clone();
     let gates = crate::operation::configuration(&item.attrs)?;
     let derived = name.to_string().trim_start_matches("r#").to_snake_case();
     let id = id.unwrap_or_else(|| syn::parse_quote!(#derived));
     if let Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(value), .. }) = &id {
         let text = value.value();
-        let mut bytes = text.bytes();
-        if !bytes.next().is_some_and(|byte| byte.is_ascii_lowercase())
-            || !bytes.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
-        {
-            return Err(Error::new_spanned(value, "operation id must be a local [a-z][a-z0-9_]* segment; the host supplies its owner"));
+        let valid = text.split('.').all(|segment| {
+            let mut bytes = segment.bytes();
+            bytes.next().is_some_and(|byte| byte.is_ascii_lowercase())
+                && bytes.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        });
+        if !valid {
+            return Err(Error::new_spanned(value, "operation id must contain dotted [a-z][a-z0-9_]* segments"));
         }
     }
+
     let direction =
         |item: Option<Type>| item.map_or_else(|| quote!(#sdk::operations::NoStream), |item| quote!(#sdk::operations::Stream<#item>));
     let input = direction(input);
     let output = direction(output);
     let description = description.map(|value| quote!(const DESCRIPTION: &'static str = #value;));
-    let visibility = visibility.map(|value| quote!(const VISIBILITY: #sdk::operations::Visibility = #value;));
+    let visibility = visibility.map(|value| {
+        let value = match &value {
+            Expr::Path(path) if path.path.is_ident("Shared") || path.path.is_ident("Host") || path.path.is_ident("Private") => {
+                quote!(#sdk::operations::Visibility::#value)
+            }
+            _ => quote!(#value),
+        };
+        quote!(const VISIBILITY: #sdk::operations::Visibility = #value;)
+    });
     let replay = replay.map(|value| quote!(const REPLAY: #sdk::operations::ReplaySafety = #value;));
     let grpc = grpc.map(|(package, service, method)| {
         quote! {
@@ -128,22 +152,40 @@ pub(crate) fn structure(attribute: TokenStream, item: ItemStruct, sdk: &HarmosPa
             fn key(request: &Self::Request) -> ::core::option::Option<#sdk::operations::CacheKey> { (#value)(request) }
         }
     });
-    let inference = infer_request.then(|| {
+    let clone = item.attrs.iter().filter(|attribute| attribute.path().is_ident("derive")).any(|attribute| {
+        attribute
+            .parse_args_with(syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated)
+            .is_ok_and(|paths| paths.iter().any(|path| path.is_ident("Clone")))
+    });
+    if !clone && !manual {
+        item.attrs.push(syn::parse_quote!(#[derive(Clone)]));
+    }
+    let message = if manual { quote!(#item) } else { crate::message::expand(quote!(harmos_path = #sdk), quote!(#item))? };
+    let execution_gate = sdk.execution_gate();
+    let requirements = resources.iter().map(|resource| {
         quote! {
             #(#gates)*
-            impl #sdk::RequestFor for #request { type Operation = #name; }
+            #execution_gate
+            impl #sdk::operations::Requires<#resource> for #name {}
+        }
+    });
+    let invokes = operations.iter().map(|operation| {
+        quote! {
+            #(#gates)*
+            impl #sdk::operations::Invokes<#operation> for #name {}
         }
     });
     Ok(quote! {
-        #item
+        #message
 
         #(#gates)*
         impl #sdk::OperationDeclaration for #name {
-            type Request = #request;
+            type Request = Self;
             type Response = #response;
             type Input = #input;
             type Output = #output;
             const ID: &'static str = #id;
+            const OPERATIONS: &'static [#sdk::operations::WireDeclaration] = &[#(#sdk::operations::WireDeclaration::of::<#operations>()),*];
             const POLICY: #sdk::OperationPolicy = #policy;
             #description #visibility #replay #grpc #grant #key
         }
@@ -155,12 +197,18 @@ pub(crate) fn structure(attribute: TokenStream, item: ItemStruct, sdk: &HarmosPa
                 <Self as #sdk::OperationDeclaration>::definition()
             }
 
-            #[cfg(feature = "runtime")]
-            pub fn registration(dependencies: #sdk::Dependencies) -> #sdk::RegistrationBatch {
-                #sdk::RegistrationBatch::new(dependencies).operation::<Self>()
-            }
+
         }
-        #inference
+        #(#invokes)*
+        #[allow(unexpected_cfgs)]
+        const _: () = {
+        #(#requirements)*
+        #(#gates)*
+        #execution_gate
+        impl #sdk::Dependent for #name {
+            const RESOURCES: &'static [#sdk::Resource] = &[#(#sdk::Resource::of::<#resources>()),*];
+        }
+        };
     })
 }
 

@@ -181,7 +181,10 @@ impl ServiceManager {
     }
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(crate) fn scoped(operations: Manager, scope: crate::plugin::PluginScope) -> Self {
-        Self { operations, owner: ServiceOwner::Plugin(scope) }
+        Self {
+            operations,
+            owner: ServiceOwner::Plugin(scope),
+        }
     }
     fn owner(&self) -> &str {
         match &self.owner {
@@ -199,14 +202,22 @@ impl ServiceManager {
 
     pub(crate) fn stage(&self, batch: harmos_sdk::RegistrationBatch) -> Result<(crate::operations::resident::Staged, Vec<String>)> {
         if !batch.operations.is_empty() {
-            return Err(Error::InvalidInput { field: "service registration", reason: "operations belong to the operation manager" });
+            return Err(Error::InvalidInput {
+                field: "service registration",
+                reason: "operations belong to the operation manager",
+            });
         }
         let mut entries = Vec::with_capacity(batch.services.len());
         let mut ids = Vec::with_capacity(batch.services.len());
         for factory in batch.services {
-            let id = crate::QualifiedId::qualify(self.owner(), &factory.local_id)
-                .map_err(|_| Error::InvalidInput { field: "service identity", reason: "invalid local service identifier" })?;
-            let definition = ServiceDefinition { id: id.as_str().to_owned(), policy: factory.policy };
+            let id = crate::QualifiedId::qualify(self.owner(), &factory.local_id).map_err(|_| Error::InvalidInput {
+                field: "service identity",
+                reason: "invalid local service identifier",
+            })?;
+            let definition = ServiceDefinition {
+                id: id.as_str().to_owned(),
+                policy: factory.policy,
+            };
             validate(&definition)?;
             ids.push(definition.id.clone());
             let runner = (self.operations.registry.service_runner)(definition.clone(), factory, self.owner.clone());
@@ -255,7 +266,7 @@ impl<A: Application> Resident<A> for AuthoredService {
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             ServiceOwner::Plugin(scope) => dependencies.insert(Arc::new(scope.clone())).map_err(|_| harmos_sdk::ServingError::Catalog)?,
         }
-        let call = harmos_sdk::OperationContext::new(dependencies, harmos_sdk::operations::Host::context(&context.operations).clone());
+        let call = harmos_sdk::ExecutionContext::new(dependencies, harmos_sdk::operations::Host::context(&context.operations).clone());
         self.instance = Some(self.factory.initialize(call.clone()).await?);
         context.ready();
         tokio::select! {
@@ -390,7 +401,7 @@ impl<A: Application> harmos_sdk::operations::Host for ServiceContext<A> {
         S::Row: harmos_domain::Message,
     {
         use harmos_domain::Message;
-        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::PublishRequest {
+        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::Publish {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: None,
@@ -421,6 +432,12 @@ impl<A: Application> harmos_sdk::operations::Host for ServiceContext<A> {
 
     fn submit<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Running<O>>> + Send {
         harmos_sdk::operations::Host::submit::<O>(&self.operations, request)
+    }
+
+    fn submit_owned<O: OperationDeclaration>(
+        &self, request: O::Request, claims: crate::operations::RequestClaims,
+    ) -> impl Future<Output = Result<Running<O>>> + Send {
+        harmos_sdk::operations::Host::submit_owned::<O>(&self.operations, request, claims)
     }
 
     fn call<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Response<O::Response>>> + Send {
@@ -472,10 +489,16 @@ where
 
 pub(crate) fn validate(definition: &ServiceDefinition) -> Result<()> {
     if definition.id.is_empty() {
-        return Err(Error::InvalidInput { field: "service name", reason: "must not be empty" });
+        return Err(Error::InvalidInput {
+            field: "service name",
+            reason: "must not be empty",
+        });
     }
     if definition.id == crate::evidence::SOURCE {
-        return Err(Error::InvalidInput { field: "service name", reason: "artifact is reserved for evidence facts" });
+        return Err(Error::InvalidInput {
+            field: "service name",
+            reason: "artifact is reserved for evidence facts",
+        });
     }
     definition.policy.validate().map_err(|source| Error::OperationDeclaration { source: source.into() })
 }
@@ -519,17 +542,20 @@ mod tests {
     impl harmos_sdk::Service for Worker {
         type Error = crate::Error;
 
-        async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
-            let counts = context.dependency::<Counts>()?;
+        async fn initialize(context: harmos_sdk::ExecutionContext) -> Result<Self> {
+            let counts = context.resource::<Counts>()?;
             let attempt = counts.initialized.fetch_add(1, Ordering::SeqCst);
             Ok(Self { counts, attempt })
         }
 
-        async fn run(&mut self, context: harmos_sdk::OperationContext) -> Result<()> {
+        async fn run(&mut self, context: harmos_sdk::ExecutionContext) -> Result<()> {
             if self.attempt == 0 {
-                return Err(Error::InvalidInput { field: "fixture", reason: "first attempt fails" });
+                return Err(Error::InvalidInput {
+                    field: "fixture",
+                    reason: "first attempt fails",
+                });
             }
-            let context = context.dependency::<ServiceContext<Model>>()?;
+            let context = context.resource::<ServiceContext<Model>>()?;
             self.counts.running.notify_one();
             let mut context = (*context).clone();
             context.stopping().await;
@@ -560,7 +586,10 @@ mod tests {
             restart: RestartPolicy::OnFailure {
                 credit: 1,
                 sustained_health: Duration::from_secs(1),
-                backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
+                backoff: Backoff::Fixed {
+                    delay: Duration::from_millis(1),
+                    jitter: Jitter::None,
+                },
             },
         };
         let batch = harmos_sdk::RegistrationBatch::new(dependencies).service::<Worker>("worker", policy);

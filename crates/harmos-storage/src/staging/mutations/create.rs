@@ -58,28 +58,31 @@ impl<C> StorageManager<C> {
             if !self.inner.primary.supports_file_sessions() {
                 return Err(invalid("backend does not support resumable production"));
             }
-            let (reference_bytes, base_bytes) = file_bytes(metadata, self.inner.primary.history())?;
+            let reference_bytes = file_bytes(metadata, self.inner.primary.history())?;
             if reference_bytes > self.inner.settings.max_batch_bytes().get() {
                 return Err(invalid("reference exceeds max_batch_bytes"));
             }
             if state.files.values().any(|file| file.metadata.id == metadata.id) || state.deleting(&metadata.id) {
-                return Err(Error::AlreadyRegistered { domain: "storage file", name: metadata.id.to_string() });
+                return Err(Error::AlreadyRegistered {
+                    domain: "storage file",
+                    name: metadata.id.to_string(),
+                });
             }
             if state.files.len() >= crate::storage::config::MAX_FILES.get() {
                 return Err(Error::ResourceExhausted { resource: "file producers" });
             }
-            let outcome_bytes = std::mem::size_of::<MutationValue>()
-                .saturating_add(self.inner.primary.history().memory_size())
-                .saturating_add(metadata.id.memory_size());
             let id = NEXT_FILE.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1)).map_err(|_| size_error())?;
-            reserve(state, mutation, fingerprint, outcome_bytes, base_bytes.checked_add(1).ok_or_else(size_error)?, &self.inner.settings)?;
+            reserve(state, mutation, fingerprint, 0, &self.inner.settings)?;
             state.files.insert(
                 id,
                 FileState {
                     context: crate::execution::Context::current(),
                     queued: Some(tracing::debug_span!("storage.file.queue")),
                     metadata: Arc::new(metadata.clone()),
-                    staging: StagedFile { history: self.inner.primary.history().clone(), id: metadata.id.clone() },
+                    staging: StagedFile {
+                        history: self.inner.primary.history().clone(),
+                        id: metadata.id.clone(),
+                    },
                     session: Some(Session::token(crate::storage::config::FILE_SESSION_TIMEOUT, self.inner.execution)),
                     mutation: Some(Mutation { id: mutation.clone(), kind: Kind::Create }),
                     extra: None,
@@ -91,7 +94,7 @@ impl<C> StorageManager<C> {
                     abandoned: false,
                     in_flight: false,
                     retrying: false,
-                    base_bytes,
+
                     reference_bytes,
                 },
             );

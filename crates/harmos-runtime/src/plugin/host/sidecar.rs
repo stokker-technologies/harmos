@@ -75,7 +75,10 @@ impl<A: Application> PluginHost<A> {
         self.serve_publications(&definition, lane)?;
         let declarations = Declarations::of::<C>().map_err(|source| failed(&definition.id, source))?;
         harmos_domain::inventory::operations::validate_match(&declarations, &definition.contributions.operations).map_err(|_| {
-            Error::InvalidInput { field: "native plugin catalog", reason: "typed catalog differs from the inspected operation inventory" }
+            Error::InvalidInput {
+                field: "native plugin catalog",
+                reason: "typed catalog differs from the inspected operation inventory",
+            }
         })?;
         let grants = settings.plugin.host_operations.iter().cloned().collect();
         let restart = settings.plugin.restart;
@@ -104,18 +107,18 @@ impl<A: Application> PluginHost<A> {
 }
 
 impl<A: Application> PluginHost<A> {
-    // A sidecar that requires `host_publish` reaches the one host-wide provider, served once on first need.
+    // A sidecar that requires `host.publish` reaches the one host-wide provider, served once on first need.
     fn serve_publications(&self, definition: &PluginDefinition, lane: impl Lane) -> Result<()> {
         let publish = crate::operations::WireDeclaration::of::<harmos_operations::streams::Publish>()
             .contract()
-            .map_err(|source| failed("host_publish", source))?;
+            .map_err(|source| failed("host.publish", source))?;
         let required = definition.contributions.required_contracts.iter().flatten().any(|required| required.contract == publish);
         if !required {
             return Ok(());
         }
         match self.shared.operations.definition(publish.operation().id.as_str()) {
             Err(Error::NotRegistered { .. }) => self.shared.operations.register_native(crate::operations::RegistrationExt::lane(
-                harmos_operations::streams::Publish::registration(harmos_sdk::Dependencies::new()),
+                harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).operation::<harmos_operations::streams::Publish>(),
                 lane,
             )),
             _ => Ok(()),
@@ -154,7 +157,10 @@ fn diagnostics<A: Application>(_: &ServiceContext<A>, notice: Notice) {
 }
 
 fn failed(owner: &str, source: impl std::error::Error + Send + Sync + 'static) -> Error {
-    Error::OperationFailed { operation: owner.to_owned(), source: Arc::new(source) }
+    Error::OperationFailed {
+        operation: owner.to_owned(),
+        source: Arc::new(source),
+    }
 }
 
 /* === Tests === */

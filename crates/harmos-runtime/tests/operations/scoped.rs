@@ -25,7 +25,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos_runtime::operations::{Operation, OperationPolicy, RetryPolicy};
+use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Runtime, operations::Lane};
 
 /* === Constants === */
@@ -52,15 +52,7 @@ struct Trace {
     free_started: Notify,
 }
 
-struct Parent {
-    trace: Arc<Trace>,
-}
-
-struct Bound {
-    trace: Arc<Trace>,
-}
-
-struct Free {
+struct FreeGuard {
     trace: Arc<Trace>,
 }
 
@@ -74,80 +66,59 @@ enum Mode {
     FullLane,
 }
 
-#[harmos_runtime::operation(request = ParentContract, infer_request, response = u64, id = "scoped_parent",  policy = POLICY)]
-struct ParentContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct ParentContract {
+#[harmos_runtime::operation(resources = [Trace, harmos_runtime::operations::HostContext], response = u64, id = "scoped.parent",  policy = POLICY)]
+struct ParentContractDeclaration {
     mode: Mode,
 }
 
-#[harmos_runtime::operation(request = BoundContract, infer_request, response = u64, id = "scoped_bound",  policy = POLICY)]
-struct BoundContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct BoundContract {
+#[harmos_runtime::operation(resources = [Trace, harmos_runtime::operations::HostContext], response = u64, id = "scoped.bound",  policy = POLICY)]
+struct BoundContractDeclaration {
     hold: bool,
 }
 
-#[harmos_runtime::operation(request = FreeContract, infer_request, response = u64, id = "scoped_free",  policy = POLICY)]
-struct FreeContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct FreeContract {
+#[harmos_runtime::operation(resources = [Trace], response = u64, id = "scoped.free",  policy = POLICY)]
+struct FreeContractDeclaration {
     wait: bool,
 }
 
 #[harmos_runtime::catalog]
 enum Operations {
-    ParentContract(ParentContractDeclaration),
-    BoundContract(BoundContractDeclaration),
-    FreeContract(FreeContractDeclaration),
+    ParentContractDeclaration(ParentContractDeclaration),
+    BoundContractDeclaration(BoundContractDeclaration),
+    FreeContractDeclaration(FreeContractDeclaration),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl Operation for Parent {
-    type Request = ParentContract;
-    type Response = <ParentContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for ParentContractDeclaration {
     type Error = Error;
-    type Endpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Error> {
-        let trace = context.dependency::<Trace>().expect("fixture registers its dependency");
-        trace.parent_constructions.fetch_add(1, Ordering::SeqCst);
-        Ok(Self { trace })
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut ParentContract, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<u64>, Error> {
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Error> {
+        let trace = ctx.resource::<Trace>();
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
+        trace.parent_constructions.fetch_add(1, Ordering::SeqCst);
         let result: ::core::result::Result<u64, Self::Error> = async move {
-            match request.mode {
+            match self.mode {
                 Mode::Leaf => Ok(7),
                 Mode::HandleCycle => {
-                    assert!(matches!(context.submit::<ParentContractDeclaration>(ParentContract { mode: Mode::Leaf }),
-                    Err(Error::OperationLaneCycle { parent, child }) if parent == self.trace.lane && child == self.trace.lane));
-                    let free = context.submit::<FreeContractDeclaration>(FreeContract { wait: false })?.await?;
+                    assert!(matches!(context.submit::<ParentContractDeclaration>(ParentContractDeclaration { mode: Mode::Leaf }),
+                    Err(Error::OperationLaneCycle { parent, child }) if parent == trace.lane && child == trace.lane));
+                    let free = context.submit::<FreeContractDeclaration>(FreeContractDeclaration { wait: false })?.await?;
                     assert_eq!(*free, 1);
                     Ok(7)
                 }
                 Mode::PropagateCycle => {
-                    let answer = context.submit::<ParentContractDeclaration>(ParentContract { mode: Mode::Leaf })?.await?;
+                    let answer = context.submit::<ParentContractDeclaration>(ParentContractDeclaration { mode: Mode::Leaf })?.await?;
                     Ok(*answer)
                 }
                 Mode::FullLane => {
-                    let _queued = context.submit::<BoundContractDeclaration>(BoundContract { hold: false })?;
-                    let _free = context.submit::<FreeContractDeclaration>(FreeContract { wait: true })?;
-                    self.trace.free_started.notified().await;
-                    Ok(u64::try_from(self.trace.queued_runs.load(Ordering::SeqCst)).expect("run counts fit in u64"))
+                    let _queued = context.submit::<BoundContractDeclaration>(BoundContractDeclaration { hold: false })?;
+                    let _free = context.submit::<FreeContractDeclaration>(FreeContractDeclaration { wait: true })?;
+                    trace.free_started.notified().await;
+                    Ok(u64::try_from(trace.queued_runs.load(Ordering::SeqCst)).expect("run counts fit in u64"))
                 }
             }
         }
@@ -156,28 +127,19 @@ impl Operation for Parent {
     }
 }
 
-impl Operation for Bound {
-    type Request = BoundContract;
-    type Response = <BoundContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for BoundContractDeclaration {
     type Error = std::convert::Infallible;
-    type Endpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let trace = context.dependency::<Trace>().expect("fixture registers its dependency");
-        Ok(Self { trace })
-    }
-
-    async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, request: &mut BoundContract, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
-        let host = _context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, _context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
+        let trace = _context.resource::<Trace>();
+        let host = _context.resource::<harmos_runtime::operations::HostContext>();
         let _context = host.borrow();
         let result: ::core::result::Result<u64, Self::Error> = async move {
-            if request.hold {
-                self.trace.bound_started.notify_one();
-                self.trace.release.notified().await;
+            if self.hold {
+                trace.bound_started.notify_one();
+                trace.release.notified().await;
             } else {
-                self.trace.queued_runs.fetch_add(1, Ordering::SeqCst);
+                trace.queued_runs.fetch_add(1, Ordering::SeqCst);
             }
             Ok(7)
         }
@@ -186,25 +148,15 @@ impl Operation for Bound {
     }
 }
 
-impl Operation for Free {
-    type Request = FreeContract;
-    type Response = <FreeContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for FreeContractDeclaration {
     type Error = std::convert::Infallible;
-    type Endpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let trace = context.dependency::<Trace>().expect("fixture registers its dependency");
-        Ok(Self { trace })
-    }
-
-    async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, request: &mut FreeContract, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
-        let host = _context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
-        let _context = host.borrow();
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
+        let trace = ctx.resource::<Trace>();
+        let _guard = FreeGuard { trace: trace.clone() };
         let result: ::core::result::Result<u64, Self::Error> = async move {
-            self.trace.free_started.notify_one();
-            if request.wait {
+            trace.free_started.notify_one();
+            if self.wait {
                 std::future::pending::<()>().await;
             }
             Ok(1)
@@ -214,7 +166,7 @@ impl Operation for Free {
     }
 }
 
-impl Drop for Free {
+impl Drop for FreeGuard {
     fn drop(&mut self) {
         self.trace.free_dropped.store(true, Ordering::SeqCst);
     }
@@ -243,7 +195,7 @@ async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<ParentContractDeclaration, Parent>(),
+            .operation::<ParentContractDeclaration>(),
             parent_lane,
         ))
         .await
@@ -256,7 +208,7 @@ async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<BoundContractDeclaration, Bound>(),
+            .operation::<BoundContractDeclaration>(),
             Lanes::Serial,
         ))
         .await
@@ -269,7 +221,7 @@ async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<FreeContractDeclaration, Free>(),
+            .operation::<FreeContractDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -283,7 +235,7 @@ async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
 async fn ancestor_cycles_rejected() {
     for lane in [Lanes::Serial, Lanes::Concurrent] {
         let (runtime, trace) = runtime(lane).await;
-        let answer = runtime.operation(ParentContract { mode: Mode::HandleCycle }).start().await.unwrap().await.unwrap();
+        let answer = runtime.operation(ParentContractDeclaration { mode: Mode::HandleCycle }).start().await.unwrap().await.unwrap();
         assert_eq!(*answer, 7);
         assert_eq!(trace.parent_constructions.load(Ordering::SeqCst), 1);
         assert!(trace.free_dropped.load(Ordering::SeqCst));
@@ -294,7 +246,7 @@ async fn ancestor_cycles_rejected() {
 #[tokio::test]
 async fn refusal_survives_parent() {
     let (runtime, trace) = runtime(Lanes::Serial).await;
-    let error = runtime.operation(ParentContract { mode: Mode::PropagateCycle }).start().await.unwrap().await.unwrap_err();
+    let error = runtime.operation(ParentContractDeclaration { mode: Mode::PropagateCycle }).start().await.unwrap().await.unwrap_err();
     let Error::OperationFailed { source, .. } = error else { panic!("expected parent failure") };
     assert!(
         matches!(source.downcast_ref::<Error>(), Some(Error::OperationLaneCycle { parent, child }) if *parent == "Serial" && *child == "Serial")
@@ -306,9 +258,9 @@ async fn refusal_survives_parent() {
 #[tokio::test]
 async fn child_settles_another() {
     let (runtime, trace) = runtime(Lanes::Concurrent).await;
-    let blocker = runtime.operation(BoundContract { hold: true }).start().await.unwrap();
+    let blocker = runtime.operation(BoundContractDeclaration { hold: true }).start().await.unwrap();
     trace.bound_started.notified().await;
-    let answer = runtime.operation(ParentContract { mode: Mode::FullLane }).start().await.unwrap().await.unwrap();
+    let answer = runtime.operation(ParentContractDeclaration { mode: Mode::FullLane }).start().await.unwrap().await.unwrap();
     assert_eq!(*answer, 0);
     assert!(trace.free_dropped.load(Ordering::SeqCst));
     assert_eq!(trace.queued_runs.load(Ordering::SeqCst), 0);

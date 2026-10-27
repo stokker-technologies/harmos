@@ -9,7 +9,6 @@
 
 /* === Modules === */
 
-mod accounting;
 mod admission;
 mod arrow;
 mod encoding;
@@ -23,7 +22,7 @@ mod writes;
 /* === Re-Exports === */
 
 pub use encoding::encoded_size;
-pub(crate) use encoding::{recovery_preparation_bytes, recovery_resident_bytes};
+pub(crate) use encoding::recovery_encoded_bound;
 
 /* === Imports === */
 
@@ -39,8 +38,7 @@ use tokio::sync::watch;
 
 // Local Imports
 use super::admissions::Mutation;
-use super::arrow::RetainedMemory;
-use super::capacity::{Attempt, Held, Pool, Refusal, Reservation};
+use super::capacity::{Attempt, Refusal};
 use super::config::{IO_TIMEOUT, MUTATION_RETENTION};
 use super::queue::PendingQueue;
 use super::receipts::{MutationValue, ReceiptState};
@@ -58,9 +56,6 @@ use harmos_domain::model::storage::{RecordInput, RecordWrite, StreamInput};
 
 const WORKER_NAME: &str = "harmos-storage";
 
-// Includes owned envelopes, queue nodes, Arc headers, and cloned metadata.
-pub(super) const ENTRY_OVERHEAD: usize = 1024;
-
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -74,8 +69,7 @@ pub struct StorageMetrics {
     pub recovery_accepted: RecoveryPosition,
     pub recovery_saved: RecoveryPosition,
     pub pending_bytes: usize,
-    pub read_bytes: usize,
-    pub mutation_bytes: usize,
+
     pub pending_batches: usize,
     pub running: bool,
     pub closing: bool,
@@ -90,8 +84,6 @@ pub struct StorageManager<C = ()> {
 
 pub(super) struct Inner {
     pub(super) execution: Execution,
-    pub(super) retained_write_bytes: Arc<std::sync::atomic::AtomicUsize>,
-    pub(super) retained_read_bytes: Arc<std::sync::atomic::AtomicUsize>,
     pub(super) measurement_admission: tokio::sync::Mutex<()>,
     pub(super) control_admission: tokio::sync::Mutex<()>,
     measurement_waiting: std::sync::atomic::AtomicUsize,
@@ -126,8 +118,6 @@ pub(super) struct Lifecycle {
 
 pub(super) struct State {
     pub(super) execution: Execution,
-    pub(super) retained_write_bytes: Arc<std::sync::atomic::AtomicUsize>,
-    pub(super) retained_read_bytes: Arc<std::sync::atomic::AtomicUsize>,
     prefer_measurement: bool,
     pub(super) journal_required_data: StorageCursor,
     pub(super) reserved: usize,
@@ -139,10 +129,6 @@ pub(super) struct State {
     service_owner: Option<Arc<()>>,
     pub(super) next: u64,
     pub(super) queue: PendingQueue,
-    pub(super) scratch_bytes: usize,
-    pub(super) read_bytes: usize,
-
-    pub(super) growers: [super::capacity::Growers; 2],
 
     pub(super) data_attempted: u64,
     pub(super) objects_pruned: u64,
@@ -178,7 +164,6 @@ pub(super) struct Pending {
     pub(super) index: u64,
     pub(super) bytes: usize,
     pub(super) operation: Operation,
-    charge: Option<Arc<crate::batch::WriteCharge>>,
 }
 
 struct Counter(usize);
@@ -221,7 +206,7 @@ pub(super) enum Operation {
 /* === Traits === */
 
 pub(crate) trait RecordWriteBytes {
-    fn resident_bytes(&self, history: &super::StoreHistory) -> Result<usize>;
+    fn encoded_bytes(&self, history: &super::StoreHistory) -> Result<usize>;
 }
 
 pub trait WorkerOwner: Send + Sync {
@@ -231,53 +216,9 @@ pub trait WorkerOwner: Send + Sync {
 /* === Implementations === */
 
 impl Pending {
-    pub(super) fn retire(&self) {
-        if let Some(charge) = &self.charge {
-            charge.retire();
-        }
-    }
-
     pub(super) fn new(
-        inner: &Arc<Inner>, journal: Option<harmos_domain::state::Position>, index: u64, bytes: usize, mut operation: Operation,
+        _inner: &Arc<Inner>, journal: Option<harmos_domain::state::Position>, index: u64, bytes: usize, operation: Operation,
     ) -> Self {
-        let charge = match &mut operation {
-            Operation::Schema(values) => Some({
-                let charge = crate::batch::WriteCharge::new(inner, bytes);
-                *values = values.clone().retained(Arc::clone(&charge));
-                charge
-            }),
-            Operation::File(values) => Some({
-                let charge = crate::batch::WriteCharge::new(inner, bytes);
-                *values = values.clone().retained(Arc::clone(&charge));
-                charge
-            }),
-            Operation::Records(values) => Some({
-                let charge = crate::batch::WriteCharge::new(inner, bytes);
-                *values = values.clone().retained(Arc::clone(&charge));
-                charge
-            }),
-            Operation::Stream(values) => Some({
-                let charge = crate::batch::WriteCharge::new(inner, bytes);
-                *values = values.clone().retained(Arc::clone(&charge));
-                charge
-            }),
-            Operation::ObjectGroup { schemas, objects, .. } => Some({
-                let charge = crate::batch::WriteCharge::new(inner, bytes);
-                *schemas = schemas.clone().retained(Arc::clone(&charge));
-                *objects = objects.clone().retained(Arc::clone(&charge));
-                charge
-            }),
-            Operation::Recovery(values) => Some({
-                let charge = crate::batch::WriteCharge::new(inner, bytes);
-                *values = values.clone().retained(Arc::clone(&charge));
-                charge
-            }),
-            Operation::Snapshot(values) => Some({
-                let charge = crate::batch::WriteCharge::new(inner, bytes);
-                *values = values.clone().retained(Arc::clone(&charge));
-                charge
-            }),
-        };
         Self {
             context: crate::execution::Context::current(),
             queued: Mutex::new(Some(tracing::debug_span!("storage.queue"))),
@@ -285,27 +226,25 @@ impl Pending {
             index,
             bytes,
             operation,
-            charge,
         }
-    }
-}
-
-impl Drop for Pending {
-    fn drop(&mut self) {
-        self.retire();
-        self.context.sync(|| drop(self.queued.get_mut().unwrap().take()));
     }
 }
 
 impl<C> Clone for StorageManager<C> {
     fn clone(&self) -> Self {
-        Self { inner: self.inner.clone(), catalog: PhantomData }
+        Self {
+            inner: self.inner.clone(),
+            catalog: PhantomData,
+        }
     }
 }
 
 impl<C> StorageManager<C> {
     pub fn erased(&self) -> StorageManager<ErasedCatalog> {
-        StorageManager { inner: self.inner.clone(), catalog: PhantomData }
+        StorageManager {
+            inner: self.inner.clone(),
+            catalog: PhantomData,
+        }
     }
 }
 
@@ -323,15 +262,11 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
         let history = primary.history().clone();
         let position = StorageCursor { history: history.clone(), sequence: 0 };
         let recovery_position = RecoveryPosition { history, sequence: 0 };
-        let receipts = super::receipts::Receipts::new(MUTATION_RETENTION, settings.mutation_bytes(), execution)?;
-        let retained_write_bytes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let retained_read_bytes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let receipts = super::receipts::Receipts::new(MUTATION_RETENTION, execution)?;
         Ok(Self {
             catalog: PhantomData,
             inner: Arc::new(Inner {
                 execution,
-                retained_write_bytes: Arc::clone(&retained_write_bytes),
-                retained_read_bytes: Arc::clone(&retained_read_bytes),
                 measurement_admission: tokio::sync::Mutex::new(()),
                 control_admission: tokio::sync::Mutex::new(()),
                 measurement_waiting: std::sync::atomic::AtomicUsize::new(0),
@@ -347,8 +282,6 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                 object_retention: |key| Ok(harmos_domain::model::storage::catalog::definition::<C>(key)?.retention()),
                 state: Mutex::new(State {
                     execution,
-                    retained_write_bytes,
-                    retained_read_bytes,
                     prefer_measurement: false,
                     journal_required_data: position.clone(),
                     reserved: 0,
@@ -361,8 +294,7 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                         recovery_accepted: recovery_position.clone(),
                         recovery_saved: recovery_position,
                         pending_bytes: 0,
-                        read_bytes: 0,
-                        mutation_bytes: 0,
+
                         pending_batches: 0,
                         running: false,
                         closing: false,
@@ -373,9 +305,7 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                     service_owner: None,
                     next: 0,
                     queue: PendingQueue::default(),
-                    scratch_bytes: 0,
-                    growers: Default::default(),
-                    read_bytes: 0,
+
                     data_attempted: 0,
                     objects_pruned: 0,
                     objects_prune_owed: false,

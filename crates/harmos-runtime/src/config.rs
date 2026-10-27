@@ -27,7 +27,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-pub use crate::storage::config::{StorageBudget, StorageRequestSettings, StorageResponseSettings, StorageSettings};
+pub use crate::storage::config::{StorageRequestSettings, StorageResponseSettings, StorageSettings};
 pub use crate::storage::state::StorageStateSettings;
 use crate::{Error, Result};
 
@@ -145,7 +145,11 @@ pub struct PluginGuestSettings {
 #[cfg(feature = "plugin")]
 impl Default for PluginRestartSettings {
     fn default() -> Self {
-        Self { retries: 0, backoff_base: Duration::from_millis(100), backoff_cap: Duration::from_secs(5) }
+        Self {
+            retries: 0,
+            backoff_base: Duration::from_millis(100),
+            backoff_cap: Duration::from_secs(5),
+        }
     }
 }
 
@@ -168,7 +172,10 @@ impl PluginRestartSettings {
 #[cfg(feature = "plugin-sidecar")]
 impl Default for PluginSidecarSettings {
     fn default() -> Self {
-        Self { plugin: PluginSettings::default(), calls: NonZeroUsize::new(4).unwrap() }
+        Self {
+            plugin: PluginSettings::default(),
+            calls: NonZeroUsize::new(4).unwrap(),
+        }
     }
 }
 
@@ -193,12 +200,18 @@ impl PluginSettings {
         self.restart.validate()?;
         for timeout in [self.initialization_timeout, self.shutdown_timeout] {
             if timeout.is_zero() || std::time::Instant::now().checked_add(timeout).is_none() {
-                return Err(Error::InvalidInput { field: "plugin lifecycle timeout", reason: "must be positive and representable" });
+                return Err(Error::InvalidInput {
+                    field: "plugin lifecycle timeout",
+                    reason: "must be positive and representable",
+                });
             }
         }
         let grants: std::collections::BTreeSet<_> = self.host_operations.iter().collect();
         if grants.len() != self.host_operations.len() {
-            return Err(Error::InvalidInput { field: "plugin host operations", reason: "grants must be unique" });
+            return Err(Error::InvalidInput {
+                field: "plugin host operations",
+                reason: "grants must be unique",
+            });
         }
         Ok(())
     }
@@ -226,8 +239,14 @@ impl Default for GrpcServerSettings {
         let items = std::num::NonZeroUsize::new(16).unwrap();
         Self {
             calls: std::num::NonZeroUsize::new(64).unwrap(),
-            decode: DecodeSettings { message_bytes: message, retained_bytes: bytes },
-            encode: EncodeSettings { message_bytes: message, buffer_bytes: std::num::NonZeroUsize::new(8192).unwrap() },
+            decode: DecodeSettings {
+                message_bytes: message,
+                retained_bytes: bytes,
+            },
+            encode: EncodeSettings {
+                message_bytes: message,
+                buffer_bytes: std::num::NonZeroUsize::new(8192).unwrap(),
+            },
             input: crate::operations::StreamSettings { items, bytes },
             output: crate::operations::StreamSettings { items, bytes },
             opening_timeout: Duration::from_secs(5),
@@ -257,7 +276,10 @@ impl Default for GrpcSettings {
 impl OperationSettings {
     pub(crate) fn validate(&self) -> Result<()> {
         if self.queued.get() > tokio::sync::Semaphore::MAX_PERMITS || self.lifecycle_queued.get() > tokio::sync::Semaphore::MAX_PERMITS {
-            return Err(Error::InvalidInput { field: "operation queue capacity", reason: "capacity exceeds the semaphore claim limit" });
+            return Err(Error::InvalidInput {
+                field: "operation queue capacity",
+                reason: "capacity exceeds the semaphore claim limit",
+            });
         }
         if self.preparation_bytes.is_some_and(|bytes| bytes.get() > tokio::sync::Semaphore::MAX_PERMITS || bytes.get() > u32::MAX as usize)
         {

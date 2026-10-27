@@ -78,11 +78,16 @@ impl Fixture {
         let started = Instant::now();
         let executable = harmos_runtime::sidecar::Executable::at(artifact("schematic-sidecar")).unwrap();
         let mut plugin = plugin_settings();
-        plugin.host_operations.push(harmos_runtime::Identifier::new("host_publish").unwrap());
+        plugin.host_operations.push(harmos_runtime::Identifier::new("host.publish").unwrap());
         let settings = harmos_runtime::config::PluginSidecarSettings { plugin, calls: nz(8) };
         runtime.plugin.register_sidecar::<schematic_operations::transfer::Native>(executable, settings, Lanes::Open).await.unwrap();
         runtime.plugin.initialize().await.unwrap();
-        Self { runtime, storage, _storage_root: root, startup_elapsed: host_elapsed + started.elapsed() }
+        Self {
+            runtime,
+            storage,
+            _storage_root: root,
+            startup_elapsed: host_elapsed + started.elapsed(),
+        }
     }
 
     #[cfg(feature = "plugin-guest")]
@@ -104,12 +109,17 @@ impl Fixture {
         let loaded = host.load(&bytes).unwrap();
         runtime.plugin.register_guest::<schematic_operations::transfer::Guest>(loaded, plugin_settings(), Lanes::Open).await.unwrap();
         runtime.plugin.initialize().await.unwrap();
-        Self { runtime, storage, _storage_root: root, startup_elapsed: host_elapsed + started.elapsed() }
+        Self {
+            runtime,
+            storage,
+            _storage_root: root,
+            startup_elapsed: host_elapsed + started.elapsed(),
+        }
     }
 
     pub async fn command(&self) -> harmos_runtime::operations::Response<propose::Route> {
         self.runtime
-            .operation(propose::ProposeRouteRequest {
+            .operation(propose::ProposeRoute {
                 from: schematic_domain::model::Point { x: 0, y: 0 },
                 to: schematic_domain::model::Point { x: 3, y: 4 },
             })
@@ -118,7 +128,7 @@ impl Fixture {
             .unwrap()
     }
 
-    pub async fn payload(&self, request: validate::ValidateSchematicRequest) -> harmos_runtime::operations::Response<validate::Validation> {
+    pub async fn payload(&self, request: validate::ValidateSchematic) -> harmos_runtime::operations::Response<validate::Validation> {
         self.runtime.operation(request).run().await.unwrap()
     }
 
@@ -128,8 +138,8 @@ impl Fixture {
         let path = root.path().join("carrier-hash.bin");
         let bytes = b"host filesystem through the carrier";
         std::fs::write(&path, bytes).unwrap();
-        let request = schematic_operations::transfer::HashRequest {
-            request: harmos_operations::storage::HashFileRequest {
+        let request = schematic_operations::transfer::Hash {
+            request: harmos_operations::storage::HashFile {
                 source: FileSource::Local(path),
                 range: ByteRange { offset: 5, limit: Some(10) },
             },
@@ -160,9 +170,11 @@ pub fn verify_route(answer: &propose::Route) {
     );
 }
 
-pub fn payload(symbols: usize) -> validate::ValidateSchematicRequest {
+pub fn payload(symbols: usize) -> validate::ValidateSchematic {
     let symbols = (0..symbols).map(|value| value as u64).collect();
-    validate::ValidateSchematicRequest { schematic: Snapshot { symbols, connections: Vec::new() } }
+    validate::ValidateSchematic {
+        schematic: Snapshot { symbols, connections: Vec::new() },
+    }
 }
 
 pub fn artifact(name: &str) -> PathBuf {
@@ -203,7 +215,7 @@ async fn runtime() -> (Runtime<Model>, StorageManager, tempfile::TempDir, Durati
             max_entries: nz(100_000),
             event_capacity: nz(1024),
         },
-        budget: StorageBudget { read_memory_bytes: nz(128 * 1024 * 1024) },
+
         request: StorageRequestSettings {
             max_pending_queries: nz(64),
             max_active_queries: nz(4),
@@ -211,20 +223,33 @@ async fn runtime() -> (Runtime<Model>, StorageManager, tempfile::TempDir, Durati
             max_active_file_operations: nz(4),
             max_pending_write_bytes: nz(64 * 1024 * 1024),
         },
-        response: StorageResponseSettings { batch_rows: nz(1024), batch_bytes: nz(1024 * 1024) },
+        response: StorageResponseSettings {
+            batch_rows: nz(1024),
+            batch_bytes: nz(1024 * 1024),
+        },
     };
     let history = StoreHistory {
         store: harmos_runtime::Identifier::new("carrier-benchmark").unwrap(),
         epoch: harmos_runtime::Identifier::new("first").unwrap(),
     };
-    let primary = JsonStorage::new(JsonStorageSettings { root: root.path().to_owned(), max_entry_bytes: nz(16 * 1024 * 1024) }, history);
-    let backends = primary
-        .into_backends(state::StorageStateSettings { max_entry_bytes: nz(16 * 1024 * 1024), max_checkpoint_bytes: nz(16 * 1024 * 1024) });
+    let primary = JsonStorage::new(
+        JsonStorageSettings {
+            root: root.path().to_owned(),
+            max_entry_bytes: nz(16 * 1024 * 1024),
+        },
+        history,
+    );
+    let backends = primary.into_backends(state::StorageStateSettings {
+        max_entry_bytes: nz(16 * 1024 * 1024),
+        max_checkpoint_bytes: nz(16 * 1024 * 1024),
+    });
     let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
+    let mut dependencies = harmos_runtime::Dependencies::new();
+    dependencies.insert(Arc::new(storage.clone())).unwrap();
     runtime
         .operations
         .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_operations::storage::registration(Arc::new(storage.clone())).unwrap(),
+            harmos_operations::storage::Storage::registration(dependencies),
             Lanes::Open,
         ))
         .await

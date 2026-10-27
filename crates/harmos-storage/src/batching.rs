@@ -18,7 +18,6 @@
 // Local Imports
 use super::manager::{Domain, Inner, Operation, Pending, State, Target};
 use super::{StorageBatch, StorageCursor};
-use crate::capacity::{Pool, Reservation};
 use crate::selection::Entry;
 use crate::{Error, Result};
 use std::sync::Arc;
@@ -35,7 +34,6 @@ pub(super) struct Batch {
     pub(super) operation: Operation,
     entries: Vec<Arc<Pending>>,
     pub(super) target: Target,
-    _scratch: Reservation,
 }
 
 /* === Enums === */
@@ -86,12 +84,12 @@ impl Batch {
         let selected_kind = kind(&entry.operation)?;
         let domain = entry.operation.domain();
         let boundary = if domain == Domain::Recovery { state.recovery_request?.index } else { state.write_boundary()? };
-        let available = inner.settings.request.max_pending_write_bytes.get().saturating_sub(state.status.pending_bytes);
+
         let mut indices = Vec::new();
         let mut rows = 0usize;
         let mut encoded = 0usize;
-        let mut scratch = 0usize;
         let mut target = Target::default();
+
         for entry in state.queue.iter().filter(|entry| entry.index >= first && state.needs_write(entry)) {
             if entry.index > boundary {
                 break;
@@ -110,32 +108,28 @@ impl Batch {
             {
                 break;
             }
-            let (count, inline) = match &entry.operation {
-                Operation::Records(values) => (values.len(), std::mem::size_of::<crate::StoredRecord>()),
-                Operation::Stream(values) => (values.len(), std::mem::size_of::<crate::StoredRow>()),
-                Operation::Recovery(values) => (values.len(), std::mem::size_of::<crate::state::RecoveryEntry>()),
+            let count = match &entry.operation {
+                Operation::Records(values) => values.len(),
+                Operation::Stream(values) => values.len(),
+                Operation::Recovery(values) => values.len(),
                 _ => unreachable!("coalescing selects one homogeneous append kind"),
             };
             let next_rows = rows.checked_add(count)?;
             let next_encoded = encoded.checked_add(entry.operation.encoded_batch_bytes().ok()?)?;
-            let next_scratch = scratch
-                .checked_add(count.checked_mul(inline)?)?
-                .checked_add(128 + std::mem::size_of::<Arc<Pending>>() + std::mem::size_of::<crate::execution::Context>())?;
-            if next_rows > 4096 || next_encoded > inner.settings.max_batch_bytes().get() || next_scratch > available {
+            if next_rows > 4096 || next_encoded > inner.settings.max_batch_bytes().get() {
                 break;
             }
             rows = next_rows;
             encoded = next_encoded;
-            scratch = next_scratch;
             indices.push(entry.index);
-            target = Target { index: entry.index, sequence: entry.operation.sequence() };
+            target = Target {
+                index: entry.index,
+                sequence: entry.operation.sequence(),
+            };
         }
         if indices.len() < 2 {
             return None;
         }
-        // Reserve The Temporary Inline Array Before Moving Any Payload Owner.
-        state.scratch_bytes += scratch;
-        state.collect();
         let operation = match selected_kind {
             Kind::Records => merge(state, &indices, |operation| match operation {
                 Operation::Records(values) => values,
@@ -153,20 +147,16 @@ impl Batch {
             })
             .map(Operation::Recovery),
         };
-        let Some(operation) = operation else {
-            state.scratch_bytes -= scratch;
-            state.collect();
-            return None;
-        };
+        let operation = operation?;
         let entries = state.queue.iter().filter(|entry| indices.binary_search(&entry.index).is_ok()).cloned().collect();
-        Some(Self { operation, entries, target, _scratch: Reservation::charged(inner, Pool::Write, scratch) })
+        Some(Self { operation, entries, target })
     }
 }
 
 /* === Public Functions === */
 
 #[tracing::instrument(name = "storage.batching.write_data", level = "trace", skip_all, fields(through = tracing::field::Empty, saved = tracing::field::Empty))]
-pub(super) async fn write_data(inner: &Inner, operation: &Operation) -> Result<StorageCursor> {
+pub(super) async fn write_data(inner: &Arc<Inner>, operation: &Operation) -> Result<StorageCursor> {
     match operation {
         Operation::Schema(values) => persist(inner, values, |batch| inner.primary.write_schemas(batch)).await,
         Operation::File(values) => persist(inner, values, |batch| inner.primary.write_files(batch)).await,
@@ -205,7 +195,7 @@ fn merge<T>(state: &mut State, indices: &[u64], select: fn(&mut Operation) -> &m
 }
 
 async fn persist<'a, T: Entry>(
-    inner: &'a Inner, values: &StorageBatch<T>, write: impl FnOnce(StorageBatch<T>) -> super::StorageFuture<'a, StorageCursor>,
+    inner: &'a Arc<Inner>, values: &StorageBatch<T>, write: impl FnOnce(StorageBatch<T>) -> super::StorageFuture<'a, StorageCursor>,
 ) -> Result<StorageCursor> {
     let first = values.as_slice().first().ok_or_else(|| invalid("typed batch is empty"))?.position();
     let through = values.as_slice().last().expect("nonempty batch").position();

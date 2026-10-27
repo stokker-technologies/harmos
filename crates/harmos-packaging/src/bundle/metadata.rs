@@ -137,7 +137,12 @@ pub(super) fn file_size(source: &Source<'_>, sha256: &str, comma: bool, size: &m
     }
     serde_json::to_writer(
         &mut output,
-        &File { path: source.path, size: source.bytes.len() as u64, sha256, executable: source.executable.as_ref() },
+        &File {
+            path: source.path,
+            size: source.bytes.len() as u64,
+            sha256,
+            executable: source.executable.as_ref(),
+        },
     )?;
     *size = output.size;
     Ok(())

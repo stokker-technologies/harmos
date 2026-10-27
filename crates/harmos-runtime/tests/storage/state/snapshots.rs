@@ -76,10 +76,20 @@ enum Records {
 
 impl Store {
     fn new() -> Self {
-        Self { data: Arc::new(Data::new(history())), recovery: Arc::new(Recovery::new(history())) }
+        Self {
+            data: Arc::new(Data::new(history())),
+            recovery: Arc::new(Recovery::new(history())),
+        }
     }
     fn manager(&self, config: StorageSettings) -> StorageManager {
-        StorageManager::new(StorageBackends { primary: self.data.clone(), state: self.recovery.clone() }, config).unwrap()
+        StorageManager::new(
+            StorageBackends {
+                primary: self.data.clone(),
+                state: self.recovery.clone(),
+            },
+            config,
+        )
+        .unwrap()
     }
     fn snapshot(&self) -> RecoverySnapshot {
         self.recovery.snapshot.lock().unwrap().clone().unwrap()
@@ -119,11 +129,18 @@ impl harmos_runtime::state::Transaction<i64> for Add {
 /* === Private Functions === */
 
 fn limits() -> ReadLimits {
-    ReadLimits { rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(64 * 1024).unwrap() }
+    ReadLimits {
+        rows: NonZeroUsize::new(1).unwrap(),
+        bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+    }
 }
 
 fn policy(every: u64) -> SnapshotPolicy {
-    SnapshotPolicy { schema: schema(), every: NonZeroU64::new(every).unwrap(), max_bytes: NonZeroUsize::new(64 * 1024).unwrap() }
+    SnapshotPolicy {
+        schema: schema(),
+        every: NonZeroU64::new(every).unwrap(),
+        max_bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+    }
 }
 
 fn builder(policy: SnapshotPolicy) -> Builder<Bank> {
@@ -230,7 +247,12 @@ async fn snapshot_keeps_tail() {
     let store = Store::new();
     let build = |snapshots| {
         Runtime::<Model>::builder(0, ()).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
-            harmos_runtime::config::ManagedStorageSettings { replay: limits(), capture: limits(), snapshots, journal_tail: 1 },
+            harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(),
+                capture: limits(),
+                snapshots,
+                journal_tail: 1,
+            },
         )
     };
     let storage = store.manager(config());
@@ -354,7 +376,9 @@ async fn cancelled_snapshot_releases() {
             _ = &mut opening => panic!("snapshot load must wait"),
             _ = store.recovery.control.read_entered.notified() => {}
         }
-        assert!(storage.status().pending_bytes > 0);
+        assert!(store.recovery.control.open.load(Ordering::SeqCst));
+        assert!(store.data.control.open.load(Ordering::SeqCst));
+        assert_eq!(storage.status().pending_bytes, 0);
     }
     closed(&storage, &cleanup).await;
     assert_eq!(storage.status().pending_bytes, 0);
@@ -363,12 +387,19 @@ async fn cancelled_snapshot_releases() {
 }
 
 #[tokio::test]
-async fn snapshot_budget_blocks() {
+async fn snapshot_read_ignores_write_queue_budget() {
     let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = builder(policy(100)).runtime_with_storage(&storage).await.unwrap();
+    runtime.state.commit(deposit(4)).await.unwrap();
+    runtime.stop().await.unwrap();
     let mut config = config();
     config.request.max_pending_write_bytes = NonZeroUsize::new(256 * 1024).unwrap();
     let storage = store.manager(config);
-    assert!(builder(policy(100)).runtime_with_storage(&storage).await.is_err());
+    let runtime = builder(policy(100)).runtime_with_storage(&storage).await.unwrap();
+    assert_eq!(balance(&runtime).await, 4);
+    assert_eq!(storage.status().pending_bytes, 0);
+    runtime.stop().await.unwrap();
     assert!(storage.status().closed);
 }
 

@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
-use harmos_runtime::operations::{Operation, OperationPolicy, PluginRegistration, RetryPolicy, WireDeclaration};
+use harmos_runtime::operations::{OperationPolicy, PluginRegistration, RetryPolicy, WireDeclaration};
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition, Router,
@@ -68,10 +68,8 @@ struct Owner {
     observed: Notify,
     started: Notify,
     resume: Notify,
-    finalizing: Notify,
-    release: Notify,
-    finalizations: AtomicUsize,
-    fail_cleanup: AtomicBool,
+    settled: Notify,
+    finished: AtomicUsize,
     fail_attempt: AtomicBool,
     block: bool,
     reenter: bool,
@@ -179,7 +177,10 @@ impl Message for Fact {
         WireFact { value: self.value }.encoded_size()
     }
     fn decode(bytes: &[u8]) -> std::result::Result<Self, MessageError> {
-        Ok(Self { value: WireFact::decode(bytes)?.value, dropped: Arc::new(AtomicUsize::new(0)) })
+        Ok(Self {
+            value: WireFact::decode(bytes)?.value,
+            dropped: Arc::new(AtomicUsize::new(0)),
+        })
     }
 }
 
@@ -194,7 +195,7 @@ impl harmos_runtime::Application for Model {
 
 impl<const FIRST: bool> Listener for Heard<FIRST> {
     type Row = WireFact;
-    const CALLBACK: &'static str = if FIRST { "heard_z" } else { "heard_a" };
+    const CALLBACK: &'static str = if FIRST { "heard.z" } else { "heard.a" };
     const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
@@ -202,38 +203,62 @@ impl<const FIRST: bool> Listener for Heard<FIRST> {
     };
 }
 
-struct Hearing<const FIRST: bool> {
-    resources: Arc<Owner>,
-    wait_cleanup: bool,
-}
-
-impl<const FIRST: bool> Operation for Hearing<FIRST> {
-    type Endpoints = ();
-    type Request = <harmos_runtime::listeners::Callback<Heard<FIRST>> as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <harmos_runtime::listeners::Callback<Heard<FIRST>> as harmos_runtime::OperationDeclaration>::Response;
-
-    type Error = Failed;
-    async fn initialize(context: harmos_runtime::OperationContext) -> std::result::Result<Self, Failed> {
-        let resources = context.dependency::<Owner>().expect("fixture dependency");
-        Ok(Self { resources, wait_cleanup: false })
+struct AttemptGuard(Arc<Owner>);
+impl Drop for AttemptGuard {
+    fn drop(&mut self) {
+        self.0.finished.fetch_add(1, Ordering::SeqCst);
+        self.0.settled.notify_one();
     }
-    async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Delivery<Heard<FIRST>>, _endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<harmos_runtime::operations::Response<()>, Failed> {
+}
+#[harmos_runtime::operation(codec = manual, resources = [Owner], id = <Heard<true> as Listener>::CALLBACK, response = (),
+    policy = <Heard<true> as Listener>::POLICY, visibility = Shared)]
+#[derive(Clone)]
+struct HearingFirst(Delivery<Heard<true>>);
+
+impl harmos_runtime::Message for HearingFirst {
+    const CODEC: &'static str = <Delivery<Heard<true>> as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&self.0)
+    }
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&self.0)
+    }
+    fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, harmos_runtime::MessageError> {
+        <Delivery<Heard<true>> as harmos_runtime::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> std::result::Result<Self, harmos_runtime::MessageError> {
+        <Delivery<Heard<true>> as harmos_runtime::Message>::decode(bytes).map(Self)
+    }
+}
+impl harmos_runtime::MemorySize for HearingFirst {
+    fn memory_size(&self) -> usize {
+        harmos_runtime::MemorySize::memory_size(&self.0)
+    }
+}
+impl harmos_runtime::schema::Described for HearingFirst {
+    const NAME: &'static str = <Delivery<Heard<true>> as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] = <Delivery<Heard<true>> as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <Delivery<Heard<true>> as harmos_runtime::schema::Described>::MARKER;
+}
+impl harmos_runtime::Operation for HearingFirst {
+    type Error = Failed;
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<()>, Self::Error> {
+        let resources = ctx.resource::<Owner>();
+        let _guard = AttemptGuard(resources.clone());
+        let request = self.0;
         let result: ::core::result::Result<(), Self::Error> = async move {
-            self.wait_cleanup = FIRST && request.row().value == 0 && self.resources.block;
             assert!(matches!(request.context(), DeliveryContext::Stream { .. }));
-            self.resources.seen.lock().unwrap().push((FIRST, request.row().value, request.context()));
-            self.resources.observed.notify_one();
-            if FIRST && request.row().value == 0 {
-                if self.resources.reenter {
-                    self.resources.streams.publish(fact(9));
+            resources.seen.lock().unwrap().push((true, request.row().value, request.context()));
+            resources.observed.notify_one();
+            if true && request.row().value == 0 {
+                if resources.reenter {
+                    resources.streams.publish(fact(9));
                 }
-                if self.resources.block {
-                    self.resources.started.notify_one();
-                    self.resources.resume.notified().await;
+                if resources.block {
+                    resources.started.notify_one();
+                    resources.resume.notified().await;
                 }
-                if self.resources.fail_attempt.load(Ordering::SeqCst) {
+                if resources.fail_attempt.load(Ordering::SeqCst) {
                     return Err(Failed::Scripted);
                 }
             }
@@ -242,16 +267,63 @@ impl<const FIRST: bool> Operation for Hearing<FIRST> {
         .await;
         result.map(::core::convert::Into::into)
     }
-    async fn cleanup(&mut self) -> std::result::Result<(), Failed> {
-        self.resources.finalizations.fetch_add(1, Ordering::SeqCst);
-        if self.wait_cleanup {
-            self.resources.finalizing.notify_one();
-            if self.resources.fail_cleanup.load(Ordering::SeqCst) {
-                return Err(Failed::Scripted);
+}
+#[harmos_runtime::operation(codec = manual, resources = [Owner], id = <Heard<false> as Listener>::CALLBACK, response = (),
+    policy = <Heard<false> as Listener>::POLICY, visibility = Shared)]
+#[derive(Clone)]
+struct HearingSecond(Delivery<Heard<false>>);
+
+impl harmos_runtime::Message for HearingSecond {
+    const CODEC: &'static str = <Delivery<Heard<false>> as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&self.0)
+    }
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&self.0)
+    }
+    fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, harmos_runtime::MessageError> {
+        <Delivery<Heard<false>> as harmos_runtime::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> std::result::Result<Self, harmos_runtime::MessageError> {
+        <Delivery<Heard<false>> as harmos_runtime::Message>::decode(bytes).map(Self)
+    }
+}
+impl harmos_runtime::MemorySize for HearingSecond {
+    fn memory_size(&self) -> usize {
+        harmos_runtime::MemorySize::memory_size(&self.0)
+    }
+}
+impl harmos_runtime::schema::Described for HearingSecond {
+    const NAME: &'static str = <Delivery<Heard<false>> as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] = <Delivery<Heard<false>> as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <Delivery<Heard<false>> as harmos_runtime::schema::Described>::MARKER;
+}
+impl harmos_runtime::Operation for HearingSecond {
+    type Error = Failed;
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<()>, Self::Error> {
+        let resources = ctx.resource::<Owner>();
+        let _guard = AttemptGuard(resources.clone());
+        let request = self.0;
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            assert!(matches!(request.context(), DeliveryContext::Stream { .. }));
+            resources.seen.lock().unwrap().push((false, request.row().value, request.context()));
+            resources.observed.notify_one();
+            if false && request.row().value == 0 {
+                if resources.reenter {
+                    resources.streams.publish(fact(9));
+                }
+                if resources.block {
+                    resources.started.notify_one();
+                    resources.resume.notified().await;
+                }
+                if resources.fail_attempt.load(Ordering::SeqCst) {
+                    return Err(Failed::Scripted);
+                }
             }
-            self.resources.release.notified().await;
+            Ok(())
         }
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -260,7 +332,11 @@ impl PluginLifecycle for Host {
     type Sidecar = Resources;
     type Embedded = Resources;
     fn prepare(&mut self, _: &PluginDefinition) -> Result<Backends> {
-        Ok(PluginBackend::Embedded(Resources { owner: Some(self.owner.clone()), managed: self.managed, ..Resources::default() }))
+        Ok(PluginBackend::Embedded(Resources {
+            owner: Some(self.owner.clone()),
+            managed: self.managed,
+            ..Resources::default()
+        }))
     }
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> Result<()> {
         Ok(())
@@ -279,8 +355,8 @@ impl PluginLifecycle for Host {
                     dependencies.insert(self.owner.clone()).unwrap();
                     dependencies
                 })
-                .implementation::<harmos_runtime::listeners::Callback<Heard<true>>, Hearing<true>>()
-                .implementation::<harmos_runtime::listeners::Callback<Heard<false>>, Hearing<false>>(),
+                .operation::<HearingFirst>()
+                .operation::<HearingSecond>(),
                 Lanes::Open,
             ))
         })?);
@@ -302,7 +378,10 @@ impl PluginLifecycle for Host {
         if let Some(streams) = &resources.streams {
             streams.leases()[0].stage_derived_row(publication_row(0), 0).unwrap();
         } else {
-            self.owner.streams.publish(Fact { value: 0, dropped: self.original_drop.clone() });
+            self.owner.streams.publish(Fact {
+                value: 0,
+                dropped: self.original_drop.clone(),
+            });
         }
         tokio::task::yield_now().await;
         assert!(self.owner.seen.lock().unwrap().is_empty());
@@ -311,7 +390,10 @@ impl PluginLifecycle for Host {
             self.view.take();
         }
         if self.fail_start {
-            return Err(Error::InvalidInput { field: "listener fixture", reason: "failed original setup" });
+            return Err(Error::InvalidInput {
+                field: "listener fixture",
+                reason: "failed original setup",
+            });
         }
         Ok(())
     }
@@ -340,7 +422,10 @@ impl PluginLifecycle for Host {
 /* === Private Functions === */
 
 fn fact(value: u32) -> Fact {
-    Fact { value, dropped: Arc::new(AtomicUsize::new(0)) }
+    Fact {
+        value,
+        dropped: Arc::new(AtomicUsize::new(0)),
+    }
 }
 
 fn publication() -> harmos_domain::StreamDeclaration {
@@ -359,7 +444,11 @@ fn publication() -> harmos_domain::StreamDeclaration {
 }
 
 fn publication_row(value: u32) -> harmos_runtime::streams::PublicationRow {
-    harmos_runtime::streams::PublicationRow { payload: WireFact { value }.encode(), published_unix_micros: None, context: None }
+    harmos_runtime::streams::PublicationRow {
+        payload: WireFact { value }.encode(),
+        published_unix_micros: None,
+        context: None,
+    }
 }
 
 fn candidate(managed: bool) -> PluginDefinitions {
@@ -428,10 +517,8 @@ async fn setup_source(
         observed: Notify::new(),
         started: Notify::new(),
         resume: Notify::new(),
-        finalizing: Notify::new(),
-        release: Notify::new(),
-        finalizations: AtomicUsize::new(0),
-        fail_cleanup: AtomicBool::new(false),
+        settled: Notify::new(),
+        finished: AtomicUsize::new(0),
         fail_attempt: AtomicBool::new(false),
         block,
         reenter,
@@ -563,7 +650,11 @@ async fn runtime_signals_listener() {
     let (runtime, mut manager, mut host) = setup(true, false, 1).await;
     manager.initialize(&mut host).await.unwrap();
     host.owner.started.notified().await;
-    let gates = Arc::new(Gates { running: Notify::new(), stopping: Notify::new(), release: Notify::new() });
+    let gates = Arc::new(Gates {
+        running: Notify::new(),
+        stopping: Notify::new(),
+        release: Notify::new(),
+    });
     runtime.operations.register_observer(BlockedObserver).unwrap();
     let lease = runtime.operations.submit_with_resources_at("blocked-cleanup", gates.clone()).await.unwrap();
     gates.running.notified().await;
@@ -571,61 +662,15 @@ async fn runtime_signals_listener() {
     tokio::select! {
         _ = async {
             gates.stopping.notified().await;
-            host.owner.finalizing.notified().await;
+            host.owner.settled.notified().await;
         } => {},
         result = &mut stopping => panic!("runtime settled before blocked cleanup: {result:?}"),
     }
-    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
+    assert_eq!(host.owner.finished.load(Ordering::SeqCst), 1);
     drop(stopping);
-    host.owner.release.notify_one();
     gates.release.notify_one();
     runtime.stop().await.unwrap();
     drop(lease);
-}
-
-#[tokio::test]
-async fn finalizer_retains_owner() {
-    {
-        let (runtime, mut manager, mut host) = setup(true, false, 1).await;
-        manager.initialize(&mut host).await.unwrap();
-        host.owner.started.notified().await;
-        for value in 1..=512 {
-            runtime.streams.publish(fact(value));
-        }
-        let owner = host.owner.clone();
-        let mut closing = Box::pin(manager.shutdown(&mut host));
-        tokio::select! { biased; _ = owner.finalizing.notified() => {}, result = &mut closing => panic!("cleanup returned before original finalizer: {result:?}") }
-        let pending = std::future::poll_fn(|context| std::task::Poll::Ready(closing.as_mut().poll(context).is_pending())).await;
-        assert!(pending, "shutdown waits on the held finalizer");
-        drop(closing);
-        assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
-        assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-        host.owner.release.notify_one();
-        manager.shutdown(&mut host).await.unwrap();
-        assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
-        assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
-        runtime.stop().await.unwrap();
-    }
-    {
-        let (runtime, mut manager, mut host) = setup(true, false, 1).await;
-        manager.initialize(&mut host).await.unwrap();
-        host.owner.started.notified().await;
-        for value in 1..=512 {
-            runtime.streams.publish(fact(value));
-        }
-        host.owner.fail_cleanup.store(true, Ordering::SeqCst);
-        assert!(manager.shutdown(&mut host).await.is_err());
-        assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
-        let before = host.owner.finalizations.load(Ordering::SeqCst);
-        assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-        host.owner.fail_cleanup.store(false, Ordering::SeqCst);
-        host.owner.release.notify_one();
-        manager.shutdown(&mut host).await.unwrap();
-        assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-        assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), before + 1);
-        assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
-        runtime.stop().await.unwrap();
-    }
 }
 
 #[tokio::test]
@@ -637,7 +682,6 @@ async fn pages_deliver_native() {
         runtime.streams.publish(fact(value));
     }
     host.owner.resume.notify_one();
-    host.owner.release.notify_one();
     observed(&host.owner, 522).await;
 
     // The frontier advances only after a row's last callback settles, so one
@@ -671,7 +715,6 @@ async fn overwrite_reports_logical() {
         runtime.streams.publish(fact(value));
     }
     host.owner.resume.notify_one();
-    host.owner.release.notify_one();
     observed(&host.owner, 1026).await;
     {
         let seen = host.owner.seen.lock().unwrap();
@@ -722,3 +765,18 @@ async fn source_preserves_staged() {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn shutdown_releases_callback_before_source() {
+    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
+    manager.initialize(&mut host).await.unwrap();
+    host.owner.started.notified().await;
+    manager.shutdown(&mut host).await.unwrap();
+    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
+    assert_eq!(host.owner.finished.load(Ordering::SeqCst), 1);
+    let source_dropped = host.original_drop.clone();
+    assert_eq!(source_dropped.load(Ordering::SeqCst), 0);
+    runtime.stop().await.unwrap();
+    drop((manager, host, runtime));
+    assert_eq!(source_dropped.load(Ordering::SeqCst), 1);
+}

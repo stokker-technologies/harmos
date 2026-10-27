@@ -17,7 +17,7 @@
 use std::num::NonZeroUsize;
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+    atomic::{AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
@@ -26,7 +26,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos_runtime::operations::{Operation, OperationOutcome, OperationPhase, RetryPolicy, Settings};
+use harmos_runtime::operations::{OperationOutcome, OperationPhase, RetryPolicy, Settings};
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -38,30 +38,26 @@ use harmos_runtime::{Error, Refusal, Runtime};
 /* === Structs === */
 
 // The Hold Request Carries A Shared Notification, So It Stays In Process.
-#[harmos_runtime::operation(request = HoldContract, infer_request,
-    response = (),
-    id = "queue_hold",
-
+#[harmos_runtime::operation(resources = [Counts], codec = manual, response = (),
+    id = "queue.hold",
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
     },
 )]
-struct HoldContractDeclaration;
-
-struct HoldContract {
+#[derive(Clone)]
+struct HoldContractDeclaration {
     blocked: bool,
     started: Arc<Notify>,
 }
 
-struct Hold {
+struct AttemptGuard {
     counts: Arc<Counts>,
 }
 
 #[derive(Default)]
 struct Counts {
-    fail_cleanup: Arc<AtomicBool>,
     constructed: AtomicUsize,
     drops: AtomicUsize,
 }
@@ -70,53 +66,36 @@ struct Counts {
 
 #[harmos_runtime::catalog]
 enum Operations {
-    HoldContract(HoldContractDeclaration),
+    HoldContractDeclaration(HoldContractDeclaration),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-super::in_process!(HoldContract);
+super::in_process!(HoldContractDeclaration);
 
-impl harmos_runtime::MemorySize for HoldContract {
+impl harmos_runtime::MemorySize for HoldContractDeclaration {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
     }
 }
 
-impl Operation for Hold {
-    type Request = HoldContract;
-    type Response = <HoldContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
-    type Endpoints = ();
+impl harmos_runtime::Operation for HoldContractDeclaration {
     type Error = std::io::Error;
-
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let counts = context.dependency::<Counts>().expect("fixture registers its dependency");
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
+        let counts = ctx.resource::<Counts>();
         counts.constructed.fetch_add(1, Ordering::SeqCst);
-        Ok(Self { counts })
-    }
-
-    async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut HoldContract, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            request.started.notify_one();
-            if request.blocked {
-                std::future::pending::<()>().await;
-            }
-            Ok(())
+        let _guard = AttemptGuard { counts };
+        self.started.notify_one();
+        if self.blocked {
+            std::future::pending::<()>().await;
         }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        if self.counts.fail_cleanup.load(Ordering::SeqCst) { Err(std::io::Error::other("retained queued resource")) } else { Ok(()) }
+        Ok(().into())
     }
 }
 
-impl Drop for Hold {
+impl Drop for AttemptGuard {
     fn drop(&mut self) {
         self.counts.drops.fetch_add(1, Ordering::SeqCst);
     }
@@ -139,8 +118,11 @@ async fn runtime() -> Runtime<App> {
         .unwrap()
 }
 
-fn request(blocked: bool) -> HoldContract {
-    HoldContract { blocked, started: Arc::new(Notify::new()) }
+fn request(blocked: bool) -> HoldContractDeclaration {
+    HoldContractDeclaration {
+        blocked,
+        started: Arc::new(Notify::new()),
+    }
 }
 
 /* === Tests === */
@@ -157,7 +139,7 @@ async fn queue_refuses_construction() {
                 dependencies.insert(counts.clone()).unwrap();
                 dependencies
             })
-            .implementation::<HoldContractDeclaration, Hold>(),
+            .operation::<HoldContractDeclaration>(),
             Lanes::Serial,
         ))
         .await
@@ -188,7 +170,7 @@ async fn queued_cancel_unbuilt() {
                 dependencies.insert(counts.clone()).unwrap();
                 dependencies
             })
-            .implementation::<HoldContractDeclaration, Hold>(),
+            .operation::<HoldContractDeclaration>(),
             Lanes::Serial,
         ))
         .await
@@ -198,7 +180,6 @@ async fn queued_cancel_unbuilt() {
     let first = runtime.operation(first_request).start().await.unwrap();
     started.notified().await;
     let second_request = request(false);
-    counts.fail_cleanup.store(true, Ordering::SeqCst);
     let mut second = runtime.operation(second_request).start().await.unwrap();
     assert_eq!(second.status().phase(), OperationPhase::Queued);
     second.cancel();
@@ -215,7 +196,6 @@ async fn queued_cancel_unbuilt() {
     assert!(runtime.operations.status(second.id()).is_none());
     assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(counts.drops.load(Ordering::SeqCst), 0);
-    counts.fail_cleanup.store(false, Ordering::SeqCst);
     let third = runtime.operation(request(false)).start().await.unwrap();
     third.cancel();
     assert!(matches!(third.join().await, Err(Error::OperationRefused(Refusal::Cancelled))));
@@ -237,7 +217,7 @@ async fn instances_leave_lookup() {
                 dependencies.insert(counts.clone()).unwrap();
                 dependencies
             })
-            .implementation::<HoldContractDeclaration, Hold>(),
+            .operation::<HoldContractDeclaration>(),
             Lanes::Serial,
         ))
         .await
@@ -264,7 +244,7 @@ async fn thread_submission_works() {
                 dependencies.insert(counts.clone()).unwrap();
                 dependencies
             })
-            .implementation::<HoldContractDeclaration, Hold>(),
+            .operation::<HoldContractDeclaration>(),
             Lanes::Serial,
         ))
         .await

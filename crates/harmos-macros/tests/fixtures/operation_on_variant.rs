@@ -7,9 +7,6 @@
  * ***
  */
 
-
-
-
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -21,7 +18,6 @@
 // Third Party Imports
 
 // Local Imports
-
 
 /* === Constants === */
 
@@ -35,10 +31,9 @@
 
 #[harmos::catalog]
 enum Operations {
-    #[operation(request = (), response = (), policy = ())]
+    #[operation(response = (), policy = ())]
     Read,
 }
-
 
 /* === Traits === */
 

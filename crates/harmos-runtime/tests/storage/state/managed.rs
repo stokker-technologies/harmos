@@ -110,10 +110,20 @@ impl harmos_runtime::state::Transaction<i64> for Add {
 
 impl Store {
     fn new() -> Self {
-        Self { data: Arc::new(Data::new(history())), recovery: Arc::new(Recovery::new(history())) }
+        Self {
+            data: Arc::new(Data::new(history())),
+            recovery: Arc::new(Recovery::new(history())),
+        }
     }
     fn manager(&self, config: StorageSettings) -> StorageManager {
-        StorageManager::new(StorageBackends { primary: self.data.clone(), state: self.recovery.clone() }, config).unwrap()
+        StorageManager::new(
+            StorageBackends {
+                primary: self.data.clone(),
+                state: self.recovery.clone(),
+            },
+            config,
+        )
+        .unwrap()
     }
     async fn boot(&self, storage: &StorageManager) -> Runtime<Bank> {
         Runtime::<Bank>::builder(Ledger::default(), ())
@@ -135,7 +145,10 @@ impl Store {
 /* === Private Functions === */
 
 fn limits() -> ReadLimits {
-    ReadLimits { rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(256 * 1024).unwrap() }
+    ReadLimits {
+        rows: NonZeroUsize::new(1).unwrap(),
+        bytes: NonZeroUsize::new(256 * 1024).unwrap(),
+    }
 }
 
 async fn balance(runtime: &Runtime<Bank>) -> i64 {
@@ -438,7 +451,9 @@ async fn cancelled_replay_releases() {
             _ = &mut opening => panic!("replay must wait for the backend"),
             _ = store.recovery.control.read_entered.notified() => {}
         }
-        assert!(storage.status().pending_bytes > 0);
+        assert!(store.recovery.control.open.load(Ordering::SeqCst));
+        assert!(store.data.control.open.load(Ordering::SeqCst));
+        assert_eq!(storage.status().pending_bytes, 0);
     }
     closed(&storage, &cleanup).await;
     assert_eq!(storage.status().pending_bytes, 0);
@@ -543,7 +558,12 @@ async fn keyed_group_retained() {
     let storage = store.manager(config());
     let builder = || {
         Runtime::<Model>::builder(0, ()).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
-            harmos_runtime::config::ManagedStorageSettings { replay: limits(), capture: limits(), snapshots: None, journal_tail: 1024 },
+            harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(),
+                capture: limits(),
+                snapshots: None,
+                journal_tail: 1024,
+            },
         )
     };
     let key = RequestKey::new("group");

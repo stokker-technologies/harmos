@@ -42,6 +42,8 @@ pub struct Entry {
 
 pub struct Declarations;
 
+pub struct Callees;
+
 /* === Enums === */
 
 /* === Traits === */
@@ -128,6 +130,14 @@ impl Declarations {
         entries.try_for_each(|declaration| append(declaration, &mut names, &mut definitions))?;
         Ok(definitions)
     }
+}
+
+impl Visitor for Callees {
+    type Entry = &'static [super::WireDeclaration];
+}
+
+impl<M: OperationDeclaration> Member<M> for Callees {
+    const ENTRY: Self::Entry = M::OPERATIONS;
 }
 
 /* === Public Functions === */

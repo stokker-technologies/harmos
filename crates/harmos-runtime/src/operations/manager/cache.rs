@@ -76,9 +76,9 @@ impl Manager {
         drop(retired);
     }
 
-    pub(in crate::operations) fn lookup<O: OperationDeclaration>(
+    pub(in crate::operations) fn lookup_erased(
         &self, entry: &Arc<Entry>, key: &CacheKey, identity: &Identity,
-    ) -> Option<crate::operations::Response<O::Response>> {
+    ) -> Option<harmos_sdk::__private::ErasedResponse> {
         let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
         if state.closing || entry.available().is_err() {
             return None;
@@ -89,7 +89,7 @@ impl Manager {
                 && cached.target.upgrade().is_some_and(|target| Arc::ptr_eq(&target, entry) && target.generation == entry.generation)
         })?;
         let cached = state.cache.remove(index)?;
-        let response = cached.response.clone().restore::<O::Response>();
+        let response = Some(cached.response.clone());
         state.cache.push_back(cached);
         response
     }

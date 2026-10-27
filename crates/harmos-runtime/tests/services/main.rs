@@ -39,7 +39,7 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{Barrier, Notify};
 // Local Imports
-use harmos_runtime::operations::{Operation, RetryPolicy};
+use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Error, Runtime, services::ServiceContext, services::ServiceStatus};
 use support::{Bank, Ledger, catalog};
 
@@ -51,29 +51,21 @@ use support::{Bank, Ledger, catalog};
 
 /* === Structs === */
 
-struct Ping;
-
 /* === Enums === */
 
-#[harmos_runtime::operation(request = PingContract, infer_request,
-        response = u64,
-        id = "service_ping",
-
+#[harmos_runtime::operation(resources = [], response = u64,
+        id = "service.ping",
         policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(120),
             attempt_timeout: Duration::from_secs(120),
             retries: RetryPolicy::Never,
         },
     )]
-struct PingContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct PingContract {}
+struct PingContractDeclaration {}
 
 #[harmos_runtime::catalog]
 enum Operations {
-    PingContract(PingContractDeclaration),
+    PingContractDeclaration(PingContractDeclaration),
 }
 
 use support::Lanes;
@@ -82,20 +74,10 @@ use support::Lanes;
 
 /* === Implementations === */
 
-impl Operation for Ping {
-    type Request = PingContract;
-    type Response = <PingContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::operations::Operation for PingContractDeclaration {
     type Error = std::convert::Infallible;
-    type Endpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let _resources = context.dependency::<()>().expect("fixture registers its dependency");
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _request: &mut PingContract, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
+    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
         let result: ::core::result::Result<u64, Self::Error> = async move { Ok(42) }.await;
         result.map(::core::convert::Into::into)
     }
@@ -138,7 +120,10 @@ async fn handle_shares_manager() {
     let manager = runtime.handle().operations;
     manager
         .register_service(
-            harmos_runtime::services::ServiceDefinition { id: "dynamic".into(), policy: harmos_runtime::services::POLICY },
+            harmos_runtime::services::ServiceDefinition {
+                id: "dynamic".into(),
+                policy: harmos_runtime::services::POLICY,
+            },
             |_: Arc<()>| resident,
         )
         .unwrap();
@@ -178,12 +163,12 @@ async fn shutdown_preserves_work() {
                 dependencies.insert(Arc::new(())).unwrap();
                 dependencies
             })
-            .implementation::<PingContractDeclaration, Ping>(),
+            .operation::<PingContractDeclaration>(),
             Lanes::Open,
         ))
         .await
         .unwrap();
-    assert_eq!(*runtime.operations.call::<PingContractDeclaration>(PingContract {}).await.unwrap(), 42);
+    assert_eq!(*runtime.operations.call::<PingContractDeclaration>(PingContractDeclaration {}).await.unwrap(), 42);
     runtime.stop().await.unwrap();
 }
 
@@ -193,7 +178,10 @@ async fn admission_rejects_reserved() {
     for name in ["", "artifact"] {
         assert!(matches!(
             runtime.operations.register_service(
-                harmos_runtime::services::ServiceDefinition { id: name.into(), policy: harmos_runtime::services::POLICY },
+                harmos_runtime::services::ServiceDefinition {
+                    id: name.into(),
+                    policy: harmos_runtime::services::POLICY
+                },
                 |_: Arc<()>| resident
             ),
             Err(Error::InvalidInput { field: "service name", .. })
@@ -219,7 +207,10 @@ async fn shutdown_join_started() {
             barrier.wait().await;
             let id = format!("resident-{index}");
             manager.register_service(
-                harmos_runtime::services::ServiceDefinition { id: id.clone(), policy: harmos_runtime::services::POLICY },
+                harmos_runtime::services::ServiceDefinition {
+                    id: id.clone(),
+                    policy: harmos_runtime::services::POLICY,
+                },
                 move |_: Arc<()>| {
                     let entered = entered.clone();
                     let exited = exited.clone();

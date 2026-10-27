@@ -56,13 +56,19 @@ pub struct Requirements;
 
 impl Requirement {
     pub const fn of<O: OperationDeclaration>(grants: &'static [Grant]) -> Self {
-        Self { declaration: WireDeclaration::of::<O>(), grants }
+        Self {
+            declaration: WireDeclaration::of::<O>(),
+            grants,
+        }
     }
 }
 
 impl Grant {
     pub fn of(operation: impl Into<Cow<'static, str>>, scope: impl Into<Cow<'static, str>>) -> Self {
-        Self { operation: operation.into(), scope: Some(scope.into()) }
+        Self {
+            operation: operation.into(),
+            scope: Some(scope.into()),
+        }
     }
 
     pub fn operation(&self) -> &str {
@@ -100,6 +106,108 @@ where
 
 /* === Public Functions === */
 
+// Upper Bound Includes Duplicates; Unused Nodes Are Empty Nested Projections.
+pub const fn callee_count(nodes: &[crate::catalog::Node<&'static [WireDeclaration]>]) -> usize {
+    let mut count = 0;
+    let mut index = 0;
+    while index < nodes.len() {
+        count += match &nodes[index] {
+            crate::catalog::Node::Leaf(entries) => entries.len(),
+            crate::catalog::Node::Nested(entries) => callee_count(entries),
+        };
+        index += 1;
+    }
+    count
+}
+
+pub const fn aggregate<const N: usize>(
+    explicit: &'static [crate::catalog::Node<Requirement>], provided: &[crate::catalog::Node<WireDeclaration>],
+    callees: &[crate::catalog::Node<&'static [WireDeclaration]>],
+) -> [crate::catalog::Node<Requirement>; N] {
+    let mut output = [const { crate::catalog::Node::Nested(&[]) }; N];
+    std::mem::forget(std::mem::replace(&mut output[0], crate::catalog::Node::Nested(explicit)));
+    let mut cursor = 1;
+    append_callees(callees, provided, &mut output, &mut cursor);
+    output
+}
+
 /* === Private Functions === */
+
+const fn same(left: &str, right: &str) -> bool {
+    let left = left.as_bytes();
+    let right = right.as_bytes();
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < left.len() {
+        if left[index] != right[index] {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+const fn provided(nodes: &[crate::catalog::Node<WireDeclaration>], id: &str) -> bool {
+    let mut index = 0;
+    while index < nodes.len() {
+        let found = match &nodes[index] {
+            crate::catalog::Node::Leaf(entry) => same(entry.operation.id, id),
+            crate::catalog::Node::Nested(entries) => provided(entries, id),
+        };
+        if found {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
+const fn required(nodes: &[crate::catalog::Node<Requirement>], id: &str) -> bool {
+    let mut index = 0;
+    while index < nodes.len() {
+        let found = match &nodes[index] {
+            crate::catalog::Node::Leaf(entry) => same(entry.declaration.operation.id, id),
+            crate::catalog::Node::Nested(entries) => required(entries, id),
+        };
+        if found {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
+const fn append_callees(
+    nodes: &[crate::catalog::Node<&'static [WireDeclaration]>], providers: &[crate::catalog::Node<WireDeclaration>],
+    output: &mut [crate::catalog::Node<Requirement>], cursor: &mut usize,
+) {
+    let mut index = 0;
+    while index < nodes.len() {
+        match &nodes[index] {
+            crate::catalog::Node::Nested(entries) => append_callees(entries, providers, output, cursor),
+            crate::catalog::Node::Leaf(entries) => {
+                let mut member = 0;
+                while member < entries.len() {
+                    let declaration = &entries[member];
+                    let id = declaration.operation.id;
+                    if !provided(providers, id) && !required(output, id) {
+                        std::mem::forget(std::mem::replace(
+                            &mut output[*cursor],
+                            crate::catalog::Node::Leaf(Requirement {
+                                declaration: declaration.copied(),
+                                grants: &[],
+                            }),
+                        ));
+                        *cursor += 1;
+                    }
+                    member += 1;
+                }
+            }
+        }
+        index += 1;
+    }
+}
 
 /* === Tests === */

@@ -77,7 +77,10 @@ impl<'a> ProjectedRecords<'a> {
         }
         for entry in self.permit.projected() {
             if encoded_size(entry)? > maximum.get() {
-                return Err(Error::InvalidInput { field: "record projection", reason: "one entry exceeds max_batch_bytes" });
+                return Err(Error::InvalidInput {
+                    field: "record projection",
+                    reason: "one entry exceeds max_batch_bytes",
+                });
             }
         }
         Ok(())
@@ -89,7 +92,10 @@ impl<'a> ProjectedRecords<'a> {
 /* === Private Functions === */
 
 fn limit() -> Error {
-    Error::InvalidInput { field: "record projection", reason: "capture limit exceeded" }
+    Error::InvalidInput {
+        field: "record projection",
+        reason: "capture limit exceeded",
+    }
 }
 
 /* === Tests === */

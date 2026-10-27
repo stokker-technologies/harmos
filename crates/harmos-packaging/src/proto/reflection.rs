@@ -187,14 +187,20 @@ fn describe(fields: &[graph::Field], index: usize, root: usize, package: &str) -
         }
     }
     let name = row_name(index, root);
-    let mut row = DescriptorProto { name: Some(name.clone()), ..Default::default() };
+    let mut row = DescriptorProto {
+        name: Some(name.clone()),
+        ..Default::default()
+    };
     let variants = fields.iter().any(|field| field.cardinality == Cardinality::Variant);
     if variants {
         let mut variant_name = "_harmos_variant".to_owned();
         while names.contains(variant_name.as_str()) {
             variant_name.push('_');
         }
-        row.oneof_decl.push(OneofDescriptorProto { name: Some(variant_name), ..Default::default() });
+        row.oneof_decl.push(OneofDescriptorProto {
+            name: Some(variant_name),
+            ..Default::default()
+        });
     }
     for field in fields {
         let (kind, type_name) = match &field.kind {

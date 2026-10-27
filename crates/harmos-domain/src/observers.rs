@@ -31,7 +31,11 @@ use crate::schema::{Cardinality, Described};
 /* === Constants === */
 
 // The observe control runs until the host cancels it.
-pub const POLICY: OperationPolicy = OperationPolicy { timeout: UNBOUNDED, attempt_timeout: UNBOUNDED, retries: RetryPolicy::Never };
+pub const POLICY: OperationPolicy = OperationPolicy {
+    timeout: UNBOUNDED,
+    attempt_timeout: UNBOUNDED,
+    retries: RetryPolicy::Never,
+};
 
 /* === Macros === */
 
@@ -46,10 +50,6 @@ impl crate::operations::OperationDeclaration for Control {
     const POLICY: crate::operations::OperationPolicy = POLICY;
     const VISIBILITY: crate::operations::Visibility = Visibility::Host;
     const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
-}
-
-impl crate::operations::RequestFor for ControlRequest {
-    type Operation = Control;
 }
 
 /* === Type Aliases === */
@@ -79,8 +79,18 @@ impl crate::MemorySize for ControlRequest {
 impl Described for ControlRequest {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(ControlRequest));
     const FIELDS: &'static [Field] = &[
-        Field { name: Cow::Borrowed("observer"), tag: 1, kind: Kind::String, cardinality: Cardinality::Required },
-        Field { name: Cow::Borrowed("generation"), tag: 2, kind: Kind::U64, cardinality: Cardinality::Required },
+        Field {
+            name: Cow::Borrowed("observer"),
+            tag: 1,
+            kind: Kind::String,
+            cardinality: Cardinality::Required,
+        },
+        Field {
+            name: Cow::Borrowed("generation"),
+            tag: 2,
+            kind: Kind::U64,
+            cardinality: Cardinality::Required,
+        },
     ];
     const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
         { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },

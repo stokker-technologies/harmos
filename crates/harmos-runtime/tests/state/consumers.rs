@@ -65,7 +65,13 @@ impl Recorder {
     fn new() -> (Self, Asked) {
         let asked: Asked = Arc::new(Mutex::new(Vec::new()));
 
-        (Self { asked: Arc::clone(&asked), resume: Position::ORIGIN }, asked)
+        (
+            Self {
+                asked: Arc::clone(&asked),
+                resume: Position::ORIGIN,
+            },
+            asked,
+        )
     }
 }
 

@@ -36,7 +36,8 @@ pub mod prelude {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! builtin_payload {
-    ($name:ident, $( $field:ident: $ty:ty => ($tag:literal, $kind:expr, $cardinality:ident)),* $(,)?) => {
+    ($(#[$attribute:meta])* $name:ident, $( $field:ident: $ty:ty => ($tag:literal, $kind:expr, $cardinality:ident)),* $(,)?) => {
+        $(#[$attribute])*
         #[derive(Clone, Debug, Default, PartialEq)]
         pub struct $name { $(pub $field: $ty),* }
         const _: () = {

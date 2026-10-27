@@ -48,8 +48,7 @@ mod retirement;
 
 use harmos_runtime::catalog::{Catalog, Member};
 use harmos_runtime::operations::{
-    Bindings, Operation, OperationDeclaration, OperationDefinition as Definition, OperationManager, OperationPolicy, PluginRegistration,
-    RetryPolicy, Visibility,
+    Bindings, OperationDefinition as Definition, OperationManager, OperationPolicy, PluginRegistration, RetryPolicy, Visibility,
 };
 use harmos_runtime::plugin::*;
 use harmos_runtime::plugin::{PluginEndpoint, PluginKind, Requirement};
@@ -153,14 +152,7 @@ struct RunRequest {
     value: String,
 }
 
-// One Run Declaration Per Owner, Timeout And Visibility; Each Encodes As A RunRequest.
-struct Run<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> {
-    value: String,
-}
-struct Running<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> {
-    _resources: Arc<Owner>,
-}
-struct Operations<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool>;
+struct Operations<O>(std::marker::PhantomData<O>);
 
 #[harmos_runtime::lanes(harmos_path = harmos_runtime)]
 enum Lanes {
@@ -182,88 +174,69 @@ const RUN_MARKER: &[u8] = &harmos_runtime::schema::declaration::encode::<
     { harmos_runtime::schema::declaration::encoded_len(RUN_NAME, <RunRequest as harmos_runtime::schema::Described>::FIELDS) },
 >(RUN_NAME, <RunRequest as harmos_runtime::schema::Described>::FIELDS);
 
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Run<OWNER, MILLIS, PRIVATE> {
-    fn wire(&self) -> RunRequest {
-        RunRequest { value: self.value.clone() }
-    }
-}
-
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::Message for Run<OWNER, MILLIS, PRIVATE> {
-    const CODEC: &'static str = <RunRequest as harmos_runtime::Message>::CODEC;
-    fn encode(&self) -> Vec<u8> {
-        harmos_runtime::Message::encode(&self.wire())
-    }
-    fn encoded_size(&self) -> usize {
-        harmos_runtime::Message::encoded_size(&self.wire())
-    }
-    fn decoding_memory(bytes: &[u8]) -> ::core::result::Result<usize, harmos_runtime::MessageError> {
-        <RunRequest as harmos_runtime::Message>::decoding_memory(bytes)
-    }
-    fn decode(bytes: &[u8]) -> ::core::result::Result<Self, harmos_runtime::MessageError> {
-        <RunRequest as harmos_runtime::Message>::decode(bytes).map(|request| Self { value: request.value })
-    }
-}
-
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::MemorySize for Run<OWNER, MILLIS, PRIVATE> {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>() + self.value.capacity()
-    }
-}
-
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::schema::Described for Run<OWNER, MILLIS, PRIVATE> {
-    const NAME: &'static str = RUN_NAME;
-    const FIELDS: &'static [harmos_runtime::schema::Field] = <RunRequest as harmos_runtime::schema::Described>::FIELDS;
-    const MARKER: &'static [u8] = RUN_MARKER;
-}
-
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> OperationDeclaration for Run<OWNER, MILLIS, PRIVATE> {
-    type Request = Self;
-    type Response = String;
-    type Input = harmos_runtime::operations::NoStream;
-    type Output = harmos_runtime::operations::NoStream;
-    const ID: &'static str = "run";
-    const VISIBILITY: Visibility = if PRIVATE { Visibility::Private } else { Visibility::Shared };
-    const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
-        timeout: Duration::from_millis(MILLIS),
-        attempt_timeout: Duration::from_millis(MILLIS),
-        retries: RetryPolicy::Never,
+macro_rules! operation {
+    ($name:ident, $millis:literal, $visibility:ident) => {
+        #[harmos_runtime::operation(codec = manual, resources = [Owner], id = "fixture.run", response = String,
+            visibility = $visibility, policy = OperationPolicy {
+                timeout: Duration::from_millis($millis), attempt_timeout: Duration::from_millis($millis), retries: RetryPolicy::Never,
+            })]
+        #[derive(Clone)]
+        struct $name { value: String }
+        impl harmos_runtime::Message for $name {
+            const CODEC: &'static str = <RunRequest as harmos_runtime::Message>::CODEC;
+            fn encode(&self) -> Vec<u8> { harmos_runtime::Message::encode(&RunRequest { value: self.value.clone() }) }
+            fn encoded_size(&self) -> usize { harmos_runtime::Message::encoded_size(&RunRequest { value: self.value.clone() }) }
+            fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, harmos_runtime::MessageError> {
+                <RunRequest as harmos_runtime::Message>::decoding_memory(bytes)
+            }
+            fn decode(bytes: &[u8]) -> std::result::Result<Self, harmos_runtime::MessageError> {
+                <RunRequest as harmos_runtime::Message>::decode(bytes).map(|request| Self { value: request.value })
+            }
+        }
+        impl harmos_runtime::MemorySize for $name {
+            fn memory_size(&self) -> usize { std::mem::size_of::<Self>() + self.value.capacity() }
+        }
+        impl harmos_runtime::schema::Described for $name {
+            const NAME: &'static str = RUN_NAME;
+            const FIELDS: &'static [harmos_runtime::schema::Field] = <RunRequest as harmos_runtime::schema::Described>::FIELDS;
+            const MARKER: &'static [u8] = RUN_MARKER;
+        }
+        impl harmos_runtime::Operation for $name {
+            type Error = std::io::Error;
+            async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::io::Result<harmos_runtime::Response<String>> {
+                let _owner = ctx.resource::<Owner>();
+                Ok(self.value.into())
+            }
+        }
     };
 }
 
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::RequestFor for Run<OWNER, MILLIS, PRIVATE> {
-    type Operation = Self;
-}
+operation!(ProviderRun, 100, Shared);
+operation!(ProviderPrivateRun, 100, Private);
+operation!(ProviderSlowRun, 200, Shared);
+operation!(ProviderSlowPrivateRun, 200, Private);
+operation!(ClientRun, 100, Shared);
+operation!(ClientPrivateRun, 100, Private);
+operation!(ClientSlowRun, 200, Shared);
+operation!(ClientSlowPrivateRun, 200, Private);
+operation!(OtherRun, 100, Shared);
+operation!(OtherPrivateRun, 100, Private);
+operation!(OtherSlowRun, 200, Shared);
+operation!(OtherSlowPrivateRun, 200, Private);
+operation!(ChangedRun, 101, Shared);
 
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Operation for Running<OWNER, MILLIS, PRIVATE> {
-    type Request = Run<OWNER, MILLIS, PRIVATE>;
-    type Response = String;
-    type Error = std::io::Error;
-    type Endpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> std::io::Result<Self> {
-        Ok(Self { _resources: context.dependency::<Owner>().expect("fixture owner") })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Self::Request, _: &mut (),
-    ) -> std::io::Result<harmos_runtime::Response<String>> {
-        Ok(request.value.clone().into())
-    }
-}
-
-impl<V, const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Catalog<V> for Operations<OWNER, MILLIS, PRIVATE>
+impl<V, O> Catalog<V> for Operations<O>
 where
-    V: Member<Run<OWNER, MILLIS, PRIVATE>>,
+    V: Member<O>,
 {
     type Entries = [V::Entry; 1];
     const ENTRIES: Self::Entries = [V::ENTRY];
 }
-
-fn registration<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool>() -> harmos_runtime::operations::Registration<Lanes> {
+fn registration<O: harmos_runtime::Operation>() -> harmos_runtime::operations::Registration<Lanes> {
     use harmos_runtime::RegistrationExt;
     let mut dependencies = harmos_runtime::Dependencies::new();
     dependencies.insert(Arc::new(Owner)).unwrap();
-    harmos_runtime::RegistrationBatch::new(dependencies)
-        .implementation::<Run<OWNER, MILLIS, PRIVATE>, Running<OWNER, MILLIS, PRIVATE>>()
-        .lane(Lanes::Open)
+    harmos_runtime::RegistrationBatch::new(dependencies).operation::<O>().lane(Lanes::Open)
 }
 
 fn request_payload() -> Vec<u8> {
@@ -271,12 +244,20 @@ fn request_payload() -> Vec<u8> {
 }
 
 fn bind<const OWNER: usize>(bindings: &mut Bindings<'_>, definition: &Definition) -> Result<()> {
-    match (definition.policy.timeout.as_millis(), definition.visibility) {
-        (100, Visibility::Shared) => bindings.register(registration::<OWNER, 100, false>()),
-        (100, Visibility::Private) => bindings.register(registration::<OWNER, 100, true>()),
-        (200, Visibility::Shared) => bindings.register(registration::<OWNER, 200, false>()),
-        (200, Visibility::Private) => bindings.register(registration::<OWNER, 200, true>()),
-        _ => panic!("fixture has no authored handler for this operation policy"),
+    match (OWNER, definition.policy.timeout.as_millis(), definition.visibility) {
+        (0, 100, Visibility::Shared) => bindings.register(registration::<ProviderRun>()),
+        (0, 100, Visibility::Private) => bindings.register(registration::<ProviderPrivateRun>()),
+        (0, 200, Visibility::Shared) => bindings.register(registration::<ProviderSlowRun>()),
+        (0, 200, Visibility::Private) => bindings.register(registration::<ProviderSlowPrivateRun>()),
+        (1, 100, Visibility::Shared) => bindings.register(registration::<ClientRun>()),
+        (1, 100, Visibility::Private) => bindings.register(registration::<ClientPrivateRun>()),
+        (1, 200, Visibility::Shared) => bindings.register(registration::<ClientSlowRun>()),
+        (1, 200, Visibility::Private) => bindings.register(registration::<ClientSlowPrivateRun>()),
+        (2, 100, Visibility::Shared) => bindings.register(registration::<OtherRun>()),
+        (2, 100, Visibility::Private) => bindings.register(registration::<OtherPrivateRun>()),
+        (2, 200, Visibility::Shared) => bindings.register(registration::<OtherSlowRun>()),
+        (2, 200, Visibility::Private) => bindings.register(registration::<OtherSlowPrivateRun>()),
+        _ => panic!("fixture has no operation for this policy"),
     }
 }
 
@@ -291,7 +272,10 @@ impl Host {
             .runtime()
             .await
             .unwrap();
-        Self { runtime: Some(runtime), ..Self::default() }
+        Self {
+            runtime: Some(runtime),
+            ..Self::default()
+        }
     }
     fn operations(&self) -> &OperationManager<Lanes> {
         &self.runtime.as_ref().unwrap().operations
@@ -355,7 +339,7 @@ impl PluginLifecycle for Host {
         let caller = instance.caller();
         self.control.lock().unwrap().callers.insert(artifact.id.clone(), caller.clone());
         for dependency in artifact.requires.iter().filter(|_| !self.control.lock().unwrap().skip_dependency_calls) {
-            self.call(&caller, &format!("{}.run", dependency.id), request_payload()).await?;
+            self.call(&caller, &format!("{}.fixture.run", dependency.id), request_payload()).await?;
         }
         let registration = self.operations().stage_plugin(instance.scope().unwrap(), |bindings| {
             for definition in &artifact.contributions.operations {
@@ -390,7 +374,10 @@ impl PluginLifecycle for Host {
         assert_eq!(authority.backend_kind(), backend.kind());
         let owned = activation(backend);
         let context = owned.stopping.as_ref().unwrap();
-        let _wait = StopWait { owner: artifact.id.clone(), control: context.control.clone() };
+        let _wait = StopWait {
+            owner: artifact.id.clone(),
+            control: context.control.clone(),
+        };
         {
             let mut control = context.control.lock().unwrap();
             control.events.push(format!("stop:{}", artifact.id));
@@ -407,7 +394,7 @@ impl PluginLifecycle for Host {
                     context
                         .operations
                         .caller(&instance.caller())?
-                        .call_encoded(&format!("{}.run", dependency.id), request_payload())
+                        .call_encoded(&format!("{}.fixture.run", dependency.id), request_payload())
                         .await?;
                 }
             }
@@ -464,7 +451,13 @@ fn plan() -> PluginGraph {
             },
             configuration: b"null".to_vec(),
             contributions: harmos_runtime::plugin::PluginContributions::default(),
-            requires: requires.into_iter().map(|id| Requirement { id: id.to_owned(), version: "*".parse().unwrap() }).collect(),
+            requires: requires
+                .into_iter()
+                .map(|id| Requirement {
+                    id: id.to_owned(),
+                    version: "*".parse().unwrap(),
+                })
+                .collect(),
         }),
     )
     .unwrap()
@@ -475,9 +468,9 @@ fn inventories(plan: &PluginGraph) -> Vec<(String, Vec<Definition>)> {
         .iter()
         .map(|artifact| {
             let operation = match artifact.id.as_str() {
-                "provider" => Definition::of::<Run<0, 100, false>>().unwrap(),
-                "client" => Definition::of::<Run<1, 100, false>>().unwrap(),
-                "other" => Definition::of::<Run<2, 100, false>>().unwrap(),
+                "provider" => Definition::of::<ProviderRun>().unwrap(),
+                "client" => Definition::of::<ClientRun>().unwrap(),
+                "other" => Definition::of::<OtherRun>().unwrap(),
                 _ => panic!("unknown fixture owner"),
             };
             (artifact.id.clone(), vec![operation])

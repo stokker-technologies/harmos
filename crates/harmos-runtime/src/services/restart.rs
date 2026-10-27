@@ -72,7 +72,11 @@ enum AttemptEvent<T> {
 
 impl Health {
     fn under(restart: RestartPolicy) -> Self {
-        Self { credit: restart.credit(), failures: 0, history: Vec::new() }
+        Self {
+            credit: restart.credit(),
+            failures: 0,
+            history: Vec::new(),
+        }
     }
 
     fn refill(&mut self, restart: RestartPolicy) {
@@ -158,10 +162,16 @@ pub(super) async fn run<A: Application>(
         #[cfg(not(feature = "plugin-sidecar"))]
         let restart = policy.restart;
         let terminal = match &answer {
-            Err(cause) => Some(Err(Arc::new(Error::TaskFailed { domain: "service attempt", source: Arc::new(cause.clone()) }))),
+            Err(cause) => Some(Err(Arc::new(Error::TaskFailed {
+                domain: "service attempt",
+                source: Arc::new(cause.clone()),
+            }))),
             Ok(Ok(())) => Some(Ok(())),
             Ok(Err(error)) if (health.credit == 0 || matches!(restart, RestartPolicy::Never)) && !*stopping.borrow() => {
-                Some(Err(Arc::new(Error::TaskFailed { domain: "service attempt", source: error.source.clone() })))
+                Some(Err(Arc::new(Error::TaskFailed {
+                    domain: "service attempt",
+                    source: error.source.clone(),
+                })))
             }
             Ok(Err(_)) if *stopping.borrow() => Some(Ok(())),
             Ok(Err(_)) => None,
@@ -173,7 +183,10 @@ pub(super) async fn run<A: Application>(
         report.transition(OperationPhase::Stopping);
         if let Err(error) = super::runner::cleanup(resident).await {
             if let Ok(Err(failure)) = &answer {
-                cleanup.record(Err(Arc::new(Error::TaskFailed { domain: "service attempt", source: failure.source.clone() })));
+                cleanup.record(Err(Arc::new(Error::TaskFailed {
+                    domain: "service attempt",
+                    source: failure.source.clone(),
+                })));
             }
             report.quiesce();
             return Err(error);
@@ -279,11 +292,19 @@ async fn deactivate<A: Application>(
     name: &str, cause: ServiceExit, history: Vec<String>, source: Arc<dyn std::error::Error + Send + Sync>, report: &Report,
     handles: &super::Handles<A>,
 ) -> Result<()> {
-    let payload =
-        serde_json::to_vec(&Deactivation { cause: describe(&cause), history: &history }).expect("the fixed work fact shape serializes");
+    let payload = serde_json::to_vec(&Deactivation {
+        cause: describe(&cause),
+        history: &history,
+    })
+    .expect("the fixed work fact shape serializes");
     let _ = handles
         .records
-        .publish_system(SystemFact { source: FactSource::Work(name.to_owned()), name: "deactivated".to_owned(), version: 1, payload })
+        .publish_system(SystemFact {
+            source: FactSource::Work(name.to_owned()),
+            name: "deactivated".to_owned(),
+            version: 1,
+            payload,
+        })
         .await;
     report.health(ServiceStatus::Inactive { cause, history });
     Err(Error::TaskFailed { domain: "service attempt", source })

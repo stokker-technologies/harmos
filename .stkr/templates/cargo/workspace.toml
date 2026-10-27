@@ -1,0 +1,20 @@
+{% include "partials/hash-header.jinja" %}
+# === Workspace === #
+
+# === Workspace Package === #
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+# === Workspace Dependencies === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #

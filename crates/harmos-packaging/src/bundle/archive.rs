@@ -108,9 +108,15 @@ pub(super) fn path(path: &str) -> Result<(), Error> {
 }
 
 pub(super) fn encode(manifest: &Manifest, contents: &BTreeMap<String, &[u8]>, limits: Limits) -> Result<Vec<u8>, Error> {
-    let mut json = Bounded { bytes: Vec::new(), limit: limits.manifest_bytes };
+    let mut json = Bounded {
+        bytes: Vec::new(),
+        limit: limits.manifest_bytes,
+    };
     serde_json::to_writer(&mut json, manifest)?;
-    let output = Bounded { bytes: Vec::new(), limit: limits.archive_bytes };
+    let output = Bounded {
+        bytes: Vec::new(),
+        limit: limits.archive_bytes,
+    };
     let mut builder = tar::Builder::new(output);
     append(&mut builder, "manifest.json", &json.bytes, false)?;
     for file in &manifest.files {

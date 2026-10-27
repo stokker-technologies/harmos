@@ -7,7 +7,7 @@
  * ***
  */
 
-// A Declarative Storage QueryRequest: A Source At A Full Cursor, Ordered Transforms
+// A Declarative Storage Query: A Source At A Full Cursor, Ordered Transforms
 // And A Final Row Slice. Results Cross The Wire As Arrow IPC.
 
 /* === Modules === */
@@ -27,13 +27,17 @@ use harmos_domain::model::storage::StorageCursor;
 use harmos_domain::model::storage::codec::{Nested, Repeated, product};
 use harmos_domain::model::storage::query::transform::Transform;
 use harmos_domain::model::storage::query::{QueryCompletion, QueryOutput, RowSlice, Source};
-use harmos_domain::operations::{ReplaySafety, Visibility};
+use harmos_domain::operations::ReplaySafety;
+#[cfg(feature = "runtime")]
+use harmos_sdk::operations::access::GrantAccess;
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
 /* === Macros === */
 
-product!(QueryRequest {
+product!(Query {
     at: Nested<StorageCursor> => 1,
     source: Nested<Source> => 2,
     transforms: Repeated<Transform> => 3,
@@ -44,28 +48,25 @@ product!(QueryRequest {
 
 /* === Structs === */
 
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [StorageManager<ErasedCatalog>, GrantAccess],
+    codec = manual,
+    id = "storage.query",
+    response = QueryCompletion,
+    policy = IO_POLICY,
+    output = QueryOutput,
+    visibility = Shared,
+    replay = ReplaySafety::Idempotent,
+    grpc(package = "harmos.storage.v1", service =  "Storage", method =  "Query"),
+    grant = Self::grant_for,
+)]
 #[derive(Clone, Debug)]
-pub struct QueryRequest {
+pub struct Query {
     pub at: StorageCursor,
     pub source: Source,
     pub transforms: Vec<Transform>,
     pub slice: RowSlice,
-}
-
-#[harmos::operation(harmos_path = crate,
-    id = "storage_query",
-    request = QueryRequest,
-    response = QueryCompletion,
-    policy = IO_POLICY,
-    infer_request,
-    output = QueryOutput,
-    visibility = Visibility::Shared,
-    replay = ReplaySafety::Idempotent,
-    grpc(package = "harmos.storage.v1", service =  "Storage", method =  "Query"),
-    grant = Self::grant_for)]
-pub struct Query {
-    #[cfg(feature = "runtime")]
-    storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
 }
 
 /* === Enums === */
@@ -75,12 +76,12 @@ pub struct Query {
 /* === Implementations === */
 
 impl Query {
-    fn grant_for(request: &QueryRequest) -> Option<harmos_domain::plugin::Grant> {
+    fn grant_for(request: &Query) -> Option<harmos_domain::plugin::Grant> {
         Some(harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, request.source.grant_scope()))
     }
 }
 
-impl MemorySize for QueryRequest {
+impl MemorySize for Query {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.at.memory_size().saturating_sub(std::mem::size_of_val(&self.at)))
@@ -99,9 +100,8 @@ mod execution {
     use crate::storage::IO_TIMEOUT;
     use crate::{Error, Result};
     use harmos_domain::plugin::Grant;
-    use harmos_sdk::operations::{Operation, OperationDeclaration, StreamOutput};
-    use harmos_storage::StorageManager;
-    use harmos_storage::query::{QueryCompletion, QueryOutput};
+    use harmos_sdk::operations::{Operation, OperationDeclaration};
+    use harmos_storage::query::QueryCompletion;
 
     // Standard Library Imports
 
@@ -110,28 +110,23 @@ mod execution {
     // Local Imports
 
     impl Operation for super::Query {
-        type Request = <Query as harmos_domain::OperationDeclaration>::Request;
-        type Response = <Query as harmos_domain::OperationDeclaration>::Response;
         type Error = Error;
-        type Endpoints = StreamOutput<QueryOutput>;
-        async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
-            let storage = context.dependency::<StorageManager<harmos_storage::ErasedCatalog>>()?;
-            Ok(Self { storage })
-        }
-        async fn run(
-            &mut self, ctx: harmos_sdk::OperationContext, request: &mut Self::Request, output: &mut Self::Endpoints,
-        ) -> Result<harmos_sdk::operations::Response<QueryCompletion>> {
-            let host = ctx.dependency::<harmos_sdk::operations::access::GrantAccess>()?;
+
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<QueryCompletion>> {
+            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
+            let grants = context.resource::<harmos_sdk::operations::access::GrantAccess>();
+            let output = context.streams();
+
+            let host = grants;
             let ctx = &host.0;
-            let grant = Grant::of(Query::ID, request.source.grant_scope());
+            let grant = Grant::of(Query::ID, self.source.grant_scope());
             ctx.admit(&grant).map_err(Error::Access)?;
-            let mut reader = self
-                .storage
+            let mut reader = storage
                 .query(harmos_storage::Query {
-                    at: request.at.clone(),
-                    source: request.source.clone(),
-                    transforms: request.transforms.clone(),
-                    slice: request.slice,
+                    at: self.at.clone(),
+                    source: self.source.clone(),
+                    transforms: self.transforms.clone(),
+                    slice: self.slice,
                 })
                 .await?;
             while let Some(item) = reader.next().await? {

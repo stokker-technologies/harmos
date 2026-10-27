@@ -38,7 +38,7 @@ use tokio::sync::{Semaphore, mpsc};
 
 // Local Imports
 use super::app::App;
-use harmos_runtime::operations::{Operation, RetryPolicy};
+use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Runtime, operations::Capacity, operations::Lane};
 
 /* === Constants === */
@@ -57,60 +57,43 @@ struct Gauge {
     release: Semaphore,
 }
 
-struct Measure(Arc<Gauge>);
-
 /* === Enums === */
 
 use super::support::Lanes;
 
-#[harmos_runtime::operation(request = MeasureContract, infer_request,
-        response = (),
-        id = "lanes_measure",
-
+#[harmos_runtime::operation(resources = [Gauge, harmos_runtime::operations::HostContext], response = (),
+        id = "lanes.measure",
         policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
             retries: RetryPolicy::Never,
         },
     )]
-struct MeasureContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct MeasureContract {}
+struct MeasureContractDeclaration {}
 
 #[harmos_runtime::catalog]
 enum Operations {
-    MeasureContract(MeasureContractDeclaration),
+    MeasureContractDeclaration(MeasureContractDeclaration),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl Operation for Measure {
-    type Request = MeasureContract;
-    type Response = <MeasureContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for MeasureContractDeclaration {
     type Error = std::io::Error;
-    type Endpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let resources = context.dependency::<Gauge>().expect("fixture registers its dependency");
-        Ok(Self(resources))
-    }
-
-    async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, _request: &mut MeasureContract, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
-        let host = _context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, _context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
+        let resources = _context.resource::<Gauge>();
+        let host = _context.resource::<harmos_runtime::operations::HostContext>();
         let _context = host.borrow();
         let result: ::core::result::Result<(), Self::Error> = async move {
-            self.0.ran.fetch_add(1, Ordering::SeqCst);
-            let active = self.0.active.fetch_add(1, Ordering::SeqCst) + 1;
-            self.0.maximum.fetch_max(active, Ordering::SeqCst);
-            self.0.entered.send(()).await.unwrap();
-            self.0.release.acquire().await.unwrap().forget();
-            self.0.active.fetch_sub(1, Ordering::SeqCst);
+            resources.ran.fetch_add(1, Ordering::SeqCst);
+            let active = resources.active.fetch_add(1, Ordering::SeqCst) + 1;
+            resources.maximum.fetch_max(active, Ordering::SeqCst);
+            resources.entered.send(()).await.unwrap();
+            resources.release.acquire().await.unwrap().forget();
+            resources.active.fetch_sub(1, Ordering::SeqCst);
             Ok(())
         }
         .await;
@@ -140,14 +123,14 @@ async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
                 dependencies.insert(gauge.clone()).unwrap();
                 dependencies
             })
-            .implementation::<MeasureContractDeclaration, Measure>(),
+            .operation::<MeasureContractDeclaration>(),
             lane,
         ))
         .await
         .unwrap();
     let mut instances = Vec::new();
     for _ in 0..count {
-        instances.push(runtime.operation(MeasureContract {}).start().await.unwrap());
+        instances.push(runtime.operation(MeasureContractDeclaration {}).start().await.unwrap());
     }
 
     for _ in 0..admitted {

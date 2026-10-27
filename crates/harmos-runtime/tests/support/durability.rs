@@ -258,7 +258,7 @@ impl Wire for Bank {
                 prepared: None,
                 id: id.clone(),
                 version,
-                value: Recorded::Transaction(Arc::new(change)),
+                value: Recorded::Transaction(harmos_runtime::operations::Response::new(change)),
             }),
             Kind::Record => Fact::restore(id, version, payload)?.map(|fact| Payload {
                 prepared: None,
@@ -276,13 +276,21 @@ impl Registration<Bank> for Definitions {
             Ok(None)
         }
 
-        Catalog::Transactions { definitions: self.0, decode, inverses: Some(Change::__harmos_inverses) }
+        Catalog::Transactions {
+            definitions: self.0,
+            decode,
+            inverses: Some(Change::__harmos_inverses),
+        }
     }
 }
 
 impl Payouts {
     pub fn resuming(watched: &Dispatched) -> Self {
-        Self { checkpoint: Arc::clone(&watched.0), dispatched: Arc::clone(&watched.1), holding: None }
+        Self {
+            checkpoint: Arc::clone(&watched.0),
+            dispatched: Arc::clone(&watched.1),
+            holding: None,
+        }
     }
 
     pub fn new() -> (Self, Dispatched) {

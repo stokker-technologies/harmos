@@ -266,7 +266,12 @@ impl Schema {
         if self.root >= self.definitions.len() {
             return Err(Error::Reference { definition: self.root });
         }
-        let mut preparation = Preparation { definitions: self.definitions.len(), fields: 0, bytes: size_of::<Self>(), work: 0 };
+        let mut preparation = Preparation {
+            definitions: self.definitions.len(),
+            fields: 0,
+            bytes: size_of::<Self>(),
+            work: 0,
+        };
         // Charge Retained Storage And Traversal Scratch Before Allocating Scratch.
         preparation.add_bytes(self.definitions.capacity(), size_of::<Vec<Field>>(), settings)?;
         preparation.add_bytes(self.definitions.len(), size_of::<bool>() + size_of::<usize>(), settings)?;
@@ -301,7 +306,10 @@ impl Schema {
             let mut tags = Vec::with_capacity(fields.len());
             let variants = fields.iter().any(|field| field.cardinality == Cardinality::Variant);
             for field in fields {
-                let invalid = |reason| Error::Field { field: diagnostic_name(&field.name), reason };
+                let invalid = |reason| Error::Field {
+                    field: diagnostic_name(&field.name),
+                    reason,
+                };
                 if variants && (field.cardinality != Cardinality::Variant || !matches!(field.kind, Kind::Message { .. })) {
                     return Err(invalid("an enum schema requires only message-valued variants"));
                 }
@@ -322,11 +330,17 @@ impl Schema {
             names.sort_unstable();
             tags.sort_unstable();
             if let Some(pair) = names.windows(2).find(|pair| pair[0] == pair[1]) {
-                return Err(Error::Field { field: diagnostic_name(pair[0]), reason: "duplicate name" });
+                return Err(Error::Field {
+                    field: diagnostic_name(pair[0]),
+                    reason: "duplicate name",
+                });
             }
             if let Some(pair) = tags.windows(2).find(|pair| pair[0] == pair[1]) {
                 let field = fields.iter().find(|field| field.tag == pair[0]).unwrap();
-                return Err(Error::Field { field: diagnostic_name(&field.name), reason: "duplicate protobuf tag" });
+                return Err(Error::Field {
+                    field: diagnostic_name(&field.name),
+                    reason: "duplicate protobuf tag",
+                });
             }
         }
         let mut reached = vec![false; self.definitions.len()];
@@ -405,7 +419,9 @@ impl<'de> DeserializeSeed<'de> for Seed<'_> {
             fn visit_map<A: MapAccess<'de>>(self, mut input: A) -> Result<Schema, A::Error> {
                 let mut root = None;
                 let mut definitions = None;
-                let mut budget = Budget { remaining: self.0.preparation_bytes.get() };
+                let mut budget = Budget {
+                    remaining: self.0.preparation_bytes.get(),
+                };
                 while let Some(key) = input.next_key::<String>()? {
                     match key.as_str() {
                         "root" => {

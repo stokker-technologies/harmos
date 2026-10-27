@@ -41,7 +41,10 @@ impl Manager {
         for (definition, required) in candidate.host_requirements() {
             let id = required.contract.operation().id.as_str();
             let selected = state.host_provider(id, &required.contract).map_err(|error| match error {
-                Error::NotRegistered { domain, .. } => Error::NotRegistered { domain, name: format!("{}/{id}", definition.id) },
+                Error::NotRegistered { domain, .. } => Error::NotRegistered {
+                    domain,
+                    name: format!("{}/{id}", definition.id),
+                },
                 other => other,
             })?;
             selected.available()?;
@@ -53,7 +56,10 @@ impl Manager {
         let mut identities = std::collections::BTreeSet::new();
         for entry in entries {
             if !identities.insert((entry.id(), entry.owner.as_str())) {
-                return Err(Error::AlreadyRegistered { domain: "operation", name: entry.id().to_owned() });
+                return Err(Error::AlreadyRegistered {
+                    domain: "operation",
+                    name: entry.id().to_owned(),
+                });
             }
         }
         #[cfg(feature = "grpc")]
@@ -64,19 +70,56 @@ impl Manager {
             let Some(binding) = contract.grpc() else {
                 continue;
             };
-            crate::grpc::descriptor(&binding.package, &binding.service, &[(&binding.method, contract)])
-                .map_err(|source| Error::OperationFailed { operation: entry.id().to_owned(), source: Arc::new(source) })?;
+            crate::grpc::descriptor(&binding.package, &binding.service, &[(&binding.method, contract)]).map_err(|source| {
+                Error::OperationFailed {
+                    operation: entry.id().to_owned(),
+                    source: Arc::new(source),
+                }
+            })?;
         }
         let (result, retired) = {
             let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
             let retired = state.retired();
+            for caller in entries {
+                let Some(factory) = caller.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>() else {
+                    continue;
+                };
+                for required in factory.operations {
+                    let id = required.operation.id;
+                    let target = entries
+                        .iter()
+                        .find(|entry| entry.id() == id && entry.owner == caller.owner)
+                        .or_else(|| state.owned(id, caller.owner.as_str()))
+                        .or_else(|| entries.iter().find(|entry| entry.id() == id))
+                        .map(Ok)
+                        .unwrap_or_else(|| state.select(id, None))?;
+                    let visibility = target.definition.visibility;
+                    let permitted = caller.owner == target.owner
+                        || visibility == crate::operations::Visibility::Shared
+                        || (caller.owner.as_str() == "host" && visibility == crate::operations::Visibility::Host);
+                    if !permitted {
+                        return Err(Error::PermissionDenied);
+                    }
+                    if target.definition.fingerprint
+                        != (required.operation.fingerprint)().map_err(|source| Error::OperationDeclaration { source })?
+                    {
+                        return Err(Error::InvalidInput {
+                            field: "declared operation",
+                            reason: "callee fingerprint differs",
+                        });
+                    }
+                }
+            }
             let result = if state.closing || !self.instances.is_accepting() {
                 Err(Error::Closing { domain: "operations" })
             } else if let Some(entry) = entries.iter().find(|entry| {
                 state.owned(entry.id(), entry.owner.as_str()).is_some()
                     || self.resident.contains(&format!("{}.{}", entry.owner, entry.id()))
             }) {
-                Err(Error::AlreadyRegistered { domain: "operation", name: entry.id().to_owned() })
+                Err(Error::AlreadyRegistered {
+                    domain: "operation",
+                    name: entry.id().to_owned(),
+                })
             } else {
                 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
                 let gate = entries

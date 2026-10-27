@@ -63,7 +63,13 @@ mod tests {
 
     #[test]
     fn pacing_requires_rate() {
-        let good = Observation { useful_mib_s: 98.0, encoded_mib_s: 99.0, samples_s: 1.0, elapsed_s: 1.0, rejected: 0 };
+        let good = Observation {
+            useful_mib_s: 98.0,
+            encoded_mib_s: 99.0,
+            samples_s: 1.0,
+            elapsed_s: 1.0,
+            rejected: 0,
+        };
         assert!(good.keeps_pace(100));
         assert!(!good.keeps_pace(0));
         assert!(!Observation { useful_mib_s: 97.9, ..good }.keeps_pace(100));
@@ -75,15 +81,22 @@ mod tests {
 }
 
 mod sdk {
-    use super::super::protocol::{Echo, EchoOperation, TransportPlugin};
-    use harmos_operations::lifecycle::{Initialize, InitializeRequest, Shutdown};
+    use super::super::protocol::{EchoOperation, TransportPlugin};
+    use harmos_operations::lifecycle::{Initialize, Shutdown};
     use harmos_sidecar::operations::{OperationDeclaration, WIRE_METHOD, WireAnswer, WireCommand};
     use harmos_sidecar::transport::{Connection, Receiver, Sender};
     use harmos_sidecar::{Attach, Frame, Message, PluginCatalog, PluginNative};
     use std::num::NonZeroUsize;
 
     async fn phase(outgoing: &Sender, incoming: &mut Receiver, id: u64, command: WireCommand) -> WireAnswer {
-        outgoing.send(Frame::Call { id, method: WIRE_METHOD.to_owned(), params: command.encode().unwrap().into() }).await.unwrap();
+        outgoing
+            .send(Frame::Call {
+                id,
+                method: WIRE_METHOD.to_owned(),
+                params: command.encode().unwrap().into(),
+            })
+            .await
+            .unwrap();
         let received = incoming.receive().await.unwrap().unwrap();
         let Frame::Answer { id: answered, result } = received.frame else {
             panic!("the carrier returns one operation phase answer");
@@ -118,8 +131,17 @@ mod sdk {
             phase(outgoing, incoming, id, WireCommand::Initialize { invocation: id, context: [1; 32] }).await,
             WireAnswer::Ready { .. }
         ));
-        let WireAnswer::Ready { payload } =
-            phase(outgoing, incoming, id, WireCommand::Attempt { invocation: id, context: [1; 32], values: Vec::new() }).await
+        let WireAnswer::Ready { payload } = phase(
+            outgoing,
+            incoming,
+            id,
+            WireCommand::Attempt {
+                invocation: id,
+                context: [1; 32],
+                values: Vec::new(),
+            },
+        )
+        .await
         else {
             panic!("the retained original operation succeeds");
         };
@@ -132,10 +154,18 @@ mod sdk {
         let native = PluginNative::<TransportPlugin>::new(NonZeroUsize::new(8).unwrap()).unwrap();
         assert_eq!(native.sdk_lifecycle().unwrap().unwrap().len(), 2);
         let (write, read, control, _, ending) = native.attach().await.unwrap().into_parts();
-        let Connection { sender: outgoing, receiver: mut incoming, mut driver } = Connection::new((read, write), control.unwrap());
+        let Connection {
+            sender: outgoing,
+            receiver: mut incoming,
+            mut driver,
+        } = Connection::new((read, write), control.unwrap());
         let driving = tokio::spawn(async move { driver.run().await });
         outgoing
-            .send(Frame::Call { id: 1, method: Frame::REGISTER.to_owned(), params: "throughput_fixture".to_owned().encode().into() })
+            .send(Frame::Call {
+                id: 1,
+                method: Frame::REGISTER.to_owned(),
+                params: "throughput_fixture".to_owned().encode().into(),
+            })
             .await
             .unwrap();
         let received = incoming.receive().await.unwrap().unwrap();
@@ -147,7 +177,10 @@ mod sdk {
         received.consumption.unwrap().consumed().unwrap();
         assert_eq!(catalog.operations, native.operations().unwrap());
         assert_eq!(catalog.operations.len(), 2);
-        let request = Echo { nonce: 7, payload: b"original-handler".to_vec() };
+        let request = EchoOperation {
+            nonce: 7,
+            payload: b"original-handler".to_vec(),
+        };
         assert!(matches!(
             phase(
                 &outgoing,
@@ -164,10 +197,14 @@ mod sdk {
             .await,
             WireAnswer::Failed { .. }
         ));
-        let initialization = InitializeRequest { config_json: b"null".to_vec(), generation_context: Vec::new(), assignments: Vec::new() };
+        let initialization = Initialize {
+            config_json: b"null".to_vec(),
+            generation_context: Vec::new(),
+            assignments: Vec::new(),
+        };
         invoke::<Initialize>(&outgoing, &mut incoming, 3, initialization.encode()).await;
         let result = invoke::<EchoOperation>(&outgoing, &mut incoming, 4, request.encode()).await;
-        assert_eq!(Echo::decode(result.as_slice()).unwrap(), request);
+        assert_eq!(EchoOperation::decode(result.as_slice()).unwrap(), request);
         invoke::<Shutdown>(&outgoing, &mut incoming, 5, Vec::new()).await;
         assert!(matches!(
             phase(

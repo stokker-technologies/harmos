@@ -90,7 +90,7 @@ pub use harmos_macros::{
 pub use message::{Digest, Fingerprint, MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};
 pub use model::operations::policy::{Backoff, Jitter, OperationPolicy, RetryPolicy};
 pub use model::services::policy::{RestartPolicy, ServicePolicy};
-pub use operations::{OperationDeclaration, OperationDefinition, RequestFor};
+pub use operations::{Invokes, OperationDeclaration, OperationDefinition, Requires};
 pub use presentation::{RowMetadata, StreamField};
 pub use streams::{Axial, Batched, Definition, Prefix, Track, Tracked};
 

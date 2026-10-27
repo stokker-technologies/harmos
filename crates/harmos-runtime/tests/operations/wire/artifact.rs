@@ -22,7 +22,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::operations::{Backoff, Declarations, OperationDeclaration, OperationPolicy, ReplaySafety, RetryPolicy, Visibility};
+use harmos_runtime::operations::{Backoff, Declarations, OperationDeclaration, OperationPolicy, ReplaySafety, RetryPolicy};
 
 /* === Constants === */
 
@@ -64,24 +64,22 @@ inert_plugin!(EmptyNative, "empty-native", harmos_runtime::sidecar::Supervisor, 
 inert_plugin!(ExplicitEmptyNative, "explicit-empty-native", harmos_runtime::sidecar::Supervisor, ());
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(Guest, "selected-guest", harmos_runtime::guest::Context, Operations);
+inert_plugin!(Guest, "selected-guest", harmos_runtime::guest::kit::Context, Operations);
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(EmptyGuest, "empty-guest", harmos_runtime::guest::Context, ());
+inert_plugin!(EmptyGuest, "empty-guest", harmos_runtime::guest::kit::Context, ());
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest::Context, ());
+inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest::kit::Context, ());
 
 /* === Type Aliases === */
 
 /* === Structs === */
 
-#[harmos_runtime::operation(request = Selected, infer_request,
-    id = "fixture_selected",
-
+#[harmos_runtime::operation(id = "fixture.selected",
     response = Response,
-    description = "Selected \"operation\" Русский",
-    visibility = Visibility::Shared,
+    description = "SelectedDeclaration \"operation\" Русский",
+    visibility = Shared,
     replay = ReplaySafety::Deduplicated,
     policy = OperationPolicy {
         timeout: Duration::from_secs(2),
@@ -96,23 +94,13 @@ inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest:
         },
     },
 )]
-struct SelectedDeclaration;
+struct SelectedDeclaration {}
 
-#[harmos_runtime::message]
-
-struct Selected {}
-
-#[harmos_runtime::operation(request = Unselected, infer_request,
-    id = "fixture_unselected",
-
+#[harmos_runtime::operation(id = "fixture.unselected",
     response = Response,
     policy = SelectedDeclaration::POLICY
 )]
-struct UnselectedDeclaration;
-
-#[harmos_runtime::message]
-
-struct Unselected {}
+struct UnselectedDeclaration {}
 
 #[harmos_runtime::message]
 struct Response {
@@ -141,7 +129,7 @@ struct ExplicitEmptyNative;
 
 #[harmos_runtime::catalog]
 enum Leaves {
-    Selected(SelectedDeclaration),
+    SelectedDeclaration(SelectedDeclaration),
 }
 
 #[harmos_runtime::catalog]

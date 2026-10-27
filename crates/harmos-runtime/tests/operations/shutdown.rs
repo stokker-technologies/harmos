@@ -21,12 +21,11 @@ use std::sync::{
 use std::time::Duration;
 
 // Third Party Imports
-use futures_util::FutureExt;
 use tokio::sync::Notify;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos_runtime::operations::{Operation, RetryPolicy};
+use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -41,17 +40,11 @@ use harmos_runtime::{Error, Refusal, Runtime};
 struct Trace {
     started: Notify,
     release: Notify,
-    finalizing: Notify,
     counted: AtomicUsize,
-    finalizations: AtomicUsize,
     dropped: AtomicUsize,
 }
 
-struct Wait {
-    holding: bool,
-    released: bool,
-    trace: Arc<Trace>,
-}
+struct AttemptGuard(Arc<Trace>);
 
 /* === Enums === */
 
@@ -62,85 +55,51 @@ enum Mode {
     Sleep,
 }
 
-#[harmos_runtime::operation(request = WaitContract, infer_request,
-        response = (),
-        id = "shutdown_wait",
-
+#[harmos_runtime::operation(resources = [Trace], response = (),
+        id = "shutdown.wait",
         policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(2),
             retries: RetryPolicy::Never,
         },
     )]
-struct WaitContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct WaitContract {
+struct WaitContractDeclaration {
     mode: Mode,
 }
 
 #[harmos_runtime::catalog]
 enum Operations {
-    WaitContract(WaitContractDeclaration),
+    WaitContractDeclaration(WaitContractDeclaration),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl Operation for Wait {
-    type Request = WaitContract;
-    type Response = <WaitContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for WaitContractDeclaration {
     type Error = std::convert::Infallible;
-    type Endpoints = ();
-
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let trace = context.dependency::<Trace>().expect("fixture registers its dependency");
-        Ok(Self { holding: false, released: false, trace })
-    }
-
-    async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, request: &mut WaitContract, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
-        let host = _context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
-        let _context = host.borrow();
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            self.holding = matches!(request.mode, Mode::Hold);
-            match request.mode {
-                Mode::Hold => {
-                    self.trace.started.notify_one();
-                    self.trace.release.notified().await;
-                    self.released = true;
-                }
-                Mode::Count => {
-                    self.trace.counted.fetch_add(1, Ordering::SeqCst);
-                }
-                Mode::Sleep => {
-                    self.trace.started.notify_one();
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
+        let trace = ctx.resource::<Trace>();
+        let _guard = AttemptGuard(trace.clone());
+        match self.mode {
+            Mode::Hold => {
+                trace.started.notify_one();
+                trace.release.notified().await;
             }
-            Ok(())
+            Mode::Count => {
+                trace.counted.fetch_add(1, Ordering::SeqCst);
+            }
+            Mode::Sleep => {
+                trace.started.notify_one();
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
         }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        self.trace.finalizations.fetch_add(1, Ordering::SeqCst);
-        self.trace.finalizing.notify_one();
-        if self.holding && !self.released {
-            self.trace.release.notified().await;
-            self.released = true;
-        }
-        Ok(())
+        Ok(().into())
     }
 }
-
-impl Drop for Wait {
+impl Drop for AttemptGuard {
     fn drop(&mut self) {
-        self.trace.dropped.fetch_add(1, Ordering::SeqCst);
+        self.0.dropped.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -159,7 +118,7 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<WaitContractDeclaration, Wait>(),
+            .operation::<WaitContractDeclaration>(),
             Lanes::Serial,
         ))
         .await
@@ -172,16 +131,16 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
 #[tokio::test]
 async fn cancellation_observable_queued() {
     let (runtime, trace) = runtime().await;
-    let first = runtime.operation(WaitContract { mode: Mode::Hold }).start().await.unwrap();
+    let first = runtime.operation(WaitContractDeclaration { mode: Mode::Hold }).start().await.unwrap();
     trace.started.notified().await;
-    let queued = runtime.operation(WaitContract { mode: Mode::Count }).start().await.unwrap();
+    let queued = runtime.operation(WaitContractDeclaration { mode: Mode::Count }).start().await.unwrap();
     queued.cancel();
     assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(trace.counted.load(Ordering::SeqCst), 0);
     trace.release.notify_one();
     first.await.unwrap();
 
-    let running = runtime.operation(WaitContract { mode: Mode::Sleep }).start().await.unwrap();
+    let running = runtime.operation(WaitContractDeclaration { mode: Mode::Sleep }).start().await.unwrap();
     trace.started.notified().await;
 
     running.cancel();
@@ -193,27 +152,12 @@ async fn cancellation_observable_queued() {
 }
 
 #[tokio::test]
-async fn shutdown_retains_operation() {
+async fn shutdown_cancels_attempts() {
     let (runtime, trace) = runtime().await;
-    let instance = runtime.operation(WaitContract { mode: Mode::Hold }).start().await.unwrap();
+    let instance = runtime.operation(WaitContractDeclaration { mode: Mode::Hold }).start().await.unwrap();
     trace.started.notified().await;
-    {
-        let stop = runtime.stop();
-        tokio::pin!(stop);
-        tokio::select! {
-            _ = &mut stop => panic!("the original finalizer is still waiting"),
-            _ = trace.finalizing.notified() => {},
-        }
-    }
-    for _ in 0..2 {
-        assert!(runtime.stop().now_or_never().is_none());
-        assert!(matches!(runtime.operations.submit_resident("late").await, Err(Error::Closing { domain: "resident" })));
-        assert_eq!(trace.finalizations.load(Ordering::SeqCst), 1);
-        assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
-    }
-    trace.release.notify_one();
     runtime.stop().await.unwrap();
     assert!(matches!(instance.await, Err(Error::OperationRefused(Refusal::Cancelled))));
-    assert_eq!(trace.finalizations.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
+    assert!(matches!(runtime.operations.submit_resident("late").await, Err(Error::Closing { domain: "resident" })));
 }

@@ -48,7 +48,10 @@ impl CacheKey {
     pub fn new(bytes: impl Into<Box<[u8]>>) -> Result<Self, CacheKeyError> {
         let bytes = bytes.into();
         if bytes.len() > MAX_CACHE_KEY_BYTES {
-            return Err(CacheKeyError::TooLarge { actual: bytes.len(), maximum: MAX_CACHE_KEY_BYTES });
+            return Err(CacheKeyError::TooLarge {
+                actual: bytes.len(),
+                maximum: MAX_CACHE_KEY_BYTES,
+            });
         }
 
         Ok(Self(bytes))

@@ -62,8 +62,7 @@ fn main() {
         runtime
             .operations
             .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
-                    .implementation::<protocol::EchoDeclaration, protocol::Echoing>(),
+                harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<protocol::EchoDeclaration>(),
                 protocol::Lanes::Open,
             ))
             .await

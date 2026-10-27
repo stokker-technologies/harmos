@@ -22,7 +22,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use harmos_guest::Context;
+use harmos_guest::kit::Context;
 use harmos_guest::operations::{OperationPolicy, ServingError, StreamSettings, WireStreamLimits, WireTable};
 
 /* === Constants === */
@@ -36,7 +36,6 @@ harmos_guest::export_plugin!(Plugin, capacity = 8);
 /* === Structs === */
 
 pub struct Plugin {
-    hash: Arc<schematic_operations::resources::HashProvider>,
     #[cfg(feature = "benchmark")]
     transfer: Arc<schematic_operations::transfer::Store>,
     resources: Arc<()>,
@@ -54,7 +53,7 @@ impl harmos_guest::builtins::lifecycle::Policy for Plugin {
 }
 
 #[cfg_attr(not(feature = "benchmark"), harmos_guest::plugin(id = "schematic_tools", provides = schematic_operations::Operations, requires = ()))]
-#[cfg_attr(feature = "benchmark", harmos_guest::plugin(id = "schematic_tools", provides = schematic_operations::transfer::Guest, requires = schematic_operations::transfer::GuestRequires))]
+#[cfg_attr(feature = "benchmark", harmos_guest::plugin(id = "schematic_tools", provides = schematic_operations::transfer::Guest, requires = ()))]
 impl harmos_guest::Plugin for Plugin {
     type Config = ();
     type Error = Error;
@@ -63,19 +62,6 @@ impl harmos_guest::Plugin for Plugin {
 
     fn prepare(_: ()) -> Result<Self, Error> {
         Ok(Self {
-            hash: Arc::new(schematic_operations::resources::HashProvider {
-                hasher: Arc::new(|context, request| {
-                    Box::pin(async move {
-                        use harmos_guest::Host;
-                        let host = context.dependency::<harmos_guest::Context>()?;
-                        let response = host
-                            .call::<harmos_guest::builtins::storage::HashFile>(request)
-                            .await
-                            .map_err(|error| schematic_operations::Error::Host(Box::new(error)))?;
-                        Ok(*response)
-                    })
-                }),
-            }),
             #[cfg(feature = "benchmark")]
             transfer: Arc::new(schematic_operations::transfer::Store::default()),
             resources: Arc::new(()),
@@ -87,11 +73,13 @@ impl harmos_guest::Plugin for Plugin {
     }
 
     fn bind_operations(&self, table: &mut WireTable) -> Result<(), ServingError> {
-        let mut dependencies = harmos_guest::Dependencies::new();
-        dependencies.insert(self.hash.clone()).expect("each dependency is inserted once");
+        let dependencies = harmos_guest::Dependencies::new();
         #[cfg(feature = "benchmark")]
         dependencies.insert(self.transfer.clone()).expect("each dependency is inserted once");
-        let direction = StreamSettings { items: NonZeroUsize::new(4).unwrap(), bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap() };
+        let direction = StreamSettings {
+            items: NonZeroUsize::new(4).unwrap(),
+            bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap(),
+        };
         table.stream_limits(WireStreamLimits { input: direction, output: direction })?;
         #[cfg(feature = "benchmark")]
         let batch = schematic_operations::transfer::Guest::registration(dependencies);

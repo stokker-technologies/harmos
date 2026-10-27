@@ -108,7 +108,10 @@ where
 
 impl<A: Application> Once<A> {
     pub(crate) fn new<R: Resident<A>>(definition: ServiceDefinition, resident: R) -> Self {
-        Self { definition, resident: Mutex::new(Some(Box::new(Physical::new(resident)))) }
+        Self {
+            definition,
+            resident: Mutex::new(Some(Box::new(Physical::new(resident)))),
+        }
     }
 
     pub(crate) fn id(&self) -> &str {
@@ -135,9 +138,10 @@ where
         if !admitted {
             return Ok(None);
         }
-        let resources = resources
-            .downcast::<R>()
-            .map_err(|_| Error::InvalidInput { field: "service scope", reason: "resource type differs from the registered factory" })?;
+        let resources = resources.downcast::<R>().map_err(|_| Error::InvalidInput {
+            field: "service scope",
+            reason: "resource type differs from the registered factory",
+        })?;
         Ok(Some(Box::new(Physical::new((self.factory)(resources)))))
     }
 }
@@ -190,7 +194,12 @@ impl<A: Application> Runner for Once<A> {
 
 impl<R> Physical<R> {
     fn new(resident: R) -> Self {
-        Self { resident, stopped: false, lifecycle: None, report: None }
+        Self {
+            resident,
+            stopped: false,
+            lifecycle: None,
+            report: None,
+        }
     }
 
     fn transition(&self, phase: OperationPhase) {
@@ -214,9 +223,10 @@ where
     fn run(&mut self, context: ServiceContext<A>) -> Pin<Box<dyn Future<Output = std::result::Result<(), Failure>> + Send + '_>> {
         Box::pin(async move {
             self.stopped = false;
-            Resident::run(&mut self.resident, context)
-                .await
-                .map_err(|error| Failure { message: error.to_string(), source: Arc::new(error) })
+            Resident::run(&mut self.resident, context).await.map_err(|error| Failure {
+                message: error.to_string(),
+                source: Arc::new(error),
+            })
         })
     }
 
@@ -224,13 +234,17 @@ where
         Box::pin(async move {
             if !self.stopped {
                 self.transition(OperationPhase::Stopping);
-                Resident::stop(&mut self.resident)
-                    .await
-                    .map_err(|error| Failure { message: error.to_string(), source: Arc::new(error) })?;
+                Resident::stop(&mut self.resident).await.map_err(|error| Failure {
+                    message: error.to_string(),
+                    source: Arc::new(error),
+                })?;
                 self.stopped = true;
             }
             self.transition(OperationPhase::Finalizing);
-            Resident::cleanup(&mut self.resident).await.map_err(|error| Failure { message: error.to_string(), source: Arc::new(error) })
+            Resident::cleanup(&mut self.resident).await.map_err(|error| Failure {
+                message: error.to_string(),
+                source: Arc::new(error),
+            })
         })
     }
 }
@@ -306,9 +320,19 @@ impl<A: Application> Settlement for Cleanup<A> {
 /* === Private Functions === */
 
 fn spawn<A: Application, C: Create<A>>(create: Arc<C>, start: Start) -> (Task<Outcome>, Arc<dyn Settlement>) {
-    let Start { resources, lifecycle, stopping, report, operations } = start;
-    let cleanup =
-        Arc::new(Cleanup::<A> { lifecycle, resident: OnceLock::new(), finalized: AtomicBool::new(true), logical: Mutex::new(None) });
+    let Start {
+        resources,
+        lifecycle,
+        stopping,
+        report,
+        operations,
+    } = start;
+    let cleanup = Arc::new(Cleanup::<A> {
+        lifecycle,
+        resident: OnceLock::new(),
+        finalized: AtomicBool::new(true),
+        logical: Mutex::new(None),
+    });
     let retained = Arc::clone(&cleanup);
     let task = Task::with_cancellation(stopping, move |stopping| async move {
         let owned = Arc::clone(&retained);
@@ -330,7 +354,10 @@ fn spawn<A: Application, C: Create<A>>(create: Arc<C>, start: Start) -> (Task<Ou
             super::restart::run(create.definition(), original.resource().as_mut(), &owned, &attempt, &operations, stopping).await
         })
         .await
-        .map_err(|source| Error::TaskFailed { domain: "service supervisor", source: Arc::new(source) })
+        .map_err(|source| Error::TaskFailed {
+            domain: "service supervisor",
+            source: Arc::new(source),
+        })
         .and_then(|answer| answer)
         .map_err(Arc::new);
         retained.record(outcome.clone());
@@ -357,8 +384,16 @@ fn spawn<A: Application, C: Create<A>>(create: Arc<C>, start: Start) -> (Task<Ou
 pub(super) async fn cleanup<A: Application>(resident: &mut dyn ErasedResident<A>) -> Result<()> {
     let mut future = std::pin::pin!(async { resident.cleanup().await });
     std::future::poll_fn(|context| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| future.as_mut().poll(context))) {
-        Ok(poll) => poll.map(|result| result.map_err(|failure| Error::TaskFailed { domain: "service cleanup", source: failure.source })),
-        Err(_) => std::task::Poll::Ready(Err(Error::TaskFailed { domain: "service cleanup", source: Arc::new(ServiceExit::Panicked) })),
+        Ok(poll) => poll.map(|result| {
+            result.map_err(|failure| Error::TaskFailed {
+                domain: "service cleanup",
+                source: failure.source,
+            })
+        }),
+        Err(_) => std::task::Poll::Ready(Err(Error::TaskFailed {
+            domain: "service cleanup",
+            source: Arc::new(ServiceExit::Panicked),
+        })),
     })
     .await
 }

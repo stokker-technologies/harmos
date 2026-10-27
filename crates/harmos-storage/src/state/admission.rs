@@ -20,9 +20,7 @@ use std::sync::Arc;
 
 // Local Imports
 use super::{RecoveryEntry, RecoverySnapshot};
-use crate::storage::manager::{
-    ENTRY_OVERHEAD, Inner, Operation, Pending, Target, encoded_size, recovery_preparation_bytes, recovery_resident_bytes,
-};
+use crate::storage::manager::{Inner, Operation, Pending, Target, recovery_encoded_bound};
 use crate::storage::{ReadLimits, RecordInput, StorageCursor, StorageManager, StoredRecord};
 use crate::{Error, Result};
 use harmos_domain::state::Position;
@@ -68,21 +66,30 @@ impl<C> StorageManager<C> {
 
     #[tracing::instrument(name = "storage.state.admission.reserve_recovery", level = "debug", skip_all)]
     async fn reserve_recovery(&self, payload_bytes: usize, records: Option<ReadLimits>, snapshot: bool) -> Result<Permit> {
-        let recovery_bytes = recovery_preparation_bytes(payload_bytes, self.inner.recovery.history(), self.inner.primary.history())?;
+        let recovery_bytes = recovery_encoded_bound(payload_bytes, self.inner.recovery.history(), self.inner.primary.history())?;
         let bytes = recovery_bytes;
         let batches = 1 + usize::from(records.is_some());
         if batches > self.inner.settings.request.max_pending_write_batches.get() {
-            return Err(Error::InvalidInput { field: "managed capture", reason: "requires two queue slots" });
+            return Err(Error::InvalidInput {
+                field: "managed capture",
+                reason: "requires two queue slots",
+            });
         }
         if bytes > self.inner.settings.request.max_pending_write_bytes.get() {
-            return Err(Error::InvalidInput { field: "managed recovery", reason: "group exceeds memory budget" });
+            return Err(Error::InvalidInput {
+                field: "managed recovery",
+                reason: "group exceeds queued byte limit",
+            });
         }
         let mut changed = self.inner.changed.subscribe();
         loop {
             {
                 let mut state = self.inner.state.lock().unwrap();
                 if !snapshot && recovery_bytes > state.journal_limit {
-                    return Err(Error::InvalidInput { field: "managed recovery", reason: "group exceeds recovery read bound" });
+                    return Err(Error::InvalidInput {
+                        field: "managed recovery",
+                        reason: "group exceeds recovery read bound",
+                    });
                 }
                 if state.status.closing {
                     return Err(Error::Closing { domain: "storage" });
@@ -99,29 +106,27 @@ impl<C> StorageManager<C> {
                     && state.status.pending_bytes <= self.inner.settings.request.max_pending_write_bytes.get() - bytes
                     && state.status.pending_batches <= self.inner.settings.request.max_pending_write_batches.get() - batches
                 {
-                    state
-                        .next
-                        .checked_add(batches as u64)
-                        .ok_or(Error::InvalidInput { field: "managed capture", reason: "queue order overflow" })?;
+                    state.next.checked_add(batches as u64).ok_or(Error::InvalidInput {
+                        field: "managed capture",
+                        reason: "queue order overflow",
+                    })?;
                     let mut first_record = state.status.accepted.clone();
                     if let Some(limits) = records {
-                        first_record
-                            .sequence
-                            .checked_add(limits.rows.get() as u64)
-                            .ok_or(Error::InvalidInput { field: "managed capture", reason: "position overflow" })?;
+                        first_record.sequence.checked_add(limits.rows.get() as u64).ok_or(Error::InvalidInput {
+                            field: "managed capture",
+                            reason: "position overflow",
+                        })?;
                         first_record.sequence += 1;
                     }
                     let target = Target {
-                        index: state
-                            .next
-                            .checked_add(1)
-                            .ok_or(Error::InvalidInput { field: "managed recovery", reason: "queue order overflow" })?,
-                        sequence: state
-                            .status
-                            .recovery_accepted
-                            .sequence
-                            .checked_add(u64::from(!snapshot))
-                            .ok_or(Error::InvalidInput { field: "managed recovery", reason: "position overflow" })?,
+                        index: state.next.checked_add(1).ok_or(Error::InvalidInput {
+                            field: "managed recovery",
+                            reason: "queue order overflow",
+                        })?,
+                        sequence: state.status.recovery_accepted.sequence.checked_add(u64::from(!snapshot)).ok_or(Error::InvalidInput {
+                            field: "managed recovery",
+                            reason: "position overflow",
+                        })?,
                     };
                     state.reserved = bytes;
                     state.reserved_batches = batches;
@@ -166,9 +171,12 @@ impl Permit {
         context.sync(|| {
             let _stage = tracing::debug_span!("storage.state.snapshot_payload").entered();
             debug_assert!(self.snapshot);
-            let bytes = recovery_resident_bytes(payload.capacity(), self.inner.recovery.history(), self.inner.primary.history())?;
+            let bytes = recovery_encoded_bound(payload.len(), self.inner.recovery.history(), self.inner.primary.history())?;
             if bytes > self.bytes {
-                return Err(Error::InvalidInput { field: "state snapshot", reason: "payload exceeds reservation" });
+                return Err(Error::InvalidInput {
+                    field: "state snapshot",
+                    reason: "payload exceeds reservation",
+                });
             }
             self.payload = payload;
             self.bytes = bytes;
@@ -189,22 +197,15 @@ impl Permit {
         let context = self.context.clone();
         let span = context.sync(|| tracing::debug_span!("storage.state.project"));
         let future = async {
-            let invalid = || Error::InvalidInput { field: "record projection", reason: "capture limit exceeded" };
+            let invalid = || Error::InvalidInput {
+                field: "record projection",
+                reason: "capture limit exceeded",
+            };
             if self.records.len() >= limits.rows.get() {
                 return Err(invalid());
             }
-            let capture = encoded_size(&record.borrowed())?
-                .checked_add(encoded_size(&self.first_record.history)?)
-                .and_then(|bytes| bytes.checked_add(ENTRY_OVERHEAD))
-                .ok_or_else(invalid)?;
-            let capture_total = self.capture_bytes.checked_add(capture).ok_or_else(invalid)?;
-            // An incremental Vec may retain spare slots or briefly own both old and
-            // replacement allocations. Four inline slots per live record cover
-            // initial minimum capacity and geometric growth before copying.
-            let bytes = record
-                .resident_bytes(&self.first_record.history)?
-                .checked_add(std::mem::size_of::<StoredRecord>() * 3)
-                .ok_or_else(invalid)?;
+            let bytes = record.encoded_bytes(&self.first_record.history)?;
+            let capture_total = self.capture_bytes.checked_add(bytes).ok_or_else(invalid)?;
             let total = self.record_bytes.checked_add(bytes).ok_or_else(invalid)?;
             // Refuse a group that cannot fit even after all accepted work drains.
             // Waiting with a partial permit in that case would deadlock itself.
@@ -218,7 +219,7 @@ impl Permit {
             let capacity = self.inner.settings.request.max_pending_write_bytes.get();
             self.inner
                 .admit_when(|state| {
-                    super::super::capacity::admitting(state, super::super::capacity::Pool::Write)?;
+                    super::super::capacity::admitting(state, true)?;
                     state.collect();
                     if state.status.pending_bytes <= capacity - bytes {
                         state.reserved += bytes;
@@ -228,7 +229,7 @@ impl Permit {
                     // File finalization also needs this exclusive permit to end.
                     // Only queued writes and saver scratch can drain underneath us;
                     // never wait on bytes held by our own permit or staged owners.
-                    let held = state.status.pending_bytes.saturating_sub(state.queue.bytes()).saturating_sub(state.scratch_bytes);
+                    let held = state.status.pending_bytes.saturating_sub(state.queue.bytes());
                     if held > capacity - bytes {
                         return Err(invalid());
                     }
@@ -250,21 +251,26 @@ impl Permit {
         let context = self.context.clone();
         context.sync(|| {
             let _stage = tracing::debug_span!("storage.state.encode").entered();
-            self.payload =
-                serde_json::to_vec(value).map_err(|_| Error::InvalidInput { field: "managed recovery", reason: "cannot encode group" })?;
+            self.payload = serde_json::to_vec(value).map_err(|_| Error::InvalidInput {
+                field: "managed recovery",
+                reason: "cannot encode group",
+            })?;
             // Encoding runs under the original conservative scratch reservation.
             // Only the encoded buffer survives commit; release unused framing and
             // growth allowance before the group becomes queued work.
-            let bytes = recovery_resident_bytes(self.payload.capacity(), self.inner.recovery.history(), self.inner.primary.history())?;
+            let bytes = recovery_encoded_bound(self.payload.len(), self.inner.recovery.history(), self.inner.primary.history())?;
             if bytes > self.bytes {
-                return Err(Error::InvalidInput { field: "managed recovery", reason: "encoded allocation exceeds reservation" });
+                return Err(Error::InvalidInput {
+                    field: "managed recovery",
+                    reason: "encoded group exceeds queued byte limit",
+                });
             }
             self.bytes = bytes;
             let mut state = self.inner.state.lock().unwrap();
-            state.reserved = self
-                .bytes
-                .checked_add(self.record_bytes)
-                .ok_or(Error::InvalidInput { field: "managed recovery", reason: "size overflow" })?;
+            state.reserved = self.bytes.checked_add(self.record_bytes).ok_or(Error::InvalidInput {
+                field: "managed recovery",
+                reason: "size overflow",
+            })?;
             state.reserved_batches = 1 + usize::from(!self.records.is_empty());
             state.collect();
             self.inner.notify();
@@ -287,7 +293,10 @@ impl Permit {
             }
             if let Some(last) = self.records.last() {
                 state.status.accepted = last.position.clone();
-                state.data_accepted = Target { index: self.target.index, sequence: last.position.sequence };
+                state.data_accepted = Target {
+                    index: self.target.index,
+                    sequence: last.position.sequence,
+                };
                 state.queue.push_back(Arc::new(Pending::new(
                     &self.inner,
                     None,

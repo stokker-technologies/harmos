@@ -120,7 +120,10 @@ impl Series<Bank> for Tape {
             .iter()
             .filter(|At { position, .. }| admitted(start, end, *position))
             .filter(|At { value, .. }| narrowed(track, value))
-            .map(|At { value, position }| At { value: Arc::clone(value) as Arc<dyn Any + Send + Sync>, position: *position })
+            .map(|At { value, position }| At {
+                value: Arc::clone(value) as Arc<dyn Any + Send + Sync>,
+                position: *position,
+            })
             .collect())
     }
 
@@ -358,8 +361,14 @@ async fn window_stands_durable() {
     // rows and never will, so a window that answered for the whole of history
     // until it had evicted something would call them missing.
     rows.lock().expect("the tape is never poisoned").extend([
-        At { value: Arc::new(capture(1, 1, 1, 1)), position: Position(1) },
-        At { value: Arc::new(capture(1, 1, 2, 2)), position: Position(2) },
+        At {
+            value: Arc::new(capture(1, 1, 1, 1)),
+            position: Position(1),
+        },
+        At {
+            value: Arc::new(capture(1, 1, 2, 2)),
+            position: Position(2),
+        },
     ]);
     let runtime = resumed(tape, Position(2)).await;
 

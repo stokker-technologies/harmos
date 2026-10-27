@@ -34,6 +34,10 @@ path = "src/lib.rs"
 
 # === Features === #
 
+[features]
+default = ["runtime"]
+runtime = []
+
 # === Dependencies === #
 
 [dependencies]
@@ -86,6 +90,16 @@ harmos-guest = { path = "../../..", default-features = false, features = ["deriv
 # === Lints === #
 
 # === Profiles === #
+
+# Keep Full Guest Metadata Validation Within The Same Fuel Budget In Dev Builds.
+[profile.dev.package.harmos-domain]
+opt-level = 2
+
+[profile.dev.package.serde_json]
+opt-level = 2
+
+[profile.dev.package.sha2]
+opt-level = 2
 
 # === Patches === #
 
