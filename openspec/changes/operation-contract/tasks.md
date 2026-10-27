@@ -37,3 +37,5 @@
 - [x] 3.8 Migrate remaining stateful/streaming handler fixtures in operation wire, plugin, sidecar, guest host, listener and service tests; preserve carrier settlement coverage while removing authored initialization/cleanup assumptions.
 
 - [x] 3.9 Retire per-operation initialization/finalization stories superseded by consuming attempts; add deterministic cancellation/drop, retry cloning and stream settlement coverage while retaining resource/plugin lifecycle stories.
+
+- [x] 3.10 Complete feature-boundary imports and manual-codec Clone requirements found by fixture compilation; retain codec composition proof.

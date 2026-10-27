@@ -24,11 +24,12 @@ use std::sync::{
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 // Local Imports
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
-use super::{Carrier, Context, Manager};
+use super::{Context, Manager};
 use crate::catalog::{Catalog, Member, Visitor};
 use crate::operations::{FailureKind, OperationDeclaration, OperationDefinition, OperationPolicy, RetryPolicy, WireAnswer, WireCommand};
 use crate::services::{NativeEndpoint, SidecarError};
 use crate::{Error, Identifier, Message, Result, operations::Lane};
+use harmos_sdk::operations::Carrier;
 
 /* === Constants === */
 

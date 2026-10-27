@@ -32,8 +32,8 @@ type Result<T> = ::std::result::Result<T, MessageError>;
 
 /* === Structs === */
 
-// Intentionally Neither Clone Nor Default Nor Prost Message
-#[derive(Debug, PartialEq)]
+// Manual Codec Without Default Or Prost Message
+#[derive(Clone, Debug, PartialEq)]
 struct Native {
     value: u64,
     payload: Vec<u8>,

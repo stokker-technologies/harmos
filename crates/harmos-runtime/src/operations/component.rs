@@ -22,13 +22,14 @@ use std::sync::{
 // Third Party Imports
 use tokio::sync::mpsc;
 // Local Imports
+use super::Context;
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
-use super::{Carrier, Context};
 use crate::catalog::{Catalog, Member, Visitor};
 use crate::guest::Error as GuestError;
 use crate::guest::host::session::Endpoint;
 use crate::operations::{Declarations, FailureKind, OperationDeclaration, OperationDefinition, WireAnswer, WireCommand};
 use crate::{Error, Identifier, Message, operations::Lane};
+use harmos_sdk::operations::Carrier;
 
 /* === Constants === */
 

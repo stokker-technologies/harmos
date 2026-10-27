@@ -52,8 +52,6 @@ mod wire;
 
 /* === Re-Exports === */
 
-pub(crate) use harmos_sdk::operations::Carrier;
-
 pub use crate::supervision::instance::{Outcome as OperationOutcome, Phase as OperationPhase, Status as OperationStatus};
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub use caller::Caller;
