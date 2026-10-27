@@ -21,5 +21,5 @@
 
 ## 4. Proof
 
-- [ ] 4.1 Targeted proof: harmos-macros compile tests, focused tests for harmos-macros, harmos-operations, harmos-runtime and
+- [x] 4.1 Targeted proof: harmos-macros compile tests, focused tests for harmos-macros, harmos-operations, harmos-runtime and
   harmos-sdk, and the schematic consumer crates.
