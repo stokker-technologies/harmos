@@ -33,6 +33,34 @@ interface uses its default domain exports; a host enables its `runtime`
 feature. Domain and runtime can depend directly on their lower-level owners;
 this facade rule applies to interfaces, not every internal dependency.
 
+### Plugin Internal Structure
+
+Target shape; it requires link-time registration (`#[harmos::catalog(register)]` and
+`#[harmos::resource(register)]`, gathered by the plugin macro or builder), a Harmos follow-up feature.
+
+```text
+src/
+├── lib.rs                  # The plugin; registered catalogs and backends are gathered
+├── operations/
+│   ├── mod.rs
+│   ├── catalog.rs          # `Common`: every operation available on all platforms
+│   └── <family>/<operation>.rs
+└── platform/
+    ├── mod.rs              # Only `#[cfg(...)] mod <os>;` lines
+    ├── windows/
+    │   ├── backend.rs      # The registered backend resource behind the product trait
+    │   ├── catalog.rs      # Registered `Platform` catalog of Windows-only operations
+    │   └── <operation>.rs
+    └── linux/
+        └── ...
+```
+
+Gate only declarations, one gate per declaration (`mod` lines, including `#[cfg(test)] mod tests` and
+`#[cfg(feature = "runtime")] mod runtime`, and `pub use` lines), none on items: never on functions, impls, structs,
+fields, statements or catalog variants. A gated-out module contributes nothing; there are no `unsupported` stubs and no
+`pub use` selection. `Common` is identical on every platform, so its fingerprints match everywhere; a `Common` operation
+whose backend is not registered on a platform fails at activation with the declared-dependency error.
+
 ## Operation Placement
 
 In a reusable product, use one file per operation for its request struct, response and runtime-gated `Operation` implementation in
