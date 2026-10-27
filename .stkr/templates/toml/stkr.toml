@@ -1,0 +1,93 @@
+# Project Policy Owned By The Hub
+# Native manifests own package metadata; mise owns executable recipes.
+# Defaults stay implicit. Commented sections do not declare configuration.
+
+# === === Project === === #
+
+# === === Languages === === #
+
+# === === Repository === === #
+
+# === === CI === === #
+
+# Literal Runner Labels; No Provider Variable Overrides.
+# [ci.runners]
+# linux = "ubuntu-24.04"
+# windows = "windows-2022"
+# small = "ubuntu-24.04"
+# build = "ubuntu-24.04"
+# nightly = "ubuntu-24.04"
+# coverage = "ubuntu-24.04"
+
+# Impact Rules, Named Caches And Sparse Job Overrides Are Optional.
+# Add Their Nonempty CI Subsections In Schema Order: Impact, Caches, Stage / <Name>.
+[ci.impact]
+default = "full"
+
+[[ci.impact.rules]]
+name = "prose"
+include = ["README.md", "CONTRIBUTING.md", "LICENSE", "LICENSE.*", "docs/**/*.md"]
+exclude = ["docs/examples/**", "docs/tutorials/**", "docs/templates/**", "docs/src/**"]
+jobs = ["check:repository"]
+
+# [ci.caches.documents]
+# paths = [".cache/documents/"]
+# key_files = ["mise.lock"]
+# compatibility = "toolchain"
+
+# GitLab Compiler Caching Requires Explicit Remote Storage; Credentials Stay In CI.
+# [ci.sccache]
+# backend = "s3"
+# bucket = "compiler-cache"
+# region = "eu-central-1"
+# endpoint = "https://storage.example.com"
+
+# [[ci.jobs]]
+# id = "check:documentation"
+# timeout_minutes = 120
+# bootstrap = []
+# caches = ["documents"]
+
+# Named Outputs Belong To Their Producer; Inputs Wait And Transfer, Depends Only Waits.
+# [[ci.jobs]]
+# id = "build"
+# outputs.product = ["target/build/{profile}/{target}/bin/"]
+# [[ci.jobs]]
+# id = "test:rust:system"
+# pipelines = ["pr", "dev", "release", "nightly"]
+# inputs = ["build#product"]
+# depends = ["check:repository"]
+
+# === === Agents === === #
+
+# === === Hooks === === #
+
+# === === Conventions === === #
+
+# === === Templates === === #
+
+# === === Release === === #
+
+# Raw CLI Products And Explicit ZIP Bundles Are Optional Authored Package Policy.
+# [[package.executables]]
+# package = "cargo-example"
+# command = "cargo-example"
+# name = "cargo-example"
+# targets = { linux-x86_64 = "x86_64-unknown-linux-gnu" }
+# release = true
+# verify = ["--version"]
+# installers = []
+
+# [[package.bundles]]
+# language = "rust"
+# name = "plugins-{version}-{target}.zip"
+# profiles = ["dev", "release"]
+# targets = ["linux-x86_64"]
+# release = true
+# inputs = [{ path = "target/build/{profile}/{target}/plugins/example.bin", destination = "plugins/example.bin" }]
+
+# === === Documentation === === #
+
+# === === Screenshots === === #
+
+# === === PyO3 === === #
