@@ -71,7 +71,10 @@ impl Mapped {
         // Start Storage Over A Real Journal And File State Root.
         let directory = tempfile::tempdir().unwrap();
         let data = JsonStorage::new(
-            JsonStorageSettings { root: directory.path().to_path_buf(), max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() },
+            JsonStorageSettings {
+                root: directory.path().to_path_buf(),
+                max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+            },
             history(),
         );
         let backends = data.into_backends(state_settings());
@@ -79,28 +82,40 @@ impl Mapped {
         super::fixture::start(&storage).await;
 
         // Declare The Schema And Save One Record Per Payload.
-        let schema =
-            SchemaKey { id: Identifier::new(id).unwrap(), version: NonZeroU32::MIN, payload_encoding: PayloadEncoding::PostcardV1 };
+        let schema = SchemaKey {
+            id: Identifier::new(id).unwrap(),
+            version: NonZeroU32::MIN,
+            payload_encoding: PayloadEncoding::PostcardV1,
+        };
         let graph =
             harmos_domain::schema::graph::Schema::from_declaration(T::DEFINITION, &harmos_domain::config::SchemaSettings::default())
                 .unwrap();
         storage.write_schema(schema.clone(), graph.clone()).await.unwrap();
-        for (index, payload) in payloads.iter().enumerate() {
-            let item = Identifier::new(format!("row-{index}")).unwrap();
-            storage
-                .write_records(vec![RecordInput {
-                    schema: schema.clone(),
-                    scope: None,
-                    item: item.clone(),
-                    source: None,
-                    source_time: None,
-                    payload: payload.encode_to_vec(),
-                }])
-                .await
-                .unwrap();
+        for (chunk, payloads) in payloads.chunks(4096).enumerate() {
+            let records = payloads
+                .iter()
+                .enumerate()
+                .map(|(index, payload)| {
+                    let item = Identifier::new(format!("row-{}", chunk * 4096 + index)).unwrap();
+                    RecordInput {
+                        schema: schema.clone(),
+                        scope: None,
+                        item: item.clone(),
+                        source: None,
+                        source_time: None,
+                        payload: payload.encode_to_vec(),
+                    }
+                })
+                .collect();
+            storage.write_records(records).await.unwrap();
         }
         let at = storage.flush().await.unwrap();
-        Self { _directory: directory, storage, schema, at }
+        Self {
+            _directory: directory,
+            storage,
+            schema,
+            at,
+        }
     }
 
     fn query(&self, item: Option<&str>) -> Query {
@@ -133,8 +148,16 @@ impl Mapped {
 
 fn payloads() -> [Payload; 2] {
     [
-        Payload { label: None, values: vec![0.0, -1.0, 2.0], event: Event::Reading(-7) },
-        Payload { label: Some("second".into()), values: vec![], event: Event::Empty },
+        Payload {
+            label: None,
+            values: vec![0.0, -1.0, 2.0],
+            event: Event::Reading(-7),
+        },
+        Payload {
+            label: Some("second".into()),
+            values: vec![],
+            event: Event::Empty,
+        },
     ]
 }
 
@@ -143,6 +166,83 @@ fn compact() -> [Expansion; 1] {
 }
 
 /* === Tests === */
+
+#[harmos_domain::message]
+struct PlotSample {
+    x: f64,
+    y: f64,
+}
+
+async fn projection_scan(rows: usize) {
+    use harmos_storage::query::transform::{
+        FieldPath, Transform,
+        project::{Project, Projection},
+    };
+    let mut seed = 0x1234_5678_u64;
+    let payloads = (0..rows)
+        .map(|row| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            PlotSample {
+                x: row as f64,
+                y: (seed >> 11) as f64 / (1_u64 << 53) as f64,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let mut settings = storage_settings();
+    settings.response.batch_rows = NonZeroUsize::new(16_384).unwrap();
+    settings.response.batch_bytes = NonZeroUsize::new(8 * 1024 * 1024).unwrap();
+    let mapped = Mapped::new(settings, "plot-sample", &payloads).await;
+
+    for (name, offset, limit) in [("full", 0, rows), ("window", rows / 3, rows.min(4096))] {
+        let mut query = mapped.query(None);
+        query.transforms.push(Transform::Project(Project {
+            fields: vec![
+                Projection {
+                    field: FieldPath::from("payload.x"),
+                    name: "x".into(),
+                },
+                Projection {
+                    field: FieldPath::from("payload.y"),
+                    name: "y".into(),
+                },
+            ],
+        }));
+        query.slice = RowSlice {
+            offset: offset as u64,
+            limit: Some(limit as u64),
+        };
+        let started = std::time::Instant::now();
+        let mut reader = mapped.storage.query(query).await.unwrap();
+        let mut actual = Vec::new();
+        while let Some(output) = reader.next().await.unwrap() {
+            let QueryArrow::Batch(batch) = output else { continue };
+            let batch = batch.as_record_batch();
+            let x = batch.column(0).as_any().downcast_ref::<Float64Array>().unwrap();
+            let y = batch.column(1).as_any().downcast_ref::<Float64Array>().unwrap();
+            let points = x.values().iter().copied().zip(y.values().iter().copied());
+            actual.extend(points);
+        }
+        let elapsed = started.elapsed();
+        let expected = payloads.iter().skip(offset).take(limit).map(|row| (row.x, row.y)).collect::<Vec<_>>();
+        assert_eq!(actual, expected);
+        assert_eq!(reader.completion().unwrap().rows as usize, limit);
+        eprintln!("storage_projection rows={rows} selection={name} elapsed={elapsed:?}");
+    }
+    mapped.finish().await;
+}
+
+#[tokio::test]
+async fn seeded_projection_matches_stored_values_and_order() {
+    projection_scan(4099).await;
+}
+
+#[tokio::test]
+#[ignore = "Explicit Storage Read Timing Diagnostic"]
+async fn storage_projection_timings() {
+    projection_scan(40_000).await;
+    projection_scan(1_000_000).await;
+}
 
 #[tokio::test]
 async fn selection_preserves_schema() {
