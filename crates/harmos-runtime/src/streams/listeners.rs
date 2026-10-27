@@ -453,7 +453,7 @@ async fn closed_provider(providers: &[PluginScope]) {
 }
 
 fn native_bytes<S: Message + 'static>(row: &Row) -> Result<usize> {
-    row.downcast_ref::<S>().map(Message::encoded_len).ok_or(Error::InvalidInput {
+    row.downcast_ref::<S>().map(Message::encoded_size).ok_or(Error::InvalidInput {
         field: "listener row",
         reason: "original native row type differs",
     })

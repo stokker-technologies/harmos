@@ -161,7 +161,7 @@ impl Encode<Transcoded> for PreparedFrame {
 
 /// Prepares The Complete Opening Frame Of A Typed Input Stream Once.
 pub fn prepare_input_request<O: crate::operations::OperationDeclaration>(
-    request: &O, limit: usize,
+    request: &O::Request, limit: usize,
 ) -> Result<PreparedFrame, tonic::Status> {
     prepare(1, request, limit)
 }

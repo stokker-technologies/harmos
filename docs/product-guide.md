@@ -407,7 +407,7 @@ schema to emit.
 
 ```rust
 let mut reader = storage
-    .read_objects(ObjectRead::<Experiment> {
+    .read_objects::<Experiment>(ObjectRead {
         at: at.clone(),
         key: None,
         versions: ObjectVersions::Latest,

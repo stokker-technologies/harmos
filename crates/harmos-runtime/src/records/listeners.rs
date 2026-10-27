@@ -220,7 +220,7 @@ impl<A: Application> PluginListenerBindings<'_, A> {
                 ordinal,
                 callback: self.operations.capture_callback(self.scope, listener.callback())?,
                 submit: submit::<A, R>,
-                bytes: |record| record.project().map_or(0, R::encoded_len),
+                bytes: |record| record.project().map_or(0, R::encoded_size),
             });
             selected = true;
         }
