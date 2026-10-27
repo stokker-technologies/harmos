@@ -320,9 +320,9 @@ impl<T: MemorySize, E: From<Error>> StreamOutput<T, E> {
         let current = item.delivery.as_ref().is_some_and(|claim| Arc::ptr_eq(&self.budget, claim.semaphore()));
         if original || current {
             let slot = self.sender.reserve().await.map_err(|_| closed())?;
-            if original {
-                item.delivery.take();
-            }
+            // Only This Stream's Charge Follows The Item; The Producer's Charge Ends At Hand-Off.
+            let delivery = item.delivery.take().filter(|_| !original);
+            item._bytes = delivery.unwrap_or(item._bytes);
             self.transferred.store(true, Ordering::Release);
             slot.send(item);
             return Ok(());
@@ -336,7 +336,9 @@ impl<T: MemorySize, E: From<Error>> StreamOutput<T, E> {
             })
             .ok_or(Error::Capacity)?;
         let permit = self.reserve(bytes).await?;
-        item.delivery = Some(permit.claim);
+        // Ownership Moves To The Consumer: Release The Producer's Charge Once This Stream Holds Its Own.
+        item._bytes = permit.claim;
+        item.delivery = None;
         self.transferred.store(true, Ordering::Release);
         permit.slot.send(item);
         Ok(())
@@ -456,6 +458,36 @@ mod tests {
         assert_eq!(budget.available_permits(), 0);
         drop(retained);
         assert_eq!(budget.available_permits(), 64);
+    }
+
+    // Uncontended Channel Operations Complete On Their First Poll.
+    fn ready<F: std::future::Future>(future: F) -> F::Output {
+        let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+        match std::pin::pin!(future).poll(&mut context) {
+            std::task::Poll::Ready(output) => output,
+            std::task::Poll::Pending => panic!("uncontended stream operation must not wait"),
+        }
+    }
+
+    #[test]
+    fn hand_off_releases_producer_charge() {
+        let producer = Arc::new(Semaphore::new(64));
+        let settings = StreamSettings {
+            items: std::num::NonZeroUsize::new(4).unwrap(),
+            bytes: std::num::NonZeroUsize::new(64).unwrap(),
+        };
+        let (output, input) = stream::<u64>(settings).unwrap();
+        let claim = producer.clone().try_acquire_many_owned(64).unwrap();
+        let item = StreamItem::charged(7, claim).unwrap();
+
+        ready(output.send_item(item)).unwrap();
+        assert_eq!(producer.available_permits(), 64);
+        assert_eq!(output.budget.available_permits(), 64 - std::mem::size_of::<u64>());
+
+        let item = ready(input.recv()).unwrap();
+        assert_eq!(*item, 7);
+        drop(item);
+        assert_eq!(output.budget.available_permits(), 64);
     }
 
     #[test]
