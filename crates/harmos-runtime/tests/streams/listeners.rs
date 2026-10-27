@@ -767,13 +767,16 @@ async fn source_preserves_staged() {
 /* === Tests === */
 
 #[tokio::test]
-async fn shutdown_drops_callback_before_resources() {
+async fn shutdown_releases_callback_before_source() {
     let (runtime, mut manager, mut host) = setup(true, false, 1).await;
     manager.initialize(&mut host).await.unwrap();
     host.owner.started.notified().await;
     manager.shutdown(&mut host).await.unwrap();
     assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
     assert_eq!(host.owner.finished.load(Ordering::SeqCst), 1);
-    assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
+    let source_dropped = host.original_drop.clone();
+    assert_eq!(source_dropped.load(Ordering::SeqCst), 0);
     runtime.stop().await.unwrap();
+    drop((manager, host, runtime));
+    assert_eq!(source_dropped.load(Ordering::SeqCst), 1);
 }

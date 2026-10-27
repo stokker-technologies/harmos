@@ -206,7 +206,7 @@ async fn grpc_stream_lifecycle() {
     let upload: tonic::Response<harmos_runtime::operations::StreamItem<u32>> = client
         .client_streaming(
             tonic::Request::new(opening(UploadDeclaration { value: 5 })),
-            tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/UploadDeclaration"),
+            tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Upload"),
             Codec::<harmos_runtime::grpc::Transcoded, u32, harmos_runtime::operations::Response<InputEnvelope<UploadDeclaration, u32>>>::new(
                 operations.decode,
                 operations.encode,
@@ -222,7 +222,7 @@ async fn grpc_stream_lifecycle() {
         client
             .server_streaming(
                 tonic::Request::new(harmos_runtime::operations::Response::new(DownloadDeclaration { value: 5 })),
-                tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/DownloadDeclaration"),
+                tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Download"),
                 Codec::<
                     harmos_runtime::grpc::Transcoded,
                     OutputEnvelope<u32, u32>,
@@ -242,7 +242,7 @@ async fn grpc_stream_lifecycle() {
     let mut exchange = client
         .streaming(
             tonic::Request::new(opening(ExchangeDeclaration { value: 5 })),
-            tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/ExchangeDeclaration"),
+            tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Exchange"),
             Codec::<
                 harmos_runtime::grpc::Transcoded,
                 OutputEnvelope<u32, u32>,
@@ -298,7 +298,7 @@ async fn grpc_shape_refusal() {
     let refused = client
         .server_streaming(
             tonic::Request::new(harmos_runtime::operations::Response::new(WrongShape { value: "not a number".to_owned() })),
-            tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/DownloadDeclaration"),
+            tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Download"),
             Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<WrongShape>>::new(
                 operations.decode,
                 operations.encode,

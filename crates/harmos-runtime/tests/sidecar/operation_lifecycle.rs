@@ -240,7 +240,7 @@ async fn grpc_original_owner() {
     client
         .unary(
             tonic::Request::new(harmos_runtime::operations::Response::new(42u32)),
-            tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/ReadDeclaration"),
+            tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Read"),
             codec,
         )
         .await

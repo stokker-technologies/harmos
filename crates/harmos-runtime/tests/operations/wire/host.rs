@@ -313,7 +313,7 @@ async fn host_requirements_route() {
     let mut context = harmos_runtime::operations::CallContext::default();
     context.insert(Principal("alice")).unwrap();
     let caller = runtime.operations.with_context(context).caller(&host.callers["client"]).unwrap();
-    caller.submit::<Publish>(harmos_operations::streams::Publish::default()).unwrap().await.unwrap();
+    caller.submit::<CorePublication>(CorePublication(harmos_operations::streams::Publish::default())).unwrap().await.unwrap();
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(owner.called.load(Ordering::SeqCst), 1);
     assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 0);

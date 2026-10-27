@@ -222,7 +222,8 @@ async fn write_grants_enforced() {
         matches!(
             &failure,
             Error::OperationFailed { source, .. }
-                if matches!(source.downcast_ref::<Error>(), Some(Error::OperationUnauthorized { .. }))
+                if matches!(source.downcast_ref::<harmos_operations::Error>(), Some(harmos_operations::Error::Access(cause))
+                    if matches!(cause.downcast_ref::<Error>(), Some(Error::OperationUnauthorized { .. })))
         ),
         "unexpected write failure: {failure:?}"
     );

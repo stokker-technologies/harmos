@@ -384,7 +384,7 @@ async fn input_failure_settles_attempt() {
     let error = bounded(harmos_runtime::grpc::input(instance, input, incoming)).await.unwrap_err();
     let harmos_runtime::grpc::InputError::Forward { source, settlement } = error else { panic!("input failure missing") };
     assert!(matches!(*source, Error::TaskFailed { domain: "gRPC input", .. }));
-    assert!(settlement.is_none());
+    assert!(matches!(settlement.as_deref(), Some(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     bounded(runtime.stop()).await.unwrap();
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -531,7 +531,8 @@ async fn exchange_failure_settles_attempt() {
         Err(error) => error,
         Ok(_) => panic!("expected forwarding failure"),
     };
-    assert!(matches!(error, harmos_runtime::grpc::InputError::Forward { settlement: None, .. }));
+    assert!(matches!(error, harmos_runtime::grpc::InputError::Forward { settlement: Some(ref settlement), .. }
+        if matches!(settlement.as_ref(), Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     assert!(bounded(exchange.next()).await.is_none());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     bounded(runtime.stop()).await.unwrap();

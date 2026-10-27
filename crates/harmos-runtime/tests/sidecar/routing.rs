@@ -36,8 +36,8 @@ static PROVIDER_SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<P
 /* === Macros === */
 
 macro_rules! forward {
-    ($name:ident, $id:literal) => {
-        #[harmos_runtime::operation(resources = [Forwarder, Supervisor], operations = [AmplifyDeclaration], id = $id, policy = AmplifyDeclaration::POLICY, response = Amplified)]
+    ($name:ident, $id:literal, [$($callee:ty),*]) => {
+        #[harmos_runtime::operation(resources = [Forwarder, Supervisor], operations = [$($callee),*], id = $id, policy = AmplifyDeclaration::POLICY, response = Amplified)]
         #[derive(Clone, PartialEq)]
         struct $name {
             value: i64,
@@ -56,9 +56,9 @@ macro_rules! forward {
     };
 }
 
-forward!(Forward, "caller.forward");
+forward!(Forward, "caller.forward", [AmplifyDeclaration]);
 
-forward!(UnauthorizedForward, "unauthorized.forward");
+forward!(UnauthorizedForward, "unauthorized.forward", []);
 
 /* === Type Aliases === */
 
