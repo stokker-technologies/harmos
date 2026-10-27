@@ -26,7 +26,6 @@ use std::future::Future;
 // Local Imports
 use super::instance::Instance;
 use super::{CallContext, ContextError, ContextValue, OperationDeclaration, Response};
-use crate::operations::streams::{Publish, PublishRequest};
 use crate::{Message, StreamSpec};
 
 /* === Constants === */
@@ -59,22 +58,7 @@ pub trait Host: Send + Sync + Sized {
     // Publish one row on a declared stream through the host's `host.publish`.
     fn publish_on<S: StreamSpec>(&self, row: &S::Row) -> impl Future<Output = Result<(), Self::Error>> + Send
     where
-        S::Row: Message,
-    {
-        let published = self.call::<Publish>(PublishRequest {
-            stream: S::ID.to_owned(),
-            schema: S::VERSION,
-            sequence: None,
-            published_unix_micros: None,
-            context: None,
-            payload: row.encode(),
-            following: Vec::new(),
-        });
-        async move {
-            published.await?;
-            Ok(())
-        }
-    }
+        S::Row: Message;
 
     fn publish<S: StreamSpec<Row = S> + Message>(&self, row: &S) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.publish_on::<S>(row)

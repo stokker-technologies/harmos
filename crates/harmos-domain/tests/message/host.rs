@@ -19,7 +19,7 @@
 
 // Local Imports
 use harmos_domain::MemorySize;
-use harmos_domain::operations::streams::{FollowingRow, PublishRequest};
+use harmos_operations::streams::{FollowingRow, PublishRequest};
 use harmos_sdk::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */

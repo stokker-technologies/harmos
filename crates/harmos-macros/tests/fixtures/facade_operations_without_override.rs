@@ -71,12 +71,12 @@ trait ProductPlugin {}
 
 /* === Implementations === */
 
-impl facade::__harmos::operations::lifecycle::Policy for State {
+impl facade::__harmos::builtins::lifecycle::Policy for State {
     const INITIALIZATION_POLICY: OperationPolicy = Echo::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Echo::POLICY;
 }
 
-impl facade::__harmos::operations::lifecycle::Policy for Guest {
+impl facade::__harmos::builtins::lifecycle::Policy for Guest {
     const INITIALIZATION_POLICY: OperationPolicy = Echo::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Echo::POLICY;
 }

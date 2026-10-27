@@ -58,7 +58,7 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<(
     settings
         .plugin
         .host_operations
-        .push(harmos::Identifier::declared(<harmos::operations::streams::Publish as harmos::OperationDeclaration>::ID, "host operation"));
+        .push(harmos::Identifier::declared(<harmos::builtins::streams::Publish as harmos::OperationDeclaration>::ID, "host operation"));
     runtime.plugin.register_sidecar::<Native>(executable, settings, Lanes::Open).await?;
     runtime.plugin.initialize().await
 }

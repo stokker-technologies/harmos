@@ -15,6 +15,7 @@ mod dependencies;
 pub mod instance;
 pub mod instances;
 pub mod lifecycle;
+pub mod publication;
 pub mod registration;
 pub(crate) mod response;
 mod serving;

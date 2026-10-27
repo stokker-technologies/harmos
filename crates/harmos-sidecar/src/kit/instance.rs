@@ -121,6 +121,15 @@ impl<O: OperationDeclaration> Instance<O> for OperationInstance<O> {
 }
 
 impl Host for Supervisor {
+    async fn publish_on<S: StreamSpec>(&self, row: &S::Row) -> Result<(), CallError>
+    where
+        S::Row: Message,
+    {
+        self.publication::<S>(std::slice::from_ref(row), &[self.now()], None).await.map_err(|error| match error {
+            super::PublishError::Publication(error) => CallError::Publication(error),
+            super::PublishError::Call(error) => error,
+        })
+    }
     type Error = CallError;
     type Instance<O: OperationDeclaration> = OperationInstance<O>;
 
@@ -144,15 +153,6 @@ impl Host for Supervisor {
     }
 
     // Sequence and timestamp each row as the stream publisher does.
-    async fn publish_on<S: StreamSpec>(&self, row: &S::Row) -> Result<(), CallError>
-    where
-        S::Row: Message,
-    {
-        self.publication::<S>(std::slice::from_ref(row), &[self.now()], None).await.map_err(|error| match error {
-            super::PublishError::Publication(error) => CallError::Publication(error),
-            super::PublishError::Call(error) => error,
-        })
-    }
 }
 
 /* === Public Functions === */

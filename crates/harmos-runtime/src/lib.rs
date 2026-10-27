@@ -90,6 +90,8 @@ pub mod __private {
 
 /* === Re-Exports === */
 
+pub use harmos_operations as builtins;
+
 pub use application::Application;
 pub use error::{BackendFailure, Error};
 pub use harmos_domain::{DefinitionId, Identified};

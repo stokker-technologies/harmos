@@ -126,9 +126,9 @@ async fn publish(outgoing: &Sender, incoming: &mut Receiver, id: u64, samples: u
         assert_eq!(child.generation, 1);
         assert_eq!(
             child.fingerprint,
-            <harmos_domain::operations::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition().fingerprint.0
+            <harmos_operations::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition().fingerprint.0
         );
-        let publication = <harmos_domain::operations::streams::PublishRequest as Message>::decode(&child.payload).unwrap();
+        let publication = <harmos_operations::streams::PublishRequest as Message>::decode(&child.payload).unwrap();
         outgoing.send(Frame::Answer { id: call, result: <() as Message>::encode(&()).into() }).await.unwrap();
         if publication.stream == Done::ID {
             let finished = Done::decode(&publication.payload).unwrap();
@@ -167,7 +167,7 @@ async fn batches_split_contiguously() {
         generation_context: GENERATION.to_vec(),
         assignments: harmos_sdk::operations::AssignedOperation::encode(&[harmos_sdk::operations::AssignedOperation {
             operation: "host.host_publish".into(),
-            fingerprint: <harmos_domain::operations::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition()
+            fingerprint: <harmos_operations::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition()
                 .fingerprint
                 .0,
             generation: 1,

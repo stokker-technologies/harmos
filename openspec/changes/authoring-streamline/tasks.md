@@ -184,6 +184,12 @@ impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
 
 - [x] 1.27 Extraction prerequisites: flatten the portable declaration machinery out of operations/common, give the storage engine its own non-wire file/query inputs, migrate direct engine consumers and keep query validation with the engine. Targeted contract, file-session and query-mapping tests pass; runtime tests compile with all features. README reviewed; affected storage documentation and generated repository skills updated. The 30-operation extraction and clean-break sweep remain open in 1.24–1.25.
 
+- [x] 1.28 Extract instance status, cancellation and watch declarations/messages/implementations; runtime supplies caller-bound instance control through SDK-owned handles. Focused all-feature runtime/tests compilation passes.
+- [x] 1.29 Extract host catalog messages, declaration and storage reads; runtime supplies caller-bound discovery and the erased storage engine. Focused all-feature runtime/tests compilation passes.
+- [ ] 1.30 Extract stream publication and its SDK data-access resource; retain original sequence, generation, authorization and payload-transfer semantics. Compile all runtime/test consumers before committing the concern.
+- [ ] 1.31 Extract all storage operations with erased engine dependencies and SDK grant authority; remove the old portable and runtime trees, migrate registration callers and compile all consumers.
+- [ ] 1.32 Extract initialization and shutdown control declarations/messages with their runtime bodies; retain SDK plugin state ownership and reserved-contract validation without a dependency cycle.
+
 ## 2. Validation And Delivery
 
 - [ ] 2.1 Orchestrator: obtain delivery authorization after presenting the source-complete candidate.

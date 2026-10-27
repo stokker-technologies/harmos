@@ -81,7 +81,7 @@ impl<P: Declared> Publisher<P> {
             return Err(PublishError::UndeclaredStream);
         }
         self.context.calling_context()?;
-        let request = harmos_domain::operations::streams::PublishRequest {
+        let request = harmos_operations::streams::PublishRequest {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: None,
@@ -90,7 +90,7 @@ impl<P: Declared> Publisher<P> {
             payload: row.encode(),
             following: Vec::new(),
         };
-        let published = Host::call::<harmos_domain::operations::streams::Publish>(&self.context, request).await?;
+        let published = Host::call::<harmos_operations::streams::Publish>(&self.context, request).await?;
         drop(published);
         Ok(())
     }

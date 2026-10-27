@@ -95,7 +95,7 @@ trait ProductPlugin {}
 
 /* === Implementations === */
 
-impl facade::__harmos::operations::lifecycle::Policy for Publisher {
+impl facade::__harmos::builtins::lifecycle::Policy for Publisher {
     const INITIALIZATION_POLICY: facade::__harmos::operations::OperationPolicy = facade::__harmos::operations::OperationPolicy {
         timeout: std::time::Duration::from_secs(2),
         attempt_timeout: std::time::Duration::from_secs(1),
@@ -105,7 +105,7 @@ impl facade::__harmos::operations::lifecycle::Policy for Publisher {
 }
 
 #[facade::plugin(id = "facade-publisher", context = facade::__harmos::sidecar::Supervisor, config = (),
-    provides = (), requires(facade::__harmos::operations::streams::Publish), streams(Portable), harmos_path = ::facade::__harmos)]
+    provides = (), requires(facade::__harmos::builtins::streams::Publish), streams(Portable), harmos_path = ::facade::__harmos)]
 impl ProductPlugin for Publisher {}
 
 #[facade::observer(interval_ms = 100, streams(Portable), harmos_path = ::facade::__harmos)]

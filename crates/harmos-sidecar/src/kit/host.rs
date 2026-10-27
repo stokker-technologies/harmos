@@ -408,8 +408,8 @@ impl Supervisor {
         }
         let target = self
             .assignments
-            .resolve::<harmos_domain::operations::streams::Publish>()
-            .map_err(|_| CallError::Unassigned { operation: harmos_domain::operations::streams::Publish::ID })?;
+            .resolve::<harmos_operations::streams::Publish>()
+            .map_err(|_| CallError::Unassigned { operation: harmos_operations::streams::Publish::ID })?;
         let mut rest = (rows, stamps);
         while !rest.0.is_empty() {
             let mut sent = 0;
@@ -424,11 +424,11 @@ impl Supervisor {
                         &values,
                     )
                     .map_err(|error| CallError::Malformed {
-                        method: harmos_domain::operations::streams::Publish::ID,
+                        method: harmos_operations::streams::Publish::ID,
                         message: error.to_string(),
                     })?;
                     sent = self.with_publication::<S, super::PublishError>(rest.0, rest.1, context, envelope, |request| {
-                        let params = self.child_with_values::<harmos_domain::operations::streams::Publish>(&request, false, values)?;
+                        let params = self.child_with_values::<harmos_operations::streams::Publish>(&request, false, values)?;
                         let frame = Self::request_frame(id, CHILD_METHOD, params)?;
                         call.send(Outgoing::Frame(frame));
                         Ok(())
@@ -436,10 +436,8 @@ impl Supervisor {
                     Ok::<(), super::PublishError>(())
                 })
                 .await?;
-            <() as Message>::decode(bytes.as_slice()).map_err(|source| CallError::Malformed {
-                method: harmos_domain::operations::streams::Publish::ID,
-                message: source.to_string(),
-            })?;
+            <() as Message>::decode(bytes.as_slice())
+                .map_err(|source| CallError::Malformed { method: harmos_operations::streams::Publish::ID, message: source.to_string() })?;
             rest = (&rest.0[sent..], &rest.1[sent..]);
         }
         Ok(())
@@ -454,7 +452,7 @@ impl Supervisor {
     // at most one window of rows, so the host never evicts its own rows.
     fn with_publication<S: crate::StreamSpec, E: From<PublicationError>>(
         &self, rows: &[S::Row], stamps: &[Option<i64>], context: Option<&str>, empty_envelope: usize,
-        send: impl FnOnce(harmos_domain::operations::streams::PublishRequest) -> Result<(), E>,
+        send: impl FnOnce(harmos_operations::streams::PublishRequest) -> Result<(), E>,
     ) -> Result<usize, E>
     where
         S::Row: Message,
@@ -494,7 +492,7 @@ impl Supervisor {
             *next += 1;
         }
         let taken = deltas.len() + 1;
-        send(harmos_domain::operations::streams::PublishRequest {
+        send(harmos_operations::streams::PublishRequest {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: Some(first),
@@ -504,7 +502,7 @@ impl Supervisor {
             following: rows[1..taken]
                 .iter()
                 .zip(deltas)
-                .map(|(row, published_delta_micros)| harmos_domain::operations::streams::FollowingRow {
+                .map(|(row, published_delta_micros)| harmos_operations::streams::FollowingRow {
                     payload: row.encode(),
                     published_delta_micros,
                 })

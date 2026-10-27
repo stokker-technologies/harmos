@@ -179,6 +179,26 @@ impl<O: OperationDeclaration> Instance<O> for OperationInstance<O> {
 }
 
 impl Host for Context {
+    fn publish_on<S: harmos_domain::StreamSpec>(&self, row: &S::Row) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send
+    where
+        S::Row: harmos_domain::Message,
+    {
+        use harmos_domain::Message;
+        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::PublishRequest {
+            stream: S::ID.to_owned(),
+            schema: S::VERSION,
+            sequence: None,
+            published_unix_micros: None,
+            context: None,
+            payload: row.encode(),
+            following: Vec::new(),
+        });
+        async move {
+            published.await?;
+            Ok(())
+        }
+    }
+
     type Error = OperationRefusal;
     type Instance<O: OperationDeclaration> = OperationInstance<O>;
 

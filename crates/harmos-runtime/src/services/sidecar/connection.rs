@@ -158,14 +158,14 @@ impl Endpoint {
         self.plugin.as_ref()
     }
 
-    pub(super) async fn publish(
-        &self, scope: &crate::plugin::PluginScope, request: &mut crate::operations::streams::PublishRequest,
+    pub(crate) async fn publish(
+        &self, scope: &crate::plugin::PluginScope, request: harmos_sdk::operations::publication::Publication<'_>,
         context: &crate::operations::Context<'_>,
     ) -> crate::Result<()> {
         // Calls On One Stream Stage In Arrival Order
-        let turn = self.turns.lock().expect("native publication turns poisoned").entry(request.stream.clone()).or_default().clone();
+        let turn = self.turns.lock().expect("native publication turns poisoned").entry(request.stream.to_owned()).or_default().clone();
         let _turn = turn.lock().await;
-        let lease = scope.publication_in(context, &request.stream, request.schema)?;
+        let lease = scope.publication_in(context, request.stream, request.schema)?;
 
         // Every Row Published Before This Call Is Ingested Before It Stages
         let mut ended = self.ended.clone();
@@ -192,11 +192,11 @@ impl Endpoint {
         first
             .checked_add(rows - 1)
             .ok_or(crate::Error::InvalidInput { field: "native publication", reason: "the producer sequence must not overflow" })?;
-        let head = (std::mem::take(&mut request.payload), request.published_unix_micros);
+        let head = (std::mem::take(request.payload), request.published_unix_micros);
         // Each Following Delta Rebuilds A Row's Stamp From Its Predecessor's.
         let mut previous = request.published_unix_micros;
         let mut following = Vec::with_capacity(request.following.len());
-        for row in std::mem::take(&mut request.following) {
+        for row in std::mem::take(request.following) {
             let stamp = match (previous, row.published_delta_micros) {
                 (_, None) => None,
                 (Some(previous), Some(delta)) => Some(
@@ -221,13 +221,13 @@ impl Endpoint {
         // Every Row Carries The Call Context; The Last Row Takes The Original.
         if let Some((last, rest)) = batch.split_last_mut() {
             for row in rest {
-                row.context.clone_from(&request.context);
+                row.context.clone_from(request.context);
             }
             last.context = request.context.take();
         }
         let staged = {
             let mut sequences = self.sequences.lock().expect("native publication sequence poisoned");
-            let previous = sequences.get(&request.stream).copied().unwrap_or(0);
+            let previous = sequences.get(request.stream).copied().unwrap_or(0);
             let missed = first
                 .checked_sub(previous)
                 .and_then(|advance| advance.checked_sub(1))
@@ -235,7 +235,7 @@ impl Endpoint {
             let staged = lease.stage_rows_in(context, batch, first, missed);
             // Rows Before A Refused Row Stay Staged; The Rest Count As Missed.
             if let Some(advanced) = (staged.staged.len() as u64).checked_sub(1) {
-                sequences.insert(request.stream.clone(), first + advanced);
+                sequences.insert(request.stream.to_owned(), first + advanced);
             }
             staged
         };

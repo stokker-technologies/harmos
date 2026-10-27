@@ -77,7 +77,7 @@ pub enum Native {
 
 #[harmos::catalog]
 pub enum Requires {
-    Publish(harmos::operations::streams::Publish),
+    Publish(harmos::builtins::streams::Publish),
 }
 
 /* === Traits === */

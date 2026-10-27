@@ -12,11 +12,11 @@
 
 /* === Modules === */
 
-pub(crate) mod prelude {
-    pub(crate) use crate::MemorySize;
-    pub(crate) use crate::schema::declaration::{Field, Kind};
-    pub(crate) use crate::schema::{Cardinality, Described};
-    pub(crate) use std::borrow::Cow;
+pub mod prelude {
+    pub use crate::MemorySize;
+    pub use crate::schema::declaration::{Field, Kind};
+    pub use crate::schema::{Cardinality, Described};
+    pub use std::borrow::Cow;
 }
 
 /* === Re-Exports === */
@@ -33,7 +33,9 @@ pub(crate) mod prelude {
 
 /* === Macros === */
 
-macro_rules! payload {
+#[doc(hidden)]
+#[macro_export]
+macro_rules! builtin_payload {
     ($name:ident, $( $field:ident: $ty:ty => ($tag:literal, $kind:expr, $cardinality:ident)),* $(,)?) => {
         #[derive(Clone, Debug, Default, PartialEq)]
         pub struct $name { $(pub $field: $ty),* }
@@ -46,11 +48,11 @@ macro_rules! payload {
                 name: Cow::Borrowed(stringify!($field)), tag: $tag,
                 kind: $kind, cardinality: Cardinality::$cardinality,
             }),*];
-            const MARKER: &'static [u8] = &crate::schema::declaration::encode::<{
-                crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS)
+            const MARKER: &'static [u8] = &$crate::schema::declaration::encode::<{
+                $crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS)
             }>(Self::NAME, Self::FIELDS);
         }
-        crate::message::postcard_product!($name { $($field: $ty),* });
+        $crate::postcard_product!($name { $($field: $ty),* });
         impl MemorySize for $name {
             fn memory_size(&self) -> usize {
                 std::mem::size_of::<Self>()$(.saturating_add(
@@ -62,7 +64,7 @@ macro_rules! payload {
     };
 }
 
-pub(crate) use payload;
+pub use builtin_payload as payload;
 
 // Keep Historical Host Tags Independent Of Authored Field-Name Tags
 

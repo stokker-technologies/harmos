@@ -16,6 +16,8 @@ pub mod kit;
 
 /* === Re-Exports === */
 
+pub use harmos_operations as builtins;
+
 pub use error::{Error, Result};
 pub use harmos_domain::{catalog, listeners};
 pub use harmos_sdk::operations;

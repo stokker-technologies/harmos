@@ -50,7 +50,7 @@ trait ProductPlugin {}
 
 /* === Implementations === */
 
-impl harmos::operations::lifecycle::Policy for Bridge {
+impl harmos::builtins::lifecycle::Policy for Bridge {
     const INITIALIZATION_POLICY: harmos::operations::OperationPolicy = controls::POLICY;
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = controls::POLICY;
 }

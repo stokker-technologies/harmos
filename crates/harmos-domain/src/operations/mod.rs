@@ -11,7 +11,6 @@
 
 pub mod lifecycle;
 pub mod storage;
-pub mod streams;
 
 mod catalog;
 mod context;
@@ -20,7 +19,8 @@ mod direction;
 mod grpc;
 pub mod instance;
 mod key;
-pub(crate) mod payload;
+#[doc(hidden)]
+pub mod payload;
 
 /* === Re-Exports === */
 

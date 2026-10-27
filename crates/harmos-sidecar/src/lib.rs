@@ -25,6 +25,8 @@ mod wire;
 
 /* === Re-Exports === */
 
+pub use harmos_operations as builtins;
+
 #[cfg(feature = "transport")]
 pub use attach::{Attach, Attached, Executable, ExecutableError};
 pub use error::{Error, Result};

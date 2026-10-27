@@ -27,8 +27,6 @@ pub(crate) use sidecar::Endpoint as NativeEndpoint;
 pub(crate) use sidecar::RuntimeDriver;
 
 #[cfg(feature = "plugin-sidecar")]
-pub(crate) use sidecar::HostPublish;
-#[cfg(feature = "plugin-sidecar")]
 pub use sidecar::{DemandLease, DemandSource, Managed, ManagedError, Notice, Publish, SidecarError, Supervised};
 
 /* === Imports === */
@@ -385,6 +383,28 @@ impl<A: Application> ServiceContext<A> {
 }
 
 impl<A: Application> harmos_sdk::operations::Host for ServiceContext<A> {
+    fn publish_on<S: harmos_domain::StreamSpec>(
+        &self, row: &S::Row,
+    ) -> impl std::future::Future<Output = std::result::Result<(), Self::Error>> + Send
+    where
+        S::Row: harmos_domain::Message,
+    {
+        use harmos_domain::Message;
+        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::PublishRequest {
+            stream: S::ID.to_owned(),
+            schema: S::VERSION,
+            sequence: None,
+            published_unix_micros: None,
+            context: None,
+            payload: row.encode(),
+            following: Vec::new(),
+        });
+        async move {
+            published.await?;
+            Ok(())
+        }
+    }
+
     type Error = Error;
     type Instance<O: OperationDeclaration> = Running<O>;
 

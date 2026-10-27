@@ -423,6 +423,28 @@ impl HostContext {
 }
 
 impl harmos_sdk::operations::Host for HostContext {
+    fn publish_on<S: harmos_domain::StreamSpec>(
+        &self, row: &S::Row,
+    ) -> impl std::future::Future<Output = std::result::Result<(), Self::Error>> + Send
+    where
+        S::Row: harmos_domain::Message,
+    {
+        use harmos_domain::Message;
+        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::PublishRequest {
+            stream: S::ID.to_owned(),
+            schema: S::VERSION,
+            sequence: None,
+            published_unix_micros: None,
+            context: None,
+            payload: row.encode(),
+            following: Vec::new(),
+        });
+        async move {
+            published.await?;
+            Ok(())
+        }
+    }
+
     type Error = Error;
     type Instance<O: OperationDeclaration> = Running<O>;
 
@@ -502,5 +524,22 @@ impl harmos_sdk::operations::access::Discovery for HostContext {
 impl harmos_sdk::operations::access::GrantAuthority for HostContext {
     fn admit(&self, grant: &harmos_domain::plugin::Grant) -> std::result::Result<(), harmos_sdk::operations::access::AccessError> {
         self.borrow().admit_stream_grant(grant).map_err(Into::into)
+    }
+}
+
+#[cfg(feature = "plugin-sidecar")]
+impl harmos_sdk::operations::publication::PublicationHost for HostContext {
+    fn publish<'a>(
+        &'a self, publication: harmos_sdk::operations::publication::Publication<'a>,
+    ) -> harmos_sdk::operations::publication::Published<'a> {
+        Box::pin(async move {
+            let context = self.borrow();
+            let scope = context.caller_scope().ok_or(Error::<std::convert::Infallible>::InvalidInput {
+                field: "native publication",
+                reason: "the original plugin caller is required",
+            })?;
+            let endpoint = scope.native().ok_or(Error::<std::convert::Infallible>::NotReady { domain: "native publication endpoint" })?;
+            endpoint.publish(scope, publication, &context).await.map_err(Into::into)
+        })
     }
 }

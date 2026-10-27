@@ -256,6 +256,10 @@ pub(super) fn factory_with<D: OperationDeclaration, P: Send + 'static>(
 
 fn execution_context(context: Context<'_>) -> Result<harmos_sdk::OperationContext> {
     let mut dependencies = harmos_sdk::Dependencies::new();
+    #[cfg(feature = "plugin-sidecar")]
+    dependencies
+        .insert(Arc::new(harmos_sdk::operations::publication::PublicationAccess(Arc::new(context.owned()))))
+        .map_err(|source| Error::OperationFailed { operation: "publication access".into(), source: Arc::new(source) })?;
     dependencies
         .insert(Arc::new(harmos_sdk::operations::access::DiscoveryAccess(Arc::new(context.owned()))))
         .map_err(|source| Error::OperationFailed { operation: "discovery access".into(), source: Arc::new(source) })?;
