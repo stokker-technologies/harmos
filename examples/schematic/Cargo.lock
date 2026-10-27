@@ -1692,10 +1692,7 @@ dependencies = [
  "harmos-domain",
  "harmos-guest",
  "harmos-packaging",
- "schematic-domain",
  "schematic-operations",
- "thiserror",
- "tracing",
 ]
 
 [[package]]
@@ -1718,7 +1715,6 @@ dependencies = [
  "schematic-domain",
  "schematic-operations",
  "tempfile",
- "thiserror",
  "tokio",
  "tracing",
  "tracing-perfetto-file",
