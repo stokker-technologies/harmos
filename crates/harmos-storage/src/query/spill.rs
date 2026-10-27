@@ -60,17 +60,20 @@ pub(super) struct Builder {
     writer: StreamWriter<File>,
 }
 
+// Selected Rows Wait As Source Indices; One Interleave Writes Each Output Page.
 pub(super) struct Rows {
     builder: Builder,
-    pending: Vec<RecordBatch>,
+    sources: Vec<(RecordBatch, usize)>,
+    indices: Vec<(usize, usize)>,
     bytes: usize,
-    count: usize,
+    generation: u64,
 }
 
 pub(super) struct Cursor {
     pages: Pages,
     pub batch: Option<RecordBatch>,
     pub row: usize,
+    source: Option<(u64, usize)>,
 }
 
 pub(super) struct Pages {
@@ -148,30 +151,45 @@ impl Spool {
 
 impl Rows {
     pub fn new(schema: Arc<Schema>) -> Result<Self> {
-        Ok(Self { builder: Builder::new(schema)?, pending: Vec::new(), bytes: 0, count: 0 })
+        Ok(Self { builder: Builder::new(schema)?, sources: Vec::new(), indices: Vec::new(), bytes: 0, generation: 0 })
     }
 
-    pub fn push(&mut self, batch: &RecordBatch, row: usize, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
-        let row = super::transform::take(batch, vec![row as u64])?;
-        let bytes = row.get_array_memory_size();
-        if self.count != 0 && (self.bytes.saturating_add(bytes) > PAGE_BYTES || self.count == 1024) {
+    pub fn push(&mut self, cursor: &mut Cursor, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
+        let batch = cursor.batch.as_ref().ok_or_else(|| invalid("spill row cursor is exhausted"))?;
+        let registered = cursor.source.filter(|(generation, _)| *generation == self.generation).map(|(_, source)| source);
+        let row_bytes = match registered {
+            Some(source) => self.sources[source].1,
+            None => batch.get_array_memory_size().div_ceil(batch.num_rows().max(1)),
+        };
+        if !self.indices.is_empty() && (self.bytes.saturating_add(row_bytes) > PAGE_BYTES || self.indices.len() == 1024) {
             self.flush(check)?;
         }
-        self.bytes = self.bytes.checked_add(bytes).ok_or_else(|| invalid("spill row size overflow"))?;
-        self.count += 1;
-        self.pending.push(row);
+
+        // A Flush Retires Every Registered Source; The Cursor's Batch Registers Again.
+        let source = match cursor.source.filter(|(generation, _)| *generation == self.generation) {
+            Some((_, source)) => source,
+            None => {
+                self.sources.push((batch.clone(), row_bytes));
+                cursor.source = Some((self.generation, self.sources.len() - 1));
+                self.sources.len() - 1
+            }
+        };
+        self.bytes = self.bytes.checked_add(row_bytes).ok_or_else(|| invalid("spill row size overflow"))?;
+        self.indices.push((source, cursor.row));
         Ok(())
     }
 
     fn flush(&mut self, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
-        if self.pending.is_empty() {
+        if self.indices.is_empty() {
             return Ok(());
         }
-        let batch = arrow_select::concat::concat_batches(&self.builder.spool.schema, self.pending.iter())
+        let sources = self.sources.iter().map(|(batch, _)| batch).collect::<Vec<_>>();
+        let batch = arrow_select::interleave::interleave_record_batch(&sources, &self.indices)
             .map_err(|_| invalid("spill output page construction failed"))?;
-        self.pending.clear();
-        self.count = 0;
+        self.sources.clear();
+        self.indices.clear();
         self.bytes = 0;
+        self.generation = self.generation.checked_add(1).ok_or_else(|| invalid("spill page generation overflow"))?;
         self.builder.push(&batch, check)
     }
 
@@ -183,7 +201,7 @@ impl Rows {
 
 impl Cursor {
     pub fn new(spool: Spool) -> Result<Self> {
-        let mut cursor = Self { pages: spool.pages()?, batch: None, row: 0 };
+        let mut cursor = Self { pages: spool.pages()?, batch: None, row: 0, source: None };
         cursor.advance()?;
         Ok(cursor)
     }
@@ -195,6 +213,7 @@ impl Cursor {
                 return Ok(());
             }
         }
+        self.source = None;
         loop {
             self.batch = self.pages.next()?;
             self.row = 0;

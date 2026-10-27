@@ -46,11 +46,13 @@ use crate::Result;
 /* === Public Functions === */
 
 pub(super) fn sort(input: Spool, plan: &Sort, check: &mut impl FnMut() -> Result<()>) -> Result<Spool> {
-    ordered(input, &mut |left, a, right, b| compare(plan, left, a, right, b), check)
+    let mut key = |batch: &RecordBatch, row| plan.keys.iter().map(|key| key.field.value(batch, row)).collect::<Result<Vec<_>>>();
+    ordered(input, &mut key, &mut |left, right| compare(plan, left, right), check)
 }
 
-pub(super) fn ordered(
-    input: Spool, compare: &mut impl FnMut(&RecordBatch, usize, &RecordBatch, usize) -> Result<Ordering>,
+// Each Row's Key Is Read Once Per Page Or Merge Step; Comparisons Never Revisit The Batch.
+pub(super) fn ordered<K>(
+    input: Spool, key: &mut impl FnMut(&RecordBatch, usize) -> Result<K>, compare: &mut impl FnMut(&K, &K) -> Result<Ordering>,
     check: &mut impl FnMut() -> Result<()>,
 ) -> Result<Spool> {
     let mut levels: Vec<Option<Spool>> = Vec::new();
@@ -58,15 +60,7 @@ pub(super) fn ordered(
     for batch in &mut reader {
         check()?;
         let batch = batch.map_err(|_| invalid("sort spill decoding failed"))?;
-        let mut indices: Vec<u64> = (0..batch.num_rows() as u64).collect();
-        sort_values(&mut indices, |a, b| {
-            check()?;
-            Ok(compare(&batch, a as usize, &batch, b as usize)?.then(a.cmp(&b)))
-        })?;
-        let sorted = super::transform::take(&batch, indices)?;
-        let mut writer = Builder::new(input.schema.clone())?;
-        writer.push(&sorted, check)?;
-        let mut run = writer.finish()?;
+        let mut run = sorted_run(&input, &batch, key, compare, check)?;
         let mut level = 0;
         loop {
             if level == levels.len() {
@@ -77,16 +71,17 @@ pub(super) fn ordered(
                     levels[level] = Some(run);
                     break;
                 }
-                Some(older) => run = merge(older, run, compare, check)?,
+                Some(older) => run = merge(older, run, key, compare, check)?,
             }
             level += 1;
         }
     }
+
     let mut output = None;
     for run in levels.into_iter().flatten() {
         output = Some(match output {
             None => run,
-            Some(newer) => merge(run, newer, compare, check)?,
+            Some(newer) => merge(run, newer, key, compare, check)?,
         });
     }
     match output {
@@ -97,35 +92,69 @@ pub(super) fn ordered(
 
 /* === Private Functions === */
 
-fn merge(
-    left: Spool, right: Spool, compare: &mut impl FnMut(&RecordBatch, usize, &RecordBatch, usize) -> Result<Ordering>,
-    check: &mut impl FnMut() -> Result<()>,
+fn sorted_run<K>(
+    input: &Spool, batch: &RecordBatch, key: &mut impl FnMut(&RecordBatch, usize) -> Result<K>,
+    compare: &mut impl FnMut(&K, &K) -> Result<Ordering>, check: &mut impl FnMut() -> Result<()>,
+) -> Result<Spool> {
+    let mut keys = Vec::new();
+    keys.try_reserve_exact(batch.num_rows()).map_err(|_| invalid("sort key allocation failed"))?;
+    for row in 0..batch.num_rows() {
+        check()?;
+        keys.push(key(batch, row)?);
+    }
+    let mut indices: Vec<u64> = (0..batch.num_rows() as u64).collect();
+    sort_values(&mut indices, |a, b| {
+        check()?;
+        Ok(compare(&keys[a as usize], &keys[b as usize])?.then(a.cmp(&b)))
+    })?;
+    drop(keys);
+
+    let sorted = super::transform::take(batch, indices)?;
+    let mut writer = Builder::new(input.schema.clone())?;
+    writer.push(&sorted, check)?;
+    writer.finish()
+}
+
+fn merge<K>(
+    left: Spool, right: Spool, key: &mut impl FnMut(&RecordBatch, usize) -> Result<K>,
+    compare: &mut impl FnMut(&K, &K) -> Result<Ordering>, check: &mut impl FnMut() -> Result<()>,
 ) -> Result<Spool> {
     let mut output = Rows::new(left.schema.clone())?;
     let mut left = Cursor::new(left)?;
     let mut right = Cursor::new(right)?;
-    while left.batch.is_some() || right.batch.is_some() {
+    let mut left_key = current_key(&left, key)?;
+    let mut right_key = current_key(&right, key)?;
+    loop {
         check()?;
-        let choose_left = match (&left.batch, &right.batch) {
-            (Some(a), Some(b)) => !compare(a, left.row, b, right.row)?.is_gt(),
+        let choose_left = match (&left_key, &right_key) {
+            (Some(a), Some(b)) => !compare(a, b)?.is_gt(),
             (Some(_), None) => true,
-            _ => false,
+            (None, Some(_)) => false,
+            (None, None) => break,
         };
-        let cursor = if choose_left { &mut left } else { &mut right };
-        output.push(cursor.batch.as_ref().expect("nonempty merge side"), cursor.row, check)?;
-        cursor.advance()?;
+        if choose_left {
+            output.push(&mut left, check)?;
+            left.advance()?;
+            left_key = current_key(&left, key)?;
+        } else {
+            output.push(&mut right, check)?;
+            right.advance()?;
+            right_key = current_key(&right, key)?;
+        }
     }
     output.finish(check)
 }
 
-pub(super) fn compare(plan: &Sort, left: &RecordBatch, a: usize, right: &RecordBatch, b: usize) -> Result<Ordering> {
-    for key in &plan.keys {
-        let left = key.field.value(left, a)?;
-        let right = key.field.value(right, b)?;
+fn current_key<K>(cursor: &Cursor, key: &mut impl FnMut(&RecordBatch, usize) -> Result<K>) -> Result<Option<K>> {
+    cursor.batch.as_ref().map(|batch| key(batch, cursor.row)).transpose()
+}
+
+fn compare(plan: &Sort, left: &[ScalarValue], right: &[ScalarValue]) -> Result<Ordering> {
+    for ((key, left), right) in plan.keys.iter().zip(left).zip(right) {
         let absent = |value: &ScalarValue| {
             matches!(value, ScalarValue::Null | ScalarValue::Missing) || matches!(value, ScalarValue::Float(value) if !value.is_finite())
         };
-        let order = match (absent(&left), absent(&right)) {
+        let order = match (absent(left), absent(right)) {
             (true, true) => Ordering::Equal,
             (true, false) => {
                 if key.nulls_first {
@@ -142,7 +171,7 @@ pub(super) fn compare(plan: &Sort, left: &RecordBatch, a: usize, right: &RecordB
                 }
             }
             (false, false) => {
-                let order = left.compare(&right)?;
+                let order = left.compare(right)?;
                 if key.descending { order.reverse() } else { order }
             }
         };

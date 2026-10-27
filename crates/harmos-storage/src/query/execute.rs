@@ -247,6 +247,24 @@ mod tests {
     }
 
     #[test]
+    fn merged_spill_runs_keep_stable_ties() {
+        let rows = 2 * super::super::spill::PAGE_ROWS + 1_000;
+        let schema =
+            Arc::new(Schema::new(vec![Field::new("key", DataType::UInt64, false), Field::new("ordinal", DataType::UInt64, false)]));
+        let keys = (0..rows as u64).map(|row| row * 7_919 % 13).collect::<Vec<_>>();
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![Arc::new(UInt64Array::from(keys.clone())), Arc::new(UInt64Array::from((0..rows as u64).collect::<Vec<_>>()))],
+        )
+        .unwrap();
+        let sort = Transform::Sort(Sort { keys: vec![SortKey { field: FieldPath::from("key"), descending: true, nulls_first: false }] });
+        let actual = run(&batch, vec![sort], RowSlice { offset: 0, limit: None });
+        let mut expected = (0..rows as u64).collect::<Vec<_>>();
+        expected.sort_by(|left, right| keys[*right as usize].cmp(&keys[*left as usize]));
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn cancellation_refuses_spilled_global_work() {
         let batch = source(120);
         let mut plan = Plan::new(
