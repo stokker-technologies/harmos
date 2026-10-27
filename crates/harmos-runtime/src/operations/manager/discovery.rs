@@ -24,9 +24,9 @@ use serde::Serialize;
 use super::{Entry, Manager};
 use crate::operations::Contract;
 use crate::operations::caller::Source;
-use crate::operations::host::{CatalogPage, CatalogRequest};
 use crate::{Error, Identifier, Result};
 use harmos_domain::plugin::Grant;
+use harmos_operations::host::{CatalogPage, CatalogRequest};
 
 /* === Constants === */
 

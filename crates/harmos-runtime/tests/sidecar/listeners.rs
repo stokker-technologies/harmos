@@ -99,7 +99,7 @@ impl Drop for InFlight<'_> {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for Receiver {
+impl harmos_operations::lifecycle::Policy for Receiver {
     const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),

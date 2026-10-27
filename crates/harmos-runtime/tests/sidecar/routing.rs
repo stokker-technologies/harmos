@@ -243,8 +243,8 @@ impl Drop for ProviderSeed {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for ProviderEndpoint {
-    const INITIALIZATION_POLICY: OperationPolicy = <Dependent as harmos_runtime::operations::lifecycle::Policy>::INITIALIZATION_POLICY;
+impl harmos_operations::lifecycle::Policy for ProviderEndpoint {
+    const INITIALIZATION_POLICY: OperationPolicy = <Dependent as harmos_operations::lifecycle::Policy>::INITIALIZATION_POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
@@ -295,8 +295,8 @@ impl harmos_runtime::Plugin for ProviderEndpoint {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for CallerEndpoint {
-    const INITIALIZATION_POLICY: OperationPolicy = <Dependent as harmos_runtime::operations::lifecycle::Policy>::INITIALIZATION_POLICY;
+impl harmos_operations::lifecycle::Policy for CallerEndpoint {
+    const INITIALIZATION_POLICY: OperationPolicy = <Dependent as harmos_operations::lifecycle::Policy>::INITIALIZATION_POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
@@ -333,8 +333,8 @@ impl harmos_runtime::Plugin for CallerEndpoint {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for UnauthorizedEndpoint {
-    const INITIALIZATION_POLICY: OperationPolicy = <Dependent as harmos_runtime::operations::lifecycle::Policy>::INITIALIZATION_POLICY;
+impl harmos_operations::lifecycle::Policy for UnauthorizedEndpoint {
+    const INITIALIZATION_POLICY: OperationPolicy = <Dependent as harmos_operations::lifecycle::Policy>::INITIALIZATION_POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
@@ -371,7 +371,7 @@ impl harmos_runtime::Plugin for UnauthorizedEndpoint {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for Publishing {
+impl harmos_operations::lifecycle::Policy for Publishing {
     const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
@@ -402,7 +402,7 @@ impl harmos_runtime::operations::Operation for PublishingCall {
     }
 }
 
-#[harmos_runtime::plugin(description = "Publishes Before Its Generation Commits.", id = "caller", streams(MeterPulse), provides = PublishingOperations, requires(harmos_runtime::operations::streams::Publish))]
+#[harmos_runtime::plugin(description = "Publishes Before Its Generation Commits.", id = "caller", streams(MeterPulse), provides = PublishingOperations, requires(harmos_operations::streams::Publish))]
 impl harmos_runtime::Plugin for Publishing {
     type Context = Supervisor;
     type Config = bool;
@@ -449,7 +449,7 @@ impl harmos_runtime::Plugin for Publishing {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for Dependent {
+impl harmos_operations::lifecycle::Policy for Dependent {
     const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
@@ -624,8 +624,8 @@ impl Attach for Attachment {
             vec![]
         }
     }
-    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_runtime::operations::lifecycle::Descriptor; 2]>> {
-        use harmos_runtime::operations::lifecycle::Descriptor;
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_operations::lifecycle::Descriptor; 2]>> {
+        use harmos_operations::lifecycle::Descriptor;
         let pair = match self.id.as_str() {
             "provider" => [
                 Descriptor::of_initialize::<ProviderEndpoint>().expect("valid fixture lifecycle contract"),

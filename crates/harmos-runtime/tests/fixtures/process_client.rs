@@ -47,7 +47,7 @@ struct Probing {
 
 /* === Implementations === */
 
-impl harmos_runtime::operations::lifecycle::Policy for Client {
+impl harmos_operations::lifecycle::Policy for Client {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }

@@ -439,7 +439,7 @@ enum MeasureError {
 
 /* === Implementations === */
 
-impl harmos_runtime::operations::lifecycle::Policy for Joinable {
+impl harmos_operations::lifecycle::Policy for Joinable {
     const INITIALIZATION_POLICY: OperationPolicy = GAUGE_POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = GAUGE_POLICY;
 }
@@ -470,7 +470,7 @@ impl harmos_runtime::Plugin for Joinable {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for Gauge {
+impl harmos_operations::lifecycle::Policy for Gauge {
     const INITIALIZATION_POLICY: OperationPolicy = GAUGE_POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = GAUGE_POLICY;
 }
@@ -827,7 +827,7 @@ impl harmos_runtime::operations::Operation for Sampling {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for Meter {
+impl harmos_operations::lifecycle::Policy for Meter {
     const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
@@ -836,7 +836,7 @@ impl harmos_runtime::operations::lifecycle::Policy for Meter {
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(id = "meter", provides = MeterOperations, requires(harmos_runtime::operations::streams::Publish),  streams(MeterPulse))]
+#[harmos_runtime::plugin(id = "meter", provides = MeterOperations, requires(harmos_operations::streams::Publish),  streams(MeterPulse))]
 impl harmos_runtime::Plugin for Meter {
     type Config = ();
     type Context = Supervisor;
@@ -923,7 +923,7 @@ impl Attach for MeterSource {
     fn required_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         self.source.required_contracts()
     }
-    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_runtime::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_operations::lifecycle::Descriptor; 2]>> {
         self.source.sdk_lifecycle()
     }
     fn publications(&self) -> Vec<harmos_sidecar::StreamDeclaration> {

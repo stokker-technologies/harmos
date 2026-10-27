@@ -115,12 +115,12 @@ const LIFECYCLE: OperationPolicy = harmos_runtime::OperationPolicy {
     retries: RetryPolicy::Never,
 };
 
-impl harmos_runtime::operations::lifecycle::Policy for Bridge {
+impl harmos_operations::lifecycle::Policy for Bridge {
     const INITIALIZATION_POLICY: OperationPolicy = LIFECYCLE;
     const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
 }
 
-#[harmos_runtime::plugin(id = "custom_host", provides = (), requires(harmos_runtime::operations::streams::Publish),  observers = Observers, streams(Published))]
+#[harmos_runtime::plugin(id = "custom_host", provides = (), requires(harmos_operations::streams::Publish),  observers = Observers, streams(Published))]
 impl harmos_runtime::Plugin for Bridge {
     type Config = usize;
     type Resources = Settings;

@@ -460,7 +460,7 @@ impl harmos_runtime::state::RecordCatalog for NoRecord {
 
 impl harmos_runtime::state::TransactionCatalog<DivergentState> for DivergentChange {}
 
-impl harmos_runtime::operations::lifecycle::Policy for Idle {
+impl harmos_operations::lifecycle::Policy for Idle {
     const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),

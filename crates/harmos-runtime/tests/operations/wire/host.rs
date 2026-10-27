@@ -96,8 +96,8 @@ enum Controls {
 struct CorePublication(Arc<CoreOwner>);
 
 impl harmos_runtime::operations::Operation for CorePublication {
-    type Request = <harmos_runtime::operations::streams::Publish as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <harmos_runtime::operations::streams::Publish as harmos_runtime::OperationDeclaration>::Response;
+    type Request = <harmos_operations::streams::Publish as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <harmos_operations::streams::Publish as harmos_runtime::OperationDeclaration>::Response;
 
     type Error = super::Failed;
     type Endpoints = ();
@@ -107,7 +107,7 @@ impl harmos_runtime::operations::Operation for CorePublication {
         Ok(Self(owner))
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, _request: &mut harmos_runtime::operations::streams::PublishRequest,
+        &mut self, context: harmos_runtime::OperationContext, _request: &mut harmos_operations::streams::PublishRequest,
         _endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
@@ -256,7 +256,7 @@ fn requiring(required: Vec<Required>) -> PluginDefinitions {
 
 #[tokio::test]
 async fn host_requirements_route() {
-    use harmos_runtime::operations::streams::Publish;
+    use harmos_operations::streams::Publish;
     let runtime = super::runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
     let owner = Arc::new(CoreOwner::default());
     runtime
@@ -291,13 +291,13 @@ async fn host_requirements_route() {
     manager.initialize(&mut host).await.unwrap();
     let provider = runtime.operations.caller(&host.callers["provider"]).unwrap();
     assert!(matches!(
-        provider.submit::<Publish>(harmos_runtime::operations::streams::PublishRequest::default()),
+        provider.submit::<Publish>(harmos_operations::streams::PublishRequest::default()),
         Err(Error::OperationUnauthorized { .. })
     ));
     let mut context = harmos_runtime::operations::CallContext::default();
     context.insert(Principal("alice")).unwrap();
     let caller = runtime.operations.with_context(context).caller(&host.callers["client"]).unwrap();
-    caller.submit::<Publish>(harmos_runtime::operations::streams::PublishRequest::default()).unwrap().await.unwrap();
+    caller.submit::<Publish>(harmos_operations::streams::PublishRequest::default()).unwrap().await.unwrap();
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(owner.called.load(Ordering::SeqCst), 1);
     assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 0);
@@ -320,10 +320,7 @@ async fn host_requirements_route() {
     ));
     runtime.operations.validate_requirements(&chosen).unwrap();
     manager.shutdown(&mut host).await.unwrap();
-    assert!(matches!(
-        caller.submit::<Publish>(harmos_runtime::operations::streams::PublishRequest::default()),
-        Err(Error::OperationCaller { .. })
-    ));
+    assert!(matches!(caller.submit::<Publish>(harmos_operations::streams::PublishRequest::default()), Err(Error::OperationCaller { .. })));
     runtime.stop().await.unwrap();
 }
 

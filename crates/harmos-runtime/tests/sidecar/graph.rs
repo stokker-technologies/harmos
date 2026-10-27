@@ -123,7 +123,7 @@ enum Source {
 
 /* === Implementations === */
 
-impl harmos_runtime::operations::lifecycle::Policy for Independent {
+impl harmos_operations::lifecycle::Policy for Independent {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
@@ -211,7 +211,7 @@ impl Attach for Joined {
     fn required_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         forwarded!(self, required_contracts)
     }
-    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_runtime::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_operations::lifecycle::Descriptor; 2]>> {
         forwarded!(self, sdk_lifecycle)
     }
     fn publications(&self) -> Vec<harmos_sidecar::StreamDeclaration> {
@@ -287,7 +287,7 @@ impl Fixture {
             })
             .collect::<Vec<_>>();
         let encoding_bytes = definitions.iter().map(|definition| definition.configuration.len() * 2).max().unwrap()
-            + std::mem::size_of::<harmos_runtime::operations::lifecycle::InitializeRequest>()
+            + std::mem::size_of::<harmos_operations::lifecycle::InitializeRequest>()
             + 94;
         assert!(encoding_bytes <= 512);
         let encoding_bytes = encoding_bytes + 3072;

@@ -171,7 +171,7 @@ impl harmos_runtime::operations::authorization::Authorizer for Holdings {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for Provider {
+impl harmos_operations::lifecycle::Policy for Provider {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }

@@ -148,7 +148,7 @@ struct Handler {
 /* === Enums === */
 
 // Answers: `Join` the child's response payload, `Status` and `Cancel` an
-// encoded `builtin::InstanceState`, `Release` and `Detach` an empty payload.
+// encoded instance state, `Release` and `Detach` an empty payload.
 // Releasing cancels the child; detaching leaves it running without a handle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

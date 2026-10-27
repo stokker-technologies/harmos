@@ -153,12 +153,12 @@ impl Drop for Work<'_> {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for Process {
+impl harmos_operations::lifecycle::Policy for Process {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos_runtime::plugin(id = "process", provides = Operations, requires(harmos_runtime::operations::streams::Publish), streams(Blob))]
+#[harmos_runtime::plugin(id = "process", provides = Operations, requires(harmos_operations::streams::Publish), streams(Blob))]
 impl harmos_runtime::Plugin for Process {
     type Context = Supervisor;
     type Config = String;
@@ -286,8 +286,8 @@ impl Operation for Publishing {
 }
 
 impl Operation for CallbackPublication {
-    type Request = <harmos_runtime::operations::streams::Publish as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <harmos_runtime::operations::streams::Publish as harmos_runtime::OperationDeclaration>::Response;
+    type Request = <harmos_operations::streams::Publish as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <harmos_operations::streams::Publish as harmos_runtime::OperationDeclaration>::Response;
 
     type Error = harmos_runtime::Error;
     type Endpoints = ();
@@ -301,7 +301,7 @@ impl Operation for CallbackPublication {
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut harmos_runtime::operations::streams::PublishRequest,
+        &mut self, context: harmos_runtime::OperationContext, request: &mut harmos_operations::streams::PublishRequest,
         endpoints: &mut Self::Endpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
         let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
@@ -359,7 +359,7 @@ impl Fixture {
                         .unwrap();
                     dependencies
                 })
-                .implementation::<harmos_runtime::operations::streams::Publish, CallbackPublication>(),
+                .implementation::<harmos_operations::streams::Publish, CallbackPublication>(),
                 HostLanes::Open,
             ))
             .await

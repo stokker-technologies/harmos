@@ -23,8 +23,8 @@ use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::wire::EncodedInput;
 use super::{EncodedInvocation, Manager};
-use crate::operations::lifecycle::InitializeRequest;
 use crate::plugin::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
+use harmos_operations::lifecycle::InitializeRequest;
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 use crate::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};

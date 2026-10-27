@@ -12,9 +12,10 @@
 #[cfg(all(test, any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
 mod tests {
     use super::*;
+    use crate::operations::WireDeclaration;
     use crate::operations::authorization::{Authorization, Required};
-    use crate::operations::{WireDeclaration, host::Catalog};
     use harmos_domain::plugin::Grant;
+    use harmos_operations::host::Catalog;
 
     #[test]
     fn plugin_grants_preserved() {

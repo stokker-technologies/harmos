@@ -111,12 +111,12 @@ impl harmos_runtime::Application for Model {
     type Resources = ();
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for Producer {
+impl harmos_operations::lifecycle::Policy for Producer {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos_runtime::plugin(description = "Publishes Timed Sample Rows Through Host Publication.", id = "publication_producer", provides = Operations, requires(harmos_runtime::operations::streams::Publish), streams(Sample))]
+#[harmos_runtime::plugin(description = "Publishes Timed Sample Rows Through Host Publication.", id = "publication_producer", provides = Operations, requires(harmos_operations::streams::Publish), streams(Sample))]
 impl harmos_runtime::Plugin for Producer {
     type Config = ();
     type Context = Supervisor;
@@ -229,7 +229,7 @@ impl Fixture {
                     dependencies.insert(Arc::new(resident.clone())).unwrap();
                     dependencies
                 })
-                .implementation::<harmos_runtime::operations::streams::Publish, harmos_runtime::sidecar::Publish<Model, Source, fn(&ServiceContext<Model>, Notice)>>(),
+                .operation::<harmos_operations::streams::Publish>(),
                 Lanes::Open,
             ))
             .await

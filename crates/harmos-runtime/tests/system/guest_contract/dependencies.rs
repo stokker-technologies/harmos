@@ -299,7 +299,7 @@ impl Drop for NativeSeed {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for NativeProviderPlugin {
+impl harmos_operations::lifecycle::Policy for NativeProviderPlugin {
     const INITIALIZATION_POLICY: OperationPolicy = super::sandbox::EchoOperation::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = super::sandbox::EchoOperation::POLICY;
 }
@@ -343,7 +343,7 @@ impl harmos_runtime::Plugin for NativeProviderPlugin {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for NativeClientPlugin {
+impl harmos_operations::lifecycle::Policy for NativeClientPlugin {
     const INITIALIZATION_POLICY: OperationPolicy = super::sandbox::EchoOperation::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = super::sandbox::EchoOperation::POLICY;
 }
@@ -395,7 +395,7 @@ impl harmos_sidecar::Attach for NativeAttachment {
     fn required_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         if self.id == "provider" { native_provider().required_contracts() } else { native_client().required_contracts() }
     }
-    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_runtime::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_operations::lifecycle::Descriptor; 2]>> {
         if self.id == "provider" { native_provider().sdk_lifecycle() } else { native_client().sdk_lifecycle() }
     }
     async fn attach(&self) -> Result<harmos_sidecar::Attached, Self::Error> {
@@ -503,7 +503,7 @@ impl harmos_runtime::plugin::PluginLifecycle for DependencyHost {
                             &definition.configuration,
                             std::num::NonZeroUsize::new(
                                 2 * definition.configuration.len()
-                                    + std::mem::size_of::<harmos_runtime::operations::lifecycle::InitializeRequest>()
+                                    + std::mem::size_of::<harmos_operations::lifecycle::InitializeRequest>()
                                     + 64
                                     + 30
                                     + 3072,

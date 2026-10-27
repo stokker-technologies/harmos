@@ -30,7 +30,7 @@ use harmos_runtime::operations::{Backoff, Declarations, OperationDeclaration, Op
 
 macro_rules! inert_plugin {
     ($name:ident, $id:literal, $context:ty, $provided:ty) => {
-        impl harmos_runtime::operations::lifecycle::Policy for $name {
+        impl harmos_operations::lifecycle::Policy for $name {
             const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
                 timeout: Duration::from_secs(2),
                 attempt_timeout: Duration::from_secs(2),

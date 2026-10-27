@@ -106,7 +106,7 @@ impl<A: Application> PluginHost<A> {
 impl<A: Application> PluginHost<A> {
     // A sidecar that requires `host.publish` reaches the one host-wide provider, served once on first need.
     fn serve_publications(&self, definition: &PluginDefinition, lane: impl Lane) -> Result<()> {
-        let publish = crate::operations::WireDeclaration::of::<crate::operations::streams::Publish>()
+        let publish = crate::operations::WireDeclaration::of::<harmos_operations::streams::Publish>()
             .contract()
             .map_err(|source| failed("host.publish", source))?;
         let required = definition.contributions.required_contracts.iter().flatten().any(|required| required.contract == publish);

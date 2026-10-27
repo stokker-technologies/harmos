@@ -139,7 +139,10 @@ async fn submitted_child_controls() {
     fixture
         .runtime
         .operations
-        .register(harmos_runtime::RegistrationExt::lane(harmos_runtime::builtin::Catalog::registration(), Lanes::Open))
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_operations::Lifecycle::registration(harmos_runtime::Dependencies::new()),
+            Lanes::Open,
+        ))
         .await
         .unwrap();
     fixture.initialize().await.unwrap();

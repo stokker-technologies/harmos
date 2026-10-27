@@ -603,7 +603,7 @@ async fn graceful_stop_joins() {
         fn required_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
             self.source.required_contracts()
         }
-        fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_runtime::operations::lifecycle::Descriptor; 2]>> {
+        fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_operations::lifecycle::Descriptor; 2]>> {
             self.source.sdk_lifecycle()
         }
         fn publications(&self) -> Vec<harmos_sidecar::StreamDeclaration> {

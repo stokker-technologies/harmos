@@ -126,8 +126,8 @@ impl Operation for Echo {
 }
 
 impl Operation for Publish {
-    type Request = <harmos_runtime::operations::streams::Publish as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <harmos_runtime::operations::streams::Publish as harmos_runtime::OperationDeclaration>::Response;
+    type Request = <harmos_operations::streams::Publish as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <harmos_operations::streams::Publish as harmos_runtime::OperationDeclaration>::Response;
 
     type Error = harmos_runtime::Error;
     type Endpoints = ();
@@ -136,7 +136,7 @@ impl Operation for Publish {
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, row: &mut harmos_runtime::operations::streams::PublishRequest,
+        &mut self, context: harmos_runtime::OperationContext, row: &mut harmos_operations::streams::PublishRequest,
         _endpoints: &mut Self::Endpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -156,7 +156,7 @@ impl Operation for Publish {
                 context: None,
             };
             lease.stage_derived_row(row, 0).map_err(|source| harmos_runtime::Error::OperationFailed {
-                operation: <harmos_runtime::operations::streams::Publish as OperationDeclaration>::ID.into(),
+                operation: <harmos_operations::streams::Publish as OperationDeclaration>::ID.into(),
                 source: Arc::new(source),
             })?;
             Ok(())
@@ -248,7 +248,7 @@ impl Resources {
                 &definition.configuration,
                 NonZeroUsize::new(
                     2 * definition.configuration.len()
-                        + std::mem::size_of::<harmos_runtime::operations::lifecycle::InitializeRequest>()
+                        + std::mem::size_of::<harmos_operations::lifecycle::InitializeRequest>()
                         + 64
                         + 30
                         + 3072,
@@ -335,7 +335,7 @@ impl Lifecycle<GuestOperations> {
                     dependencies.insert(Arc::new(Domain)).unwrap();
                     dependencies
                 })
-                .implementation::<harmos_runtime::operations::streams::Publish, Publish>(),
+                .implementation::<harmos_operations::streams::Publish, Publish>(),
                 lane,
             ))
             .await
@@ -425,7 +425,7 @@ pub(super) async fn serve_host(runtime: &Runtime<Bank>, lane: super::GuestLanes)
                 dependencies.insert(Arc::new(Domain)).unwrap();
                 dependencies
             })
-            .implementation::<harmos_runtime::operations::streams::Publish, Publish>(),
+            .implementation::<harmos_operations::streams::Publish, Publish>(),
             lane.clone(),
         ))
         .await

@@ -183,25 +183,24 @@ Stream producers use `output.send_owned(response).await?` to retain the same own
 through queueing and encoding; ordinary stream payloads keep their existing `Send`
 contract. Protobuf payloads and RPC paths remain unchanged.
 
-Harmos serves no built-in operation by default. `builtin::Catalog::register`
-serves `host.operations.status`, `host.operations.cancel` and
-`host.operations.watch` (gRPC `/harmos.host.v1.Operations/Status`, `/Cancel`
+Harmos serves no built-in operation by default. `builtins::Lifecycle::registration(Dependencies::new())`
+provides the Status, Cancel and Watch operations; register the batch on a lane (gRPC `/harmos.host.v1.Operations/Status`, `/Cancel`
 and the server stream `/Watch`) over the manager's instances. Each answers only
 for active instances the caller submitted or holds a resident lease on; unknown,
 foreign and settled ids are refused alike. A watch streams every status change
 from the moment it starts until the instance stops or settles. Plugins reach them like any other operation,
 so they must declare them as requirements.
 
-Hosts can call `operations::listing::register(&operations, owner, lane, storage)`
-on their existing operation manager to serve `host.catalog` (unary gRPC path
-`/harmos.host.v1.Host/Catalog` when `grpc` is enabled). `host::Catalog` selects a
+Hosts register the batch from `builtin::catalog_registration(storage)` on a
+chosen lane to serve `builtins::host::Catalog` (unary gRPC path
+`/harmos.host.v1.Host/Catalog` when `grpc` is enabled). `builtins::host::CatalogRequest` selects a
 `kind` (`Operations`, `Schemas`, `Streams` or `Objects`) and accepts optional
 `schema`, `after`, `rows` and `bytes`; defaults are 64 rows and 64 KiB, with
 maxima of 256 rows and 4 MiB. `CatalogPage::entries` is a UTF-8 JSON array of the
-kind's entries: `host::DiscoveredOperation` values (original contracts, provider
+kind's entries: operation metadata (original contracts, provider
 owners and generations, selected grants and current gRPC availability), stored
 schemas or stored identities. The `next` cursor continues a bounded page. Stored
-kinds need the storage manager and a `host.catalog` grant scoped `schemas:*`,
+kinds need the storage manager and a `host_catalog` grant scoped `schemas:*`,
 `streams:*` or `objects:*` (`<kind>:schema:<id>` with `schema`); listing
 operations needs no grant. The operation listing applies original readiness and caller
 visibility/dependency rules; `conditional_access` means invocation still checks

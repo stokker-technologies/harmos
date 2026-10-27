@@ -197,8 +197,9 @@ mod unified_plugins {
     use std::convert::Infallible;
     use std::time::Duration;
 
+    use harmos_operations::lifecycle;
     use harmos_runtime::__private::{PluginDeclared, PluginInventory};
-    use harmos_runtime::operations::{Contracts, OperationPolicy, RetryPolicy, ServingError, WireTable, lifecycle};
+    use harmos_runtime::operations::{Contracts, OperationPolicy, RetryPolicy, ServingError, WireTable};
 
     #[harmos_runtime::operation(request = Echo, infer_request, id = "fixture_unified_echo",  response = (), policy = POLICY)]
     struct EchoDeclaration;
@@ -324,8 +325,8 @@ mod unified_plugins {
         description = "Inert Product SDK Declaration",
         provides = ObserverOperations,
         requires(
-            harmos_runtime::operations::streams::Publish,
-            harmos_runtime::operations::lifecycle::Status: scope("reading", "power")
+            harmos_operations::streams::Publish,
+            harmos_operations::lifecycle::Status: scope("reading", "power")
         ),
         observers = ObserverCatalog,
         context = harmos_runtime::sidecar::Supervisor,
@@ -362,7 +363,7 @@ mod unified_plugins {
         assert_eq!(required.len(), 2);
         assert_eq!(
             required[0].contract.operation().id.as_str(),
-            <harmos_runtime::operations::streams::Publish as harmos_runtime::operations::OperationDeclaration>::ID
+            <harmos_operations::streams::Publish as harmos_runtime::operations::OperationDeclaration>::ID
         );
         assert!(required[0].grants.is_empty());
         assert_eq!(

@@ -89,7 +89,7 @@ async fn filesystem_hash_roundtrip() {
 
 #[tokio::test]
 async fn builtin_grpc_roundtrip() {
-    use harmos_runtime::builtin::{CancelRequest, InstanceState, StatusRequest};
+    use harmos_operations::lifecycle::{CancelRequest, InstanceState, StatusRequest};
     #[harmos_runtime::operation(request = ParkedContract, infer_request,
                         response = (),
                         id = "grpc_parked",
@@ -140,7 +140,10 @@ async fn builtin_grpc_roundtrip() {
         .unwrap();
     runtime
         .operations
-        .register(harmos_runtime::RegistrationExt::lane(harmos_runtime::builtin::Catalog::registration(), Lanes::Open))
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_operations::Lifecycle::registration(harmos_runtime::Dependencies::new()),
+            Lanes::Open,
+        ))
         .await
         .unwrap();
     let paths = runtime

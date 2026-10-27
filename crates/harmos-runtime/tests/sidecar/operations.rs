@@ -339,7 +339,7 @@ impl Operation for RefreshOperation {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for Endpoint {
+impl harmos_operations::lifecycle::Policy for Endpoint {
     const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
@@ -491,7 +491,7 @@ impl<A: Attach> Managed<A> {
         self.manager.status(id)
     }
     pub(crate) async fn publication(&self) -> harmos_runtime::Result<()> {
-        let selected = harmos_runtime::operations::WireDeclaration::of::<harmos_runtime::operations::streams::Publish>()
+        let selected = harmos_runtime::operations::WireDeclaration::of::<harmos_operations::streams::Publish>()
             .contract()
             .map_err(|source| harmos_runtime::Error::OperationFailed { operation: "host.publish".into(), source: Arc::new(source) })?;
         let required = self
@@ -641,7 +641,7 @@ impl<A: Attach> PluginLifecycle for Host<A> {
                 &definition.configuration,
                 std::num::NonZeroUsize::new(
                     2 * definition.configuration.len()
-                        + std::mem::size_of::<harmos_runtime::operations::lifecycle::InitializeRequest>()
+                        + std::mem::size_of::<harmos_operations::lifecycle::InitializeRequest>()
                         + 64
                         + 30
                         + 3072,
@@ -723,7 +723,7 @@ impl<S: Attach> Attach for Advertised<S> {
     fn required_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         self.source.required_contracts()
     }
-    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_runtime::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_operations::lifecycle::Descriptor; 2]>> {
         self.source.sdk_lifecycle()
     }
     fn observers(&self) -> Vec<harmos_domain::inventory::observers::Declaration> {
@@ -807,7 +807,7 @@ async fn submitted(host: &harmos_runtime::sidecar::Supervisor, counts: &Counts) 
     counts.refresh_started.notified().await;
     let id = Instance::detach(detached);
     // Built-ins are ordinary requirements: an undeclared caller is refused.
-    let refused = host.call::<harmos_runtime::builtin::Status>(harmos_runtime::builtin::StatusRequest::of(id)).await;
+    let refused = host.call::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::StatusRequest::of(id)).await;
     *counts.detached_status.lock().unwrap() = refused.err().map(|error| {
         std::iter::successors(Some(&error as &(dyn std::error::Error + 'static)), |error| error.source())
             .map(ToString::to_string)

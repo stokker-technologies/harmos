@@ -717,8 +717,8 @@ where
 
 async fn external_catalog(
     channel: tonic::transport::Channel, token: Option<&'static str>,
-) -> Result<Vec<harmos_runtime::operations::host::DiscoveredOperation>, tonic::Status> {
-    use harmos_runtime::operations::host::{CatalogKind, CatalogPage, CatalogRequest};
+) -> Result<Vec<harmos_operations::host::DiscoveredOperation>, tonic::Status> {
+    use harmos_operations::host::{CatalogKind, CatalogPage, CatalogRequest};
     let mut client = tonic::client::Grpc::new(channel);
     let mut entries = Vec::new();
     let mut after = None;
@@ -741,7 +741,7 @@ async fn external_catalog(
             )
             .await?;
         let page = response.into_inner();
-        entries.extend(serde_json::from_slice::<Vec<harmos_runtime::operations::host::DiscoveredOperation>>(&page.entries).unwrap());
+        entries.extend(serde_json::from_slice::<Vec<harmos_operations::host::DiscoveredOperation>>(&page.entries).unwrap());
         match page.next.clone() {
             Some(next) => after = Some(next),
             None => return Ok(entries),
