@@ -53,8 +53,11 @@ enum Lanes {
 
 /* === Private Functions === */
 
-fn route() -> propose::ProposeRouteRequest {
-    propose::ProposeRouteRequest { from: Point { x: 0, y: 0 }, to: Point { x: 3, y: 4 } }
+fn route() -> propose::ProposeRoute {
+    propose::ProposeRoute {
+        from: Point { x: 0, y: 0 },
+        to: Point { x: 3, y: 4 },
+    }
 }
 
 fn corner() -> [Point; 3] {
@@ -88,7 +91,10 @@ async fn guest_composition_walks() {
     assert_eq!(declared, ["schematic_analyze", "schematic_route", "schematic_validate"]);
 
     // Scene 3: Registration And Initialization Make The Guest Ready
-    let settings = harmos_runtime::config::PluginSettings { configuration: b"null".to_vec(), ..Default::default() };
+    let settings = harmos_runtime::config::PluginSettings {
+        configuration: b"null".to_vec(),
+        ..Default::default()
+    };
     runtime.plugin.register_guest::<Operations>(loaded, settings, Lanes::Open).await.unwrap();
     runtime.plugin.initialize().await.unwrap();
     let ready = runtime.plugin.status(PLUGIN).unwrap();
@@ -100,8 +106,11 @@ async fn guest_composition_walks() {
 
     // Scene 5: Validation Reports Every Diagnostic Of A Broken Schematic
     let validated = runtime
-        .operation(validate::ValidateSchematicRequest {
-            schematic: Snapshot { symbols: vec![1, 1], connections: vec![Connection { from: 1, to: 2 }] },
+        .operation(validate::ValidateSchematic {
+            schematic: Snapshot {
+                symbols: vec![1, 1],
+                connections: vec![Connection { from: 1, to: 2 }],
+            },
         })
         .run()
         .await
@@ -109,9 +118,16 @@ async fn guest_composition_walks() {
     assert_eq!(validated.diagnostics, ["Duplicate Symbol IDs", "Connection 1 To 2 References A Missing Symbol"]);
 
     // Scene 6: Analysis Streams Its Findings Before Its Response
-    let settings = harmos_runtime::operations::StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() };
-    let request =
-        analyze::AnalyzeSchematicRequest { schematic: Snapshot { symbols: vec![1, 2], connections: vec![Connection { from: 1, to: 2 }] } };
+    let settings = harmos_runtime::operations::StreamSettings {
+        items: NonZeroUsize::MIN,
+        bytes: NonZeroUsize::new(4096).unwrap(),
+    };
+    let request = analyze::AnalyzeSchematic {
+        schematic: Snapshot {
+            symbols: vec![1, 2],
+            connections: vec![Connection { from: 1, to: 2 }],
+        },
+    };
     let mut download = runtime.operations.download::<analyze::AnalyzeSchematic>(request, settings).unwrap();
     for expected in ["2 symbols", "1 connections", "Analysis complete"] {
         assert_eq!(download.next().await.unwrap().unwrap().text, expected);

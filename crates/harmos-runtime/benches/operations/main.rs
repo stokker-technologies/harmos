@@ -22,7 +22,7 @@ use criterion::{BenchmarkId, Criterion, Throughput};
 use tokio::sync::{Semaphore, mpsc};
 
 // Local Imports
-use harmos_runtime::operations::{Operation, RegistrationExt, RetryPolicy};
+use harmos_runtime::operations::{Handler, RegistrationExt, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -48,15 +48,6 @@ struct Signals {
 // Waiting Dispatches Hold Their Run Until Cancelled And Report Each Stop.
 struct Waiting(Option<Arc<Signals>>);
 
-#[harmos_runtime::operation(
-        request = Dispatch, infer_request, response = u64,
-        id = "bench_dispatch",
-        policy = harmos_runtime::OperationPolicy {
-            timeout: Duration::from_secs(30),
-            attempt_timeout: Duration::from_secs(30),
-            retries: RetryPolicy::Never,
-        },
-    )]
 struct Dispatching {
     signals: Arc<Waiting>,
     waiting: bool,
@@ -70,7 +61,15 @@ enum Lanes {
     Open,
 }
 
-#[harmos_runtime::message]
+#[harmos_runtime::operation(
+        response = u64,
+        id = "bench_dispatch",
+        policy = harmos_runtime::OperationPolicy {
+            timeout: Duration::from_secs(30),
+            attempt_timeout: Duration::from_secs(30),
+            retries: RetryPolicy::Never,
+        },
+    )]
 
 struct Dispatch {
     wait: bool,
@@ -80,18 +79,21 @@ struct Dispatch {
 
 /* === Implementations === */
 
-impl Operation for Dispatching {
+impl Handler for Dispatching {
     type Request = Dispatch;
     type Response = u64;
-    type Error = harmos_runtime::DependencyError;
-    type Endpoints = ();
+    type Error = harmos_runtime::ResourceError;
+    type StreamEndpoints = ();
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self { signals: context.dependency::<Waiting>()?, waiting: false })
+        Ok(Self {
+            signals: context.resource::<Waiting>()?,
+            waiting: false,
+        })
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Dispatch, _endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Dispatch, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
         let result: ::core::result::Result<u64, Self::Error> = async move {
             self.waiting = request.wait;
@@ -136,7 +138,7 @@ async fn runtime(signals: Option<Arc<Signals>>) -> Runtime<App> {
     dependencies.insert(Arc::new(Waiting(signals))).unwrap();
     Runtime::<App>::builder((), ())
         .register(Lanes::catalog())
-        .with_registration(harmos_runtime::RegistrationBatch::new(dependencies).operation::<Dispatching>().lane(Lanes::Open))
+        .with_registration(harmos_runtime::RegistrationBatch::new(dependencies).implementation::<Dispatch, Dispatching>().lane(Lanes::Open))
         .runtime()
         .await
         .unwrap()

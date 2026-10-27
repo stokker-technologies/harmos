@@ -28,7 +28,7 @@ use std::time::Duration;
 use super::{HostLanes, assembly, operations, service_status};
 use crate::sidecar::support::Bank;
 use crate::sidecar::witness::Witness;
-use harmos_runtime::operations::{Operation, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable};
+use harmos_runtime::operations::{Handler, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable};
 use harmos_runtime::sidecar::{Notice, Refusal, Supervised, Supervisor};
 use harmos_runtime::{Runtime, services::ServiceContext, services::ServiceStatus};
 
@@ -50,11 +50,8 @@ const ABANDON: u64 = u64::MAX;
 /* === Macros === */
 
 macro_rules! operation {
-    ($name:ident, $declaration:ident, $id:literal, $visibility:ident) => {
-        #[harmos_runtime::operation(request = $name, infer_request, id = $id, response = Blob, policy = POLICY, visibility = Visibility::$visibility)]
-        pub struct $declaration;
-
-        #[harmos_runtime::message]
+    ($name:ident, $id:literal, $visibility:ident) => {
+        #[harmos_runtime::operation(id = $id, response = Blob, policy = POLICY, visibility = Visibility::$visibility)]
         #[derive(Clone)]
         pub struct $name {
             pub id: u64,
@@ -69,15 +66,15 @@ macro_rules! operation {
     };
 }
 
-operation!(Echo, EchoDeclaration, "process_echo", Private);
+operation!(Echo, "process_echo", Private);
 
-operation!(Nested, NestedDeclaration, "process_nested", Host);
+operation!(Nested, "process_nested", Host);
 
 /* === Type Aliases === */
 
 type Source = harmos_sidecar::PluginNative<Process>;
 type Resident = Supervised<Bank, Source, fn(&ServiceContext<Bank>, Notice)>;
-type PublicationCall = harmos_operations::streams::Publish;
+type PublicationCall = harmos_sdk::operations::Authored<harmos_operations::streams::Publish>;
 
 /* === Structs === */
 
@@ -139,8 +136,8 @@ struct Fixture {
 
 #[harmos_runtime::catalog]
 pub enum Operations {
-    Echo(EchoDeclaration),
-    Nested(NestedDeclaration),
+    Echo(Echo),
+    Nested(Nested),
 }
 
 /* === Traits === */
@@ -186,8 +183,8 @@ impl harmos_runtime::Plugin for Process {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<EchoDeclaration, Echoing>()
-            .implementation::<NestedDeclaration, Publishing>(),
+            .implementation::<Echo, Echoing>()
+            .implementation::<Nested, Publishing>(),
         )
     }
 
@@ -207,21 +204,21 @@ impl harmos_runtime::Plugin for Process {
     }
 }
 
-impl Operation for Echoing {
-    type Request = <EchoDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <EchoDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl Handler for Echoing {
+    type Request = <Echo as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <Echo as harmos_runtime::OperationDeclaration>::Response;
 
     type Error = Refusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
-        let marks = context.dependency::<Witness>().expect("fixture dependency");
+        let marks = context.resource::<Witness>().expect("fixture dependency");
         marks.mark("echo-initialized");
         Ok(Self { marks, id: None, run_started: false })
     }
 
     async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut Echo, _endpoints: &mut Self::Endpoints,
+        &mut self, host: harmos_runtime::OperationContext, request: &mut Echo, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Blob>, Refusal> {
         self.id = Some(request.id);
         self.marks.mark(&format!("echo-prepared-{}", request.id));
@@ -229,12 +226,16 @@ impl Operation for Echoing {
         let _work = Work { marks: &self.marks, id: request.id };
         self.run_started = true;
         if request.id == ABANDON {
-            host.dependency::<harmos_sidecar::Supervisor>().unwrap().abandon();
+            host.resource::<harmos_sidecar::Supervisor>().unwrap().abandon();
         }
         if request.id == PENDING || request.id == ABANDON {
             std::future::pending::<()>().await;
         }
-        Ok(Blob { id: request.id, data: request.data.clone() }.into())
+        Ok(Blob {
+            id: request.id,
+            data: request.data.clone(),
+        }
+        .into())
     }
 
     async fn cleanup(&mut self) -> Result<(), Refusal> {
@@ -250,30 +251,37 @@ impl Operation for Echoing {
     }
 }
 
-impl Operation for Publishing {
-    type Request = <NestedDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <NestedDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl Handler for Publishing {
+    type Request = <Nested as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <Nested as harmos_runtime::OperationDeclaration>::Response;
 
     type Error = Refusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
-        let marks = context.dependency::<Witness>().expect("fixture dependency");
+        let marks = context.resource::<Witness>().expect("fixture dependency");
         marks.mark("nested-initialized");
         Ok(Self { marks, id: None })
     }
 
     async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut Nested, _endpoints: &mut Self::Endpoints,
+        &mut self, host: harmos_runtime::OperationContext, request: &mut Nested, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Blob>, Refusal> {
-        let host = host.dependency::<Supervisor>().expect("carrier context");
+        let host = host.resource::<Supervisor>().expect("carrier context");
         self.id = Some(request.id);
         self.marks.mark(&format!("nested-prepared-{}", request.id));
         host.publisher::<Process>()
-            .publish_on::<Blob>(&Blob { id: request.id, data: request.data.clone() })
+            .publish_on::<Blob>(&Blob {
+                id: request.id,
+                data: request.data.clone(),
+            })
             .await
             .map_err(Refusal::from)?;
-        Ok(Blob { id: request.id, data: request.data.clone() }.into())
+        Ok(Blob {
+            id: request.id,
+            data: request.data.clone(),
+        }
+        .into())
     }
 
     async fn cleanup(&mut self) -> Result<(), Refusal> {
@@ -285,34 +293,35 @@ impl Operation for Publishing {
     }
 }
 
-impl Operation for CallbackPublication {
+impl Handler for CallbackPublication {
     type Request = <harmos_operations::streams::Publish as harmos_runtime::OperationDeclaration>::Request;
     type Response = <harmos_operations::streams::Publish as harmos_runtime::OperationDeclaration>::Response;
 
     type Error = harmos_runtime::Error;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
-        let owner = context.dependency::<Callback>().expect("fixture dependency");
-        let publication = harmos_operations::streams::Publish::initialize(context)
-            .await
-            .map_err(|source| harmos_runtime::Error::OperationFailed { operation: "host_publish".into(), source: Arc::new(source) })?;
+        let owner = context.resource::<Callback>().expect("fixture dependency");
+        let publication = PublicationCall::initialize(context).await.map_err(|source| harmos_runtime::Error::OperationFailed {
+            operation: "host.publish".into(),
+            source: Arc::new(source),
+        })?;
         Ok(Self { owner, publication })
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut harmos_operations::streams::PublishRequest,
-        endpoints: &mut Self::Endpoints,
+        &mut self, context: harmos_runtime::OperationContext, request: &mut harmos_operations::streams::Publish,
+        endpoints: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         self.owner.calls.fetch_add(1, Ordering::SeqCst);
         let id = self.owner.echo.forced().unwrap_or_else(|| request.sequence.unwrap());
-        let echoed = host.borrow().call::<EchoDeclaration>(Echo::from(Blob { id, data: request.payload.clone() })).await?;
+        let echoed = host.borrow().call::<Echo>(Echo::from(Blob { id, data: request.payload.clone() })).await?;
         assert_eq!(echoed.data, request.payload, "the original connection carried the nested response");
-        self.publication
-            .run(context, request, endpoints)
-            .await
-            .map_err(|source| harmos_runtime::Error::OperationFailed { operation: "host_publish".into(), source: Arc::new(source) })
+        self.publication.run(context, request, endpoints).await.map_err(|source| harmos_runtime::Error::OperationFailed {
+            operation: "host.publish".into(),
+            source: Arc::new(source),
+        })
     }
 }
 
@@ -369,7 +378,10 @@ impl Fixture {
             .register_service(
                 harmos_runtime::services::ServiceDefinition {
                     id: "process".into(),
-                    policy: harmos_runtime::ServicePolicy { restart: RestartPolicy::Never, ..harmos_runtime::services::POLICY },
+                    policy: harmos_runtime::ServicePolicy {
+                        restart: RestartPolicy::Never,
+                        ..harmos_runtime::services::POLICY
+                    },
                 },
                 move |_: Arc<()>| {
                     harmos_runtime::sidecar::Managed::new_catalog::<Operations>(
@@ -385,7 +397,13 @@ impl Fixture {
             .unwrap();
         let lease = runtime.operations.submit_resident("process").await.unwrap();
         service_status(runtime.operations.watch_residents(), "process", |status| matches!(status, ServiceStatus::Running { .. })).await;
-        Self { runtime, _lease: lease, marks, echo, calls }
+        Self {
+            runtime,
+            _lease: lease,
+            marks,
+            echo,
+            calls,
+        }
     }
 
     async fn finish(self) {
@@ -452,7 +470,7 @@ async fn deadline_settles_nested() {
     let pending = fixture.runtime.operation(Nested::from(blob(48, 512))).start().await.unwrap();
     fixture.marks.marked("echo-started-0").await;
 
-    // The Original Operation Deadline Settles The Pending Nested Call
+    // The Original Handler Deadline Settles The Pending Nested Call
     let result = pending.await;
     assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
     fixture.marks.marked("echo-finalized-0").await;
@@ -533,7 +551,10 @@ async fn shutdown_sdk_publication() {
         .register_service(
             harmos_runtime::services::ServiceDefinition {
                 id: "process".into(),
-                policy: harmos_runtime::ServicePolicy { restart: RestartPolicy::Never, ..harmos_runtime::services::POLICY },
+                policy: harmos_runtime::ServicePolicy {
+                    restart: RestartPolicy::Never,
+                    ..harmos_runtime::services::POLICY
+                },
             },
             move |_: Arc<()>| {
                 harmos_runtime::sidecar::Managed::new_catalog::<Operations>(

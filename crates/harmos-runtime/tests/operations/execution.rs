@@ -116,7 +116,7 @@ async fn ambiguous_timeout_replay() {
         ))
         .await
         .unwrap();
-    assert!(matches!(runtime.operation(SlowRequest(request())).run().await, Err(Error::OperationRefused(Refusal::TimedOut))));
+    assert!(matches!(runtime.operation(Slow(request())).run().await, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
 }
@@ -211,7 +211,11 @@ async fn unregister_reserves_owner() {
     let opened = Arc::new(Notify::new());
     let gate = Arc::new(Notify::new());
     let invocation = runtime
-        .operation(Request { keyed: true, gate: Some((Arc::clone(&opened), Arc::clone(&gate))), ..request() })
+        .operation(Request {
+            keyed: true,
+            gate: Some((Arc::clone(&opened), Arc::clone(&gate))),
+            ..request()
+        })
         .start()
         .await
         .unwrap();
@@ -301,7 +305,7 @@ async fn operations_use_structured() {
         ))
         .await
         .unwrap();
-    assert_eq!(runtime.operation(ParentRequest(request())).run().await.unwrap().value, 7);
+    assert_eq!(runtime.operation(Parent(request())).run().await.unwrap().value, 7);
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Compute::ID).unwrap()).await.unwrap();
     runtime
         .operations
@@ -317,7 +321,7 @@ async fn operations_use_structured() {
         .await
         .unwrap();
     assert!(
-        matches!(runtime.operation(ParentRequest(request())).run().await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
+        matches!(runtime.operation(Parent(request())).run().await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
     );
     runtime.stop().await.unwrap();
 }
@@ -354,7 +358,7 @@ async fn concurrent_ancestor_reentry() {
         .unwrap();
 
     assert!(
-        matches!(runtime.operation(ParentRequest(request())).run().await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
+        matches!(runtime.operation(Parent(request())).run().await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
     );
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 0);

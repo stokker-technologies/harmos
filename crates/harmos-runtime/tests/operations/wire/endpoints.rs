@@ -30,7 +30,7 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::{
-    Backoff, CacheKey, Jitter, NoStream, Operation, OperationDeclaration, OperationPolicy, RetryPolicy, Stream, StreamInput, StreamOutput,
+    Backoff, CacheKey, Handler, Jitter, NoStream, OperationDeclaration, OperationPolicy, RetryPolicy, Stream, StreamInput, StreamOutput,
     StreamSettings, stream,
 };
 use harmos_runtime::{Error, Runtime};
@@ -46,7 +46,7 @@ const DECLARATION_MARKER: &[u8] = &harmos_runtime::schema::declaration::encode::
 
 /* === Type Aliases === */
 
-type Endpoints = (StreamInput<u32>, StreamOutput<u32>);
+type StreamEndpoints = (StreamInput<u32>, StreamOutput<u32>);
 
 /* === Structs === */
 
@@ -76,9 +76,9 @@ struct Forward<const N: u8> {
     trace: Arc<Trace>,
 }
 
-// The Parent Request Carries Original Endpoints, So It Stays In Process.
+// The Parent Request Carries Original StreamEndpoints, So It Stays In Process.
 struct ParentDeclaration {
-    endpoints: Mutex<Option<Endpoints>>,
+    endpoints: Mutex<Option<StreamEndpoints>>,
 }
 struct Parent<const CHARGED: bool>;
 
@@ -101,10 +101,6 @@ impl harmos_runtime::MemorySize for ParentDeclaration {
     }
 }
 
-impl harmos_runtime::RequestFor for ParentDeclaration {
-    type Operation = Self;
-}
-
 impl OperationDeclaration for ParentDeclaration {
     type Request = Self;
     type Response = u32;
@@ -113,25 +109,25 @@ impl OperationDeclaration for ParentDeclaration {
     const ID: &'static str = "endpoints_parent";
     const POLICY: OperationPolicy = Declaration::<0>::POLICY;
 }
-impl<const CHARGED: bool> Operation for Parent<CHARGED> {
+impl<const CHARGED: bool> Handler for Parent<CHARGED> {
     type Request = <ParentDeclaration as harmos_runtime::OperationDeclaration>::Request;
     type Response = <ParentDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut ParentDeclaration, _: &mut Self::Endpoints,
+        &mut self, context: harmos_runtime::OperationContext, request: &mut ParentDeclaration, _: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<u32>> {
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
         let result: ::core::result::Result<u32, Self::Error> = async move {
             let endpoints = request.endpoints.get_mut().unwrap().take().expect("one transfer of original endpoints");
             let child = if CHARGED {
-                let (requests, mut decoded) = stream::<Declaration<0>>(StreamSettings {
+                let (requests, decoded) = stream::<Declaration<0>>(StreamSettings {
                     items: NonZeroUsize::new(1).unwrap(),
                     bytes: NonZeroUsize::new(1).unwrap(),
                 })?;
@@ -196,13 +192,6 @@ impl<const N: u8> harmos_runtime::schema::Described for Declaration<N> {
     const MARKER: &'static [u8] = DECLARATION_MARKER;
 }
 
-impl<const N: u8> harmos_runtime::RequestFor for Declaration<N>
-where
-    Kind<N>: Shape,
-{
-    type Operation = Self;
-}
-
 impl<const N: u8> OperationDeclaration for Declaration<N>
 where
     Kind<N>: Shape,
@@ -220,7 +209,13 @@ where
         timeout: Duration::from_secs(3),
         attempt_timeout: Duration::from_secs(2),
         retries: if N == 1 {
-            RetryPolicy::OnTransient { max_retries: 1, backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None } }
+            RetryPolicy::OnTransient {
+                max_retries: 1,
+                backoff: Backoff::Fixed {
+                    delay: Duration::from_millis(1),
+                    jitter: Jitter::None,
+                },
+            }
         } else {
             RetryPolicy::Never
         },
@@ -229,16 +224,16 @@ where
         (N == 2).then(|| CacheKey::new(vec![1]).unwrap())
     }
 }
-impl<const N: u8> Operation for Forward<N>
+impl<const N: u8> Handler for Forward<N>
 where
     Kind<N>: Shape,
 {
     type Request = <Declaration<N> as harmos_runtime::OperationDeclaration>::Request;
     type Response = <Declaration<N> as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
-    type Endpoints = Endpoints;
+    type StreamEndpoints = StreamEndpoints;
     async fn initialize(_context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
-        let trace = _context.dependency::<Trace>().expect("fixture registers its dependency");
+        let trace = _context.resource::<Trace>().expect("fixture registers its dependency");
         let constructed: harmos_runtime::Result<Self> = async move {
             trace.new.fetch_add(1, Ordering::SeqCst);
             Ok(Self { trace })
@@ -255,7 +250,7 @@ where
         Ok(operation)
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Declaration<N>, endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Declaration<N>, endpoints: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<u32>> {
         let result: ::core::result::Result<u32, Self::Error> = async move {
             if !request.consume {
@@ -277,7 +272,10 @@ where
     async fn stop(&mut self) -> harmos_runtime::Result<()> {
         self.trace.stops.fetch_add(1, Ordering::SeqCst);
         if self.trace.fail_stop.load(Ordering::SeqCst) {
-            return Err(Error::InvalidInput { field: "fixture stop", reason: "retained" });
+            return Err(Error::InvalidInput {
+                field: "fixture stop",
+                reason: "retained",
+            });
         }
         Ok(())
     }
@@ -297,7 +295,11 @@ impl<const N: u8> Drop for Forward<N> {
 /* === Private Functions === */
 
 fn channel() -> (StreamOutput<u32>, StreamInput<u32>) {
-    stream(StreamSettings { items: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(4).unwrap() }).unwrap()
+    stream(StreamSettings {
+        items: NonZeroUsize::new(1).unwrap(),
+        bytes: NonZeroUsize::new(4).unwrap(),
+    })
+    .unwrap()
 }
 async fn bounded<T>(future: impl Future<Output = T>) -> T {
     (future).await
@@ -310,8 +312,11 @@ async fn runtime() -> Runtime<App> {
 async fn envelope(
     value: harmos_runtime::grpc::InputEnvelope<Declaration<0>, u32>,
 ) -> harmos_runtime::operations::StreamItem<harmos_runtime::grpc::InputEnvelope<Declaration<0>, u32>> {
-    let (output, mut input) =
-        stream(StreamSettings { items: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(64).unwrap() }).unwrap();
+    let (output, input) = stream(StreamSettings {
+        items: NonZeroUsize::new(1).unwrap(),
+        bytes: NonZeroUsize::new(64).unwrap(),
+    })
+    .unwrap();
     output.send_with(64, || Ok(value)).await.unwrap();
     input.recv().await.unwrap()
 }
@@ -405,7 +410,7 @@ async fn endpoint_admission_contract() {
         .await
         .unwrap();
     let (input, receiving) = channel();
-    let (sending, mut output) = channel();
+    let (sending, output) = channel();
     let instance =
         runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
     bounded(input.send_with(4, || Ok(7))).await.unwrap();
@@ -441,7 +446,7 @@ async fn cancellation_settles_owner() {
         .await
         .unwrap();
     let (input, receiving) = channel();
-    let (sending, mut output) = channel();
+    let (sending, output) = channel();
     let instance =
         runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
     bounded(input.send_with(4, || Ok(1))).await.unwrap();
@@ -521,11 +526,11 @@ async fn half_close_joins() {
         ))
         .await
         .unwrap();
-    let (producer, mut decoded) = channel();
+    let (producer, decoded) = channel();
     producer.send_with(4, || Ok(7)).await.unwrap();
     let item = decoded.recv().await.unwrap();
     let (input, receiving) = channel();
-    let (sending, mut output) = channel();
+    let (sending, output) = channel();
     let instance =
         runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
     let incoming = futures_util::stream::iter([Ok(item)]);
@@ -687,8 +692,11 @@ async fn grpc_exchange_polls() {
         ))
         .await
         .unwrap();
-    let (producer, mut decoded) =
-        stream::<u32>(StreamSettings { items: NonZeroUsize::new(3).unwrap(), bytes: NonZeroUsize::new(12).unwrap() }).unwrap();
+    let (producer, decoded) = stream::<u32>(StreamSettings {
+        items: NonZeroUsize::new(3).unwrap(),
+        bytes: NonZeroUsize::new(12).unwrap(),
+    })
+    .unwrap();
     let mut items = Vec::new();
     for value in 0..3 {
         producer.send_with(4, || Ok(value)).await.unwrap();
@@ -806,8 +814,11 @@ async fn charged_request_ownership() {
         ))
         .await
         .unwrap();
-    let (requests, mut decoded) =
-        stream::<Declaration<0>>(StreamSettings { items: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(1).unwrap() }).unwrap();
+    let (requests, decoded) = stream::<Declaration<0>>(StreamSettings {
+        items: NonZeroUsize::new(1).unwrap(),
+        bytes: NonZeroUsize::new(1).unwrap(),
+    })
+    .unwrap();
     requests.send_with(1, || Ok(Declaration { consume: false })).await.unwrap();
     let request = decoded.recv().await.unwrap();
     assert!(matches!(runtime.operations.submit_charged::<Declaration<0>, _>(request, ()), Err(Error::InvalidInput { .. })));
@@ -909,8 +920,14 @@ async fn parent_cancellation<const CHARGED: bool>() {
         .await
         .unwrap();
     let (input, receiving) = channel();
-    let (sending, mut output) = channel();
-    let parent = runtime.operation(ParentDeclaration { endpoints: Mutex::new(Some((receiving, sending))) }).start().await.unwrap();
+    let (sending, output) = channel();
+    let parent = runtime
+        .operation(ParentDeclaration {
+            endpoints: Mutex::new(Some((receiving, sending))),
+        })
+        .start()
+        .await
+        .unwrap();
     bounded(input.send_with(4, || Ok(7))).await.unwrap();
     let held = bounded(output.recv()).await.unwrap();
     parent.cancel();

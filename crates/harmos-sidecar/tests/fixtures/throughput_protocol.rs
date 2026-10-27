@@ -26,14 +26,17 @@ use harmos_domain::inventory::{contracts, listeners, observers, publications};
 use harmos_operations::lifecycle;
 use harmos_sdk::operations::{ServingError, WireDeclaration};
 use harmos_sdk::plugin::{Declared, Plugin};
-use harmos_sidecar::operations::{Operation, OperationPolicy, RetryPolicy, WireTable};
+use harmos_sidecar::operations::{OperationPolicy, RetryPolicy, WireTable};
 use harmos_sidecar::{StreamSpec, Supervisor};
 
 /* === Constants === */
 
 const MAX_CASES: usize = 256;
-const SDK_POLICY: OperationPolicy =
-    OperationPolicy { timeout: Duration::from_secs(120), attempt_timeout: Duration::from_secs(120), retries: RetryPolicy::Never };
+const SDK_POLICY: OperationPolicy = OperationPolicy {
+    timeout: Duration::from_secs(120),
+    attempt_timeout: Duration::from_secs(120),
+    retries: RetryPolicy::Never,
+};
 const SDK: [harmos_domain::operations::OperationPolicy; 2] = [SDK_POLICY, SDK_POLICY];
 
 #[used]
@@ -72,9 +75,18 @@ static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", TransportPlugin::I
 
 /* === Structs === */
 
-#[harmos_sidecar::message(harmos_path = ::harmos_sidecar)]
+#[harmos_sidecar::operation(
+    harmos_path = ::harmos_sidecar,
+    id = "bench_start",
+    response = (),
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(120),
+        attempt_timeout: Duration::from_secs(120),
+        retries: RetryPolicy::Never,
+    },
+)]
 #[derive(Clone, PartialEq)]
-pub struct Start {
+pub struct StartOperation {
     pub samples: u32,
 
     pub payload_bytes: u32,
@@ -85,20 +97,6 @@ pub struct Start {
     pub batch: u32,
 }
 
-#[harmos_sidecar::operation(
-    request = Start,
-    infer_request,
-    harmos_path = ::harmos_sidecar,
-    id = "bench_start",
-    response = (),
-    policy = OperationPolicy {
-        timeout: Duration::from_secs(120),
-        attempt_timeout: Duration::from_secs(120),
-        retries: RetryPolicy::Never,
-    },
-)]
-pub struct StartOperation;
-
 #[harmos_sidecar::message(harmos_path = ::harmos_sidecar)]
 #[derive(Clone, PartialEq)]
 pub struct Done {
@@ -107,27 +105,22 @@ pub struct Done {
     pub attempted: u64,
 }
 
-#[harmos_sidecar::message(harmos_path = ::harmos_sidecar)]
-#[derive(Clone, PartialEq)]
-pub struct Echo {
-    pub nonce: u64,
-
-    pub payload: Vec<u8>,
-}
-
 #[harmos_sidecar::operation(
-    request = Echo,
-    infer_request,
     harmos_path = ::harmos_sidecar,
     id = "bench_echo",
-    response = Echo,
+    response = EchoOperation,
     policy = OperationPolicy {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
         retries: RetryPolicy::Never,
     },
 )]
-pub struct EchoOperation;
+#[derive(Clone, PartialEq)]
+pub struct EchoOperation {
+    pub nonce: u64,
+
+    pub payload: Vec<u8>,
+}
 
 #[harmos_sidecar::message(harmos_path = ::harmos_sidecar)]
 #[derive(Clone, PartialEq)]
@@ -167,7 +160,7 @@ impl StreamSpec for Sample {
     const WINDOW: usize = 1024;
 }
 
-impl Start {
+impl StartOperation {
     pub fn validate(&self) -> Result<(), harmos_sidecar::Refusal> {
         if self.samples == 0
             || self.samples > 2_000_000
@@ -189,19 +182,19 @@ struct Echoing {
     _resources: Arc<Handler>,
 }
 
-impl Operation for Echoing {
-    type Request = Echo;
-    type Response = Echo;
+impl harmos_sidecar::operations::Handler for Echoing {
+    type Request = EchoOperation;
+    type Response = EchoOperation;
     type Error = harmos_sidecar::Refusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
     async fn initialize(context: harmos_sidecar::OperationContext) -> Result<Self, Self::Error> {
-        let resources = context.dependency::<Handler>().map_err(harmos_sidecar::Refusal::of)?;
+        let resources = context.resource::<Handler>().map_err(harmos_sidecar::Refusal::of)?;
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, _: harmos_sidecar::OperationContext, request: &mut Echo, _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_sidecar::operations::Response<Echo>, Self::Error> {
-        let result: ::core::result::Result<Echo, Self::Error> = async move { Ok(request.clone()) }.await;
+        &mut self, _: harmos_sidecar::OperationContext, request: &mut EchoOperation, _endpoints: &mut Self::StreamEndpoints,
+    ) -> Result<harmos_sidecar::operations::Response<EchoOperation>, Self::Error> {
+        let result: ::core::result::Result<EchoOperation, Self::Error> = async move { Ok(request.clone()) }.await;
         result.map(::core::convert::Into::into)
     }
 }
@@ -210,17 +203,17 @@ struct Starting {
     resources: Arc<Handler>,
 }
 
-impl Operation for Starting {
-    type Request = Start;
+impl harmos_sidecar::operations::Handler for Starting {
+    type Request = StartOperation;
     type Response = ();
     type Error = harmos_sidecar::Refusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
     async fn initialize(context: harmos_sidecar::OperationContext) -> Result<Self, Self::Error> {
-        let resources = context.dependency::<Handler>().map_err(harmos_sidecar::Refusal::of)?;
+        let resources = context.resource::<Handler>().map_err(harmos_sidecar::Refusal::of)?;
         Ok(Self { resources })
     }
     async fn run(
-        &mut self, _: harmos_sidecar::OperationContext, request: &mut Start, _endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_sidecar::OperationContext, request: &mut StartOperation, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_sidecar::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             request.validate()?;
@@ -259,7 +252,11 @@ impl Plugin for TransportPlugin {
 
     fn prepare(_: ()) -> Result<Self, Self::Error> {
         Ok(Self {
-            resources: Arc::new(Handler { tasks: Mutex::new(VecDeque::new()), closing: watch::channel(false).0, host: Mutex::new(None) }),
+            resources: Arc::new(Handler {
+                tasks: Mutex::new(VecDeque::new()),
+                closing: watch::channel(false).0,
+                host: Mutex::new(None),
+            }),
             retiring: None,
         })
     }
@@ -318,9 +315,11 @@ impl Declared for TransportPlugin {
 
 /* === Private Functions === */
 
-async fn publish(host: Supervisor, start: Start, mut closing: watch::Receiver<bool>) -> Result<(), harmos_sidecar::Refusal> {
+async fn publish(host: Supervisor, start: StartOperation, mut closing: watch::Receiver<bool>) -> Result<(), harmos_sidecar::Refusal> {
     start.validate()?;
-    let sample = Sample { payload: vec![b'x'; start.payload_bytes as usize] };
+    let sample = Sample {
+        payload: vec![b'x'; start.payload_bytes as usize],
+    };
     let began = Instant::now();
     let mut accepted = 0_u64;
     let mut attempted = 0_u64;
@@ -354,7 +353,7 @@ async fn publish(host: Supervisor, start: Start, mut closing: watch::Receiver<bo
     Ok(())
 }
 
-async fn pace(start: &Start, accepted: u64, began: Instant) {
+async fn pace(start: &StartOperation, accepted: u64, began: Instant) {
     if start.pace_bytes_per_second == 0 {
         return;
     }

@@ -33,10 +33,10 @@ use wasmtime::{Config, Engine, Store};
 use harmos::guest::capabilities::Refusal as BridgeRefusal;
 use harmos_domain::inventory::{Declaration, Facility};
 use harmos_domain::{Message, Refusal};
-use harmos_operations::lifecycle::InitializeRequest;
+use harmos_operations::lifecycle::Initialize;
 use harmos_operations::lifecycle::InstanceState;
 use harmos_sdk::operations::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
-use sandbox::{Echo, Echoed};
+use sandbox::{EchoOperation, Echoed};
 
 /* === Constants === */
 
@@ -110,20 +110,23 @@ impl Stub {
         assert_ne!(call.context, [0; 32], "the SDK forwards the current finite calling context");
         match call.operation.as_str() {
             "provider.provider_echo" => {
-                let request = Echo::decode(&call.payload).map_err(Refusal::of)?;
+                let request = EchoOperation::decode(&call.payload).map_err(Refusal::of)?;
                 self.calls.push(Call::Provider { say: request.say.clone() });
                 let fallback = Ok(Echoed { said: request.say });
                 let answer = self.provider.pop_front().unwrap_or(fallback)?;
                 Ok(answer.encode())
             }
-            "host.host_publish" => {
-                let request = harmos_operations::streams::PublishRequest::decode(&call.payload).map_err(Refusal::of)?;
+            "host.host.publish" => {
+                let request = harmos_operations::streams::Publish::decode(&call.payload).map_err(Refusal::of)?;
                 assert_eq!(request.schema, 1);
                 assert_eq!(request.sequence, None, "the guest asks its original lease to derive the sequence");
                 assert_eq!(request.published_unix_micros, None);
                 assert_eq!(request.context, None);
                 assert!(request.following.is_empty());
-                self.calls.push(Call::Publish { stream: request.stream, payload: request.payload });
+                self.calls.push(Call::Publish {
+                    stream: request.stream,
+                    payload: request.payload,
+                });
                 Ok(().encode())
             }
             operation => {
@@ -137,7 +140,7 @@ impl Stub {
 impl Stub {
     fn submit(&mut self, call: WireChildCall) -> Result<Vec<u8>, Refusal> {
         assert_eq!(call.operation, "provider.provider_echo");
-        let request = Echo::decode(&call.payload).map_err(Refusal::of)?;
+        let request = EchoOperation::decode(&call.payload).map_err(Refusal::of)?;
         let instance = self.submitted.len() as u64 + 1;
         self.submitted.insert(instance, (request.say.clone(), false));
         self.calls.push(Call::Submit { say: request.say, instance });
@@ -203,7 +206,13 @@ impl Session {
         }
         let initialized = self.phase(WireCommand::Initialize { invocation, context: [1; 32] }).await;
         assert!(matches!(initialized, WireAnswer::Ready { .. }), "{initialized:?}");
-        let answer = self.phase(WireCommand::Attempt { invocation, context: [1; 32], values: Vec::new() }).await;
+        let answer = self
+            .phase(WireCommand::Attempt {
+                invocation,
+                context: [1; 32],
+                values: Vec::new(),
+            })
+            .await;
         let finalized = self.phase(WireCommand::Finalize { invocation }).await;
         assert!(matches!(finalized, WireAnswer::Ready { .. }), "{finalized:?}");
         match answer {
@@ -213,7 +222,7 @@ impl Session {
         }
     }
     async fn initialize(&mut self, config: &str) -> Result<(), String> {
-        let request = InitializeRequest {
+        let request = Initialize {
             config_json: config.as_bytes().to_vec(),
             generation_context: vec![2; 32],
             assignments: harmos_sdk::operations::AssignedOperation::encode(&[
@@ -225,7 +234,7 @@ impl Session {
                     generation: 1,
                 },
                 harmos_sdk::operations::AssignedOperation {
-                    operation: "host.host_publish".into(),
+                    operation: "host.host.publish".into(),
                     fingerprint: <harmos_operations::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition()
                         .fingerprint
                         .0,
@@ -276,7 +285,13 @@ async fn publication_crosses_row() {
     let (stub, answered) = initialize(&support::sandbox(), Stub::default(), r#""publications""#).await;
 
     assert_eq!(answered, Ok(()));
-    assert_eq!(stub.calls, [Call::Publish { stream: "progress".into(), payload: Echoed { said: "initialize".into() }.encode() }]);
+    assert_eq!(
+        stub.calls,
+        [Call::Publish {
+            stream: "progress".into(),
+            payload: Echoed { said: "initialize".into() }.encode()
+        }]
+    );
 }
 
 #[tokio::test]
@@ -293,7 +308,7 @@ async fn registration_precedes_init() {
             (operation.id.as_str(), required.grants.len())
         })
         .collect::<Vec<_>>();
-    assert_eq!(required, [("provider_echo", 0), ("host_publish", 0)]);
+    assert_eq!(required, [("provider_echo", 0), ("host.publish", 0)]);
 
     let mut session = instantiate(&guest, Stub::default()).await;
     let registrations = session
@@ -314,7 +329,10 @@ async fn registration_precedes_init() {
 async fn refusal_preserves_reason() {
     let _report = crate::report::system();
     let refusal = Err(Refusal::new(-32601, "the provider is not selected"));
-    let refusing = Stub { provider: VecDeque::from([refusal]), ..Stub::default() };
+    let refusing = Stub {
+        provider: VecDeque::from([refusal]),
+        ..Stub::default()
+    };
 
     let (stub, answered) = initialize(&support::sandbox(), refusing, r#""dependencies""#).await;
 
@@ -328,7 +346,10 @@ async fn shutdown_current_context() {
     let _report = crate::report::system();
     let initial = Ok(Echoed { said: "initialize".into() });
     let refusal = Err(Refusal::new(-32601, "the lease closed admission"));
-    let closing = Stub { provider: VecDeque::from([initial, refusal]), ..Stub::default() };
+    let closing = Stub {
+        provider: VecDeque::from([initial, refusal]),
+        ..Stub::default()
+    };
     let mut session = instantiate(&support::sandbox(), closing).await;
     session.initialize(r#""dependencies""#).await.expect("the admitted dependency call is accepted");
     session.call::<harmos_operations::lifecycle::Shutdown>(2, ().encode()).await.expect("shutdown observes the host refusal");

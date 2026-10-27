@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
-use harmos_runtime::operations::{Operation, OperationPolicy, PluginRegistration, RetryPolicy, WireDeclaration};
+use harmos_runtime::operations::{Handler, OperationPolicy, PluginRegistration, RetryPolicy, WireDeclaration};
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition, Router,
@@ -179,7 +179,10 @@ impl Message for Fact {
         WireFact { value: self.value }.encoded_size()
     }
     fn decode(bytes: &[u8]) -> std::result::Result<Self, MessageError> {
-        Ok(Self { value: WireFact::decode(bytes)?.value, dropped: Arc::new(AtomicUsize::new(0)) })
+        Ok(Self {
+            value: WireFact::decode(bytes)?.value,
+            dropped: Arc::new(AtomicUsize::new(0)),
+        })
     }
 }
 
@@ -207,18 +210,18 @@ struct Hearing<const FIRST: bool> {
     wait_cleanup: bool,
 }
 
-impl<const FIRST: bool> Operation for Hearing<FIRST> {
-    type Endpoints = ();
+impl<const FIRST: bool> Handler for Hearing<FIRST> {
+    type StreamEndpoints = ();
     type Request = <harmos_runtime::listeners::Callback<Heard<FIRST>> as harmos_runtime::OperationDeclaration>::Request;
     type Response = <harmos_runtime::listeners::Callback<Heard<FIRST>> as harmos_runtime::OperationDeclaration>::Response;
 
     type Error = Failed;
     async fn initialize(context: harmos_runtime::OperationContext) -> std::result::Result<Self, Failed> {
-        let resources = context.dependency::<Owner>().expect("fixture dependency");
+        let resources = context.resource::<Owner>().expect("fixture dependency");
         Ok(Self { resources, wait_cleanup: false })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Delivery<Heard<FIRST>>, _endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Delivery<Heard<FIRST>>, _endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<harmos_runtime::operations::Response<()>, Failed> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.wait_cleanup = FIRST && request.row().value == 0 && self.resources.block;
@@ -260,7 +263,11 @@ impl PluginLifecycle for Host {
     type Sidecar = Resources;
     type Embedded = Resources;
     fn prepare(&mut self, _: &PluginDefinition) -> Result<Backends> {
-        Ok(PluginBackend::Embedded(Resources { owner: Some(self.owner.clone()), managed: self.managed, ..Resources::default() }))
+        Ok(PluginBackend::Embedded(Resources {
+            owner: Some(self.owner.clone()),
+            managed: self.managed,
+            ..Resources::default()
+        }))
     }
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> Result<()> {
         Ok(())
@@ -302,7 +309,10 @@ impl PluginLifecycle for Host {
         if let Some(streams) = &resources.streams {
             streams.leases()[0].stage_derived_row(publication_row(0), 0).unwrap();
         } else {
-            self.owner.streams.publish(Fact { value: 0, dropped: self.original_drop.clone() });
+            self.owner.streams.publish(Fact {
+                value: 0,
+                dropped: self.original_drop.clone(),
+            });
         }
         tokio::task::yield_now().await;
         assert!(self.owner.seen.lock().unwrap().is_empty());
@@ -311,7 +321,10 @@ impl PluginLifecycle for Host {
             self.view.take();
         }
         if self.fail_start {
-            return Err(Error::InvalidInput { field: "listener fixture", reason: "failed original setup" });
+            return Err(Error::InvalidInput {
+                field: "listener fixture",
+                reason: "failed original setup",
+            });
         }
         Ok(())
     }
@@ -340,7 +353,10 @@ impl PluginLifecycle for Host {
 /* === Private Functions === */
 
 fn fact(value: u32) -> Fact {
-    Fact { value, dropped: Arc::new(AtomicUsize::new(0)) }
+    Fact {
+        value,
+        dropped: Arc::new(AtomicUsize::new(0)),
+    }
 }
 
 fn publication() -> harmos_domain::StreamDeclaration {
@@ -359,7 +375,11 @@ fn publication() -> harmos_domain::StreamDeclaration {
 }
 
 fn publication_row(value: u32) -> harmos_runtime::streams::PublicationRow {
-    harmos_runtime::streams::PublicationRow { payload: WireFact { value }.encode(), published_unix_micros: None, context: None }
+    harmos_runtime::streams::PublicationRow {
+        payload: WireFact { value }.encode(),
+        published_unix_micros: None,
+        context: None,
+    }
 }
 
 fn candidate(managed: bool) -> PluginDefinitions {
@@ -563,7 +583,11 @@ async fn runtime_signals_listener() {
     let (runtime, mut manager, mut host) = setup(true, false, 1).await;
     manager.initialize(&mut host).await.unwrap();
     host.owner.started.notified().await;
-    let gates = Arc::new(Gates { running: Notify::new(), stopping: Notify::new(), release: Notify::new() });
+    let gates = Arc::new(Gates {
+        running: Notify::new(),
+        stopping: Notify::new(),
+        release: Notify::new(),
+    });
     runtime.operations.register_observer(BlockedObserver).unwrap();
     let lease = runtime.operations.submit_with_resources_at("blocked-cleanup", gates.clone()).await.unwrap();
     gates.running.notified().await;

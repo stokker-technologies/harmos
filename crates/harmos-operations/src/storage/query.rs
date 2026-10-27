@@ -44,7 +44,10 @@ product!(Query {
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess], codec = manual,
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess],
+    codec = manual,
     id = "storage.query",
     response = QueryCompletion,
     policy = IO_POLICY,
@@ -52,7 +55,8 @@ product!(Query {
     visibility = Visibility::Shared,
     replay = ReplaySafety::Idempotent,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "Query"),
-    grant = Self::grant_for)]
+    grant = Self::grant_for,
+)]
 #[derive(Clone, Debug)]
 pub struct Query {
     pub at: StorageCursor,

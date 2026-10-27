@@ -28,7 +28,7 @@ use super::{
     app::App,
     support::{Bank, Ledger, catalog},
 };
-use harmos_runtime::operations::{Backoff, FailureKind, Jitter, Operation, OperationPolicy, RetryPolicy};
+use harmos_runtime::operations::{Backoff, FailureKind, Handler, Jitter, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime, state::FactSource, state::Position, state::SystemFact};
 
 /* === Constants === */
@@ -79,10 +79,8 @@ enum Failed {
     Child(#[from] Error),
 }
 
-#[harmos_runtime::operation(request = ComputeContract, infer_request,
-        response = u64,
+#[harmos_runtime::operation(response = u64,
         id = "outcomes_compute",
-
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -92,51 +90,41 @@ enum Failed {
             },
         },
     )]
-struct ComputeContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct ComputeContract {
+struct ComputeContractDeclaration {
     mode: Mode,
 }
 
-#[harmos_runtime::operation(request = ParentContract, infer_request,
-        response = u64,
+#[harmos_runtime::operation(response = u64,
         id = "outcomes_parent",
-
         policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(3),
             retries: RetryPolicy::Never,
         },
     )]
-struct ParentContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct ParentContract {
+struct ParentContractDeclaration {
     mode: Mode,
 }
 
 #[harmos_runtime::catalog]
 enum Operations {
-    ComputeContract(ComputeContractDeclaration),
-    ParentContract(ParentContractDeclaration),
+    ComputeContractDeclaration(ComputeContractDeclaration),
+    ParentContractDeclaration(ParentContractDeclaration),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl Operation for Compute {
-    type Request = ComputeContract;
+impl Handler for Compute {
+    type Request = ComputeContractDeclaration;
     type Response = <ComputeContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Failed;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(_context: harmos_runtime::OperationContext) -> Exported<Self> {
-        let counts = _context.dependency::<Counts>().expect("fixture registers its dependency");
-        let host = _context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let counts = _context.resource::<Counts>().expect("fixture registers its dependency");
+        let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let _context = host.borrow();
         let constructed: Exported<Self> = async move {
             counts.constructed.fetch_add(1, Ordering::SeqCst);
@@ -155,9 +143,10 @@ impl Operation for Compute {
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut ComputeContract, _endpoints: &mut Self::Endpoints,
+        &mut self, context: harmos_runtime::OperationContext, request: &mut ComputeContractDeclaration,
+        _endpoints: &mut Self::StreamEndpoints,
     ) -> Exported<harmos_runtime::operations::Response<u64>> {
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
         let result: ::core::result::Result<u64, Self::Error> = async move {
             assert_eq!(context.attempt(), self.attempts);
@@ -187,24 +176,25 @@ impl Operation for Compute {
     }
 }
 
-impl Operation for Parent {
-    type Request = ParentContract;
+impl Handler for Parent {
+    type Request = ParentContractDeclaration;
     type Response = <ParentContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Failed;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Answered<Self> {
-        let _resources = context.dependency::<()>().expect("fixture registers its dependency");
+        let _resources = context.resource::<()>().expect("fixture registers its dependency");
         Ok(Self)
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut ParentContract, _endpoints: &mut Self::Endpoints,
+        &mut self, context: harmos_runtime::OperationContext, request: &mut ParentContractDeclaration,
+        _endpoints: &mut Self::StreamEndpoints,
     ) -> Answered<harmos_runtime::operations::Response<u64>> {
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
         let result: ::core::result::Result<u64, Self::Error> = async move {
-            let answer = context.submit::<ComputeContractDeclaration>(ComputeContract { mode: request.mode })?.await?;
+            let answer = context.submit::<ComputeContractDeclaration>(ComputeContractDeclaration { mode: request.mode })?.await?;
             Ok(*answer)
         }
         .await;
@@ -253,11 +243,11 @@ async fn runtime() -> (Runtime<App>, Arc<Counts>) {
 #[tokio::test]
 async fn aliases_preserve_values() {
     let (runtime, _) = runtime().await;
-    let root = runtime.operation(ComputeContract { mode: Mode::Value(4) }).start().await.unwrap().await.unwrap();
+    let root = runtime.operation(ComputeContractDeclaration { mode: Mode::Value(4) }).start().await.unwrap().await.unwrap();
     assert_eq!(*root, 4);
-    let child = runtime.operation(ParentContract { mode: Mode::Value(9) }).start().await.unwrap().await.unwrap();
+    let child = runtime.operation(ParentContractDeclaration { mode: Mode::Value(9) }).start().await.unwrap().await.unwrap();
     assert_eq!(*child, 9);
-    let error = runtime.operation(ComputeContract { mode: Mode::Reject }).start().await.unwrap().await.unwrap_err();
+    let error = runtime.operation(ComputeContractDeclaration { mode: Mode::Reject }).start().await.unwrap().await.unwrap_err();
     let Error::OperationFailed { operation, source } = error else { panic!("expected authored failure") };
     assert_eq!(operation, "outcomes_compute");
     assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Instrument)));
@@ -267,10 +257,10 @@ async fn aliases_preserve_values() {
 #[tokio::test(start_paused = true)]
 async fn deadlines_remain_distinct() {
     let (runtime, _) = runtime().await;
-    let elapsed = runtime.operation(ComputeContract { mode: Mode::Wait }).start().await.unwrap().await;
+    let elapsed = runtime.operation(ComputeContractDeclaration { mode: Mode::Wait }).start().await.unwrap().await;
     assert!(matches!(elapsed, Err(Error::OperationRefused(Refusal::TimedOut))));
 
-    let error = runtime.operation(ParentContract { mode: Mode::Reject }).start().await.unwrap().await.unwrap_err();
+    let error = runtime.operation(ParentContractDeclaration { mode: Mode::Reject }).start().await.unwrap().await.unwrap_err();
     let Error::OperationFailed { operation, source } = error else { panic!("expected parent failure") };
     assert_eq!(operation, "outcomes_parent");
     let Some(Failed::Child(Error::OperationFailed { operation, source })) = source.downcast_ref::<Failed>() else {
@@ -279,7 +269,7 @@ async fn deadlines_remain_distinct() {
     assert_eq!(operation, "outcomes_compute");
     assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Instrument)));
 
-    let error = runtime.operation(ParentContract { mode: Mode::Wait }).start().await.unwrap().await.unwrap_err();
+    let error = runtime.operation(ParentContractDeclaration { mode: Mode::Wait }).start().await.unwrap().await.unwrap_err();
     let Error::OperationFailed { source, .. } = error else { panic!("expected parent failure") };
     assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Child(Error::OperationRefused(Refusal::TimedOut)))));
     runtime.stop().await.unwrap();
@@ -288,8 +278,8 @@ async fn deadlines_remain_distinct() {
 #[tokio::test(start_paused = true)]
 async fn child_retries_reuse() {
     let (runtime, counts) = runtime().await;
-    let root = runtime.operation(ComputeContract { mode: Mode::Retry }).start().await.unwrap().await.unwrap();
-    let child = runtime.operation(ParentContract { mode: Mode::Retry }).start().await.unwrap().await.unwrap();
+    let root = runtime.operation(ComputeContractDeclaration { mode: Mode::Retry }).start().await.unwrap().await.unwrap();
+    let child = runtime.operation(ParentContractDeclaration { mode: Mode::Retry }).start().await.unwrap().await.unwrap();
     assert_eq!((*root, *child), (3, 3));
     assert_eq!(counts.constructed.load(Ordering::SeqCst), 2);
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);
@@ -314,7 +304,7 @@ async fn failure_never_emit() {
         .runtime()
         .await
         .unwrap();
-    let error = runtime.operation(ComputeContract { mode: Mode::Reject }).start().await.unwrap().await.unwrap_err();
+    let error = runtime.operation(ComputeContractDeclaration { mode: Mode::Reject }).start().await.unwrap().await.unwrap_err();
     let Error::OperationFailed { source, .. } = error else { panic!("expected authored failure") };
     assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Instrument)));
     let facts: Vec<_> = runtime

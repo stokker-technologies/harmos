@@ -80,8 +80,11 @@ fn sandbox() -> Vec<u8> {
 }
 
 // A Route From The Origin To `(x, 4)` Turns At `(x, 0)`
-fn route(x: i32) -> propose::ProposeRouteRequest {
-    propose::ProposeRouteRequest { from: Point { x: 0, y: 0 }, to: Point { x, y: 4 } }
+fn route(x: i32) -> propose::ProposeRoute {
+    propose::ProposeRoute {
+        from: Point { x: 0, y: 0 },
+        to: Point { x, y: 4 },
+    }
 }
 
 fn corner(x: i32) -> [Point; 3] {

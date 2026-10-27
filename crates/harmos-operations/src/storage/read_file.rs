@@ -39,7 +39,10 @@ product!(ReadFile {
 /* === Structs === */
 
 // Read A Bounded Byte Range Of A Stored Or Local File.
-#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess], codec = manual,
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess],
+    codec = manual,
     id = "storage.read_file",
     response = FileCompletion,
     policy = IO_POLICY,
@@ -47,7 +50,8 @@ product!(ReadFile {
     visibility = Visibility::Shared,
     replay = ReplaySafety::Idempotent,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "ReadFile"),
-    grant = Self::grant_for)]
+    grant = Self::grant_for,
+)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReadFile {
     pub source: FileSource,

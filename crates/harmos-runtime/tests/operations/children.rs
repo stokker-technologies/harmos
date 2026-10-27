@@ -26,7 +26,7 @@ use tokio::sync::{Notify, Semaphore};
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos_runtime::operations::{Backoff, FailureKind, Jitter, Operation, OperationPolicy, RetryPolicy};
+use harmos_runtime::operations::{Backoff, FailureKind, Handler, Jitter, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -75,10 +75,8 @@ enum Failed {
     Child(#[from] Error),
 }
 
-#[harmos_runtime::operation(request = ParentContract, infer_request,
-        response = (),
+#[harmos_runtime::operation(response = (),
         id = "children_parent",
-
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -88,60 +86,51 @@ enum Failed {
             },
         },
     )]
-struct ParentContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct ParentContract {
+struct ParentContractDeclaration {
     exit: Exit,
 }
 
-#[harmos_runtime::operation(request = ChildContract, infer_request,
-        response = (),
+#[harmos_runtime::operation(response = (),
         id = "children_child",
-
         policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(5),
             attempt_timeout: Duration::from_secs(5),
             retries: RetryPolicy::Never,
         },
     )]
-struct ChildContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct ChildContract {}
+struct ChildContractDeclaration {}
 
 #[harmos_runtime::catalog]
 enum Operations {
-    ParentContract(ParentContractDeclaration),
-    ChildContract(ChildContractDeclaration),
+    ParentContractDeclaration(ParentContractDeclaration),
+    ChildContractDeclaration(ChildContractDeclaration),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl Operation for Parent {
-    type Request = ParentContract;
+impl Handler for Parent {
+    type Request = ParentContractDeclaration;
     type Response = <ParentContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Failed;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Failed> {
-        let trace = context.dependency::<Trace>().expect("fixture registers its dependency");
+        let trace = context.resource::<Trace>().expect("fixture registers its dependency");
         Ok(Self { trace })
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut ParentContract, _endpoints: &mut Self::Endpoints,
+        &mut self, context: harmos_runtime::OperationContext, request: &mut ParentContractDeclaration,
+        _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Failed> {
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.trace.attempts.fetch_add(1, Ordering::SeqCst);
             self.trace.events.lock().unwrap().push("parent-attempt");
-            let _child = context.submit::<ChildContractDeclaration>(ChildContract {})?;
+            let _child = context.submit::<ChildContractDeclaration>(ChildContractDeclaration {})?;
             self.trace.child_started.notified().await;
             self.trace.parent_ready.notify_one();
             match request.exit {
@@ -163,21 +152,22 @@ impl Operation for Parent {
     }
 }
 
-impl Operation for Child {
-    type Request = ChildContract;
+impl Handler for Child {
+    type Request = ChildContractDeclaration;
     type Response = <ChildContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::convert::Infallible;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let trace = context.dependency::<Trace>().expect("fixture registers its dependency");
+        let trace = context.resource::<Trace>().expect("fixture registers its dependency");
         Ok(Self(trace))
     }
 
     async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, _request: &mut ChildContract, _endpoints: &mut Self::Endpoints,
+        &mut self, _context: harmos_runtime::OperationContext, _request: &mut ChildContractDeclaration,
+        _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
-        let host = _context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let _context = host.borrow();
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.0.events.lock().unwrap().push("child-started");
@@ -255,7 +245,7 @@ async fn parent_joins_child() {
     let exits = [(Exit::Return, false), (Exit::Fail, false), (Exit::Wait, false), (Exit::Wait, true)];
     for (exit, cancel) in exits {
         let (runtime, trace) = runtime(false).await;
-        let parent = runtime.operation(ParentContract { exit }).start().await.unwrap();
+        let parent = runtime.operation(ParentContractDeclaration { exit }).start().await.unwrap();
         if cancel {
             trace.parent_ready.notified().await;
             parent.cancel();
@@ -278,7 +268,7 @@ async fn parent_joins_child() {
 #[tokio::test(start_paused = true)]
 async fn retry_waits_child() {
     let (runtime, trace) = runtime(true).await;
-    let parent = runtime.operation(ParentContract { exit: Exit::Retry }).start().await.unwrap();
+    let parent = runtime.operation(ParentContractDeclaration { exit: Exit::Retry }).start().await.unwrap();
     trace.finalizing.notified().await;
     tokio::time::advance(Duration::from_millis(20)).await;
     assert_eq!(trace.attempts.load(Ordering::SeqCst), 1);
@@ -312,7 +302,7 @@ async fn result_awaits_finalization() {
     for exit in [Exit::Return, Exit::Fail] {
         let succeeds = matches!(exit, Exit::Return);
         let (runtime, trace) = runtime(true).await;
-        let mut parent = runtime.operation(ParentContract { exit }).start().await.unwrap();
+        let mut parent = runtime.operation(ParentContractDeclaration { exit }).start().await.unwrap();
         trace.finalizing.notified().await;
         assert!((&mut parent).now_or_never().is_none());
         assert_eq!(*trace.events.lock().unwrap(), ["parent-attempt", "child-started"]);

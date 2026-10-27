@@ -20,9 +20,9 @@ use std::sync::Arc;
 // Local Imports
 use super::contract;
 use crate::sidecar::witness::Witness;
-use contract::{POLICY, Probe, Queries, Read, Readings, Step};
+use contract::{POLICY, ProbeDeclaration, Queries, ReadDeclaration, Readings, Step};
 use harmos_runtime::operations::Host as _;
-use harmos_runtime::operations::{Operation, OperationPolicy, WireTable};
+use harmos_runtime::operations::{Handler, OperationPolicy, WireTable};
 use harmos_runtime::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -60,12 +60,14 @@ impl harmos_runtime::Plugin for Client {
     type Resources = Witness;
 
     fn prepare(key: String) -> Result<Self, Refusal> {
-        Ok(Self { resources: Witness::find(&key).ok_or_else(|| Refusal::of("the story witness is gone"))? })
+        Ok(Self {
+            resources: Witness::find(&key).ok_or_else(|| Refusal::of("the story witness is gone"))?,
+        })
     }
 
     async fn initialize(&mut self, context: &Supervisor) -> Result<(), Refusal> {
         self.resources.mark("initializing");
-        let response = context.call::<contract::ReadDeclaration>(Read { phase: 1 }).await.map_err(Refusal::from)?;
+        let response = context.call::<contract::ReadDeclaration>(ReadDeclaration { phase: 1 }).await.map_err(Refusal::from)?;
         if response.phase != 1 {
             return Err(Refusal::of("initialization used another provider response"));
         }
@@ -93,7 +95,7 @@ impl harmos_runtime::Plugin for Client {
     }
 
     async fn stop(&mut self, context: &Supervisor) -> Result<(), Refusal> {
-        let response = context.call::<contract::ReadDeclaration>(Read { phase: 2 }).await.map_err(Refusal::from)?;
+        let response = context.call::<contract::ReadDeclaration>(ReadDeclaration { phase: 2 }).await.map_err(Refusal::from)?;
         if response.phase != 2 {
             return Err(Refusal::of("shutdown used another provider response"));
         }
@@ -108,15 +110,15 @@ impl harmos_runtime::Plugin for Client {
     }
 }
 
-impl Operation for Probing {
+impl Handler for Probing {
     type Request = <contract::ProbeDeclaration as harmos_runtime::OperationDeclaration>::Request;
     type Response = <contract::ProbeDeclaration as harmos_runtime::OperationDeclaration>::Response;
 
     type Error = Refusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
-        let resources = context.dependency::<Witness>().expect("fixture dependency");
+        let resources = context.resource::<Witness>().expect("fixture dependency");
         let constructed: Result<Self, Refusal> = async move { Ok(Self { resources }) }.await;
         let mut operation = constructed?;
         let started: Result<(), Refusal> = async {
@@ -130,7 +132,7 @@ impl Operation for Probing {
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Probe, _endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut ProbeDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Step>, Refusal> {
         let result: ::core::result::Result<Step, Self::Error> = async move {
             self.resources.mark("probe-started");

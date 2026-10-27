@@ -39,7 +39,10 @@ product!(FollowProduction {
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess], codec = manual,
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess],
+    codec = manual,
     id = "storage.follow_production",
     response = FileProgress,
     policy = IO_POLICY,
@@ -47,7 +50,8 @@ product!(FollowProduction {
     visibility = Visibility::Shared,
     replay = ReplaySafety::Unknown,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "FollowProduction"),
-    grant = Self::grant_for)]
+    grant = Self::grant_for,
+)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowProduction {
     pub file: StagedFile,

@@ -23,7 +23,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::{
-    Backoff, FailureKind, Jitter, Operation, OperationDeclaration, OperationInstanceId, OperationPolicy, RetryPolicy,
+    Backoff, FailureKind, Handler, Jitter, OperationDeclaration, OperationInstanceId, OperationPolicy, RetryPolicy,
 };
 use harmos_runtime::{Message, Runtime};
 
@@ -41,7 +41,7 @@ struct Resources {
     ids: Mutex<Vec<OperationInstanceId>>,
 }
 
-// The Carrier Must Not Require A Sync Operation Object.
+// The Carrier Must Not Require A Sync Handler Object.
 struct Read {
     resources: Arc<Resources>,
     attempts: Cell<usize>,
@@ -55,10 +55,8 @@ struct Text {
 
 /* === Enums === */
 
-#[harmos_runtime::operation(request = ReadContract, infer_request,
-        response = Text,
+#[harmos_runtime::operation(response = Text,
         id = "owned_wire_read",
-
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -68,32 +66,28 @@ struct Text {
             },
         },
     )]
-struct ReadContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct ReadContract {
+struct ReadContractDeclaration {
     value: String,
 }
 
 #[harmos_runtime::catalog]
 enum Operations {
-    ReadContract(ReadContractDeclaration),
+    ReadContractDeclaration(ReadContractDeclaration),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl Operation for Read {
-    type Request = ReadContract;
+impl Handler for Read {
+    type Request = ReadContractDeclaration;
     type Response = <ReadContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let resources = context.dependency::<Resources>().expect("fixture registers its dependency");
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let resources = context.resource::<Resources>().expect("fixture registers its dependency");
+        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
         let constructed: Result<Self, Self::Error> = async move {
             resources.events.lock().unwrap().push("new");
@@ -113,16 +107,18 @@ impl Operation for Read {
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut ReadContract, _endpoints: &mut Self::Endpoints,
+        &mut self, context: harmos_runtime::OperationContext, request: &mut ReadContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Text>, Self::Error> {
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
         let result: ::core::result::Result<Text, Self::Error> = async move {
             self.resources.events.lock().unwrap().push("run");
             self.resources.ids.lock().unwrap().push(context.id());
             assert_eq!(context.attempt(), self.attempts.get());
             self.attempts.set(self.attempts.get() + 1);
-            Ok(Text { value: format!("{}:{}", request.value, self.attempts.get()) })
+            Ok(Text {
+                value: format!("{}:{}", request.value, self.attempts.get()),
+            })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -223,7 +219,7 @@ async fn wire_bindings_execute() {
             .unwrap();
         assert_eq!(Text::decode(&encoded).unwrap().value, "complete:1");
         assert_eq!(*resources.events.lock().unwrap(), ["new", "initialize", "run", "stop", "finalize", "drop"]);
-        let answer = runtime.operation(ReadContract { value: "local".to_owned() }).run().await.unwrap();
+        let answer = runtime.operation(ReadContractDeclaration { value: "local".to_owned() }).run().await.unwrap();
         assert_eq!(answer.value, "local:1");
         runtime.stop().await.unwrap();
     }
@@ -231,28 +227,30 @@ async fn wire_bindings_execute() {
 
 #[tokio::test]
 async fn registration_refuses_stream() {
-    #[harmos_runtime::operation(request = StreamContract, infer_request, response = (), input = Text, output = (), id = "owned_wire_stream",  policy = ReadContractDeclaration::POLICY)]
-    struct StreamContractDeclaration;
-
-    #[harmos_runtime::message]
-
+    #[harmos_runtime::operation(
+        response = (),
+        input = Text,
+        output = (),
+        id = "owned_wire_stream",
+        policy = ReadContractDeclaration::POLICY,
+    )]
     struct StreamContract {}
 
     #[harmos_runtime::catalog]
     enum StreamContracts {
-        StreamContract(StreamContractDeclaration),
+        StreamContract(StreamContract),
     }
     struct Stream;
-    impl Operation for Stream {
+    impl Handler for Stream {
         type Request = StreamContract;
-        type Response = <StreamContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+        type Response = <StreamContract as harmos_runtime::OperationDeclaration>::Response;
         type Error = std::io::Error;
-        type Endpoints = ();
+        type StreamEndpoints = ();
         async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
             panic!("unsupported binding must not construct an operation")
         }
         async fn run(
-            &mut self, _: harmos_runtime::OperationContext, _request: &mut StreamContract, _endpoints: &mut Self::Endpoints,
+            &mut self, _: harmos_runtime::OperationContext, _request: &mut StreamContract, _endpoints: &mut Self::StreamEndpoints,
         ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
             let result: ::core::result::Result<(), Self::Error> = async move { unreachable!() }.await;
             result.map(::core::convert::Into::into)
@@ -266,8 +264,7 @@ async fn registration_refuses_stream() {
         runtime
             .operations
             .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
-                    .implementation::<StreamContractDeclaration, Stream>(),
+                harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).implementation::<StreamContract, Stream>(),
                 Lanes::Open
             ))
             .await,

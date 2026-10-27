@@ -87,12 +87,12 @@ fn catalog_serves_operations() {
     let served: Vec<_> =
         contracts.iter().filter(|contract| contract.grpc().is_some()).map(|contract| contract.operation().id.to_string()).collect();
     for required in [
-        "storage_query",
-        "storage_read_file",
-        "storage_write_records",
-        "storage_write_streams",
-        "storage_write_objects",
-        "storage_write_file",
+        "storage.query",
+        "storage.read_file",
+        "storage.write_records",
+        "storage.write_streams",
+        "storage.write_objects",
+        "storage.write_file",
     ] {
         assert!(served.iter().any(|id| id == required), "missing {required}");
     }
@@ -116,9 +116,12 @@ async fn record_follow_resumes() {
         .unwrap();
     write(&fixture.storage, "historical").await;
     fixture.storage.flush().await.unwrap();
-    let request = harmos_operations::storage::FollowRecordsRequest { after: None, selection: records() };
-    let limits = harmos_runtime::operations::StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() };
-    let (sender, mut receiver) = harmos_runtime::operations::stream::<Followed>(limits).unwrap();
+    let request = harmos_operations::storage::FollowRecords { after: None, selection: records() };
+    let limits = harmos_runtime::operations::StreamSettings {
+        items: NonZeroUsize::MIN,
+        bytes: NonZeroUsize::new(4096).unwrap(),
+    };
+    let (sender, receiver) = harmos_runtime::operations::stream::<Followed>(limits).unwrap();
     let instance = fixture.runtime.operations.submit_endpoints::<FollowRecords, _>(request.clone(), sender).unwrap();
     let Followed::Boundaries(boundaries) = (*receiver.recv().await.unwrap()).clone() else {
         panic!("a follow first reports its boundaries");
@@ -138,7 +141,7 @@ async fn record_follow_resumes() {
     drop(receiver);
     let mut request = request;
     request.after = Some(second_position);
-    let (sender, mut receiver) = harmos_runtime::operations::stream::<Followed>(limits).unwrap();
+    let (sender, receiver) = harmos_runtime::operations::stream::<Followed>(limits).unwrap();
     let instance = fixture.runtime.operations.submit_endpoints::<FollowRecords, _>(request, sender).unwrap();
     drop(receiver.recv().await.unwrap());
     write(&fixture.storage, "reconnected").await;
@@ -166,7 +169,7 @@ async fn stream_follow_sequence() {
     let key = super::schema();
     let stream = harmos_runtime::Identifier::new("voltage").unwrap();
     let item = harmos_runtime::Identifier::new("row").unwrap();
-    let request = harmos_operations::storage::FollowStreamRequest {
+    let request = harmos_operations::storage::FollowStream {
         after: None,
         selection: harmos_runtime::storage::query::StreamSelection {
             schema: key.clone(),
@@ -178,12 +181,19 @@ async fn stream_follow_sequence() {
             after: 0,
         },
     };
-    let limits = harmos_runtime::operations::StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() };
-    let (sender, mut receiver) = harmos_runtime::operations::stream::<StoredRow>(limits).unwrap();
+    let limits = harmos_runtime::operations::StreamSettings {
+        items: NonZeroUsize::MIN,
+        bytes: NonZeroUsize::new(4096).unwrap(),
+    };
+    let (sender, receiver) = harmos_runtime::operations::stream::<StoredRow>(limits).unwrap();
     let instance = fixture.runtime.operations.submit_endpoints::<FollowStream, _>(request, sender).unwrap();
     fixture
         .storage
-        .write_stream(vec![StreamInput { stream: stream.clone(), sequence: 17, record: super::record(&key, &item, b"sample") }])
+        .write_stream(vec![StreamInput {
+            stream: stream.clone(),
+            sequence: 17,
+            record: super::record(&key, &item, b"sample"),
+        }])
         .await
         .unwrap();
     let row = receiver.recv().await.unwrap();
@@ -211,7 +221,7 @@ async fn foreign_cursor_refused() {
         .unwrap();
     let mut foreign = fixture.storage.cursor_accepted();
     foreign.history.epoch = harmos_runtime::Identifier::new("foreign").unwrap();
-    let request = harmos_operations::storage::FollowStreamRequest {
+    let request = harmos_operations::storage::FollowStream {
         after: Some(foreign),
         selection: harmos_runtime::storage::query::StreamSelection {
             schema: super::schema(),
@@ -223,8 +233,11 @@ async fn foreign_cursor_refused() {
             after: 0,
         },
     };
-    let limits = harmos_runtime::operations::StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() };
-    let (sender, mut receiver) = harmos_runtime::operations::stream::<StoredRow>(limits).unwrap();
+    let limits = harmos_runtime::operations::StreamSettings {
+        items: NonZeroUsize::MIN,
+        bytes: NonZeroUsize::new(4096).unwrap(),
+    };
+    let (sender, receiver) = harmos_runtime::operations::stream::<StoredRow>(limits).unwrap();
     let instance = fixture.runtime.operations.submit_endpoints::<FollowStream, _>(request, sender).unwrap();
     assert!(instance.await.is_err());
     assert!(receiver.recv().await.is_none());
@@ -246,12 +259,12 @@ async fn following_spends_budget() {
         .await
         .unwrap();
     write(&fixture.storage, "first").await;
-    let (sender, mut receiver) = harmos_runtime::operations::stream::<Followed>(harmos_runtime::operations::StreamSettings {
+    let (sender, receiver) = harmos_runtime::operations::stream::<Followed>(harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::MIN,
         bytes: NonZeroUsize::new(4096).unwrap(),
     })
     .unwrap();
-    let request = harmos_operations::storage::FollowRecordsRequest { after: None, selection: records() };
+    let request = harmos_operations::storage::FollowRecords { after: None, selection: records() };
     let instance = fixture.runtime.operations.submit_endpoints::<FollowRecords, _>(request, sender).unwrap();
     drop(receiver.recv().await.unwrap());
     drop(receiver.recv().await.unwrap());

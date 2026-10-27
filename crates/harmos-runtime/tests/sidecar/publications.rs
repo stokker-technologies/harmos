@@ -446,7 +446,7 @@ impl harmos_runtime::Plugin for Batches {
         publisher.publish_batch_on::<ClockedRows>(&clocked).await.map_err(harmos_sidecar::Refusal::from)?;
         // A Refused Row Ends Its Batch; The Rows Before It Stay Published.
         let raw = |stream: &str, sequence: u64, published_unix_micros: Option<i64>, following: Vec<(Vec<u8>, Option<i64>)>| {
-            harmos_operations::streams::PublishRequest {
+            harmos_operations::streams::Publish {
                 stream: stream.to_owned(),
                 schema: 1,
                 sequence: Some(sequence),
@@ -697,7 +697,10 @@ impl harmos_runtime::Plugin for MultiStream {
 #[harmos_runtime::observer(streams(FloodRows), interval_ms = 1)]
 impl Flooding {
     async fn initialize(resources: &super::witness::Witness) -> Result<Self, harmos_sidecar::PublishError> {
-        Ok(Self { next: 0, witness: super::witness::Witness::find(resources.key()).unwrap() })
+        Ok(Self {
+            next: 0,
+            witness: super::witness::Witness::find(resources.key()).unwrap(),
+        })
     }
     async fn observe(
         &mut self, ctx: &ObserverContext<'_, super::witness::Witness, harmos_sidecar::Publisher<Flood>>,

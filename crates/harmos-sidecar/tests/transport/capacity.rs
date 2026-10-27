@@ -18,7 +18,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::protocol::Start;
+use super::protocol::StartOperation;
 
 /* === Constants === */
 
@@ -124,9 +124,19 @@ impl Settings {
     pub fn case(&self, size: u64, rate: u64, burst_mib: u64) -> Result<Case, String> {
         let bytes = if rate == 0 { burst_mib } else { rate * self.seconds } * MIB as u64;
         let samples = u32::try_from(bytes.div_ceil(size)).map_err(|_| "HARMOS_BENCH_SIZES/RATES/SECONDS: sample count exceeds u32")?;
-        let start = Start { samples, payload_bytes: size as u32, pace_bytes_per_second: rate * MIB as u64, batch: 1 };
+        let start = StartOperation {
+            samples,
+            payload_bytes: size as u32,
+            pace_bytes_per_second: rate * MIB as u64,
+            batch: 1,
+        };
         start.validate().map_err(|error| format!("HARMOS_BENCH_SIZES/RATES/SECONDS/BURST_MIB: {error}"))?;
-        Ok(Case { name: "capacity", samples, payload_bytes: start.payload_bytes, pace_bytes_per_second: start.pace_bytes_per_second })
+        Ok(Case {
+            name: "capacity",
+            samples,
+            payload_bytes: start.payload_bytes,
+            pace_bytes_per_second: start.pace_bytes_per_second,
+        })
     }
 
     pub fn timeout(&self, case: Case) -> Duration {

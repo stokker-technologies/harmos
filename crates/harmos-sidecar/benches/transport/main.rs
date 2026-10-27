@@ -26,23 +26,43 @@ use std::time::{Duration, Instant};
 use tokio::io::{duplex, split};
 // Local Imports
 use capacity::{Case, MIB, Observation, Settings, WARMUP_MIB};
-use harmos_operations::lifecycle::{Initialize, InitializeRequest, Shutdown};
+use harmos_operations::lifecycle::{Initialize, Shutdown};
 use harmos_sidecar::Message;
 use harmos_sidecar::operations::{OperationDeclaration, WIRE_METHOD, WireAnswer, WireCommand};
 use harmos_sidecar::transport;
 use harmos_sidecar::{Attach, Executable, Frame, serve_plugin_channels};
 use harmos_sidecar::{Publication, StreamSpec};
-use protocol::{Done, Echo, EchoOperation, Sample, Start, StartOperation, TransportPlugin};
+use protocol::{Done, EchoOperation, Sample, StartOperation, TransportPlugin};
 
 /* === Constants === */
 
 const LATENCY_SAMPLES: u64 = 200;
 const BATCH_ROWS: u32 = 100;
 const CASES: [Case; 4] = [
-    Case { name: "tiny burst", samples: 32 * 1024, payload_bytes: 64, pace_bytes_per_second: 0 },
-    Case { name: "1 KiB burst", samples: 16 * 1024, payload_bytes: 1024, pace_bytes_per_second: 0 },
-    Case { name: "64 KiB burst", samples: 512, payload_bytes: 64 * 1024, pace_bytes_per_second: 0 },
-    Case { name: "sustained 10 MiB/s", samples: 320, payload_bytes: 64 * 1024, pace_bytes_per_second: (10 * MIB) as u64 },
+    Case {
+        name: "tiny burst",
+        samples: 32 * 1024,
+        payload_bytes: 64,
+        pace_bytes_per_second: 0,
+    },
+    Case {
+        name: "1 KiB burst",
+        samples: 16 * 1024,
+        payload_bytes: 1024,
+        pace_bytes_per_second: 0,
+    },
+    Case {
+        name: "64 KiB burst",
+        samples: 512,
+        payload_bytes: 64 * 1024,
+        pace_bytes_per_second: 0,
+    },
+    Case {
+        name: "sustained 10 MiB/s",
+        samples: 320,
+        payload_bytes: 64 * 1024,
+        pace_bytes_per_second: (10 * MIB) as u64,
+    },
 ];
 
 /* === Macros === */
@@ -268,8 +288,12 @@ async fn throughput_case(
 ) -> Observation {
     let previous_sequence = reception.sequence;
     let started = Instant::now();
-    let request =
-        Start { samples: case.samples, payload_bytes: case.payload_bytes, pace_bytes_per_second: case.pace_bytes_per_second, batch };
+    let request = StartOperation {
+        samples: case.samples,
+        payload_bytes: case.payload_bytes,
+        pace_bytes_per_second: case.pace_bytes_per_second,
+        batch,
+    };
     phase(
         outgoing,
         incoming,
@@ -284,9 +308,17 @@ async fn throughput_case(
     )
     .await;
     phase(outgoing, incoming, call_id, WireCommand::Initialize { invocation: call_id, context: [0; 32] }).await;
-    let command = WireCommand::Attempt { invocation: call_id, context: [0; 32], values: Vec::new() };
+    let command = WireCommand::Attempt {
+        invocation: call_id,
+        context: [0; 32],
+        values: Vec::new(),
+    };
     outgoing
-        .send(Frame::Call { id: call_id, method: WIRE_METHOD.to_owned(), params: command.encode().unwrap().into() })
+        .send(Frame::Call {
+            id: call_id,
+            method: WIRE_METHOD.to_owned(),
+            params: command.encode().unwrap().into(),
+        })
         .await
         .expect("the publication case is requested");
 
@@ -300,9 +332,9 @@ async fn throughput_case(
             Frame::Call { id, method, params } if method == harmos_sdk::operations::CHILD_METHOD => {
                 let call: harmos_sdk::operations::WireChildCall =
                     harmos_sdk::operations::WireChildCall::decode(&params).expect("typed child envelope");
-                assert_eq!(call.operation, "host_publish");
+                assert_eq!(call.operation, "host.publish");
                 assert_eq!(call.generation_context, Some([2; 32]));
-                let row = harmos_operations::streams::PublishRequest::decode(&call.payload).expect("typed publication");
+                let row = harmos_operations::streams::Publish::decode(&call.payload).expect("typed publication");
                 calls += 1;
                 if row.stream == Done::ID {
                     done = Some(Done::decode(&row.payload).expect("typed completion stream"));
@@ -333,7 +365,10 @@ async fn throughput_case(
                 }
                 // This Bench Exercises The Direct Carrier, Not Root Authorization
                 outgoing
-                    .send(Frame::Answer { id, result: <() as Message>::encode(&()).into() })
+                    .send(Frame::Answer {
+                        id,
+                        result: <() as Message>::encode(&()).into(),
+                    })
                     .await
                     .expect("publication admission acknowledged");
             }
@@ -383,7 +418,7 @@ async fn latency(label: &str, first_id: u64, outgoing: &Sender, incoming: &mut R
     let mut elapsed = Vec::with_capacity(LATENCY_SAMPLES as usize);
     for nonce in 0..LATENCY_SAMPLES {
         let id = first_id + nonce;
-        let request = Echo { nonce, payload: vec![b'x'; 64] };
+        let request = EchoOperation { nonce, payload: vec![b'x'; 64] };
         let started = Instant::now();
         phase(
             outgoing,
@@ -399,10 +434,20 @@ async fn latency(label: &str, first_id: u64, outgoing: &Sender, incoming: &mut R
         )
         .await;
         phase(outgoing, incoming, id, WireCommand::Initialize { invocation: id, context: [0; 32] }).await;
-        let answer = phase(outgoing, incoming, id, WireCommand::Attempt { invocation: id, context: [0; 32], values: Vec::new() }).await;
+        let answer = phase(
+            outgoing,
+            incoming,
+            id,
+            WireCommand::Attempt {
+                invocation: id,
+                context: [0; 32],
+                values: Vec::new(),
+            },
+        )
+        .await;
         phase(outgoing, incoming, id, WireCommand::Finalize { invocation: id }).await;
         elapsed.push(started.elapsed());
-        assert_eq!(Echo::decode(answer.as_slice()).expect("the echo reply is Postcard"), request);
+        assert_eq!(EchoOperation::decode(answer.as_slice()).expect("the echo reply is Postcard"), request);
     }
     elapsed.sort_unstable();
     eprintln!(
@@ -416,7 +461,11 @@ async fn latency(label: &str, first_id: u64, outgoing: &Sender, incoming: &mut R
 
 async fn sdk(outgoing: &Sender, incoming: &mut Receiver, id: u64, initialize: bool) {
     let (operation, fingerprint, payload) = if initialize {
-        let request = InitializeRequest { config_json: b"null".to_vec(), generation_context: vec![2; 32], assignments: Vec::new() };
+        let request = Initialize {
+            config_json: b"null".to_vec(),
+            generation_context: vec![2; 32],
+            assignments: Vec::new(),
+        };
         (Initialize::ID, (harmos_domain::operations::Entry::of::<Initialize>().fingerprint)().unwrap().0, request.encode())
     } else {
         (Shutdown::ID, (harmos_domain::operations::Entry::of::<Shutdown>().fingerprint)().unwrap().0, Vec::new())
@@ -435,7 +484,17 @@ async fn sdk(outgoing: &Sender, incoming: &mut Receiver, id: u64, initialize: bo
     )
     .await;
     phase(outgoing, incoming, id, WireCommand::Initialize { invocation: id, context: [1; 32] }).await;
-    phase(outgoing, incoming, id, WireCommand::Attempt { invocation: id, context: [1; 32], values: Vec::new() }).await;
+    phase(
+        outgoing,
+        incoming,
+        id,
+        WireCommand::Attempt {
+            invocation: id,
+            context: [1; 32],
+            values: Vec::new(),
+        },
+    )
+    .await;
     phase(outgoing, incoming, id, WireCommand::Finalize { invocation: id }).await;
 }
 
@@ -450,7 +509,14 @@ async fn phase(outgoing: &Sender, incoming: &mut Receiver, id: u64, command: Wir
 }
 
 async fn call(outgoing: &Sender, incoming: &mut Receiver, id: u64, method: &str, params: Vec<u8>) -> harmos_sidecar::FramePayload {
-    outgoing.send(Frame::Call { id, method: method.to_owned(), params: params.into() }).await.expect("the benchmark call is sent");
+    outgoing
+        .send(Frame::Call {
+            id,
+            method: method.to_owned(),
+            params: params.into(),
+        })
+        .await
+        .expect("the benchmark call is sent");
     match receive(incoming).await {
         Frame::Answer { id: answered, result } if answered == id => result,
         other => panic!("the benchmark received an unexpected frame: {other:?}"),

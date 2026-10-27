@@ -37,14 +37,18 @@ product!(FollowFile {
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess], codec = manual,
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess],
+    codec = manual,
     id = "storage.follow_file",
     response = FileCompletion,
     policy = IO_POLICY,
     output = FileEvent,
     visibility = Visibility::Shared,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "FollowFile"),
-    grant = Self::grant_for)]
+    grant = Self::grant_for,
+)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowFile {
     pub source: FileSource,

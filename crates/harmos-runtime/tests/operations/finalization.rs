@@ -23,7 +23,7 @@ use futures_util::FutureExt;
 use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, runtime};
-use harmos_runtime::operations::{CacheKey, Operation, OperationDeclaration, OperationOutcome, OperationPhase};
+use harmos_runtime::operations::{CacheKey, Handler, OperationDeclaration, OperationOutcome, OperationPhase};
 use harmos_runtime::{Error, Refusal};
 
 /* === Constants === */
@@ -32,32 +32,22 @@ use harmos_runtime::{Error, Refusal};
 
 /* === Type Aliases === */
 
-type Request = Finish;
+type Request = FinishDeclaration;
 
 /* === Structs === */
 
-#[harmos_runtime::operation(request = Finish, infer_request,
-    id = "aa_finish",
-
+#[harmos_runtime::operation(id = "aa_finish",
     response = u64,
     policy = super::Compute::POLICY,
-    key = |request: &Finish| request.keyed.then(|| CacheKey::new([1]).unwrap()),
+    key = |request: &FinishDeclaration| request.keyed.then(|| CacheKey::new([1]).unwrap()),
 )]
-struct FinishDeclaration;
-
-#[harmos_runtime::message]
-
-struct Finish {
+struct FinishDeclaration {
     keyed: bool,
     fail_attempt: bool,
 }
 
-#[harmos_runtime::operation(request = Parent, infer_request, id = "zz_parent",  response = u64, policy = FinishDeclaration::POLICY)]
-struct ParentDeclaration;
-
-#[harmos_runtime::message]
-
-struct Parent {
+#[harmos_runtime::operation(id = "zz_parent",  response = u64, policy = FinishDeclaration::POLICY)]
+struct ParentDeclaration {
     keyed: bool,
     fail_attempt: bool,
 }
@@ -89,9 +79,12 @@ struct ParentOwner(Arc<Counters>);
 
 /* === Implementations === */
 
-impl From<Finish> for Parent {
-    fn from(request: Finish) -> Self {
-        Self { keyed: request.keyed, fail_attempt: request.fail_attempt }
+impl From<FinishDeclaration> for ParentDeclaration {
+    fn from(request: FinishDeclaration) -> Self {
+        Self {
+            keyed: request.keyed,
+            fail_attempt: request.fail_attempt,
+        }
     }
 }
 
@@ -100,20 +93,23 @@ struct Finishing {
     state: State,
 }
 
-impl Operation for Finishing {
-    type Endpoints = ();
-    type Request = Finish;
+impl Handler for Finishing {
+    type StreamEndpoints = ();
+    type Request = FinishDeclaration;
     type Response = <FinishDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let resources = context.dependency::<Owner>().expect("fixture registers its dependency");
-        let state = State { ran: false, counters: Arc::clone(&resources.0) };
+        let resources = context.resource::<Owner>().expect("fixture registers its dependency");
+        let state = State {
+            ran: false,
+            counters: Arc::clone(&resources.0),
+        };
         Ok(Self { resources, state })
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Request, _endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Request, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
         let result: ::core::result::Result<u64, Self::Error> = async move {
             self.resources.0.runs.fetch_add(1, Ordering::SeqCst);
@@ -148,25 +144,31 @@ struct ParentCall {
     _state: State,
 }
 
-impl Operation for ParentCall {
-    type Endpoints = ();
-    type Request = Parent;
+impl Handler for ParentCall {
+    type StreamEndpoints = ();
+    type Request = ParentDeclaration;
     type Response = <ParentDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Error> {
-        let resources = context.dependency::<ParentOwner>().expect("fixture registers its dependency");
-        let state = State { ran: false, counters: Arc::clone(&resources.0) };
+        let resources = context.resource::<ParentOwner>().expect("fixture registers its dependency");
+        let state = State {
+            ran: false,
+            counters: Arc::clone(&resources.0),
+        };
         Ok(Self { _resources: resources, _state: state })
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut Parent, _endpoints: &mut Self::Endpoints,
+        &mut self, context: harmos_runtime::OperationContext, request: &mut ParentDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Error> {
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
         let result: ::core::result::Result<u64, Self::Error> = async move {
-            let request = Request { keyed: request.keyed, fail_attempt: request.fail_attempt };
+            let request = Request {
+                keyed: request.keyed,
+                fail_attempt: request.fail_attempt,
+            };
             let response = context.call::<FinishDeclaration>(request).await?;
             Ok(*response)
         }
@@ -359,7 +361,7 @@ async fn unregister_retries_child() {
         ))
         .await
         .unwrap();
-    let invocation = runtime.operation(Parent::from(request())).start().await.unwrap();
+    let invocation = runtime.operation(ParentDeclaration::from(request())).start().await.unwrap();
     child.entering.notified().await;
     assert!(runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", ParentDeclaration::ID).unwrap()).await.is_err());
     assert_eq!(child.dropped.load(Ordering::SeqCst), 0);
@@ -721,7 +723,7 @@ async fn stop_retries_cleanup() {
         ))
         .await
         .unwrap();
-    let invocation = runtime.operation(Parent::from(request())).start().await.unwrap();
+    let invocation = runtime.operation(ParentDeclaration::from(request())).start().await.unwrap();
     child.entering.notified().await;
     assert_eq!(child.dropped.load(Ordering::SeqCst), 0);
     assert_eq!(parent.dropped.load(Ordering::SeqCst), 0);

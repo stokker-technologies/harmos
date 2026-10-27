@@ -26,7 +26,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos_runtime::operations::{Operation, OperationOutcome, OperationPhase, RetryPolicy, Settings};
+use harmos_runtime::operations::{Handler, OperationOutcome, OperationPhase, RetryPolicy, Settings};
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -38,19 +38,15 @@ use harmos_runtime::{Error, Refusal, Runtime};
 /* === Structs === */
 
 // The Hold Request Carries A Shared Notification, So It Stays In Process.
-#[harmos_runtime::operation(request = HoldContract, infer_request,
-    response = (),
+#[harmos_runtime::operation(codec = manual, response = (),
     id = "queue_hold",
-
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
     },
 )]
-struct HoldContractDeclaration;
-
-struct HoldContract {
+struct HoldContractDeclaration {
     blocked: bool,
     started: Arc<Notify>,
 }
@@ -70,35 +66,35 @@ struct Counts {
 
 #[harmos_runtime::catalog]
 enum Operations {
-    HoldContract(HoldContractDeclaration),
+    HoldContractDeclaration(HoldContractDeclaration),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-super::in_process!(HoldContract);
+super::in_process!(HoldContractDeclaration);
 
-impl harmos_runtime::MemorySize for HoldContract {
+impl harmos_runtime::MemorySize for HoldContractDeclaration {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
     }
 }
 
-impl Operation for Hold {
-    type Request = HoldContract;
+impl Handler for Hold {
+    type Request = HoldContractDeclaration;
     type Response = <HoldContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
-    type Endpoints = ();
+    type StreamEndpoints = ();
     type Error = std::io::Error;
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let counts = context.dependency::<Counts>().expect("fixture registers its dependency");
+        let counts = context.resource::<Counts>().expect("fixture registers its dependency");
         counts.constructed.fetch_add(1, Ordering::SeqCst);
         Ok(Self { counts })
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut HoldContract, _endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut HoldContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             request.started.notify_one();
@@ -139,8 +135,11 @@ async fn runtime() -> Runtime<App> {
         .unwrap()
 }
 
-fn request(blocked: bool) -> HoldContract {
-    HoldContract { blocked, started: Arc::new(Notify::new()) }
+fn request(blocked: bool) -> HoldContractDeclaration {
+    HoldContractDeclaration {
+        blocked,
+        started: Arc::new(Notify::new()),
+    }
 }
 
 /* === Tests === */

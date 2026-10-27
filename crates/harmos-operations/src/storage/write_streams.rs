@@ -38,7 +38,10 @@ product!(WriteStreams {
 /* === Structs === */
 
 // Admit Streamed Arrow Batches Of Stream Rows Into One Optional Scope.
-#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess], codec = manual,
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess],
+    codec = manual,
     id = "storage.write_streams",
     response = WriteCompletion,
     policy = IO_POLICY,
@@ -46,7 +49,8 @@ product!(WriteStreams {
     output = WriteReceipt,
     visibility = Visibility::Shared,
     replay = ReplaySafety::Unknown,
-    grpc(package = "harmos.storage.v1", service =  "Storage", method =  "WriteStreams"))]
+    grpc(package = "harmos.storage.v1", service =  "Storage", method =  "WriteStreams"),
+)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WriteStreams {
     pub scope: Option<Identifier>,

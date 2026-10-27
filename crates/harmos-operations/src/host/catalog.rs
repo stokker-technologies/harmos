@@ -42,8 +42,20 @@ coded!(CatalogKind { Operations, Schemas, Streams, Objects });
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, resources = [Option<std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>>, harmos_sdk::operations::access::DiscoveryAccess], codec = manual, id = "host.catalog", response = CatalogPage, policy = super::POLICY, visibility = harmos_domain::operations::Visibility::Shared, grant = Catalog::required_grant,
- grpc(package = "harmos.host.v1", service = "Host", method = "Catalog"))]
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [
+        Option<std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>>,
+        harmos_sdk::operations::access::DiscoveryAccess,
+    ],
+    codec = manual,
+    id = "host.catalog",
+    response = CatalogPage,
+    policy = super::POLICY,
+    visibility = harmos_domain::operations::Visibility::Shared,
+    grant = Catalog::required_grant,
+    grpc(package = "harmos.host.v1", service = "Host", method = "Catalog"),
+)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Catalog {
     pub kind: CatalogKind,

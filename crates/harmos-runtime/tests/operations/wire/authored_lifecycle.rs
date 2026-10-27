@@ -61,10 +61,6 @@ impl Drop for Request {
     }
 }
 
-impl harmos_runtime::RequestFor for Request {
-    type Operation = Self;
-}
-
 impl OperationDeclaration for Request {
     type Request = Self;
     type Response = u32;
@@ -76,7 +72,10 @@ impl OperationDeclaration for Request {
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::OnTransient {
             max_retries: 1,
-            backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
+            backoff: Backoff::Fixed {
+                delay: Duration::from_millis(1),
+                jitter: Jitter::None,
+            },
         },
     };
 }
@@ -84,14 +83,14 @@ struct Read {
     events: Arc<Mutex<Vec<&'static str>>>,
     address: Option<usize>,
 }
-impl Operation for Read {
+impl Handler for Read {
     type Request = <Request as harmos_runtime::OperationDeclaration>::Request;
     type Response = <Request as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(_context: harmos_runtime::OperationContext) -> std::io::Result<Self> {
-        let events = _context.dependency::<Mutex<Vec<&'static str>>>().expect("fixture registers its dependency");
+        let events = _context.resource::<Mutex<Vec<&'static str>>>().expect("fixture registers its dependency");
         let constructed: std::io::Result<Self> = async move {
             events.lock().unwrap().push("new");
             Ok(Self { events, address: None })
@@ -108,7 +107,7 @@ impl Operation for Read {
         Ok(operation)
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Request, _: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Request, _: &mut Self::StreamEndpoints,
     ) -> std::io::Result<harmos_runtime::operations::Response<u32>> {
         let result: ::core::result::Result<u32, Self::Error> = async move {
             self.events.lock().unwrap().push("run");
@@ -194,15 +193,17 @@ async fn transfer_blocks_retry() {
         ))
         .await
         .unwrap();
-    let settings =
-        harmos_runtime::operations::StreamSettings { items: NonZeroUsize::new(2).unwrap(), bytes: NonZeroUsize::new(8).unwrap() };
+    let settings = harmos_runtime::operations::StreamSettings {
+        items: NonZeroUsize::new(2).unwrap(),
+        bytes: NonZeroUsize::new(8).unwrap(),
+    };
     for mode in [0, 1, 2, 3] {
         runs.store(0, Ordering::SeqCst);
         let (send, input) = harmos_runtime::operations::stream::<u32>(settings).unwrap();
-        let (output, mut receive) = harmos_runtime::operations::stream::<u32>(settings).unwrap();
+        let (output, receive) = harmos_runtime::operations::stream::<u32>(settings).unwrap();
         let instance = runtime
             .operations
-            .submit_endpoints::<StreamingDeclarationDeclaration, _>(StreamingDeclaration { mode }, (input, output))
+            .submit_endpoints::<StreamingDeclarationDeclaration, _>(StreamingDeclarationDeclaration { mode }, (input, output))
             .unwrap();
         if mode == 2 {
             // The input item arrives while the failed attempt waits to retry.
@@ -224,33 +225,29 @@ async fn transfer_blocks_retry() {
     runtime.stop().await.unwrap();
 }
 
-#[harmos_runtime::operation(request = StreamingDeclaration, infer_request,
-    harmos_path = harmos_runtime,
+#[harmos_runtime::operation(harmos_path = harmos_runtime,
     id = "streaming",
-
     response = (),
     policy = Request::POLICY,
     input = u32,
     output = u32
 )]
-struct StreamingDeclarationDeclaration;
-
-#[harmos_runtime::message]
-
-struct StreamingDeclaration {
+struct StreamingDeclarationDeclaration {
     mode: u32,
 }
+
 struct Streaming(Arc<std::sync::atomic::AtomicUsize>, bool);
-impl harmos_runtime::Operation for Streaming {
-    type Request = StreamingDeclaration;
+impl harmos_runtime::Handler for Streaming {
+    type Request = StreamingDeclarationDeclaration;
     type Response = ();
-    type Endpoints = (harmos_runtime::operations::StreamInput<u32>, harmos_runtime::operations::StreamOutput<u32>);
+    type StreamEndpoints = (harmos_runtime::operations::StreamInput<u32>, harmos_runtime::operations::StreamOutput<u32>);
     type Error = std::io::Error;
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self(context.dependency::<std::sync::atomic::AtomicUsize>().map_err(std::io::Error::other)?, false))
+        Ok(Self(context.resource::<std::sync::atomic::AtomicUsize>().map_err(std::io::Error::other)?, false))
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut StreamingDeclaration, endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut StreamingDeclarationDeclaration,
+        endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<harmos_runtime::Response<()>, std::io::Error> {
         let (_, output) = endpoints;
         self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);

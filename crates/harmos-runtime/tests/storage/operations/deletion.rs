@@ -51,10 +51,16 @@ fn metadata(id: &str) -> FileMetadata {
         expected_sha256: None,
     }
 }
-fn request(f: &Fixture, id: &str) -> harmos_operations::storage::DeleteFileRequest {
-    harmos_operations::storage::DeleteFileRequest {
-        mutation: MutationId { window: f.storage.mutation_window().unwrap().id, key: Identifier::new("delete").unwrap() },
-        file: StagedFile { history: f.data.history.clone(), id: Identifier::new(id).unwrap() },
+fn request(f: &Fixture, id: &str) -> harmos_operations::storage::DeleteFile {
+    harmos_operations::storage::DeleteFile {
+        mutation: MutationId {
+            window: f.storage.mutation_window().unwrap().id,
+            key: Identifier::new("delete").unwrap(),
+        },
+        file: StagedFile {
+            history: f.data.history.clone(),
+            id: Identifier::new(id).unwrap(),
+        },
     }
 }
 
@@ -95,7 +101,10 @@ async fn delete_removes_file() {
     assert!(f.data.files.lock().unwrap().is_empty());
     assert!(f.data.blobs.lock().unwrap().is_empty());
     assert!(f.data.create_file(&metadata("terminal")).await.is_err());
-    let other = StagedFile { id: Identifier::new("other").unwrap(), ..request.file.clone() };
+    let other = StagedFile {
+        id: Identifier::new("other").unwrap(),
+        ..request.file.clone()
+    };
     assert!(f.storage.delete_file_once(&request.mutation, &other).await.is_err());
     drop(accepted);
     drop(reader);

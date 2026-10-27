@@ -32,30 +32,19 @@ use harmos::MemorySize;
 
 /* === Structs === */
 
-#[harmos::message]
-pub struct AnalyzeUploadRequest {
-    pub title: String,
-}
-
-#[harmos::operation(
-    id = "schematic_analyze_upload", request = AnalyzeUploadRequest, infer_request, response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
+#[harmos::operation(resources = [crate::resources::AnalysisResources], operations = [harmos::builtins::streams::Publish],
+    id = "schematic_analyze_upload", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
     policy = crate::POLICY,
     visibility = harmos::operations::Visibility::Shared,
     replay = harmos::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "AnalyzeUpload"),
 )]
 pub struct AnalyzeUpload {
-    #[cfg(feature = "runtime")]
-    resources: std::sync::Arc<crate::resources::AnalysisResources>,
-}
-
-#[harmos::message]
-pub struct AnalyzeExchangeRequest {
     pub title: String,
 }
 
-#[harmos::operation(
-    id = "schematic_analyze_exchange", request = AnalyzeExchangeRequest, infer_request, response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
+#[harmos::operation(resources = [crate::resources::AnalysisResources], operations = [harmos::builtins::streams::Publish],
+    id = "schematic_analyze_exchange", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
     output = super::analyze::Finding,
     policy = crate::POLICY,
     visibility = harmos::operations::Visibility::Shared,
@@ -63,8 +52,7 @@ pub struct AnalyzeExchangeRequest {
     grpc(package = "schematic.v1", service = "Schematic", method = "AnalyzeExchange"),
 )]
 pub struct AnalyzeExchange {
-    #[cfg(feature = "runtime")]
-    resources: std::sync::Arc<crate::resources::AnalysisResources>,
+    pub title: String,
 }
 
 /* === Enums === */
@@ -75,14 +63,7 @@ pub struct AnalyzeExchange {
 
 #[cfg(feature = "runtime")]
 impl harmos::Operation for AnalyzeUpload {
-    type Request = AnalyzeUploadRequest;
-    type Response = super::analyze::Analysis;
     type Error = crate::Error;
-    type Endpoints = harmos::operations::StreamInput<schematic_domain::model::Snapshot>;
-
-    async fn initialize(context: harmos::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self { resources: context.dependency()? })
-    }
 
     fn classify(error: &Self::Error) -> harmos::operations::FailureKind {
         match error {
@@ -92,18 +73,30 @@ impl harmos::Operation for AnalyzeUpload {
     }
 
     async fn run(
-        &mut self, context: harmos::OperationContext, request: &mut Self::Request, endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::Response<Self::Response>, Self::Error> {
+        mut self, ctx: harmos::Context<'_, Self>,
+    ) -> Result<harmos::Response<<Self as harmos::OperationDeclaration>::Response>, Self::Error> {
+        let resources = ctx.resource::<crate::resources::AnalysisResources>();
+        let request = &mut self;
+
         if request.title.trim().is_empty() || request.title.len() > 128 {
             return Err(crate::Error::InvalidInput);
         }
-        let _permit = self.resources.analysis.acquire().await.map_err(|_| crate::Error::Unavailable)?;
+        let _permit = resources.analysis.acquire().await.map_err(|_| crate::Error::Unavailable)?;
         let mut checked = 0u32;
-        while let Some(snapshot) = endpoints.recv().await {
+        while let Some(snapshot) = ctx.streams().recv().await {
             snapshot.validate().map_err(|_| crate::Error::InvalidInput)?;
             checked = checked.checked_add(1).ok_or(crate::Error::InvalidInput)?;
             let progress = schematic_domain::model::schematic::progress::AnalysisProgress { title: request.title.clone(), checked };
-            (self.resources.publisher)(context.clone(), progress).await?;
+            ctx.operation(harmos::builtins::streams::Publish {
+                stream: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::ID.to_owned(),
+                schema: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::VERSION,
+                sequence: None,
+                published_unix_micros: None,
+                context: None,
+                payload: harmos::Message::encode(&progress),
+                following: Vec::new(),
+            })
+            .await?;
         }
         Ok(super::analyze::Analysis { checked }.into())
     }
@@ -111,15 +104,7 @@ impl harmos::Operation for AnalyzeUpload {
 
 #[cfg(feature = "runtime")]
 impl harmos::Operation for AnalyzeExchange {
-    type Request = AnalyzeExchangeRequest;
-    type Response = super::analyze::Analysis;
     type Error = crate::Error;
-    type Endpoints =
-        (harmos::operations::StreamInput<schematic_domain::model::Snapshot>, harmos::operations::StreamOutput<super::analyze::Finding>);
-
-    async fn initialize(context: harmos::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self { resources: context.dependency()? })
-    }
 
     fn classify(error: &Self::Error) -> harmos::operations::FailureKind {
         match error {
@@ -129,21 +114,34 @@ impl harmos::Operation for AnalyzeExchange {
     }
 
     async fn run(
-        &mut self, context: harmos::OperationContext, request: &mut Self::Request, endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::Response<Self::Response>, Self::Error> {
+        mut self, ctx: harmos::Context<'_, Self>,
+    ) -> Result<harmos::Response<<Self as harmos::OperationDeclaration>::Response>, Self::Error> {
+        let resources = ctx.resource::<crate::resources::AnalysisResources>();
+        let request = &mut self;
+
         if request.title.trim().is_empty() || request.title.len() > 128 {
             return Err(crate::Error::InvalidInput);
         }
-        let _permit = self.resources.analysis.acquire().await.map_err(|_| crate::Error::Unavailable)?;
+        let _permit = resources.analysis.acquire().await.map_err(|_| crate::Error::Unavailable)?;
         let mut checked = 0u32;
-        while let Some(snapshot) = endpoints.0.recv().await {
+        while let Some(snapshot) = ctx.streams().0.recv().await {
             snapshot.validate().map_err(|_| crate::Error::InvalidInput)?;
             checked = checked.checked_add(1).ok_or(crate::Error::InvalidInput)?;
-            let finding =
-                super::analyze::Finding { text: format!("{} Symbols, {} Connections", snapshot.symbols.len(), snapshot.connections.len()) };
-            endpoints.1.send_with(finding.memory_size(), || Ok(finding)).await?;
+            let finding = super::analyze::Finding {
+                text: format!("{} Symbols, {} Connections", snapshot.symbols.len(), snapshot.connections.len()),
+            };
+            ctx.streams().1.send_with(finding.memory_size(), || Ok(finding)).await?;
             let progress = schematic_domain::model::schematic::progress::AnalysisProgress { title: request.title.clone(), checked };
-            (self.resources.publisher)(context.clone(), progress).await?;
+            ctx.operation(harmos::builtins::streams::Publish {
+                stream: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::ID.to_owned(),
+                schema: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::VERSION,
+                sequence: None,
+                published_unix_micros: None,
+                context: None,
+                payload: harmos::Message::encode(&progress),
+                following: Vec::new(),
+            })
+            .await?;
         }
         Ok(super::analyze::Analysis { checked }.into())
     }

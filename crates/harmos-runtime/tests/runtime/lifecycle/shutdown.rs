@@ -74,9 +74,7 @@ struct Cancellation {
 
 struct PendingCall(Arc<Cancellation>);
 
-#[harmos_runtime::operation(request = PendingContract, infer_request,
-    id = "shutdown_pending",
-
+#[harmos_runtime::operation(id = "shutdown_pending",
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(3),
         attempt_timeout: Duration::from_secs(2),
@@ -84,32 +82,28 @@ struct PendingCall(Arc<Cancellation>);
     },
     response = (),
 )]
-struct PendingContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct PendingContract {}
+struct PendingContractDeclaration {}
 
 #[harmos_runtime::catalog]
 enum Operations {
-    PendingContract(PendingContractDeclaration),
+    PendingContractDeclaration(PendingContractDeclaration),
 }
 
 use crate::runtime::probe::Lanes;
 
-impl harmos_runtime::operations::Operation for PendingCall {
-    type Request = PendingContract;
+impl harmos_runtime::operations::Handler for PendingCall {
+    type Request = PendingContractDeclaration;
     type Response = <PendingContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::convert::Infallible;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let trace = context.dependency::<Cancellation>().expect("fixture registers its dependency");
+        let trace = context.resource::<Cancellation>().expect("fixture registers its dependency");
         Ok(Self(trace))
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _: &mut PendingContract, _: &mut (),
+        &mut self, _: harmos_runtime::OperationContext, _: &mut PendingContractDeclaration, _: &mut (),
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.0.started.notify_one();
@@ -155,12 +149,15 @@ async fn services_stop_first() {
         ))
         .await
         .unwrap();
-    let operation = runtime.operations.submit::<PendingContractDeclaration>(PendingContract {}).unwrap();
+    let operation = runtime.operations.submit::<PendingContractDeclaration>(PendingContractDeclaration {}).unwrap();
     trace.started.notified().await;
     runtime
         .operations
         .register_service(
-            harmos_runtime::services::ServiceDefinition { id: "caller".into(), policy: harmos_runtime::services::POLICY },
+            harmos_runtime::services::ServiceDefinition {
+                id: "caller".into(),
+                policy: harmos_runtime::services::POLICY,
+            },
             |_: Arc<()>| {
                 |mut context: harmos_runtime::services::ServiceContext<Editor>| async move {
                     context.ready();
@@ -199,7 +196,10 @@ async fn budget_retains_journal() {
     let release = Arc::new(Notify::new());
     let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
         .register(catalog())
-        .attach(HeldDrain { attempts: attempts.clone(), release: release.clone() })
+        .attach(HeldDrain {
+            attempts: attempts.clone(),
+            release: release.clone(),
+        })
         .runtime()
         .await
         .unwrap();
@@ -221,7 +221,10 @@ async fn shutdown_budget_shared() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let release = Arc::new(Notify::new());
     let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
-        .attach(HeldDrain { attempts: attempts.clone(), release: release.clone() })
+        .attach(HeldDrain {
+            attempts: attempts.clone(),
+            release: release.clone(),
+        })
         .runtime()
         .await
         .unwrap();

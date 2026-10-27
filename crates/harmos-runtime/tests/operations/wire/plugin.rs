@@ -26,8 +26,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 // Local Imports
 use super::cases::Text;
 use super::{
-    Compute, ComputeCall, Failed, Lanes, Operations, Owner, Parent, ParentCall, ParentOwner, ParentRequest, Request, Response, Slow,
-    SlowCall, State, request, runtime,
+    Compute, ComputeCall, Failed, Lanes, Operations, Owner, Parent, ParentCall, ParentOwner, Request, Response, Slow, SlowCall, State,
+    request, runtime,
 };
 use harmos_runtime::operations::{FailureKind, OperationDeclaration, PluginRegistration, Visibility, WireDeclaration};
 use harmos_runtime::plugin::{
@@ -46,18 +46,12 @@ type Backends = PluginBackend<Resources, Resources, Resources>;
 
 /* === Structs === */
 
-#[harmos_runtime::operation(request = Selected, infer_request,
-    id = "fixture_selected_provider",
-
+#[harmos_runtime::operation(id = "fixture_selected_provider",
     response = String,
     visibility = Visibility::Shared,
     policy = super::cases::EchoDeclaration::POLICY
 )]
-struct SelectedDeclaration;
-
-#[harmos_runtime::message]
-
-struct Selected {
+struct SelectedDeclaration {
     value: String,
 }
 
@@ -70,29 +64,19 @@ struct SelectedHost {
 }
 
 // Shares The Compute Request, Which Stays In Process.
-#[harmos_runtime::operation(request = Shared, infer_request,
-    id = "test_shared",
-
+#[harmos_runtime::operation(codec = manual, id = "test_shared",
     response = Response,
     visibility = Visibility::Shared,
     policy = Compute::POLICY,
     key = |request: &Shared| Compute::key(&request.0),
 )]
-struct SharedDeclaration;
-
 struct Shared(Request);
 
-#[harmos_runtime::operation(request = Cleanup, infer_request,
-    id = "fixture_callback_cleanup",
-
+#[harmos_runtime::operation(id = "fixture_callback_cleanup",
     response = String,
     policy = super::cases::EchoDeclaration::POLICY
 )]
-struct CleanupDeclaration;
-
-#[harmos_runtime::message]
-
-struct Cleanup {
+struct CleanupDeclaration {
     value: String,
 }
 
@@ -160,7 +144,7 @@ impl harmos_runtime::MemorySize for Shared {
     }
 }
 
-impl From<&str> for Selected {
+impl From<&str> for SelectedDeclaration {
     fn from(value: &str) -> Self {
         Self { value: value.to_owned() }
     }
@@ -170,17 +154,17 @@ struct Selecting {
     resources: Arc<SelectedOwner>,
 }
 
-impl harmos_runtime::operations::Operation for Selecting {
-    type Request = Selected;
+impl harmos_runtime::operations::Handler for Selecting {
+    type Request = SelectedDeclaration;
     type Response = <SelectedDeclaration as harmos_runtime::OperationDeclaration>::Response;
-    type Endpoints = ();
+    type StreamEndpoints = ();
     type Error = Failed;
     async fn initialize(context: harmos_runtime::OperationContext) -> std::result::Result<Self, Failed> {
-        let resources = context.dependency::<SelectedOwner>().expect("fixture registers its dependency");
+        let resources = context.resource::<SelectedOwner>().expect("fixture registers its dependency");
         Ok(Self { resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Selected, _endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut SelectedDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<harmos_runtime::operations::Response<String>, Failed> {
         let result: ::core::result::Result<String, Self::Error> =
             async move { Ok(format!("{}:{}", self.resources.0, request.value)) }.await;
@@ -243,21 +227,21 @@ struct SharedCall {
     state: State,
 }
 
-impl harmos_runtime::operations::Operation for SharedCall {
-    type Endpoints = ();
+impl harmos_runtime::operations::Handler for SharedCall {
+    type StreamEndpoints = ();
     type Request = Shared;
-    type Response = <SharedDeclaration as harmos_runtime::OperationDeclaration>::Response;
+    type Response = <Shared as harmos_runtime::OperationDeclaration>::Response;
     type Error = Failed;
     async fn initialize(context: harmos_runtime::OperationContext) -> std::result::Result<Self, Failed> {
-        let owner = context.dependency::<Owner>().expect("fixture registers its dependency");
+        let owner = context.resource::<Owner>().expect("fixture registers its dependency");
         owner.prepared.fetch_add(1, Ordering::SeqCst);
         let state = super::State { attempts: 0 };
         Ok(Self { owner, state })
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut Shared, _endpoints: &mut Self::Endpoints,
+        &mut self, context: harmos_runtime::OperationContext, request: &mut Shared, _endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<harmos_runtime::operations::Response<Response>, Failed> {
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
         let result: ::core::result::Result<Response, Self::Error> =
             async move { self.owner.compute(&request.0, &mut self.state, context).await }.await;
@@ -270,13 +254,13 @@ struct Cleaning {
     wait_cleanup: bool,
 }
 
-impl harmos_runtime::operations::Operation for Cleaning {
-    type Request = Cleanup;
+impl harmos_runtime::operations::Handler for Cleaning {
+    type Request = CleanupDeclaration;
     type Response = <CleanupDeclaration as harmos_runtime::OperationDeclaration>::Response;
-    type Endpoints = ();
+    type StreamEndpoints = ();
     type Error = Failed;
     async fn initialize(context: harmos_runtime::OperationContext) -> std::result::Result<Self, Failed> {
-        let resources = context.dependency::<CleanupOwner>().expect("fixture registers its dependency");
+        let resources = context.resource::<CleanupOwner>().expect("fixture registers its dependency");
         // The Deadline Passes Before Construction Returns (Paused Clock Only).
         let wait_cleanup = resources.expire.load(Ordering::SeqCst);
         if wait_cleanup {
@@ -285,7 +269,7 @@ impl harmos_runtime::operations::Operation for Cleaning {
         Ok(Self { resources, wait_cleanup })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Cleanup, _endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut CleanupDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<harmos_runtime::operations::Response<String>, Failed> {
         let result: ::core::result::Result<String, Self::Error> = async move {
             self.wait_cleanup |= request.value == "block";
@@ -319,7 +303,10 @@ impl PluginLifecycle for Host {
     type Embedded = Resources;
 
     fn prepare(&mut self, _definition: &PluginDefinition) -> Result<Backends> {
-        Ok(PluginBackend::Embedded(Resources { drop_receipt: self.drop_receipt.clone(), ..Resources::default() }))
+        Ok(PluginBackend::Embedded(Resources {
+            drop_receipt: self.drop_receipt.clone(),
+            ..Resources::default()
+        }))
     }
 
     async fn fence(&mut self, _transition: PluginTransition, _affected: &[PluginDefinition]) -> Result<()> {
@@ -337,7 +324,7 @@ impl PluginLifecycle for Host {
         if definition.id != "fixture" {
             if self.call_during_setup && definition.id == "client" {
                 // Source is staged; its declared provider was committed earlier.
-                assert_eq!(self.operations.caller(&caller)?.call::<SharedDeclaration>(Shared(request())).await?.value, 7);
+                assert_eq!(self.operations.caller(&caller)?.call::<Shared>(Shared(request())).await?.value, 7);
             }
             return Ok(());
         }
@@ -386,7 +373,7 @@ impl PluginLifecycle for Host {
                     dependencies.insert(self.owner.clone()).unwrap();
                     dependencies
                 })
-                .implementation::<SharedDeclaration, SharedCall>(),
+                .implementation::<Shared, SharedCall>(),
                 Lanes::Serial,
             ))?;
             bindings.register(harmos_runtime::RegistrationExt::lane(
@@ -410,7 +397,10 @@ impl PluginLifecycle for Host {
             resources.registration.take();
         }
         if self.fail_start {
-            return Err(Error::InvalidInput { field: "test activation", reason: "scripted initialization failure" });
+            return Err(Error::InvalidInput {
+                field: "test activation",
+                reason: "scripted initialization failure",
+            });
         }
         Ok(())
     }
@@ -446,7 +436,14 @@ impl Credit {
             .operations
             .capture_callback(scope, &WireDeclaration::of::<super::cases::EchoDeclaration>().contract().unwrap())
             .unwrap();
-        Self { runtime, manager, host, cleanup, target, echo }
+        Self {
+            runtime,
+            manager,
+            host,
+            cleanup,
+            target,
+            echo,
+        }
     }
 
     fn assert_held(&self) {
@@ -486,8 +483,14 @@ impl Running {
         manager.initialize(&mut host).await.unwrap();
         let opened = Arc::new(tokio::sync::Notify::new());
         let gate = Arc::new(tokio::sync::Notify::new());
-        let invocation =
-            runtime.operation(super::Request { gate: Some((opened.clone(), gate.clone())), ..request() }).start().await.unwrap();
+        let invocation = runtime
+            .operation(super::Request {
+                gate: Some((opened.clone(), gate.clone())),
+                ..request()
+            })
+            .start()
+            .await
+            .unwrap();
         opened.notified().await;
         Self { runtime, manager, host, gate, invocation }
     }
@@ -538,7 +541,7 @@ fn selected_candidate(provider: &str, first: bool) -> PluginDefinitions {
 fn candidate() -> PluginDefinitions {
     let mut operations = harmos_runtime::operations::Declarations::of::<Operations>().unwrap();
     operations.extend(harmos_runtime::operations::Declarations::of::<super::cases::Operations>().unwrap());
-    operations.push(harmos_runtime::operations::OperationDefinition::of::<SharedDeclaration>().unwrap());
+    operations.push(harmos_runtime::operations::OperationDefinition::of::<Shared>().unwrap());
     operations.push(harmos_runtime::operations::OperationDefinition::of::<Parent>().unwrap());
     PluginDefinitions::new(
         [PluginDefinition {
@@ -547,7 +550,10 @@ fn candidate() -> PluginDefinitions {
             artifact: PluginArtifact::Embedded { revision: "fixture".into() },
             requires: Vec::new(),
             configuration: b"null".to_vec(),
-            contributions: PluginContributions { operations, ..PluginContributions::default() },
+            contributions: PluginContributions {
+                operations,
+                ..PluginContributions::default()
+            },
         }],
         [],
     )
@@ -566,7 +572,13 @@ fn with_clients(client_requires_provider: bool) -> PluginDefinitions {
         id: id.into(),
         version: "1.0.0".parse().unwrap(),
         artifact: PluginArtifact::Embedded { revision: "fixture".into() },
-        requires: requires.into_iter().map(|id| Requirement { id: id.into(), version: "*".parse().unwrap() }).collect(),
+        requires: requires
+            .into_iter()
+            .map(|id| Requirement {
+                id: id.into(),
+                version: "*".parse().unwrap(),
+            })
+            .collect(),
         configuration: b"null".to_vec(),
         contributions: PluginContributions::default(),
     });

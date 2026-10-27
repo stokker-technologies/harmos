@@ -22,8 +22,6 @@ use harmos_domain::Message;
 use harmos_sidecar::Frame;
 use harmos_sidecar::transport::{self, Connection, Io, Packet, Role};
 
-use super::protocol::EchoOperation;
-
 /* === Constants === */
 
 /* === Macros === */
@@ -51,8 +49,15 @@ fn io(stream: DuplexStream) -> Io {
 async fn split_write_matches() {
     for length in [0, 1, 127, 128, 4096] {
         for frame in [
-            Frame::Call { id: 128, method: "call".into(), params: vec![17; length].into() },
-            Frame::Push { method: "push".into(), params: vec![17; length].into() },
+            Frame::Call {
+                id: 128,
+                method: "call".into(),
+                params: vec![17; length].into(),
+            },
+            Frame::Push {
+                method: "push".into(),
+                params: vec![17; length].into(),
+            },
             Frame::Answer { id: 128, result: vec![17; length].into() },
         ] {
             let packet = Packet::Frame(frame);
@@ -71,8 +76,15 @@ async fn split_write_matches() {
 async fn buffered_exit_precedes() {
     let (data, mut peer_data) = tokio::io::duplex(1024);
     let (control, _peer_control) = tokio::io::duplex(64);
-    let Connection { sender: _sender, mut receiver, mut driver } = Connection::new(io(data), io(control));
-    let exit = Frame::Push { method: "exiting".to_owned(), params: b"recording complete".to_vec().into() };
+    let Connection {
+        sender: _sender,
+        mut receiver,
+        mut driver,
+    } = Connection::new(io(data), io(control));
+    let exit = Frame::Push {
+        method: "exiting".to_owned(),
+        params: b"recording complete".to_vec().into(),
+    };
     transport::write(&mut peer_data, &Packet::Frame(exit.clone())).await.unwrap();
     drop(peer_data);
 
@@ -149,13 +161,25 @@ async fn cancelled_borrow_resumes() {
 async fn consumed_credit_recycles() {
     let (left_data, right_data) = tokio::io::duplex(65536);
     let (left_control, right_control) = tokio::io::duplex(64);
-    let Connection { sender: left, receiver: left_receiver, driver: mut left_driver } = Connection::new(io(left_data), io(left_control));
-    let Connection { sender: right, receiver: mut right_receiver, driver: mut right_driver } =
-        Connection::new(io(right_data), io(right_control));
+    let Connection {
+        sender: left,
+        receiver: left_receiver,
+        driver: mut left_driver,
+    } = Connection::new(io(left_data), io(left_control));
+    let Connection {
+        sender: right,
+        receiver: mut right_receiver,
+        driver: mut right_driver,
+    } = Connection::new(io(right_data), io(right_control));
     let left_task = tokio::spawn(async move { left_driver.run().await });
     let right_task = tokio::spawn(async move { right_driver.run().await });
     for id in 0..40 {
-        left.send(Frame::Answer { id, result: vec![id as u8; 1024 * 1024].into() }).await.unwrap();
+        left.send(Frame::Answer {
+            id,
+            result: vec![id as u8; 1024 * 1024].into(),
+        })
+        .await
+        .unwrap();
         let received = right_receiver.receive().await.unwrap().unwrap();
         let Frame::Answer { id: actual, result } = received.frame else {
             panic!("unexpected frame");
@@ -197,7 +221,16 @@ async fn cancellation_queue_order() {
     transport::write(&mut peer_control, &Packet::Cancellation { id: 9, preceding: 2 }).await.unwrap();
     assert_eq!(receiver.receive().await.unwrap().unwrap().frame, Frame::Cancel { id: 9 });
     for (id, cancelled) in [(40, false), (9, true)] {
-        transport::write(&mut peer_data, &Packet::Frame(Frame::Call { id, method: "test".into(), params: vec![].into() })).await.unwrap();
+        transport::write(
+            &mut peer_data,
+            &Packet::Frame(Frame::Call {
+                id,
+                method: "test".into(),
+                params: vec![].into(),
+            }),
+        )
+        .await
+        .unwrap();
         let received = receiver.receive().await.unwrap().unwrap();
         assert_eq!(received.cancelled, cancelled);
         drop(received.frame);
@@ -230,8 +263,8 @@ async fn future_cancellations_refused() {
 
 #[tokio::test]
 async fn binary_sdk_lifecycle() {
-    use super::protocol::{Echo, TransportPlugin};
-    use harmos_operations::lifecycle::{Initialize, InitializeRequest, Shutdown};
+    use super::protocol::{EchoOperation, TransportPlugin};
+    use harmos_operations::lifecycle::{Initialize, Shutdown};
     use harmos_sidecar::Message;
     use harmos_sidecar::operations::{OperationDeclaration, WireAnswer, WireCommand};
     use std::num::NonZeroUsize;
@@ -245,17 +278,25 @@ async fn binary_sdk_lifecycle() {
     let Connection { sender, mut receiver, mut driver } = Connection::new(io(host_data), io(host_control));
     let driving = tokio::spawn(async move { driver.run().await });
     sender
-        .send(Frame::Call { id: 0, method: Frame::REGISTER.to_owned(), params: "throughput_fixture".to_owned().encode().into() })
+        .send(Frame::Call {
+            id: 0,
+            method: Frame::REGISTER.to_owned(),
+            params: "throughput_fixture".to_owned().encode().into(),
+        })
         .await
         .unwrap();
     let registration = receiver.receive().await.unwrap().unwrap();
     assert!(matches!(registration.frame, Frame::Answer { id: 0, .. }));
     registration.consumption.unwrap().consumed().unwrap();
-    let initialization = InitializeRequest { config_json: b"null".to_vec(), generation_context: Vec::new(), assignments: Vec::new() };
+    let initialization = Initialize {
+        config_json: b"null".to_vec(),
+        generation_context: Vec::new(),
+        assignments: Vec::new(),
+    };
     binary_invoke::<Initialize>(&sender, &mut receiver, 1, initialization.encode()).await;
-    let request = Echo { nonce: 7, payload: vec![42; 65536] };
+    let request = EchoOperation { nonce: 7, payload: vec![42; 65536] };
     let result = binary_invoke::<EchoOperation>(&sender, &mut receiver, 2, request.encode()).await;
-    assert_eq!(Echo::decode(&result).unwrap(), request);
+    assert_eq!(EchoOperation::decode(&result).unwrap(), request);
     binary_invoke::<Shutdown>(&sender, &mut receiver, 3, Vec::new()).await;
     assert!(matches!(
         binary_phase(
@@ -295,7 +336,11 @@ async fn cancelled_call_skipped() {
     for id in [77, 88] {
         transport::write(
             &mut peer_data,
-            &Packet::Frame(Frame::Call { id, method: Frame::REGISTER.into(), params: "throughput_fixture".to_owned().encode().into() }),
+            &Packet::Frame(Frame::Call {
+                id,
+                method: Frame::REGISTER.into(),
+                params: "throughput_fixture".to_owned().encode().into(),
+            }),
         )
         .await
         .unwrap();
@@ -311,7 +356,14 @@ async fn binary_phase(
     sender: &transport::Sender, receiver: &mut transport::Receiver, command: harmos_sidecar::operations::WireCommand,
 ) -> harmos_sidecar::operations::WireAnswer {
     use harmos_sidecar::operations::{WIRE_METHOD, WireAnswer};
-    sender.send(Frame::Call { id: 1, method: WIRE_METHOD.into(), params: command.encode().unwrap().into() }).await.unwrap();
+    sender
+        .send(Frame::Call {
+            id: 1,
+            method: WIRE_METHOD.into(),
+            params: command.encode().unwrap().into(),
+        })
+        .await
+        .unwrap();
     let received = receiver.receive().await.unwrap().unwrap();
     let Frame::Answer { id: 1, result } = received.frame else {
         panic!("phase was not answered");
@@ -338,8 +390,16 @@ async fn binary_invoke<D: harmos_domain::operations::OperationDeclaration>(
     ] {
         assert!(matches!(binary_phase(sender, receiver, command).await, WireAnswer::Ready { .. }));
     }
-    let WireAnswer::Ready { payload } =
-        binary_phase(sender, receiver, WireCommand::Attempt { invocation, context: [0; 32], values: Vec::new() }).await
+    let WireAnswer::Ready { payload } = binary_phase(
+        sender,
+        receiver,
+        WireCommand::Attempt {
+            invocation,
+            context: [0; 32],
+            values: Vec::new(),
+        },
+    )
+    .await
     else {
         panic!("attempt failed");
     };

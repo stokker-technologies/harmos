@@ -23,7 +23,7 @@ use std::time::Duration;
 use super::operations::{Calling, Lanes, Managed};
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener};
 use harmos_runtime::Message;
-use harmos_runtime::operations::{Operation, OperationDeclaration, OperationPolicy, RetryPolicy, WireTable};
+use harmos_runtime::operations::{Handler, OperationDeclaration, OperationPolicy, RetryPolicy, WireTable};
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -35,7 +35,7 @@ static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Probe>>> = Mutex::new
 
 /* === Type Aliases === */
 
-// The Callback Operation Is The Delivery Of Its Listener.
+// The Callback Handler Is The Delivery Of Its Listener.
 type Observe = harmos_runtime::listeners::Callback<Observed>;
 
 /* === Structs === */
@@ -163,21 +163,26 @@ struct Observing {
     resources: Arc<Probe>,
 }
 
-impl Operation for Observing {
+impl Handler for Observing {
     type Request = <Observe as harmos_runtime::OperationDeclaration>::Request;
     type Response = <Observe as harmos_runtime::OperationDeclaration>::Response;
 
     type Error = Refusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
-        let resources = context.dependency::<Probe>().expect("fixture dependency");
+        let resources = context.resource::<Probe>().expect("fixture dependency");
         Ok(Self { resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Delivery<Observed>, _endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Delivery<Observed>, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
         let result: ::core::result::Result<(), Self::Error> = async move {
-            assert_eq!(request.context(), DeliveryContext::Record { position: harmos_runtime::state::Position(1) });
+            assert_eq!(
+                request.context(),
+                DeliveryContext::Record {
+                    position: harmos_runtime::state::Position(1)
+                }
+            );
             self.resources.active.fetch_add(1, Ordering::SeqCst);
             self.resources.entered.notify_one();
             let _active = InFlight(&self.resources);
@@ -200,7 +205,13 @@ impl Operation for Observing {
 /* === Private Functions === */
 
 fn delivered(value: u32) -> Delivery<Observed> {
-    Delivery::new(DeliveryContext::Record { position: harmos_runtime::state::Position(1) }, Observation { value }).unwrap()
+    Delivery::new(
+        DeliveryContext::Record {
+            position: harmos_runtime::state::Position(1),
+        },
+        Observation { value },
+    )
+    .unwrap()
 }
 
 #[tokio::test]

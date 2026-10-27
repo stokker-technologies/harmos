@@ -24,7 +24,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery};
-use harmos_runtime::operations::{Operation, OperationPolicy, RetryPolicy, WireTable};
+use harmos_runtime::operations::{Handler, OperationPolicy, RetryPolicy, WireTable};
 use harmos_runtime::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -67,17 +67,11 @@ pub struct Receiver {
     state: Arc<State>,
 }
 
-#[harmos_runtime::operation(request = Progress, infer_request,
-    id = "progress",
-
+#[harmos_runtime::operation(id = "progress",
     policy = POLICY,
     response = Acknowledged,
 )]
-pub struct ProgressDeclaration;
-
-#[harmos_runtime::message]
-
-pub struct Progress {
+pub struct ProgressDeclaration {
     pub expected: u64,
 }
 
@@ -102,7 +96,7 @@ pub struct Listener;
 #[harmos_runtime::catalog]
 pub enum Callbacks {
     Consume(harmos_runtime::listeners::Callback<Listener>),
-    Progress(ProgressDeclaration),
+    ProgressDeclaration(ProgressDeclaration),
 }
 
 #[harmos_runtime::catalog]
@@ -160,18 +154,18 @@ impl harmos_runtime::Plugin for Receiver {
     }
 }
 
-impl Operation for Consumption {
+impl Handler for Consumption {
     type Request = <harmos_runtime::listeners::Callback<Listener> as harmos_runtime::OperationDeclaration>::Request;
     type Response = <harmos_runtime::listeners::Callback<Listener> as harmos_runtime::OperationDeclaration>::Response;
 
     type Error = Refusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
-        let state = context.dependency::<State>().expect("fixture dependency");
+        let state = context.resource::<State>().expect("fixture dependency");
         Ok(Self { state })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, row: &mut Delivery<Listener>, _endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, row: &mut Delivery<Listener>, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             if !matches!(row.context(), DeliveryContext::Stream { .. }) {
@@ -192,24 +186,28 @@ impl Operation for Consumption {
     }
 }
 
-impl Operation for Reporting {
-    type Request = Progress;
+impl Handler for Reporting {
+    type Request = ProgressDeclaration;
     type Response = <ProgressDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Refusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
-        let state = context.dependency::<State>().expect("fixture registers its dependency");
+        let state = context.resource::<State>().expect("fixture registers its dependency");
         Ok(Self { state })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Progress, _endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut ProgressDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Acknowledged>, Refusal> {
         let result: ::core::result::Result<Acknowledged, Self::Error> = async move {
             loop {
                 let changed = self.state.changed.notified();
                 let rows = self.state.rows.load(Ordering::SeqCst);
                 if rows >= request.expected {
-                    return Ok(Acknowledged { process_id: std::process::id(), rows, bytes: self.state.bytes.load(Ordering::SeqCst) });
+                    return Ok(Acknowledged {
+                        process_id: std::process::id(),
+                        rows,
+                        bytes: self.state.bytes.load(Ordering::SeqCst),
+                    });
                 }
                 changed.await;
             }

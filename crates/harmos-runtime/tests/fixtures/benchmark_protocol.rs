@@ -23,7 +23,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::operations::{Operation, RetryPolicy, Visibility};
+use harmos_runtime::operations::{Handler, RetryPolicy, Visibility};
 
 /* === Constants === */
 
@@ -35,8 +35,7 @@ use harmos_runtime::operations::{Operation, RetryPolicy, Visibility};
 
 pub struct Model;
 
-#[harmos_runtime::operation(request = Echo, infer_request,
-    id = "benchmark_echo",  response = Payload,
+#[harmos_runtime::operation(id = "benchmark_echo",  response = Payload,
     visibility = Visibility::Shared,
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30), attempt_timeout: Duration::from_secs(30),
@@ -44,11 +43,7 @@ pub struct Model;
     },
     grpc(package = "benchmark.v1", service = "Commands", method = "Echo"),
 )]
-pub struct EchoDeclaration;
-
-#[harmos_runtime::message]
-
-pub struct Echo {
+pub struct EchoDeclaration {
     pub bytes: Vec<u8>,
 }
 
@@ -80,18 +75,18 @@ impl harmos_runtime::Application for Model {
     type Resources = ();
 }
 
-impl Operation for Echoing {
-    type Request = Echo;
+impl Handler for Echoing {
+    type Request = EchoDeclaration;
     type Response = <EchoDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Infallible;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(_context: harmos_runtime::OperationContext) -> Result<Self, Infallible> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Echo, _: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut EchoDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Payload>, Infallible> {
         let bytes = std::mem::take(&mut request.bytes);
         Ok(Payload { bytes }.into())
@@ -106,8 +101,14 @@ pub fn wire_settings() -> harmos_runtime::grpc::server::Settings {
     let direction = harmos_runtime::operations::StreamSettings { items: nz(16), bytes };
     harmos_runtime::grpc::server::Settings {
         calls: nz(64),
-        decode: harmos_runtime::grpc::DecodeSettings { message_bytes: message, retained_bytes: bytes },
-        encode: harmos_runtime::grpc::EncodeSettings { message_bytes: message, buffer_bytes: nz(8192) },
+        decode: harmos_runtime::grpc::DecodeSettings {
+            message_bytes: message,
+            retained_bytes: bytes,
+        },
+        encode: harmos_runtime::grpc::EncodeSettings {
+            message_bytes: message,
+            buffer_bytes: nz(8192),
+        },
         input: direction,
         output: direction,
         opening_timeout: Duration::from_secs(5),

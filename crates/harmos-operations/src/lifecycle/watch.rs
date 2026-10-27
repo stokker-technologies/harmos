@@ -25,8 +25,16 @@ use harmos_domain::operations::instance::Id;
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, resources = [harmos_sdk::operations::instances::InstanceAccess], id = "host.operations.watch", response = super::InstanceState, output = super::InstanceState, policy = super::WATCH_POLICY, visibility = harmos_domain::operations::Visibility::Shared,
-    grpc(package = "harmos.host.v1", service = "Operations", method = "Watch"))]
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [harmos_sdk::operations::instances::InstanceAccess],
+    id = "host.operations.watch",
+    response = super::InstanceState,
+    output = super::InstanceState,
+    policy = super::WATCH_POLICY,
+    visibility = harmos_domain::operations::Visibility::Shared,
+    grpc(package = "harmos.host.v1", service = "Operations", method = "Watch"),
+)]
 #[derive(Clone, Default, PartialEq)]
 pub struct Watch {
     pub instance: u64,

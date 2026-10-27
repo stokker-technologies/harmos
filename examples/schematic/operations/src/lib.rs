@@ -27,12 +27,11 @@ pub mod resources;
 #[cfg(feature = "runtime")]
 pub use error::Error;
 
-pub use directories::list_directories::{ListDirectories, ListDirectoriesRequest};
-pub use schematic::analyze::AnalyzeSchematicRequest;
-pub use schematic::propose::ProposeRouteRequest;
-pub use schematic::streaming::{AnalyzeExchange, AnalyzeExchangeRequest, AnalyzeUpload, AnalyzeUploadRequest};
-pub use schematic::validate::ValidateSchematicRequest;
-pub use schematic::{AnalyzeSchematic, ProposeRoute, ValidateSchematic};
+pub use directories::list_directories::ListDirectories;
+pub use schematic::analyze::AnalyzeSchematic;
+pub use schematic::propose::ProposeRoute;
+pub use schematic::streaming::{AnalyzeExchange, AnalyzeUpload};
+pub use schematic::validate::ValidateSchematic;
 
 /* === Imports === */
 
@@ -73,11 +72,6 @@ pub enum Native {
     ListDirectories(ListDirectories),
     AnalyzeUpload(AnalyzeUpload),
     AnalyzeExchange(AnalyzeExchange),
-}
-
-#[harmos::catalog]
-pub enum Requires {
-    Publish(harmos::builtins::streams::Publish),
 }
 
 /* === Traits === */

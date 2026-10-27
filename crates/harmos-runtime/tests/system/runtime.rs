@@ -60,7 +60,13 @@ struct Reading {
 async fn saved(storage: &StorageManager, schema: &SchemaKey) -> Vec<(String, i64)> {
     let query = harmos_runtime::storage::Query {
         at: storage.cursor_saved(),
-        source: Source::Records(RecordSelection { schema: schema.clone(), scope: None, item: None, source_start: None, source_end: None }),
+        source: Source::Records(RecordSelection {
+            schema: schema.clone(),
+            scope: None,
+            item: None,
+            source_start: None,
+            source_end: None,
+        }),
         transforms: Vec::new(),
         slice: RowSlice::default(),
     };
@@ -99,7 +105,10 @@ async fn runtime_baseline_walks() {
     let _report = crate::report::system();
     // Boot The Host Over A Journal On Disk
     let root = tempfile::tempdir().unwrap();
-    let settings = JsonStorageSettings { root: root.path().to_path_buf(), max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() };
+    let settings = JsonStorageSettings {
+        root: root.path().to_path_buf(),
+        max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+    };
     let data = JsonStorage::new(settings.clone(), history());
     let backends = data.into_backends(state_settings());
     let storage: StorageManager = StorageManager::new(backends, config()).unwrap();
@@ -122,7 +131,7 @@ async fn runtime_baseline_walks() {
         .await
         .unwrap();
     let catalogue = served(&runtime);
-    for required in ["storage_query", "storage_write_records", "storage_read_file"] {
+    for required in ["storage.query", "storage.write_records", "storage.read_file"] {
         assert!(catalogue.iter().any(|id| id == required), "missing {required}");
     }
 

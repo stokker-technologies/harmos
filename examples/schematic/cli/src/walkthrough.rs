@@ -25,7 +25,7 @@ use std::path::Path;
 use crate::Result;
 use harmos::{state::Focus, state::PrincipalId};
 use schematic_app::domain::model;
-use schematic_app::operations::{ProposeRouteRequest, ValidateSchematicRequest};
+use schematic_app::operations::{ProposeRoute, ValidateSchematic};
 use schematic_app::state::{NetId, NetName, PinRef, Point, Rotation, SymbolId};
 use schematic_app::transactions::net::{ApplyRoute, ConnectPins};
 use schematic_app::transactions::symbol::{MoveSymbol, PlaceSymbol};
@@ -107,8 +107,18 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
     let state = runtime.state.as_principal(principal.clone());
 
     // Place And Connect Two Symbols
-    let resistor = PlaceSymbol { symbol: SymbolId(1), reference: "R1".to_owned(), at: Point::new(10, 20), rotation: Rotation::Zero };
-    let controller = PlaceSymbol { symbol: SymbolId(2), reference: "U1".to_owned(), at: Point::new(60, 40), rotation: Rotation::Zero };
+    let resistor = PlaceSymbol {
+        symbol: SymbolId(1),
+        reference: "R1".to_owned(),
+        at: Point::new(10, 20),
+        rotation: Rotation::Zero,
+    };
+    let controller = PlaceSymbol {
+        symbol: SymbolId(2),
+        reference: "U1".to_owned(),
+        at: Point::new(60, 40),
+        rotation: Rotation::Zero,
+    };
     state.commit(resistor).await?;
     state.commit(controller).await?;
     let connection = ConnectPins {
@@ -117,7 +127,10 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
         pins: BTreeSet::from([PinRef::new(SymbolId(1), 1), PinRef::new(SymbolId(2), 1)]),
     };
     state.commit(connection).await?;
-    let movement = MoveSymbol { symbol: SymbolId(1), to: Point::new(20, 20) };
+    let movement = MoveSymbol {
+        symbol: SymbolId(1),
+        to: Point::new(20, 20),
+    };
     state.commit(movement).await?;
     println!("Placed R1 and U1, connected POWER, moved R1");
 
@@ -133,13 +146,16 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
         })
         .collect();
     let schematic = model::Snapshot { symbols, connections };
-    let validation = ValidateSchematicRequest { schematic: schematic.clone() };
+    let validation = ValidateSchematic { schematic: schematic.clone() };
     let validation = runtime.operation(validation).run().await?;
     println!("Validation: {} diagnostics", validation.diagnostics.len());
 
     let from = snapshot.symbol(SymbolId(1)).position;
     let to = snapshot.symbol(SymbolId(2)).position;
-    let request = ProposeRouteRequest { from: model::Point { x: from.x, y: from.y }, to: model::Point { x: to.x, y: to.y } };
+    let request = ProposeRoute {
+        from: model::Point { x: from.x, y: from.y },
+        to: model::Point { x: to.x, y: to.y },
+    };
     let proposed = runtime.operation(request).run().await?;
     let points = proposed.points.iter().map(|point| Point::new(point.x, point.y)).collect();
     let change = ApplyRoute { net: NetId(1), points };

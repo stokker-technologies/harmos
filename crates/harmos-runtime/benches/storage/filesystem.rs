@@ -19,9 +19,9 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 // Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
-use harmos_operations::storage::{CaptureFileRequest, FollowFileRequest, HashFileRequest, ReadFileRequest};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::{ByteRange, CaptureConsistency, FileMetadata, FileSource, FollowStart};
+use harmos_runtime::storage::{FileCapture, FileFollow, FileRead};
 use sha2::{Digest, Sha256};
 // Local Imports
 use super::fixture::Fixture;
@@ -64,7 +64,7 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                             let input = if location == "stored" {
                                 let reference = fixture
                                     .storage
-                                    .capture_file(CaptureFileRequest {
+                                    .capture_file(FileCapture {
                                         source: FileSource::Local(path.clone()),
                                         range: range(),
                                         metadata: metadata("source", expected),
@@ -79,7 +79,7 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                             match action {
                                 "hash" => {
                                     let started = Instant::now();
-                                    let hash = fixture.storage.hash_file(HashFileRequest { source: input, range: range() }).await.unwrap();
+                                    let hash = fixture.storage.hash_file(FileRead { source: input, range: range() }).await.unwrap();
                                     elapsed += started.elapsed();
                                     assert_eq!(hash.bytes_read, FILE_BYTES as u64);
                                     assert_eq!(hash.sha256, expected);
@@ -88,7 +88,7 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                                     let started = Instant::now();
                                     let reference = fixture
                                         .storage
-                                        .capture_file(CaptureFileRequest {
+                                        .capture_file(FileCapture {
                                             source: input,
                                             range: range(),
                                             metadata: metadata("captured", expected),
@@ -101,15 +101,17 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                                     assert_eq!(reference.sha256, expected);
                                     let hash = fixture
                                         .storage
-                                        .hash_file(HashFileRequest { source: FileSource::Stored(reference), range: range() })
+                                        .hash_file(FileRead {
+                                            source: FileSource::Stored(reference),
+                                            range: range(),
+                                        })
                                         .await
                                         .unwrap();
                                     assert_eq!(hash.sha256, expected);
                                 }
                                 "read" => {
                                     let started = Instant::now();
-                                    let mut reader =
-                                        fixture.storage.read_file(ReadFileRequest { source: input, range: range() }).await.unwrap();
+                                    let mut reader = fixture.storage.read_file(FileRead { source: input, range: range() }).await.unwrap();
                                     elapsed += started.elapsed();
                                     let mut hash = Sha256::new();
                                     let mut count = 0_u64;
@@ -129,7 +131,10 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                                     let started = Instant::now();
                                     let mut reader = fixture
                                         .storage
-                                        .follow_file(FollowFileRequest { source: input, start: FollowStart::Beginning })
+                                        .follow_file(FileFollow {
+                                            source: input,
+                                            start: FollowStart::Beginning,
+                                        })
                                         .await
                                         .unwrap();
                                     elapsed += started.elapsed();

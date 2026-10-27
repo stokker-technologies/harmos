@@ -28,7 +28,7 @@ use tokio::sync::Semaphore;
 use super::{Lanes, app::App};
 use harmos_runtime::Runtime;
 use harmos_runtime::grpc::Event;
-use harmos_runtime::operations::{Operation, OperationPhase, RetryPolicy};
+use harmos_runtime::operations::{Handler, OperationPhase, RetryPolicy};
 
 /* === Constants === */
 
@@ -36,13 +36,11 @@ use harmos_runtime::operations::{Operation, OperationPhase, RetryPolicy};
 
 /* === Type Aliases === */
 
-type Request = Produce;
+type Request = ProduceDeclaration;
 
 /* === Structs === */
 
-#[harmos_runtime::operation(request = Produce, infer_request,
-    id = "grpc_produce",
-
+#[harmos_runtime::operation(id = "grpc_produce",
     response = u32,
     output = u32,
     policy = harmos_runtime::OperationPolicy {
@@ -51,14 +49,11 @@ type Request = Produce;
         retries: RetryPolicy::Never,
     }
 )]
-struct ProduceDeclaration;
-
-#[harmos_runtime::message]
-
-struct Produce {
+struct ProduceDeclaration {
     count: u32,
     fail: bool,
 }
+
 struct Trace {
     attempting: Semaphore,
     finalizing: Semaphore,
@@ -94,18 +89,18 @@ impl harmos_runtime::operations::middleware::Middleware for Observe {
 
 /* === Implementations === */
 
-impl Operation for Production {
-    type Request = Produce;
+impl Handler for Production {
+    type Request = ProduceDeclaration;
     type Response = <ProduceDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
-    type Endpoints = harmos_runtime::operations::StreamOutput<u32>;
+    type StreamEndpoints = harmos_runtime::operations::StreamOutput<u32>;
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let trace = context.dependency::<Trace>().expect("fixture registers its dependency");
+        let trace = context.resource::<Trace>().expect("fixture registers its dependency");
         trace.constructed.fetch_add(1, Ordering::SeqCst);
         Ok(Self { trace })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Request, sender: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Request, sender: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<u32>, Self::Error> {
         let result: ::core::result::Result<u32, Self::Error> = async move {
             for value in 0..request.count {

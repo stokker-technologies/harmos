@@ -76,8 +76,9 @@ mod runtime {
     impl harmos::Operation for Greet {
         type Error = std::io::Error;
 
-        async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<<Self as harmos::OperationDeclaration>::Response>, Self::Error> {
-
+        async fn run(
+            self, _: harmos::Context<'_, Self>,
+        ) -> Result<harmos::Response<<Self as harmos::OperationDeclaration>::Response>, Self::Error> {
             Ok(crate::domain::model::greeting::Greeting::for_name(&self.name).into())
         }
     }
@@ -87,5 +88,4 @@ mod runtime {
     /* === Private Functions === */
 
     /* === Tests === */
-
 }

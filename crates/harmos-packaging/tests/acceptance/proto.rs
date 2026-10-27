@@ -26,7 +26,7 @@ use prost_reflect::DescriptorPool;
 
 // Local Imports
 
-use contracts::{Annotated, Boxed, Delivered, Envelope, Portable, Routes, annotated};
+use contracts::{AnnotatedOperation, Boxed, Delivered, EnvelopeOperation, Portable, Routes, annotated};
 use harmos_domain::operations::Contracts;
 use harmos_packaging::proto::{self, Artifacts};
 use harmos_sdk::grpc::{self, DecodeInput};
@@ -72,14 +72,14 @@ fn portable_messages_cross() {
     use harmos_domain::Message;
     let value = annotated();
     let postcard = Message::encode(&value);
-    assert!(<Annotated as Message>::decode(&postcard).unwrap() == value);
+    assert!(<AnnotatedOperation as Message>::decode(&postcard).unwrap() == value);
     let protobuf = {
         let mut bytes = Vec::new();
         grpc::encode(&value, &mut bytes).unwrap();
         bytes
     };
-    assert!(grpc::decode::<Annotated>(DecodeInput::new(&protobuf)).unwrap() == value);
-    assert!(grpc::prepare::<Annotated>(DecodeInput::new(&protobuf)).map(|prepared| prepared.memory()).is_ok());
+    assert!(grpc::decode::<AnnotatedOperation>(DecodeInput::new(&protobuf)).unwrap() == value);
+    assert!(grpc::prepare::<AnnotatedOperation>(DecodeInput::new(&protobuf)).map(|prepared| prepared.memory()).is_ok());
     let contracts = Contracts::of::<Portable>().unwrap();
     let artifacts = Artifacts::new(&contracts).unwrap();
     let target = tempfile::tempdir().unwrap();
@@ -97,10 +97,13 @@ fn portable_messages_cross() {
 #[test]
 fn boxed_messages_cross() {
     use harmos_domain::Message;
-    let request = Envelope { inner: Box::new(annotated()), sequence: 3 };
+    let request = EnvelopeOperation {
+        inner: Box::new(annotated()),
+        sequence: 3,
+    };
     let response = Delivered::Boxed(Box::new(annotated()));
     let postcard = Message::encode(&request);
-    assert!(<Envelope as Message>::decode(&postcard).unwrap() == request);
+    assert!(<EnvelopeOperation as Message>::decode(&postcard).unwrap() == request);
     let protobuf = {
         let mut bytes = Vec::new();
         grpc::encode(&response, &mut bytes).unwrap();
@@ -126,7 +129,7 @@ fn boxed_messages_cross() {
     use harmos_domain::schema::Described;
     use harmos_packaging::proto::reflection;
     let settings = harmos_domain::config::SchemaSettings::default();
-    let graph = harmos_domain::schema::graph::Schema::from_declaration(Envelope::DEFINITION, &settings).unwrap();
+    let graph = harmos_domain::schema::graph::Schema::from_declaration(EnvelopeOperation::DEFINITION, &settings).unwrap();
     let envelope = reflection::descriptor_schema(&graph, "test.v1", &settings).unwrap();
     let inner = envelope.get_field_by_name("inner").unwrap();
     assert!(!inner.is_list());

@@ -29,20 +29,14 @@ use super::*;
 /* === Structs === */
 
 struct WireClient;
-#[harmos_runtime::operation(request = WireCall, infer_request,
-    harmos_path = harmos_runtime,
+#[harmos_runtime::operation(harmos_path = harmos_runtime,
     id = "run",
-
     response = String,
     visibility = Visibility::Shared,
     policy = Run::<1, 100, false>::POLICY,
     grpc(package = "fixture.embedded.v1", service = "Client", method = "Run"),
 )]
-struct WireCallDeclaration;
-
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-
-struct WireCall {
+struct WireCallDeclaration {
     value: String,
 }
 
@@ -52,20 +46,20 @@ struct WireCall {
 
 /* === Implementations === */
 
-impl Operation for WireClient {
-    type Request = WireCall;
+impl Handler for WireClient {
+    type Request = WireCallDeclaration;
     type Response = <WireCallDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut WireCall, _: &mut Self::Endpoints,
+        &mut self, context: harmos_runtime::OperationContext, request: &mut WireCallDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<String>> {
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
         let result: ::core::result::Result<String, Self::Error> = async move {
             let response = context.call::<Run<0, 100, false>>(Run::<0, 100, false> { value: request.value.clone() }).await?;
@@ -106,7 +100,10 @@ async fn embedded_wire_contracts() {
 
     let mut client = plan().ordered().iter().find(|definition| definition.id == "client").unwrap().clone();
     client.artifact = PluginArtifact::Embedded { revision: "wire-client".into() };
-    client.contributions.required_contracts = Some(vec![Required { contract: contracts[0].clone(), grants: vec![] }]);
+    client.contributions.required_contracts = Some(vec![Required {
+        contract: contracts[0].clone(),
+        grants: vec![],
+    }]);
     runtime
         .plugin
         .register_embedded(
@@ -330,7 +327,10 @@ async fn activation_failure_cleans() {
 #[tokio::test]
 async fn start_preserves_providers() {
     let mut session = session();
-    let mut host = Host { fail_start: Some("client".into()), ..Host::new().await };
+    let mut host = Host {
+        fail_start: Some("client".into()),
+        ..Host::new().await
+    };
     assert!(matches!(session.initialize(&mut host).await.map_err(failure),
         Err(PluginFailure::Start { artifact, cleanup, .. }) if artifact == "client" && cleanup.is_empty()));
     assert!(session.ready().any(|id| id == "provider"));
@@ -356,7 +356,11 @@ async fn start_preserves_providers() {
 async fn initialization_retains_cleanup() {
     let mut session = session();
     let (started, mut starting) = tokio::sync::watch::channel(String::new());
-    let mut host = Host { block: Some("provider".to_owned()), started: Some(started), ..Host::new().await };
+    let mut host = Host {
+        block: Some("provider".to_owned()),
+        started: Some(started),
+        ..Host::new().await
+    };
     {
         let initialization = session.initialize(&mut host);
         tokio::pin!(initialization);
@@ -402,7 +406,11 @@ async fn initialization_retains_cleanup() {
 async fn start_retains_backend() {
     let mut manager = session();
     let (started, mut starting) = tokio::sync::watch::channel(String::new());
-    let mut host = Host { block: Some("client".into()), started: Some(started), ..Host::new().await };
+    let mut host = Host {
+        block: Some("client".into()),
+        started: Some(started),
+        ..Host::new().await
+    };
     {
         let start = manager.initialize(&mut host);
         tokio::pin!(start);
@@ -485,9 +493,18 @@ async fn inventory_refuses_commit() {
 #[tokio::test]
 async fn mismatch_cleans_backend() {
     let mut manager = session();
-    let mut host = Host { wrong_backend: Some("client".into()), ..Host::new().await };
+    let mut host = Host {
+        wrong_backend: Some("client".into()),
+        ..Host::new().await
+    };
     let error = manager.initialize(&mut host).await.unwrap_err();
-    assert!(matches!(failure(error), PluginFailure::Start { source: Error::InvalidInput { field: "plugin backend", .. }, .. }));
+    assert!(matches!(
+        failure(error),
+        PluginFailure::Start {
+            source: Error::InvalidInput { field: "plugin backend", .. },
+            ..
+        }
+    ));
     assert!(!host.control.lock().unwrap().events.iter().any(|event| event == "start:client"));
     assert!(host.control.lock().unwrap().events.iter().any(|event| event == "stop:client"));
     assert_eq!(manager.status("client").unwrap().state, PluginState::Failed);

@@ -23,7 +23,7 @@ use crate::Result;
 use harmos::operations::StreamSettings;
 use schematic_app::app::Runtime;
 use schematic_app::domain::model::Snapshot;
-use schematic_app::operations::{AnalyzeSchematic, AnalyzeSchematicRequest, ListDirectoriesRequest};
+use schematic_app::operations::{AnalyzeSchematic, ListDirectories};
 
 /* === Constants === */
 
@@ -43,8 +43,11 @@ use schematic_app::operations::{AnalyzeSchematic, AnalyzeSchematicRequest, ListD
 
 pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result<()> {
     // Drain A Bounded Streaming Analysis
-    let settings = StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() };
-    let request = AnalyzeSchematicRequest { schematic };
+    let settings = StreamSettings {
+        items: NonZeroUsize::MIN,
+        bytes: NonZeroUsize::new(4096).unwrap(),
+    };
+    let request = AnalyzeSchematic { schematic };
     let mut analysis = runtime.operations.download::<AnalyzeSchematic>(request.clone(), settings)?;
     while let Some(finding) = analysis.next().await? {
         println!("Analysis: {}", finding.text);
@@ -59,7 +62,7 @@ pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result
 
     // Only The Native Sidecar Has Filesystem Access
     if native {
-        let request = ListDirectoriesRequest {};
+        let request = ListDirectories {};
         let response = runtime.operation(request).run().await?;
         println!("Native directories: {:?}", response.directories);
     }

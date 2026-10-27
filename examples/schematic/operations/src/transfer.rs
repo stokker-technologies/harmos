@@ -67,86 +67,56 @@ pub struct Receipt {
     pub bytes: u64,
 }
 
-#[harmos::message]
-pub struct UploadRequest {
-    pub transfer: u64,
-}
-
-#[harmos::operation(
-    id = "benchmark_upload", request = UploadRequest, infer_request, response = Receipt, input = Batch,
+#[harmos::operation(resources = [crate::transfer::Store],
+    id = "benchmark_upload", response = Receipt, input = Batch,
     policy = crate::POLICY,
     visibility = harmos::operations::Visibility::Shared,
     replay = harmos::operations::ReplaySafety::Idempotent,
 )]
 pub struct Upload {
-    #[cfg(feature = "runtime")]
-    store: std::sync::Arc<crate::transfer::Store>,
-}
-
-#[harmos::message]
-pub struct DownloadRequest {
     pub transfer: u64,
 }
 
-#[harmos::operation(
-    id = "benchmark_download", request = DownloadRequest, infer_request, response = Receipt, output = Batch,
+#[harmos::operation(resources = [crate::transfer::Store],
+    id = "benchmark_download", response = Receipt, output = Batch,
     policy = crate::POLICY,
     visibility = harmos::operations::Visibility::Shared,
     replay = harmos::operations::ReplaySafety::Unknown,
 )]
 pub struct Download {
-    #[cfg(feature = "runtime")]
-    store: std::sync::Arc<crate::transfer::Store>,
-}
-
-#[harmos::message]
-pub struct PutRequest {
     pub transfer: u64,
-    pub first: bool,
-    pub batch: Batch,
 }
 
-#[harmos::operation(
-    id = "benchmark_put", request = PutRequest, infer_request, response = Receipt,
+#[harmos::operation(resources = [crate::transfer::Store],
+    id = "benchmark_put", response = Receipt,
     policy = crate::POLICY,
     visibility = harmos::operations::Visibility::Shared,
     replay = harmos::operations::ReplaySafety::Unknown,
 )]
 pub struct Put {
-    #[cfg(feature = "runtime")]
-    store: std::sync::Arc<crate::transfer::Store>,
-}
-
-#[harmos::message]
-pub struct TakeRequest {
     pub transfer: u64,
+    pub first: bool,
+    pub batch: Batch,
 }
 
-#[harmos::operation(
-    id = "benchmark_take", request = TakeRequest, infer_request, response = Batch,
+#[harmos::operation(resources = [crate::transfer::Store],
+    id = "benchmark_take", response = Batch,
     policy = crate::POLICY,
     visibility = harmos::operations::Visibility::Shared,
     replay = harmos::operations::ReplaySafety::Unknown,
 )]
 pub struct Take {
-    #[cfg(feature = "runtime")]
-    store: std::sync::Arc<crate::transfer::Store>,
+    pub transfer: u64,
 }
 
-#[harmos::message]
-pub struct HashRequest {
-    pub request: <harmos::builtins::storage::HashFile as harmos::OperationDeclaration>::Request,
-}
-
-#[harmos::operation(
-    id = "benchmark_hash_file", request = HashRequest, infer_request, response = harmos::domain::model::storage::FileHash,
+#[harmos::operation(operations = [harmos::builtins::storage::HashFile],
+    id = "benchmark_hash_file", response = harmos::domain::model::storage::FileHash,
     policy = crate::POLICY,
     visibility = harmos::operations::Visibility::Shared,
     replay = harmos::operations::ReplaySafety::Idempotent,
 )]
 pub struct Hash {
-    #[cfg(feature = "runtime")]
-    provider: std::sync::Arc<crate::resources::HashProvider>,
+    pub request: <harmos::builtins::storage::HashFile as harmos::OperationDeclaration>::Request,
 }
 
 #[cfg(feature = "runtime")]
@@ -174,18 +144,6 @@ pub enum Transfers {
 }
 
 #[harmos::catalog]
-pub enum GuestRequires {
-    HashFile(harmos::builtins::storage::HashFile),
-}
-
-#[harmos::catalog]
-pub enum NativeRequires {
-    #[nested]
-    Shared(crate::Requires),
-    HashFile(harmos::builtins::storage::HashFile),
-}
-
-#[harmos::catalog]
 pub enum Guest {
     #[nested]
     Shared(crate::Operations),
@@ -209,22 +167,18 @@ pub enum Native {
 
 #[cfg(feature = "runtime")]
 impl harmos::Operation for Upload {
-    type Request = UploadRequest;
-    type Response = Receipt;
     type Error = crate::Error;
-    type Endpoints = harmos::operations::StreamInput<Batch>;
-
-    async fn initialize(context: harmos::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self { store: context.dependency()? })
-    }
 
     async fn run(
-        &mut self, _: harmos::OperationContext, request: &mut Self::Request, endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::Response<Self::Response>, Self::Error> {
+        mut self, ctx: harmos::Context<'_, Self>,
+    ) -> Result<harmos::Response<<Self as harmos::OperationDeclaration>::Response>, Self::Error> {
+        let store = ctx.resource::<crate::transfer::Store>();
+        let request = &mut self;
+
         let mut batches = VecDeque::new();
         let mut retained = 0usize;
         let mut receipt = Receipt { records: 0, samples: 0, bytes: 0 };
-        while let Some(item) = endpoints.recv().await {
+        while let Some(item) = ctx.streams().recv().await {
             let (batch, _claims) = item.into_owned_request()?;
             receipt.records += batch.records.len() as u64;
             receipt.samples += batch.samples.len() as u64;
@@ -235,7 +189,7 @@ impl harmos::Operation for Upload {
             }
             batches.push_back(batch);
         }
-        let mut stores = self.store.batches.lock().unwrap();
+        let mut stores = store.batches.lock().unwrap();
         let other_bytes: usize = stores.iter().filter(|(id, _)| **id != request.transfer).map(|(_, stored)| stored.bytes).sum();
         if retained.saturating_add(other_bytes) > 64 * 1024 * 1024 {
             return Err(crate::Error::Stream(harmos::operations::StreamError::Capacity));
@@ -247,26 +201,22 @@ impl harmos::Operation for Upload {
 
 #[cfg(feature = "runtime")]
 impl harmos::Operation for Download {
-    type Request = DownloadRequest;
-    type Response = Receipt;
     type Error = crate::Error;
-    type Endpoints = harmos::operations::StreamOutput<Batch>;
-
-    async fn initialize(context: harmos::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self { store: context.dependency()? })
-    }
 
     async fn run(
-        &mut self, _: harmos::OperationContext, request: &mut Self::Request, endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::Response<Self::Response>, Self::Error> {
-        let batches = self.store.batches.lock().unwrap().remove(&request.transfer).unwrap_or_default();
+        mut self, ctx: harmos::Context<'_, Self>,
+    ) -> Result<harmos::Response<<Self as harmos::OperationDeclaration>::Response>, Self::Error> {
+        let store = ctx.resource::<crate::transfer::Store>();
+        let request = &mut self;
+
+        let batches = store.batches.lock().unwrap().remove(&request.transfer).unwrap_or_default();
         let mut receipt = Receipt { records: 0, samples: 0, bytes: 0 };
         for batch in batches.batches {
             receipt.records += batch.records.len() as u64;
             receipt.samples += batch.samples.len() as u64;
             receipt.bytes += batch.bytes.len() as u64;
             let bytes = batch.memory_size();
-            endpoints.send_with(bytes, || Ok(batch)).await?;
+            ctx.streams().send_with(bytes, || Ok(batch)).await?;
         }
         Ok(receipt.into())
     }
@@ -274,19 +224,15 @@ impl harmos::Operation for Download {
 
 #[cfg(feature = "runtime")]
 impl harmos::Operation for Put {
-    type Request = PutRequest;
-    type Response = Receipt;
     type Error = crate::Error;
-    type Endpoints = ();
-
-    async fn initialize(context: harmos::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self { store: context.dependency()? })
-    }
 
     async fn run(
-        &mut self, _: harmos::OperationContext, request: &mut Self::Request, _: &mut Self::Endpoints,
-    ) -> Result<harmos::Response<Self::Response>, Self::Error> {
-        let mut stores = self.store.batches.lock().unwrap();
+        mut self, ctx: harmos::Context<'_, Self>,
+    ) -> Result<harmos::Response<<Self as harmos::OperationDeclaration>::Response>, Self::Error> {
+        let store = ctx.resource::<crate::transfer::Store>();
+        let request = &mut self;
+
+        let mut stores = store.batches.lock().unwrap();
         if request.first {
             stores.remove(&request.transfer);
         }
@@ -295,9 +241,17 @@ impl harmos::Operation for Put {
         if bytes > 64 * 1024 * 1024 {
             return Err(crate::Error::Stream(harmos::operations::StreamError::Capacity));
         }
-        let empty = Batch { records: Vec::new(), samples: Vec::new(), bytes: Vec::new() };
+        let empty = Batch {
+            records: Vec::new(),
+            samples: Vec::new(),
+            bytes: Vec::new(),
+        };
         let batch = std::mem::replace(&mut request.batch, empty);
-        let receipt = Receipt { records: batch.records.len() as u64, samples: batch.samples.len() as u64, bytes: batch.bytes.len() as u64 };
+        let receipt = Receipt {
+            records: batch.records.len() as u64,
+            samples: batch.samples.len() as u64,
+            bytes: batch.bytes.len() as u64,
+        };
         let stored = stores.entry(request.transfer).or_default();
         stored.bytes += batch.memory_size();
         stored.batches.push_back(batch);
@@ -307,23 +261,28 @@ impl harmos::Operation for Put {
 
 #[cfg(feature = "runtime")]
 impl harmos::Operation for Take {
-    type Request = TakeRequest;
-    type Response = Batch;
     type Error = crate::Error;
-    type Endpoints = ();
-
-    async fn initialize(context: harmos::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self { store: context.dependency()? })
-    }
 
     async fn run(
-        &mut self, _: harmos::OperationContext, request: &mut Self::Request, _: &mut Self::Endpoints,
-    ) -> Result<harmos::Response<Self::Response>, Self::Error> {
-        let mut stores = self.store.batches.lock().unwrap();
+        mut self, ctx: harmos::Context<'_, Self>,
+    ) -> Result<harmos::Response<<Self as harmos::OperationDeclaration>::Response>, Self::Error> {
+        let store = ctx.resource::<crate::transfer::Store>();
+        let request = &mut self;
+
+        let mut stores = store.batches.lock().unwrap();
         let Some(stored) = stores.get_mut(&request.transfer) else {
-            return Ok(Batch { records: Vec::new(), samples: Vec::new(), bytes: Vec::new() }.into());
+            return Ok(Batch {
+                records: Vec::new(),
+                samples: Vec::new(),
+                bytes: Vec::new(),
+            }
+            .into());
         };
-        let batch = stored.batches.pop_front().unwrap_or_else(|| Batch { records: Vec::new(), samples: Vec::new(), bytes: Vec::new() });
+        let batch = stored.batches.pop_front().unwrap_or_else(|| Batch {
+            records: Vec::new(),
+            samples: Vec::new(),
+            bytes: Vec::new(),
+        });
         stored.bytes = stored.bytes.saturating_sub(batch.memory_size());
         if stored.batches.is_empty() {
             stores.remove(&request.transfer);
@@ -334,19 +293,14 @@ impl harmos::Operation for Take {
 
 #[cfg(feature = "runtime")]
 impl harmos::Operation for Hash {
-    type Request = HashRequest;
-    type Response = harmos::domain::model::storage::FileHash;
     type Error = crate::Error;
-    type Endpoints = ();
-
-    async fn initialize(context: harmos::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self { provider: context.dependency()? })
-    }
 
     async fn run(
-        &mut self, context: harmos::OperationContext, request: &mut Self::Request, _: &mut (),
-    ) -> Result<harmos::Response<Self::Response>, Self::Error> {
-        Ok((self.provider.hasher)(context, request.request.clone()).await?.into())
+        mut self, ctx: harmos::Context<'_, Self>,
+    ) -> Result<harmos::Response<<Self as harmos::OperationDeclaration>::Response>, Self::Error> {
+        let request = &mut self;
+
+        ctx.operation(request.request.clone()).await.map_err(Into::into)
     }
 }
 

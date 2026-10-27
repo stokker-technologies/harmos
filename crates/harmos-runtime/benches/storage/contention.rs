@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 
 // Third Party Imports
 use criterion::{BenchmarkId, Criterion};
-use harmos_operations::storage::QueryRequest;
+use harmos_runtime::storage::Query;
 use harmos_runtime::storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
 
 // Local Imports
@@ -62,7 +62,7 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                         configuration = Some(fixture.settings.clone());
                         let at = fixture.storage.flush().await.unwrap();
                         let readers = (0..concurrency).map(|_| async {
-                            let query = QueryRequest {
+                            let query = Query {
                                 at: at.clone(),
                                 source: Source::Stream(StreamSelection {
                                     schema: waveforms::schema(),

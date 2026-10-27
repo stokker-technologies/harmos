@@ -203,7 +203,7 @@ maxima of 256 rows and 4 MiB. `CatalogPage::entries` is a UTF-8 JSON array of th
 kind's entries: operation metadata (original contracts, provider
 owners and generations, selected grants and current gRPC availability), stored
 schemas or stored identities. The `next` cursor continues a bounded page. Stored
-kinds need the storage manager and a `host_catalog` grant scoped `schemas:*`,
+kinds need the storage manager and a `host.catalog` grant scoped `schemas:*`,
 `streams:*` or `objects:*` (`<kind>:schema:<id>` with `schema`); listing
 operations needs no grant. The operation listing applies original readiness and caller
 visibility/dependency rules; `conditional_access` means invocation still checks

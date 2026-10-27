@@ -25,7 +25,7 @@ pub(crate) use tokio::sync::Notify;
 // Local Imports
 use super::support;
 pub(crate) use harmos_runtime::operations::{
-    Backoff, CacheKey, Context, FailureKind, Jitter, Operation, OperationDeclaration, OperationInstanceId, OperationPolicy, RestartPolicy,
+    Backoff, CacheKey, Context, FailureKind, Handler, Jitter, OperationDeclaration, OperationInstanceId, OperationPolicy, RestartPolicy,
     RetryPolicy,
 };
 pub(crate) use harmos_runtime::{Error, Refusal, Runtime};
@@ -70,16 +70,13 @@ pub(crate) use in_process;
 
 /* === Type Aliases === */
 
-pub(crate) type Request = ComputeRequest;
+pub(crate) type Request = Compute;
 
 /* === Structs === */
 
 // Owned request/state/response deliberately implement neither Clone nor serde.
-pub(crate) struct Compute;
-pub(crate) struct Slow;
-pub(crate) struct Parent;
 
-pub(crate) struct ComputeRequest {
+pub(crate) struct Compute {
     pub(crate) value: usize,
     pub(crate) failures: usize,
     pub(crate) failure: FailureKind,
@@ -88,9 +85,9 @@ pub(crate) struct ComputeRequest {
     pub(crate) gate: Option<(Arc<Notify>, Arc<Notify>)>,
 }
 
-pub(crate) struct SlowRequest(pub(crate) ComputeRequest);
+pub(crate) struct Slow(pub(crate) Compute);
 
-pub(crate) struct ParentRequest(pub(crate) ComputeRequest);
+pub(crate) struct Parent(pub(crate) Compute);
 
 pub(crate) struct State {
     pub(crate) attempts: usize,
@@ -148,9 +145,9 @@ pub(crate) enum Failed {
 
 /* === Implementations === */
 
-in_process!(ComputeRequest, SlowRequest, ParentRequest, Response);
+in_process!(Compute, Slow, Parent, Response);
 
-impl harmos_runtime::MemorySize for ComputeRequest {
+impl harmos_runtime::MemorySize for Compute {
     fn memory_size(&self) -> usize {
         // Shared Notification Resources Have No Charged Fixture Policy.
         if self.gate.is_some() {
@@ -160,13 +157,13 @@ impl harmos_runtime::MemorySize for ComputeRequest {
     }
 }
 
-impl harmos_runtime::MemorySize for SlowRequest {
+impl harmos_runtime::MemorySize for Slow {
     fn memory_size(&self) -> usize {
         self.0.memory_size()
     }
 }
 
-impl harmos_runtime::MemorySize for ParentRequest {
+impl harmos_runtime::MemorySize for Parent {
     fn memory_size(&self) -> usize {
         self.0.memory_size()
     }
@@ -178,12 +175,8 @@ impl harmos_runtime::MemorySize for Response {
     }
 }
 
-impl harmos_runtime::RequestFor for ComputeRequest {
-    type Operation = Compute;
-}
-
 impl OperationDeclaration for Compute {
-    type Request = ComputeRequest;
+    type Request = Compute;
     type Response = Response;
     type Input = harmos_runtime::operations::NoStream;
     type Output = harmos_runtime::operations::NoStream;
@@ -193,20 +186,19 @@ impl OperationDeclaration for Compute {
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::OnTransient {
             max_retries: 3,
-            backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
+            backoff: Backoff::Fixed {
+                delay: Duration::from_millis(1),
+                jitter: Jitter::None,
+            },
         },
     };
-    fn key(request: &ComputeRequest) -> Option<CacheKey> {
+    fn key(request: &Compute) -> Option<CacheKey> {
         (request.keyed && request.valid).then(|| CacheKey::new(request.value.to_le_bytes().to_vec()).unwrap())
     }
 }
 
-impl harmos_runtime::RequestFor for SlowRequest {
-    type Operation = Slow;
-}
-
 impl OperationDeclaration for Slow {
-    type Request = SlowRequest;
+    type Request = Slow;
     type Response = Response;
     type Input = harmos_runtime::operations::NoStream;
     type Output = harmos_runtime::operations::NoStream;
@@ -218,12 +210,8 @@ impl OperationDeclaration for Slow {
     };
 }
 
-impl harmos_runtime::RequestFor for ParentRequest {
-    type Operation = Parent;
-}
-
 impl OperationDeclaration for Parent {
-    type Request = ParentRequest;
+    type Request = Parent;
     const VISIBILITY: harmos_runtime::operations::Visibility = harmos_runtime::operations::Visibility::Shared;
     type Response = Response;
     type Input = harmos_runtime::operations::NoStream;
@@ -264,7 +252,10 @@ impl Owner {
         if state.attempts <= request.failures {
             return Err(Failed::Scripted(request.failure));
         }
-        Ok(Response { value: request.value + self.bias, attempts: state.attempts })
+        Ok(Response {
+            value: request.value + self.bias,
+            attempts: state.attempts,
+        })
     }
     pub(crate) fn classify(error: &Failed) -> FailureKind {
         match error {
@@ -274,22 +265,22 @@ impl Owner {
     }
 }
 
-impl Operation for ComputeCall {
-    type Request = ComputeRequest;
+impl Handler for ComputeCall {
+    type Request = Compute;
     type Response = Response;
-    type Endpoints = ();
+    type StreamEndpoints = ();
     type Error = Failed;
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Failed> {
-        let owner = context.dependency::<Owner>().expect("fixture registers its owner");
+        let owner = context.resource::<Owner>().expect("fixture registers its owner");
         owner.prepared.fetch_add(1, Ordering::SeqCst);
         let state = State { attempts: 0 };
         Ok(Self { owner, state })
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut Request, _endpoints: &mut Self::Endpoints,
+        &mut self, context: harmos_runtime::OperationContext, request: &mut Request, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Response>, Failed> {
         let result: ::core::result::Result<Response, Self::Error> = async move {
-            let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+            let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
             self.owner.compute(request, &mut self.state, host.borrow()).await
         }
         .await;
@@ -300,18 +291,18 @@ impl Operation for ComputeCall {
     }
 }
 
-impl Operation for SlowCall {
-    type Request = SlowRequest;
+impl Handler for SlowCall {
+    type Request = Slow;
     type Response = Response;
-    type Endpoints = ();
+    type StreamEndpoints = ();
     type Error = Failed;
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Failed> {
-        let owner = context.dependency::<Owner>().expect("fixture registers its owner");
+        let owner = context.resource::<Owner>().expect("fixture registers its owner");
         owner.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { owner })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut SlowRequest, _endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Slow, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Response>, Failed> {
         let request = &request.0;
         let result: ::core::result::Result<Response, Self::Error> = async move {
@@ -325,22 +316,25 @@ impl Operation for SlowCall {
     }
 }
 
-impl Operation for ParentCall {
-    type Request = ParentRequest;
+impl Handler for ParentCall {
+    type Request = Parent;
     type Response = Response;
-    type Endpoints = ();
+    type StreamEndpoints = ();
     type Error = Failed;
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Failed> {
-        let owner = context.dependency::<ParentOwner>().expect("fixture registers its owner");
+        let owner = context.resource::<ParentOwner>().expect("fixture registers its owner");
         Ok(Self { _owner: owner })
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut ParentRequest, _endpoints: &mut Self::Endpoints,
+        &mut self, context: harmos_runtime::OperationContext, request: &mut Parent, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Response>, Failed> {
         let result: ::core::result::Result<Response, Self::Error> = async move {
-            let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+            let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
             let response = host.borrow().call::<Compute>(request.0.take()).await?;
-            Ok(Response { value: response.value, attempts: response.attempts })
+            Ok(Response {
+                value: response.value,
+                attempts: response.attempts,
+            })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -369,7 +363,10 @@ pub(crate) async fn runtime_with_preparation(bytes: std::num::NonZeroUsize) -> R
     Runtime::<Bank>::builder(Ledger::default(), ())
         .register(catalog())
         .register(Lanes::catalog())
-        .operation_settings(harmos_runtime::operations::Settings { preparation_bytes: Some(bytes), ..Default::default() })
+        .operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(bytes),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap()
@@ -386,7 +383,14 @@ pub(crate) fn registration(owner: Arc<Owner>, lane: Lanes) -> harmos_runtime::op
 }
 
 pub(crate) fn request() -> Request {
-    Request { value: 7, failures: 0, failure: FailureKind::Transient, valid: true, keyed: false, gate: None }
+    Request {
+        value: 7,
+        failures: 0,
+        failure: FailureKind::Transient,
+        valid: true,
+        keyed: false,
+        gate: None,
+    }
 }
 
 /* === Tests === */

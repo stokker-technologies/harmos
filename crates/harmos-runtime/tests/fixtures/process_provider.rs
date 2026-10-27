@@ -21,8 +21,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 // Local Imports
 use super::contract;
 use crate::sidecar::witness::Witness;
-use contract::{POLICY, Read, Readings, Step};
-use harmos_runtime::operations::{Operation, OperationPolicy, WireTable};
+use contract::{POLICY, ReadDeclaration, Readings, Step};
+use harmos_runtime::operations::{Handler, OperationPolicy, WireTable};
 use harmos_runtime::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -107,15 +107,15 @@ impl harmos_runtime::Plugin for Provider {
     }
 }
 
-impl Operation for Reading {
+impl Handler for Reading {
     type Request = <contract::ReadDeclaration as harmos_runtime::OperationDeclaration>::Request;
     type Response = <contract::ReadDeclaration as harmos_runtime::OperationDeclaration>::Response;
 
     type Error = Refusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
-        let resources = context.dependency::<Resources>().expect("fixture dependency");
+        let resources = context.resource::<Resources>().expect("fixture dependency");
         let constructed: Result<Self, Refusal> = async move { Ok(Self { resources, phase: None }) }.await;
         let mut operation = constructed?;
         let started: Result<(), Refusal> = async {
@@ -129,7 +129,7 @@ impl Operation for Reading {
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Read, _endpoints: &mut Self::Endpoints,
+        &mut self, _: harmos_runtime::OperationContext, request: &mut ReadDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Step>, Refusal> {
         let result: ::core::result::Result<Step, Self::Error> = async move {
             self.phase = Some(request.phase);

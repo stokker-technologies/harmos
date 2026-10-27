@@ -44,7 +44,7 @@ use harmos_runtime::storage::{FileMetadata, FilePhase, StagedFile};
 
 /* === Private Functions === */
 
-async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, harmos_operations::storage::FollowProductionRequest) {
+async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, harmos_operations::storage::FollowProduction) {
     let fixture = Fixture::new(config()).await;
     fixture
         .runtime
@@ -68,15 +68,21 @@ async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, harmos_opera
         .unwrap();
     producer.write_all((b"prefix").to_vec()).await.unwrap();
     let session = producer.session().unwrap();
-    let request = harmos_operations::storage::FollowProductionRequest {
-        file: StagedFile { history: session.history.clone(), id: session.id.clone() },
+    let request = harmos_operations::storage::FollowProduction {
+        file: StagedFile {
+            history: session.history.clone(),
+            id: session.id.clone(),
+        },
         offset: 0,
     };
     (fixture, producer, request)
 }
 
 fn limits() -> harmos_runtime::operations::StreamSettings {
-    harmos_runtime::operations::StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(1024).unwrap() }
+    harmos_runtime::operations::StreamSettings {
+        items: NonZeroUsize::MIN,
+        bytes: NonZeroUsize::new(1024).unwrap(),
+    }
 }
 
 /* === Tests === */
@@ -86,11 +92,11 @@ async fn read_file_streams() {
     let (fixture, mut producer, _) = setup().await;
     let finished = producer.finish().await.unwrap();
     fixture.storage.flush().await.unwrap();
-    let request = harmos_operations::storage::ReadFileRequest {
+    let request = harmos_operations::storage::ReadFile {
         source: harmos_domain::model::storage::files::FileSource::Stored(finished),
         range: harmos_runtime::storage::files::ByteRange { offset: 0, limit: None },
     };
-    let (sender, mut receiver) = harmos_runtime::operations::stream::<harmos_runtime::storage::files::FileBatch>(limits()).unwrap();
+    let (sender, receiver) = harmos_runtime::operations::stream::<harmos_runtime::storage::files::FileBatch>(limits()).unwrap();
     let instance = fixture.runtime.operations.submit_endpoints::<ReadFile, _>(request, sender).unwrap();
     let first = receiver.recv().await.unwrap();
     assert_eq!(first.offset, 0);
@@ -111,7 +117,7 @@ async fn read_file_streams() {
 #[tokio::test]
 async fn follow_reconnect_resumes() {
     let (fixture, mut producer, mut request) = setup().await;
-    let (sender, mut receiver) = harmos_runtime::operations::stream::<FileBytes>(limits()).unwrap();
+    let (sender, receiver) = harmos_runtime::operations::stream::<FileBytes>(limits()).unwrap();
     let instance = fixture.runtime.operations.submit_endpoints::<FollowProduction, _>(request.clone(), sender).unwrap();
     let mut offset = 0;
     while offset < 6 {
@@ -124,7 +130,7 @@ async fn follow_reconnect_resumes() {
     drop(receiver);
     producer.write_all((b"later").to_vec()).await.unwrap();
     request.offset = offset;
-    let (sender, mut receiver) = harmos_runtime::operations::stream::<FileBytes>(limits()).unwrap();
+    let (sender, receiver) = harmos_runtime::operations::stream::<FileBytes>(limits()).unwrap();
     let instance = fixture.runtime.operations.submit_endpoints::<FollowProduction, _>(request, sender).unwrap();
     let mut bytes = Vec::new();
     while offset < 11 {
@@ -145,8 +151,8 @@ async fn follow_reconnect_resumes() {
 #[tokio::test]
 async fn future_offset_refused() {
     let (fixture, mut producer, request) = setup().await;
-    let beyond = harmos_operations::storage::FollowProductionRequest { offset: 7, ..request };
-    let (sender, mut receiver) = harmos_runtime::operations::stream::<FileBytes>(limits()).unwrap();
+    let beyond = harmos_operations::storage::FollowProduction { offset: 7, ..request };
+    let (sender, receiver) = harmos_runtime::operations::stream::<FileBytes>(limits()).unwrap();
     let result = fixture.runtime.operations.submit_endpoints::<FollowProduction, _>(beyond, sender);
     if let Ok(instance) = result {
         assert!(instance.await.is_err());

@@ -69,45 +69,57 @@ struct Payload {
     values: Vec<i64>,
 }
 
-#[harmos_domain::message]
-struct Read {
+#[harmos_domain::operation(
+    id = "read",
+    response = Payload,
+    policy = POLICY,
+    grpc(package = "test.v1", service = "Shapes", method = "Read"),
+)]
+struct ReadOperation {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
-#[harmos_domain::operation(request = Read, infer_request, id = "read", response = Payload, policy = POLICY, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
-struct ReadOperation;
-
-#[harmos_domain::message]
-struct Exchange {
+#[harmos_domain::operation(
+    id = "exchange",
+    response = Payload,
+    input = Payload,
+    output = Payload,
+    policy = POLICY,
+    grpc(package = "test.v1", service = "Shapes", method = "Exchange"),
+)]
+struct ExchangeOperation {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
-#[harmos_domain::operation(request = Exchange, infer_request, id = "exchange", response = Payload, input = Payload, output = Payload, policy = POLICY, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
-struct ExchangeOperation;
-
-#[harmos_domain::message]
-struct Upload {
+#[harmos_domain::operation(
+    id = "upload",
+    response = Payload,
+    input = Payload,
+    policy = POLICY,
+    grpc(package = "test.v1", service = "Shapes", method = "Upload"),
+)]
+struct UploadOperation {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
-#[harmos_domain::operation(request = Upload, infer_request, id = "upload", response = Payload, input = Payload, policy = POLICY, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
-struct UploadOperation;
-
-#[harmos_domain::message]
-struct Download {
+#[harmos_domain::operation(
+    id = "download",
+    response = Payload,
+    output = Payload,
+    policy = POLICY,
+    grpc(package = "test.v1", service = "Shapes", method = "Download"),
+)]
+struct DownloadOperation {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
-
-#[harmos_domain::operation(request = Download, infer_request, id = "download", response = Payload, output = Payload, policy = POLICY, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
-struct DownloadOperation;
 
 #[harmos_domain::message]
 #[derive(PartialEq)]
@@ -169,12 +181,20 @@ fn export() -> Exported {
     let alpha = target.path().join("alpha");
     let beta = target.path().join("beta");
     python::generate(
-        python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_alpha"), protoc: &protoc() },
+        python::Catalog {
+            contracts: &artifacts.operation_contracts().unwrap(),
+            settings: &settings("bindings_alpha"),
+            protoc: &protoc(),
+        },
         &alpha,
     )
     .unwrap();
     python::generate(
-        python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_beta"), protoc: &protoc() },
+        python::Catalog {
+            contracts: &artifacts.operation_contracts().unwrap(),
+            settings: &settings("bindings_beta"),
+            protoc: &protoc(),
+        },
         &beta,
     )
     .unwrap();
@@ -186,7 +206,12 @@ fn reserved() -> Schema {
     Schema {
         root: 0,
         definitions: vec![
-            vec![Field { name: Cow::Borrowed("Clear"), tag: 7, cardinality: Cardinality::Variant, kind: Kind::Message { definition: 1 } }],
+            vec![Field {
+                name: Cow::Borrowed("Clear"),
+                tag: 7,
+                cardinality: Cardinality::Variant,
+                kind: Kind::Message { definition: 1 },
+            }],
             vec![],
         ],
     }
@@ -299,7 +324,14 @@ fn export_refuses_invalid() {
     let target = tempfile::tempdir().unwrap();
     let output = target.path().join("package");
     let refused = |settings: &Settings| {
-        python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings, protoc: &protoc() }, &output)
+        python::generate(
+            python::Catalog {
+                contracts: &artifacts.operation_contracts().unwrap(),
+                settings,
+                protoc: &protoc(),
+            },
+            &output,
+        )
     };
 
     // Selections, Module Names And Versions Python Cannot Carry
@@ -321,7 +353,11 @@ fn export_refuses_invalid() {
     let unsupported = Artifacts::new([&unsupported]).unwrap();
     assert!(matches!(
         python::generate(
-            python::Catalog { contracts: &unsupported.operation_contracts().unwrap(), settings: &settings, protoc: &protoc() },
+            python::Catalog {
+                contracts: &unsupported.operation_contracts().unwrap(),
+                settings: &settings,
+                protoc: &protoc()
+            },
             &output
         ),
         Err(python::Error::Unsupported(_))
@@ -351,12 +387,20 @@ fn export_is_deterministic() {
     let first = target.path().join("first");
     let repeat = target.path().join("repeat");
     python::generate(
-        python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_alpha"), protoc: &protoc() },
+        python::Catalog {
+            contracts: &artifacts.operation_contracts().unwrap(),
+            settings: &settings("bindings_alpha"),
+            protoc: &protoc(),
+        },
         &first,
     )
     .unwrap();
     python::generate(
-        python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_alpha"), protoc: &protoc() },
+        python::Catalog {
+            contracts: &artifacts.operation_contracts().unwrap(),
+            settings: &settings("bindings_alpha"),
+            protoc: &protoc(),
+        },
         &repeat,
     )
     .unwrap();
@@ -368,7 +412,11 @@ fn export_is_deterministic() {
 fn python_reads_rust() {
     // Rust Encodes, Python Decodes And Re-Encodes, Rust Decodes The Same Value
     let exported = export();
-    let value = Payload { text: "line\n∞".into(), optional: Some(u32::MAX), values: vec![i64::MIN, -1, 0, i64::MAX] };
+    let value = Payload {
+        text: "line\n∞".into(),
+        optional: Some(u32::MAX),
+        values: vec![i64::MIN, -1, 0, i64::MAX],
+    };
     let encoded = {
         let mut bytes = Vec::new();
         grpc::encode(&value, &mut bytes).unwrap();
@@ -453,7 +501,10 @@ fn aggregate_members_typed() {
     assert_eq!(generated, AGGREGATE_SNAPSHOT, "{generated}");
 
     // Python Selects The Percentile Member And Its Rank As Typed Fields
-    let value = Summary { aggregate: Aggregate::Percentile(95), aggregates: vec![Aggregate::Count, Aggregate::Percentile(99)] };
+    let value = Summary {
+        aggregate: Aggregate::Percentile(95),
+        aggregates: vec![Aggregate::Count, Aggregate::Percentile(99)],
+    };
     let source = package.join("src");
     let output = scene("aggregate", &[&source], false, &{
         let mut bytes = Vec::new();

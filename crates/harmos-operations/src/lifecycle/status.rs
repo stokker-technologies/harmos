@@ -25,8 +25,15 @@ use harmos_domain::operations::instance::Id;
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, resources = [harmos_sdk::operations::instances::InstanceAccess], id = "host.operations.status", response = super::InstanceState, policy = super::POLICY, visibility = harmos_domain::operations::Visibility::Shared,
-    grpc(package = "harmos.host.v1", service = "Operations", method = "Status"))]
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [harmos_sdk::operations::instances::InstanceAccess],
+    id = "host.operations.status",
+    response = super::InstanceState,
+    policy = super::POLICY,
+    visibility = harmos_domain::operations::Visibility::Shared,
+    grpc(package = "harmos.host.v1", service = "Operations", method = "Status"),
+)]
 #[derive(Clone, Default, PartialEq)]
 pub struct Status {
     pub instance: u64,

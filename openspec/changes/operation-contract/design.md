@@ -46,8 +46,8 @@ impl Operation for Cancel {
 
 ## Declared Dependencies And Verification
 
-- `resources = [A, ..]` emits `Requires<A>` and `Dependent::RESOURCES`. Resource types are execution-only, so a non-empty list is
-  emitted under the consumer `runtime` feature like `registration()`; an empty list is unconditional.
+- `resources = [A, ..]` emits `Requires<A>` and `Dependent::RESOURCES`. Resource types are execution-only, so this projection is
+  emitted under the consumer `runtime` feature like `registration()`.
 - `operations = [T, ..]` emits `Invokes<T>` and `OperationDeclaration::OPERATIONS` (contract level, unconditional).
 - Catalogs project `OPERATIONS` (`Callees`); a plugin's required contracts are its explicit `requires` plus its provided
   operations' callees not provided by the plugin itself.

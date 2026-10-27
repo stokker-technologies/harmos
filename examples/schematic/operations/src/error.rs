@@ -38,7 +38,10 @@ pub enum Error {
     Unavailable,
 
     #[error(transparent)]
-    Dependency(#[from] harmos::DependencyError),
+    Resource(#[from] harmos::ResourceError),
+
+    #[error(transparent)]
+    Invocation(#[from] harmos::operations::InvocationError),
 
     #[error(transparent)]
     Output(#[from] harmos::Error),

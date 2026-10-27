@@ -53,20 +53,16 @@ static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", Catalog::ID, &[])]
 /* === Structs === */
 
 struct Catalog;
-#[harmos_sidecar::message(harmos_path = ::harmos_sidecar)]
-#[derive(Clone, PartialEq)]
-struct Read {}
 
 #[harmos_sidecar::operation(
-    request = Read,
-    infer_request,
     harmos_path = ::harmos_sidecar,
     id = "read",
     response = (),
     policy = Catalog::INITIALIZATION_POLICY,
     grpc(package = "fixture.v1", service = "Native", method = "Read"),
 )]
-struct ReadOperation;
+#[derive(Clone, PartialEq)]
+struct ReadOperation {}
 
 /* === Enums === */
 

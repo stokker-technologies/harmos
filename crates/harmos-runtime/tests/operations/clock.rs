@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 // Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::Runtime;
-use harmos_runtime::operations::{Operation, RetryPolicy};
+use harmos_runtime::operations::{Handler, RetryPolicy};
 
 /* === Constants === */
 
@@ -36,21 +36,15 @@ use harmos_runtime::operations::{Operation, RetryPolicy};
 
 struct Measure;
 
-#[harmos_runtime::operation(request = MeasureContract, infer_request,
-    response = Measured,
+#[harmos_runtime::operation(response = Measured,
     id = "clock_measure",
-
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(600),
         attempt_timeout: Duration::from_secs(600),
         retries: RetryPolicy::Never,
     },
 )]
-struct MeasureContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct MeasureContract {
+struct MeasureContractDeclaration {
     wait_nanos: u64,
 }
 
@@ -65,35 +59,38 @@ struct Measured {
 
 #[harmos_runtime::catalog]
 enum Operations {
-    MeasureContract(MeasureContractDeclaration),
+    MeasureContractDeclaration(MeasureContractDeclaration),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl Operation for Measure {
-    type Request = MeasureContract;
+impl Handler for Measure {
+    type Request = MeasureContractDeclaration;
     type Response = <MeasureContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::convert::Infallible;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let _resources = context.dependency::<()>().expect("fixture registers its dependency");
+        let _resources = context.resource::<()>().expect("fixture registers its dependency");
         Ok(Self)
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, wait: &mut MeasureContract, _endpoints: &mut Self::Endpoints,
+        &mut self, context: harmos_runtime::OperationContext, wait: &mut MeasureContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Measured>, Self::Error> {
-        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
         let result: ::core::result::Result<Measured, Self::Error> = async move {
             let scope = context.scope();
             let scoped = scope.now();
             let wall = Instant::now();
             tokio::time::sleep(Duration::from_nanos(wait.wait_nanos)).await;
-            Ok(Measured { scoped_nanos: nanos(scope.now() - scoped), wall_nanos: nanos(wall.elapsed()) })
+            Ok(Measured {
+                scoped_nanos: nanos(scope.now() - scoped),
+                wall_nanos: nanos(wall.elapsed()),
+            })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -165,7 +162,7 @@ async fn clock_measures_script() {
     let scripted = Duration::from_secs(300);
 
     let answer = runtime
-        .operation(MeasureContract { wait_nanos: nanos(scripted) })
+        .operation(MeasureContractDeclaration { wait_nanos: nanos(scripted) })
         .start()
         .await
         .unwrap()
@@ -178,7 +175,7 @@ async fn clock_measures_script() {
     // Deterministic, not merely virtual: the same script measures the same
     // duration every time it is run.
     let again = runtime
-        .operation(MeasureContract { wait_nanos: nanos(scripted) })
+        .operation(MeasureContractDeclaration { wait_nanos: nanos(scripted) })
         .start()
         .await
         .unwrap()

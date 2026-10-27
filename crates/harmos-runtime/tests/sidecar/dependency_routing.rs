@@ -48,7 +48,12 @@ fn candidate(host: &Host, lifecycle: bool, unauthorized: bool, publishing: bool,
         owners.push(("unauthorized", vec![]));
     }
     let definitions = owners.into_iter().map(|(id, dependencies)| {
-        let source = Attachment { id: id.into(), lifecycle, publishing, canonical: true };
+        let source = Attachment {
+            id: id.into(),
+            lifecycle,
+            publishing,
+            canonical: true,
+        };
         let configuration = if id == "provider" {
             serde_json::to_vec(&host.seed.id).unwrap()
         } else if id == "caller" && (lifecycle || publishing) {
@@ -57,7 +62,13 @@ fn candidate(host: &Host, lifecycle: bool, unauthorized: bool, publishing: bool,
             serde_json::to_vec(&()).unwrap()
         };
         let mut definition = operations::definition(&source, configuration);
-        definition.requires = dependencies.into_iter().map(|id| Requirement { id: id.into(), version: "*".parse().unwrap() }).collect();
+        definition.requires = dependencies
+            .into_iter()
+            .map(|id| Requirement {
+                id: id.into(),
+                version: "*".parse().unwrap(),
+            })
+            .collect();
         definition
     });
     PluginDefinitions::new(definitions, []).unwrap()
@@ -145,7 +156,7 @@ async fn notice_wire_order() {
     manager.initialize(&mut lifecycle).await.unwrap();
     runtime
         .operations
-        .call_encoded(&format!("caller.{}", PublishPulseDeclaration::ID), PublishPulse { sample: 43 }.encode())
+        .call_encoded(&format!("caller.{}", PublishPulseDeclaration::ID), PublishPulseDeclaration { sample: 43 }.encode())
         .await
         .unwrap();
     published_notices(&notices, 3).await;
@@ -312,23 +323,13 @@ async fn dependency_original_manager() {
     let mut lifecycle = host(&runtime, provider, false);
     let mut manager = PluginManager::new(candidate(&lifecycle, false, true, false, false)).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    assert_eq!(
-        runtime.operations.call::<<Forward as harmos_runtime::RequestFor>::Operation>(Forward { value: 7 }).await.unwrap().value,
-        21
-    );
-    let denied = runtime
-        .operations
-        .call::<<UnauthorizedForward as harmos_runtime::RequestFor>::Operation>(UnauthorizedForward { value: 7 })
-        .await
-        .unwrap_err();
+    assert_eq!(runtime.operations.call::<Forward>(Forward { value: 7 }).await.unwrap().value, 21);
+    let denied = runtime.operations.call::<UnauthorizedForward>(UnauthorizedForward { value: 7 }).await.unwrap_err();
     let harmos_runtime::Error::OperationFailed { source, .. } = denied else { panic!("native source must survive") };
     assert!(
         matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Remote(failure)) if failure.cause().contains("may not invoke"))
     );
-    assert_eq!(
-        runtime.operations.call::<<Forward as harmos_runtime::RequestFor>::Operation>(Forward { value: 8 }).await.unwrap().value,
-        24
-    );
+    assert_eq!(runtime.operations.call::<Forward>(Forward { value: 8 }).await.unwrap().value, 24);
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
@@ -369,20 +370,17 @@ async fn cancellation_settles_handlers() {
     let mut lifecycle = host(&runtime, provider.clone(), false);
     let mut manager = PluginManager::new(candidate(&lifecycle, false, false, false, false)).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let invocation = runtime.operations.submit::<ForwardDeclaration>(Forward { value: 0 }).await.unwrap();
+    let invocation = runtime.operations.submit::<Forward>(Forward { value: 0 }).await.unwrap();
     (provider.started.notified()).await;
     invocation.cancel();
     assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     (provider.dropped.notified()).await;
-    assert_eq!(runtime.operations.call::<<Forward as harmos_runtime::RequestFor>::Operation>(Forward { value: 9 }).await.unwrap().value, 9);
+    assert_eq!(runtime.operations.call::<Forward>(Forward { value: 9 }).await.unwrap().value, 9);
 
-    let timed = runtime.operations.call::<<Amplify as harmos_runtime::RequestFor>::Operation>(Amplify { value: 0 }).await;
+    let timed = runtime.operations.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 0 }).await;
     assert!(matches!(timed, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
     (provider.dropped.notified()).await;
-    assert_eq!(
-        runtime.operations.call::<<Amplify as harmos_runtime::RequestFor>::Operation>(Amplify { value: 10 }).await.unwrap().value,
-        10
-    );
+    assert_eq!(runtime.operations.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 10 }).await.unwrap().value, 10);
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
@@ -404,26 +402,27 @@ async fn dependency_admission_revocation() {
     let mut manager = PluginManager::new(candidate(&lifecycle, false, true, false, false)).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     for (value, expected) in [(7, 21), (8, 24)] {
-        let bytes = runtime
-            .operations
-            .call_encoded(&format!("caller.{}", ForwardDeclaration::ID), Message::encode(&Forward { value }))
-            .await
-            .unwrap();
+        let bytes = runtime.operations.call_encoded(&format!("caller.{}", Forward::ID), Message::encode(&Forward { value })).await.unwrap();
         assert_eq!(Amplified::decode(bytes.as_slice()).unwrap().value, expected);
     }
     let denied = runtime
         .operations
-        .call_encoded(&format!("unauthorized.{}", UnauthorizedForwardDeclaration::ID), Message::encode(&UnauthorizedForward { value: 7 }))
+        .call_encoded(&format!("unauthorized.{}", UnauthorizedForward::ID), Message::encode(&UnauthorizedForward { value: 7 }))
         .await
         .unwrap_err();
     let harmos_runtime::Error::OperationFailed { operation, source } = denied else { panic!("the original native error must survive") };
-    assert_eq!(operation, UnauthorizedForwardDeclaration::ID);
+    assert_eq!(operation, UnauthorizedForward::ID);
     assert!(
         matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Remote(failure)) if failure.cause().contains("may not invoke"))
     );
     assert!(runtime.operations.call_encoded(&format!("provider.{}", AmplifyDeclaration::ID), vec![0xff]).await.is_err());
     manager.shutdown(&mut lifecycle).await.unwrap();
-    assert!(runtime.operations.submit_encoded(&format!("provider.{}", AmplifyDeclaration::ID), Amplify { value: 1 }.encode()).is_err());
+    assert!(
+        runtime
+            .operations
+            .submit_encoded(&format!("provider.{}", AmplifyDeclaration::ID), AmplifyDeclaration { value: 1 }.encode())
+            .is_err()
+    );
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
 }
@@ -444,10 +443,9 @@ async fn cancelled_dependency_capacity() {
     lifecycle.capacity = NonZeroUsize::new(1).unwrap();
     let mut manager = PluginManager::new(candidate(&lifecycle, false, false, false, false)).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let invocation =
-        runtime.operations.submit_encoded(&format!("caller.{}", ForwardDeclaration::ID), Message::encode(&Forward { value: 0 })).unwrap();
+    let invocation = runtime.operations.submit_encoded(&format!("caller.{}", Forward::ID), Message::encode(&Forward { value: 0 })).unwrap();
     (provider.started.notified()).await;
-    let busy = runtime.operations.submit_encoded(&format!("provider.{}", AmplifyDeclaration::ID), Amplify { value: 1 }.encode());
+    let busy = runtime.operations.submit_encoded(&format!("provider.{}", AmplifyDeclaration::ID), AmplifyDeclaration { value: 1 }.encode());
     assert!(
         matches!(&busy, Err(harmos_runtime::Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Capacity))),
         "expected native capacity refusal: {:?}",
@@ -456,17 +454,17 @@ async fn cancelled_dependency_capacity() {
     invocation.cancel();
     assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     (provider.dropped.notified()).await;
-    let bytes = runtime
-        .operations
-        .call_encoded(&format!("caller.{}", ForwardDeclaration::ID), Message::encode(&Forward { value: 9 }))
-        .await
-        .unwrap();
+    let bytes = runtime.operations.call_encoded(&format!("caller.{}", Forward::ID), Message::encode(&Forward { value: 9 })).await.unwrap();
     assert_eq!(Amplified::decode(bytes.as_slice()).unwrap().value, 9);
-    let timed = runtime.operations.call_encoded(&format!("provider.{}", AmplifyDeclaration::ID), Amplify { value: 0 }.encode()).await;
+    let timed =
+        runtime.operations.call_encoded(&format!("provider.{}", AmplifyDeclaration::ID), AmplifyDeclaration { value: 0 }.encode()).await;
     assert!(matches!(timed, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
     (provider.dropped.notified()).await;
-    let bytes =
-        runtime.operations.call_encoded(&format!("provider.{}", AmplifyDeclaration::ID), Amplify { value: 10 }.encode()).await.unwrap();
+    let bytes = runtime
+        .operations
+        .call_encoded(&format!("provider.{}", AmplifyDeclaration::ID), AmplifyDeclaration { value: 10 }.encode())
+        .await
+        .unwrap();
     assert_eq!(Amplified::decode(bytes.as_slice()).unwrap().value, 10);
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
@@ -511,8 +509,11 @@ async fn retry_retained_finalization() {
     lifecycle.capacity = NonZeroUsize::new(1).unwrap();
     let mut manager = PluginManager::new(candidate(&lifecycle, false, false, false, false)).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let result =
-        runtime.operations.call_encoded(&format!("provider.{}", RetryDeclaration::ID), Message::encode(&Retry { value: 1 })).await.unwrap();
+    let result = runtime
+        .operations
+        .call_encoded(&format!("provider.{}", RetryDeclaration::ID), Message::encode(&RetryDeclaration { value: 1 }))
+        .await
+        .unwrap();
     assert_eq!(Amplified::decode(result.as_slice()).unwrap().value, 3);
     assert_eq!(provider.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 2);
@@ -524,17 +525,26 @@ async fn retry_retained_finalization() {
         if operation == RetryDeclaration::ID && matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Transport(harmos_runtime::services::SidecarError::Refused { code, .. })) if *code == harmos_sidecar::Frame::OVERSIZED)));
     assert_eq!(provider.prepared.load(Ordering::SeqCst), 1);
     provider.fail_cleanup.store(true, Ordering::SeqCst);
-    let failed = runtime.operations.call_encoded(&format!("provider.{}", RetryDeclaration::ID), Message::encode(&Retry { value: 1 })).await;
+    let failed = runtime
+        .operations
+        .call_encoded(&format!("provider.{}", RetryDeclaration::ID), Message::encode(&RetryDeclaration { value: 1 }))
+        .await;
     assert!(matches!(failed, Err(harmos_runtime::Error::OperationFinalization { operation, .. }) if operation == RetryDeclaration::ID));
     assert!(runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("provider", RetryDeclaration::ID).unwrap()).await.is_err());
-    assert!(matches!(runtime.operations.submit_encoded(&format!("provider.{}", AmplifyDeclaration::ID), Amplify { value: 1 }.encode()),
-        Err(harmos_runtime::Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Capacity))));
+    assert!(
+        matches!(runtime.operations.submit_encoded(&format!("provider.{}", AmplifyDeclaration::ID), AmplifyDeclaration { value: 1 }.encode()),
+        Err(harmos_runtime::Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Capacity)))
+    );
     provider.fail_cleanup.store(false, Ordering::SeqCst);
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("provider", RetryDeclaration::ID).unwrap()).await.unwrap();
     assert_eq!(provider.prepared.load(Ordering::SeqCst), 2);
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 4);
     assert_eq!(provider.finalized.load(Ordering::SeqCst), 2);
-    runtime.operations.call_encoded(&format!("provider.{}", AmplifyDeclaration::ID), Amplify { value: 1 }.encode()).await.unwrap();
+    runtime
+        .operations
+        .call_encoded(&format!("provider.{}", AmplifyDeclaration::ID), AmplifyDeclaration { value: 1 }.encode())
+        .await
+        .unwrap();
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
@@ -570,15 +580,15 @@ async fn capacity_precedes_encoding() {
         }
         initialized.unwrap();
         let native = lifecycle.previous_native.as_ref().unwrap();
-        let contract = harmos_runtime::operations::WireDeclaration::of::<ForwardDeclaration>().contract().unwrap();
+        let contract = harmos_runtime::operations::WireDeclaration::of::<Forward>().contract().unwrap();
         let target = runtime.operations.capture_callback(native.scope().unwrap(), &contract);
         let target = target.unwrap();
-        let invocation = target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(Amplify { value: 0 }.encode())).unwrap();
+        let invocation = target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(AmplifyDeclaration { value: 0 }.encode())).unwrap();
         (provider.started.notified()).await;
         let encoded = AtomicBool::new(false);
         let busy = target.submit_with(NonZeroUsize::new(64).unwrap(), |_| {
             encoded.store(true, Ordering::SeqCst);
-            Ok(Amplify { value: 1 }.encode())
+            Ok(AmplifyDeclaration { value: 1 }.encode())
         });
         assert!(
             matches!(&busy, Err(harmos_runtime::Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Capacity))),
@@ -587,17 +597,17 @@ async fn capacity_precedes_encoding() {
         );
         assert!(!encoded.load(Ordering::SeqCst));
         if !dynamic {
-            let busy = runtime.operations.submit::<ForwardDeclaration>(Forward { value: 1 }).await.unwrap().await;
+            let busy = runtime.operations.submit::<Forward>(Forward { value: 1 }).await.unwrap().await;
             assert!(matches!(busy, Err(harmos_runtime::Error::OperationFailed { source, .. })
                 if matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Capacity))));
         }
         invocation.cancel();
         assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
-        let bytes = target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(Amplify { value: 9 }.encode())).unwrap().await.unwrap();
+        let bytes =
+            target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(AmplifyDeclaration { value: 9 }.encode())).unwrap().await.unwrap();
         assert_eq!(Amplified::decode(&bytes).unwrap().value, 9);
         if !dynamic {
-            let response =
-                runtime.operations.call::<<Forward as harmos_runtime::RequestFor>::Operation>(Forward { value: 11 }).await.unwrap();
+            let response = runtime.operations.call::<Forward>(Forward { value: 11 }).await.unwrap();
             assert_eq!(response.value, 11);
         }
         manager.shutdown(&mut lifecycle).await.unwrap();

@@ -76,11 +76,9 @@ inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest:
 
 /* === Structs === */
 
-#[harmos_runtime::operation(request = Selected, infer_request,
-    id = "fixture_selected",
-
+#[harmos_runtime::operation(id = "fixture_selected",
     response = Response,
-    description = "Selected \"operation\" Русский",
+    description = "SelectedDeclaration \"operation\" Русский",
     visibility = Visibility::Shared,
     replay = ReplaySafety::Deduplicated,
     policy = OperationPolicy {
@@ -96,23 +94,13 @@ inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest:
         },
     },
 )]
-struct SelectedDeclaration;
+struct SelectedDeclaration {}
 
-#[harmos_runtime::message]
-
-struct Selected {}
-
-#[harmos_runtime::operation(request = Unselected, infer_request,
-    id = "fixture_unselected",
-
+#[harmos_runtime::operation(id = "fixture_unselected",
     response = Response,
     policy = SelectedDeclaration::POLICY
 )]
-struct UnselectedDeclaration;
-
-#[harmos_runtime::message]
-
-struct Unselected {}
+struct UnselectedDeclaration {}
 
 #[harmos_runtime::message]
 struct Response {
@@ -141,7 +129,7 @@ struct ExplicitEmptyNative;
 
 #[harmos_runtime::catalog]
 enum Leaves {
-    Selected(SelectedDeclaration),
+    SelectedDeclaration(SelectedDeclaration),
 }
 
 #[harmos_runtime::catalog]

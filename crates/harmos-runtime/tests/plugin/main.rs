@@ -48,7 +48,7 @@ mod retirement;
 
 use harmos_runtime::catalog::{Catalog, Member};
 use harmos_runtime::operations::{
-    Bindings, Operation, OperationDeclaration, OperationDefinition as Definition, OperationManager, OperationPolicy, PluginRegistration,
+    Bindings, Handler, OperationDeclaration, OperationDefinition as Definition, OperationManager, OperationPolicy, PluginRegistration,
     RetryPolicy, Visibility,
 };
 use harmos_runtime::plugin::*;
@@ -230,17 +230,15 @@ impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> OperationDeclar
     };
 }
 
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::RequestFor for Run<OWNER, MILLIS, PRIVATE> {
-    type Operation = Self;
-}
-
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Operation for Running<OWNER, MILLIS, PRIVATE> {
+impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Handler for Running<OWNER, MILLIS, PRIVATE> {
     type Request = Run<OWNER, MILLIS, PRIVATE>;
     type Response = String;
     type Error = std::io::Error;
-    type Endpoints = ();
+    type StreamEndpoints = ();
     async fn initialize(context: harmos_runtime::OperationContext) -> std::io::Result<Self> {
-        Ok(Self { _resources: context.dependency::<Owner>().expect("fixture owner") })
+        Ok(Self {
+            _resources: context.resource::<Owner>().expect("fixture owner"),
+        })
     }
     async fn run(
         &mut self, _: harmos_runtime::OperationContext, request: &mut Self::Request, _: &mut (),
@@ -291,7 +289,10 @@ impl Host {
             .runtime()
             .await
             .unwrap();
-        Self { runtime: Some(runtime), ..Self::default() }
+        Self {
+            runtime: Some(runtime),
+            ..Self::default()
+        }
     }
     fn operations(&self) -> &OperationManager<Lanes> {
         &self.runtime.as_ref().unwrap().operations
@@ -390,7 +391,10 @@ impl PluginLifecycle for Host {
         assert_eq!(authority.backend_kind(), backend.kind());
         let owned = activation(backend);
         let context = owned.stopping.as_ref().unwrap();
-        let _wait = StopWait { owner: artifact.id.clone(), control: context.control.clone() };
+        let _wait = StopWait {
+            owner: artifact.id.clone(),
+            control: context.control.clone(),
+        };
         {
             let mut control = context.control.lock().unwrap();
             control.events.push(format!("stop:{}", artifact.id));
@@ -464,7 +468,13 @@ fn plan() -> PluginGraph {
             },
             configuration: b"null".to_vec(),
             contributions: harmos_runtime::plugin::PluginContributions::default(),
-            requires: requires.into_iter().map(|id| Requirement { id: id.to_owned(), version: "*".parse().unwrap() }).collect(),
+            requires: requires
+                .into_iter()
+                .map(|id| Requirement {
+                    id: id.to_owned(),
+                    version: "*".parse().unwrap(),
+                })
+                .collect(),
         }),
     )
     .unwrap()

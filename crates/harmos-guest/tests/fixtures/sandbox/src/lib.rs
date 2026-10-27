@@ -8,7 +8,7 @@
  */
 
 // One Guest For Every Sandbox Behaviour The Host Stories Drive: The Configuration
-// String Selects A Lifecycle Mode And Request Fields Select Operation Behaviour
+// String Selects A Lifecycle Mode And Request Fields Select Handler Behaviour
 
 /* === Modules === */
 
@@ -27,15 +27,21 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use contract::{Counts, Decline, Echo, Echoed, Fail, ProviderEcho, Read, Spin, Stage, Value, Wait};
+use contract::{
+    CountsOperation, DeclineOperation, EchoOperation, Echoed, FailOperation, ProviderEchoOperation, ReadOperation, SpinOperation, Stage,
+    Value, WaitOperation,
+};
 use harmos_domain::operations::{FailureKind, OperationPolicy, RetryPolicy};
 use harmos_guest::operations::{ServingError, WireTable};
 use harmos_guest::{Context, Host, OperationRefusal, PublishError};
 
 /* === Constants === */
 
-const LIFECYCLE: OperationPolicy =
-    OperationPolicy { timeout: Duration::from_secs(2), attempt_timeout: Duration::from_secs(2), retries: RetryPolicy::Never };
+const LIFECYCLE: OperationPolicy = OperationPolicy {
+    timeout: Duration::from_secs(2),
+    attempt_timeout: Duration::from_secs(2),
+    retries: RetryPolicy::Never,
+};
 
 /* === Macros === */
 
@@ -122,7 +128,12 @@ impl harmos_guest::Plugin for Sandbox {
             child_initialize: AtomicBool::new(config == "initialize-child"),
             ..Owner::default()
         };
-        Ok(Self { config, check_publication_revocation: false, check_dependency_revocation: false, owner: Arc::new(owner) })
+        Ok(Self {
+            config,
+            check_publication_revocation: false,
+            check_dependency_revocation: false,
+            owner: Arc::new(owner),
+        })
     }
 
     fn resources(&self) -> Arc<Owner> {
@@ -167,7 +178,7 @@ impl harmos_guest::Plugin for Sandbox {
         // Dependency Mode
         if self.config == "dependencies" {
             context
-                .call::<contract::ProviderEchoOperation>(ProviderEcho { say: "initialize".into() })
+                .call::<contract::ProviderEchoOperation>(ProviderEchoOperation { say: "initialize".into() })
                 .await
                 .map_err(std::io::Error::other)?;
             self.check_dependency_revocation = true;
@@ -193,7 +204,7 @@ impl harmos_guest::Plugin for Sandbox {
             }
         }
         if self.check_dependency_revocation {
-            let result = context.call::<contract::ProviderEchoOperation>(ProviderEcho { say: "cleanup".into() }).await;
+            let result = context.call::<contract::ProviderEchoOperation>(ProviderEchoOperation { say: "cleanup".into() }).await;
             if result.is_ok() {
                 return Err(std::io::Error::other("retirement must refuse a new dependency call"));
             }
@@ -207,21 +218,21 @@ impl harmos_guest::Plugin for Sandbox {
     }
 }
 
-impl harmos_guest::Operation for Echoing {
-    type Request = Echo;
+impl harmos_guest::Handler for Echoing {
+    type Request = EchoOperation;
     type Response = Echoed;
     type Error = OperationRefusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(sdk: harmos_guest::OperationContext) -> Result<Self, OperationRefusal> {
-        let owner = sdk.dependency::<Owner>().map_err(OperationRefusal::of)?;
+        let owner = sdk.resource::<Owner>().map_err(OperationRefusal::of)?;
         Ok(Self { owner })
     }
 
     async fn run(
-        &mut self, sdk: harmos_guest::OperationContext, request: &mut Echo, _: &mut (),
+        &mut self, sdk: harmos_guest::OperationContext, request: &mut EchoOperation, _: &mut (),
     ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
-        let carrier = sdk.dependency::<Context>().map_err(OperationRefusal::of)?;
+        let carrier = sdk.resource::<Context>().map_err(OperationRefusal::of)?;
         let context = carrier.as_ref();
         let result: Result<Echoed, OperationRefusal> = async move {
             // Calls Through The Saved Initialization Context
@@ -233,7 +244,7 @@ impl harmos_guest::Operation for Echoing {
             if let Some(value) = request.say.strip_prefix("saved-dependency:") {
                 let saved = self.saved()?;
                 return saved
-                    .call::<contract::ProviderEchoOperation>(ProviderEcho { say: value.into() })
+                    .call::<contract::ProviderEchoOperation>(ProviderEchoOperation { say: value.into() })
                     .await
                     .map(harmos_guest::operations::Response::into_owned);
             }
@@ -241,7 +252,7 @@ impl harmos_guest::Operation for Echoing {
             // Calls Through The Current Context
             if let Some(say) = request.say.strip_prefix("dependency:") {
                 return context
-                    .call::<contract::ProviderEchoOperation>(ProviderEcho { say: say.to_owned() })
+                    .call::<contract::ProviderEchoOperation>(ProviderEchoOperation { say: say.to_owned() })
                     .await
                     .map(harmos_guest::operations::Response::into_owned);
             }
@@ -276,36 +287,36 @@ impl Echoing {
     }
 }
 
-impl harmos_guest::Operation for Declining {
-    type Request = Decline;
+impl harmos_guest::Handler for Declining {
+    type Request = DeclineOperation;
     type Response = Echoed;
     type Error = OperationRefusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(_sdk: harmos_guest::OperationContext) -> Result<Self, OperationRefusal> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, _sdk: harmos_guest::OperationContext, _: &mut Decline, _: &mut (),
+        &mut self, _sdk: harmos_guest::OperationContext, _: &mut DeclineOperation, _: &mut (),
     ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
         let result: Result<Echoed, OperationRefusal> = async move { Err(OperationRefusal::new(7, "the probe declines")) }.await;
         result.map(Into::into)
     }
 }
 
-impl harmos_guest::Operation for Spinning {
-    type Request = Spin;
+impl harmos_guest::Handler for Spinning {
+    type Request = SpinOperation;
     type Response = Echoed;
     type Error = OperationRefusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(_sdk: harmos_guest::OperationContext) -> Result<Self, OperationRefusal> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, _sdk: harmos_guest::OperationContext, _: &mut Spin, _: &mut (),
+        &mut self, _sdk: harmos_guest::OperationContext, _: &mut SpinOperation, _: &mut (),
     ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
         let result: Result<Echoed, OperationRefusal> = async move {
             let mut counted = 0u64;
@@ -319,11 +330,11 @@ impl harmos_guest::Operation for Spinning {
     }
 }
 
-impl harmos_guest::Operation for Waiting {
-    type Request = Wait;
+impl harmos_guest::Handler for Waiting {
+    type Request = WaitOperation;
     type Response = Echoed;
     type Error = OperationRefusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(_sdk: harmos_guest::OperationContext) -> Result<Self, OperationRefusal> {
         Ok(Self)
@@ -331,12 +342,12 @@ impl harmos_guest::Operation for Waiting {
 
     // The Provider Answers Slowly; Nothing Here Burns Fuel While It Waits
     async fn run(
-        &mut self, sdk: harmos_guest::OperationContext, _: &mut Wait, _: &mut (),
+        &mut self, sdk: harmos_guest::OperationContext, _: &mut WaitOperation, _: &mut (),
     ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
-        let carrier = sdk.dependency::<Context>().map_err(OperationRefusal::of)?;
+        let carrier = sdk.resource::<Context>().map_err(OperationRefusal::of)?;
         let context = carrier.as_ref();
         let result: Result<Echoed, OperationRefusal> = async move {
-            let _ = context.call::<contract::ProviderEchoOperation>(ProviderEcho { say: "slow".into() }).await;
+            let _ = context.call::<contract::ProviderEchoOperation>(ProviderEchoOperation { say: "slow".into() }).await;
             // Resuming Reaches The Epoch Check A Suspended Guest Could Not
             for step in 0..4096u32 {
                 std::hint::black_box(step);
@@ -348,33 +359,33 @@ impl harmos_guest::Operation for Waiting {
     }
 }
 
-impl harmos_guest::Operation for Failing {
-    type Request = Fail;
+impl harmos_guest::Handler for Failing {
+    type Request = FailOperation;
     type Response = Echoed;
     type Error = OperationRefusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(_sdk: harmos_guest::OperationContext) -> Result<Self, OperationRefusal> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, _sdk: harmos_guest::OperationContext, _: &mut Fail, _: &mut (),
+        &mut self, _sdk: harmos_guest::OperationContext, _: &mut FailOperation, _: &mut (),
     ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
         let result: Result<Echoed, OperationRefusal> = async move { panic!("requested guest trap") }.await;
         result.map(Into::into)
     }
 }
 
-impl harmos_guest::Operation for Reading {
-    type Request = Read;
+impl harmos_guest::Handler for Reading {
+    type Request = ReadOperation;
     type Response = Value;
     type Error = std::io::Error;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(sdk: harmos_guest::OperationContext) -> Result<Self, std::io::Error> {
-        let owner = sdk.dependency::<Owner>().map_err(std::io::Error::other)?;
-        let carrier = sdk.dependency::<Context>().map_err(std::io::Error::other)?;
+        let owner = sdk.resource::<Owner>().map_err(std::io::Error::other)?;
+        let carrier = sdk.resource::<Context>().map_err(std::io::Error::other)?;
         let context = carrier.as_ref();
         owner.initialized.fetch_add(1, Ordering::SeqCst);
         if owner.fail_initialize.swap(false, Ordering::SeqCst) {
@@ -382,17 +393,24 @@ impl harmos_guest::Operation for Reading {
         }
         let mut saved = None;
         if owner.child_initialize.swap(false, Ordering::SeqCst) {
-            let child = context.call::<contract::ReadOperation>(Read { value: "leaf".into() }).await.map_err(std::io::Error::other)?;
+            let child =
+                context.call::<contract::ReadOperation>(ReadOperation { value: "leaf".into() }).await.map_err(std::io::Error::other)?;
             assert_eq!(child.value, "leaf:1");
             saved = Some(context.clone());
         }
-        Ok(Self { owner, value: String::new(), attempts: 0, cleanups: 0, saved })
+        Ok(Self {
+            owner,
+            value: String::new(),
+            attempts: 0,
+            cleanups: 0,
+            saved,
+        })
     }
 
     async fn run(
-        &mut self, sdk: harmos_guest::OperationContext, value: &mut Read, _: &mut (),
+        &mut self, sdk: harmos_guest::OperationContext, value: &mut ReadOperation, _: &mut (),
     ) -> Result<harmos_guest::operations::Response<Value>, std::io::Error> {
-        let carrier = sdk.dependency::<Context>().map_err(std::io::Error::other)?;
+        let carrier = sdk.resource::<Context>().map_err(std::io::Error::other)?;
         let context = carrier.as_ref();
         let result: Result<Value, std::io::Error> = async move {
             self.value.clone_from(&value.value);
@@ -401,7 +419,7 @@ impl harmos_guest::Operation for Reading {
             // Retired Initialization Context
             if self.value == "initialize-child" {
                 let saved = self.saved.as_ref().expect("original initialization context");
-                let retired = saved.call::<contract::ReadOperation>(Read { value: "leaf".into() }).await;
+                let retired = saved.call::<contract::ReadOperation>(ReadOperation { value: "leaf".into() }).await;
                 if retired.is_ok() {
                     return Err(std::io::Error::other("initialization context remained active"));
                 }
@@ -416,10 +434,14 @@ impl harmos_guest::Operation for Reading {
                 let parent = stage(context)?;
                 assert_eq!(parent.id, "parent");
                 let caller = context.with_value(Stage { id: "child".into() }).map_err(std::io::Error::other)?;
-                let child =
-                    caller.call::<contract::ReadOperation>(Read { value: "context-leaf".into() }).await.map_err(std::io::Error::other)?;
+                let child = caller
+                    .call::<contract::ReadOperation>(ReadOperation { value: "context-leaf".into() })
+                    .await
+                    .map_err(std::io::Error::other)?;
                 let original = stage(context)?;
-                return Ok(Value { value: format!("{}:{}", original.id, child.value) });
+                return Ok(Value {
+                    value: format!("{}:{}", original.id, child.value),
+                });
             }
 
             // Children And Retried Attempts
@@ -429,21 +451,26 @@ impl harmos_guest::Operation for Reading {
             }
             if self.value == "parent" {
                 if let Some(saved) = &self.saved {
-                    let stale = saved.call::<contract::ReadOperation>(Read { value: "leaf".into() }).await;
+                    let stale = saved.call::<contract::ReadOperation>(ReadOperation { value: "leaf".into() }).await;
                     if stale.is_ok() {
                         return Err(std::io::Error::other("stale context was accepted"));
                     }
                 }
-                let child = context.call::<contract::ReadOperation>(Read { value: "leaf".into() }).await.map_err(std::io::Error::other)?;
+                let child =
+                    context.call::<contract::ReadOperation>(ReadOperation { value: "leaf".into() }).await.map_err(std::io::Error::other)?;
                 if self.attempts > 1 {
-                    return Ok(Value { value: format!("parent:2:stale:{}", child.value) });
+                    return Ok(Value {
+                        value: format!("parent:2:stale:{}", child.value),
+                    });
                 }
                 self.saved = Some(context.clone());
             }
             if self.attempts == 1 {
                 return Err(std::io::Error::other("first transient attempt"));
             }
-            Ok(Value { value: format!("{}:{}", self.value, self.attempts) })
+            Ok(Value {
+                value: format!("{}:{}", self.value, self.attempts),
+            })
         }
         .await;
         result.map(Into::into)
@@ -468,19 +495,19 @@ impl harmos_guest::Operation for Reading {
     }
 }
 
-impl harmos_guest::Operation for Counting {
-    type Request = Counts;
+impl harmos_guest::Handler for Counting {
+    type Request = CountsOperation;
     type Response = Value;
     type Error = std::io::Error;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(sdk: harmos_guest::OperationContext) -> Result<Self, std::io::Error> {
-        let owner = sdk.dependency::<Owner>().map_err(std::io::Error::other)?;
+        let owner = sdk.resource::<Owner>().map_err(std::io::Error::other)?;
         Ok(Self { owner })
     }
 
     async fn run(
-        &mut self, _sdk: harmos_guest::OperationContext, _: &mut Counts, _: &mut (),
+        &mut self, _sdk: harmos_guest::OperationContext, _: &mut CountsOperation, _: &mut (),
     ) -> Result<harmos_guest::operations::Response<Value>, std::io::Error> {
         let result: Result<Value, std::io::Error> = async move {
             let owner = &self.owner;
@@ -511,7 +538,7 @@ async fn progress(context: &Context, value: &str) -> Result<(), PublishError> {
 async fn submitted(context: &Context) -> Result<(), std::io::Error> {
     use harmos_guest::operations::Instance;
     use harmos_guest::operations::instance::Phase;
-    let request = |say: &str| ProviderEcho { say: say.into() };
+    let request = |say: &str| ProviderEchoOperation { say: say.into() };
 
     let joined = context.submit::<contract::ProviderEchoOperation>(request("joined")).await.map_err(std::io::Error::other)?;
     let status = joined.status().await.map_err(std::io::Error::other)?;

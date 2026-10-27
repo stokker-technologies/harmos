@@ -26,7 +26,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos_runtime::operations::{Operation, RetryPolicy};
+use harmos_runtime::operations::{Handler, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -62,48 +62,43 @@ enum Mode {
     Sleep,
 }
 
-#[harmos_runtime::operation(request = WaitContract, infer_request,
-        response = (),
+#[harmos_runtime::operation(response = (),
         id = "shutdown_wait",
-
         policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(2),
             retries: RetryPolicy::Never,
         },
     )]
-struct WaitContractDeclaration;
-
-#[harmos_runtime::message]
-
-struct WaitContract {
+struct WaitContractDeclaration {
     mode: Mode,
 }
 
 #[harmos_runtime::catalog]
 enum Operations {
-    WaitContract(WaitContractDeclaration),
+    WaitContractDeclaration(WaitContractDeclaration),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl Operation for Wait {
-    type Request = WaitContract;
+impl Handler for Wait {
+    type Request = WaitContractDeclaration;
     type Response = <WaitContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::convert::Infallible;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
-        let trace = context.dependency::<Trace>().expect("fixture registers its dependency");
+        let trace = context.resource::<Trace>().expect("fixture registers its dependency");
         Ok(Self { holding: false, released: false, trace })
     }
 
     async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, request: &mut WaitContract, _endpoints: &mut Self::Endpoints,
+        &mut self, _context: harmos_runtime::OperationContext, request: &mut WaitContractDeclaration,
+        _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
-        let host = _context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let _context = host.borrow();
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.holding = matches!(request.mode, Mode::Hold);
@@ -172,16 +167,16 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
 #[tokio::test]
 async fn cancellation_observable_queued() {
     let (runtime, trace) = runtime().await;
-    let first = runtime.operation(WaitContract { mode: Mode::Hold }).start().await.unwrap();
+    let first = runtime.operation(WaitContractDeclaration { mode: Mode::Hold }).start().await.unwrap();
     trace.started.notified().await;
-    let queued = runtime.operation(WaitContract { mode: Mode::Count }).start().await.unwrap();
+    let queued = runtime.operation(WaitContractDeclaration { mode: Mode::Count }).start().await.unwrap();
     queued.cancel();
     assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(trace.counted.load(Ordering::SeqCst), 0);
     trace.release.notify_one();
     first.await.unwrap();
 
-    let running = runtime.operation(WaitContract { mode: Mode::Sleep }).start().await.unwrap();
+    let running = runtime.operation(WaitContractDeclaration { mode: Mode::Sleep }).start().await.unwrap();
     trace.started.notified().await;
 
     running.cancel();
@@ -195,7 +190,7 @@ async fn cancellation_observable_queued() {
 #[tokio::test]
 async fn shutdown_retains_operation() {
     let (runtime, trace) = runtime().await;
-    let instance = runtime.operation(WaitContract { mode: Mode::Hold }).start().await.unwrap();
+    let instance = runtime.operation(WaitContractDeclaration { mode: Mode::Hold }).start().await.unwrap();
     trace.started.notified().await;
     {
         let stop = runtime.stop();

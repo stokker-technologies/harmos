@@ -45,30 +45,20 @@ struct Value {
     optional: Option<u32>,
 }
 
-#[harmos_runtime::operation(request = Unary, infer_request,
-    id = "dynamic_unary", response = Value, policy = POLICY,
+#[harmos_runtime::operation(id = "dynamic_unary", response = Value, policy = POLICY,
      grpc(package = "dynamic.v1", service = "External", method = "Unary"),
 )]
-struct UnaryDeclaration;
-
-#[harmos_runtime::message]
-
-struct Unary {
+struct UnaryDeclaration {
     small: u32,
     wide: u64,
     optional: Option<u32>,
 }
 
-#[harmos_runtime::operation(request = Exchange, infer_request,
-    id = "dynamic_exchange", response = Value, input = Value,
+#[harmos_runtime::operation(id = "dynamic_exchange", response = Value, input = Value,
     output = Value, policy = POLICY,
     grpc(package = "dynamic.v1", service = "External", method = "Exchange"),
 )]
-struct ExchangeDeclaration;
-
-#[harmos_runtime::message]
-
-struct Exchange {
+struct ExchangeDeclaration {
     small: u32,
     wide: u64,
     optional: Option<u32>,
@@ -93,8 +83,15 @@ fn dynamic_wire_interop() {
     let json = br#"{"small":7,"wide":"18446744073709551615","optional":0}"#;
     let payload = operation.request(json).unwrap();
     let value = grpc::decode::<Value>(DecodeInput::new(payload.as_bytes())).unwrap();
-    assert_eq!(value, Value { small: 7, wide: u64::MAX, optional: Some(0) });
-    assert_eq!(operation.path(), "/dynamic.v1.External/Unary");
+    assert_eq!(
+        value,
+        Value {
+            small: 7,
+            wide: u64::MAX,
+            optional: Some(0)
+        }
+    );
+    assert_eq!(operation.path(), "/dynamic.v1.External/UnaryDeclaration");
     assert!(!operation.client_streaming());
     assert!(!operation.server_streaming());
     let Event::Completion(decoded) = operation
@@ -125,9 +122,11 @@ fn dynamic_stream_interop() {
     assert!(operation.client_streaming());
     assert!(operation.server_streaming());
     let request = operation.request(json).unwrap();
-    let InputEnvelope::<Exchange, Value>::Request(value) = <harmos_runtime::grpc::Transcoded as harmos_runtime::grpc::Wire<
-        InputEnvelope<Exchange, Value>,
-    >>::decode_admitted(DecodeInput::new(request.as_bytes()), |_| Ok(()))
+    let InputEnvelope::<ExchangeDeclaration, Value>::Request(value) = <harmos_runtime::grpc::Transcoded as harmos_runtime::grpc::Wire<
+        InputEnvelope<ExchangeDeclaration, Value>,
+    >>::decode_admitted(DecodeInput::new(request.as_bytes()), |_| {
+        Ok(())
+    })
     .unwrap()
     .0
     else {
@@ -136,7 +135,7 @@ fn dynamic_stream_interop() {
     assert_eq!(value.small, 7);
     let input = operation.input(json).unwrap();
     assert!(matches!(
-        <harmos_runtime::grpc::Transcoded as harmos_runtime::grpc::Wire<InputEnvelope<Exchange, Value>>>::decode_admitted(
+        <harmos_runtime::grpc::Transcoded as harmos_runtime::grpc::Wire<InputEnvelope<ExchangeDeclaration, Value>>>::decode_admitted(
             DecodeInput::new(input.as_bytes()),
             |_| Ok(())
         )

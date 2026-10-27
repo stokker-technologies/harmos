@@ -37,7 +37,10 @@ product!(WriteFile {
 /* === Structs === */
 
 // Write One Finished File From Streamed Batches.
-#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess], codec = manual,
+#[harmos::operation(
+    harmos_path = crate,
+    resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess],
+    codec = manual,
     id = "storage.write_file",
     response = FileReference,
     policy = IO_POLICY,
@@ -45,7 +48,8 @@ product!(WriteFile {
     visibility = Visibility::Shared,
     replay = ReplaySafety::Unknown,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "WriteFile"),
-    grant = Self::grant_for)]
+    grant = Self::grant_for,
+)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WriteFile {
     pub metadata: FileMetadata,

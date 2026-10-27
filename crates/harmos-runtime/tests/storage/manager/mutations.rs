@@ -42,7 +42,10 @@ use harmos_runtime::storage::{MutationId, StorageManager};
 /* === Private Functions === */
 
 fn identity(storage: &StorageManager, key: &str) -> MutationId {
-    MutationId { window: storage.mutation_window().unwrap().id, key: Identifier::new(key).unwrap() }
+    MutationId {
+        window: storage.mutation_window().unwrap().id,
+        key: Identifier::new(key).unwrap(),
+    }
 }
 
 /* === Tests === */
@@ -80,7 +83,7 @@ async fn operation_retries_three() {
         .await
         .unwrap();
     let file = f.storage.produce_file(metadata("retry")).await.unwrap();
-    let request = harmos_operations::storage::ResumeFileRequest {
+    let request = harmos_operations::storage::ResumeFile {
         mutation: identity(&f.storage, "resume"),
         session: file.session().unwrap().clone(),
     };
@@ -152,7 +155,7 @@ async fn budgets_never_multiply() {
         .await
         .unwrap();
     let file = f.storage.produce_file(metadata("retry-budget")).await.unwrap();
-    let request = harmos_operations::storage::ResumeFileRequest {
+    let request = harmos_operations::storage::ResumeFile {
         mutation: identity(&f.storage, "resume"),
         session: file.session().unwrap().clone(),
     };

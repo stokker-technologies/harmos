@@ -72,7 +72,7 @@ async fn declared_publication_enters() {
     publications::ready(fixture.ready().clone()).await;
     let runtime = &fixture.runtime;
     fixture
-        .call::<<PublishPulse as harmos_runtime::RequestFor>::Operation>(PublishPulse { sample: 42 })
+        .call::<PublishPulseDeclaration>(PublishPulseDeclaration { sample: 42 })
         .await
         .expect("the sidecar publishes the requested sample");
 
@@ -156,7 +156,7 @@ async fn crash_spends_credit() {
     service_status(statuses.clone(), "meter", |status| *status == ServiceStatus::Running { credit: 2 }).await;
     let original = calls.operations().unwrap();
     let generation = original.scope().unwrap().generation();
-    let outcome = runtime.operations.call_encoded(&format!("meter.{}", CollapseDeclaration::ID), Collapse {}.encode()).await;
+    let outcome = runtime.operations.call_encoded(&format!("meter.{}", CollapseDeclaration::ID), CollapseDeclaration {}.encode()).await;
     let disconnected = match &outcome {
         Err(harmos_runtime::Error::Closing { domain: "operation" | "operation plugin" }) => true,
         Err(harmos_runtime::Error::OperationFailed { operation, source }) if operation == CollapseDeclaration::ID => {
@@ -180,7 +180,7 @@ async fn crash_spends_credit() {
     assert_ne!(calls.operations().unwrap().scope().unwrap().generation(), generation);
     let amplified = runtime
         .operations
-        .call_encoded(&format!("meter.{}", AmplifyDeclaration::ID), Amplify { value: 5 }.encode())
+        .call_encoded(&format!("meter.{}", AmplifyDeclaration::ID), AmplifyDeclaration { value: 5 }.encode())
         .await
         .expect("the restarted sidecar serves the same routes");
     assert_eq!(Amplified::decode(&amplified).unwrap(), Amplified { value: 10 });
@@ -217,21 +217,33 @@ async fn oversized_exchange_survives() {
         .unwrap();
     fixture.initialize().await.unwrap();
     publications::ready(fixture.ready().clone()).await;
-    let request = BudgetedRoute { payload: vec![0; Frame::LIMIT], reply_bytes: 0, refusal_bytes: 0 };
+    let request = BudgetedRouteDeclaration {
+        payload: vec![0; Frame::LIMIT],
+        reply_bytes: 0,
+        refusal_bytes: 0,
+    };
     assert!(!Frame::request_fits::<BudgetedRouteDeclaration>(&request));
     let oversized = fixture.call::<BudgetedRouteDeclaration>(request).await.unwrap_err();
     assert_transport_refusal(oversized, Frame::OVERSIZED, "request");
 
     for request in [
-        BudgetedRoute { payload: Vec::new(), reply_bytes: Frame::LIMIT as u32, refusal_bytes: 0 },
-        BudgetedRoute { payload: Vec::new(), reply_bytes: 0, refusal_bytes: Frame::LIMIT as u32 },
+        BudgetedRouteDeclaration {
+            payload: Vec::new(),
+            reply_bytes: Frame::LIMIT as u32,
+            refusal_bytes: 0,
+        },
+        BudgetedRouteDeclaration {
+            payload: Vec::new(),
+            reply_bytes: 0,
+            refusal_bytes: Frame::LIMIT as u32,
+        },
     ] {
         let refused = fixture.call::<BudgetedRouteDeclaration>(request).await.unwrap_err();
         assert_transport_refusal(refused, Frame::OVERSIZED, "reply");
     }
 
     assert_eq!(
-        fixture.call::<<Amplify as harmos_runtime::RequestFor>::Operation>(Amplify { value: 5 }).await.unwrap(),
+        fixture.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 5 }).await.unwrap(),
         Amplified { value: 10 },
         "every oversize refusal leaves the same exchange available to a later call"
     );
@@ -265,7 +277,10 @@ async fn announced_exit_reason() {
     runtime
         .operations
         .register_service(
-            harmos_runtime::services::ServiceDefinition { id: "meter".into(), policy: harmos_runtime::services::POLICY },
+            harmos_runtime::services::ServiceDefinition {
+                id: "meter".into(),
+                policy: harmos_runtime::services::POLICY,
+            },
             move |_: Arc<()>| {
                 harmos_runtime::sidecar::Managed::new(
                     resident.clone(),
@@ -282,7 +297,13 @@ async fn announced_exit_reason() {
     service_status(runtime.operations.watch_residents(), "meter", |status| matches!(status, ServiceStatus::Running { .. })).await;
     let outcome = runtime
         .operations
-        .call_encoded(&format!("meter.{}", FinishDeclaration::ID), Finish { reason: "the recording is complete".to_owned() }.encode())
+        .call_encoded(
+            &format!("meter.{}", FinishDeclaration::ID),
+            FinishDeclaration {
+                reason: "the recording is complete".to_owned(),
+            }
+            .encode(),
+        )
         .await;
     assert!(
         matches!(outcome, Err(harmos_runtime::Error::Closing { domain: "operation" | "operation plugin" })),
@@ -314,8 +335,11 @@ async fn announced_exit_reason() {
 async fn retired_control_refused() {
     let attached = meter(Arc::new(AtomicUsize::new(0))).attach().await.expect("the in-process sidecar attaches");
     let (write, read, control, _diagnostics, end) = attached.into_parts();
-    let harmos_sidecar::transport::Connection { sender: outgoing, receiver: mut incoming, mut driver } =
-        harmos_sidecar::transport::Connection::new((read, write), control.expect("the in-process attachment carries a control channel"));
+    let harmos_sidecar::transport::Connection {
+        sender: outgoing,
+        receiver: mut incoming,
+        mut driver,
+    } = harmos_sidecar::transport::Connection::new((read, write), control.expect("the in-process attachment carries a control channel"));
     let driving = tokio::spawn(async move { driver.run().await });
 
     // Activation Answers On The Same Exchange
@@ -332,7 +356,11 @@ async fn retired_control_refused() {
 
     // The Retired Control Method Is Refused As Unknown
     outgoing
-        .send(harmos_sidecar::Frame::Call { id: 2, method: "harmos.initialize".to_owned(), params: b"{}".to_vec().into() })
+        .send(harmos_sidecar::Frame::Call {
+            id: 2,
+            method: "harmos.initialize".to_owned(),
+            params: b"{}".to_vec().into(),
+        })
         .await
         .expect("the retired control request is sent");
     let refusal = received(incoming.receive().await.expect("the transport remains valid"));
@@ -376,15 +404,12 @@ async fn public_private_handlers() {
     publications::ready(fixture.ready().clone()).await;
 
     assert_eq!(
-        fixture
-            .call::<<visibility::ScalePrivately as harmos_runtime::RequestFor>::Operation>(visibility::ScalePrivately { value: 4 })
-            .await
-            .unwrap(),
+        fixture.call::<visibility::ScalePrivatelyDeclaration>(visibility::ScalePrivatelyDeclaration { value: 4 }).await.unwrap(),
         visibility::Scale { value: 20 },
         "a private method's route is still named and dispatched from outside          the module it was written in"
     );
     assert_eq!(
-        fixture.call::<<visibility::ScalePublicly as harmos_runtime::RequestFor>::Operation>(visibility::ScalePublicly {}).await.unwrap(),
+        fixture.call::<visibility::ScalePubliclyDeclaration>(visibility::ScalePubliclyDeclaration {}).await.unwrap(),
         visibility::Scale { value: 5 },
         "and a `pub` method's carrier reaches outside the module with it"
     );
@@ -413,11 +438,11 @@ async fn generated_entry_attaches() {
     publications::ready(fixture.ready().clone()).await;
 
     assert_eq!(
-        fixture.call::<<GetMeasure as harmos_runtime::RequestFor>::Operation>(GetMeasure { value: 7 }).await.unwrap(),
+        fixture.call::<GetMeasureDeclaration>(GetMeasureDeclaration { value: 7 }).await.unwrap(),
         Measured { value: 21 },
         "the route answers under the configuration the entry was activated with"
     );
-    let error = fixture.call::<<GetMeasure as harmos_runtime::RequestFor>::Operation>(GetMeasure { value: -1 }).await.unwrap_err();
+    let error = fixture.call::<GetMeasureDeclaration>(GetMeasureDeclaration { value: -1 }).await.unwrap_err();
     let failure = error.failure().expect("handler refusal preserves its structured failure");
     assert_eq!(failure.code(), harmos_runtime::operations::FailureKind::Permanent);
     assert_eq!(failure.cause(), "this gauge measures no negative value");
@@ -429,7 +454,7 @@ async fn generated_entry_attaches() {
     );
 
     // A Nested Transport Failure Arrives As One Cause And One Operation Frame
-    let error = fixture.call::<<GetMeasure as harmos_runtime::RequestFor>::Operation>(GetMeasure { value: i64::MIN }).await.unwrap_err();
+    let error = fixture.call::<GetMeasureDeclaration>(GetMeasureDeclaration { value: i64::MIN }).await.unwrap_err();
     let failure = error.failure().expect("the handler failure crosses as a structured value");
     assert_eq!(failure.cause(), "connection reset");
     assert_eq!(failure.context().operation(), Some(GetMeasureDeclaration::ID));
@@ -447,22 +472,19 @@ async fn generated_entry_attaches() {
         "no carrier repeats the cause or adds a frame"
     );
 
+    assert_eq!(fixture.call::<RunEchoDeclaration>(RunEchoDeclaration { text: "hello".to_owned() }).await.unwrap(), "hello".to_owned());
     assert_eq!(
-        fixture.call::<<RunEcho as harmos_runtime::RequestFor>::Operation>(RunEcho { text: "hello".to_owned() }).await.unwrap(),
-        "hello".to_owned()
-    );
-    assert_eq!(
-        fixture.call::<<RunUppercase as harmos_runtime::RequestFor>::Operation>(RunUppercase { text: "hello".to_owned() }).await.unwrap(),
+        fixture.call::<RunUppercaseDeclaration>(RunUppercaseDeclaration { text: "hello".to_owned() }).await.unwrap(),
         "HELLO".to_owned()
     );
 
     assert_eq!(
-        fixture.call::<<StopSampling as harmos_runtime::RequestFor>::Operation>(StopSampling {}).await.unwrap(),
+        fixture.call::<StopSamplingDeclaration>(StopSamplingDeclaration {}).await.unwrap(),
         StopSamplingResponse {},
         "a route carrying nothing either way still names one message each way"
     );
     assert_eq!(
-        fixture.call::<<GetFactor as harmos_runtime::RequestFor>::Operation>(GetFactor {}).await.unwrap(),
+        fixture.call::<GetFactorDeclaration>(GetFactorDeclaration {}).await.unwrap(),
         Measured { value: 3 },
         "a reply written through the crate's own alias dispatches like any other"
     );
@@ -489,8 +511,8 @@ async fn refusal_keeps_carrier() {
     fixture.publication().await.unwrap();
     fixture.initialize().await.unwrap();
     publications::ready(fixture.ready().clone()).await;
-    assert!(fixture.call::<<PublishPulse as harmos_runtime::RequestFor>::Operation>(PublishPulse { sample: 42 }).await.is_err());
-    assert_eq!(fixture.call::<<Amplify as harmos_runtime::RequestFor>::Operation>(Amplify { value: 5 }).await.unwrap().value, 10);
+    assert!(fixture.call::<PublishPulseDeclaration>(PublishPulseDeclaration { sample: 42 }).await.is_err());
+    assert_eq!(fixture.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 5 }).await.unwrap().value, 10);
     fixture.shutdown().await.unwrap();
     fixture.runtime.stop().await.unwrap();
 }
@@ -540,8 +562,7 @@ async fn ingestion_authority_bounded() {
             .unwrap();
         fixture.initialize().await.unwrap();
         publications::ready(fixture.ready().clone()).await;
-        let refused =
-            fixture.call::<<PublishPulse as harmos_runtime::RequestFor>::Operation>(PublishPulse { sample: 42 }).await.unwrap_err();
+        let refused = fixture.call::<PublishPulseDeclaration>(PublishPulseDeclaration { sample: 42 }).await.unwrap_err();
         assert!(matches!(refused, harmos_runtime::Error::OperationFailed { source, .. }
             if matches!(source.downcast_ref::<harmos_runtime::operations::NativeError>(),
                 Some(harmos_runtime::operations::NativeError::Remote(failure))

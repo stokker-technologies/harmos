@@ -71,7 +71,10 @@ impl Fixture {
         let address: std::net::SocketAddr = address.trim().parse().expect("the server reports its bound socket");
         let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap();
         let channel = endpoint.connect().await.unwrap();
-        Self { child, client: tonic::client::Grpc::new(channel) }
+        Self {
+            child,
+            client: tonic::client::Grpc::new(channel),
+        }
     }
 
     async fn call(&mut self, payload: &[u8]) -> harmos_runtime::operations::StreamItem<protocol::Payload> {
@@ -80,10 +83,10 @@ impl Fixture {
         let codec = harmos_runtime::grpc::Codec::<
             harmos_runtime::grpc::Transcoded,
             protocol::Payload,
-            harmos_runtime::operations::Response<protocol::Echo>,
+            harmos_runtime::operations::Response<protocol::EchoDeclaration>,
         >::new(settings.decode, settings.encode)
         .unwrap();
-        let request = protocol::Echo { bytes: payload.to_vec() };
+        let request = protocol::EchoDeclaration { bytes: payload.to_vec() };
         let request = harmos_runtime::operations::Response::new(request);
         let request = tonic::Request::new(request);
 
@@ -155,7 +158,9 @@ fn codecs(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("grpc/codecs");
     group.sample_size(10);
     for bytes in [0, 102, 1024 * 1024 / 10] {
-        let value = protocol::Payload { bytes: (0..bytes).map(|index| (index % 251) as u8).collect() };
+        let value = protocol::Payload {
+            bytes: (0..bytes).map(|index| (index % 251) as u8).collect(),
+        };
         let postcard = value.encode();
         let mut protobuf = Vec::new();
         harmos_sdk::grpc::encode(&value, &mut protobuf).unwrap();
