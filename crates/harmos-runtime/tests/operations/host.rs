@@ -28,7 +28,7 @@ use tokio::sync::{Notify, Semaphore};
 // Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::instance::{Outcome, Phase};
-use harmos_runtime::operations::{Handler, Host, Instance, OperationDeclaration, OperationPolicy, RetryPolicy};
+use harmos_runtime::operations::{Host, Instance, OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -46,7 +46,7 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
 /* === Structs === */
 
 // The declaration is its own request, so `call` and `submit` infer it.
-#[harmos_runtime::operation(id = "fixture_hold",  response = u64, policy = POLICY)]
+#[harmos_runtime::operation(resources = [Gate], id = "fixture.hold",  response = u64, policy = POLICY)]
 struct HoldDeclaration {
     value: u64,
 }
@@ -59,10 +59,10 @@ struct Gate {
     cleanup: Notify,
 }
 
-struct Holding(Arc<Gate>);
+struct CompletionGuard(Arc<Gate>);
 
 // A resident service activated through the host by its identity.
-#[harmos_runtime::operation(id = "fixture_ticker",
+#[harmos_runtime::operation(id = "fixture.ticker",
     response = (),
     policy = POLICY
 )]
@@ -74,30 +74,23 @@ struct TickerDeclaration {}
 
 /* === Implementations === */
 
-impl Handler for Holding {
-    type Request = HoldDeclaration;
-    type Response = <HoldDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for HoldDeclaration {
     type Error = Error;
-    type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Error> {
-        let gate = context.resource::<Gate>().expect("fixture registers its dependency");
-        Ok(Self(gate))
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u64>, Error> {
+        let gate = ctx.resource::<Gate>();
+        let _guard = CompletionGuard(gate.clone());
+        gate.started.notify_one();
+        gate.release.acquire().await.unwrap().forget();
+        gate.completed.fetch_add(1, Ordering::SeqCst);
+        Ok((self.value * 2).into())
     }
+}
 
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut HoldDeclaration, _: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<u64>, Error> {
-        self.0.started.notify_one();
-        self.0.release.acquire().await.unwrap().forget();
-        self.0.completed.fetch_add(1, Ordering::SeqCst);
-        Ok((request.value * 2).into())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Error> {
+impl Drop for CompletionGuard {
+    fn drop(&mut self) {
         self.0.cleaned.fetch_add(1, Ordering::SeqCst);
         self.0.cleanup.notify_one();
-        Ok(())
     }
 }
 
@@ -122,7 +115,7 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
                 dependencies.insert(gate.clone()).unwrap();
                 dependencies
             })
-            .implementation::<HoldDeclaration, Holding>(),
+            .operation::<HoldDeclaration>(),
             Lanes::Open,
         ))
         .await

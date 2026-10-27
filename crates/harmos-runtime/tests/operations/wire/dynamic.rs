@@ -45,7 +45,7 @@ struct Value {
     optional: Option<u32>,
 }
 
-#[harmos_runtime::operation(id = "dynamic_unary", response = Value, policy = POLICY,
+#[harmos_runtime::operation(id = "dynamic.unary", response = Value, policy = POLICY,
      grpc(package = "dynamic.v1", service = "External", method = "Unary"),
 )]
 struct UnaryDeclaration {
@@ -54,7 +54,7 @@ struct UnaryDeclaration {
     optional: Option<u32>,
 }
 
-#[harmos_runtime::operation(id = "dynamic_exchange", response = Value, input = Value,
+#[harmos_runtime::operation(id = "dynamic.exchange", response = Value, input = Value,
     output = Value, policy = POLICY,
     grpc(package = "dynamic.v1", service = "External", method = "Exchange"),
 )]
@@ -91,7 +91,7 @@ fn dynamic_wire_interop() {
             optional: Some(0)
         }
     );
-    assert_eq!(operation.path(), "/dynamic.v1.External/UnaryDeclaration");
+    assert_eq!(operation.path(), "/dynamic.v1.External/Unary");
     assert!(!operation.client_streaming());
     assert!(!operation.server_streaming());
     let Event::Completion(decoded) = operation

@@ -40,6 +40,12 @@ use super::*;
 
 /* === Private Functions === */
 
+fn scenario(behavior: Behavior) -> harmos_runtime::Dependencies {
+    let mut dependencies = harmos_runtime::Dependencies::new();
+    dependencies.insert(Arc::new(behavior)).unwrap();
+    dependencies
+}
+
 /* === Tests === */
 
 #[tokio::test]
@@ -95,8 +101,8 @@ async fn filesystem_hash_roundtrip() {
 async fn builtin_grpc_roundtrip() {
     use harmos_operations::lifecycle::{Cancel, InstanceState, Status};
 
-    #[harmos_runtime::operation(response = (),
-                        id = "grpc_parked",
+    #[harmos_runtime::operation(resources = [tokio::sync::Notify], response = (),
+                        id = "grpc.parked",
                         policy = harmos_runtime::OperationPolicy {
                             timeout: Duration::from_secs(5),
                             attempt_timeout: Duration::from_secs(5),
@@ -104,20 +110,12 @@ async fn builtin_grpc_roundtrip() {
                         },
                     )]
     struct ParkedContract {}
-    struct Parked(Arc<tokio::sync::Notify>);
-    impl Handler for Parked {
-        type Request = ParkedContract;
-        type Response = <ParkedContract as harmos_runtime::OperationDeclaration>::Response;
+    impl harmos_runtime::Operation for ParkedContract {
         type Error = Error;
-        type StreamEndpoints = ();
-        async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Error> {
-            let release = context.resource::<tokio::sync::Notify>().expect("fixture registers its dependency");
-            Ok(Self(release))
-        }
-        async fn run(
-            &mut self, _: harmos_runtime::ExecutionContext, _: &mut ParkedContract, _: &mut Self::StreamEndpoints,
-        ) -> Result<harmos_runtime::operations::Response<()>, Error> {
-            self.0.notified().await;
+
+        async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Error> {
+            let release = ctx.resource::<tokio::sync::Notify>();
+            release.notified().await;
             Ok(().into())
         }
     }
@@ -132,7 +130,7 @@ async fn builtin_grpc_roundtrip() {
                 dependencies.insert(release.clone()).unwrap();
                 dependencies
             })
-            .implementation::<ParkedContract, Parked>(),
+            .operation::<ParkedContract>(),
             Lanes::Open,
         ))
         .await
@@ -192,7 +190,7 @@ async fn external_authority_parity() {
                 dependencies.insert(Arc::new(())).unwrap();
                 dependencies
             })
-            .implementation::<GuardedDeclaration, Guard>(),
+            .operation::<GuardedDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -205,7 +203,7 @@ async fn external_authority_parity() {
                 dependencies.insert(Arc::new(())).unwrap();
                 dependencies
             })
-            .implementation::<DescendantDeclaration, Descend>(),
+            .operation::<DescendantDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -236,38 +234,26 @@ async fn external_authority_parity() {
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
     assert_eq!(external_catalog(channel.clone(), None).await.unwrap_err().code(), tonic::Code::Unauthenticated);
     let alice = external_catalog(channel.clone(), Some("Bearer alice")).await.unwrap();
-    let guarded = alice.iter().find(|entry| entry.contract.operation().id.as_str() == "grpc_guarded").unwrap();
-    assert_eq!(guarded.grants, [Grant::of("grpc_guarded", "reading")]);
+    let guarded = alice.iter().find(|entry| entry.contract.operation().id.as_str() == "grpc.guarded").unwrap();
+    assert_eq!(guarded.grants, [Grant::of("grpc.guarded", "reading")]);
     let bob = external_catalog(channel.clone(), Some("Bearer bob")).await.unwrap();
-    assert!(bob.iter().all(|entry| entry.contract.operation().id.as_str() != "grpc_guarded"));
+    assert!(bob.iter().all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded"));
+    assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap(), "external:alice");
     assert_eq!(
-        external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/GuardedDeclaration").await.unwrap(),
-        "external:alice"
-    );
-    assert_eq!(
-        external_call(channel.clone(), Some("Bearer bob"), "/fixture.Identity/GuardedDeclaration").await.unwrap_err().code(),
+        external_call(channel.clone(), Some("Bearer bob"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
         tonic::Code::PermissionDenied
     );
     assert_eq!(
-        external_call(channel.clone(), Some("Bearer limited"), "/fixture.Identity/GuardedDeclaration").await.unwrap_err().code(),
+        external_call(channel.clone(), Some("Bearer limited"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
         tonic::Code::PermissionDenied
     );
+    assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Descendant").await.unwrap(), "external:alice");
     assert_eq!(
-        external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/DescendantDeclaration").await.unwrap(),
-        "external:alice"
-    );
-    assert_eq!(
-        external_call(channel.clone(), Some("Bearer bob"), "/fixture.Identity/DescendantDeclaration").await.unwrap_err().code(),
+        external_call(channel.clone(), Some("Bearer bob"), "/fixture.Identity/Descendant").await.unwrap_err().code(),
         tonic::Code::PermissionDenied
     );
-    assert_eq!(
-        external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/GuardedDeclaration").await.unwrap(),
-        "external:alice"
-    );
-    assert_eq!(
-        external_call(channel.clone(), Some("Bearer carol"), "/fixture.Identity/GuardedDeclaration").await.unwrap(),
-        "external:carol"
-    );
+    assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap(), "external:alice");
+    assert_eq!(external_call(channel.clone(), Some("Bearer carol"), "/fixture.Identity/Guarded").await.unwrap(), "external:carol");
     runtime.operations.clear_cache();
     let mut context = harmos_runtime::operations::CallContext::default();
     context.insert(Principal("bob".into())).unwrap();
@@ -275,46 +261,37 @@ async fn external_authority_parity() {
         runtime.operations.with_context(context).call::<DescendantDeclaration>(DescendantDeclaration {}).await.unwrap().actor,
         "host:bob"
     );
-    assert_eq!(
-        external_call(channel.clone(), Some("Bearer carol"), "/fixture.Identity/GuardedDeclaration").await.unwrap(),
-        "external:carol"
-    );
+    assert_eq!(external_call(channel.clone(), Some("Bearer carol"), "/fixture.Identity/Guarded").await.unwrap(), "external:carol");
     mode.store(1, std::sync::atomic::Ordering::Release);
     assert!(
         external_catalog(channel.clone(), Some("Bearer alice"))
             .await
             .unwrap()
             .iter()
-            .all(|entry| entry.contract.operation().id.as_str() != "grpc_guarded")
+            .all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded")
     );
     assert_eq!(
-        external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/GuardedDeclaration").await.unwrap_err().code(),
+        external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
         tonic::Code::PermissionDenied
     );
     mode.store(2, std::sync::atomic::Ordering::Release);
     assert_eq!(
-        external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/GuardedDeclaration").await.unwrap_err().code(),
+        external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
         tonic::Code::InvalidArgument
     );
     mode.store(3, std::sync::atomic::Ordering::Release);
     let incompatible = external_catalog(channel.clone(), Some("Bearer alice")).await.unwrap();
-    assert!(incompatible.iter().all(|entry| entry.contract.operation().id.as_str() != "grpc_guarded"));
-    let denied = external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/GuardedDeclaration").await.unwrap_err();
+    assert!(incompatible.iter().all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded"));
+    let denied = external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap_err();
     assert_eq!(denied.code(), tonic::Code::PermissionDenied, "full control must validate the live contract");
     mode.store(4, std::sync::atomic::Ordering::Release);
     let full = external_catalog(channel.clone(), Some("Bearer limited")).await.unwrap();
-    let guarded = full.iter().find(|entry| entry.contract.operation().id.as_str() == "grpc_guarded").unwrap();
+    let guarded = full.iter().find(|entry| entry.contract.operation().id.as_str() == "grpc.guarded").unwrap();
     assert!(guarded.grants.is_empty(), "full control does not invent finite scopes");
     assert!(guarded.conditional_access);
-    assert_eq!(
-        external_call(channel.clone(), Some("Bearer limited"), "/fixture.Identity/GuardedDeclaration").await.unwrap(),
-        "external:limited"
-    );
+    assert_eq!(external_call(channel.clone(), Some("Bearer limited"), "/fixture.Identity/Guarded").await.unwrap(), "external:limited");
     mode.store(0, std::sync::atomic::Ordering::Release);
-    assert_eq!(
-        external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/GuardedDeclaration").await.unwrap(),
-        "external:alice"
-    );
+    assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap(), "external:alice");
     assert!(runtime.operations.register_authorizer(policy).is_err());
     runtime.stop().await.unwrap();
 
@@ -328,7 +305,7 @@ async fn external_authority_parity() {
                 dependencies.insert(Arc::new(())).unwrap();
                 dependencies
             })
-            .implementation::<GuardedDeclaration, Guard>(),
+            .operation::<GuardedDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -341,7 +318,7 @@ async fn external_authority_parity() {
         .unwrap();
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
-    assert_eq!(external_call(channel, None, "/fixture.Identity/GuardedDeclaration").await.unwrap(), "external:anonymous");
+    assert_eq!(external_call(channel, None, "/fixture.Identity/Guarded").await.unwrap(), "external:anonymous");
     runtime.stop().await.unwrap();
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     runtime
@@ -352,7 +329,7 @@ async fn external_authority_parity() {
                 dependencies.insert(Arc::new(())).unwrap();
                 dependencies
             })
-            .implementation::<GuardedDeclaration, Guard>(),
+            .operation::<GuardedDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -373,10 +350,7 @@ async fn external_authority_parity() {
         .unwrap();
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
-    assert_eq!(
-        external_call(channel, None, "/fixture.Identity/GuardedDeclaration").await.unwrap_err().code(),
-        tonic::Code::PermissionDenied
-    );
+    assert_eq!(external_call(channel, None, "/fixture.Identity/Guarded").await.unwrap_err().code(), tonic::Code::PermissionDenied);
     runtime.stop().await.unwrap();
 }
 
@@ -419,7 +393,7 @@ async fn independent_listeners() {
     runtime
         .operations
         .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).implementation::<WhoDeclaration, Read>(),
+            harmos_runtime::RegistrationBatch::new(scenario(Behavior::Read)).operation::<WhoDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -509,10 +483,10 @@ async fn stalled_listener_settles() {
         .register(harmos_runtime::RegistrationExt::lane(
             harmos_runtime::RegistrationBatch::new({
                 let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(stopped.clone()).unwrap();
+                dependencies.insert(Arc::new(Behavior::Holding(stopped.clone()))).unwrap();
                 dependencies
             })
-            .implementation::<HoldDeclaration, Holding>(),
+            .operation::<HoldDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -520,7 +494,7 @@ async fn stalled_listener_settles() {
     runtime
         .operations
         .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).implementation::<WhoDeclaration, Read>(),
+            harmos_runtime::RegistrationBatch::new(scenario(Behavior::Read)).operation::<WhoDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -593,10 +567,10 @@ async fn shutdown_streams_unavailable() {
         .register(harmos_runtime::RegistrationExt::lane(
             harmos_runtime::RegistrationBatch::new({
                 let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(tokio::sync::Semaphore::new(0))).unwrap();
+                dependencies.insert(Arc::new(Behavior::Holding(Arc::new(tokio::sync::Semaphore::new(0))))).unwrap();
                 dependencies
             })
-            .implementation::<HoldDeclaration, Holding>(),
+            .operation::<HoldDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -607,10 +581,10 @@ async fn shutdown_streams_unavailable() {
         .register(harmos_runtime::RegistrationExt::lane(
             harmos_runtime::RegistrationBatch::new({
                 let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(uploading.clone()).unwrap();
+                dependencies.insert(Arc::new(Behavior::Uploading(uploading.clone()))).unwrap();
                 dependencies
             })
-            .implementation::<UploadDeclaration, Uploading>(),
+            .operation::<UploadDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -715,7 +689,7 @@ async fn grpc_web_cors() {
     runtime
         .operations
         .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).implementation::<WhoDeclaration, Read>(),
+            harmos_runtime::RegistrationBatch::new(scenario(Behavior::Read)).operation::<WhoDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -725,10 +699,10 @@ async fn grpc_web_cors() {
         .register(harmos_runtime::RegistrationExt::lane(
             harmos_runtime::RegistrationBatch::new({
                 let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(())).unwrap();
+                dependencies.insert(Arc::new(Behavior::Read)).unwrap();
                 dependencies
             })
-            .implementation::<DownloadDeclaration, Downloading>(),
+            .operation::<DownloadDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -823,10 +797,10 @@ async fn status_propagation() {
             .register(harmos_runtime::RegistrationExt::lane(
                 harmos_runtime::RegistrationBatch::new({
                     let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(())).unwrap();
+                    dependencies.insert(Arc::new(Behavior::Reject)).unwrap();
                     dependencies
                 })
-                .implementation::<WhoDeclaration, Reject>(),
+                .operation::<WhoDeclaration>(),
                 Lanes::Open,
             ))
             .await
@@ -835,10 +809,10 @@ async fn status_propagation() {
             .register(harmos_runtime::RegistrationExt::lane(
                 harmos_runtime::RegistrationBatch::new({
                     let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(())).unwrap();
+                    dependencies.insert(Arc::new(Behavior::Reject)).unwrap();
                     dependencies
                 })
-                .implementation::<DownloadDeclaration, RejectStream>(),
+                .operation::<DownloadDeclaration>(),
                 Lanes::Open,
             ))
             .await
@@ -847,10 +821,10 @@ async fn status_propagation() {
             .register(harmos_runtime::RegistrationExt::lane(
                 harmos_runtime::RegistrationBatch::new({
                     let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(())).unwrap();
+                    dependencies.insert(Arc::new(Behavior::Reject)).unwrap();
                     dependencies
                 })
-                .implementation::<UploadDeclaration, RejectUpload>(),
+                .operation::<UploadDeclaration>(),
                 Lanes::Open,
             ))
             .await
@@ -859,10 +833,10 @@ async fn status_propagation() {
             .register(harmos_runtime::RegistrationExt::lane(
                 harmos_runtime::RegistrationBatch::new({
                     let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(())).unwrap();
+                    dependencies.insert(Arc::new(Behavior::Reject)).unwrap();
                     dependencies
                 })
-                .implementation::<ExchangeDeclaration, RejectExchange>(),
+                .operation::<ExchangeDeclaration>(),
                 Lanes::Open,
             ))
             .await
@@ -881,10 +855,10 @@ async fn status_propagation() {
             .register(harmos_runtime::RegistrationExt::lane(
                 harmos_runtime::RegistrationBatch::new({
                     let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(())).unwrap();
+                    dependencies.insert(Arc::new(Behavior::Crash)).unwrap();
                     dependencies
                 })
-                .implementation::<WhoDeclaration, Crash>(),
+                .operation::<WhoDeclaration>(),
                 Lanes::Open,
             ))
             .await
@@ -893,10 +867,10 @@ async fn status_propagation() {
             .register(harmos_runtime::RegistrationExt::lane(
                 harmos_runtime::RegistrationBatch::new({
                     let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(())).unwrap();
+                    dependencies.insert(Arc::new(Behavior::Crash)).unwrap();
                     dependencies
                 })
-                .implementation::<DownloadDeclaration, CrashStream>(),
+                .operation::<DownloadDeclaration>(),
                 Lanes::Open,
             ))
             .await
@@ -905,10 +879,10 @@ async fn status_propagation() {
             .register(harmos_runtime::RegistrationExt::lane(
                 harmos_runtime::RegistrationBatch::new({
                     let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(())).unwrap();
+                    dependencies.insert(Arc::new(Behavior::Crash)).unwrap();
                     dependencies
                 })
-                .implementation::<UploadDeclaration, CrashUpload>(),
+                .operation::<UploadDeclaration>(),
                 Lanes::Open,
             ))
             .await
@@ -917,10 +891,10 @@ async fn status_propagation() {
             .register(harmos_runtime::RegistrationExt::lane(
                 harmos_runtime::RegistrationBatch::new({
                     let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(())).unwrap();
+                    dependencies.insert(Arc::new(Behavior::Crash)).unwrap();
                     dependencies
                 })
-                .implementation::<ExchangeDeclaration, CrashExchange>(),
+                .operation::<ExchangeDeclaration>(),
                 Lanes::Open,
             ))
             .await
@@ -940,7 +914,7 @@ async fn runtime_stops_listener() {
     runtime
         .operations
         .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).implementation::<WhoDeclaration, Read>(),
+            harmos_runtime::RegistrationBatch::new(scenario(Behavior::Read)).operation::<WhoDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -968,35 +942,70 @@ async fn runtime_stops_listener() {
     assert!(call(channel, Some("Bearer alice")).await.is_err());
 }
 
-struct NativeDownload;
-impl harmos_runtime::OperationDeclaration for NativeDownload {
-    type Request = DownloadDeclaration;
-    type Response = Reply;
-    type Input = harmos_runtime::operations::NoStream;
-    type Output = harmos_runtime::operations::Stream<Reply>;
-    const ID: &'static str = "grpc_download";
-    const POLICY: harmos_runtime::OperationPolicy = WHO_POLICY;
-    const GRPC: Option<harmos_runtime::operations::Grpc> = Some(harmos_runtime::operations::Grpc::new("fixture", "Identity", "Download"));
+#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.download", response = Reply, output = Reply, policy = WHO_POLICY, grpc(package = "fixture", service = "Identity", method = "Download"))]
+struct NativeDownload {}
+impl harmos_runtime::Operation for NativeDownload {
+    type Error = Error;
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+        let behavior = ctx.resource::<Behavior>();
+        behavior.check(false)?;
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
+        let context = host.borrow();
+        let output = ctx.streams();
+        let result: ::core::result::Result<Reply, Self::Error> = async move {
+            let actor = context.context().require::<Principal>()?.0.clone();
+            output.send_with(128, || Ok(Reply { actor: actor.clone() })).await?;
+            Ok(Reply { actor })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
+    }
 }
-struct NativeUpload;
-impl harmos_runtime::OperationDeclaration for NativeUpload {
-    type Request = UploadDeclaration;
-    type Response = Reply;
-    type Input = harmos_runtime::operations::Stream<Reply>;
-    type Output = harmos_runtime::operations::NoStream;
-    const ID: &'static str = "grpc_upload";
-    const POLICY: harmos_runtime::OperationPolicy = WHO_POLICY;
-    const GRPC: Option<harmos_runtime::operations::Grpc> = Some(harmos_runtime::operations::Grpc::new("fixture", "Identity", "Upload"));
+
+#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.upload", response = Reply, input = Reply, policy = WHO_POLICY, grpc(package = "fixture", service = "Identity", method = "Upload"))]
+struct NativeUpload {}
+impl harmos_runtime::Operation for NativeUpload {
+    type Error = Error;
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+        let behavior = ctx.resource::<Behavior>();
+        behavior.check(false)?;
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
+        let context = host.borrow();
+        let input = ctx.streams();
+        let result: ::core::result::Result<Reply, Self::Error> = async move {
+            if let Behavior::Uploading(started) = behavior.as_ref() {
+                started.notify_one();
+            }
+            while input.recv().await.is_some() {}
+            Ok(Reply {
+                actor: context.context().require::<Principal>()?.0.clone(),
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
+    }
 }
-struct NativeExchange;
-impl harmos_runtime::OperationDeclaration for NativeExchange {
-    type Request = ExchangeDeclaration;
-    type Response = Reply;
-    type Input = harmos_runtime::operations::Stream<Reply>;
-    type Output = harmos_runtime::operations::Stream<Reply>;
-    const ID: &'static str = "grpc_exchange";
-    const POLICY: harmos_runtime::OperationPolicy = WHO_POLICY;
-    const GRPC: Option<harmos_runtime::operations::Grpc> = Some(harmos_runtime::operations::Grpc::new("fixture", "Identity", "Exchange"));
+
+#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.exchange", response = Reply, input = Reply, output = Reply, policy = WHO_POLICY, grpc(package = "fixture", service = "Identity", method = "Exchange"))]
+struct NativeExchange {}
+impl harmos_runtime::Operation for NativeExchange {
+    type Error = Error;
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+        let behavior = ctx.resource::<Behavior>();
+        behavior.check(true)?;
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
+        let context = host.borrow();
+        let endpoints = ctx.streams();
+        let result: ::core::result::Result<Reply, Self::Error> = async move {
+            let actor = context.context().require::<Principal>()?.0.clone();
+            while endpoints.0.recv().await.is_some() {
+                endpoints.1.send_with(128, || Ok(Reply { actor: actor.clone() })).await?;
+            }
+            Ok(Reply { actor })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
+    }
 }
 
 #[tokio::test]
@@ -1014,18 +1023,12 @@ async fn streaming_principals(native: bool) {
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     use harmos_runtime::RegistrationExt;
     let mut dependencies = harmos_runtime::Dependencies::new();
-    dependencies.insert(Arc::new(tokio::sync::Notify::new())).unwrap();
+    dependencies.insert(Arc::new(Behavior::Uploading(Arc::new(tokio::sync::Notify::new())))).unwrap();
     let batch = harmos_runtime::RegistrationBatch::new(dependencies);
     let batch = if native {
-        batch
-            .implementation::<NativeDownload, Downloading>()
-            .implementation::<NativeUpload, Uploading>()
-            .implementation::<NativeExchange, Exchanging>()
+        batch.operation::<NativeDownload>().operation::<NativeUpload>().operation::<NativeExchange>()
     } else {
-        batch
-            .implementation::<DownloadDeclaration, Downloading>()
-            .implementation::<UploadDeclaration, Uploading>()
-            .implementation::<ExchangeDeclaration, Exchanging>()
+        batch.operation::<DownloadDeclaration>().operation::<UploadDeclaration>().operation::<ExchangeDeclaration>()
     };
     runtime.operations.register(batch.lane(Lanes::Open)).await.unwrap();
     let trace = Arc::new(Mutex::new(Vec::new()));
@@ -1115,7 +1118,7 @@ async fn configured_tls_serves() {
     runtime
         .operations
         .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).implementation::<WhoDeclaration, Read>(),
+            harmos_runtime::RegistrationBatch::new(scenario(Behavior::Read)).operation::<WhoDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -1152,16 +1155,27 @@ async fn configured_tls_serves() {
 #[tokio::test]
 async fn observes_cancel_deadline() {
     use harmos_runtime::grpc::OutputEnvelope;
-    struct NativeHold;
-    impl harmos_runtime::OperationDeclaration for NativeHold {
-        type Request = HoldDeclaration;
-        type Response = Reply;
-        type Input = harmos_runtime::operations::NoStream;
-        type Output = harmos_runtime::operations::Stream<Reply>;
-        const ID: &'static str = "grpc_hold";
-        const POLICY: harmos_runtime::OperationPolicy = WHO_POLICY;
-        const GRPC: Option<harmos_runtime::operations::Grpc> = Some(harmos_runtime::operations::Grpc::new("fixture", "Identity", "Hold"));
+    #[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.hold", response = Reply, output = Reply, policy = WHO_POLICY, grpc(package = "fixture", service = "Identity", method = "Hold"))]
+    struct NativeHold {}
+    impl harmos_runtime::Operation for NativeHold {
+        type Error = Error;
+        async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+            let behavior = ctx.resource::<Behavior>();
+            behavior.check(false)?;
+            let host = ctx.resource::<harmos_runtime::operations::HostContext>();
+            let context = host.borrow();
+            let output = ctx.streams();
+            let _guard = HoldingGuard(behavior);
+            let result: ::core::result::Result<Reply, Self::Error> = async move {
+                let actor = context.context().require::<Principal>()?.0.clone();
+                output.send_with(128, || Ok(Reply { actor })).await?;
+                std::future::pending().await
+            }
+            .await;
+            result.map(::core::convert::Into::into)
+        }
     }
+
     for expired in [false, true] {
         let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
         let stopped = Arc::new(tokio::sync::Semaphore::new(0));
@@ -1170,10 +1184,10 @@ async fn observes_cancel_deadline() {
             .register(harmos_runtime::RegistrationExt::lane(
                 harmos_runtime::RegistrationBatch::new({
                     let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(stopped.clone()).unwrap();
+                    dependencies.insert(Arc::new(Behavior::Holding(stopped.clone()))).unwrap();
                     dependencies
                 })
-                .implementation::<NativeHold, Holding>(),
+                .operation::<NativeHold>(),
                 Lanes::Open,
             ))
             .await
@@ -1251,7 +1265,7 @@ async fn access_never_grant() {
     runtime
         .operations
         .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).implementation::<WhoDeclaration, Read>(),
+            harmos_runtime::RegistrationBatch::new(scenario(Behavior::Read)).operation::<WhoDeclaration>(),
             Lanes::Open,
         ))
         .await

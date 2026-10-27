@@ -76,7 +76,7 @@ inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest:
 
 /* === Structs === */
 
-#[harmos_runtime::operation(id = "fixture_selected",
+#[harmos_runtime::operation(id = "fixture.selected",
     response = Response,
     description = "SelectedDeclaration \"operation\" Русский",
     visibility = Shared,
@@ -96,7 +96,7 @@ inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest:
 )]
 struct SelectedDeclaration {}
 
-#[harmos_runtime::operation(id = "fixture_unselected",
+#[harmos_runtime::operation(id = "fixture.unselected",
     response = Response,
     policy = SelectedDeclaration::POLICY
 )]

@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
-use harmos_runtime::operations::{Handler, OperationPolicy, PluginRegistration, RetryPolicy, WireDeclaration};
+use harmos_runtime::operations::{OperationPolicy, PluginRegistration, RetryPolicy, WireDeclaration};
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition, Router,
@@ -69,10 +69,8 @@ struct Owner {
     observed: Notify,
     started: Notify,
     resume: Notify,
-    finalizing: Notify,
-    release: Notify,
-    finalizations: AtomicUsize,
-    fail_cleanup: AtomicBool,
+    settled: Notify,
+    finished: AtomicUsize,
     fail_attempt: AtomicBool,
     block: bool,
     reenter: bool,
@@ -175,7 +173,7 @@ impl harmos_runtime::Application for Model {
 
 impl<const FIRST: bool> Listener for Heard<FIRST> {
     type Row = WireFact;
-    const CALLBACK: &'static str = if FIRST { "heard_z" } else { "heard_a" };
+    const CALLBACK: &'static str = if FIRST { "heard.z" } else { "heard.a" };
     const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
@@ -183,38 +181,62 @@ impl<const FIRST: bool> Listener for Heard<FIRST> {
     };
 }
 
-struct Hearing<const FIRST: bool> {
-    resources: Arc<Owner>,
-    wait_cleanup: bool,
-}
-
-impl<const FIRST: bool> Handler for Hearing<FIRST> {
-    type StreamEndpoints = ();
-    type Request = <harmos_runtime::listeners::Callback<Heard<FIRST>> as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <harmos_runtime::listeners::Callback<Heard<FIRST>> as harmos_runtime::OperationDeclaration>::Response;
-
-    type Error = Failed;
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> std::result::Result<Self, Failed> {
-        let resources = context.resource::<Owner>().expect("fixture dependency");
-        Ok(Self { resources, wait_cleanup: false })
+struct AttemptGuard(Arc<Owner>);
+impl Drop for AttemptGuard {
+    fn drop(&mut self) {
+        self.0.finished.fetch_add(1, Ordering::SeqCst);
+        self.0.settled.notify_one();
     }
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut Delivery<Heard<FIRST>>, _endpoints: &mut Self::StreamEndpoints,
-    ) -> std::result::Result<harmos_runtime::operations::Response<()>, Failed> {
+}
+#[harmos_runtime::operation(codec = manual, resources = [Owner], id = <Heard<true> as Listener>::CALLBACK, response = (),
+    policy = <Heard<true> as Listener>::POLICY, visibility = Shared)]
+#[derive(Clone)]
+struct HearingFirst(Delivery<Heard<true>>);
+
+impl harmos_runtime::Message for HearingFirst {
+    const CODEC: &'static str = <Delivery<Heard<true>> as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&self.0)
+    }
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&self.0)
+    }
+    fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, harmos_runtime::MessageError> {
+        <Delivery<Heard<true>> as harmos_runtime::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> std::result::Result<Self, harmos_runtime::MessageError> {
+        <Delivery<Heard<true>> as harmos_runtime::Message>::decode(bytes).map(Self)
+    }
+}
+impl harmos_runtime::MemorySize for HearingFirst {
+    fn memory_size(&self) -> usize {
+        harmos_runtime::MemorySize::memory_size(&self.0)
+    }
+}
+impl harmos_runtime::schema::Described for HearingFirst {
+    const NAME: &'static str = <Delivery<Heard<true>> as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] = <Delivery<Heard<true>> as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <Delivery<Heard<true>> as harmos_runtime::schema::Described>::MARKER;
+}
+impl harmos_runtime::Operation for HearingFirst {
+    type Error = Failed;
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<()>, Self::Error> {
+        let resources = ctx.resource::<Owner>();
+        let _guard = AttemptGuard(resources.clone());
+        let request = self.0;
         let result: ::core::result::Result<(), Self::Error> = async move {
-            self.wait_cleanup = FIRST && request.row().value == 0 && self.resources.block;
             let DeliveryContext::Record { position } = request.context() else { panic!("original record coordinate") };
-            self.resources.seen.lock().unwrap().push((FIRST, request.row().value, position));
-            self.resources.observed.notify_one();
-            if FIRST && request.row().value == 0 {
-                if self.resources.reenter {
-                    self.resources.records.publish(fact(9)).await?;
+            resources.seen.lock().unwrap().push((true, request.row().value, position));
+            resources.observed.notify_one();
+            if true && request.row().value == 0 {
+                if resources.reenter {
+                    resources.records.publish(fact(9)).await?;
                 }
-                if self.resources.block {
-                    self.resources.started.notify_one();
-                    self.resources.resume.notified().await;
+                if resources.block {
+                    resources.started.notify_one();
+                    resources.resume.notified().await;
                 }
-                if self.resources.fail_attempt.load(Ordering::SeqCst) {
+                if resources.fail_attempt.load(Ordering::SeqCst) {
                     return Err(Failed::Scripted);
                 }
             }
@@ -223,16 +245,63 @@ impl<const FIRST: bool> Handler for Hearing<FIRST> {
         .await;
         result.map(::core::convert::Into::into)
     }
-    async fn cleanup(&mut self) -> std::result::Result<(), Failed> {
-        self.resources.finalizations.fetch_add(1, Ordering::SeqCst);
-        if self.wait_cleanup {
-            self.resources.finalizing.notify_one();
-            if self.resources.fail_cleanup.load(Ordering::SeqCst) {
-                return Err(Failed::Scripted);
+}
+#[harmos_runtime::operation(codec = manual, resources = [Owner], id = <Heard<false> as Listener>::CALLBACK, response = (),
+    policy = <Heard<false> as Listener>::POLICY, visibility = Shared)]
+#[derive(Clone)]
+struct HearingSecond(Delivery<Heard<false>>);
+
+impl harmos_runtime::Message for HearingSecond {
+    const CODEC: &'static str = <Delivery<Heard<false>> as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&self.0)
+    }
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&self.0)
+    }
+    fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, harmos_runtime::MessageError> {
+        <Delivery<Heard<false>> as harmos_runtime::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> std::result::Result<Self, harmos_runtime::MessageError> {
+        <Delivery<Heard<false>> as harmos_runtime::Message>::decode(bytes).map(Self)
+    }
+}
+impl harmos_runtime::MemorySize for HearingSecond {
+    fn memory_size(&self) -> usize {
+        harmos_runtime::MemorySize::memory_size(&self.0)
+    }
+}
+impl harmos_runtime::schema::Described for HearingSecond {
+    const NAME: &'static str = <Delivery<Heard<false>> as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] = <Delivery<Heard<false>> as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <Delivery<Heard<false>> as harmos_runtime::schema::Described>::MARKER;
+}
+impl harmos_runtime::Operation for HearingSecond {
+    type Error = Failed;
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<()>, Self::Error> {
+        let resources = ctx.resource::<Owner>();
+        let _guard = AttemptGuard(resources.clone());
+        let request = self.0;
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            let DeliveryContext::Record { position } = request.context() else { panic!("original record coordinate") };
+            resources.seen.lock().unwrap().push((false, request.row().value, position));
+            resources.observed.notify_one();
+            if false && request.row().value == 0 {
+                if resources.reenter {
+                    resources.records.publish(fact(9)).await?;
+                }
+                if resources.block {
+                    resources.started.notify_one();
+                    resources.resume.notified().await;
+                }
+                if resources.fail_attempt.load(Ordering::SeqCst) {
+                    return Err(Failed::Scripted);
+                }
             }
-            self.resources.release.notified().await;
+            Ok(())
         }
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -263,8 +332,8 @@ impl PluginLifecycle for Host {
                     dependencies.insert(self.owner.clone()).unwrap();
                     dependencies
                 })
-                .implementation::<harmos_runtime::listeners::Callback<Heard<true>>, Hearing<true>>()
-                .implementation::<harmos_runtime::listeners::Callback<Heard<false>>, Hearing<false>>(),
+                .operation::<HearingFirst>()
+                .operation::<HearingSecond>(),
                 Lanes::Open,
             ))
         })?);
@@ -386,10 +455,8 @@ async fn setup(block: bool, reenter: bool, tail: usize) -> (Runtime<Model>, Plug
         observed: Notify::new(),
         started: Notify::new(),
         resume: Notify::new(),
-        finalizing: Notify::new(),
-        release: Notify::new(),
-        finalizations: AtomicUsize::new(0),
-        fail_cleanup: AtomicBool::new(false),
+        settled: Notify::new(),
+        finished: AtomicUsize::new(0),
         fail_attempt: AtomicBool::new(false),
         block,
         reenter,
@@ -518,58 +585,17 @@ async fn runtime_signals_listener() {
         tokio::select! {
             _ = async {
                 gates.stopping.notified().await;
-                host.owner.finalizing.notified().await;
+                host.owner.settled.notified().await;
             } => {},
             result = &mut stopping => panic!("runtime settled before blocked cleanup: {result:?}"),
         }
     })
     .await;
-    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
+    assert_eq!(host.owner.finished.load(Ordering::SeqCst), 1);
     drop(stopping);
-    host.owner.release.notify_one();
     gates.release.notify_one();
     runtime.stop().await.unwrap();
     drop(lease);
-}
-
-#[tokio::test]
-async fn shutdown_retains_callback() {
-    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
-    manager.initialize(&mut host).await.unwrap();
-    (host.owner.started.notified()).await;
-    runtime.records.publish(fact(1)).await.unwrap();
-    let owner = host.owner.clone();
-    let mut closing = Box::pin(manager.shutdown(&mut host));
-    tokio::select! { biased; _ = owner.finalizing.notified() => {}, result = &mut closing => panic!("cleanup returned before original finalizer: {result:?}") }
-    assert!(futures_util::poll!(&mut closing).is_pending());
-    drop(closing);
-    assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
-    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-    host.owner.release.notify_one();
-    manager.shutdown(&mut host).await.unwrap();
-    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
-    assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn cleanup_retries_finalizer() {
-    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
-    manager.initialize(&mut host).await.unwrap();
-    (host.owner.started.notified()).await;
-    runtime.records.publish(fact(1)).await.unwrap();
-    host.owner.fail_cleanup.store(true, Ordering::SeqCst);
-    assert!(manager.shutdown(&mut host).await.is_err());
-    assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
-    let before = host.owner.finalizations.load(Ordering::SeqCst);
-    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-    host.owner.fail_cleanup.store(false, Ordering::SeqCst);
-    host.owner.release.notify_one();
-    manager.shutdown(&mut host).await.unwrap();
-    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), before + 1);
-    assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -581,7 +607,6 @@ async fn pages_deliver_native() {
         runtime.records.publish(fact(value)).await.unwrap();
     }
     host.owner.resume.notify_one();
-    host.owner.release.notify_one();
     observed(&host.owner, 522).await;
 
     // The frontier advances only after a record's last callback settles, so
@@ -608,7 +633,6 @@ async fn gap_fences_generation() {
     runtime.records.publish(fact(1)).await.unwrap();
     runtime.records.publish(fact(2)).await.unwrap();
     host.owner.resume.notify_one();
-    host.owner.release.notify_one();
     fenced(&host).await;
     assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::BeyondTail)));
     assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::plugin::PluginState::Failed);
@@ -618,3 +642,15 @@ async fn gap_fences_generation() {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn shutdown_drops_callback_before_resources() {
+    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
+    manager.initialize(&mut host).await.unwrap();
+    host.owner.started.notified().await;
+    manager.shutdown(&mut host).await.unwrap();
+    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
+    assert_eq!(host.owner.finished.load(Ordering::SeqCst), 1);
+    assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}

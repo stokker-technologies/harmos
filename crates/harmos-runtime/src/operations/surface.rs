@@ -392,40 +392,31 @@ mod tests {
         type Resources = ();
     }
 
-    #[crate::message]
-    struct Probe {
-        value: u64,
-    }
-    impl OperationDeclaration for Probe {
-        type Request = Probe;
-        type Response = u64;
-        type Input = super::super::NoStream;
-        type Output = super::super::NoStream;
-        const ID: &'static str = "probe";
-        const POLICY: crate::OperationPolicy = crate::OperationPolicy {
+    #[crate::operation(harmos_path = crate, resources = [AtomicUsize, crate::operations::HostContext],
+        id = "test.probe", response = u64,
+        policy = crate::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
             retries: RetryPolicy::Never,
-        };
+        },
+    )]
+    struct Probe {
+        value: u64,
     }
 
-    impl harmos_sdk::Handler for Probe {
-        type Request = Probe;
-        type Response = u64;
+    impl crate::Operation for Probe {
         type Error = std::io::Error;
-        type StreamEndpoints = ();
 
-        async fn initialize(context: harmos_sdk::ExecutionContext) -> std::io::Result<Self> {
-            context.resource::<AtomicUsize>().map_err(std::io::Error::other)?.fetch_add(1, Ordering::SeqCst);
-            Ok(Self { value: 0 })
-        }
-
-        async fn run(&mut self, _: harmos_sdk::ExecutionContext, request: &mut Probe, _: &mut ()) -> std::io::Result<Response<u64>> {
-            if request.value != 0 {
-                request.value -= 1;
+        async fn run(self, ctx: crate::Context<'_, Self>) -> std::io::Result<Response<u64>> {
+            let host = ctx.resource::<crate::operations::HostContext>();
+            let attempt = host.borrow().attempt();
+            if attempt == 0 {
+                ctx.resource::<AtomicUsize>().fetch_add(1, Ordering::SeqCst);
+            }
+            if u64::try_from(attempt).unwrap() < self.value {
                 return Err(std::io::Error::other("retry this request"));
             }
-            Ok(request.value.into())
+            Ok(0.into())
         }
 
         fn classify(_: &std::io::Error) -> super::super::FailureKind {
@@ -450,21 +441,21 @@ mod tests {
         let runtime = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
         let mut dependencies = harmos_sdk::Dependencies::new();
         dependencies.insert(Arc::new(AtomicUsize::new(0))).unwrap();
-        let batch = harmos_sdk::RegistrationBatch::new(dependencies).implementation::<Probe, Probe>().service::<Idle>(
+        let batch = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Probe>().service::<Idle>(
             "idle",
             crate::ServicePolicy {
                 stop_timeout: std::time::Duration::from_secs(1),
                 restart: crate::RestartPolicy::Never,
             },
         );
-        assert!(runtime.register(batch.clone().implementation::<Probe, Probe>().defaults()).await.is_err());
+        assert!(runtime.register(batch.clone().operation::<Probe>().defaults()).await.is_err());
         assert!(runtime.operations.definition(Probe::ID).is_err());
         assert!(runtime.operations.resident.definition("host.idle").is_none());
         runtime.register(batch.defaults()).await.unwrap();
         assert!(runtime.operations.definition(Probe::ID).is_ok());
         assert!(runtime.operations.resident.definition("host.idle").is_some());
         runtime.unregister(&crate::QualifiedId::parse("host.idle").unwrap()).await.unwrap();
-        runtime.unregister(&crate::QualifiedId::parse("host.probe").unwrap()).await.unwrap();
+        runtime.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
         runtime.stop().await.unwrap();
     }
 
@@ -473,21 +464,21 @@ mod tests {
         let runtime = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
         let mut dependencies = harmos_sdk::Dependencies::new();
         dependencies.insert(Arc::new(AtomicUsize::new(0))).unwrap();
-        let operation = harmos_sdk::RegistrationBatch::new(dependencies).implementation::<Probe, Probe>();
+        let operation = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Probe>();
         let policy = crate::ServicePolicy {
             stop_timeout: std::time::Duration::from_secs(1),
             restart: crate::RestartPolicy::Never,
         };
-        let service = harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).service::<Idle>("probe", policy);
-        assert!(runtime.register(operation.clone().service::<Idle>("probe", policy).defaults()).await.is_err());
+        let service = harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).service::<Idle>("test.probe", policy);
+        assert!(runtime.register(operation.clone().service::<Idle>("test.probe", policy).defaults()).await.is_err());
         assert!(runtime.operations.definition(Probe::ID).is_err());
-        assert!(!runtime.operations.resident.contains("host.probe"));
+        assert!(!runtime.operations.resident.contains("host.test.probe"));
         runtime.operations.register(operation.clone().defaults()).await.unwrap();
         assert!(runtime.services().register(service.clone()).await.is_err());
-        runtime.unregister(&crate::QualifiedId::parse("host.probe").unwrap()).await.unwrap();
+        runtime.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
         runtime.services().register(service).await.unwrap();
         assert!(runtime.operations.register(operation.defaults()).await.is_err());
-        runtime.unregister(&crate::QualifiedId::parse("host.probe").unwrap()).await.unwrap();
+        runtime.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
         runtime.stop().await.unwrap();
     }
 
@@ -497,8 +488,8 @@ mod tests {
         let initialized = Arc::new(AtomicUsize::new(0));
         let mut dependencies = harmos_sdk::Dependencies::new();
         dependencies.insert(initialized.clone()).unwrap();
-        let batch = harmos_sdk::RegistrationBatch::new(dependencies).implementation::<Probe, Probe>();
-        assert!(runtime.register(batch.clone().implementation::<Probe, Probe>().defaults()).await.is_err());
+        let batch = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Probe>();
+        assert!(runtime.register(batch.clone().operation::<Probe>().defaults()).await.is_err());
         assert!(runtime.operations.definition(Probe::ID).is_err());
         let mut mismatched = batch.clone();
         mismatched.operations[0].definition.id = crate::Identifier::new("different").unwrap();
@@ -506,7 +497,7 @@ mod tests {
         assert!(runtime.operations.definition("different").is_err());
         runtime.operations.register(batch.defaults()).await.unwrap();
         assert!(matches!(
-            runtime.operations.call_encoded("host.probe", Vec::new()).await,
+            runtime.operations.call_encoded("host.test.probe", Vec::new()).await,
             Err(Error::InvalidInput { field: "operation preparation bytes", .. })
         ));
         let invocation = runtime.operation(Probe { value: 1 });
@@ -526,7 +517,7 @@ mod tests {
         assert!(runtime.operation(Probe { value: 1 }).run().await.is_err());
         assert_eq!(initialized.load(Ordering::SeqCst), 3);
         assert_eq!(runtime.operations.definition(Probe::ID).unwrap().policy.retries, RetryPolicy::Never);
-        runtime.operations.unregister(&crate::QualifiedId::parse("host.probe").unwrap()).await.unwrap();
+        runtime.operations.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
         assert!(runtime.operation(Probe { value: 0 }).start().await.is_err());
         runtime.stop().await.unwrap();
     }

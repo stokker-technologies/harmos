@@ -27,7 +27,7 @@ use super::{
     Lanes,
     support::{self, Bank, Fact, Ledger, Noted, catalog},
 };
-use harmos_runtime::operations::{Handler, OperationPolicy, RetryPolicy};
+use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Runtime, state::CausationId, state::Position};
 
 /* === Constants === */
@@ -43,10 +43,6 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
-
-struct Note;
-struct Descend;
-struct Family;
 
 #[derive(Clone, Default)]
 struct TraceCapture(Arc<Mutex<Vec<TraceRecord>>>);
@@ -64,17 +60,17 @@ struct TraceFields(BTreeMap<String, String>);
 
 /* === Enums === */
 
-#[harmos_runtime::operation(response = (), id = "causation_note",  policy = POLICY)]
+#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], response = (), id = "causation.note",  policy = POLICY)]
 struct NoteContractDeclaration {
     label: String,
 }
 
-#[harmos_runtime::operation(response = (), id = "causation_descend",  policy = POLICY)]
+#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], response = (), id = "causation.descend",  policy = POLICY)]
 struct DescendContractDeclaration {
     label: String,
 }
 
-#[harmos_runtime::operation(response = (), id = "causation_family",  policy = POLICY)]
+#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], response = (), id = "causation.family",  policy = POLICY)]
 struct FamilyContractDeclaration {
     cause: u64,
 }
@@ -136,24 +132,14 @@ where
     }
 }
 
-impl Handler for Note {
-    type Request = NoteContractDeclaration;
-    type Response = <NoteContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::operations::Operation for NoteContractDeclaration {
     type Error = Error;
-    type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Error> {
-        let _resources = context.resource::<()>().expect("fixture registers its dependency");
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::ExecutionContext, request: &mut NoteContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Error> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Error> {
+        let host = context.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
         let result: ::core::result::Result<(), Self::Error> = async move {
-            context.scope().records::<Bank>().publish(Noted(request.label.clone())).await?;
+            context.scope().records::<Bank>().publish(Noted(self.label.clone())).await?;
             Ok(())
         }
         .await;
@@ -161,30 +147,15 @@ impl Handler for Note {
     }
 }
 
-impl Handler for Descend {
-    type Request = DescendContractDeclaration;
-    type Response = <DescendContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::operations::Operation for DescendContractDeclaration {
     type Error = Error;
-    type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Error> {
-        let _resources = context.resource::<()>().expect("fixture registers its dependency");
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::ExecutionContext, request: &mut DescendContractDeclaration,
-        _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Error> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Error> {
+        let host = context.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
         let result: ::core::result::Result<(), Self::Error> = async move {
-            context.scope().records::<Bank>().publish(Noted(request.label.clone())).await?;
-            context
-                .submit::<NoteContractDeclaration>(NoteContractDeclaration {
-                    label: format!("{}-child", request.label),
-                })?
-                .await?;
+            context.scope().records::<Bank>().publish(Noted(self.label.clone())).await?;
+            context.submit::<NoteContractDeclaration>(NoteContractDeclaration { label: format!("{}-child", self.label) })?.await?;
             Ok(())
         }
         .await;
@@ -192,22 +163,11 @@ impl Handler for Descend {
     }
 }
 
-impl Handler for Family {
-    type Request = FamilyContractDeclaration;
-    type Response = <FamilyContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::operations::Operation for FamilyContractDeclaration {
     type Error = Error;
-    type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Error> {
-        let _resources = context.resource::<()>().expect("fixture registers its dependency");
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::ExecutionContext, request: &mut FamilyContractDeclaration,
-        _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Error> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Error> {
+        let host = context.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
         let result: ::core::result::Result<(), Self::Error> = async move {
             context.scope().records::<Bank>().publish(Noted("parent".to_owned())).await?;
@@ -215,7 +175,7 @@ impl Handler for Family {
             context
                 .submit_caused::<DescendContractDeclaration>(
                     DescendContractDeclaration { label: "rerooted".to_owned() },
-                    Position(request.cause),
+                    Position(self.cause),
                 )?
                 .await?;
             Ok(())
@@ -239,7 +199,7 @@ async fn runtime() -> Runtime<Bank> {
                 dependencies.insert(Arc::new(())).unwrap();
                 dependencies
             })
-            .implementation::<FamilyContractDeclaration, Family>(),
+            .operation::<FamilyContractDeclaration>(),
             Lanes::Serial,
         ))
         .await
@@ -252,7 +212,7 @@ async fn runtime() -> Runtime<Bank> {
                 dependencies.insert(Arc::new(())).unwrap();
                 dependencies
             })
-            .implementation::<DescendContractDeclaration, Descend>(),
+            .operation::<DescendContractDeclaration>(),
             Lanes::Concurrent,
         ))
         .await
@@ -265,7 +225,7 @@ async fn runtime() -> Runtime<Bank> {
                 dependencies.insert(Arc::new(())).unwrap();
                 dependencies
             })
-            .implementation::<NoteContractDeclaration, Note>(),
+            .operation::<NoteContractDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -299,7 +259,7 @@ async fn scoped_trace_handoffs() {
     let records = capture.0.lock().unwrap();
     let root = records.iter().find(|record| record.name == "request").unwrap().id;
     for name in ["operations.instance", "operations.queue", "operations.dispatch", "operations.attempt", "state.queue", "state.write"] {
-        let record = records.iter().find(|record| record.name == name).expect("the handoff is observable");
+        let record = records.iter().find(|record| record.name == name).unwrap_or_else(|| panic!("missing handoff {name}"));
         assert!(record.closed, "{name} closes after physical settlement");
         let mut parent = record.parent;
         while let Some(id) = parent {

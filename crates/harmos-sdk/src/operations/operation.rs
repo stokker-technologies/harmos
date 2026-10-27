@@ -26,7 +26,7 @@ use std::sync::Arc;
 use super::Stream;
 use super::calls::{Calls, InvocationError, Target};
 use super::{
-    CallContext, EndpointSet, Executable, ExecutionContext, FailureKind, Handler, Invokes, NoStream, OperationDeclaration, Requires,
+    CallContext, Carrier, EndpointSet, Executable, ExecutionContext, FailureKind, Invokes, NoStream, OperationDeclaration, Requires,
     Response,
 };
 
@@ -52,7 +52,7 @@ pub struct Context<'a, O: Streams> {
     streams: &'a O::StreamEndpoints,
 }
 
-// The Handler Behind Every Authored Operation; Each Attempt Runs A Clone Of
+// The Carrier Behind Every Authored Operation; Each Attempt Runs A Clone Of
 // The Request So A Retry Keeps The Original.
 pub struct Authored<O>(PhantomData<fn() -> O>);
 
@@ -135,17 +135,16 @@ impl<O: Streams> Context<'_, O> {
     }
 }
 
-impl<O: Operation> Handler for Authored<O> {
-    type Request = O;
-    type Response = O::Response;
+impl<O: Operation> Carrier for Authored<O> {
+    type Declaration = O;
     type Error = O::Error;
     type StreamEndpoints = O::StreamEndpoints;
 
-    async fn initialize(_: ExecutionContext) -> Result<Self, O::Error> {
+    async fn bind(_: ExecutionContext) -> Result<Self, O::Error> {
         Ok(Self(PhantomData))
     }
 
-    async fn run(
+    async fn attempt(
         &mut self, context: ExecutionContext, request: &mut O, endpoints: &mut O::StreamEndpoints,
     ) -> Result<Response<O::Response>, O::Error> {
         request.clone().run(Context { execution: &context, streams: endpoints }).await
@@ -161,7 +160,7 @@ impl<O: Operation> Handler for Authored<O> {
 }
 
 impl<O: Operation> Executable for O {
-    type Handler = Authored<O>;
+    type Carrier = Authored<O>;
     const RESOURCES: &'static [Resource] = <O as Dependent>::RESOURCES;
 }
 

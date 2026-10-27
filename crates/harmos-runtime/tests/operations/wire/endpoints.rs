@@ -19,7 +19,7 @@ use std::{
     num::NonZeroUsize,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -30,19 +30,52 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::{
-    Backoff, CacheKey, Handler, Jitter, NoStream, OperationDeclaration, OperationPolicy, RetryPolicy, Stream, StreamInput, StreamOutput,
-    StreamSettings, stream,
+    Backoff, CacheKey, Jitter, OperationPolicy, RetryPolicy, StreamInput, StreamOutput, StreamSettings, stream,
 };
 use harmos_runtime::{Error, Runtime};
 
 /* === Constants === */
 
-const DECLARATION_NAME: &str = concat!(module_path!(), "::Declaration");
-const DECLARATION_MARKER: &[u8] = &harmos_runtime::schema::declaration::encode::<
-    { harmos_runtime::schema::declaration::encoded_len(DECLARATION_NAME, <Consume as harmos_runtime::schema::Described>::FIELDS) },
->(DECLARATION_NAME, <Consume as harmos_runtime::schema::Described>::FIELDS);
-
 /* === Macros === */
+
+macro_rules! operation {
+    ($name:ident, $id:literal, $retry:literal, $cache:literal) => {
+        #[harmos_runtime::operation(resources = [Trace], id = $id, response = u32, input = u32, output = u32,
+                                            policy = OperationPolicy {
+                                                timeout: Duration::from_secs(3), attempt_timeout: Duration::from_secs(2),
+                                                retries: if $retry { RetryPolicy::OnTransient { max_retries: 1,
+                                                    backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None } } }
+                                                    else { RetryPolicy::Never },
+                                            }, key = |_: &$name| $cache.then(|| CacheKey::new(vec![1]).unwrap()))]
+        struct $name {
+            consume: bool,
+        }
+        impl harmos_runtime::Operation for $name {
+            type Error = Error;
+            async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<u32>> {
+                let trace = ctx.resource::<Trace>();
+                trace.new.fetch_add(1, Ordering::SeqCst);
+                let _guard = AttemptGuard(trace.clone());
+                if !self.consume {
+                    return Ok(0.into());
+                }
+                let (input, output) = ctx.streams();
+                let mut total = 0;
+                while let Some(item) = input.recv().await {
+                    trace.sending.fetch_add(1, Ordering::SeqCst);
+                    trace.changed.notify_one();
+                    output.send_with(4, || Ok(*item + 1)).await?;
+                    total += *item;
+                }
+                Ok(total.into())
+            }
+        }
+    };
+}
+
+operation!(ForwardDeclaration, "endpoints.forward", false, false);
+operation!(RetryDeclaration, "endpoints.retry", true, false);
+operation!(CachedDeclaration, "endpoints.cache", false, true);
 
 /* === Type Aliases === */
 
@@ -50,46 +83,27 @@ type StreamEndpoints = (StreamInput<u32>, StreamOutput<u32>);
 
 /* === Structs === */
 
-// One Forwarding Declaration Per Shape: The Request Says Whether To Consume Input.
-struct Declaration<const N: u8> {
-    consume: bool,
-}
-// The Portable Shape Every Forwarding Request Encodes As.
-#[harmos_runtime::message]
-struct Consume {
-    consume: bool,
-}
-// The Stream Directions Each Forwarding Shape Declares.
-struct Kind<const N: u8>;
 #[derive(Default)]
 struct Trace {
     new: AtomicUsize,
-    initialized: AtomicUsize,
-    stops: AtomicUsize,
-    finalized: AtomicUsize,
     dropped: AtomicUsize,
     sending: AtomicUsize,
-    fail_stop: AtomicBool,
     changed: Notify,
 }
-struct Forward<const N: u8> {
-    trace: Arc<Trace>,
-}
 
-// The Parent Request Carries Original StreamEndpoints, So It Stays In Process.
+struct AttemptGuard(Arc<Trace>);
+
+#[harmos_runtime::operation(codec = manual, resources = [harmos_runtime::operations::HostContext],
+    operations = [ForwardDeclaration], id = "endpoints.parent", response = u32, policy = ForwardDeclaration::POLICY)]
+#[derive(Clone)]
 struct ParentDeclaration {
-    endpoints: Mutex<Option<StreamEndpoints>>,
+    endpoints: Arc<Mutex<Option<StreamEndpoints>>>,
+    charged: bool,
 }
-struct Parent<const CHARGED: bool>;
 
 /* === Enums === */
 
 /* === Traits === */
-
-trait Shape {
-    type Input: harmos_runtime::operations::Direction;
-    type Output: harmos_runtime::operations::Direction;
-}
 
 /* === Implementations === */
 
@@ -101,192 +115,29 @@ impl harmos_runtime::MemorySize for ParentDeclaration {
     }
 }
 
-impl OperationDeclaration for ParentDeclaration {
-    type Request = Self;
-    type Response = u32;
-    type Input = NoStream;
-    type Output = NoStream;
-    const ID: &'static str = "endpoints_parent";
-    const POLICY: OperationPolicy = Declaration::<0>::POLICY;
-}
-impl<const CHARGED: bool> Handler for Parent<CHARGED> {
-    type Request = <ParentDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <ParentDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for ParentDeclaration {
     type Error = Error;
-    type StreamEndpoints = ();
-
-    async fn initialize(_: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::ExecutionContext, request: &mut ParentDeclaration, _: &mut Self::StreamEndpoints,
-    ) -> harmos_runtime::Result<harmos_runtime::operations::Response<u32>> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<u32>> {
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
-        let result: ::core::result::Result<u32, Self::Error> = async move {
-            let endpoints = request.endpoints.get_mut().unwrap().take().expect("one transfer of original endpoints");
-            let child = if CHARGED {
-                let (requests, decoded) = stream::<Declaration<0>>(StreamSettings {
-                    items: NonZeroUsize::new(1).unwrap(),
-                    bytes: NonZeroUsize::new(1).unwrap(),
-                })?;
-                requests.send_with(1, || Ok(Declaration { consume: true })).await?;
-                context.submit_charged::<Declaration<0>, _>(decoded.recv().await.unwrap(), endpoints)?
-            } else {
-                context.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, endpoints)?
-            };
-            Ok(*child.await?)
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-}
-
-impl Shape for Kind<0> {
-    type Input = Stream<u32>;
-    type Output = Stream<u32>;
-}
-impl Shape for Kind<1> {
-    type Input = Stream<u32>;
-    type Output = Stream<u32>;
-}
-impl Shape for Kind<2> {
-    type Input = Stream<u32>;
-    type Output = Stream<u32>;
-}
-impl Shape for Kind<3> {
-    type Input = NoStream;
-    type Output = NoStream;
-}
-impl Shape for Kind<4> {
-    type Input = Stream<u64>;
-    type Output = Stream<u32>;
-}
-
-impl<const N: u8> harmos_runtime::Message for Declaration<N> {
-    const CODEC: &'static str = <Consume as harmos_runtime::Message>::CODEC;
-    fn encode(&self) -> Vec<u8> {
-        harmos_runtime::Message::encode(&Consume { consume: self.consume })
-    }
-    fn encoded_size(&self) -> usize {
-        harmos_runtime::Message::encoded_size(&Consume { consume: self.consume })
-    }
-    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
-        <Consume as harmos_runtime::Message>::decoding_memory(bytes)
-    }
-    fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
-        <Consume as harmos_runtime::Message>::decode(bytes).map(|value| Self { consume: value.consume })
-    }
-}
-
-impl<const N: u8> harmos_runtime::MemorySize for Declaration<N> {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-    }
-}
-
-impl<const N: u8> harmos_runtime::schema::Described for Declaration<N> {
-    const NAME: &'static str = DECLARATION_NAME;
-    const FIELDS: &'static [harmos_runtime::schema::Field] = <Consume as harmos_runtime::schema::Described>::FIELDS;
-    const MARKER: &'static [u8] = DECLARATION_MARKER;
-}
-
-impl<const N: u8> OperationDeclaration for Declaration<N>
-where
-    Kind<N>: Shape,
-{
-    type Request = Self;
-    type Response = u32;
-    type Input = <Kind<N> as Shape>::Input;
-    type Output = <Kind<N> as Shape>::Output;
-    const ID: &'static str = match N {
-        1 => "endpoints_retry",
-        2 => "endpoints_cache",
-        _ => "endpoints_forward",
-    };
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(3),
-        attempt_timeout: Duration::from_secs(2),
-        retries: if N == 1 {
-            RetryPolicy::OnTransient {
-                max_retries: 1,
-                backoff: Backoff::Fixed {
-                    delay: Duration::from_millis(1),
-                    jitter: Jitter::None,
-                },
-            }
+        let endpoints = self.endpoints.lock().unwrap().take().expect("one transfer of original endpoints");
+        let child = if self.charged {
+            let (requests, decoded) = stream::<ForwardDeclaration>(StreamSettings {
+                items: NonZeroUsize::new(1).unwrap(),
+                bytes: NonZeroUsize::new(1).unwrap(),
+            })?;
+            requests.send_with(1, || Ok(ForwardDeclaration { consume: true })).await?;
+            context.submit_charged::<ForwardDeclaration, _>(decoded.recv().await.unwrap(), endpoints)?
         } else {
-            RetryPolicy::Never
-        },
-    };
-    fn key(_: &Self::Request) -> Option<CacheKey> {
-        (N == 2).then(|| CacheKey::new(vec![1]).unwrap())
+            context.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, endpoints)?
+        };
+        Ok((*child.await?).into())
     }
 }
-impl<const N: u8> Handler for Forward<N>
-where
-    Kind<N>: Shape,
-{
-    type Request = <Declaration<N> as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <Declaration<N> as harmos_runtime::OperationDeclaration>::Response;
-    type Error = Error;
-    type StreamEndpoints = StreamEndpoints;
-    async fn initialize(_context: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
-        let trace = _context.resource::<Trace>().expect("fixture registers its dependency");
-        let constructed: harmos_runtime::Result<Self> = async move {
-            trace.new.fetch_add(1, Ordering::SeqCst);
-            Ok(Self { trace })
-        }
-        .await;
-        let mut operation = constructed?;
-        let started: harmos_runtime::Result<()> = async {
-            let operation = &mut operation;
-            operation.trace.initialized.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        }
-        .await;
-        started?;
-        Ok(operation)
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut Declaration<N>, endpoints: &mut Self::StreamEndpoints,
-    ) -> harmos_runtime::Result<harmos_runtime::operations::Response<u32>> {
-        let result: ::core::result::Result<u32, Self::Error> = async move {
-            if !request.consume {
-                return Ok(0);
-            }
-            let (input, output) = endpoints;
-            let mut total = 0;
-            while let Some(item) = input.recv().await {
-                self.trace.sending.fetch_add(1, Ordering::SeqCst);
-                self.trace.changed.notify_one();
-                output.send_with(4, || Ok(*item + 1)).await?;
-                total += *item;
-            }
-            Ok(total)
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-    async fn stop(&mut self) -> harmos_runtime::Result<()> {
-        self.trace.stops.fetch_add(1, Ordering::SeqCst);
-        if self.trace.fail_stop.load(Ordering::SeqCst) {
-            return Err(Error::InvalidInput {
-                field: "fixture stop",
-                reason: "retained",
-            });
-        }
-        Ok(())
-    }
-    async fn cleanup(&mut self) -> harmos_runtime::Result<()> {
-        self.trace.finalized.fetch_add(1, Ordering::SeqCst);
-        Ok(())
-    }
-}
-impl<const N: u8> Drop for Forward<N> {
+
+impl Drop for AttemptGuard {
     fn drop(&mut self) {
-        self.trace.dropped.fetch_add(1, Ordering::SeqCst);
+        self.0.dropped.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -310,8 +161,8 @@ async fn runtime() -> Runtime<App> {
 
 #[cfg(feature = "grpc")]
 async fn envelope(
-    value: harmos_runtime::grpc::InputEnvelope<Declaration<0>, u32>,
-) -> harmos_runtime::operations::StreamItem<harmos_runtime::grpc::InputEnvelope<Declaration<0>, u32>> {
+    value: harmos_runtime::grpc::InputEnvelope<ForwardDeclaration, u32>,
+) -> harmos_runtime::operations::StreamItem<harmos_runtime::grpc::InputEnvelope<ForwardDeclaration, u32>> {
     let (output, input) = stream(StreamSettings {
         items: NonZeroUsize::new(1).unwrap(),
         bytes: NonZeroUsize::new(64).unwrap(),
@@ -327,38 +178,6 @@ async fn envelope(
 async fn endpoint_admission_contract() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    assert!(matches!(
-        runtime
-            .operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(trace.clone()).unwrap();
-                    dependencies
-                })
-                .implementation::<Declaration<3>, Forward<3>>(),
-                Lanes::Open
-            ))
-            .await,
-        Err(Error::InvalidInput { field: "operation endpoint types", .. })
-    ));
-    assert!(matches!(
-        runtime
-            .operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(trace.clone()).unwrap();
-                    dependencies
-                })
-                .implementation::<Declaration<4>, Forward<4>>(),
-                Lanes::Open
-            ))
-            .await,
-        Err(Error::InvalidInput { field: "operation endpoint types", .. })
-    ));
-    assert_eq!(trace.new.load(Ordering::SeqCst), 0);
-
     {
         runtime
             .operations
@@ -368,7 +187,7 @@ async fn endpoint_admission_contract() {
                     dependencies.insert(trace.clone()).unwrap();
                     dependencies
                 })
-                .implementation::<Declaration<1>, Forward<1>>(),
+                .operation::<RetryDeclaration>(),
                 Lanes::Open,
             ))
             .await
@@ -381,7 +200,7 @@ async fn endpoint_admission_contract() {
                     dependencies.insert(trace.clone()).unwrap();
                     dependencies
                 })
-                .implementation::<Declaration<2>, Forward<2>>(),
+                .operation::<CachedDeclaration>(),
                 Lanes::Open,
             ))
             .await
@@ -389,7 +208,7 @@ async fn endpoint_admission_contract() {
         let (input, receiving) = channel();
         let (sending, _output) = channel();
         assert!(matches!(
-            runtime.operations.submit_endpoints::<Declaration<2>, _>(Declaration::<2> { consume: false }, (receiving, sending)),
+            runtime.operations.submit_endpoints::<CachedDeclaration, _>(CachedDeclaration { consume: false }, (receiving, sending)),
             Err(Error::InvalidInput { field: "operation stream cache", .. })
         ));
         assert_eq!(trace.new.load(Ordering::SeqCst), 0);
@@ -404,7 +223,7 @@ async fn endpoint_admission_contract() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Declaration<0>, Forward<0>>(),
+            .operation::<ForwardDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -412,7 +231,7 @@ async fn endpoint_admission_contract() {
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
-        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+        runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
     bounded(input.send_with(4, || Ok(7))).await.unwrap();
     drop(input);
     let item = bounded(output.recv()).await.unwrap();
@@ -420,9 +239,6 @@ async fn endpoint_admission_contract() {
     assert_eq!(*bounded(instance).await.unwrap(), 7);
     assert!(bounded(output.recv()).await.is_none());
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
-    assert_eq!(trace.initialized.load(Ordering::SeqCst), 1);
-    assert_eq!(trace.stops.load(Ordering::SeqCst), 1);
-    assert_eq!(trace.finalized.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(*item, 8);
     bounded(runtime.stop()).await.unwrap();
@@ -440,7 +256,7 @@ async fn cancellation_settles_owner() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Declaration<0>, Forward<0>>(),
+            .operation::<ForwardDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -448,7 +264,7 @@ async fn cancellation_settles_owner() {
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
-        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+        runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
     bounded(input.send_with(4, || Ok(1))).await.unwrap();
     let held = bounded(output.recv()).await.unwrap();
     bounded(input.send_with(4, || Ok(2))).await.unwrap();
@@ -461,45 +277,9 @@ async fn cancellation_settles_owner() {
     instance.cancel();
     assert!(bounded(instance).await.is_err());
     assert!(input.is_closed());
-    assert_eq!(trace.stops.load(Ordering::SeqCst), 1);
-    assert_eq!(trace.finalized.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(*held, 2);
     bounded(runtime.stop()).await.unwrap();
-}
-
-#[tokio::test]
-async fn cleanup_retains_endpoints() {
-    let runtime = runtime().await;
-    let trace = Arc::new(Trace::default());
-    trace.fail_stop.store(true, Ordering::SeqCst);
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .implementation::<Declaration<0>, Forward<0>>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
-    let (input, receiving) = channel();
-    let (sending, _output) = channel();
-    let instance =
-        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: false }, (receiving, sending)).unwrap();
-    assert!(matches!(bounded(instance).await, Err(Error::OperationFinalization { .. })));
-    assert!(!input.is_closed());
-    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
-    trace.fail_stop.store(false, Ordering::SeqCst);
-    bounded(runtime.stop()).await.unwrap();
-    assert!(input.is_closed());
-    assert_eq!(trace.new.load(Ordering::SeqCst), 1);
-    assert_eq!(trace.stops.load(Ordering::SeqCst), 2);
-    assert_eq!(trace.finalized.load(Ordering::SeqCst), 1);
-    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -521,7 +301,7 @@ async fn half_close_joins() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Declaration<0>, Forward<0>>(),
+            .operation::<ForwardDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -532,7 +312,7 @@ async fn half_close_joins() {
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
-        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+        runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
     let incoming = futures_util::stream::iter([Ok(item)]);
     let result = bounded(harmos_runtime::grpc::input(instance, input, incoming)).await.unwrap();
     assert_eq!(*result, 7);
@@ -556,7 +336,7 @@ async fn settlement_never_wait() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Declaration<0>, Forward<0>>(),
+            .operation::<ForwardDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -564,7 +344,7 @@ async fn settlement_never_wait() {
     let (input, receiving) = channel();
     let (sending, _output) = channel();
     let instance =
-        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: false }, (receiving, sending)).unwrap();
+        runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: false }, (receiving, sending)).unwrap();
     let result = bounded(harmos_runtime::grpc::input(instance, input, futures_util::stream::pending())).await.unwrap();
     assert_eq!(*result, 0);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -573,10 +353,9 @@ async fn settlement_never_wait() {
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
-async fn failure_preserves_cleanup() {
+async fn input_failure_settles_attempt() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    trace.fail_stop.store(true, Ordering::SeqCst);
     runtime
         .operations
         .register(harmos_runtime::RegistrationExt::lane(
@@ -585,7 +364,7 @@ async fn failure_preserves_cleanup() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Declaration<0>, Forward<0>>(),
+            .operation::<ForwardDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -593,11 +372,11 @@ async fn failure_preserves_cleanup() {
     let (input, receiving) = channel();
     let (sending, _output) = channel();
     let instance =
-        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+        runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
     // Only a constructed instance has cleanup to preserve.
     let initialized = trace.clone();
     let incoming = futures_util::stream::once(async move {
-        while initialized.initialized.load(Ordering::SeqCst) == 0 {
+        while initialized.new.load(Ordering::SeqCst) == 0 {
             tokio::task::yield_now().await;
         }
         Err(tonic::Status::data_loss("broken input"))
@@ -605,9 +384,8 @@ async fn failure_preserves_cleanup() {
     let error = bounded(harmos_runtime::grpc::input(instance, input, incoming)).await.unwrap_err();
     let harmos_runtime::grpc::InputError::Forward { source, settlement } = error else { panic!("input failure missing") };
     assert!(matches!(*source, Error::TaskFailed { domain: "gRPC input", .. }));
-    assert!(matches!(settlement.as_deref(), Some(Error::OperationFinalization { .. })));
-    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
-    trace.fail_stop.store(false, Ordering::SeqCst);
+    assert!(settlement.is_none());
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     bounded(runtime.stop()).await.unwrap();
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
 }
@@ -625,7 +403,7 @@ async fn input_drop_cancels() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Declaration<0>, Forward<0>>(),
+            .operation::<ForwardDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -633,7 +411,7 @@ async fn input_drop_cancels() {
     let (input, receiving) = channel();
     let (sending, _output) = channel();
     let instance =
-        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+        runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
     drop(harmos_runtime::grpc::input(instance, input, futures_util::stream::pending()));
     bounded(runtime.stop()).await.unwrap();
     // Abandoned before it started, the instance never constructed.
@@ -654,7 +432,7 @@ async fn deadline_settles_peer() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Declaration<0>, Forward<0>>(),
+            .operation::<ForwardDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -662,13 +440,11 @@ async fn deadline_settles_peer() {
     let (input, receiving) = channel();
     let (sending, _output) = channel();
     let instance =
-        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+        runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
     let error = bounded(harmos_runtime::grpc::input(instance, input, futures_util::stream::pending())).await.unwrap_err();
     assert!(
         matches!(error, harmos_runtime::grpc::InputError::Operation(source) if matches!(*source, Error::OperationRefused(harmos_runtime::Refusal::TimedOut)))
     );
-    assert_eq!(trace.stops.load(Ordering::SeqCst), 1);
-    assert_eq!(trace.finalized.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     bounded(runtime.stop()).await.unwrap();
 }
@@ -687,7 +463,7 @@ async fn grpc_exchange_polls() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Declaration<0>, Forward<0>>(),
+            .operation::<ForwardDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -705,7 +481,7 @@ async fn grpc_exchange_polls() {
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
-        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+        runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
     let mut exchange = harmos_runtime::grpc::exchange(instance, input, futures_util::stream::iter(items), output);
     for expected in 1..=3 {
         let event = bounded(exchange.next()).await.unwrap().unwrap();
@@ -715,19 +491,16 @@ async fn grpc_exchange_polls() {
     assert!(matches!(event, harmos_runtime::grpc::Event::Completion(response) if *response == 3));
     assert!(bounded(exchange.next()).await.is_none());
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
-    assert_eq!(trace.stops.load(Ordering::SeqCst), 1);
-    assert_eq!(trace.finalized.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     bounded(runtime.stop()).await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
-async fn failure_retains_cleanup() {
+async fn exchange_failure_settles_attempt() {
     use futures_util::StreamExt;
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    trace.fail_stop.store(true, Ordering::SeqCst);
     runtime
         .operations
         .register(harmos_runtime::RegistrationExt::lane(
@@ -736,7 +509,7 @@ async fn failure_retains_cleanup() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Declaration<0>, Forward<0>>(),
+            .operation::<ForwardDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -744,11 +517,11 @@ async fn failure_retains_cleanup() {
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
-        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+        runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
     // Only a constructed instance has cleanup to retain.
     let initialized = trace.clone();
     let incoming = futures_util::stream::once(async move {
-        while initialized.initialized.load(Ordering::SeqCst) == 0 {
+        while initialized.new.load(Ordering::SeqCst) == 0 {
             tokio::task::yield_now().await;
         }
         Err(tonic::Status::data_loss("broken input"))
@@ -758,11 +531,9 @@ async fn failure_retains_cleanup() {
         Err(error) => error,
         Ok(_) => panic!("expected forwarding failure"),
     };
-    assert!(matches!(error, harmos_runtime::grpc::InputError::Forward { settlement: Some(error), .. }
-        if matches!(*error, Error::OperationFinalization { .. })));
+    assert!(matches!(error, harmos_runtime::grpc::InputError::Forward { settlement: None, .. }));
     assert!(bounded(exchange.next()).await.is_none());
-    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
-    trace.fail_stop.store(false, Ordering::SeqCst);
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     bounded(runtime.stop()).await.unwrap();
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -781,7 +552,7 @@ async fn exchange_drop_cancels() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Declaration<0>, Forward<0>>(),
+            .operation::<ForwardDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -789,7 +560,7 @@ async fn exchange_drop_cancels() {
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
-        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+        runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
     drop(harmos_runtime::grpc::exchange(instance, input, futures_util::stream::pending(), output));
     bounded(runtime.stop()).await.unwrap();
     // Abandoned before it started, the instance never constructed.
@@ -809,35 +580,30 @@ async fn charged_request_ownership() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Declaration<0>, Forward<0>>(),
+            .operation::<ForwardDeclaration>(),
             Lanes::Open,
         ))
         .await
         .unwrap();
-    let (requests, decoded) = stream::<Declaration<0>>(StreamSettings {
+    let (requests, decoded) = stream::<ForwardDeclaration>(StreamSettings {
         items: NonZeroUsize::new(1).unwrap(),
         bytes: NonZeroUsize::new(1).unwrap(),
     })
     .unwrap();
-    requests.send_with(1, || Ok(Declaration { consume: false })).await.unwrap();
+    requests.send_with(1, || Ok(ForwardDeclaration { consume: false })).await.unwrap();
     let request = decoded.recv().await.unwrap();
-    assert!(matches!(runtime.operations.submit_charged::<Declaration<0>, _>(request, ()), Err(Error::InvalidInput { .. })));
+    assert!(matches!(runtime.operations.submit_charged::<ForwardDeclaration, _>(request, ()), Err(Error::InvalidInput { .. })));
     drop(bounded(requests.reserve(1)).await.unwrap());
     assert_eq!(trace.new.load(Ordering::SeqCst), 0);
 
-    trace.fail_stop.store(true, Ordering::SeqCst);
-    requests.send_with(1, || Ok(Declaration { consume: false })).await.unwrap();
+    requests.send_with(1, || Ok(ForwardDeclaration { consume: false })).await.unwrap();
     let request = decoded.recv().await.unwrap();
     let (_input, receiving) = channel();
     let (sending, _output) = channel();
-    let instance = runtime.operations.submit_charged::<Declaration<0>, _>(request, (receiving, sending)).unwrap();
-    assert!(matches!(bounded(instance).await, Err(Error::OperationFinalization { .. })));
-    let mut next = Box::pin(requests.reserve(1));
-    assert!(std::future::poll_fn(|cx| std::task::Poll::Ready(next.as_mut().poll(cx).is_pending())).await);
-    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
-    trace.fail_stop.store(false, Ordering::SeqCst);
+    let instance = runtime.operations.submit_charged::<ForwardDeclaration, _>(request, (receiving, sending)).unwrap();
+    assert_eq!(*bounded(instance).await.unwrap(), 0);
+    drop(bounded(requests.reserve(1)).await.unwrap());
     bounded(runtime.stop()).await.unwrap();
-    drop(bounded(next).await.unwrap());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
 }
 
@@ -852,8 +618,8 @@ async fn opening_admission_exchange() {
         let early = futures_util::stream::iter([Ok(envelope(InputEnvelope::Item(1)).await)]);
         assert!(matches!(harmos_runtime::grpc::open(early).await, Err(error) if error.code() == tonic::Code::InvalidArgument));
         let frames = futures_util::stream::iter([
-            Ok(envelope(InputEnvelope::Request(Declaration { consume: true })).await),
-            Ok(envelope(InputEnvelope::Request(Declaration { consume: false })).await),
+            Ok(envelope(InputEnvelope::Request(ForwardDeclaration { consume: true })).await),
+            Ok(envelope(InputEnvelope::Request(ForwardDeclaration { consume: false })).await),
             Ok(envelope(InputEnvelope::Item(7)).await),
         ]);
         let (_request, items) = harmos_runtime::grpc::open(frames).await.unwrap();
@@ -872,19 +638,19 @@ async fn opening_admission_exchange() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Declaration<0>, Forward<0>>(),
+            .operation::<ForwardDeclaration>(),
             Lanes::Open,
         ))
         .await
         .unwrap();
     let frames = futures_util::stream::iter([
-        Ok(envelope(InputEnvelope::Request(Declaration { consume: true })).await),
+        Ok(envelope(InputEnvelope::Request(ForwardDeclaration { consume: true })).await),
         Ok(envelope(InputEnvelope::Item(7)).await),
     ]);
     let (request, incoming) = bounded(harmos_runtime::grpc::open(frames)).await.unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
-    let instance = runtime.operations.submit_charged::<Declaration<0>, _>(request, (receiving, sending)).unwrap();
+    let instance = runtime.operations.submit_charged::<ForwardDeclaration, _>(request, (receiving, sending)).unwrap();
     let mut exchange = harmos_runtime::grpc::exchange(instance, input, incoming, output);
     assert!(matches!(bounded(exchange.next()).await.unwrap().unwrap(), harmos_runtime::grpc::Event::Item(item) if *item == 8));
     assert!(matches!(bounded(exchange.next()).await.unwrap().unwrap(), harmos_runtime::grpc::Event::Completion(value) if *value == 7));
@@ -905,7 +671,7 @@ async fn parent_cancellation<const CHARGED: bool>() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Declaration<0>, Forward<0>>(),
+            .operation::<ForwardDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -913,8 +679,7 @@ async fn parent_cancellation<const CHARGED: bool>() {
     runtime
         .operations
         .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
-                .implementation::<ParentDeclaration, Parent<CHARGED>>(),
+            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<ParentDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -923,7 +688,8 @@ async fn parent_cancellation<const CHARGED: bool>() {
     let (sending, output) = channel();
     let parent = runtime
         .operation(ParentDeclaration {
-            endpoints: Mutex::new(Some((receiving, sending))),
+            endpoints: Arc::new(Mutex::new(Some((receiving, sending)))),
+            charged: CHARGED,
         })
         .start()
         .await
@@ -936,8 +702,6 @@ async fn parent_cancellation<const CHARGED: bool>() {
     assert!(bounded(output.recv()).await.is_none());
     assert_eq!(*held, 8);
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
-    assert_eq!(trace.stops.load(Ordering::SeqCst), 1);
-    assert_eq!(trace.finalized.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     bounded(runtime.stop()).await.unwrap();
 }

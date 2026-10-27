@@ -28,7 +28,7 @@
 /* === Structs === */
 
 #[harmos::operation(
-    id = "schematic_list_directories",
+    id = "schematic.list.directories",
     response = Directories,
     policy = crate::POLICY,
     visibility = Shared,

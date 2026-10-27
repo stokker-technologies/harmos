@@ -22,11 +22,11 @@ use std::pin::Pin;
 
 // Local Imports
 use super::{
-    Contract, Dependencies, Executable, ExecutionContext, Handler, OperationDeclaration, OperationDefinition, Resource, ServingError,
+    Carrier, Contract, Dependencies, Executable, ExecutionContext, OperationDeclaration, OperationDefinition, Resource, ServingError,
     WireDeclaration, WireTable,
 };
-use crate::ServicePolicy;
 use crate::services::Service;
+use crate::{Message, ServicePolicy};
 
 /* === Constants === */
 
@@ -91,10 +91,10 @@ struct InitializedService<S: Service> {
     dependencies: Dependencies,
 }
 
-struct NativeOperation<O: Handler> {
+struct NativeOperation<O: Carrier> {
     dependencies: Dependencies,
     operation: Option<O>,
-    request: O::Request,
+    request: <O::Declaration as OperationDeclaration>::Request,
     endpoints: O::StreamEndpoints,
     stopped: bool,
     encoded: bool,
@@ -137,13 +137,14 @@ impl RegistrationBatch {
     }
 
     pub fn operation<O: Executable>(self) -> Self {
-        self.with::<O, O::Handler>(O::RESOURCES)
+        self.with::<O, O::Carrier>(O::RESOURCES)
     }
 
-    pub fn implementation<D, O>(self) -> Self
+    #[doc(hidden)]
+    pub fn carrier<D, O>(self) -> Self
     where
         D: OperationDeclaration,
-        O: Handler<Request = D::Request, Response = D::Response>,
+        O: Carrier<Declaration = D>,
     {
         self.with::<D, O>(&[])
     }
@@ -151,7 +152,7 @@ impl RegistrationBatch {
     fn with<D, O>(mut self, resources: &'static [Resource]) -> Self
     where
         D: OperationDeclaration,
-        O: Handler<Request = D::Request, Response = D::Response>,
+        O: Carrier<Declaration = D>,
     {
         self.operations.push(OperationFactory {
             resources,
@@ -168,7 +169,11 @@ impl RegistrationBatch {
             },
             install: WireTable::install::<D, O>,
             native_types: || {
-                (std::any::TypeId::of::<O::Request>(), std::any::TypeId::of::<O::Response>(), std::any::TypeId::of::<O::StreamEndpoints>())
+                (
+                    std::any::TypeId::of::<<O::Declaration as OperationDeclaration>::Request>(),
+                    std::any::TypeId::of::<<O::Declaration as OperationDeclaration>::Response>(),
+                    std::any::TypeId::of::<O::StreamEndpoints>(),
+                )
             },
             endpoints_valid: || {
                 use super::EndpointSet;
@@ -179,7 +184,7 @@ impl RegistrationBatch {
                 if O::StreamEndpoints::item_types() != super::item_types::<D>() {
                     return Err(ServingError::Catalog);
                 }
-                let request = request.downcast::<O::Request>().map_err(|_| ServingError::Catalog)?;
+                let request = request.downcast::<<O::Declaration as OperationDeclaration>::Request>().map_err(|_| ServingError::Catalog)?;
                 let endpoints = endpoints.downcast::<O::StreamEndpoints>().map_err(|_| ServingError::Catalog)?;
                 Ok(Box::new(NativeOperation::<O> {
                     dependencies,
@@ -198,9 +203,9 @@ impl RegistrationBatch {
             },
             encoded: |dependencies, payload| {
                 use super::EndpointSet;
-                use crate::Message;
                 let endpoints = O::StreamEndpoints::empty().ok_or(ServingError::StreamUnsupported)?;
-                let request = O::Request::decode(payload).map_err(ServingError::Codec)?;
+                let request =
+                    <<O::Declaration as OperationDeclaration>::Request as crate::Message>::decode(payload).map_err(ServingError::Codec)?;
                 let grant = D::grant(&request);
                 let key = D::key(&request);
                 let instance = NativeOperation::<O> {
@@ -228,7 +233,9 @@ impl RegistrationBatch {
             #[cfg(all(feature = "grpc", feature = "streaming"))]
             grpc: |dependencies, payload, limits| {
                 use super::EndpointSet;
-                let request = crate::grpc::decode::<O::Request>(crate::grpc::DecodeInput::new(payload)).map_err(ServingError::Codec)?;
+                let request =
+                    crate::grpc::decode::<<O::Declaration as OperationDeclaration>::Request>(crate::grpc::DecodeInput::new(payload))
+                        .map_err(ServingError::Codec)?;
                 let (endpoints, streams) = match O::StreamEndpoints::empty() {
                     Some(endpoints) => (endpoints, None),
                     None => {
@@ -258,7 +265,8 @@ impl RegistrationBatch {
             },
             #[cfg(all(feature = "grpc", feature = "streaming"))]
             grpc_memory: |payload| {
-                crate::grpc::prepare::<O::Request>(crate::grpc::DecodeInput::new(payload)).map(|prepared| prepared.memory())
+                crate::grpc::prepare::<<O::Declaration as OperationDeclaration>::Request>(crate::grpc::DecodeInput::new(payload))
+                    .map(|prepared| prepared.memory())
             },
             decoding_memory: <D::Request as crate::Message>::decoding_memory,
         });
@@ -352,7 +360,7 @@ impl OperationFactory {
     }
 }
 
-impl<O: Handler> NativeInstance for NativeOperation<O> {
+impl<O: Carrier> NativeInstance for NativeOperation<O> {
     fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> crate::operations::FailureKind {
         error.downcast_ref::<O::Error>().map_or(crate::operations::FailureKind::Permanent, O::classify)
     }
@@ -361,7 +369,7 @@ impl<O: Handler> NativeInstance for NativeOperation<O> {
         Box::pin(async move {
             if self.operation.is_none() {
                 let context = context.for_registration(self.dependencies.clone());
-                self.operation = Some(O::initialize(context).await.map_err(operation_error::<O>)?);
+                self.operation = Some(O::bind(context).await.map_err(operation_error::<O>)?);
             }
             Ok(())
         })
@@ -378,7 +386,7 @@ impl<O: Handler> NativeInstance for NativeOperation<O> {
             } else {
                 None
             };
-            let response = operation.run(context, &mut self.request, &mut self.endpoints).await.map_err(operation_error::<O>)?;
+            let response = operation.attempt(context, &mut self.request, &mut self.endpoints).await.map_err(operation_error::<O>)?;
             #[cfg(feature = "streaming")]
             if let Some(attempt) = attempt {
                 attempt.end();
@@ -390,7 +398,6 @@ impl<O: Handler> NativeInstance for NativeOperation<O> {
                 return Ok(super::Response::new(bytes).into_erased());
             }
             if self.encoded {
-                use crate::Message;
                 return Ok(super::Response::new(response.encode()).into_erased());
             }
             Ok(response.into_erased())
@@ -422,7 +429,7 @@ impl<O: Handler> NativeInstance for NativeOperation<O> {
 
     fn transferred(&self) -> bool {
         use super::EndpointSet;
-        self.endpoints.transferred() || self.operation.as_ref().is_some_and(Handler::transferred)
+        self.endpoints.transferred() || self.operation.as_ref().is_some_and(Carrier::transferred)
     }
 }
 
@@ -452,7 +459,7 @@ fn service_error(error: impl std::error::Error + 'static) -> ServingError {
     ServingError::Handler(crate::Failure::originate(crate::operations::FailureKind::Permanent, &error, crate::failure::Origin::Plugin))
 }
 
-fn operation_error<O: Handler>(error: O::Error) -> ServingError {
+fn operation_error<O: Carrier>(error: O::Error) -> ServingError {
     ServingError::Native(std::sync::Arc::new(error))
 }
 

@@ -23,7 +23,7 @@ use std::time::Duration;
 use super::operations::{Calling, Lanes, Managed};
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener};
 use harmos_runtime::Message;
-use harmos_runtime::operations::{Handler, OperationDeclaration, OperationPolicy, RetryPolicy, WireTable};
+use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RetryPolicy, WireTable};
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -136,7 +136,7 @@ impl harmos_runtime::Plugin for Receiver {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<Observe, Observing>(),
+            .operation::<Observing>(),
         )
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
@@ -151,7 +151,7 @@ impl harmos_runtime::Plugin for Receiver {
 
 impl Listener for Observed {
     type Row = Observation;
-    const CALLBACK: &'static str = "observe";
+    const CALLBACK: &'static str = "listener.observe";
     const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(100),
@@ -159,23 +159,42 @@ impl Listener for Observed {
     };
 }
 
-struct Observing {
-    resources: Arc<Probe>,
+#[harmos_runtime::operation(codec = manual, resources = [Probe], id = "listener.observe", response = (),
+    policy = Observed::POLICY, visibility = Shared)]
+#[derive(Clone)]
+struct Observing(Delivery<Observed>);
+
+impl harmos_runtime::Message for Observing {
+    const CODEC: &'static str = <Delivery<Observed> as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&self.0)
+    }
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&self.0)
+    }
+    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
+        <Delivery<Observed> as harmos_runtime::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
+        <Delivery<Observed> as harmos_runtime::Message>::decode(bytes).map(Self)
+    }
+}
+impl harmos_runtime::MemorySize for Observing {
+    fn memory_size(&self) -> usize {
+        harmos_runtime::MemorySize::memory_size(&self.0)
+    }
+}
+impl harmos_runtime::schema::Described for Observing {
+    const NAME: &'static str = <Delivery<Observed> as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] = <Delivery<Observed> as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <Delivery<Observed> as harmos_runtime::schema::Described>::MARKER;
 }
 
-impl Handler for Observing {
-    type Request = <Observe as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <Observe as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for Observing {
     type Error = Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        let resources = context.resource::<Probe>().expect("fixture dependency");
-        Ok(Self { resources })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut Delivery<Observed>, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
+        let resources = ctx.resource::<Probe>();
+        let request = self.0;
         let result: ::core::result::Result<(), Self::Error> = async move {
             assert_eq!(
                 request.context(),
@@ -183,16 +202,16 @@ impl Handler for Observing {
                     position: harmos_runtime::state::Position(1)
                 }
             );
-            self.resources.active.fetch_add(1, Ordering::SeqCst);
-            self.resources.entered.notify_one();
-            let _active = InFlight(&self.resources);
+            resources.active.fetch_add(1, Ordering::SeqCst);
+            resources.entered.notify_one();
+            let _active = InFlight(&resources);
             if request.row().value == 0 {
                 std::future::pending::<()>().await;
             }
             if request.row().value == 99 {
                 return Err(Refusal::of("the reaction refused"));
             }
-            self.resources.total.fetch_add(request.row().value as usize, Ordering::SeqCst);
+            resources.total.fetch_add(request.row().value as usize, Ordering::SeqCst);
             Ok(())
         }
         .await;

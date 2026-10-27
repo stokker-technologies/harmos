@@ -21,7 +21,7 @@
 use super::{Answer, Finalization, Finished, Prepare, Prepared, Route, ServingError, WireTable, guarded};
 use crate::Message;
 use crate::QualifiedId;
-use crate::operations::{Dependencies, EndpointSet, Handler, ExecutionContext, OperationDeclaration};
+use crate::operations::{Carrier, Dependencies, EndpointSet, ExecutionContext, OperationDeclaration};
 
 /* === Constants === */
 
@@ -31,7 +31,7 @@ use crate::operations::{Dependencies, EndpointSet, Handler, ExecutionContext, Op
 
 /* === Structs === */
 
-struct State<T: Handler> {
+struct State<T: Carrier> {
     physical: Option<Physical<T>>,
 
     #[cfg(feature = "streaming")]
@@ -48,10 +48,10 @@ struct State<T: Handler> {
     grant: Option<crate::plugin::Grant>,
 }
 
-struct Physical<T: Handler> {
+struct Physical<T: Carrier> {
     dependencies: Dependencies,
     operation: Option<T>,
-    request: T::Request,
+    request: <T::Declaration as OperationDeclaration>::Request,
     endpoints: T::StreamEndpoints,
     stopped: bool,
 }
@@ -79,7 +79,7 @@ impl WireTable {
     pub(crate) fn install<D, T>(&mut self, dependencies: Dependencies, contract: crate::operations::Contract) -> Result<(), ServingError>
     where
         D: OperationDeclaration,
-        T: Handler<Request = D::Request, Response = D::Response>,
+        T: Carrier<Declaration = D>,
     {
         #[cfg(feature = "grpc")]
         let protobuf = D::GRPC.is_some().then(super::protobuf::Codec::of::<D>);
@@ -130,7 +130,7 @@ impl WireTable {
     ) -> Result<(), ServingError>
     where
         D: crate::OperationDeclaration,
-        T: Handler<Request = D::Request, Response = D::Response, StreamEndpoints = ()>,
+        T: Carrier<Declaration = D, StreamEndpoints = ()>,
     {
         if self.closed || self.ordinary_closed {
             return Err(ServingError::Closing);
@@ -165,7 +165,7 @@ impl WireTable {
     ) -> Result<(), ServingError>
     where
         D: OperationDeclaration,
-        T: Handler<Request = D::Request, Response = D::Response>,
+        T: Carrier<Declaration = D>,
     {
         let qualified = QualifiedId::qualify(&self.owner, D::ID).map_err(|_| ServingError::Catalog)?;
         let id = qualified.as_str();
@@ -204,14 +204,15 @@ impl WireTable {
             };
             #[cfg(feature = "grpc")]
             let request = if let Some(codec) = selected {
-                let mut request = None::<T::Request>;
+                let mut request = None::<<T::Declaration as OperationDeclaration>::Request>;
                 (codec.decode)(&payload, &mut request).map_err(ServingError::Codec)?;
                 request.ok_or(ServingError::Catalog)?
             } else {
-                T::Request::decode(&payload).map_err(ServingError::Codec)?
+                <<T::Declaration as OperationDeclaration>::Request as crate::Message>::decode(&payload).map_err(ServingError::Codec)?
             };
             #[cfg(not(feature = "grpc"))]
-            let request = T::Request::decode(&payload).map_err(ServingError::Codec)?;
+            let request =
+                <<T::Declaration as OperationDeclaration>::Request as crate::Message>::decode(&payload).map_err(ServingError::Codec)?;
             let grant = <D as OperationDeclaration>::grant(&request);
             let endpoints = endpoints()?;
             #[cfg(all(feature = "grpc", feature = "streaming"))]
@@ -257,7 +258,7 @@ impl WireTable {
     }
 }
 
-impl<T: Handler> Prepared for State<T> {
+impl<T: Carrier> Prepared for State<T> {
     #[cfg(feature = "streaming")]
     fn streams(&self) -> Option<super::WireStreams> {
         self.streams.clone()
@@ -267,7 +268,7 @@ impl<T: Handler> Prepared for State<T> {
         self.grant.clone()
     }
 
-    fn initialize<'a>(&'a mut self, context: &'a ExecutionContext) -> Finished<'a> {
+    fn bind<'a>(&'a mut self, context: &'a ExecutionContext) -> Finished<'a> {
         Box::pin(async move {
             if self.closing {
                 return Err(ServingError::Closing);
@@ -279,7 +280,7 @@ impl<T: Handler> Prepared for State<T> {
             }
             let physical = self.physical.as_mut().expect("original operation before cleanup");
             let context = context.for_registration(physical.dependencies.clone());
-            let operation = guarded(async { T::initialize(context).await.map_err(operation_error::<T>) }).await?;
+            let operation = guarded(async { T::bind(context).await.map_err(operation_error::<T>) }).await?;
             physical.operation = Some(operation);
             self.initialization = Initialization::Ready;
             Ok(())
@@ -298,7 +299,7 @@ impl<T: Handler> Prepared for State<T> {
             guarded(async {
                 let operation = physical.operation.as_mut().expect("initialized operation");
                 let response = operation
-                    .run(context.for_registration(physical.dependencies.clone()), &mut physical.request, &mut physical.endpoints)
+                    .attempt(context.for_registration(physical.dependencies.clone()), &mut physical.request, &mut physical.endpoints)
                     .await
                     .map_err(operation_error::<T>)?;
                 #[cfg(feature = "grpc")]
@@ -347,7 +348,7 @@ impl<T: Handler> Prepared for State<T> {
 
 // The handler's error becomes the failure's cause here, in the plugin process
 // where it originated; every later carrier forwards the same value.
-fn operation_error<T: Handler>(error: T::Error) -> ServingError {
+fn operation_error<T: Carrier>(error: T::Error) -> ServingError {
     let failure = crate::Failure::originate(T::classify(&error), &error, crate::failure::Origin::Plugin);
     ServingError::Handler(failure)
 }

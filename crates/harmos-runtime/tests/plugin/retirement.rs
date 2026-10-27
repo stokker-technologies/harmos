@@ -52,18 +52,21 @@ async fn cleanup_preserves_peers() {
         Err(PluginFailure::Cleanup(failures)) if failures.len() == 1 && failures[0].artifact == "client"));
     assert_eq!(host.control.lock().unwrap().events, ["fence:client,provider", "stop:client"]);
     assert!(matches!(
-        host.operations().call_encoded("client.run", request_payload()).await,
+        host.operations().call_encoded("client.fixture.run", request_payload()).await,
         Err(Error::Closing { domain: "operation plugin" })
     ));
-    assert!(host.operations().call_encoded("provider.run", request_payload()).await.is_ok());
-    assert!(host.operations().call_encoded("other.run", request_payload()).await.is_ok());
+    assert!(host.operations().call_encoded("provider.fixture.run", request_payload()).await.is_ok());
+    assert!(host.operations().call_encoded("other.fixture.run", request_payload()).await.is_ok());
     let operations = host.operations().clone();
     let cleanup = session.cleanup();
     drop(session);
     assert!(cleanup.join().await.is_err());
     assert!(matches!(cleanup.status(), PluginCleanupStatus::Failed(_)));
-    assert!(operations.call_encoded("provider.run", request_payload()).await.is_ok());
-    assert!(matches!(operations.call_encoded("other.run", request_payload()).await, Err(Error::NotRegistered { domain: "operation", .. })));
+    assert!(operations.call_encoded("provider.fixture.run", request_payload()).await.is_ok());
+    assert!(matches!(
+        operations.call_encoded("other.fixture.run", request_payload()).await,
+        Err(Error::NotRegistered { domain: "operation", .. })
+    ));
     host.control.lock().unwrap().fail_stop = None;
     cleanup.retry().await.unwrap();
     assert!(matches!(cleanup.status(), PluginCleanupStatus::Settled));
@@ -103,10 +106,10 @@ async fn cleanup_quiesces_owner() {
     assert_eq!(host.control.lock().unwrap().stop_calls.get("client"), Some(&1));
     assert!(!host.control.lock().unwrap().backend_drops.contains_key("client"));
     assert!(matches!(
-        host.operations().call_encoded("client.run", request_payload()).await,
+        host.operations().call_encoded("client.fixture.run", request_payload()).await,
         Err(Error::Closing { domain: "operation plugin" })
     ));
-    assert!(host.operations().call_encoded("provider.run", request_payload()).await.is_ok());
+    assert!(host.operations().call_encoded("provider.fixture.run", request_payload()).await.is_ok());
     host.control.lock().unwrap().block_stop = None;
     host.release.notify_waiters();
     session.reload_parts(next.clone(), inventories(&next), ["provider".to_owned()], &mut host).await.unwrap();
@@ -187,10 +190,10 @@ async fn cleanup_retains_dependencies() {
     assert!(!manager.status("other").is_some_and(|status| status.generation.is_some()));
     assert!(!host.control.lock().unwrap().events.iter().any(|event| event == "stop:provider"));
     assert!(matches!(
-        host.call(&caller, "provider.run", request_payload()).await,
+        host.call(&caller, "provider.fixture.run", request_payload()).await,
         Err(Error::OperationCaller { source: DispatchError::Unavailable })
     ));
-    assert!(host.operations().call_encoded("provider.run", request_payload()).await.is_ok());
+    assert!(host.operations().call_encoded("provider.fixture.run", request_payload()).await.is_ok());
 
     host.control.lock().unwrap().fail_stop = None;
     manager.shutdown(&mut host).await.unwrap();
@@ -279,7 +282,7 @@ async fn drop_retains_retirement() {
         }
     }
     drop(manager);
-    host.operations().call_encoded("provider.run", request_payload()).await.unwrap();
+    host.operations().call_encoded("provider.fixture.run", request_payload()).await.unwrap();
     assert!(!host.control.lock().unwrap().backend_drops.contains_key("provider"));
     host.control.lock().unwrap().block_stop = None;
     host.release.notify_waiters();
@@ -337,7 +340,7 @@ async fn drop_retains_retry() {
         assert_eq!(control.backend_drops.get("provider"), None);
         assert_eq!(control.backend_drops.get("other"), Some(&1));
     }
-    host.operations().call_encoded("provider.run", request_payload()).await.unwrap();
+    host.operations().call_encoded("provider.fixture.run", request_payload()).await.unwrap();
     host.control.lock().unwrap().fail_stop = None;
     cleanup.retry().await.unwrap();
     let control = host.control.lock().unwrap();
@@ -369,7 +372,7 @@ async fn drop_keeps_providers() {
         }
     }
     drop(manager);
-    host.operations().call_encoded("provider.run", request_payload()).await.unwrap();
+    host.operations().call_encoded("provider.fixture.run", request_payload()).await.unwrap();
     assert!(!host.control.lock().unwrap().backend_drops.contains_key("provider"));
     host.control.lock().unwrap().block_stop = None;
     host.release.notify_waiters();

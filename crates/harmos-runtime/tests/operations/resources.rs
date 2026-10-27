@@ -25,8 +25,8 @@ use std::time::Duration;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos_runtime::operations::{Handler, RetryPolicy};
-use harmos_runtime::{Error, Runtime, state::Position};
+use harmos_runtime::operations::RetryPolicy;
+use harmos_runtime::{Runtime, state::Position};
 
 /* === Constants === */
 
@@ -39,18 +39,12 @@ use harmos_runtime::{Error, Runtime, state::Position};
 struct Bench {
     device: String,
     reads: AtomicUsize,
-    initialized: AtomicUsize,
-    finalized: AtomicUsize,
-}
-
-struct Read {
-    resources: Arc<Bench>,
 }
 
 /* === Enums === */
 
-#[harmos_runtime::operation(response = Reading,
-        id = "resources_read",
+#[harmos_runtime::operation(resources = [Bench, harmos_runtime::operations::HostContext], operations = [ReadContractDeclaration], response = Reading,
+        id = "resources.read",
         policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -77,54 +71,20 @@ enum Operations {
 
 /* === Implementations === */
 
-impl Handler for Read {
-    type Request = ReadContractDeclaration;
-    type Response = <ReadContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
-    type Error = Error;
-    type StreamEndpoints = ();
+impl harmos_runtime::Operation for ReadContractDeclaration {
+    type Error = harmos_runtime::operations::InvocationError;
 
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
-        let resources = context.resource::<Bench>().expect("fixture registers its dependency");
-        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
-        let context = host.borrow();
-        let constructed: Result<Self, Self::Error> = async move { Ok(Self { resources }) }.await;
-        let mut operation = constructed?;
-        let started: Result<(), Error> = async {
-            let operation = &mut operation;
-            let scope = context.scope();
-            assert!(Arc::ptr_eq(&operation.resources, scope.resources::<App<Arc<Bench>>>()));
-            operation.resources.initialized.fetch_add(1, Ordering::SeqCst);
-            Ok(())
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Reading>, Self::Error> {
+        let resources = ctx.resource::<Bench>();
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
+        assert!(Arc::ptr_eq(&resources, host.borrow().scope().resources::<App<Arc<Bench>>>()));
+        let seen = u64::try_from(resources.reads.fetch_add(1, Ordering::SeqCst)).expect("read counts fit in u64");
+        if self.nested {
+            let child = ctx.operation(ReadContractDeclaration { nested: false }).await?;
+            assert_eq!(child.device, resources.device);
+            assert_eq!(child.seen, seen + 1);
         }
-        .await;
-        started?;
-        Ok(operation)
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::ExecutionContext, request: &mut ReadContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<Reading>, Error> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
-        let context = host.borrow();
-        let result: ::core::result::Result<Reading, Self::Error> = async move {
-            let seen = u64::try_from(self.resources.reads.fetch_add(1, Ordering::SeqCst)).expect("read counts fit in u64");
-            if request.nested {
-                let child = context.submit::<ReadContractDeclaration>(ReadContractDeclaration { nested: false })?.await?;
-                assert_eq!(child.device, self.resources.device);
-                assert_eq!(child.seen, seen + 1);
-            }
-            Ok(Reading {
-                device: self.resources.device.clone(),
-                seen,
-            })
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Error> {
-        self.resources.finalized.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+        Ok(Reading { device: resources.device.clone(), seen }.into())
     }
 }
 
@@ -145,8 +105,6 @@ async fn child_own_resources() {
     let resources = Arc::new(Bench {
         device: "sim://rig-a".to_owned(),
         reads: AtomicUsize::new(0),
-        initialized: AtomicUsize::new(0),
-        finalized: AtomicUsize::new(0),
     });
     let runtime = Runtime::<App<Arc<Bench>>>::builder((), resources.clone()).register(Lanes::catalog()).runtime().await.unwrap();
     runtime
@@ -157,7 +115,7 @@ async fn child_own_resources() {
                 dependencies.insert(resources.clone()).unwrap();
                 dependencies
             })
-            .implementation::<ReadContractDeclaration, Read>(),
+            .operation::<ReadContractDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -168,7 +126,5 @@ async fn child_own_resources() {
     assert_eq!(parent.seen, 0);
     let following = runtime.operation(ReadContractDeclaration { nested: false }).start().await.unwrap().await.unwrap();
     assert_eq!(following.seen, 2, "parent, child and following attempt share one value");
-    assert_eq!(resources.initialized.load(Ordering::SeqCst), 3);
-    assert_eq!(resources.finalized.load(Ordering::SeqCst), 3);
     runtime.stop().await.unwrap();
 }

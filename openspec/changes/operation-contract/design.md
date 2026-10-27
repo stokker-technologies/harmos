@@ -39,10 +39,10 @@ impl Operation for Cancel {
 - `Context<'a, O>` borrows the attempt: `call() -> &CallContext`, `resource::<T>() -> Arc<T>` where `O: Requires<T>`,
   `streams() -> &O::StreamEndpoints`, `operation(request)` where `O: Invokes<T>`.
   `StreamEndpoints` is derived from the declaration's `Input`/`Output` by a blanket SDK impl.
-- `Handler` is the low-level instance contract (`initialize`, `run(&mut self, ..)`, `stop`, `cleanup`, `transferred`) used by
-  carrier proxies, lifecycle built-ins and runtime fixtures. `Executable` selects a declaration's handler; authored operations
-  get `Authored<O>` through a blanket impl. `RegistrationBatch::operation::<O: Executable>()` replaces both registration paths
-  and `implementation::<D, H>()` stays for explicit pairs.
+- `Carrier` is the low-level instance contract (`bind`, `attempt(&mut self, ..)`, `stop`, `cleanup`, `transferred`) used by
+  carrier proxies and lifecycle built-ins. Its request and response come from one associated `Declaration`. `Executable`
+  selects that carrier; authored operations get `Authored<O>` through a blanket impl. Consumer registration uses
+  `RegistrationBatch::operation::<O>()`; the hidden `carrier::<D, C>()` entry is reserved for transport and lifecycle adapters.
 
 ## Declared Dependencies And Verification
 
@@ -75,7 +75,7 @@ impl Operation for Cancel {
   carriers, built-ins and all workspace consumers, then documentation and targeted proof. No push or PR is authorized.
 - `Resource` and `Dependent` live in the SDK because they describe execution resources; domain owns `Requires` and `Invokes`.
 - Shared stream access uses an asynchronous receiver mutex; receiving remains serialized and cancellation-safe.
-- Stateful carrier and lifecycle machinery retains the internal `Handler` lifecycle; consumer `Operation` has only consuming `run`.
+- Stateful carrier and lifecycle machinery retains the internal `Carrier` lifecycle; consumer `Operation` has only consuming `run`.
 - The inherited deletion of `authoring-streamline` and folded current specs is retained as its retirement result.
 
 - Per-attempt request clones copy byte payloads; large transfers belong in streams.

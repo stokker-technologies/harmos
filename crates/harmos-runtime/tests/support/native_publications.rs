@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 // Local Imports
-use harmos_runtime::operations::{Handler, OperationDeclaration, OperationPolicy, RetryPolicy, WireTable};
+use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RetryPolicy, WireTable};
 use harmos_runtime::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
 use harmos_runtime::sidecar::{Attach, Notice, Refusal, Supervised, Supervisor};
 use harmos_runtime::{Message, Runtime, services::ServiceContext, services::ServiceStatus};
@@ -59,7 +59,7 @@ pub struct Sample {
 }
 
 // One Producer Run: `rows` Rows In Calls Of `batch` Rows Each.
-#[harmos_runtime::operation(id = "publication_publish",
+#[harmos_runtime::operation(resources = [Supervisor], id = "publication.publish",
     policy = POLICY,
     response = Timings,
     visibility = Shared,
@@ -76,8 +76,6 @@ pub struct Timings {
 }
 
 pub struct Producer;
-
-struct Publishing;
 
 /* === Enums === */
 
@@ -126,9 +124,7 @@ impl harmos_runtime::Plugin for Producer {
         Arc::new(())
     }
     fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).implementation::<PublishDeclaration, Publishing>(),
-        )
+        table.register(harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<PublishDeclaration>())
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         Ok(())
@@ -138,22 +134,15 @@ impl harmos_runtime::Plugin for Producer {
     }
 }
 
-impl Handler for Publishing {
-    type Request = PublishDeclaration;
-    type Response = <PublishDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::operations::Operation for PublishDeclaration {
     type Error = Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(_: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        Ok(Self)
-    }
-    async fn run(
-        &mut self, host: harmos_runtime::ExecutionContext, burst: &mut PublishDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<Timings>, Refusal> {
-        let host = host.resource::<Supervisor>().expect("carrier context");
+
+    async fn run(self, host: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Timings>, Refusal> {
+        let host = host.resource::<Supervisor>();
         let result: ::core::result::Result<Timings, Self::Error> = async move {
             let publisher = host.publisher::<Producer>();
-            let size = burst.batch.max(1) as usize;
-            let rows: Vec<_> = (0..u64::from(burst.rows)).map(|value| Sample { value }).collect();
+            let size = self.batch.max(1) as usize;
+            let rows: Vec<_> = (0..u64::from(self.rows)).map(|value| Sample { value }).collect();
             let mut calls = Vec::with_capacity(rows.len().div_ceil(size) * 8);
             let mut batch = publisher.batch::<Sample>();
             for chunk in rows.chunks(size) {

@@ -494,7 +494,7 @@ async fn empty_catalog_dependencies() {
 }
 
 #[tokio::test]
-async fn retry_retained_finalization() {
+async fn retry_releases_attempt_capacity() {
     let runtime = assembly()
         .operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
@@ -515,31 +515,25 @@ async fn retry_retained_finalization() {
         .await
         .unwrap();
     assert_eq!(Amplified::decode(result.as_slice()).unwrap().value, 3);
-    assert_eq!(provider.prepared.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.prepared.load(Ordering::SeqCst), 2);
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 2);
-    assert_eq!(provider.finalized.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.finalized.load(Ordering::SeqCst), 2);
     let oversized = runtime
         .operations
         .submit_encoded(&format!("provider.{}", RetryDeclaration::ID), Vec::with_capacity(harmos_sidecar::Frame::LIMIT + 1));
     assert!(matches!(oversized, Err(harmos_runtime::Error::OperationFailed { operation, source })
         if operation == RetryDeclaration::ID && matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Transport(harmos_runtime::services::SidecarError::Refused { code, .. })) if *code == harmos_sidecar::Frame::OVERSIZED)));
-    assert_eq!(provider.prepared.load(Ordering::SeqCst), 1);
-    provider.fail_cleanup.store(true, Ordering::SeqCst);
-    let failed = runtime
+    assert_eq!(provider.prepared.load(Ordering::SeqCst), 2);
+    let response = runtime
         .operations
         .call_encoded(&format!("provider.{}", RetryDeclaration::ID), Message::encode(&RetryDeclaration { value: 1 }))
-        .await;
-    assert!(matches!(failed, Err(harmos_runtime::Error::OperationFinalization { operation, .. }) if operation == RetryDeclaration::ID));
-    assert!(runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("provider", RetryDeclaration::ID).unwrap()).await.is_err());
-    assert!(
-        matches!(runtime.operations.submit_encoded(&format!("provider.{}", AmplifyDeclaration::ID), AmplifyDeclaration { value: 1 }.encode()),
-        Err(harmos_runtime::Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Capacity)))
-    );
-    provider.fail_cleanup.store(false, Ordering::SeqCst);
+        .await
+        .unwrap();
+    assert_eq!(Amplified::decode(&response).unwrap().value, 3);
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("provider", RetryDeclaration::ID).unwrap()).await.unwrap();
-    assert_eq!(provider.prepared.load(Ordering::SeqCst), 2);
+    assert_eq!(provider.prepared.load(Ordering::SeqCst), 4);
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 4);
-    assert_eq!(provider.finalized.load(Ordering::SeqCst), 2);
+    assert_eq!(provider.finalized.load(Ordering::SeqCst), 4);
     runtime
         .operations
         .call_encoded(&format!("provider.{}", AmplifyDeclaration::ID), AmplifyDeclaration { value: 1 }.encode())

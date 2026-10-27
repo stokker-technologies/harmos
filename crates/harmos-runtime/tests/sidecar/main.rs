@@ -96,7 +96,7 @@ const GAUGE_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
 
 /* === Structs === */
 
-#[harmos_runtime::operation(id = "amplify",
+#[harmos_runtime::operation(resources = [MeterHandler], id = "device.amplify",
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
@@ -116,7 +116,7 @@ struct Amplified {
     value: i64,
 }
 
-#[harmos_runtime::operation(id = "sample",
+#[harmos_runtime::operation(resources = [SampleProjection], id = "device.sample",
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
@@ -130,7 +130,7 @@ struct SampleDeclaration {
     value: u64,
 }
 
-#[harmos_runtime::operation(id = "emit",
+#[harmos_runtime::operation(resources = [MeterHandler, Supervisor], id = "device.emit",
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
@@ -144,7 +144,7 @@ struct EmitDeclaration {
     value: u64,
 }
 
-#[harmos_runtime::operation(id = "publish_pulse",
+#[harmos_runtime::operation(resources = [MeterHandler, Supervisor], id = "publish.pulse",
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
@@ -158,7 +158,7 @@ struct PublishPulseDeclaration {
     sample: u64,
 }
 
-#[harmos_runtime::operation(id = "collapse",
+#[harmos_runtime::operation(resources = [MeterHandler, harmos_sidecar::Supervisor], id = "device.collapse",
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
@@ -170,7 +170,7 @@ struct PublishPulseDeclaration {
 #[derive(Clone, PartialEq)]
 struct CollapseDeclaration {}
 
-#[harmos_runtime::operation(id = "finish",
+#[harmos_runtime::operation(resources = [MeterHandler, harmos_sidecar::Supervisor], id = "device.finish",
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
@@ -184,7 +184,7 @@ struct FinishDeclaration {
     reason: String,
 }
 
-#[harmos_runtime::operation(id = "budgeted",
+#[harmos_runtime::operation(resources = [MeterHandler], id = "device.budgeted",
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
@@ -224,7 +224,7 @@ struct Calibration {
     factor: i64,
 }
 
-#[harmos_runtime::operation(id = "get_measure",
+#[harmos_runtime::operation(resources = [GaugeResources], id = "get.measure",
     policy = GAUGE_POLICY,
     response = Measured,
 )]
@@ -248,7 +248,7 @@ struct GaugeResources {
     stopped: AtomicUsize,
 }
 
-#[harmos_runtime::operation(id = "stop_sampling",
+#[harmos_runtime::operation(resources = [GaugeResources], id = "stop.sampling",
     policy = GAUGE_POLICY,
     response = StopSamplingResponse,
 )]
@@ -259,16 +259,16 @@ struct StopSamplingDeclaration {}
 #[derive(Clone, PartialEq)]
 pub(crate) struct StopSamplingResponse {}
 
-#[harmos_runtime::operation(id = "get_factor",  policy = GAUGE_POLICY, response = Measured)]
+#[harmos_runtime::operation(resources = [GaugeResources], id = "get.factor",  policy = GAUGE_POLICY, response = Measured)]
 #[derive(Clone, PartialEq)]
 struct GetFactorDeclaration {}
 
-#[harmos_runtime::operation(id = "run_echo",  policy = GAUGE_POLICY, response = String)]
+#[harmos_runtime::operation(resources = [GaugeResources], id = "run.echo",  policy = GAUGE_POLICY, response = String)]
 struct RunEchoDeclaration {
     text: String,
 }
 
-#[harmos_runtime::operation(id = "run_uppercase",
+#[harmos_runtime::operation(resources = [GaugeResources], id = "run.uppercase",
     policy = GAUGE_POLICY,
     response = String,
 )]
@@ -289,57 +289,9 @@ struct MeterSource {
     publications: Option<Vec<harmos_sidecar::StreamDeclaration>>,
 }
 
-struct Measuring {
-    resources: Arc<GaugeResources>,
-}
-
 #[derive(Debug, thiserror::Error)]
 #[error("gRPC transport error: {0}")]
 struct ProbeTransport(#[source] std::io::Error);
-
-struct Echoing {
-    _resources: Arc<GaugeResources>,
-}
-
-struct Uppercasing {
-    _resources: Arc<GaugeResources>,
-}
-
-struct StoppingSampling {
-    resources: Arc<GaugeResources>,
-}
-
-struct ReadingFactor {
-    resources: Arc<GaugeResources>,
-}
-
-struct Amplifying {
-    _resources: Arc<MeterHandler>,
-}
-
-struct Emitting {
-    _resources: Arc<MeterHandler>,
-}
-
-struct PublishingPulse {
-    _resources: Arc<MeterHandler>,
-}
-
-struct Collapsing {
-    _resources: Arc<MeterHandler>,
-}
-
-struct Finishing {
-    _resources: Arc<MeterHandler>,
-}
-
-struct BudgetedCall {
-    _resources: Arc<MeterHandler>,
-}
-
-struct Sampling {
-    resources: Arc<SampleProjection>,
-}
 
 /* === Enums === */
 
@@ -445,7 +397,7 @@ impl harmos_runtime::Plugin for Gauge {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<GetMeasureDeclaration, Measuring>(),
+            .operation::<GetMeasureDeclaration>(),
         )?;
         table.register(
             harmos_runtime::RegistrationBatch::new({
@@ -453,7 +405,7 @@ impl harmos_runtime::Plugin for Gauge {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<RunEchoDeclaration, Echoing>(),
+            .operation::<RunEchoDeclaration>(),
         )?;
         table.register(
             harmos_runtime::RegistrationBatch::new({
@@ -461,7 +413,7 @@ impl harmos_runtime::Plugin for Gauge {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<RunUppercaseDeclaration, Uppercasing>(),
+            .operation::<RunUppercaseDeclaration>(),
         )?;
         table.register(
             harmos_runtime::RegistrationBatch::new({
@@ -469,7 +421,7 @@ impl harmos_runtime::Plugin for Gauge {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<StopSamplingDeclaration, StoppingSampling>(),
+            .operation::<StopSamplingDeclaration>(),
         )?;
         table.register(
             harmos_runtime::RegistrationBatch::new({
@@ -477,7 +429,7 @@ impl harmos_runtime::Plugin for Gauge {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<GetFactorDeclaration, ReadingFactor>(),
+            .operation::<GetFactorDeclaration>(),
         )?;
         table.register(
             harmos_runtime::RegistrationBatch::new({
@@ -485,7 +437,7 @@ impl harmos_runtime::Plugin for Gauge {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<visibility::ScalePrivatelyDeclaration, visibility::ScalingPrivately>(),
+            .operation::<visibility::ScalePrivatelyDeclaration>(),
         )?;
         table.register(
             harmos_runtime::RegistrationBatch::new({
@@ -493,7 +445,7 @@ impl harmos_runtime::Plugin for Gauge {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<visibility::ScalePubliclyDeclaration, visibility::ScalingPublicly>(),
+            .operation::<visibility::ScalePubliclyDeclaration>(),
         )
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -506,88 +458,58 @@ impl harmos_runtime::Plugin for Gauge {
     }
 }
 
-impl harmos_runtime::operations::Handler for Measuring {
-    type Request = <GetMeasureDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <GetMeasureDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for GetMeasureDeclaration {
     type Error = MeasureError;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, MeasureError> {
-        let resources = context.resource::<GaugeResources>().expect("fixture dependency");
-        Ok(Self { resources })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut GetMeasureDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<Measured>, MeasureError> {
+
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Measured>, MeasureError> {
+        let resources = ctx.resource::<GaugeResources>();
         let result: ::core::result::Result<Measured, Self::Error> = async move {
-            let _ = &request;
-            if request.value == i64::MIN {
+            let _ = &self;
+            if self.value == i64::MIN {
                 let reset = std::io::Error::new(std::io::ErrorKind::ConnectionReset, "connection reset");
                 return Err(MeasureError::Probe(ProbeTransport(reset)));
             }
-            if request.value < 0 {
+            if self.value < 0 {
                 let refusal = Refusal::of("this gauge measures no negative value");
                 return Err(MeasureError::Refused(refusal));
             }
-            Ok(Measured {
-                value: request.value * self.resources.factor,
-            })
+            Ok(Measured { value: self.value * resources.factor })
         }
         .await;
         result.map(::core::convert::Into::into)
     }
 }
 
-impl harmos_runtime::operations::Handler for Echoing {
-    type Request = RunEchoDeclaration;
-    type Response = <RunEchoDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for RunEchoDeclaration {
     type Error = Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        let resources = context.resource::<GaugeResources>().expect("fixture registers its dependency");
-        Ok(Self { _resources: resources })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut RunEchoDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<String>, Refusal> {
-        let result: ::core::result::Result<String, Self::Error> = async move { Ok(request.text.clone()) }.await;
+
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<String>, Refusal> {
+        let _resources = ctx.resource::<GaugeResources>();
+        let result: ::core::result::Result<String, Self::Error> = async move { Ok(self.text.clone()) }.await;
         result.map(::core::convert::Into::into)
     }
 }
 
-impl harmos_runtime::operations::Handler for Uppercasing {
-    type Request = RunUppercaseDeclaration;
-    type Response = <RunUppercaseDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for RunUppercaseDeclaration {
     type Error = Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        let resources = context.resource::<GaugeResources>().expect("fixture registers its dependency");
-        Ok(Self { _resources: resources })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut RunUppercaseDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<String>, Refusal> {
-        let result: ::core::result::Result<String, Self::Error> = async move { Ok(request.text.to_uppercase()) }.await;
+
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<String>, Refusal> {
+        let _resources = ctx.resource::<GaugeResources>();
+        let result: ::core::result::Result<String, Self::Error> = async move { Ok(self.text.to_uppercase()) }.await;
         result.map(::core::convert::Into::into)
     }
 }
 
-impl harmos_runtime::operations::Handler for StoppingSampling {
-    type Request = <StopSamplingDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <StopSamplingDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for StopSamplingDeclaration {
     type Error = Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        let resources = context.resource::<GaugeResources>().expect("fixture dependency");
-        Ok(Self { resources })
-    }
+
     async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut StopSamplingDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        self, ctx: harmos_runtime::Context<'_, Self>,
     ) -> Result<harmos_runtime::operations::Response<StopSamplingResponse>, Refusal> {
+        let resources = ctx.resource::<GaugeResources>();
         let result: ::core::result::Result<StopSamplingResponse, Self::Error> = async move {
-            let _ = &request;
-            self.resources.stopped.fetch_add(1, Ordering::SeqCst);
+            let _ = &self;
+            resources.stopped.fetch_add(1, Ordering::SeqCst);
             Ok(StopSamplingResponse {})
         }
         .await;
@@ -595,110 +517,70 @@ impl harmos_runtime::operations::Handler for StoppingSampling {
     }
 }
 
-impl harmos_runtime::operations::Handler for ReadingFactor {
-    type Request = <GetFactorDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <GetFactorDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for GetFactorDeclaration {
     type Error = Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        let resources = context.resource::<GaugeResources>().expect("fixture dependency");
-        Ok(Self { resources })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut GetFactorDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<Measured>, Refusal> {
+
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Measured>, Refusal> {
+        let resources = ctx.resource::<GaugeResources>();
         let result: ::core::result::Result<Measured, Self::Error> = async move {
-            let _ = &request;
-            Ok(Measured { value: self.resources.factor })
+            let _ = &self;
+            Ok(Measured { value: resources.factor })
         }
         .await;
         result.map(::core::convert::Into::into)
     }
 }
 
-impl harmos_runtime::operations::Handler for Amplifying {
-    type Request = <AmplifyDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <AmplifyDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for AmplifyDeclaration {
     type Error = Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        let resources = context.resource::<MeterHandler>().expect("fixture dependency");
-        Ok(Self { _resources: resources })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut AmplifyDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
+
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
+        let _resources = ctx.resource::<MeterHandler>();
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
-            if request.value < 0 {
+            if self.value < 0 {
                 return Err(Refusal::of("this meter measures no negative value"));
             }
-            Ok(Amplified { value: request.value * 2 })
+            Ok(Amplified { value: self.value * 2 })
         }
         .await;
         result.map(::core::convert::Into::into)
     }
 }
 
-impl harmos_runtime::operations::Handler for Emitting {
-    type Request = <EmitDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <EmitDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for EmitDeclaration {
     type Error = Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        let resources = context.resource::<MeterHandler>().expect("fixture dependency");
-        Ok(Self { _resources: resources })
-    }
-    async fn run(
-        &mut self, host: harmos_runtime::ExecutionContext, request: &mut EmitDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
-        let host = host.resource::<Supervisor>().expect("carrier context");
+
+    async fn run(self, host: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
+        let _resources = host.resource::<MeterHandler>();
+        let host = host.resource::<Supervisor>();
         let result: ::core::result::Result<(), Self::Error> =
-            async move { host.publisher::<Meter>().publish_on::<MeterPulse>(&support::pulse(request.value)).await.map_err(Refusal::from) }
+            async move { host.publisher::<Meter>().publish_on::<MeterPulse>(&support::pulse(self.value)).await.map_err(Refusal::from) }
                 .await;
         result.map(::core::convert::Into::into)
     }
 }
 
-impl harmos_runtime::operations::Handler for PublishingPulse {
-    type Request = <PublishPulseDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <PublishPulseDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for PublishPulseDeclaration {
     type Error = Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        let resources = context.resource::<MeterHandler>().expect("fixture dependency");
-        Ok(Self { _resources: resources })
-    }
-    async fn run(
-        &mut self, host: harmos_runtime::ExecutionContext, request: &mut PublishPulseDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
-        let host = host.resource::<Supervisor>().expect("carrier context");
+
+    async fn run(self, host: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
+        let _resources = host.resource::<MeterHandler>();
+        let host = host.resource::<Supervisor>();
         let result: ::core::result::Result<(), Self::Error> =
-            async move { host.publisher::<Meter>().publish_on::<MeterPulse>(&support::pulse(request.sample)).await.map_err(Refusal::from) }
+            async move { host.publisher::<Meter>().publish_on::<MeterPulse>(&support::pulse(self.sample)).await.map_err(Refusal::from) }
                 .await;
         result.map(::core::convert::Into::into)
     }
 }
 
-impl harmos_runtime::operations::Handler for Collapsing {
-    type Request = <CollapseDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <CollapseDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for CollapseDeclaration {
     type Error = Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        let resources = context.resource::<MeterHandler>().expect("fixture dependency");
-        Ok(Self { _resources: resources })
-    }
-    async fn run(
-        &mut self, host: harmos_runtime::ExecutionContext, request: &mut CollapseDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
+
+    async fn run(self, host: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
+        let _resources = host.resource::<MeterHandler>();
         let result: ::core::result::Result<(), Self::Error> = async move {
-            let _ = (&request, &host);
-            host.resource::<harmos_sidecar::Supervisor>().unwrap().abandon();
+            let _ = (&self, &host);
+            host.resource::<harmos_sidecar::Supervisor>().abandon();
             Ok(())
         }
         .await;
@@ -706,22 +588,14 @@ impl harmos_runtime::operations::Handler for Collapsing {
     }
 }
 
-impl harmos_runtime::operations::Handler for Finishing {
-    type Request = <FinishDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <FinishDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for FinishDeclaration {
     type Error = Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        let resources = context.resource::<MeterHandler>().expect("fixture dependency");
-        Ok(Self { _resources: resources })
-    }
-    async fn run(
-        &mut self, host: harmos_runtime::ExecutionContext, request: &mut FinishDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
+
+    async fn run(self, host: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
+        let _resources = host.resource::<MeterHandler>();
         let result: ::core::result::Result<(), Self::Error> = async move {
-            let _ = (&request, &host);
-            host.resource::<harmos_sidecar::Supervisor>().unwrap().exiting(request.reason.clone());
+            let _ = (&self, &host);
+            host.resource::<harmos_sidecar::Supervisor>().exiting(self.reason.clone());
             Ok(())
         }
         .await;
@@ -729,26 +603,18 @@ impl harmos_runtime::operations::Handler for Finishing {
     }
 }
 
-impl harmos_runtime::operations::Handler for BudgetedCall {
-    type Request = <BudgetedRouteDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <BudgetedRouteDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for BudgetedRouteDeclaration {
     type Error = Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        let resources = context.resource::<MeterHandler>().expect("fixture dependency");
-        Ok(Self { _resources: resources })
-    }
-    async fn run(
-        &mut self, host: harmos_runtime::ExecutionContext, request: &mut BudgetedRouteDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<BudgetedReply>, Refusal> {
+
+    async fn run(self, host: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<BudgetedReply>, Refusal> {
+        let _resources = host.resource::<MeterHandler>();
         let result: ::core::result::Result<BudgetedReply, Self::Error> = async move {
-            let _ = (&request, &host);
-            if request.refusal_bytes > 0 {
-                return Err(Refusal::new(-42, "x".repeat(request.refusal_bytes as usize)));
+            let _ = (&self, &host);
+            if self.refusal_bytes > 0 {
+                return Err(Refusal::new(-42, "x".repeat(self.refusal_bytes as usize)));
             }
             Ok(BudgetedReply {
-                payload: vec![0; request.reply_bytes as usize],
+                payload: vec![0; self.reply_bytes as usize],
             })
         }
         .await;
@@ -756,21 +622,13 @@ impl harmos_runtime::operations::Handler for BudgetedCall {
     }
 }
 
-impl harmos_runtime::operations::Handler for Sampling {
-    type Request = <SampleDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <SampleDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for SampleDeclaration {
     type Error = harmos_runtime::Error;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
-        let resources = context.resource::<SampleProjection>().expect("fixture dependency");
-        Ok(Self { resources })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut SampleDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
+
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
+        let resources = ctx.resource::<SampleProjection>();
         let result: ::core::result::Result<(), Self::Error> = async move {
-            self.resources.streams.publish(support::pulse(request.value));
+            resources.streams.publish(support::pulse(self.value));
             Ok(())
         }
         .await;
@@ -809,7 +667,7 @@ impl harmos_runtime::Plugin for Meter {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<AmplifyDeclaration, Amplifying>(),
+            .operation::<AmplifyDeclaration>(),
         )?;
         table.register(
             harmos_runtime::RegistrationBatch::new({
@@ -817,7 +675,7 @@ impl harmos_runtime::Plugin for Meter {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<EmitDeclaration, Emitting>(),
+            .operation::<EmitDeclaration>(),
         )?;
         table.register(
             harmos_runtime::RegistrationBatch::new({
@@ -825,7 +683,7 @@ impl harmos_runtime::Plugin for Meter {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<PublishPulseDeclaration, PublishingPulse>(),
+            .operation::<PublishPulseDeclaration>(),
         )?;
         table.register(
             harmos_runtime::RegistrationBatch::new({
@@ -833,7 +691,7 @@ impl harmos_runtime::Plugin for Meter {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<CollapseDeclaration, Collapsing>(),
+            .operation::<CollapseDeclaration>(),
         )?;
         table.register(
             harmos_runtime::RegistrationBatch::new({
@@ -841,7 +699,7 @@ impl harmos_runtime::Plugin for Meter {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<FinishDeclaration, Finishing>(),
+            .operation::<FinishDeclaration>(),
         )?;
         table.register(
             harmos_runtime::RegistrationBatch::new({
@@ -849,7 +707,7 @@ impl harmos_runtime::Plugin for Meter {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<BudgetedRouteDeclaration, BudgetedCall>(),
+            .operation::<BudgetedRouteDeclaration>(),
         )
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {

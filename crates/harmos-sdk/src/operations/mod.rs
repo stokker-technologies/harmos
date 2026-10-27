@@ -28,9 +28,11 @@ mod surface;
 
 /* === Re-Exports === */
 
-pub use authored::{EndpointSet, Executable, Handler, InputEndpoint, OutputEndpoint};
+#[doc(hidden)]
+pub use authored::Carrier;
+pub use authored::{EndpointSet, Executable, InputEndpoint, OutputEndpoint};
 pub use calls::{CallFuture, Caller, Calls, InvocationError, Target};
-pub use dependencies::{AssignedOperation, Dependencies, OperationAssignments, ExecutionContext, ResourceError};
+pub use dependencies::{AssignedOperation, Dependencies, ExecutionContext, OperationAssignments, ResourceError};
 pub use harmos_domain::operations::*;
 pub use instance::Instance;
 pub use operation::{Authored, Context, Dependent, Operation, Resource, Shape, Streams};

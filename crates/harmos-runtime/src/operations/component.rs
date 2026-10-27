@@ -23,7 +23,7 @@ use std::sync::{
 use tokio::sync::mpsc;
 // Local Imports
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
-use super::{Context, Handler};
+use super::{Carrier, Context};
 use crate::catalog::{Catalog, Member, Visitor};
 use crate::guest::Error as GuestError;
 use crate::guest::host::session::Endpoint;
@@ -157,18 +157,17 @@ impl Component {
     }
 }
 
-impl<O, E> Handler for ComponentOperation<O, E>
+impl<O, E> Carrier for ComponentOperation<O, E>
 where
     O: OperationDeclaration,
     E: super::StreamEndpoints,
 {
-    type Request = <O as OperationDeclaration>::Request;
-    type Response = <O as OperationDeclaration>::Response;
+    type Declaration = O;
     type Error = ComponentError;
     type StreamEndpoints = E;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize(context: harmos_sdk::ExecutionContext) -> Result<Self, ComponentError> {
+    async fn bind(context: harmos_sdk::ExecutionContext) -> Result<Self, ComponentError> {
         let component = context.resource::<Component>()?;
         Ok(Self {
             component,
@@ -180,7 +179,7 @@ where
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn run(
+    async fn attempt(
         &mut self, context: harmos_sdk::ExecutionContext, request: &mut O::Request, endpoints: &mut Self::StreamEndpoints,
     ) -> Result<crate::operations::Response<O::Response>, ComponentError> {
         let host = context.resource::<super::HostContext>()?;
@@ -440,20 +439,19 @@ impl Component {
     }
 }
 
-impl Handler for SdkOperation {
-    type Request = <super::sdk::Encoded as OperationDeclaration>::Request;
-    type Response = <super::sdk::Encoded as OperationDeclaration>::Response;
+impl Carrier for SdkOperation {
+    type Declaration = super::sdk::Encoded;
     type Error = ComponentError;
     type StreamEndpoints = ();
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize(context: harmos_sdk::ExecutionContext) -> Result<Self, ComponentError> {
+    async fn bind(context: harmos_sdk::ExecutionContext) -> Result<Self, ComponentError> {
         let binding = context.resource::<SdkBinding>()?;
         Ok(Self { binding, state: None })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn run(
+    async fn attempt(
         &mut self, context: harmos_sdk::ExecutionContext, payload: &mut super::sdk::Encoded, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<crate::operations::Response<Vec<u8>>, ComponentError> {
         let host = context.resource::<super::HostContext>()?;

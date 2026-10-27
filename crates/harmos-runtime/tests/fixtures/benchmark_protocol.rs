@@ -23,7 +23,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::operations::{Handler, RetryPolicy};
+use harmos_runtime::operations::RetryPolicy;
 
 /* === Constants === */
 
@@ -35,7 +35,7 @@ use harmos_runtime::operations::{Handler, RetryPolicy};
 
 pub struct Model;
 
-#[harmos_runtime::operation(id = "benchmark_echo",  response = Payload,
+#[harmos_runtime::operation(resources = [], id = "benchmark.echo",  response = Payload,
     visibility = Shared,
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30), attempt_timeout: Duration::from_secs(30),
@@ -51,8 +51,6 @@ pub struct EchoDeclaration {
 pub struct Payload {
     pub bytes: Vec<u8>,
 }
-
-pub struct Echoing;
 
 /* === Enums === */
 
@@ -75,20 +73,11 @@ impl harmos_runtime::Application for Model {
     type Resources = ();
 }
 
-impl Handler for Echoing {
-    type Request = EchoDeclaration;
-    type Response = <EchoDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::operations::Operation for EchoDeclaration {
     type Error = Infallible;
-    type StreamEndpoints = ();
 
-    async fn initialize(_context: harmos_runtime::ExecutionContext) -> Result<Self, Infallible> {
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut EchoDeclaration, _: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<Payload>, Infallible> {
-        let bytes = std::mem::take(&mut request.bytes);
+    async fn run(mut self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Payload>, Infallible> {
+        let bytes = std::mem::take(&mut self.bytes);
         Ok(Payload { bytes }.into())
     }
 }

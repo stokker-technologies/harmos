@@ -678,7 +678,7 @@ IDs use dotted segments `segment(.segment)*`, each `[a-z][a-z0-9_]*`. The runtim
 and `storage.append_file`. `codec = manual` preserves an explicitly authored message codec.
 
 `Message` supplies encoding and decoding; `Portable` supplies structural fingerprints and payload digests. Retries run a clone
-of the original operation request. Large payloads belong in streams. The low-level `Handler` lifecycle is used for carrier proxies
+of the original operation request. Large payloads belong in streams. The low-level `Carrier` lifecycle is used for carrier proxies
 and lifecycle controls; services retain their separate `Service` lifecycle.
 
 `OperationPolicy` controls overall timeout, attempt timeout and request retries.

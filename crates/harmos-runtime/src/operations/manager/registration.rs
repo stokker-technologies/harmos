@@ -165,9 +165,9 @@ impl Manager {
     ) -> Result<Arc<Entry>>
     where
         D: OperationDeclaration,
-        O: harmos_sdk::Handler<Request = D::Request, Response = D::Response>,
+        O: harmos_sdk::operations::Carrier<Declaration = D>,
     {
-        let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).implementation::<D, O>();
+        let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).carrier::<D, O>();
         let factory = batch.operations.pop().expect("one native implementation");
         let binding = crate::operations::authored::factory::<D, O::StreamEndpoints>(self, factory);
         self.binding_erased(owner, lane, Arc::new(binding), definition, wire, plugin)

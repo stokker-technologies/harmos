@@ -26,8 +26,6 @@ mod children;
 mod clock;
 #[path = "../operations/execution.rs"]
 mod execution;
-#[path = "../operations/finalization.rs"]
-mod finalization;
 #[path = "../operations/host.rs"]
 mod host;
 #[path = "../operations/lanes.rs"]

@@ -72,9 +72,9 @@ struct Cancellation {
     finalized: AtomicUsize,
 }
 
-struct PendingCall(Arc<Cancellation>);
+struct PendingGuard(Arc<Cancellation>);
 
-#[harmos_runtime::operation(id = "shutdown_pending",
+#[harmos_runtime::operation(resources = [Cancellation], id = "shutdown.pending",
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(3),
         attempt_timeout: Duration::from_secs(2),
@@ -91,31 +91,18 @@ enum Operations {
 
 use crate::runtime::probe::Lanes;
 
-impl harmos_runtime::operations::Handler for PendingCall {
-    type Request = PendingContractDeclaration;
-    type Response = <PendingContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for PendingContractDeclaration {
     type Error = std::convert::Infallible;
-    type StreamEndpoints = ();
-
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
-        let trace = context.resource::<Cancellation>().expect("fixture registers its dependency");
-        Ok(Self(trace))
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
+        let cancellation = ctx.resource::<Cancellation>();
+        let _guard = PendingGuard(cancellation.clone());
+        cancellation.started.notify_one();
+        std::future::pending().await
     }
-
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, _: &mut PendingContractDeclaration, _: &mut (),
-    ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            self.0.started.notify_one();
-            std::future::pending().await
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+}
+impl Drop for PendingGuard {
+    fn drop(&mut self) {
         self.0.finalized.fetch_add(1, Ordering::SeqCst);
-        Ok(())
     }
 }
 
@@ -144,7 +131,7 @@ async fn services_stop_first() {
                 dependencies.insert(trace.clone()).unwrap();
                 dependencies
             })
-            .implementation::<PendingContractDeclaration, PendingCall>(),
+            .operation::<PendingContractDeclaration>(),
             Lanes::Open,
         ))
         .await

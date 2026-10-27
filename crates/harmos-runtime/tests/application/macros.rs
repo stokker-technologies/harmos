@@ -201,7 +201,7 @@ mod unified_plugins {
     use harmos_runtime::__private::{PluginDeclared, PluginInventory};
     use harmos_runtime::operations::{Contracts, OperationPolicy, RetryPolicy, ServingError, WireTable};
 
-    #[harmos_runtime::operation(id = "fixture_unified_echo",  response = (), policy = POLICY)]
+    #[harmos_runtime::operation(id = "fixture.unified.echo",  response = (), policy = POLICY)]
     struct Echo {}
 
     #[harmos_runtime::catalog]

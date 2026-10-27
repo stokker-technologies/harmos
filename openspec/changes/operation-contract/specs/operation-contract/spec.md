@@ -2,7 +2,7 @@
 
 ### Requirement: Clean Consumer Migration
 The workspace SHALL remove RequestFor, infer_request, operation_for, dependency accessors and DependencyError. Stateful carrier
-machinery SHALL use the distinct Handler contract. Consumer documentation SHALL show one operation file with complete Definition Module
+machinery SHALL use the distinct internal Carrier contract. Consumer documentation SHALL show one operation file with complete Definition Module
 and Runtime Module divisions, each including its Tests section. The runtime module SHALL follow definition tests and be execution gated. Guest `Operation`, `Context` and `Response` SHALL
 re-export the host-free SDK types. Guest plugin lifecycle context SHALL remain distinct at `kit::Context`. Individual operations
 SHALL register through `RegistrationBatch::operation`; catalogs SHALL retain generated registration.

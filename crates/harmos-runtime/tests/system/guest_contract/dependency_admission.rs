@@ -88,91 +88,6 @@ async fn cancelled_dependency_admission() {
 }
 
 #[tokio::test]
-async fn background_cleanup_retained() {
-    let _report = crate::report::system();
-    use std::sync::{Arc, atomic::Ordering};
-    let runtime = runtime().await;
-    let provider = Arc::new(ProviderOwner::default());
-    let mut lifecycle = DependencyHost::new(&runtime, provider.clone()).await;
-    let mut manager = harmos_runtime::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "idle").await).unwrap();
-    manager.initialize(&mut lifecycle).await.unwrap();
-    let prepared = provider.prepared.load(Ordering::SeqCst);
-
-    // The Saved Initialization Context Uses The Original Generation And Provider.
-    let answered = runtime
-        .operations
-        .call::<EchoOperation>(EchoOperation {
-            say: "saved-dependency:original-background".into(),
-        })
-        .await
-        .unwrap();
-    assert_eq!(answered.said, "original-background");
-    provider.fail_cleanup.store(true, Ordering::SeqCst);
-    let refused = runtime
-        .operations
-        .call::<EchoOperation>(EchoOperation {
-            say: "saved-dependency:physical-cleanup".into(),
-        })
-        .await
-        .unwrap_err();
-    assert!(matches!(component_error(&refused), harmos_runtime::operations::ComponentError::Remote { .. }));
-    assert_eq!(provider.prepared.load(Ordering::SeqCst), prepared + 2);
-    assert_eq!(provider.cleanup_finished.load(Ordering::SeqCst), 0);
-
-    // Destroying The Actual Guest Store Does Not Settle Its Failed Host Debt.
-    let trapped = runtime.operations.call::<FailOperation>(FailOperation {}).await.unwrap_err();
-    assert!(execution_error(&trapped).downcast_ref::<wasmtime::Trap>().is_some());
-    let first = manager.shutdown(&mut lifecycle).await.unwrap_err();
-    let harmos_runtime::Error::PluginLifecycle { source } = first else {
-        panic!("the failed guest must report its original shutdown refusal");
-    };
-    let harmos_runtime::plugin::PluginFailure::Cleanup(failures) = *source else {
-        panic!("the failed guest must retain its original ending");
-    };
-    assert_eq!(failures.len(), 1);
-    assert_eq!(failures[0].artifact, "sandbox_guest");
-
-    let harmos_runtime::Error::TaskFailed { domain, source } = &failures[0].error else {
-        panic!("the manager preserves its original cleanup failure");
-    };
-    assert_eq!(*domain, "plugin cleanup");
-    let original = source.downcast_ref::<harmos_runtime::Error>().expect("the original SDK error remains available");
-    assert!(matches!(component_error(original), harmos_runtime::operations::ComponentError::Unavailable));
-
-    for _ in 0..2 {
-        let harmos_runtime::Error::PluginLifecycle { source } = manager.shutdown(&mut lifecycle).await.unwrap_err() else {
-            panic!("the original host cleanup must remain retryable");
-        };
-        let harmos_runtime::plugin::PluginFailure::Cleanup(failures) = *source else {
-            panic!("the original cleanup failure must remain inspectable");
-        };
-        assert_eq!(failures.len(), 1);
-        assert_eq!(failures[0].artifact, "sandbox_guest");
-        let mut source = Some(&failures[0].error as &dyn std::error::Error);
-        let mut original_refusal = false;
-        while let Some(error) = source {
-            original_refusal |= error.to_string().contains("fixture physical cleanup refused");
-            source = error.source();
-        }
-        assert!(original_refusal);
-        assert_eq!(provider.prepared.load(Ordering::SeqCst), prepared + 2);
-        assert_eq!(provider.cleanup_finished.load(Ordering::SeqCst), 0);
-    }
-    let failed_attempts = provider.cleanup_attempts.load(Ordering::SeqCst);
-    assert!(failed_attempts >= 2);
-    assert_eq!(provider.observed.lock().unwrap().as_slice(), ["original-background", "physical-cleanup"]);
-
-    // The Original Finalizer Settles Once Its Physical Cleanup Succeeds
-    provider.fail_cleanup.store(false, Ordering::SeqCst);
-    manager.shutdown(&mut lifecycle).await.unwrap();
-    assert_eq!(provider.prepared.load(Ordering::SeqCst), prepared + 2);
-    assert_eq!(provider.cleanup_attempts.load(Ordering::SeqCst), failed_attempts + 1);
-    assert_eq!(provider.cleanup_finished.load(Ordering::SeqCst), 1);
-    drop((answered, manager, lifecycle));
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
 async fn missing_provider_refused() {
     let _report = crate::report::system();
     let runtime = runtime().await;
@@ -222,46 +137,6 @@ async fn shutdown_fences_callers() {
     assert!(!provider.observed.lock().unwrap().iter().any(|say| say == "cleanup"));
 
     drop((manager, lifecycle, stale));
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn cancelled_shutdown_cleanup() {
-    let _report = crate::report::system();
-    use std::sync::{Arc, atomic::Ordering};
-    let runtime = runtime().await;
-    let provider = Arc::new(ProviderOwner::default());
-    let mut lifecycle = DependencyHost::new(&runtime, provider.clone()).await;
-    let mut manager =
-        harmos_runtime::plugin::PluginManager::new(native_dependency_candidate(&mut lifecycle, "dependencies", false).await).unwrap();
-    manager.initialize(&mut lifecycle).await.unwrap();
-    let prepared = provider.prepared.load(Ordering::SeqCst);
-    provider.hold_cleanup.store(true, Ordering::SeqCst);
-    let invocation = runtime
-        .operations
-        .submit::<super::super::sandbox::ProviderEchoOperation>(ProviderEchoOperation { say: "physical-cleanup".into() })
-        .await
-        .unwrap();
-    provider.cleanup_started.notified().await;
-    assert_eq!(provider.prepared.load(Ordering::SeqCst), prepared + 1);
-    let mut waiter = Box::pin(manager.shutdown(&mut lifecycle));
-    tokio::select! {
-        biased;
-        result = &mut waiter => panic!("shutdown returned before original physical cleanup settled: {result:?}"),
-        () = std::future::ready(()) => {},
-    }
-    drop(waiter);
-    assert!(!provider.hold_cleanup.load(Ordering::SeqCst));
-    assert!(runtime.operations.call::<EchoOperation>(EchoOperation { say: "closed".into() }).await.is_err());
-    provider.cleanup_release.notify_one();
-    manager.shutdown(&mut lifecycle).await.unwrap();
-    manager.shutdown(&mut lifecycle).await.unwrap();
-    assert_eq!(invocation.await.unwrap().said, "physical-cleanup");
-    assert_eq!(provider.prepared.load(Ordering::SeqCst), prepared + 1);
-    assert_eq!(provider.cleanup_attempts.load(Ordering::SeqCst), 1);
-    assert_eq!(provider.cleanup_finished.load(Ordering::SeqCst), 1);
-
-    drop((manager, lifecycle));
     runtime.stop().await.unwrap();
 }
 

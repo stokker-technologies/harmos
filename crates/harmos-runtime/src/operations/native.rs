@@ -24,7 +24,7 @@ use std::sync::{
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 // Local Imports
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
-use super::{Context, Handler, Manager};
+use super::{Carrier, Context, Manager};
 use crate::catalog::{Catalog, Member, Visitor};
 use crate::operations::{FailureKind, OperationDeclaration, OperationDefinition, OperationPolicy, RetryPolicy, WireAnswer, WireCommand};
 use crate::services::{NativeEndpoint, SidecarError};
@@ -380,18 +380,17 @@ impl Native {
     }
 }
 
-impl<O, E> Handler for NativeOperation<O, E>
+impl<O, E> Carrier for NativeOperation<O, E>
 where
     O: OperationDeclaration,
     E: super::StreamEndpoints,
 {
-    type Request = <O as OperationDeclaration>::Request;
-    type Response = <O as OperationDeclaration>::Response;
+    type Declaration = O;
     type Error = NativeError;
     type StreamEndpoints = E;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, NativeError> {
+    async fn bind(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, NativeError> {
         let native = context.resource::<Native>()?;
         Ok(Self {
             native,
@@ -403,7 +402,7 @@ where
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn run(
+    async fn attempt(
         &mut self, context: harmos_sdk::ExecutionContext, request: &mut O::Request, endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<crate::operations::Response<O::Response>, NativeError> {
         let host = context.resource::<super::HostContext>()?;
@@ -680,14 +679,13 @@ impl Shape for (super::StreamInput<Opaque>, super::StreamOutput<Opaque>) {
     type Output = crate::operations::Stream<Opaque>;
 }
 
-impl<E: super::StreamEndpoints + Shape> Handler for EncodedOperation<E> {
-    type Request = <Encoded<E> as OperationDeclaration>::Request;
-    type Response = <Encoded<E> as OperationDeclaration>::Response;
+impl<E: super::StreamEndpoints + Shape> Carrier for EncodedOperation<E> {
+    type Declaration = Encoded<E>;
     type Error = NativeError;
     type StreamEndpoints = E;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, NativeError> {
+    async fn bind(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, NativeError> {
         let binding = context.resource::<Binding>()?;
         Ok(Self {
             binding,
@@ -699,7 +697,7 @@ impl<E: super::StreamEndpoints + Shape> Handler for EncodedOperation<E> {
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn run(
+    async fn attempt(
         &mut self, context: harmos_sdk::ExecutionContext, request: &mut Encoded<E>, endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<crate::operations::Response<Opaque>, NativeError> {
         let host = context.resource::<super::HostContext>()?;
@@ -884,7 +882,7 @@ impl super::Bindings<'_> {
             if entry.contract.as_ref().is_some_and(|contract| contract.input().is_none() && contract.output().is_none()) {
                 let mut dependencies = harmos_sdk::Dependencies::new();
                 dependencies.insert(Arc::clone(&handler))?;
-                let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).implementation::<Encoded<()>, EncodedOperation>();
+                let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).carrier::<Encoded<()>, EncodedOperation>();
                 let factory = batch.operations.pop().expect("one encoded implementation");
                 let encoded = super::authored::factory::<Encoded<()>, ()>(self.operations, factory);
                 entry.native_binding = Some(Arc::new(encoded));

@@ -20,7 +20,7 @@ use std::time::Duration;
 
 // Local Imports
 use super::{Failed, Lanes, Owner, runtime};
-use harmos_runtime::operations::{Backoff, CacheKey, FailureKind, Handler, Jitter, OperationDeclaration, OperationPolicy, RetryPolicy};
+use harmos_runtime::operations::{Backoff, CacheKey, FailureKind, Jitter, OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Message, Refusal};
 
 /* === Constants === */
@@ -123,7 +123,7 @@ macro_rules! scripted_codec {
 
 /* === Structs === */
 
-#[harmos_runtime::operation(id = "fixture_echo",
+#[harmos_runtime::operation(resources = [Owner, harmos_runtime::operations::HostContext], id = "fixture.echo",
     response = String,
     visibility = Shared,
     policy = ECHO_POLICY,
@@ -134,7 +134,7 @@ pub(super) struct EchoDeclaration {
     pub value: String,
 }
 
-#[harmos_runtime::operation(id = "fixture_private_echo",
+#[harmos_runtime::operation(resources = [Owner, harmos_runtime::operations::HostContext], id = "fixture.private_echo",
     response = String,
     policy = ECHO_POLICY
 )]
@@ -143,7 +143,7 @@ pub(super) struct PrivateEchoDeclaration {
     pub value: String,
 }
 
-#[harmos_runtime::operation(id = "fixture_nested_echo",
+#[harmos_runtime::operation(resources = [Owner, harmos_runtime::operations::HostContext, Destination], id = "fixture.nested_echo",
     response = String,
     visibility = Shared,
     policy = NESTED_POLICY
@@ -153,7 +153,7 @@ pub(super) struct NestedDeclaration {
     pub value: String,
 }
 
-#[harmos_runtime::operation(id = "fixture_detached_echo",
+#[harmos_runtime::operation(resources = [Owner, harmos_runtime::operations::HostContext], id = "fixture.detached_echo",
     response = String,
     policy = NESTED_POLICY
 )]
@@ -162,7 +162,7 @@ pub(super) struct DetachedDeclaration {
     pub value: String,
 }
 
-#[harmos_runtime::operation(id = "fixture_same_lane_echo",
+#[harmos_runtime::operation(resources = [Owner, harmos_runtime::operations::HostContext], id = "fixture.same_lane_echo",
     response = String,
     policy = NESTED_POLICY
 )]
@@ -173,7 +173,8 @@ struct SameLaneDeclaration {
 
 struct Joined<'a>(&'a std::sync::atomic::AtomicUsize);
 
-#[harmos_runtime::operation(codec = manual, id = "fixture_codec",  response = Payload, policy = CODEC_POLICY)]
+#[harmos_runtime::operation(resources = [Owner, harmos_runtime::operations::HostContext], codec = manual, id = "fixture.codec",  response = Payload, policy = CODEC_POLICY)]
+#[derive(Clone)]
 struct Codec(Text);
 
 pub(super) struct Payload(Text);
@@ -184,9 +185,7 @@ pub(super) struct Text {
     pub value: String,
 }
 
-pub(super) struct State {
-    attempts: usize,
-}
+pub(super) struct Destination(pub &'static str);
 
 /* === Enums === */
 
@@ -233,66 +232,39 @@ text!(EchoDeclaration, PrivateEchoDeclaration, NestedDeclaration, DetachedDeclar
 
 scripted_codec!(Payload, Codec);
 
-struct Coding {
-    resources: Arc<Owner>,
-}
-
-impl Handler for Coding {
-    type StreamEndpoints = ();
-    type Request = Codec;
-    type Response = <Codec as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for Codec {
     type Error = Failed;
 
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
-        let resources = context.resource::<Owner>().expect("fixture registers its dependency");
-        resources.prepared.fetch_add(1, Ordering::SeqCst);
-        Ok(Self { resources })
-    }
-
-    async fn run(
-        &mut self, _context: harmos_runtime::ExecutionContext, request: &mut Codec, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<Payload>, Failed> {
-        let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
-        let _context = host.borrow();
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Payload>, Failed> {
+        let resources = ctx.resource::<Owner>();
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
+        let context = host.borrow();
+        if context.attempt() == 0 {
+            resources.prepared.fetch_add(1, Ordering::SeqCst);
+        }
         let result: ::core::result::Result<Payload, Self::Error> = async move {
-            self.resources.runs.fetch_add(1, Ordering::SeqCst);
-            Ok(Payload(Text {
-                value: std::mem::take(&mut request.0.value),
-            }))
+            resources.runs.fetch_add(1, Ordering::SeqCst);
+            Ok(Payload(Text { value: self.0.value }))
         }
         .await;
         result.map(::core::convert::Into::into)
     }
 }
 
-pub(super) struct Echoing {
-    resources: Arc<Owner>,
-    state: State,
-}
-
-impl Handler for Echoing {
-    type StreamEndpoints = ();
-    type Request = EchoDeclaration;
-    type Response = String;
+impl harmos_runtime::Operation for EchoDeclaration {
     type Error = Failed;
 
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
-        let resources = context.resource::<Owner>().expect("fixture registers its dependency");
-        resources.prepared.fetch_add(1, Ordering::SeqCst);
-        let state = State { attempts: 0 };
-        Ok(Self { resources, state })
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::ExecutionContext, value: &mut EchoDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<String>, Failed> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<String>, Failed> {
+        let resources = ctx.resource::<Owner>();
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
+        if context.attempt() == 0 {
+            resources.prepared.fetch_add(1, Ordering::SeqCst);
+        }
         let result: ::core::result::Result<String, Self::Error> = async move {
-            self.resources.runs.fetch_add(1, Ordering::SeqCst);
-            self.resources.seen.lock().unwrap().push(context.id());
-            self.state.attempts += 1;
-            Ok(format!("{}:{}", value.value, self.state.attempts))
+            resources.runs.fetch_add(1, Ordering::SeqCst);
+            resources.seen.lock().unwrap().push(context.id());
+            Ok(format!("{}:{}", self.value, context.attempt() + 1))
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -303,39 +275,25 @@ impl Handler for Echoing {
     }
 }
 
-pub(super) struct PrivateEchoing {
-    resources: Arc<Owner>,
-    state: State,
-}
-
-impl Handler for PrivateEchoing {
-    type StreamEndpoints = ();
-    type Request = PrivateEchoDeclaration;
-    type Response = String;
+impl harmos_runtime::Operation for PrivateEchoDeclaration {
     type Error = Failed;
 
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
-        let resources = context.resource::<Owner>().expect("fixture registers its dependency");
-        resources.prepared.fetch_add(1, Ordering::SeqCst);
-        let state = State { attempts: 0 };
-        Ok(Self { resources, state })
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::ExecutionContext, value: &mut PrivateEchoDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<String>, Failed> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<String>, Failed> {
+        let resources = ctx.resource::<Owner>();
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
+        if context.attempt() == 0 {
+            resources.prepared.fetch_add(1, Ordering::SeqCst);
+        }
         let result: ::core::result::Result<String, Self::Error> = async move {
-            self.resources.runs.fetch_add(1, Ordering::SeqCst);
-            self.resources.seen.lock().unwrap().push(context.id());
-            self.state.attempts += 1;
-            if value.value == "block" {
-                let _joined = Joined(&self.resources.wire_joined);
-                self.resources.wire_started.notify_one();
+            resources.runs.fetch_add(1, Ordering::SeqCst);
+            resources.seen.lock().unwrap().push(context.id());
+            if self.value == "block" {
+                let _joined = Joined(&resources.wire_joined);
+                resources.wire_started.notify_one();
                 std::future::pending::<()>().await;
             }
-            Ok(format!("{}:{}", value.value, self.state.attempts))
+            Ok(format!("{}:{}", self.value, context.attempt() + 1))
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -348,34 +306,19 @@ impl Drop for Joined<'_> {
     }
 }
 
-pub(super) struct Nesting<const PLUGIN: bool = false> {
-    _resources: Arc<Owner>,
-}
-
-impl<const PLUGIN: bool> Handler for Nesting<PLUGIN> {
-    type StreamEndpoints = ();
-    type Request = NestedDeclaration;
-    type Response = String;
+impl harmos_runtime::Operation for NestedDeclaration {
     type Error = Failed;
 
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
-        let resources = context.resource::<Owner>().expect("fixture registers its dependency");
-        resources.prepared.fetch_add(1, Ordering::SeqCst);
-        Ok(Self { _resources: resources })
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::ExecutionContext, request: &mut NestedDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<String>, Failed> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<String>, Failed> {
+        let resources = ctx.resource::<Owner>();
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
+        if context.attempt() == 0 {
+            resources.prepared.fetch_add(1, Ordering::SeqCst);
+        }
+        let destination = ctx.resource::<Destination>();
         let result: ::core::result::Result<String, Self::Error> = async move {
-            let reply = context
-                .call_encoded(
-                    &format!("{}.{}", if PLUGIN { "fixture" } else { "host" }, PrivateEchoDeclaration::ID),
-                    Message::encode(request),
-                )
-                .await?;
+            let reply = context.call_encoded(&format!("{}.{}", destination.0, PrivateEchoDeclaration::ID), Message::encode(&self)).await?;
             Ok(String::decode(&reply).unwrap())
         }
         .await;
@@ -383,29 +326,18 @@ impl<const PLUGIN: bool> Handler for Nesting<PLUGIN> {
     }
 }
 
-struct SameLaneCall {
-    _resources: Arc<Owner>,
-}
-
-impl Handler for SameLaneCall {
-    type StreamEndpoints = ();
-    type Request = SameLaneDeclaration;
-    type Response = String;
+impl harmos_runtime::Operation for SameLaneDeclaration {
     type Error = Failed;
 
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
-        let resources = context.resource::<Owner>().expect("fixture registers its dependency");
-        resources.prepared.fetch_add(1, Ordering::SeqCst);
-        Ok(Self { _resources: resources })
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::ExecutionContext, request: &mut SameLaneDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<String>, Failed> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<String>, Failed> {
+        let resources = ctx.resource::<Owner>();
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
+        if context.attempt() == 0 {
+            resources.prepared.fetch_add(1, Ordering::SeqCst);
+        }
         let result: ::core::result::Result<String, Self::Error> = async move {
-            let reply = context.call_encoded(&format!("host.{}", PrivateEchoDeclaration::ID), Message::encode(request)).await?;
+            let reply = context.call_encoded(&format!("host.{}", PrivateEchoDeclaration::ID), Message::encode(&self)).await?;
             Ok(String::decode(&reply).unwrap())
         }
         .await;
@@ -413,28 +345,15 @@ impl Handler for SameLaneCall {
     }
 }
 
-pub(super) struct Detaching {
-    resources: Arc<Owner>,
-}
-
-impl Handler for Detaching {
-    type StreamEndpoints = ();
-    type Request = DetachedDeclaration;
-    type Response = String;
+impl harmos_runtime::Operation for DetachedDeclaration {
     type Error = Failed;
 
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
-        let resources = context.resource::<Owner>().expect("fixture registers its dependency");
-        Ok(Self { resources })
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::ExecutionContext, _request: &mut DetachedDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<String>, Failed> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<String>, Failed> {
+        let resources = context.resource::<Owner>();
+        let host = context.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
         let result: ::core::result::Result<String, Self::Error> = async move {
-            let started = self.resources.wire_started.notified();
+            let started = resources.wire_started.notified();
             let _child = context.submit_encoded(&format!("host.{}", PrivateEchoDeclaration::ID), Text::from("block").encode())?;
             started.await;
             Ok("parent".to_owned())
@@ -458,12 +377,13 @@ async fn malformed_payload_refused() {
             harmos_runtime::RegistrationBatch::new({
                 let mut dependencies = harmos_runtime::Dependencies::new();
                 dependencies.insert(owner.clone()).unwrap();
+                dependencies.insert(Arc::new(Destination("host"))).unwrap();
                 dependencies
             })
-            .implementation::<EchoDeclaration, Echoing>()
-            .implementation::<PrivateEchoDeclaration, PrivateEchoing>()
-            .implementation::<NestedDeclaration, Nesting>()
-            .implementation::<DetachedDeclaration, Detaching>(),
+            .operation::<EchoDeclaration>()
+            .operation::<PrivateEchoDeclaration>()
+            .operation::<NestedDeclaration>()
+            .operation::<DetachedDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -487,9 +407,10 @@ async fn decode_panic_refused() {
             harmos_runtime::RegistrationBatch::new({
                 let mut dependencies = harmos_runtime::Dependencies::new();
                 dependencies.insert(owner.clone()).unwrap();
+                dependencies.insert(Arc::new(Destination("host"))).unwrap();
                 dependencies
             })
-            .implementation::<Codec, Coding>(),
+            .operation::<Codec>(),
             Lanes::Open,
         ))
         .await
@@ -513,9 +434,10 @@ async fn encode_panic_settles() {
             harmos_runtime::RegistrationBatch::new({
                 let mut dependencies = harmos_runtime::Dependencies::new();
                 dependencies.insert(owner.clone()).unwrap();
+                dependencies.insert(Arc::new(Destination("host"))).unwrap();
                 dependencies
             })
-            .implementation::<Codec, Coding>(),
+            .operation::<Codec>(),
             Lanes::Open,
         ))
         .await
@@ -543,7 +465,7 @@ async fn decode_races_replacement() {
                 dependencies.insert(old.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Codec, Coding>(),
+            .operation::<Codec>(),
             Lanes::Open,
         ))
         .await
@@ -562,7 +484,7 @@ async fn decode_races_replacement() {
                                 dependencies.insert(new_owner).unwrap();
                                 dependencies
                             })
-                            .implementation::<Codec, Coding>(),
+                            .operation::<Codec>(),
                             Lanes::Open,
                         ))
                         .await
@@ -595,10 +517,11 @@ async fn children_refuse_held() {
             harmos_runtime::RegistrationBatch::new({
                 let mut dependencies = harmos_runtime::Dependencies::new();
                 dependencies.insert(owner.clone()).unwrap();
+                dependencies.insert(Arc::new(Destination("host"))).unwrap();
                 dependencies
             })
-            .implementation::<SameLaneDeclaration, SameLaneCall>()
-            .implementation::<PrivateEchoDeclaration, PrivateEchoing>(),
+            .operation::<SameLaneDeclaration>()
+            .operation::<PrivateEchoDeclaration>(),
             Lanes::Serial,
         ))
         .await
@@ -623,12 +546,13 @@ async fn success_joins_unawaited() {
             harmos_runtime::RegistrationBatch::new({
                 let mut dependencies = harmos_runtime::Dependencies::new();
                 dependencies.insert(owner.clone()).unwrap();
+                dependencies.insert(Arc::new(Destination("host"))).unwrap();
                 dependencies
             })
-            .implementation::<EchoDeclaration, Echoing>()
-            .implementation::<PrivateEchoDeclaration, PrivateEchoing>()
-            .implementation::<NestedDeclaration, Nesting>()
-            .implementation::<DetachedDeclaration, Detaching>(),
+            .operation::<EchoDeclaration>()
+            .operation::<PrivateEchoDeclaration>()
+            .operation::<NestedDeclaration>()
+            .operation::<DetachedDeclaration>(),
             Lanes::Open,
         ))
         .await
@@ -649,12 +573,13 @@ async fn cancellation_joins_child() {
             harmos_runtime::RegistrationBatch::new({
                 let mut dependencies = harmos_runtime::Dependencies::new();
                 dependencies.insert(owner.clone()).unwrap();
+                dependencies.insert(Arc::new(Destination("host"))).unwrap();
                 dependencies
             })
-            .implementation::<EchoDeclaration, Echoing>()
-            .implementation::<PrivateEchoDeclaration, PrivateEchoing>()
-            .implementation::<NestedDeclaration, Nesting>()
-            .implementation::<DetachedDeclaration, Detaching>(),
+            .operation::<EchoDeclaration>()
+            .operation::<PrivateEchoDeclaration>()
+            .operation::<NestedDeclaration>()
+            .operation::<DetachedDeclaration>(),
             Lanes::Open,
         ))
         .await

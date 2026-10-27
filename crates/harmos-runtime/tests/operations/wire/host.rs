@@ -24,7 +24,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use super::cases::Text;
 use harmos_domain::inventory::contracts::Required;
 use harmos_domain::plugin::Grant;
-use harmos_runtime::operations::{Handler, OperationDeclaration, PluginRegistration, WireDeclaration};
+use harmos_runtime::operations::{OperationDeclaration, PluginRegistration, WireDeclaration};
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition, Requirement, Router,
@@ -41,7 +41,7 @@ type Backends = PluginBackend<Resources, Resources, Resources>;
 
 /* === Structs === */
 
-#[harmos_runtime::operation(id = "fixture_host_control",
+#[harmos_runtime::operation(resources = [Owner], id = "fixture.host_control",
     response = String,
     visibility = Host,
     policy = super::cases::EchoDeclaration::POLICY
@@ -87,25 +87,47 @@ enum Controls {
 
 /* === Implementations === */
 
-struct CorePublication(Arc<CoreOwner>);
+#[harmos_runtime::operation(codec = manual, resources = [CoreOwner, harmos_runtime::operations::HostContext], id = "host.publish", response = (),
+    policy = <harmos_operations::streams::Publish as OperationDeclaration>::POLICY, visibility = Shared)]
+#[derive(Clone)]
+struct CorePublication(harmos_operations::streams::Publish);
 
-impl harmos_runtime::operations::Handler for CorePublication {
-    type Request = <harmos_operations::streams::Publish as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <harmos_operations::streams::Publish as harmos_runtime::OperationDeclaration>::Response;
-
-    type Error = super::Failed;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> std::result::Result<Self, Self::Error> {
-        let owner = context.resource::<CoreOwner>().expect("fixture dependency");
-        owner.prepared.fetch_add(1, Ordering::SeqCst);
-        Ok(Self(owner))
+impl harmos_runtime::Message for CorePublication {
+    const CODEC: &'static str = <harmos_operations::streams::Publish as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&self.0)
     }
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&self.0)
+    }
+    fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, harmos_runtime::MessageError> {
+        <harmos_operations::streams::Publish as harmos_runtime::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> std::result::Result<Self, harmos_runtime::MessageError> {
+        <harmos_operations::streams::Publish as harmos_runtime::Message>::decode(bytes).map(Self)
+    }
+}
+impl harmos_runtime::MemorySize for CorePublication {
+    fn memory_size(&self) -> usize {
+        harmos_runtime::MemorySize::memory_size(&self.0)
+    }
+}
+impl harmos_runtime::schema::Described for CorePublication {
+    const NAME: &'static str = <harmos_operations::streams::Publish as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] =
+        <harmos_operations::streams::Publish as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <harmos_operations::streams::Publish as harmos_runtime::schema::Described>::MARKER;
+}
+
+impl harmos_runtime::Operation for CorePublication {
+    type Error = super::Failed;
     async fn run(
-        &mut self, context: harmos_runtime::ExecutionContext, _request: &mut harmos_operations::streams::Publish,
-        _endpoints: &mut Self::StreamEndpoints,
+        self, ctx: harmos_runtime::Context<'_, Self>,
     ) -> std::result::Result<harmos_runtime::operations::Response<()>, Self::Error> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
+        let owner = ctx.resource::<CoreOwner>();
+        owner.prepared.fetch_add(1, Ordering::SeqCst);
         let result: ::core::result::Result<(), Self::Error> = async move {
             assert_eq!(context.context().require::<Principal>().unwrap().0, "alice");
             assert!(!context.is_host_call());
@@ -114,7 +136,7 @@ impl harmos_runtime::operations::Handler for CorePublication {
                 context.submit::<ControlDeclaration>(ControlDeclaration::from("child")),
                 Err(Error::OperationUnauthorized { .. })
             ));
-            self.0.called.fetch_add(1, Ordering::SeqCst);
+            owner.called.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
         .await;
@@ -128,24 +150,14 @@ impl From<&str> for ControlDeclaration {
     }
 }
 
-struct Controlling {
-    _resources: Arc<Owner>,
-}
-
-impl Handler for Controlling {
-    type Request = ControlDeclaration;
-    type Response = <ControlDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for ControlDeclaration {
     type Error = super::Failed;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> std::result::Result<Self, Self::Error> {
-        let resources = context.resource::<Owner>().expect("fixture registers its dependency");
-        resources.prepared.fetch_add(1, Ordering::SeqCst);
-        Ok(Self { _resources: resources })
-    }
     async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut ControlDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        self, ctx: harmos_runtime::Context<'_, Self>,
     ) -> std::result::Result<harmos_runtime::operations::Response<String>, Self::Error> {
-        let result: ::core::result::Result<String, Self::Error> = async move { Ok(request.value.clone()) }.await;
+        let resources = ctx.resource::<Owner>();
+        resources.prepared.fetch_add(1, Ordering::SeqCst);
+        let result: ::core::result::Result<String, Self::Error> = async move { Ok(self.value) }.await;
         result.map(::core::convert::Into::into)
     }
 }
@@ -185,7 +197,7 @@ impl PluginLifecycle for Host {
                         dependencies.insert(self.owner.clone()).unwrap();
                         dependencies
                     })
-                    .implementation::<ControlDeclaration, Controlling>(),
+                    .operation::<ControlDeclaration>(),
                     super::Lanes::Open,
                 ))
             })?);
@@ -270,7 +282,7 @@ async fn host_requirements_route() {
                 dependencies.insert(owner.clone()).unwrap();
                 dependencies
             })
-            .implementation::<Publish, CorePublication>(),
+            .operation::<CorePublication>(),
             super::Lanes::Open,
         ))
         .await
@@ -316,7 +328,7 @@ async fn host_requirements_route() {
                     dependencies.insert(owner.clone()).unwrap();
                     dependencies
                 })
-                .implementation::<Publish, CorePublication>(),
+                .operation::<CorePublication>(),
                 super::Lanes::Open
             ))
             .await,

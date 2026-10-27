@@ -42,7 +42,7 @@ use super::*;
 /* === Tests === */
 
 #[tokio::test(start_paused = true)]
-async fn retry_retains_preparation() {
+async fn retry_retains_invocation_identity() {
     let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
     runtime
@@ -53,7 +53,7 @@ async fn retry_retains_preparation() {
                 dependencies.insert(Arc::clone(&owner)).unwrap();
                 dependencies
             })
-            .implementation::<Compute, ComputeCall>(),
+            .operation::<Compute>(),
             Lanes::Open,
         ))
         .await
@@ -84,7 +84,7 @@ async fn errors_never_retry() {
                 dependencies.insert(Arc::clone(&owner)).unwrap();
                 dependencies
             })
-            .implementation::<Compute, ComputeCall>(),
+            .operation::<Compute>(),
             Lanes::Open,
         ))
         .await
@@ -111,7 +111,7 @@ async fn ambiguous_timeout_replay() {
                 dependencies.insert(Arc::clone(&owner)).unwrap();
                 dependencies
             })
-            .implementation::<Slow, SlowCall>(),
+            .operation::<Slow>(),
             Lanes::Open,
         ))
         .await
@@ -133,7 +133,7 @@ async fn cache_serves_hits() {
                 dependencies.insert(Arc::clone(&owner)).unwrap();
                 dependencies
             })
-            .implementation::<Compute, ComputeCall>(),
+            .operation::<Compute>(),
             Lanes::Open,
         ))
         .await
@@ -162,7 +162,7 @@ async fn uncacheable_calls_rerun() {
                 dependencies.insert(Arc::clone(&owner)).unwrap();
                 dependencies
             })
-            .implementation::<Compute, ComputeCall>(),
+            .operation::<Compute>(),
             Lanes::Open,
         ))
         .await
@@ -203,7 +203,7 @@ async fn unregister_reserves_owner() {
                 dependencies.insert(Arc::clone(&owner)).unwrap();
                 dependencies
             })
-            .implementation::<Compute, ComputeCall>(),
+            .operation::<Compute>(),
             Lanes::Open,
         ))
         .await
@@ -232,7 +232,7 @@ async fn unregister_reserves_owner() {
                     dependencies.insert(Arc::new(Owner::default())).unwrap();
                     dependencies
                 })
-                .implementation::<Compute, ComputeCall>(),
+                .operation::<Compute>(),
                 Lanes::Open
             ))
             .await,
@@ -250,7 +250,7 @@ async fn unregister_reserves_owner() {
                     dependencies.insert(Arc::new(Owner::default())).unwrap();
                     dependencies
                 })
-                .implementation::<Compute, ComputeCall>(),
+                .operation::<Compute>(),
                 Lanes::Open
             ))
             .await,
@@ -266,7 +266,7 @@ async fn unregister_reserves_owner() {
                 dependencies.insert(Arc::clone(&replacement)).unwrap();
                 dependencies
             })
-            .implementation::<Compute, ComputeCall>(),
+            .operation::<Compute>(),
             Lanes::Open,
         ))
         .await
@@ -287,7 +287,7 @@ async fn operations_use_structured() {
                 dependencies.insert(Arc::new(Owner::default())).unwrap();
                 dependencies
             })
-            .implementation::<Compute, ComputeCall>(),
+            .operation::<Compute>(),
             Lanes::Open,
         ))
         .await
@@ -300,7 +300,7 @@ async fn operations_use_structured() {
                 dependencies.insert(Arc::new(ParentOwner)).unwrap();
                 dependencies
             })
-            .implementation::<Parent, ParentCall>(),
+            .operation::<Parent>(),
             Lanes::Serial,
         ))
         .await
@@ -315,13 +315,13 @@ async fn operations_use_structured() {
                 dependencies.insert(Arc::new(Owner::default())).unwrap();
                 dependencies
             })
-            .implementation::<Compute, ComputeCall>(),
+            .operation::<Compute>(),
             Lanes::Serial,
         ))
         .await
         .unwrap();
     assert!(
-        matches!(runtime.operation(Parent(request())).run().await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
+        matches!(runtime.operation(Parent(request())).run().await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Invocation(harmos_runtime::operations::InvocationError::Failed { source, .. })) if matches!(source.downcast_ref::<Error>(), Some(Error::OperationLaneCycle { .. }))))
     );
     runtime.stop().await.unwrap();
 }
@@ -338,7 +338,7 @@ async fn concurrent_ancestor_reentry() {
                 dependencies.insert(Arc::clone(&owner)).unwrap();
                 dependencies
             })
-            .implementation::<Compute, ComputeCall>(),
+            .operation::<Compute>(),
             Lanes::Concurrent,
         ))
         .await
@@ -351,14 +351,14 @@ async fn concurrent_ancestor_reentry() {
                 dependencies.insert(Arc::new(ParentOwner)).unwrap();
                 dependencies
             })
-            .implementation::<Parent, ParentCall>(),
+            .operation::<Parent>(),
             Lanes::Concurrent,
         ))
         .await
         .unwrap();
 
     assert!(
-        matches!(runtime.operation(Parent(request())).run().await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
+        matches!(runtime.operation(Parent(request())).run().await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Invocation(harmos_runtime::operations::InvocationError::Failed { source, .. })) if matches!(source.downcast_ref::<Error>(), Some(Error::OperationLaneCycle { .. }))))
     );
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
@@ -381,7 +381,7 @@ async fn shutdown_releases_bindings() {
                 dependencies.insert(owner).unwrap();
                 dependencies
             })
-            .implementation::<Compute, ComputeCall>(),
+            .operation::<Compute>(),
             Lanes::Open,
         ))
         .await
@@ -403,7 +403,7 @@ async fn handler_panic_settles() {
                 dependencies.insert(Arc::new(Owner::default())).unwrap();
                 dependencies
             })
-            .implementation::<Compute, ComputeCall>(),
+            .operation::<Compute>(),
             Lanes::Open,
         ))
         .await
@@ -442,7 +442,7 @@ async fn must_match_declarations() {
         dependencies.insert(owner.clone()).unwrap();
         dependencies
     })
-    .implementation::<Compute, ComputeCall>();
+    .operation::<Compute>();
     batch.operations[0].definition = harmos_runtime::operations::OperationDefinition::of::<Slow>().unwrap();
     assert!(runtime.operations.register(harmos_runtime::operations::RegistrationExt::lane(batch, Lanes::Open)).await.is_err());
     assert!(runtime.operations.definitions().is_empty());

@@ -58,7 +58,7 @@ async fn reload_orders_lifecycle() {
     );
     // Its Original Generation Remains Occupied And OperationDeclaration
     assert!(matches!(session.router().enter("other"), Err(DispatchError::Occupied(_))));
-    assert!(host.operations().call_encoded("other.run", request_payload()).await.is_ok());
+    assert!(host.operations().call_encoded("other.fixture.run", request_payload()).await.is_ok());
     drop(unchanged);
     session.shutdown(&mut host).await.unwrap();
     assert!(host.control.lock().unwrap().callers.is_empty());
@@ -99,7 +99,7 @@ async fn restrictions_revoke_dependents() {
     let mut host = Host::new().await;
     session.initialize(&mut host).await.unwrap();
     let old = host.control.lock().unwrap().callers["client"].clone();
-    assert!(host.call(&old, "provider.run", request_payload()).await.is_ok());
+    assert!(host.call(&old, "provider.fixture.run", request_payload()).await.is_ok());
     host.control.lock().unwrap().events.clear();
 
     let next = plan();
@@ -112,10 +112,10 @@ async fn restrictions_revoke_dependents() {
         host.control.lock().unwrap().events,
         ["fence:client,provider", "stop:client", "stop:provider", "start:provider", "start:client"]
     );
-    assert!(host.call(&old, "provider.run", request_payload()).await.is_err());
+    assert!(host.call(&old, "provider.fixture.run", request_payload()).await.is_err());
     let current = host.control.lock().unwrap().callers["client"].clone();
-    assert!(matches!(host.call(&current, "provider.run", request_payload()).await, Err(Error::OperationUnauthorized { .. })));
-    assert!(host.operations().call_encoded("provider.run", request_payload()).await.is_ok());
+    assert!(matches!(host.call(&current, "provider.fixture.run", request_payload()).await, Err(Error::OperationUnauthorized { .. })));
+    assert!(host.operations().call_encoded("provider.fixture.run", request_payload()).await.is_ok());
     session.shutdown(&mut host).await.unwrap();
 }
 
@@ -139,8 +139,8 @@ async fn reload_preserves_calls() {
             std::task::Poll::Ready(())
         })
         .await;
-        assert!(old_operations.call_encoded("provider.run", request_payload()).await.is_ok());
-        assert!(operations.call_encoded("client.run", request_payload()).await.is_ok());
+        assert!(old_operations.call_encoded("provider.fixture.run", request_payload()).await.is_ok());
+        assert!(operations.call_encoded("client.fixture.run", request_payload()).await.is_ok());
     }
     assert_eq!(manager.resolve().unwrap(), before);
     assert_eq!(manager.ready().count(), 3);
@@ -154,12 +154,12 @@ async fn reload_preserves_calls() {
     assert_eq!(manager.resolve().unwrap(), before);
     assert_eq!(manager.ready().count(), 3);
     assert!(host.control.lock().unwrap().events.iter().all(|event| event.starts_with("fence:")));
-    assert!(host.call(&old, "provider.run", request_payload()).await.is_ok());
+    assert!(host.call(&old, "provider.fixture.run", request_payload()).await.is_ok());
 
     host.fail_fence = false;
     manager.reload_parts(next.clone(), inventories(&next), ["provider".into()], &mut host).await.unwrap();
     assert!(matches!(
-        host.call(&old, "provider.run", request_payload()).await,
+        host.call(&old, "provider.fixture.run", request_payload()).await,
         Err(Error::OperationCaller { source: DispatchError::Unavailable })
     ));
     manager.shutdown(&mut host).await.unwrap();
@@ -204,7 +204,7 @@ async fn generations_guard_plans() {
         assert_eq!(manager.status("other").unwrap(), independent);
         assert_ne!(manager.status("client").unwrap().generation, old_status.generation);
         assert!(matches!(
-            host.call(&old, "provider.run", request_payload()).await,
+            host.call(&old, "provider.fixture.run", request_payload()).await,
             Err(Error::OperationCaller { source: DispatchError::Unavailable })
         ));
         let current = manager.caller("client").unwrap();

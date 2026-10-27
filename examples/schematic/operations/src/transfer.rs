@@ -68,7 +68,7 @@ pub struct Receipt {
 }
 
 #[harmos::operation(resources = [Store],
-    id = "benchmark_upload", response = Receipt, input = Batch,
+    id = "benchmark.upload", response = Receipt, input = Batch,
     policy = crate::POLICY,
     visibility = Shared,
     replay = harmos::operations::ReplaySafety::Idempotent,
@@ -78,7 +78,7 @@ pub struct Upload {
 }
 
 #[harmos::operation(resources = [Store],
-    id = "benchmark_download", response = Receipt, output = Batch,
+    id = "benchmark.download", response = Receipt, output = Batch,
     policy = crate::POLICY,
     visibility = Shared,
     replay = harmos::operations::ReplaySafety::Unknown,
@@ -88,7 +88,7 @@ pub struct Download {
 }
 
 #[harmos::operation(resources = [Store],
-    id = "benchmark_put", response = Receipt,
+    id = "benchmark.put", response = Receipt,
     policy = crate::POLICY,
     visibility = Shared,
     replay = harmos::operations::ReplaySafety::Unknown,
@@ -100,7 +100,7 @@ pub struct Put {
 }
 
 #[harmos::operation(resources = [Store],
-    id = "benchmark_take", response = Batch,
+    id = "benchmark.take", response = Batch,
     policy = crate::POLICY,
     visibility = Shared,
     replay = harmos::operations::ReplaySafety::Unknown,
@@ -110,7 +110,7 @@ pub struct Take {
 }
 
 #[harmos::operation(operations = [harmos::builtins::storage::HashFile],
-    id = "benchmark_hash_file", response = harmos::domain::model::storage::FileHash,
+    id = "benchmark.hash.file", response = harmos::domain::model::storage::FileHash,
     policy = crate::POLICY,
     visibility = Shared,
     replay = harmos::operations::ReplaySafety::Idempotent,

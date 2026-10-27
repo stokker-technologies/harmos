@@ -81,7 +81,7 @@ async fn capture_survives_reload() {
                 dependencies.insert(Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() })).unwrap();
                 dependencies
             })
-            .implementation::<super::SampleDeclaration, Sampling>(),
+            .operation::<super::SampleDeclaration>(),
             Lanes::Open,
         ))
         .await

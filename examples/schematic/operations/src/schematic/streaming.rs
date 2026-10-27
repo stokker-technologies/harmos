@@ -35,7 +35,7 @@ use crate::resources::AnalysisResources;
 /* === Structs === */
 
 #[harmos::operation(resources = [AnalysisResources], operations = [harmos::builtins::streams::Publish],
-    id = "schematic_analyze_upload", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
+    id = "schematic.analyze.upload", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
     policy = crate::POLICY,
     visibility = Shared,
     replay = harmos::operations::ReplaySafety::Idempotent,
@@ -46,7 +46,7 @@ pub struct AnalyzeUpload {
 }
 
 #[harmos::operation(resources = [AnalysisResources], operations = [harmos::builtins::streams::Publish],
-    id = "schematic_analyze_exchange", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
+    id = "schematic.analyze.exchange", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
     output = super::analyze::Finding,
     policy = crate::POLICY,
     visibility = Shared,

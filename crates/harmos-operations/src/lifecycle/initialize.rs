@@ -70,18 +70,17 @@ impl MemorySize for Initialize {
 }
 
 #[cfg(feature = "lifecycle")]
-impl crate::Handler for Control {
-    type Request = Initialize;
-    type Response = ();
+impl harmos_sdk::operations::Carrier for Control {
+    type Declaration = Initialize;
     type Error = super::ControlError;
     type StreamEndpoints = ();
-    async fn initialize(context: crate::ExecutionContext) -> Result<Self, Self::Error> {
+    async fn bind(context: crate::ExecutionContext) -> Result<Self, Self::Error> {
         let access = context.resource::<harmos_sdk::operations::lifecycle::LifecycleAccess>()?;
         Ok(Self {
             instance: access.0.clone().begin(super::Action::Initialize),
         })
     }
-    async fn run(
+    async fn attempt(
         &mut self, context: crate::ExecutionContext, request: &mut Initialize, _: &mut (),
     ) -> Result<crate::Response<()>, Self::Error> {
         let _ = &request;
@@ -104,5 +103,5 @@ impl crate::Handler for Control {
 
 #[cfg(feature = "lifecycle")]
 impl crate::Executable for Initialize {
-    type Handler = Control;
+    type Carrier = Control;
 }

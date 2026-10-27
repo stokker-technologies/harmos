@@ -30,7 +30,7 @@
 /* === Type Aliases === */
 
 /* === Structs === */
-#[harmos::operation(id = "greet", response = crate::domain::model::greeting::Greeting, policy = super::POLICY)]
+#[harmos::operation(resources = [], id = "greeting.greet", response = crate::domain::model::greeting::Greeting, policy = super::POLICY)]
 pub struct Greet {
     pub name: String,
 }

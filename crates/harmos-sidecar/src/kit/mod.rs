@@ -32,7 +32,7 @@ pub mod __private {
 
 /* === Re-Exports === */
 
-pub use harmos_sdk::{Dependencies, Operation, ExecutionContext, RegistrationBatch, Service};
+pub use harmos_sdk::{Dependencies, ExecutionContext, Operation, RegistrationBatch, Service};
 
 pub use catalog::{CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT};
 pub use host::{CallError, PublicationError, Supervisor};

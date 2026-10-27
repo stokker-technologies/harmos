@@ -720,7 +720,7 @@ impl PluginScope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Application, OperationDeclaration, RegistrationExt};
+    use crate::{Application, RegistrationExt};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[crate::lanes]
@@ -739,36 +739,20 @@ mod tests {
         type Resources = ();
     }
 
-    #[crate::message]
-    struct Read;
-    impl OperationDeclaration for Read {
-        type Request = Read;
-        type Response = u64;
-        type Input = crate::operations::NoStream;
-        type Output = crate::operations::NoStream;
-        const ID: &'static str = "read";
-        const VISIBILITY: crate::operations::Visibility = crate::operations::Visibility::Private;
-        const POLICY: crate::OperationPolicy = crate::OperationPolicy {
+    #[crate::operation(harmos_path = crate, resources = [AtomicUsize], id = "test.read", response = u64,
+        policy = crate::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
             retries: crate::RetryPolicy::Never,
-        };
-    }
+        },
+    )]
+    struct Read;
 
-    impl harmos_sdk::Handler for Read {
-        type Request = Read;
-        type Response = u64;
-        type Error = harmos_sdk::ResourceError;
-        type StreamEndpoints = ();
+    impl crate::Operation for Read {
+        type Error = std::convert::Infallible;
 
-        async fn initialize(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, Self::Error> {
-            context.resource::<AtomicUsize>()?.fetch_add(1, Ordering::SeqCst);
-            Ok(Self)
-        }
-
-        async fn run(
-            &mut self, _: harmos_sdk::ExecutionContext, _: &mut Read, _: &mut (),
-        ) -> std::result::Result<crate::Response<u64>, Self::Error> {
+        async fn run(self, ctx: crate::Context<'_, Self>) -> std::result::Result<crate::Response<u64>, Self::Error> {
+            ctx.resource::<AtomicUsize>().fetch_add(1, Ordering::SeqCst);
             Ok(7.into())
         }
     }
@@ -807,7 +791,7 @@ mod tests {
         scope
             .register(
                 harmos_sdk::RegistrationBatch::new(dependencies)
-                    .implementation::<Read, Read>()
+                    .operation::<Read>()
                     .service::<Worker>("service", crate::services::POLICY)
                     .defaults::<Lanes>(),
             )
@@ -832,7 +816,7 @@ mod tests {
         let initialized = Arc::new(AtomicUsize::new(0));
         let mut dependencies = harmos_sdk::Dependencies::new();
         dependencies.insert(initialized.clone()).unwrap();
-        let batch = harmos_sdk::RegistrationBatch::new(dependencies).implementation::<Read, Read>();
+        let batch = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Read>();
         let invocation = scope.operation::<Read, Lanes>(Read);
         scope.register(batch.clone().defaults::<Lanes>()).await.unwrap();
         assert_eq!(initialized.load(Ordering::SeqCst), 0);

@@ -63,7 +63,7 @@ async fn declared_publication_enters() {
                 dependencies.insert(Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() })).unwrap();
                 dependencies
             })
-            .implementation::<SampleDeclaration, Sampling>(),
+            .operation::<SampleDeclaration>(),
             operations::Lanes::Open,
         ))
         .await
@@ -131,7 +131,7 @@ async fn crash_spends_credit() {
                 dependencies.insert(Arc::new(SampleProjection { streams: runtime.streams.clone() })).unwrap();
                 dependencies
             })
-            .implementation::<SampleDeclaration, Sampling>(),
+            .operation::<SampleDeclaration>(),
             operations::Lanes::Open,
         ))
         .await
@@ -210,7 +210,7 @@ async fn oversized_exchange_survives() {
                 dependencies.insert(Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() })).unwrap();
                 dependencies
             })
-            .implementation::<SampleDeclaration, Sampling>(),
+            .operation::<SampleDeclaration>(),
             operations::Lanes::Open,
         ))
         .await
@@ -555,7 +555,7 @@ async fn ingestion_authority_bounded() {
                     dependencies.insert(Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() })).unwrap();
                     dependencies
                 })
-                .implementation::<SampleDeclaration, Sampling>(),
+                .operation::<SampleDeclaration>(),
                 operations::Lanes::Open,
             ))
             .await

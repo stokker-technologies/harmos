@@ -110,7 +110,7 @@ use std::time::Duration;
 
 // Local Imports
 use harmos_runtime::operations::WireTable;
-use harmos_runtime::operations::{Handler, OperationPolicy, RetryPolicy};
+use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::sidecar::{Notice, Supervised};
 use harmos_runtime::simulation::entropy;
 use harmos_runtime::{
@@ -133,7 +133,7 @@ type IdleManaged =
 
 /* === Structs === */
 
-#[harmos_runtime::operation(id = "sim_pending",
+#[harmos_runtime::operation(id = "sim.pending",
     response = (),
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30),
@@ -143,7 +143,7 @@ type IdleManaged =
 )]
 struct PendingDeclaration {}
 
-#[harmos_runtime::operation(id = "sim_answering",
+#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "sim.answering",
     response = u64,
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30),
@@ -156,7 +156,7 @@ struct AnsweringDeclaration {
 }
 
 // The Draw Log Is Shared With The Scenario, So The Request Stays In Process.
-#[harmos_runtime::operation(codec = manual, id = "sim_drawing",
+#[harmos_runtime::operation(codec = manual, id = "sim.drawing",
     response = u64,
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30),
@@ -164,6 +164,7 @@ struct AnsweringDeclaration {
         retries: RetryPolicy::Never,
     }
 )]
+#[derive(Clone)]
 struct DrawingDeclaration {
     draws: Arc<Mutex<Vec<u64>>>,
 }
@@ -182,7 +183,7 @@ struct Divergent;
 #[derive(Clone)]
 struct DivergentCatalog;
 
-#[harmos_runtime::operation(id = "sim_timingitsownwait",
+#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "sim.timingitsownwait",
     response = u64,
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30),
@@ -215,44 +216,21 @@ use support::Lanes;
 
 /* === Implementations === */
 
-impl Handler for PendingDeclaration {
-    type StreamEndpoints = ();
-    type Request = PendingDeclaration;
-    type Response = <PendingDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for PendingDeclaration {
     type Error = Infallible;
 
-    async fn initialize(_context: harmos_runtime::ExecutionContext) -> Result<PendingDeclaration, Infallible> {
-        Ok(Self {})
-    }
-
-    async fn run(
-        &mut self, _context: harmos_runtime::ExecutionContext, _request: &mut PendingDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Infallible> {
-        let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
-        let _context = host.borrow();
-        let result: ::core::result::Result<(), Self::Error> = async move { std::future::pending().await }.await;
-        result.map(::core::convert::Into::into)
+    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
+        std::future::pending().await
     }
 }
 
-struct Answer;
-
-impl Handler for Answer {
-    type StreamEndpoints = ();
-    type Request = AnsweringDeclaration;
-    type Response = <AnsweringDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::operations::Operation for AnsweringDeclaration {
     type Error = Infallible;
 
-    async fn initialize(_context: harmos_runtime::ExecutionContext) -> Result<Self, Infallible> {
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, _context: harmos_runtime::ExecutionContext, request: &mut AnsweringDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
-        let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, _context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
+        let host = _context.resource::<harmos_runtime::operations::HostContext>();
         let _context = host.borrow();
-        let result: ::core::result::Result<u64, Self::Error> = async move { Ok(request.answer) }.await;
+        let result: ::core::result::Result<u64, Self::Error> = async move { Ok(self.answer) }.await;
         result.map(::core::convert::Into::into)
     }
 }
@@ -287,30 +265,13 @@ impl harmos_runtime::schema::Described for DrawingDeclaration {
     >(Self::NAME, Self::FIELDS);
 }
 
-struct Draw;
-
-impl Handler for Draw {
-    type StreamEndpoints = ();
-    type Request = DrawingDeclaration;
-    type Response = <DrawingDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for DrawingDeclaration {
     type Error = Infallible;
 
-    async fn initialize(_context: harmos_runtime::ExecutionContext) -> Result<Self, Infallible> {
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, _context: harmos_runtime::ExecutionContext, request: &mut DrawingDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
-        let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
-        let _context = host.borrow();
-        let result: ::core::result::Result<u64, Self::Error> = async move {
-            let draw = entropy();
-            request.draws.lock().expect("draw lock is healthy").push(draw);
-            Ok(draw)
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u64>, Self::Error> {
+        let draw = entropy();
+        self.draws.lock().expect("draw lock is healthy").push(draw);
+        Ok(draw.into())
     }
 }
 
@@ -355,27 +316,15 @@ impl Registration<Divergent> for DivergentCatalog {
     }
 }
 
-struct TimeWait;
-
-impl Handler for TimeWait {
-    type StreamEndpoints = ();
-    type Request = TimingItsOwnWaitDeclaration;
-    type Response = <TimingItsOwnWaitDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::operations::Operation for TimingItsOwnWaitDeclaration {
     type Error = Infallible;
 
-    async fn initialize(_context: harmos_runtime::ExecutionContext) -> Result<Self, Infallible> {
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::ExecutionContext, request: &mut TimingItsOwnWaitDeclaration,
-        _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
+        let host = context.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
         let result: ::core::result::Result<u64, Self::Error> = async move {
             let started = context.scope().now();
-            tokio::time::sleep(Duration::from_millis(request.wait_ms)).await;
+            tokio::time::sleep(Duration::from_millis(self.wait_ms)).await;
             Ok(u64::try_from((context.scope().now() - started).as_nanos()).expect("the scripted wait fits in u64 nanoseconds"))
         }
         .await;
@@ -547,10 +496,10 @@ fn bank(seed: u64) -> Builder<Bank> {
         .register(Lanes::catalog())
         .with_registration(harmos_runtime::RegistrationExt::lane(
             harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
-                .implementation::<PendingDeclaration, PendingDeclaration>()
-                .implementation::<AnsweringDeclaration, Answer>()
-                .implementation::<DrawingDeclaration, Draw>()
-                .implementation::<TimingItsOwnWaitDeclaration, TimeWait>(),
+                .operation::<PendingDeclaration>()
+                .operation::<AnsweringDeclaration>()
+                .operation::<DrawingDeclaration>()
+                .operation::<TimingItsOwnWaitDeclaration>(),
             Lanes::Serial,
         ))
         .entropy_seed(seed)

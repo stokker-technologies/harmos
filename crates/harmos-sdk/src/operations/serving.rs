@@ -35,7 +35,7 @@ use std::task::{Poll, Waker};
 use serde::{Deserialize, Serialize};
 use tracing::Instrument;
 // Local Imports
-use super::{Contract, ContractError, FailureKind, ExecutionContext, OperationDefinition, RegistrationBatch};
+use super::{Contract, ContractError, ExecutionContext, FailureKind, OperationDefinition, RegistrationBatch};
 use crate::QualifiedId;
 
 /* === Constants === */
@@ -298,7 +298,7 @@ trait Prepared: Send {
     fn grant(&self) -> Option<crate::plugin::Grant> {
         None
     }
-    fn initialize<'a>(&'a mut self, context: &'a ExecutionContext) -> Finished<'a>;
+    fn bind<'a>(&'a mut self, context: &'a ExecutionContext) -> Finished<'a>;
     fn attempt<'a>(&'a mut self, context: &'a ExecutionContext) -> Answer<'a>;
     fn finalize(&mut self) -> Finished<'_>;
 }
@@ -557,7 +557,7 @@ impl WireTable {
     }
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.initialize", level = "trace", skip_all, fields(invocation))]
-    pub async fn initialize(&mut self, invocation: u64, context: &ExecutionContext) -> Result<(), ServingError> {
+    pub async fn bind(&mut self, invocation: u64, context: &ExecutionContext) -> Result<(), ServingError> {
         if self.closed {
             return Err(ServingError::Closing);
         }
@@ -565,7 +565,7 @@ impl WireTable {
         if self.ordinary_closed && !slot.lifecycle {
             return Err(ServingError::Closing);
         }
-        slot.initialize(invocation, context).await
+        slot.bind(invocation, context).await
     }
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.attempt", level = "trace", skip_all, fields(invocation))]
@@ -677,7 +677,7 @@ impl WireTable {
             async move {
                 let result = match command {
                     WireCommand::Initialize { invocation, .. } => match slot {
-                        Some(slot) => slot.initialize(invocation, &context).await.map(|()| Vec::new()),
+                        Some(slot) => slot.bind(invocation, &context).await.map(|()| Vec::new()),
                         None => Err(ServingError::Missing { invocation }),
                     },
                     WireCommand::Attempt { invocation, .. } => match slot {
@@ -803,7 +803,7 @@ impl WireTable {
                 generation,
                 payload,
             } => self.prepare(invocation, &operation, fingerprint, generation, payload),
-            WireCommand::Initialize { invocation, .. } => self.initialize(invocation, context).await.map(|()| Vec::new()),
+            WireCommand::Initialize { invocation, .. } => self.bind(invocation, context).await.map(|()| Vec::new()),
             WireCommand::Attempt { invocation, .. } => self.attempt(invocation, context).await,
             WireCommand::StreamAttempt { .. }
             | WireCommand::StreamSend { .. }
@@ -889,9 +889,9 @@ impl Slot {
 
 impl Slot {
     #[tracing::instrument(target = "harmos::streams", name = "streams.initialize", level = "trace", skip_all, fields(invocation))]
-    async fn initialize(self: &Arc<Self>, invocation: u64, context: &ExecutionContext) -> Result<(), ServingError> {
+    async fn bind(self: &Arc<Self>, invocation: u64, context: &ExecutionContext) -> Result<(), ServingError> {
         let mut loan = self.borrow().await.ok_or(ServingError::Missing { invocation })?;
-        self.active(loan.prepared.as_mut().expect("loaned invocation state").initialize(context)).await
+        self.active(loan.prepared.as_mut().expect("loaned invocation state").bind(context)).await
     }
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.attempt", level = "trace", skip_all, fields(invocation))]

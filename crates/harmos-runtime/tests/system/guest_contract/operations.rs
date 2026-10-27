@@ -300,7 +300,7 @@ async fn wire_alias_refused() {
         dependencies.insert(lifecycle.component()).unwrap();
         dependencies
     })
-    .implementation::<propose::ProposeRoute, ComponentOperation<propose::ProposeRoute>>();
+    .carrier::<propose::ProposeRoute, ComponentOperation<propose::ProposeRoute>>();
     batch.operations[0].definition.id = harmos_runtime::Identifier::new("aliased_route").unwrap();
     let refused = runtime.operations.register(harmos_runtime::RegistrationExt::lane(batch, GuestLanes::Open)).await.unwrap_err();
     assert!(matches!(refused, harmos_runtime::Error::OperationFailed {ref source, ..}

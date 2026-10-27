@@ -192,7 +192,7 @@ impl Bindings<'_> {
     pub(super) fn stage_implementation<D, O>(&mut self, lane: &'static str, dependencies: harmos_sdk::Dependencies) -> Result<()>
     where
         D: OperationDeclaration,
-        O: harmos_sdk::Handler<Request = D::Request, Response = D::Response>,
+        O: harmos_sdk::operations::Carrier<Declaration = D>,
     {
         let contract = harmos_sdk::operations::WireDeclaration::of::<D>().contract().map_err(|source| Error::OperationFailed {
             operation: D::ID.to_owned(),
@@ -200,7 +200,7 @@ impl Bindings<'_> {
         })?;
         let wire = (contract.input().is_none() && contract.output().is_none())
             .then_some(crate::operations::wire::dispatch_native as crate::operations::wire::Dispatch);
-        let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).implementation::<D, O>();
+        let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).carrier::<D, O>();
         let factory = batch.operations.pop().expect("one native implementation");
         let mut entry = self.operations.binding_erased(self.owner, lane, Arc::new(factory), D::definition(), wire, self.scope.cloned())?;
         #[cfg(feature = "grpc")]

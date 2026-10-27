@@ -56,7 +56,7 @@ struct Catalog;
 
 #[harmos_sidecar::operation(
     harmos_path = ::harmos_sidecar,
-    id = "read",
+    id = "catalog.read",
     response = (),
     policy = Catalog::INITIALIZATION_POLICY,
     grpc(package = "fixture.v1", service = "Native", method = "Read"),

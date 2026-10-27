@@ -40,7 +40,7 @@ pub struct Step {
     pub phase: u64,
 }
 
-#[harmos_runtime::operation(id = "process_graph_read",
+#[harmos_runtime::operation(id = "process.graph.read",
     policy = POLICY,
     response = Step,
     visibility = Shared,
@@ -50,7 +50,7 @@ pub struct ReadDeclaration {
     pub phase: u64,
 }
 
-#[harmos_runtime::operation(id = "process_graph_probe",
+#[harmos_runtime::operation(id = "process.graph.probe",
     policy = POLICY,
     response = Step,
     visibility = Host,

@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 // Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::Runtime;
-use harmos_runtime::operations::{Handler, RetryPolicy};
+use harmos_runtime::operations::RetryPolicy;
 
 /* === Constants === */
 
@@ -34,10 +34,8 @@ use harmos_runtime::operations::{Handler, RetryPolicy};
 
 /* === Structs === */
 
-struct Measure;
-
-#[harmos_runtime::operation(response = Measured,
-    id = "clock_measure",
+#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], response = Measured,
+    id = "clock.measure",
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(600),
         attempt_timeout: Duration::from_secs(600),
@@ -66,27 +64,17 @@ enum Operations {
 
 /* === Implementations === */
 
-impl Handler for Measure {
-    type Request = MeasureContractDeclaration;
-    type Response = <MeasureContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::operations::Operation for MeasureContractDeclaration {
     type Error = std::convert::Infallible;
-    type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
-        let _resources = context.resource::<()>().expect("fixture registers its dependency");
-        Ok(Self)
-    }
-
-    async fn run(
-        &mut self, context: harmos_runtime::ExecutionContext, wait: &mut MeasureContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<Measured>, Self::Error> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Measured>, Self::Error> {
+        let host = context.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
         let result: ::core::result::Result<Measured, Self::Error> = async move {
             let scope = context.scope();
             let scoped = scope.now();
             let wall = Instant::now();
-            tokio::time::sleep(Duration::from_nanos(wait.wait_nanos)).await;
+            tokio::time::sleep(Duration::from_nanos(self.wait_nanos)).await;
             Ok(Measured {
                 scoped_nanos: nanos(scope.now() - scoped),
                 wall_nanos: nanos(wall.elapsed()),
@@ -154,7 +142,7 @@ async fn clock_measures_script() {
                 dependencies.insert(Arc::new(())).unwrap();
                 dependencies
             })
-            .implementation::<MeasureContractDeclaration, Measure>(),
+            .operation::<MeasureContractDeclaration>(),
             Lanes::Open,
         ))
         .await

@@ -91,7 +91,7 @@ async fn callbacks_guard_admission() {
         assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 1);
         drop(bytes);
 
-        #[harmos_runtime::operation(response = u32, id = "fixture_echo",
+        #[harmos_runtime::operation(response = u32, id = "fixture.echo",
             visibility = Shared, policy = super::super::cases::EchoDeclaration::POLICY)]
         struct Changed {
             pub value: String,
@@ -128,17 +128,12 @@ async fn callbacks_guard_admission() {
 
 #[tokio::test]
 async fn preparation_credit_held() {
-    let credit = Credit::start(false).await;
+    let credit = Credit::start().await;
     let invocation = credit.target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(Text::from("block").encode())).unwrap();
     credit.cleanup.started.notified().await;
     credit.assert_held();
     invocation.cancel();
-    credit.cleanup.finalizing.notified().await;
-    credit.assert_held();
-    credit.cleanup.fail.store(true, Ordering::SeqCst);
-    credit.cleanup.release.notify_one();
-    assert!(matches!(invocation.await, Err(Error::OperationFinalization { .. })));
-    credit.assert_held();
+    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     credit.settle().await;
 }
 
@@ -501,19 +496,13 @@ async fn activation_refuses_incomplete() {
 
 #[tokio::test(start_paused = true)]
 async fn preparation_credit_expired() {
-    let credit = Credit::start(true).await;
+    let credit = Credit::start().await;
     let invocation = credit.target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(Text::from("expire").encode())).unwrap();
-    credit.cleanup.finalizing.notified().await;
-    assert_eq!(credit.cleanup.attempted.load(Ordering::SeqCst), 0);
+    credit.cleanup.started.notified().await;
+    assert_eq!(credit.cleanup.attempted.load(Ordering::SeqCst), 1);
     credit.assert_held();
-    credit.cleanup.release.notify_one();
-    credit.cleanup.failed.notified().await;
-    credit.assert_held();
-    let outcome = invocation.await;
-    assert!(matches!(outcome,
-        Err(Error::OperationFinalization { outcome: Some(ref error), .. })
-            if matches!(error.as_ref(), Error::OperationRefused(harmos_runtime::Refusal::TimedOut))
-    ));
+    tokio::time::advance(CleanupDeclaration::POLICY.timeout).await;
+    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
     credit.settle().await;
 }
 

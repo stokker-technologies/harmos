@@ -40,9 +40,7 @@ pub use harmos_domain::{catalog, failure, listeners};
 pub use harmos_sdk::operations;
 pub use harmos_sdk::operations::Host;
 pub use harmos_sdk::operations::{Backoff, CacheKey, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
-pub use harmos_sdk::{
-    Context, Dependencies, Dependent, Handler, Operation, ExecutionContext, Plugin, RegistrationBatch, Resource, Service,
-};
+pub use harmos_sdk::{Context, Dependencies, Dependent, ExecutionContext, Operation, Plugin, RegistrationBatch, Resource, Service};
 
 pub use harmos_domain::StreamDeclaration;
 #[cfg(feature = "kit")]

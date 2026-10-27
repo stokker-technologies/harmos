@@ -24,7 +24,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery};
-use harmos_runtime::operations::{Handler, OperationPolicy, RetryPolicy, WireTable};
+use harmos_runtime::operations::{OperationPolicy, RetryPolicy, WireTable};
 use harmos_runtime::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -67,7 +67,7 @@ pub struct Receiver {
     state: Arc<State>,
 }
 
-#[harmos_runtime::operation(id = "progress",
+#[harmos_runtime::operation(resources = [State], id = "consumption.progress",
     policy = POLICY,
     response = Acknowledged,
 )]
@@ -75,18 +75,41 @@ pub struct ProgressDeclaration {
     pub expected: u64,
 }
 
-struct Consumption {
-    state: Arc<State>,
-}
+#[harmos_runtime::operation(codec = manual, resources = [State], id = "consumption.consume", response = (),
+    policy = POLICY, visibility = Shared)]
+#[derive(Clone)]
+struct Consumption(Delivery<Listener>);
 
-struct Reporting {
-    state: Arc<State>,
+impl harmos_runtime::Message for Consumption {
+    const CODEC: &'static str = <Delivery<Listener> as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&self.0)
+    }
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&self.0)
+    }
+    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
+        <Delivery<Listener> as harmos_runtime::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
+        <Delivery<Listener> as harmos_runtime::Message>::decode(bytes).map(Self)
+    }
+}
+impl harmos_runtime::MemorySize for Consumption {
+    fn memory_size(&self) -> usize {
+        harmos_runtime::MemorySize::memory_size(&self.0)
+    }
+}
+impl harmos_runtime::schema::Described for Consumption {
+    const NAME: &'static str = <Delivery<Listener> as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] = <Delivery<Listener> as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <Delivery<Listener> as harmos_runtime::schema::Described>::MARKER;
 }
 
 #[harmos_runtime::listener(
     id = "consumption.listener",
     stream = Payload,
-    callback = "consumption_consume",
+    callback = "consumption.consume",
     policy = POLICY
 )]
 pub struct Listener;
@@ -135,7 +158,7 @@ impl harmos_runtime::Plugin for Receiver {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<harmos_runtime::listeners::Callback<Listener>, Consumption>(),
+            .operation::<Consumption>(),
         )?;
         table.register(
             harmos_runtime::RegistrationBatch::new({
@@ -143,7 +166,7 @@ impl harmos_runtime::Plugin for Receiver {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<ProgressDeclaration, Reporting>(),
+            .operation::<ProgressDeclaration>(),
         )
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
@@ -154,31 +177,23 @@ impl harmos_runtime::Plugin for Receiver {
     }
 }
 
-impl Handler for Consumption {
-    type Request = <harmos_runtime::listeners::Callback<Listener> as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <harmos_runtime::listeners::Callback<Listener> as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for Consumption {
     type Error = Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        let state = context.resource::<State>().expect("fixture dependency");
-        Ok(Self { state })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, row: &mut Delivery<Listener>, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
+        let state = ctx.resource::<State>();
+        let row = self.0;
         let result: ::core::result::Result<(), Self::Error> = async move {
             if !matches!(row.context(), DeliveryContext::Stream { .. }) {
                 return Err(Refusal::of("expected stream delivery"));
             }
             let row = row.row();
-            let expected = self.state.rows.load(Ordering::SeqCst);
+            let expected = state.rows.load(Ordering::SeqCst);
             if row.sequence != expected || !row.bytes.iter().all(|byte| *byte == (expected % 251) as u8) {
                 return Err(Refusal::of("payload loss, reordering or corruption"));
             }
-            self.state.bytes.fetch_add(row.bytes.len() as u64, Ordering::SeqCst);
-            self.state.rows.store(expected + 1, Ordering::SeqCst);
-            self.state.changed.notify_waiters();
+            state.bytes.fetch_add(row.bytes.len() as u64, Ordering::SeqCst);
+            state.rows.store(expected + 1, Ordering::SeqCst);
+            state.changed.notify_waiters();
             Ok(())
         }
         .await;
@@ -186,27 +201,20 @@ impl Handler for Consumption {
     }
 }
 
-impl Handler for Reporting {
-    type Request = ProgressDeclaration;
-    type Response = <ProgressDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for ProgressDeclaration {
     type Error = Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        let state = context.resource::<State>().expect("fixture registers its dependency");
-        Ok(Self { state })
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut ProgressDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<Acknowledged>, Refusal> {
+
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Acknowledged>, Refusal> {
+        let state = ctx.resource::<State>();
         let result: ::core::result::Result<Acknowledged, Self::Error> = async move {
             loop {
-                let changed = self.state.changed.notified();
-                let rows = self.state.rows.load(Ordering::SeqCst);
-                if rows >= request.expected {
+                let changed = state.changed.notified();
+                let rows = state.rows.load(Ordering::SeqCst);
+                if rows >= self.expected {
                     return Ok(Acknowledged {
                         process_id: std::process::id(),
                         rows,
-                        bytes: self.state.bytes.load(Ordering::SeqCst),
+                        bytes: state.bytes.load(Ordering::SeqCst),
                     });
                 }
                 changed.await;

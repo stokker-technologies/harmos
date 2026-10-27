@@ -18,7 +18,7 @@ until a call fails at run time, and catalog variants cannot be platform gated.
   `Invokes<T>` bounds, aggregate into the plugin's declared dependencies and are verified when the batch is registered or the
   plugin activates.
 - Renames: `Endpoints` to `StreamEndpoints`, `DependencyError` to `ResourceError`, `dependency::<T>()` to `resource::<T>()`. The
-  low-level instance contract becomes `Handler`.
+  low-level instance contract becomes `Carrier`.
 - Runtime invocation is `runtime.operation(Cancel { .. }).retry(..).lane(..).run()`.
 - `#[harmos::catalog]` carries variant attributes such as `#[cfg(..)]` into the variant and every projection.
 - The 30 built-ins adopt dotted IDs (`host.operations.cancel`, `harmos.initialize`, `storage.append_file`, ...).

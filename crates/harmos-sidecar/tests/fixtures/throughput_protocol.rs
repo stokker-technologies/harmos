@@ -75,9 +75,10 @@ static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", TransportPlugin::I
 
 /* === Structs === */
 
-#[harmos_sidecar::operation(
-    harmos_path = ::harmos_sidecar,
-    id = "bench_start",
+#[harmos_sdk::operation(
+    harmos_path = ::harmos_sdk,
+    resources = [Handler],
+    id = "bench.start",
     response = (),
     policy = OperationPolicy {
         timeout: Duration::from_secs(120),
@@ -105,9 +106,10 @@ pub struct Done {
     pub attempted: u64,
 }
 
-#[harmos_sidecar::operation(
-    harmos_path = ::harmos_sidecar,
-    id = "bench_echo",
+#[harmos_sdk::operation(
+    harmos_path = ::harmos_sdk,
+    resources = [Handler],
+    id = "bench.echo",
     response = EchoOperation,
     policy = OperationPolicy {
         timeout: Duration::from_secs(5),
@@ -178,59 +180,34 @@ impl StartOperation {
     }
 }
 
-struct Echoing {
-    _resources: Arc<Handler>,
-}
-
-impl harmos_sidecar::operations::Handler for Echoing {
-    type Request = EchoOperation;
-    type Response = EchoOperation;
+impl harmos_sidecar::Operation for EchoOperation {
     type Error = harmos_sidecar::Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_sidecar::ExecutionContext) -> Result<Self, Self::Error> {
-        let resources = context.resource::<Handler>().map_err(harmos_sidecar::Refusal::of)?;
-        Ok(Self { _resources: resources })
-    }
-    async fn run(
-        &mut self, _: harmos_sidecar::ExecutionContext, request: &mut EchoOperation, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_sidecar::operations::Response<EchoOperation>, Self::Error> {
-        let result: ::core::result::Result<EchoOperation, Self::Error> = async move { Ok(request.clone()) }.await;
-        result.map(::core::convert::Into::into)
+
+    async fn run(self, _: harmos_sidecar::Context<'_, Self>) -> Result<harmos_sidecar::operations::Response<Self>, Self::Error> {
+        Ok(self.into())
     }
 }
 
-struct Starting {
-    resources: Arc<Handler>,
-}
-
-impl harmos_sidecar::operations::Handler for Starting {
-    type Request = StartOperation;
-    type Response = ();
+impl harmos_sidecar::Operation for StartOperation {
     type Error = harmos_sidecar::Refusal;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_sidecar::ExecutionContext) -> Result<Self, Self::Error> {
-        let resources = context.resource::<Handler>().map_err(harmos_sidecar::Refusal::of)?;
-        Ok(Self { resources })
-    }
-    async fn run(
-        &mut self, _: harmos_sidecar::ExecutionContext, request: &mut StartOperation, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_sidecar::operations::Response<()>, Self::Error> {
+
+    async fn run(self, ctx: harmos_sidecar::Context<'_, Self>) -> Result<harmos_sidecar::operations::Response<()>, Self::Error> {
+        let resources = ctx.resource::<Handler>();
         let result: ::core::result::Result<(), Self::Error> = async move {
-            request.validate()?;
-            let mut tasks = self.resources.tasks.lock().map_err(harmos_sidecar::Refusal::of)?;
-            if *self.resources.closing.borrow() || tasks.len() >= MAX_CASES {
+            self.validate()?;
+            let mut tasks = resources.tasks.lock().map_err(harmos_sidecar::Refusal::of)?;
+            if *resources.closing.borrow() || tasks.len() >= MAX_CASES {
                 return Err(harmos_sidecar::Refusal::of("transport fixture pump admission is closed or full"));
             }
-            let host = self
-                .resources
+            let host = resources
                 .host
                 .lock()
                 .map_err(harmos_sidecar::Refusal::of)?
                 .as_ref()
                 .cloned()
                 .ok_or_else(|| harmos_sidecar::Refusal::of("fixture generation calling context is unavailable"))?;
-            let request = request.clone();
-            let closing = self.resources.closing.subscribe();
+            let request = self;
+            let closing = resources.closing.subscribe();
             tasks.push_back(tokio::spawn(publish(host, request, closing)));
             Ok(())
         }
@@ -270,11 +247,7 @@ impl Plugin for TransportPlugin {
     fn bind_operations(&self, table: &mut WireTable) -> Result<(), ServingError> {
         let mut dependencies = harmos_sidecar::Dependencies::new();
         dependencies.insert(Arc::clone(&self.resources)).map_err(|_| ServingError::Catalog)?;
-        table.register(
-            harmos_sidecar::RegistrationBatch::new(dependencies)
-                .implementation::<EchoOperation, Echoing>()
-                .implementation::<StartOperation, Starting>(),
-        )
+        table.register(harmos_sidecar::RegistrationBatch::new(dependencies).operation::<EchoOperation>().operation::<StartOperation>())
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())

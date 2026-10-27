@@ -52,6 +52,8 @@ mod wire;
 
 /* === Re-Exports === */
 
+pub(crate) use harmos_sdk::operations::Carrier;
+
 pub use crate::supervision::instance::{Outcome as OperationOutcome, Phase as OperationPhase, Status as OperationStatus};
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub use caller::Caller;
@@ -64,7 +66,7 @@ pub use grpc::GrpcBinding;
 pub use grpc::GrpcMethod;
 pub use harmos_sdk::operations::{
     Backoff, CHILD_METHOD, CacheKey, CacheKeyError, CallValue, Callees, Codec, ContextError, ContextValue, Contract, ContractError,
-    Contracts, Declarations, Dependent, Direction, Entry, Executable, FailureKind, Grpc, Handler, InvocationError, Invokes, Jitter,
+    Contracts, Declarations, Dependent, Direction, Entry, Executable, FailureKind, Grpc, InvocationError, Invokes, Jitter,
     MAX_CACHE_KEY_BYTES, NoStream, Operation, OperationDeclaration, OperationDefinition, OperationPolicy, PORTABLE_BYTES, PORTABLE_VALUES,
     PolicyError, ReplaySafety, Requires, Resource, RestartPolicy, RetryPolicy, ServingError, Stream, Visibility, WIRE_METHOD, WireAnswer,
     WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand, WireDeclaration, WireEndpoints,

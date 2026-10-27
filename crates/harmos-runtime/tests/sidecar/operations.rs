@@ -33,9 +33,7 @@ use tokio::sync::Notify;
 use super::assembly;
 use crate::sidecar::support::Bank;
 use harmos_runtime::operations::Host as _;
-use harmos_runtime::operations::{
-    Declarations, Handler, OperationDeclaration, OperationDefinition as Definition, OperationPolicy, RetryPolicy,
-};
+use harmos_runtime::operations::{Declarations, OperationDeclaration, OperationDefinition as Definition, OperationPolicy, RetryPolicy};
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginLifecycleAuthority,
     PluginManager, PluginTransition, Router,
@@ -65,18 +63,11 @@ struct Counts {
     attached: AtomicUsize,
     initialized: AtomicUsize,
     cleaned: AtomicUsize,
-    prepared: AtomicUsize,
-    operation_initialized: AtomicUsize,
-    stopped: AtomicUsize,
-    fail_initialize: AtomicBool,
-    block_initialize: AtomicBool,
-    initialization_child: AtomicBool,
-    initialization_entered: Notify,
-    initialization_saved: Mutex<Option<harmos_runtime::sidecar::Supervisor>>,
+    started: AtomicUsize,
+    block_attempt: AtomicBool,
+    attempt_entered: Notify,
     runs: AtomicUsize,
-    finalized: AtomicUsize,
-    fail_cleanup: AtomicBool,
-    fail_prepare: AtomicBool,
+    finished: AtomicUsize,
     call_child: AtomicBool,
     children: AtomicUsize,
     stale_refused: AtomicUsize,
@@ -109,7 +100,7 @@ struct Endpoint {
     counts: Arc<Counts>,
 }
 
-#[harmos_runtime::operation(id = "read",
+#[harmos_runtime::operation(resources = [Counts, harmos_runtime::sidecar::Supervisor], operations = [RefreshDeclaration], id = "device.read",
     policy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
@@ -128,14 +119,11 @@ struct Endpoint {
 )]
 struct ReadDeclaration {}
 
-struct ReadOperation {
-    counts: Arc<Counts>,
-    attempts: usize,
-}
+struct ReadGuard(Arc<Counts>);
 
-struct RefreshOperation(Arc<Counts>);
+struct RefreshGuard(Arc<Counts>);
 
-#[harmos_runtime::operation(id = "refresh",  policy = ReadDeclaration::POLICY, response = ())]
+#[harmos_runtime::operation(resources = [Counts], id = "device.refresh",  policy = ReadDeclaration::POLICY, response = ())]
 struct RefreshDeclaration {}
 
 #[derive(Clone)]
@@ -205,127 +193,67 @@ impl harmos_runtime::operations::ContextValue for Tenant {
     const KEY: &'static str = "fixture.tenant";
 }
 
-impl Handler for ReadOperation {
-    type Request = ReadDeclaration;
-    type Response = <ReadDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for ReadDeclaration {
     type Error = std::io::Error;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
-        let counts = context.resource::<Counts>().expect("fixture registers its dependency");
-        let context = context.resource::<harmos_runtime::sidecar::Supervisor>().expect("carrier context");
-        let constructed: Result<Self, Self::Error> = async move {
-            counts.prepared.fetch_add(1, Ordering::SeqCst);
-            if counts.fail_prepare.load(Ordering::SeqCst) {
-                return Err(std::io::Error::other("preparation refused"));
-            }
-            Ok(Self { counts, attempts: 0 })
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
+        let counts = ctx.resource::<Counts>();
+        let context = ctx.resource::<harmos_runtime::sidecar::Supervisor>();
+        counts.started.fetch_add(1, Ordering::SeqCst);
+        let _guard = ReadGuard(counts.clone());
+        counts.attempt_entered.notify_one();
+        if counts.block_attempt.load(Ordering::SeqCst) {
+            std::future::pending::<()>().await;
         }
-        .await;
-        let mut operation = constructed?;
-        let started: Result<(), Self::Error> = async {
-            let operation = &mut operation;
-            operation.counts.operation_initialized.fetch_add(1, Ordering::SeqCst);
-            operation.counts.initialization_entered.notify_one();
-            if operation.counts.block_initialize.load(Ordering::SeqCst) {
-                std::future::pending::<()>().await;
-            }
-            if operation.counts.fail_initialize.load(Ordering::SeqCst) {
-                return Err(std::io::Error::other("partial initialization failed"));
-            }
-            if operation.counts.initialization_child.load(Ordering::SeqCst) {
-                context.call::<RefreshDeclaration>(RefreshDeclaration {}).await.map_err(std::io::Error::other)?;
-                *operation.counts.initialization_saved.lock().unwrap() = Some((*context).clone());
-            }
-            Ok(())
+        if counts.submit_child.load(Ordering::SeqCst) {
+            return submitted(&context, &counts).await.map(Into::into).map_err(std::io::Error::other);
         }
-        .await;
-        started?;
-        Ok(operation)
-    }
-    async fn run(
-        &mut self, context: harmos_runtime::ExecutionContext, _request: &mut ReadDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
-        let context = context.resource::<harmos_runtime::sidecar::Supervisor>().expect("carrier context");
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            if self.counts.submit_child.load(Ordering::SeqCst) {
-                return submitted(&context, &self.counts).await.map_err(std::io::Error::other);
+        let attempt = counts.runs.fetch_add(1, Ordering::SeqCst);
+        let tenant = context.context().value::<Tenant>().map_err(std::io::Error::other)?;
+        assert!(context.context().get::<Principal>().is_none());
+        counts.tenants.lock().unwrap().push(tenant.map(|tenant| tenant.name));
+        if counts.call_child.load(Ordering::SeqCst) {
+            let previous = counts.saved.lock().unwrap().take();
+            if let Some(previous) = previous {
+                assert!(previous.call::<RefreshDeclaration>(RefreshDeclaration {}).await.is_err());
+                counts.stale_refused.fetch_add(1, Ordering::SeqCst);
             }
-            let initialized = self.counts.initialization_saved.lock().unwrap().take();
-            if let Some(initialized) = initialized {
-                if initialized.call::<RefreshDeclaration>(RefreshDeclaration {}).await.is_ok() {
-                    return Err(std::io::Error::other("initialization context remained active"));
-                }
-                self.counts.stale_refused.fetch_add(1, Ordering::SeqCst);
-            }
-            self.attempts += 1;
-            self.counts.runs.fetch_add(1, Ordering::SeqCst);
-            let tenant = context.context().value::<Tenant>().map_err(std::io::Error::other)?;
-            assert!(context.context().get::<Principal>().is_none());
-            self.counts.tenants.lock().unwrap().push(tenant.map(|tenant| tenant.name));
-            if self.counts.call_child.load(Ordering::SeqCst) {
-                let previous = self.counts.saved.lock().unwrap().take();
-                if let Some(previous) = previous {
-                    if previous.call::<RefreshDeclaration>(RefreshDeclaration {}).await.is_ok() {
-                        return Err(std::io::Error::other("expired attempt admitted a child"));
-                    }
-                    self.counts.stale_refused.fetch_add(1, Ordering::SeqCst);
-                }
-                *self.counts.saved.lock().unwrap() = Some((*context).clone());
-                context.call::<RefreshDeclaration>(RefreshDeclaration {}).await.map_err(std::io::Error::other)?;
-            }
-            if self.attempts == 1 {
-                return Err(std::io::Error::other("one transient failure"));
-            }
-            Ok(())
+            *counts.saved.lock().unwrap() = Some((*context).clone());
+            context.call::<RefreshDeclaration>(RefreshDeclaration {}).await.map_err(std::io::Error::other)?;
         }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-    async fn stop(&mut self) -> Result<(), Self::Error> {
-        self.counts.stopped.fetch_add(1, Ordering::SeqCst);
-        Ok(())
-    }
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        if self.counts.fail_cleanup.load(Ordering::SeqCst) {
-            return Err(std::io::Error::other("retained cleanup"));
+        if attempt.is_multiple_of(2) {
+            return Err(std::io::Error::other("one transient failure"));
         }
-        self.counts.finalized.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+        Ok(().into())
     }
     fn classify(_: &Self::Error) -> harmos_runtime::operations::FailureKind {
         harmos_runtime::operations::FailureKind::Transient
     }
 }
+impl Drop for ReadGuard {
+    fn drop(&mut self) {
+        self.0.finished.fetch_add(1, Ordering::SeqCst);
+    }
+}
 
-impl Handler for RefreshOperation {
-    type Request = RefreshDeclaration;
-    type Response = <RefreshDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for RefreshDeclaration {
     type Error = std::io::Error;
-    type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
-        let counts = context.resource::<Counts>().expect("fixture registers its dependency");
-        Ok(Self(counts))
-    }
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, _request: &mut RefreshDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            self.0.children.fetch_add(1, Ordering::SeqCst);
-            if self.0.refresh_hold.load(Ordering::SeqCst) {
-                self.0.refresh_started.notify_one();
-                self.0.refresh_release.notified().await;
-                self.0.refresh_completed.fetch_add(1, Ordering::SeqCst);
-                self.0.refresh_finished.notify_one();
-            }
-            Ok(())
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
+        let counts = ctx.resource::<Counts>();
+        let _guard = RefreshGuard(counts.clone());
+        counts.children.fetch_add(1, Ordering::SeqCst);
+        if counts.refresh_hold.load(Ordering::SeqCst) {
+            counts.refresh_started.notify_one();
+            counts.refresh_release.notified().await;
+            counts.refresh_completed.fetch_add(1, Ordering::SeqCst);
+            counts.refresh_finished.notify_one();
         }
-        .await;
-        result.map(::core::convert::Into::into)
+        Ok(().into())
     }
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+}
+impl Drop for RefreshGuard {
+    fn drop(&mut self) {
         self.0.refresh_cleaned.fetch_add(1, Ordering::SeqCst);
         self.0.refresh_cleanup.notify_one();
-        Ok(())
     }
 }
 
@@ -367,7 +295,7 @@ impl harmos_runtime::Plugin for Endpoint {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<ReadDeclaration, ReadOperation>(),
+            .operation::<ReadDeclaration>(),
         )?;
         table.register(
             harmos_runtime::RegistrationBatch::new({
@@ -375,7 +303,7 @@ impl harmos_runtime::Plugin for Endpoint {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<RefreshDeclaration, RefreshOperation>(),
+            .operation::<RefreshDeclaration>(),
         )?;
         streams::bind(table, self.resources())?;
         Ok(())

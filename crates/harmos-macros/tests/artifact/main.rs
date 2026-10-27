@@ -121,7 +121,7 @@ fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>, required: 
 fn artifacts_embed_metadata() {
     let native = SHARED
         .into_iter()
-        .chain(["schematic_analyze_exchange", "schematic_analyze_upload", "schematic_list_directories"])
+        .chain(["schematic.analyze.exchange", "schematic.analyze.upload", "schematic.list.directories"])
         .collect::<BTreeSet<_>>();
     let portable = SHARED.into_iter().collect::<BTreeSet<_>>();
     // Only The Native Sidecar Publishes Analysis Progress, Through The Host

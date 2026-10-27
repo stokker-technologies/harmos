@@ -106,7 +106,7 @@ pub use harmos_domain::{
 };
 pub use harmos_sdk::operations::{EndpointSet, Response};
 pub use harmos_sdk::{
-    Context, Dependencies, Dependent, Executable, Handler, Operation, ExecutionContext, RegistrationBatch, Resource, ResourceError, Service,
+    Context, Dependencies, Dependent, Executable, ExecutionContext, Operation, RegistrationBatch, Resource, ResourceError, Service,
 };
 pub use operations::refusal::Refusal;
 pub use operations::{Invocation, Lane, Registration, RegistrationExt, Running};

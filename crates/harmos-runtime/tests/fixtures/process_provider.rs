@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use super::contract;
 use crate::sidecar::witness::Witness;
 use contract::{POLICY, ReadDeclaration, Readings, Step};
-use harmos_runtime::operations::{Handler, OperationPolicy, WireTable};
+use harmos_runtime::operations::{OperationPolicy, WireTable};
 use harmos_runtime::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -42,9 +42,40 @@ pub(crate) struct Resources {
     initialized: AtomicBool,
 }
 
-struct Reading {
+#[harmos_runtime::operation(codec = manual, resources = [Resources], id = <ReadDeclaration as harmos_runtime::OperationDeclaration>::ID, response = Step,
+    policy = POLICY, visibility = Shared)]
+#[derive(Clone)]
+struct Reading(ReadDeclaration);
+
+impl harmos_runtime::Message for Reading {
+    const CODEC: &'static str = <ReadDeclaration as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&self.0)
+    }
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&self.0)
+    }
+    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
+        <ReadDeclaration as harmos_runtime::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
+        <ReadDeclaration as harmos_runtime::Message>::decode(bytes).map(Self)
+    }
+}
+impl harmos_runtime::MemorySize for Reading {
+    fn memory_size(&self) -> usize {
+        harmos_runtime::MemorySize::memory_size(&self.0)
+    }
+}
+impl harmos_runtime::schema::Described for Reading {
+    const NAME: &'static str = <ReadDeclaration as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] = <ReadDeclaration as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <ReadDeclaration as harmos_runtime::schema::Described>::MARKER;
+}
+
+struct AttemptGuard {
     resources: Arc<Resources>,
-    phase: Option<u64>,
+    phase: u64,
 }
 
 /* === Enums === */
@@ -91,7 +122,7 @@ impl harmos_runtime::Plugin for Provider {
                 dependencies.insert(self.resources()).unwrap();
                 dependencies
             })
-            .implementation::<contract::ReadDeclaration, Reading>(),
+            .operation::<Reading>(),
         )
     }
 
@@ -107,55 +138,35 @@ impl harmos_runtime::Plugin for Provider {
     }
 }
 
-impl Handler for Reading {
-    type Request = <contract::ReadDeclaration as harmos_runtime::OperationDeclaration>::Request;
-    type Response = <contract::ReadDeclaration as harmos_runtime::OperationDeclaration>::Response;
-
+impl harmos_runtime::Operation for Reading {
     type Error = Refusal;
-    type StreamEndpoints = ();
-
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
-        let resources = context.resource::<Resources>().expect("fixture dependency");
-        let constructed: Result<Self, Refusal> = async move { Ok(Self { resources, phase: None }) }.await;
-        let mut operation = constructed?;
-        let started: Result<(), Refusal> = async {
-            let operation = &mut operation;
-            operation.resources.marks.mark("read-initialized");
-            Ok(())
-        }
-        .await;
-        started?;
-        Ok(operation)
-    }
-
-    async fn run(
-        &mut self, _: harmos_runtime::ExecutionContext, request: &mut ReadDeclaration, _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<Step>, Refusal> {
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Step>, Refusal> {
+        let resources = ctx.resource::<Resources>();
+        let request = self.0;
+        resources.marks.mark("read-initialized");
+        let _guard = AttemptGuard {
+            resources: resources.clone(),
+            phase: request.phase,
+        };
         let result: ::core::result::Result<Step, Self::Error> = async move {
-            self.phase = Some(request.phase);
-            self.resources.marks.mark(&format!("read-prepared-{}", request.phase));
-            if !self.resources.initialized.load(Ordering::SeqCst) {
+            resources.marks.mark(&format!("read-prepared-{}", request.phase));
+            if !resources.initialized.load(Ordering::SeqCst) {
                 return Err(Refusal::of("the original provider has retired"));
             }
-            self.resources.marks.mark(&format!("read-started-{}", request.phase));
-            if request.phase == 2 && self.resources.marks.seen("hold-read-2") {
-                self.resources.marks.marked("release-read-2").await;
+            resources.marks.mark(&format!("read-started-{}", request.phase));
+            if request.phase == 2 && resources.marks.seen("hold-read-2") {
+                resources.marks.marked("release-read-2").await;
             }
             Ok(Step { phase: request.phase })
         }
         .await;
         result.map(::core::convert::Into::into)
     }
-
-    async fn cleanup(&mut self) -> Result<(), Refusal> {
-        if !self.resources.initialized.load(Ordering::SeqCst) {
-            return Err(Refusal::of("the provider retired before child finalization"));
-        }
-        match self.phase {
-            Some(phase) => self.resources.marks.mark(&format!("read-finalized-{phase}")),
-            None => self.resources.marks.mark("read-finalized-unstarted"),
-        }
-        Ok(())
+}
+impl Drop for AttemptGuard {
+    fn drop(&mut self) {
+        assert!(self.resources.initialized.load(Ordering::SeqCst));
+        self.resources.marks.mark(&format!("read-finalized-{}", self.phase));
     }
 }
 

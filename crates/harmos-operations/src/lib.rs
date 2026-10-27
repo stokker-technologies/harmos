@@ -30,8 +30,7 @@ pub use error::Error;
 pub use harmos_domain::*;
 #[cfg(feature = "lifecycle")]
 pub use harmos_sdk::{
-    Context, Dependencies, Dependent, Executable, Handler, Operation, ExecutionContext, RegistrationBatch, Resource, ResourceError,
-    Response,
+    Context, Dependencies, Dependent, Executable, ExecutionContext, Operation, RegistrationBatch, Resource, ResourceError, Response,
 };
 pub use host::Host;
 pub use lifecycle::Lifecycle;

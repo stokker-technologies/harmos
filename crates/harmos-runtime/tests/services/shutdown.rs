@@ -24,7 +24,7 @@ use super::{
     Lanes, assembly, service_status,
     support::{Bank, Noted},
 };
-use harmos_runtime::operations::{Handler, RetryPolicy};
+use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Error, Refusal, services::ServiceExit, services::ServiceStatus, state::Position};
 
 /* === Constants === */
@@ -40,7 +40,7 @@ struct Sequence {
     started: Arc<Notify>,
 }
 
-struct Ordered {
+struct OrderedGuard {
     running: bool,
     sequence: Arc<Sequence>,
 }
@@ -65,8 +65,8 @@ struct StopWait(Arc<Cleanup>);
 
 /* === Enums === */
 
-#[harmos_runtime::operation(response = (),
-        id = "shutdown_ordered",
+#[harmos_runtime::operation(resources = [Sequence], response = (),
+        id = "shutdown.ordered",
         policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -86,43 +86,29 @@ enum Operations {
 
 /* === Implementations === */
 
-impl Handler for Ordered {
-    type Request = OrderedContractDeclaration;
-    type Response = <OrderedContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
+impl harmos_runtime::Operation for OrderedContractDeclaration {
     type Error = std::convert::Infallible;
-    type StreamEndpoints = ();
-
-    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
-        let sequence = context.resource::<Sequence>().expect("fixture registers its dependency");
-        Ok(Self { running: false, sequence })
-    }
-
-    async fn run(
-        &mut self, _context: harmos_runtime::ExecutionContext, request: &mut OrderedContractDeclaration,
-        _endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
-        let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
-        let _context = host.borrow();
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            self.running = request.running;
-            if self.running {
-                self.sequence.events.lock().unwrap().push("job-start");
-                self.sequence.started.notify_one();
-                std::future::pending::<()>().await;
-            } else {
-                self.sequence.events.lock().unwrap().push("queued");
-            }
-            Ok(())
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
+        let sequence = ctx.resource::<Sequence>();
+        let _guard = OrderedGuard {
+            running: self.running,
+            sequence: sequence.clone(),
+        };
+        if self.running {
+            sequence.events.lock().unwrap().push("job-start");
+            sequence.started.notify_one();
+            std::future::pending::<()>().await;
+        } else {
+            sequence.events.lock().unwrap().push("queued");
         }
-        .await;
-        result.map(::core::convert::Into::into)
+        Ok(().into())
     }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+}
+impl Drop for OrderedGuard {
+    fn drop(&mut self) {
         if self.running {
             self.sequence.events.lock().unwrap().push("job-end");
         }
-        Ok(())
     }
 }
 
@@ -504,7 +490,7 @@ async fn domains_outlives_clones() {
                 dependencies.insert(sequence).unwrap();
                 dependencies
             })
-            .implementation::<OrderedContractDeclaration, Ordered>(),
+            .operation::<OrderedContractDeclaration>(),
             Lanes::Serial,
         ))
         .service("resident", move |mut context: harmos_runtime::services::ServiceContext<Bank>| {

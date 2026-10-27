@@ -494,32 +494,22 @@ mod tests {
         type Resources = ();
     }
 
-    struct Probe;
-    impl OperationDeclaration for Probe {
-        type Request = u64;
-        type Response = u64;
-        type Input = super::super::NoStream;
-        type Output = super::super::NoStream;
-        const ID: &'static str = "fenced_probe";
-        const POLICY: crate::OperationPolicy = crate::OperationPolicy {
+    #[crate::operation(harmos_path = crate, resources = [], id = "fenced.probe", response = u64,
+        policy = crate::OperationPolicy {
             timeout: Duration::from_secs(1),
             attempt_timeout: Duration::from_secs(1),
             retries: crate::RetryPolicy::Never,
-        };
+        },
+    )]
+    struct Probe {
+        value: u64,
     }
 
-    impl harmos_sdk::Handler for Probe {
-        type Request = u64;
-        type Response = u64;
+    impl crate::Operation for Probe {
         type Error = std::io::Error;
-        type StreamEndpoints = ();
 
-        async fn initialize(_: harmos_sdk::ExecutionContext) -> std::io::Result<Self> {
-            Ok(Self)
-        }
-
-        async fn run(&mut self, _: harmos_sdk::ExecutionContext, request: &mut u64, _: &mut ()) -> std::io::Result<crate::Response<u64>> {
-            Ok((*request).into())
+        async fn run(self, _: crate::Context<'_, Self>) -> std::io::Result<crate::Response<u64>> {
+            Ok(self.value.into())
         }
     }
 
@@ -527,7 +517,7 @@ mod tests {
     async fn assigned_identity_fences_before_decoding() {
         let builder = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog());
         let runtime = builder.runtime().await.unwrap();
-        let batch = harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).implementation::<Probe, Probe>();
+        let batch = harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).operation::<Probe>();
         runtime.register(batch.clone().defaults()).await.unwrap();
         let entry = runtime.operations.entry(Probe::ID).unwrap();
         let fingerprint = entry.declared().fingerprint.0;
@@ -537,7 +527,7 @@ mod tests {
 
         let submit = |fingerprint, generation| {
             runtime.operations.submit_encoded_at_as(
-                "host.fenced_probe",
+                "host.fenced.probe",
                 Vec::new(),
                 Source::Host,
                 None,
@@ -548,7 +538,7 @@ mod tests {
         assert!(matches!(submit(wrong, generation), Err(Error::InvalidInput { field: "encoded operation identity", .. })));
         assert!(matches!(submit(fingerprint, generation), Err(Error::InvalidInput { field: "operation preparation bytes", .. })));
 
-        let id = crate::QualifiedId::parse("host.fenced_probe").unwrap();
+        let id = crate::QualifiedId::parse("host.fenced.probe").unwrap();
         runtime.unregister(&id).await.unwrap();
         runtime.register(batch.defaults()).await.unwrap();
         assert!(matches!(submit(fingerprint, generation), Err(Error::InvalidInput { field: "encoded operation identity", .. })));

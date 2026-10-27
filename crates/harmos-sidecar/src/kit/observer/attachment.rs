@@ -31,7 +31,7 @@ use tokio::sync::oneshot;
 use super::{Activity, Instance, ObserverError, ObserverHost};
 use crate::{Refusal, Supervisor};
 use harmos_domain::observers::Control;
-use harmos_sdk::operations::{Dependencies, Handler, ExecutionContext, RegistrationBatch, ServingError, WireTable};
+use harmos_sdk::operations::{Carrier, Dependencies, ExecutionContext, RegistrationBatch, ServingError, WireTable};
 use harmos_sdk::plugin::Attachment;
 
 /* === Constants === */
@@ -111,7 +111,7 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
     pub fn bind(self: &Arc<Self>, table: &mut WireTable) -> Result<(), ServingError> {
         let mut dependencies = Dependencies::new();
         dependencies.insert(Arc::clone(self)).map_err(|_| ServingError::Catalog)?;
-        table.register(RegistrationBatch::new(dependencies).implementation::<Control, Observe<R, H>>())
+        table.register(RegistrationBatch::new(dependencies).carrier::<Control, Observe<R, H>>())
     }
 }
 
@@ -132,17 +132,16 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> Attachment<Supervisor> for Ob
     }
 }
 
-impl<R, H> Handler for Observe<R, H>
+impl<R, H> Carrier for Observe<R, H>
 where
     R: Send + Sync + 'static,
     H: ObserverHost<R>,
 {
-    type Request = <Control as harmos_domain::OperationDeclaration>::Request;
-    type Response = ();
+    type Declaration = Control;
     type Error = Refusal;
     type StreamEndpoints = ();
 
-    async fn initialize(context: ExecutionContext) -> Result<Self, Refusal> {
+    async fn bind(context: ExecutionContext) -> Result<Self, Refusal> {
         let attachment = context.resource::<ObserverAttachment<R, H>>().map_err(Refusal::of)?;
         Ok(Self {
             attachment,
@@ -151,8 +150,9 @@ where
         })
     }
 
-    async fn run(
-        &mut self, context: ExecutionContext, control: &mut Self::Request, _endpoints: &mut Self::StreamEndpoints,
+    async fn attempt(
+        &mut self, context: ExecutionContext, control: &mut <Self::Declaration as harmos_domain::OperationDeclaration>::Request,
+        _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<crate::operations::Response<()>, Refusal> {
         if self.running.is_none() {
             if self.attachment.closing.load(Ordering::Acquire) {
