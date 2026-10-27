@@ -69,6 +69,7 @@ tokio = { workspace = true, optional = true }
 # === Dev Dependencies === #
 
 [dev-dependencies]
+harmos-operations = { workspace = true }
 # Local
 
 # Git

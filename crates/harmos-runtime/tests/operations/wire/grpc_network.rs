@@ -65,7 +65,7 @@ async fn filesystem_hash_roundtrip() {
     runtime
         .operations
         .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::storage::operations::registration(Arc::new(storage.clone())).unwrap(),
+            harmos_runtime::builtin::storage_registration(Arc::new(storage.clone())).unwrap(),
             Lanes::Open,
         ))
         .await
@@ -74,17 +74,12 @@ async fn filesystem_hash_roundtrip() {
     let attached = runtime.grpc().attach(super::settings()).await.unwrap();
     let address = format!("http://{}", attached.local_addr());
     let channel = tonic::transport::Endpoint::from_shared(address).unwrap().connect().await.unwrap();
-    let request = harmos_runtime::storage::operations::HashFileRequest {
-        source: FileSource::Local(path),
-        range: ByteRange { offset: 5, limit: Some(10) },
-    };
-    let answer = builtin_call::<harmos_runtime::storage::operations::HashFileRequest, FileHash>(
-        channel,
-        "/harmos.storage.v1.Storage/HashFile",
-        request,
-    )
-    .await
-    .unwrap();
+    let request =
+        harmos_operations::storage::HashFileRequest { source: FileSource::Local(path), range: ByteRange { offset: 5, limit: Some(10) } };
+    let answer =
+        builtin_call::<harmos_operations::storage::HashFileRequest, FileHash>(channel, "/harmos.storage.v1.Storage/HashFile", request)
+            .await
+            .unwrap();
     assert_eq!(answer.bytes_read, 10);
     assert_eq!(answer.sha256, <[u8; 32]>::from(Sha256::digest(&bytes[5..15])));
     drop(attached);

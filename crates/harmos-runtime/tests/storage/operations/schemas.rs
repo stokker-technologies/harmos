@@ -19,11 +19,11 @@ use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 
 // Third Party Imports
+use harmos_operations::storage::Query;
+use harmos_operations::storage::QueryRequest;
 use harmos_runtime::Identifier;
 use harmos_runtime::schema::Cardinality;
 use harmos_runtime::schema::graph::{Field, Kind, Schema};
-use harmos_runtime::storage::operations::Query;
-use harmos_runtime::storage::operations::QueryRequest;
 use harmos_runtime::storage::query::{QueryArrow, RowSlice, SchemaSelection, Source};
 use harmos_runtime::storage::{MutationId, SchemaInput, SchemaKey};
 
@@ -78,8 +78,8 @@ fn schema(name: &str) -> SchemaInput {
     )
     .unwrap()
 }
-fn request(f: &Fixture, name: &str) -> harmos_runtime::storage::operations::WriteSchemaRequest {
-    harmos_runtime::storage::operations::WriteSchemaRequest {
+fn request(f: &Fixture, name: &str) -> harmos_operations::storage::WriteSchemaRequest {
+    harmos_operations::storage::WriteSchemaRequest {
         mutation: MutationId { window: f.storage.mutation_window().unwrap().id, key: Identifier::new(name).unwrap() },
         schema: schema(name),
     }
@@ -89,7 +89,7 @@ async fn setup() -> Fixture {
     f.runtime
         .operations
         .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::storage::operations::registration(Arc::new(f.storage.clone())).unwrap(),
+            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
             Lanes::Open,
         ))
         .await

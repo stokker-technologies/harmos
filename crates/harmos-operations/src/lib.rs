@@ -12,7 +12,10 @@
 extern crate self as harmos;
 pub mod host;
 pub mod lifecycle;
+pub mod storage;
 pub mod streams;
+#[cfg(feature = "runtime")]
+pub type Result<T> = std::result::Result<T, Error>;
 pub use harmos_domain::*;
 #[cfg(feature = "runtime")]
 pub use harmos_sdk::{Dependencies, DependencyError, Operation, OperationContext, RegistrationBatch, Response};

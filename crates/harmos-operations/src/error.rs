@@ -11,6 +11,8 @@
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(transparent)]
+    Domain(#[from] harmos_domain::Error),
     #[error("host state access failed: {0}")]
     Access(#[source] harmos_sdk::operations::access::AccessError),
     #[error(transparent)]

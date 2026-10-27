@@ -17,7 +17,7 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 
 // Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
-use harmos_runtime::storage::operations::QueryRequest;
+use harmos_operations::storage::QueryRequest;
 use harmos_runtime::storage::query::transform::{
     Transform,
     project::{Project, Projection},

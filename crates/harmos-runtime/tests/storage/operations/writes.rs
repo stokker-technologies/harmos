@@ -19,9 +19,9 @@ use std::sync::Arc;
 // Third Party Imports
 use arrow_array::{Array, ArrayRef, RecordBatch, StringArray, StructArray, UInt64Array};
 use arrow_schema::{DataType, Field, Fields, Schema};
+use harmos_operations::storage::{WriteRecords, WriteStreams};
 use harmos_runtime::operations::StreamSettings;
 use harmos_runtime::storage::arrow::ArrowBatch;
-use harmos_runtime::storage::operations::{WriteRecords, WriteStreams};
 use harmos_runtime::storage::writes::{DataBatch, WriteReceipt};
 use harmos_runtime::{Identifier, MemorySize, Message};
 
@@ -89,7 +89,7 @@ async fn record_exchange_receipts() {
     f.runtime
         .operations
         .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::storage::operations::registration(Arc::new(f.storage.clone())).unwrap(),
+            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
             Lanes::Open,
         ))
         .await
@@ -98,7 +98,7 @@ async fn record_exchange_receipts() {
     let mut records = f
         .runtime
         .operations
-        .exchange::<WriteRecords>(harmos_runtime::storage::operations::WriteRecordsRequest { scope: None }, settings(), settings())
+        .exchange::<WriteRecords>(harmos_operations::storage::WriteRecordsRequest { scope: None }, settings(), settings())
         .unwrap();
     let first = batch(1, "bench");
     records.send_with(first.memory_size(), || Ok(first)).await.unwrap();
@@ -130,7 +130,7 @@ async fn cancelled_exchange_retains() {
     f.runtime
         .operations
         .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::storage::operations::registration(Arc::new(f.storage.clone())).unwrap(),
+            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
             Lanes::Open,
         ))
         .await
@@ -141,7 +141,7 @@ async fn cancelled_exchange_retains() {
     let mut stream = f
         .runtime
         .operations
-        .exchange::<WriteStreams>(harmos_runtime::storage::operations::WriteStreamsRequest { scope: None }, settings(), settings())
+        .exchange::<WriteStreams>(harmos_operations::storage::WriteStreamsRequest { scope: None }, settings(), settings())
         .unwrap();
     let first = batch(1, "voltage");
     stream.send(first).await.unwrap();

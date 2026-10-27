@@ -116,7 +116,7 @@ async fn runtime_baseline_walks() {
     runtime
         .operations
         .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::storage::operations::registration(Arc::new(storage.clone())).unwrap(),
+            harmos_runtime::builtin::storage_registration(Arc::new(storage.clone())).unwrap(),
             Lanes::Open,
         ))
         .await

@@ -69,6 +69,7 @@ memchr = { workspace = true, default-features = true }
 # === Dev Dependencies === #
 
 [dev-dependencies]
+harmos-operations = { workspace = true }
 # Downstream Crates Stay Path-Only So The Packaged Manifest Drops Them Instead Of Forming A Publish Cycle
 harmos-sdk = { path = "../harmos-sdk", features = ["grpc"] }
 

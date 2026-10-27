@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn typed_sizes_match() {
         use harmos_domain::model::storage::files::{ByteRange, FileCompletion, FileSource};
-        use harmos_domain::operations::storage::{ReadFile, ReadFileRequest};
+        use harmos_operations::storage::{ReadFile, ReadFileRequest};
         let request =
             ReadFileRequest { source: FileSource::Local("data/測定.bin".into()), range: ByteRange { offset: 127, limit: Some(128) } };
         assert_eq!(

@@ -74,13 +74,13 @@ async fn operation_retries_three() {
     f.runtime
         .operations
         .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::storage::operations::registration(Arc::new(f.storage.clone())).unwrap(),
+            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
             crate::storage::operations::Lanes::Open,
         ))
         .await
         .unwrap();
     let file = f.storage.produce_file(metadata("retry")).await.unwrap();
-    let request = harmos_runtime::storage::operations::ResumeFileRequest {
+    let request = harmos_operations::storage::ResumeFileRequest {
         mutation: identity(&f.storage, "resume"),
         session: file.session().unwrap().clone(),
     };
@@ -146,13 +146,13 @@ async fn budgets_never_multiply() {
     f.runtime
         .operations
         .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::storage::operations::registration(Arc::new(f.storage.clone())).unwrap(),
+            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
             crate::storage::operations::Lanes::Open,
         ))
         .await
         .unwrap();
     let file = f.storage.produce_file(metadata("retry-budget")).await.unwrap();
-    let request = harmos_runtime::storage::operations::ResumeFileRequest {
+    let request = harmos_operations::storage::ResumeFileRequest {
         mutation: identity(&f.storage, "resume"),
         session: file.session().unwrap().clone(),
     };

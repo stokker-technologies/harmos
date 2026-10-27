@@ -100,7 +100,7 @@ pub(crate) fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &
 }
 
 pub(crate) async fn saved_records<C>(storage: &StorageManager<C>, schema: &SchemaKey) -> Vec<(u64, Identifier)> {
-    use harmos_runtime::storage::operations::Query;
+    use harmos_operations::storage::Query;
     use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
         .query(harmos_runtime::storage::Query {

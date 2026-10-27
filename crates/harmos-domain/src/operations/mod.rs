@@ -10,7 +10,6 @@
 /* === Modules === */
 
 pub mod lifecycle;
-pub mod storage;
 
 mod catalog;
 mod context;

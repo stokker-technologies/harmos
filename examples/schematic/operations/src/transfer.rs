@@ -135,7 +135,7 @@ pub struct Take {
 
 #[harmos::message]
 pub struct HashRequest {
-    pub request: <harmos::domain::operations::storage::HashFile as harmos::OperationDeclaration>::Request,
+    pub request: <harmos::builtins::storage::HashFile as harmos::OperationDeclaration>::Request,
 }
 
 #[harmos::operation(
@@ -175,14 +175,14 @@ pub enum Transfers {
 
 #[harmos::catalog]
 pub enum GuestRequires {
-    HashFile(harmos::domain::operations::storage::HashFile),
+    HashFile(harmos::builtins::storage::HashFile),
 }
 
 #[harmos::catalog]
 pub enum NativeRequires {
     #[nested]
     Shared(crate::Requires),
-    HashFile(harmos::domain::operations::storage::HashFile),
+    HashFile(harmos::builtins::storage::HashFile),
 }
 
 #[harmos::catalog]

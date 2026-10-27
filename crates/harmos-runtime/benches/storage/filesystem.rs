@@ -19,8 +19,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 // Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
+use harmos_operations::storage::{CaptureFileRequest, FollowFileRequest, HashFileRequest, ReadFileRequest};
 use harmos_runtime::Identifier;
-use harmos_runtime::storage::operations::{CaptureFileRequest, FollowFileRequest, HashFileRequest, ReadFileRequest};
 use harmos_runtime::storage::{ByteRange, CaptureConsistency, FileMetadata, FileSource, FollowStart};
 use sha2::{Digest, Sha256};
 // Local Imports

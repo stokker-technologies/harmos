@@ -21,9 +21,9 @@ use std::sync::Arc;
 
 // Local Imports
 use super::{Fixture, Lanes, config};
+use harmos_operations::storage::{FollowProduction, ReadFile};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::files::FileBatch as FileBytes;
-use harmos_runtime::storage::operations::{FollowProduction, ReadFile};
 use harmos_runtime::storage::{FileMetadata, FilePhase, StagedFile};
 
 /* === Constants === */
@@ -44,13 +44,13 @@ use harmos_runtime::storage::{FileMetadata, FilePhase, StagedFile};
 
 /* === Private Functions === */
 
-async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, harmos_runtime::storage::operations::FollowProductionRequest) {
+async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, harmos_operations::storage::FollowProductionRequest) {
     let fixture = Fixture::new(config()).await;
     fixture
         .runtime
         .operations
         .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::storage::operations::registration(Arc::new(fixture.storage.clone())).unwrap(),
+            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
             Lanes::Open,
         ))
         .await
@@ -68,7 +68,7 @@ async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, harmos_runti
         .unwrap();
     producer.write_all((b"prefix").to_vec()).await.unwrap();
     let session = producer.session().unwrap();
-    let request = harmos_runtime::storage::operations::FollowProductionRequest {
+    let request = harmos_operations::storage::FollowProductionRequest {
         file: StagedFile { history: session.history.clone(), id: session.id.clone() },
         offset: 0,
     };
@@ -86,7 +86,7 @@ async fn read_file_streams() {
     let (fixture, mut producer, _) = setup().await;
     let finished = producer.finish().await.unwrap();
     fixture.storage.flush().await.unwrap();
-    let request = harmos_runtime::storage::operations::ReadFileRequest {
+    let request = harmos_operations::storage::ReadFileRequest {
         source: harmos_domain::model::storage::files::FileSource::Stored(finished),
         range: harmos_runtime::storage::files::ByteRange { offset: 0, limit: None },
     };
@@ -145,7 +145,7 @@ async fn follow_reconnect_resumes() {
 #[tokio::test]
 async fn future_offset_refused() {
     let (fixture, mut producer, request) = setup().await;
-    let beyond = harmos_runtime::storage::operations::FollowProductionRequest { offset: 7, ..request };
+    let beyond = harmos_operations::storage::FollowProductionRequest { offset: 7, ..request };
     let (sender, mut receiver) = harmos_runtime::operations::stream::<FileBytes>(limits()).unwrap();
     let result = fixture.runtime.operations.submit_endpoints::<FollowProduction, _>(beyond, sender);
     if let Ok(instance) = result {

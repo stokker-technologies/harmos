@@ -14,11 +14,11 @@
 /* === Imports === */
 
 use harmos_domain::model::storage::*;
-use harmos_domain::operations::storage::{
+use harmos_domain::{MemorySize, Message};
+use harmos_operations::storage::{
     CaptureFileRequest, FollowFileRequest, FollowProductionRequest, HashFileRequest, ListDirectoryRequest, ReadFileRequest,
     WatchDirectoryRequest,
 };
-use harmos_domain::{MemorySize, Message};
 use std::path::PathBuf;
 
 /* === Constants === */

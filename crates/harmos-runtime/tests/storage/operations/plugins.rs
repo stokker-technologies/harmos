@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 // Local Imports
 use super::{Fixture, Lanes, config};
+use harmos_operations::storage::{Query, WriteRecords};
 use harmos_runtime::Aggregate;
 use harmos_runtime::Message;
 use harmos_runtime::operations::{OperationDeclaration, OperationManager, WireDeclaration};
@@ -28,7 +29,6 @@ use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
-use harmos_runtime::storage::operations::{Query, WriteRecords};
 use harmos_runtime::storage::query::transform::{
     Transform,
     aggregate::{Aggregate as AggregateTransform, Measure},
@@ -120,8 +120,8 @@ fn plugin(id: &str, required: Vec<Required>) -> PluginDefinition {
     }
 }
 
-fn query(fixture: &Fixture, schema: SchemaKey) -> harmos_runtime::storage::operations::QueryRequest {
-    harmos_runtime::storage::operations::QueryRequest {
+fn query(fixture: &Fixture, schema: SchemaKey) -> harmos_operations::storage::QueryRequest {
+    harmos_operations::storage::QueryRequest {
         at: fixture.storage.cursor_saved(),
         source: Source::Records(RecordSelection { schema, scope: None, item: None, source_start: None, source_end: None }),
         transforms: vec![Transform::Aggregate(AggregateTransform {
@@ -162,7 +162,7 @@ async fn write_grants_enforced() {
         .runtime
         .operations
         .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::storage::operations::registration(Arc::new(fixture.storage.clone())).unwrap(),
+            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
             Lanes::Open,
         ))
         .await
@@ -182,7 +182,7 @@ async fn write_grants_enforced() {
     super::writes::seed(&fixture).await;
     let mut exchange = writer
         .exchange::<WriteRecords>(
-            harmos_runtime::storage::operations::WriteRecordsRequest { scope: None },
+            harmos_operations::storage::WriteRecordsRequest { scope: None },
             super::writes::settings(),
             super::writes::settings(),
         )
@@ -211,7 +211,7 @@ async fn write_grants_enforced() {
     assert_eq!(fixture.storage.cursor_accepted(), *cursor);
     assert!(matches!(
         bystander.exchange::<WriteRecords>(
-            harmos_runtime::storage::operations::WriteRecordsRequest { scope: None },
+            harmos_operations::storage::WriteRecordsRequest { scope: None },
             super::writes::settings(),
             super::writes::settings()
         ),
@@ -230,7 +230,7 @@ async fn query_grants_enforced() {
         .runtime
         .operations
         .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::storage::operations::registration(Arc::new(fixture.storage.clone())).unwrap(),
+            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
             Lanes::Open,
         ))
         .await

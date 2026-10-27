@@ -23,8 +23,8 @@ use arrow_array::{StringArray, StructArray, UInt64Array};
 // Local Imports
 use super::super::{Bank, Data, Ledger, Recovery, catalog, history};
 use super::{Fixture, Lanes, config};
-use harmos_runtime::storage::operations::Query;
-use harmos_runtime::storage::operations::QueryRequest as Request;
+use harmos_operations::storage::Query;
+use harmos_operations::storage::QueryRequest as Request;
 use harmos_runtime::storage::query::scalar::ScalarValue;
 use harmos_runtime::storage::query::transform::{
     Transform,
@@ -119,7 +119,7 @@ async fn query_operation_batches() {
         .runtime
         .operations
         .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::storage::operations::registration(Arc::new(fixture.storage.clone())).unwrap(),
+            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
             Lanes::Open,
         ))
         .await

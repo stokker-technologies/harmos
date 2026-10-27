@@ -129,7 +129,7 @@ impl Fixture {
         let bytes = b"host filesystem through the carrier";
         std::fs::write(&path, bytes).unwrap();
         let request = schematic_operations::transfer::HashRequest {
-            request: harmos_runtime::storage::operations::HashFileRequest {
+            request: harmos_operations::storage::HashFileRequest {
                 source: FileSource::Local(path),
                 range: ByteRange { offset: 5, limit: Some(10) },
             },
@@ -224,7 +224,7 @@ async fn runtime() -> (Runtime<Model>, StorageManager, tempfile::TempDir, Durati
     runtime
         .operations
         .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::storage::operations::registration(Arc::new(storage.clone())).unwrap(),
+            harmos_operations::storage::registration(Arc::new(storage.clone())).unwrap(),
             Lanes::Open,
         ))
         .await

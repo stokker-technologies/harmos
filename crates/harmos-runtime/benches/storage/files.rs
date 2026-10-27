@@ -17,8 +17,8 @@ use std::time::{Duration, Instant};
 
 // Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
+use harmos_operations::storage::ReadFileRequest;
 use harmos_runtime::Identifier;
-use harmos_runtime::storage::operations::ReadFileRequest;
 use harmos_runtime::storage::{ByteRange, FileMetadata, FileReference, FileSource, StorageManager};
 use sha2::{Digest, Sha256};
 

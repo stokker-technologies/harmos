@@ -34,7 +34,7 @@ use schematic_domain::model::schematic::progress::AnalysisProgress;
 
 pub type Publication = Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>;
 pub type Publisher = Arc<dyn Fn(harmos::OperationContext, AnalysisProgress) -> Publication + Send + Sync>;
-pub type HashRequest = <harmos::domain::operations::storage::HashFile as harmos::OperationDeclaration>::Request;
+pub type HashRequest = <harmos::builtins::storage::HashFile as harmos::OperationDeclaration>::Request;
 pub type HashResult = Pin<Box<dyn Future<Output = Result<harmos::domain::model::storage::FileHash, Error>> + Send>>;
 pub type Hasher = Arc<dyn Fn(harmos::OperationContext, HashRequest) -> HashResult + Send + Sync>;
 

@@ -19,7 +19,7 @@ version = { workspace = true }
 
 [features]
 default = []
-runtime = ["dep:harmos-sdk", "dep:thiserror", "dep:tokio", "dep:harmos-storage", "dep:serde", "dep:serde_json"]
+runtime = ["dep:harmos-sdk", "dep:thiserror", "dep:tokio", "dep:harmos-storage", "dep:serde", "dep:serde_json", "dep:tracing"]
 
 # === Dependencies === #
 
@@ -29,8 +29,9 @@ harmos-storage = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"], optional = true }
 serde_json = { workspace = true, optional = true }
 harmos-sdk = { workspace = true, features = ["streaming"], optional = true }
+tracing = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
-tokio = { workspace = true, features = ["sync"], optional = true }
+tokio = { workspace = true, features = ["sync", "macros", "time"], optional = true }
 
 # === Build Dependencies === #
 

@@ -51,8 +51,8 @@ fn metadata(id: &str) -> FileMetadata {
         expected_sha256: None,
     }
 }
-fn request(f: &Fixture, id: &str) -> harmos_runtime::storage::operations::DeleteFileRequest {
-    harmos_runtime::storage::operations::DeleteFileRequest {
+fn request(f: &Fixture, id: &str) -> harmos_operations::storage::DeleteFileRequest {
+    harmos_operations::storage::DeleteFileRequest {
         mutation: MutationId { window: f.storage.mutation_window().unwrap().id, key: Identifier::new("delete").unwrap() },
         file: StagedFile { history: f.data.history.clone(), id: Identifier::new(id).unwrap() },
     }
