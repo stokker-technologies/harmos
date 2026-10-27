@@ -73,6 +73,10 @@ all = "warn"
 
 # === Profiles === #
 
+# Keep Source Locations Without Shipping Full Dependency Type Debug Information.
+[profile.dev]
+debug = "line-tables-only"
+
 # === Patches === #
 
 # === Other === #

@@ -87,6 +87,10 @@ harmos-guest = { path = "../../..", default-features = false, features = ["deriv
 
 # === Profiles === #
 
+# Keep Source Locations Without Shipping Full Dependency Type Debug Information.
+[profile.dev]
+debug = "line-tables-only"
+
 # === Patches === #
 
 # === Other === #

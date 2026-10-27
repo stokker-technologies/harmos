@@ -7,7 +7,7 @@
  * ***
  */
 
-// TODO: Describe this module's responsibility.
+// Verify Built-In Catalog Identity And Reserved Lifecycle Contracts.
 
 /* === Modules === */
 
