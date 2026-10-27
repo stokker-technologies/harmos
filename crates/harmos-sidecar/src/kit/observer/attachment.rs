@@ -31,7 +31,7 @@ use tokio::sync::oneshot;
 use super::{Activity, Instance, ObserverError, ObserverHost};
 use crate::{Refusal, Supervisor};
 use harmos_domain::observers::Control;
-use harmos_sdk::operations::{Dependencies, Operation, OperationContext, RegistrationBatch, ServingError, WireTable};
+use harmos_sdk::operations::{Dependencies, Handler, OperationContext, RegistrationBatch, ServingError, WireTable};
 use harmos_sdk::plugin::Attachment;
 
 /* === Constants === */
@@ -84,7 +84,12 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
             }
             selected.insert(instance.id(), instance);
         }
-        Ok(Arc::new(Self { resources, declarations, instances: selected, closing: AtomicBool::new(false) }))
+        Ok(Arc::new(Self {
+            resources,
+            declarations,
+            instances: selected,
+            closing: AtomicBool::new(false),
+        }))
     }
 
     pub fn from_catalog<C>(resources: Arc<R>, grants: &[harmos_domain::inventory::publications::Entry]) -> Result<Arc<Self>, Refusal>
@@ -127,7 +132,7 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> Attachment<Supervisor> for Ob
     }
 }
 
-impl<R, H> Operation for Observe<R, H>
+impl<R, H> Handler for Observe<R, H>
 where
     R: Send + Sync + 'static,
     H: ObserverHost<R>,
@@ -135,15 +140,19 @@ where
     type Request = <Control as harmos_domain::OperationDeclaration>::Request;
     type Response = ();
     type Error = Refusal;
-    type Endpoints = ();
+    type StreamEndpoints = ();
 
     async fn initialize(context: OperationContext) -> Result<Self, Refusal> {
-        let attachment = context.dependency::<ObserverAttachment<R, H>>().map_err(Refusal::of)?;
-        Ok(Self { attachment, running: None, activity: None })
+        let attachment = context.resource::<ObserverAttachment<R, H>>().map_err(Refusal::of)?;
+        Ok(Self {
+            attachment,
+            running: None,
+            activity: None,
+        })
     }
 
     async fn run(
-        &mut self, context: OperationContext, control: &mut Self::Request, _endpoints: &mut Self::Endpoints,
+        &mut self, context: OperationContext, control: &mut Self::Request, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<crate::operations::Response<()>, Refusal> {
         if self.running.is_none() {
             if self.attachment.closing.load(Ordering::Acquire) {
@@ -153,7 +162,7 @@ where
             self.running = Some(Running::spawn(
                 Arc::clone(&self.attachment),
                 name,
-                context.dependency::<Supervisor>().map_err(Refusal::of)?.as_ref().clone(),
+                context.resource::<Supervisor>().map_err(Refusal::of)?.as_ref().clone(),
             )?);
         }
         let running = self.running.as_mut().expect("spawned activation");
@@ -239,7 +248,11 @@ impl Running {
             let _ = returning.send(activity);
         })
         .map_err(Refusal::of)?;
-        Ok(Self { stop: Some(stop), failed: Some(failed), returned: Some(returned) })
+        Ok(Self {
+            stop: Some(stop),
+            failed: Some(failed),
+            returned: Some(returned),
+        })
     }
 
     // Interrupt the activation and take its activity back.

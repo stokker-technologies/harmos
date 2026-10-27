@@ -71,13 +71,19 @@ impl From<PublishError> for harmos_domain::Refusal {
 
 impl<P> Clone for Publisher<P> {
     fn clone(&self) -> Self {
-        Self { supervisor: self.supervisor.clone(), _plugin: PhantomData }
+        Self {
+            supervisor: self.supervisor.clone(),
+            _plugin: PhantomData,
+        }
     }
 }
 
 impl Supervisor {
     pub fn publisher<P: Declared>(&self) -> Publisher<P> {
-        Publisher { supervisor: self.clone(), _plugin: PhantomData }
+        Publisher {
+            supervisor: self.clone(),
+            _plugin: PhantomData,
+        }
     }
 }
 
@@ -103,7 +109,12 @@ impl<P: Declared> Publisher<P> {
     }
 
     pub fn batch<S: StreamSpec>(&self) -> Batch<S> {
-        Batch { rows: Vec::new(), stamps: Vec::new(), latest: None, clock: self.supervisor.clock() }
+        Batch {
+            rows: Vec::new(),
+            stamps: Vec::new(),
+            latest: None,
+            clock: self.supervisor.clock(),
+        }
     }
 
     pub async fn publish_batch_on<S: StreamSpec>(&self, batch: &Batch<S>) -> Result<(), PublishError>
@@ -114,7 +125,7 @@ impl<P: Declared> Publisher<P> {
     }
 
     // Publish rows in order with contiguous sequences and their own stamps,
-    // as one `host_publish` call where they fit (at most one window of
+    // as one `host.publish` call where they fit (at most one window of
     // rows). Each call answers once the host's ingest has taken in every row
     // published before it on the stream, so no row is dropped unread. Rows
     // before a refused row stay published.
@@ -221,7 +232,12 @@ mod tests {
 
     #[test]
     fn clock_never_regresses() {
-        let mut batch = Batch::<Samples> { rows: Vec::new(), stamps: Vec::new(), latest: None, clock: || None };
+        let mut batch = Batch::<Samples> {
+            rows: Vec::new(),
+            stamps: Vec::new(),
+            latest: None,
+            clock: || None,
+        };
         batch.push(0);
         batch.clock = || Some(100);
         batch.push(1);

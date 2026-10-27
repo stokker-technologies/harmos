@@ -209,7 +209,10 @@ impl Frame {
 
     #[cfg(feature = "kit")]
     pub(crate) fn exiting(reason: String) -> Self {
-        Self::Push { method: Self::EXITING.to_owned(), params: reason.encode().into() }
+        Self::Push {
+            method: Self::EXITING.to_owned(),
+            params: reason.encode().into(),
+        }
     }
 
     pub fn exiting_reason(params: &[u8]) -> Option<String> {
@@ -339,7 +342,11 @@ mod tests {
                 generation: u64::MAX,
                 payload: vec![255; size],
             };
-            let prepare = Frame::Call { id: u64::MAX, method: WIRE_METHOD.into(), params: prepare.encode().unwrap().into() };
+            let prepare = Frame::Call {
+                id: u64::MAX,
+                method: WIRE_METHOD.into(),
+                params: prepare.encode().unwrap().into(),
+            };
             let child = WireChildCall {
                 context: [255; 32],
                 generation_context: Some([255; 32]),
@@ -350,7 +357,11 @@ mod tests {
                 payload: vec![255; size],
                 submit: true,
             };
-            let child = Frame::Call { id: u64::MAX, method: CHILD_METHOD.into(), params: child.encode().unwrap().into() };
+            let child = Frame::Call {
+                id: u64::MAX,
+                method: CHILD_METHOD.into(),
+                params: child.encode().unwrap().into(),
+            };
             assert_eq!(Frame::request_payload_encoded_len(operation, size), prepare.encoded_len().max(child.encoded_len()));
         }
         assert_eq!(Frame::request_payload_encoded_len("op", usize::MAX), usize::MAX);
@@ -359,9 +370,11 @@ mod tests {
     #[test]
     fn typed_sizes_match() {
         use harmos_domain::model::storage::files::{ByteRange, FileCompletion, FileSource};
-        use harmos_operations::storage::{ReadFile, ReadFileRequest};
-        let request =
-            ReadFileRequest { source: FileSource::Local("data/測定.bin".into()), range: ByteRange { offset: 127, limit: Some(128) } };
+        use harmos_operations::storage::ReadFile;
+        let request = ReadFile {
+            source: FileSource::Local("data/測定.bin".into()),
+            range: ByteRange { offset: 127, limit: Some(128) },
+        };
         assert_eq!(
             Frame::request_encoded_len::<ReadFile>(&request),
             Frame::request_payload_encoded_len(ReadFile::ID, request.encode().len())
@@ -376,7 +389,10 @@ mod tests {
 
     #[test]
     fn child_growth_matches() {
-        let values = vec![CallValue { key: "context.測定".into(), payload: vec![255; 16384] }];
+        let values = vec![CallValue {
+            key: "context.測定".into(),
+            payload: vec![255; 16384],
+        }];
         for generation in [false, true] {
             let empty = WireChildCall::payload_encoded_len("op", u64::MAX, 0, generation, &values).unwrap();
             for size in [0, 127, 128, 16383, 16384] {
@@ -390,7 +406,11 @@ mod tests {
                     payload: vec![0; size],
                     submit: false,
                 };
-                let frame = Frame::Call { id: u64::MAX, method: CHILD_METHOD.into(), params: call.encode().unwrap().into() };
+                let frame = Frame::Call {
+                    id: u64::MAX,
+                    method: CHILD_METHOD.into(),
+                    params: call.encode().unwrap().into(),
+                };
                 assert_eq!(Frame::child_payload_encoded_len("op", u64::MAX, size, generation, &values), frame.encoded_len());
                 assert_eq!(Frame::child_encoded_from_empty(empty, size), frame.encoded_len());
             }
@@ -419,7 +439,11 @@ mod tests {
             payload: vec![0; low],
             submit: true,
         };
-        let frame = Frame::Call { id: u64::MAX, method: CHILD_METHOD.into(), params: call.encode().unwrap().into() };
+        let frame = Frame::Call {
+            id: u64::MAX,
+            method: CHILD_METHOD.into(),
+            params: call.encode().unwrap().into(),
+        };
         assert_eq!(frame.encoded_len(), Frame::LIMIT);
         assert!(frame.fits());
         let packet = crate::transport::Packet::Frame(frame);
@@ -427,7 +451,11 @@ mod tests {
         assert_eq!(packet.encode().unwrap().len(), Frame::LIMIT + 4);
         drop(packet);
         call.payload.push(0);
-        let frame = Frame::Call { id: u64::MAX, method: CHILD_METHOD.into(), params: call.encode().unwrap().into() };
+        let frame = Frame::Call {
+            id: u64::MAX,
+            method: CHILD_METHOD.into(),
+            params: call.encode().unwrap().into(),
+        };
         assert_eq!(frame.encoded_len(), Frame::LIMIT + 1);
         assert!(!frame.fits());
         assert!(crate::transport::Packet::Frame(frame).encoded_len().is_err());

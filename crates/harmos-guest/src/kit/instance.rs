@@ -87,7 +87,11 @@ impl Context {
 
     fn control(&self, instance: Id, action: WireChildAction) -> Result<Vec<u8>, OperationRefusal> {
         let context = self.context.ok_or_else(|| OperationRefusal::new(UNKNOWN, "no guest attempt context"))?;
-        let control = WireChildControl { context, instance: instance.value(), action };
+        let control = WireChildControl {
+            context,
+            instance: instance.value(),
+            action,
+        };
         control.encode().map_err(OperationRefusal::of)
     }
 
@@ -105,6 +109,34 @@ impl Context {
         wit_bindgen::spawn_local(async move {
             let _ = host.child(payload).await;
         });
+    }
+}
+
+impl harmos_sdk::operations::Caller for Context {
+    fn call(
+        &self, target: harmos_sdk::operations::Target, request: Box<dyn std::any::Any + Send>,
+    ) -> harmos_sdk::operations::CallFuture<'_> {
+        Box::pin(async move {
+            let result = async move {
+                let context = self.calling_context()?;
+                let assigned = self.assignments.resolve_target(&target).map_err(OperationRefusal::of)?;
+                let payload = (target.encode)(request.as_ref()).ok_or_else(|| OperationRefusal::new(UNKNOWN, "callee payload differs"))?;
+                let command = WireChildCall {
+                    context,
+                    generation_context: self.generation_context,
+                    values: self.call.portable(),
+                    operation: assigned.operation.clone(),
+                    fingerprint: assigned.fingerprint,
+                    generation: assigned.generation,
+                    payload,
+                    submit: false,
+                };
+                let bytes = self.child(command.encode().map_err(OperationRefusal::of)?).await?;
+                (target.decode)(&bytes).map_err(OperationRefusal::of)
+            }
+            .await;
+            result.map_err(|error| harmos_sdk::operations::InvocationError::failed(target.id, error))
+        })
     }
 }
 
@@ -184,7 +216,7 @@ impl Host for Context {
         S::Row: harmos_domain::Message,
     {
         use harmos_domain::Message;
-        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::PublishRequest {
+        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::Publish {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: None,
@@ -213,7 +245,12 @@ impl Host for Context {
     async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<OperationInstance<O>, OperationRefusal> {
         let bytes = self.child_call::<O>(&request, true).await?;
         let id = u64::decode(&bytes).map_err(OperationRefusal::of)?;
-        Ok(OperationInstance { host: self.clone(), id: Id::new(id), released: false, _operation: PhantomData })
+        Ok(OperationInstance {
+            host: self.clone(),
+            id: Id::new(id),
+            released: false,
+            _operation: PhantomData,
+        })
     }
 
     async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<Response<O::Response>, OperationRefusal> {
