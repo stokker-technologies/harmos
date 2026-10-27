@@ -20,4 +20,5 @@
 - [x] 2.1 Run format:rust and focused harmos-guest, harmos-macros and harmos-sdk tests.
 - [x] 2.2 Build the Wasm sandbox and schematic guest using project tasks; check schematic consumer crates.
 - [x] 2.3 Run the affected runtime guest operation stories against the refreshed components.
-- [ ] 2.4 Commit closed steps locally with the requested trailer; no push or PR.
+- [x] 2.4 Commit closed steps locally with the requested trailer; no push or PR.
+- [ ] 2.5 Retire the change with `stkr specification finish operation-contract` after Hub disambiguates change/spec validation.
