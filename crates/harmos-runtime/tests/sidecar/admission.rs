@@ -311,12 +311,12 @@ async fn restart_closes_admission() {
     // The Restarted Generation Registers A Changed Catalog And Is Refused
     marks.mark("catalog-changed");
     marks.mark("crash");
-    service_status(runtime.operations.watch_residents(), NAME, |value| matches!(value, ServiceStatus::Inactive { .. })).await;
+    let status = service_status(runtime.operations.watch_residents(), NAME, |value| matches!(value, ServiceStatus::Inactive { .. })).await;
     assert!(!*ready.borrow());
     assert!(registrations.borrow().is_none());
     assert!(matches!(calls.operations(), Err(SidecarError::Unavailable)));
     assert_eq!(marks.count("initialized"), 1);
-    assert_eq!(marks.count("registered"), 2);
+    assert_eq!(marks.count("registered"), 2, "{status:?}");
     assert!(matches!(runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 }
 

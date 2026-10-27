@@ -35,6 +35,14 @@ use super::*;
 /* === Implementations === */
 
 impl Manager {
+    pub(in crate::operations) fn capture_routed(&self, id: &str, owner: &str, origin: &Origin) -> Result<Arc<Entry>> {
+        if origin.has_lifecycle_loan() {
+            let state = self.registry.state.lock().expect("operation registry lock is healthy");
+            return state.select(id, Some(owner)).cloned();
+        }
+        self.capture_provider(id, Some(owner))
+    }
+
     pub(in crate::operations) fn entry(&self, id: &str) -> Result<Arc<Entry>> {
         let entry = self.capture_entry(id)?;
         entry.available()?;

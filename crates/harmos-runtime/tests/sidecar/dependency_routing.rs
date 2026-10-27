@@ -137,10 +137,10 @@ async fn notice_wire_order() {
         .unwrap();
     let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
     lifecycle.publication_start = Some(PublicationStart::Commit);
-    lifecycle.prepare_publication().await.unwrap();
     lifecycle.project_publications = false;
     lifecycle.dynamic = true;
     let notices = lifecycle.notices.clone();
+    lifecycle.prepare_publication().await.unwrap();
     let mut manager = PluginManager::new(candidate(&lifecycle, true, false, true, false)).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     runtime
@@ -196,10 +196,10 @@ async fn shutdown_delivery() {
         .unwrap();
     let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
     lifecycle.publication_start = Some(PublicationStart::Commit);
-    lifecycle.prepare_publication().await.unwrap();
     lifecycle.project_publications = false;
     lifecycle.dynamic = true;
     lifecycle.notices = notices.clone();
+    lifecycle.prepare_publication().await.unwrap();
     let mut manager = PluginManager::new(candidate(&lifecycle, true, false, true, true)).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let generation = lifecycle.previous_native.as_ref().unwrap().scope().unwrap().generation().get();

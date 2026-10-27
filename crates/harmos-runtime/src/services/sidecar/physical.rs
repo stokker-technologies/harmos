@@ -186,6 +186,8 @@ where
         };
         let (outcome, mut finished) = watch::channel(None);
         let (end, ending) = watch::channel(false);
+        // Clear The Previous Attempt's Refusal Before The New Task Is Scheduled.
+        resident.calls.begin();
         let connection = Connection { supervised: resident, outcome, end: ending };
         let lease = operations.start_service::<A>(Once::new(definition, connection), true, false)?;
         let running: Running = Box::pin(async move {

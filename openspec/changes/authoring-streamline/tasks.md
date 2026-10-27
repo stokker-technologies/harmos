@@ -182,4 +182,3 @@ impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
 - [ ] 2.2 Orchestrator: push the combined candidate, verify its remote revision, start the default all-required-platform CI simulation and hosted checks, and create the ready PR into dev with native auto-merge.
 - [ ] 2.3 Orchestrator: resolve required proof failures and record actual validation outcomes without treating unavailable executors as passed.
 - [ ] 2.4 Orchestrator: finish and archive the specification only after all required tasks are complete.
-

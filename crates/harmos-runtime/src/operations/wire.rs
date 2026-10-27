@@ -156,7 +156,7 @@ impl Manager {
             reason: "routing requires an owner-qualified operation identity",
         })?;
         let (owner, local) = qualified.as_str().split_once('.').expect("validated qualified identity");
-        let entry = self.capture_provider(local, Some(owner)).map_err(|error| match error {
+        let entry = self.capture_routed(local, owner, &origin).map_err(|error| match error {
             Error::NotRegistered { .. } => Error::NotRegistered { domain: "operation", name: operation.to_owned() },
             error => error,
         })?;
@@ -436,3 +436,86 @@ pub(super) fn budget(timeout: Duration, submitted: tokio::time::Instant) -> Resu
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::RegistrationExt;
+
+    #[crate::lanes]
+    enum Lanes {
+        #[default]
+        Default,
+    }
+
+    struct Model;
+    impl crate::Application for Model {
+        type Lanes = Lanes;
+        type State = ();
+        type Transaction = crate::state::Never;
+        type Record = ();
+        type Streams = ();
+        type Resources = ();
+    }
+
+    struct Probe;
+    impl OperationDeclaration for Probe {
+        type Request = u64;
+        type Response = u64;
+        type Input = super::super::NoStream;
+        type Output = super::super::NoStream;
+        const ID: &'static str = "fenced_probe";
+        const POLICY: crate::OperationPolicy = crate::OperationPolicy {
+            timeout: Duration::from_secs(1),
+            attempt_timeout: Duration::from_secs(1),
+            retries: crate::RetryPolicy::Never,
+        };
+    }
+
+    impl harmos_sdk::Operation for Probe {
+        type Request = u64;
+        type Response = u64;
+        type Error = std::io::Error;
+        type Endpoints = ();
+
+        async fn initialize(_: harmos_sdk::OperationContext) -> std::io::Result<Self> {
+            Ok(Self)
+        }
+
+        async fn run(&mut self, _: harmos_sdk::OperationContext, request: &mut u64, _: &mut ()) -> std::io::Result<crate::Response<u64>> {
+            Ok((*request).into())
+        }
+    }
+
+    #[tokio::test]
+    async fn assigned_identity_fences_before_decoding() {
+        let builder = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog());
+        let runtime = builder.runtime().await.unwrap();
+        let batch = harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).operation::<Probe>();
+        runtime.register(batch.clone().defaults()).await.unwrap();
+        let entry = runtime.operations.entry(Probe::ID).unwrap();
+        let fingerprint = entry.declared().fingerprint.0;
+        let generation = entry.generation.value();
+        let mut wrong = fingerprint;
+        wrong[0] ^= 1;
+
+        let submit = |fingerprint, generation| {
+            runtime.operations.submit_encoded_at_as(
+                "host.fenced_probe",
+                Vec::new(),
+                Source::Host,
+                None,
+                executor::now(),
+                Some((fingerprint, generation)),
+            )
+        };
+        assert!(matches!(submit(wrong, generation), Err(Error::InvalidInput { field: "encoded operation identity", .. })));
+        assert!(matches!(submit(fingerprint, generation), Err(Error::InvalidInput { field: "operation preparation bytes", .. })));
+
+        let id = crate::QualifiedId::parse("host.fenced_probe").unwrap();
+        runtime.unregister(&id).await.unwrap();
+        runtime.register(batch.defaults()).await.unwrap();
+        assert!(matches!(submit(fingerprint, generation), Err(Error::InvalidInput { field: "encoded operation identity", .. })));
+        runtime.stop().await.unwrap();
+    }
+}

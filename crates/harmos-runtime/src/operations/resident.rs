@@ -719,7 +719,10 @@ impl Registry {
         let ids: std::collections::BTreeSet<_> = state
             .definitions
             .iter()
-            .filter(|(_, entry)| entry.plugin.as_ref().is_some_and(|owner| owner.same_activation(scope)))
+            .filter(|(_, entry)| {
+                // Observer Controls Retain Their Publication Lease Until Carrier Cleanup.
+                entry.definition.kind() == Kind::Service && entry.plugin.as_ref().is_some_and(|owner| owner.same_activation(scope))
+            })
             .map(|(id, entry)| {
                 entry.closing.store(true, Ordering::Release);
                 id.clone()
