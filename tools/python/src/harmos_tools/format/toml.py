@@ -18,8 +18,8 @@ import sys
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
+from ..source import files
 
 # Type Checking Imports
 
@@ -39,15 +39,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     check = parser.parse_args().check
-    listing = subprocess.run(
-        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.toml"],
-        check=True,
-        capture_output=True,
-        text=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        stdin=sys.stdin,
-    ).stdout
-    paths = sorted({name for name in listing.split("\0") if name and Path(name).is_file() and not _rendered(Path(name))})
+    paths = [name for name in files(Path.cwd(), "*.toml") if not _rendered(Path(name))]
     command = ["taplo", "fmt", "--option", "column_width=140"]
     if check:
         command.append("--check")

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:f7ff5ab6ebe43264c2a1777eb75fd76d32c102f5c9169ef10c32860141ed0118
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:16fcbb6016289cf032e5fe4e21c5aacd608b84e93322deaf65dd5705abc19f69
 # === Settings === #
 
 [settings]
@@ -62,7 +62,7 @@ depends = [
 [tasks."format:python"]
 description = "Format Python"
 usage = 'flag "--check"'
-run = 'uv run --locked --project tools/python ruff format "tools/python"{% if usage.check %} --check{% endif %}'
+run = 'uv run --locked --project tools/python ruff format --force-exclude --exclude "**/.stkr/templates/**" "tools/python"{% if usage.check %} --check{% endif %}'
 
 [tasks."format:rust"]
 description = "Format Rust"
@@ -72,8 +72,7 @@ run = "cargo fmt --all{% if usage.check %} --check{% endif %}"
 [tasks."format:toml"]
 description = "Format TOML"
 usage = 'flag "--check"'
-run = "git ls-files -z -- '*.toml' | xargs -0 taplo fmt --option column_width=140{% if usage.check %} --check{% endif %}"
-run_windows = """pwsh -NoProfile -Command "taplo fmt --option column_width=140{% if usage.check %} --check{% endif %} -- @(git ls-files -- '*.toml')""""
+run = "uv run --locked --project tools/python python -m project_tools.format.toml{% if usage.check %} --check{% endif %}"
 
 # === Lint === #
 
@@ -83,7 +82,10 @@ depends = ["lint:python"]
 
 [tasks."lint:python"]
 description = "Lint Python"
-run = ['uv run --locked --project tools/python ruff check "tools/python"', 'uv run --locked --project tools/python ty check "tools/python"']
+run = [
+  'uv run --locked --project tools/python ruff check --force-exclude --exclude "**/.stkr/templates/**" "tools/python"',
+  'uv run --locked --project tools/python ty check --exclude "**/.stkr/templates/**" "tools/python"',
+]
 
 # === Check === #
 
