@@ -1,8 +1,13 @@
-## ADDED Requirements
+# Consumer Crate Layout Specification
+
+## Purpose
+Define consumer crate ownership and vertical operation organization.
+
+## Requirements
 
 ### Requirement: Concern-Based Operations Crate
 
-Products using the agreed vertical authoring model SHALL place operations in <product>-operations, organized directly by concern. lib.rs SHALL export concern catalogs. Each operation file SHALL colocate its messages, portable definition and runtime-gated resource fields and Operation impl. The crate SHALL NOT add a redundant operations/ directory or place execution code in <product>-domain.
+Products using the agreed vertical authoring model SHALL place operations in <product>-operations, organized directly by concern. lib.rs SHALL export concern catalogs. Each operation file SHALL colocate its messages, portable definition and declared resources and a runtime-gated Operation impl in a separate complete runtime division. The crate SHALL NOT add a redundant operations/ directory or place execution code in <product>-domain.
 
 #### Scenario: Operation Organization
 

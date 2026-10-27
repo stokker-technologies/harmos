@@ -1,4 +1,9 @@
-## ADDED Requirements
+# Message Authoring Specification
+
+## Purpose
+Define the message authoring contract for Harmos consumers.
+
+## Requirements
 
 ### Requirement: Message Identity
 

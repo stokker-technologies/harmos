@@ -1,4 +1,9 @@
-## ADDED Requirements
+# Operation Authoring Specification
+
+## Purpose
+Define operation policies, portable request contracts, and invocation behavior.
+
+## Requirements
 
 ### Requirement: Model-Owned Operation Policy
 
@@ -25,12 +30,12 @@ Harmos SHALL explicitly export OperationPolicy, RetryPolicy, RestartPolicy, Back
 
 ### Requirement: Cohesive Operation Authoring
 
-Operation SHALL name the local executable implementation with separate portable request and response types. Its struct macro SHALL support the flat feature-gated layout specified in executable-operation. Payloads SHALL retain ordinary derives, standalone message authoring and explicit custom-codec support.
+The operation struct SHALL be its portable request and SHALL declare its response contract. Its macro SHALL support the two-division feature-gated layout specified in executable-operation. Payloads SHALL retain ordinary derives and explicit custom-codec support.
 
 #### Scenario: Local Implementation State
 
-- **WHEN** an operation implementation retains a device or client handle
-- **THEN** that live state is not treated as a portable request field merely because the type declares an operation.
+- **WHEN** an operation uses a device or client handle
+- **THEN** the handle is declared in resources and obtained through Context, rather than serialized as a request field.
 
 #### Scenario: Custom Message Implementations
 
@@ -57,7 +62,7 @@ Operation contracts SHALL use deterministic fingerprints instead of manually mai
 
 ### Requirement: Invocation Builder
 
-The execution surface SHALL provide operation(request).retry(policy).run() and start(). Preparation SHALL be inert; terminal methods SHALL consume the builder and validate and snapshot per-invocation policy at admission. Handler behavior SHALL use an explicit Operation implementation independently of portable payload declarations.
+The execution surface SHALL provide operation(request).retry(policy).run() and start(). Preparation SHALL be inert; terminal methods SHALL consume the builder and validate and snapshot per-invocation policy at admission. Authored behavior SHALL use a consuming Operation implementation for its declared request.
 
 #### Scenario: Run And Start
 

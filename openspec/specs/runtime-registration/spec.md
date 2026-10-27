@@ -1,4 +1,9 @@
-## ADDED Requirements
+# Runtime Registration Specification
+
+## Purpose
+Define the runtime registration contract for Harmos consumers.
+
+## Requirements
 
 ### Requirement: Consistent Registration Verbs
 
