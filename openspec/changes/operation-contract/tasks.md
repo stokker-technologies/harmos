@@ -21,7 +21,7 @@
 - [x] 2.2 Build the Wasm sandbox and schematic guest using project tasks; check schematic consumer crates.
 - [x] 2.3 Run the affected runtime guest operation stories against the refreshed components.
 - [x] 2.4 Commit closed steps locally with the requested trailer; no push or PR.
-- [ ] 2.5 Retire the change with `stkr specification finish operation-contract` after Hub disambiguates change/spec validation.
+- [ ] 2.5 Retire with `stkr specification finish operation-contract` after Hub passes `--type change` to OpenSpec validation; the current command refuses the name shared by this change and its main spec.
 
 ## 3. Workspace Clean Break
 
@@ -31,7 +31,7 @@
 - [x] 3.1 Audit every remaining lifecycle-shaped implementation; migrate runtime test support, tests, benches and sidecar fixtures to request-owned operations with declared resources, streams and dotted IDs.
 - [x] 3.2 Replace the legacy handler trait with declaration-bound internal carriers; rename the shared execution snapshot and migrate SDK/runtime/service consumers and exports without compatibility aliases.
 - [x] 3.3 Migrate lifecycle built-ins and inspect guest fixtures, examples, scaffold templates and README claims; remove superseded operation lifecycle stories.
-- [ ] 3.4 Run the affected feature-enabled tests and the requested five-package focused tests, Wasm/guest fixture builds, schematic consumer check and Rust formatting; record signature counts and commit closed steps locally.
+- [x] 3.4 Run the affected feature-enabled tests and the requested five-package focused tests, Wasm/guest fixture builds, schematic consumer check and Rust formatting; record signature counts and commit closed steps locally.
 
 - [x] 3.7 Migrate shared compute/policy fixtures, stateless native and sidecar operations, owned-response fixtures, dispatch/throughput fixtures and SDK/runtime unit fixtures; repair the tracing fixtures.
 - [x] 3.8 Migrate remaining stateful/streaming handler fixtures in operation wire, plugin, sidecar, guest host, listener and service tests; preserve carrier settlement coverage while removing authored initialization/cleanup assumptions.

@@ -132,10 +132,10 @@ mod runtime {
             };
             if self.value == "parent" {
                 let saved = owner.saved_attempts.lock().map_err(|error| std::io::Error::other(error.to_string()))?.remove(&self.value);
-                if let Some(saved) = saved {
-                    if harmos_guest::Host::call::<ReadOperation>(&saved, ReadOperation { value: "leaf".into() }).await.is_ok() {
-                        return Err(std::io::Error::other("stale context was accepted"));
-                    }
+                if let Some(saved) = saved
+                    && harmos_guest::Host::call::<ReadOperation>(&saved, ReadOperation { value: "leaf".into() }).await.is_ok()
+                {
+                    return Err(std::io::Error::other("stale context was accepted"));
                 }
                 let child = ctx.operation(ReadOperation { value: "leaf".into() }).await.map_err(std::io::Error::other)?;
                 if attempt > 1 {
