@@ -30,7 +30,7 @@ use crate::Result;
 
 /* === Constants === */
 
-const MAX_TRANSFORMS: usize = 64;
+pub(super) const MAX_TRANSFORMS: usize = 64;
 
 /* === Macros === */
 
@@ -75,9 +75,19 @@ impl Plan {
         let mut prefix = transforms;
         let (global, spool) = match stage {
             None => (Vec::new(), None),
-            Some((index, schema)) => (prefix.split_off(index), Some(Builder::new(schema)?)),
+            Some((index, schema)) => (prefix.split_off(index), Some(Builder::cached(schema)?)),
         };
-        Ok(Self { input, output: Arc::new(schema), prefix, global, spool, pages: None, slice, skipped: 0, emitted: 0 })
+        Ok(Self {
+            input,
+            output: Arc::new(schema),
+            prefix,
+            global,
+            spool,
+            pages: None,
+            slice,
+            skipped: 0,
+            emitted: 0,
+        })
     }
 
     pub(super) fn output_schema(&self) -> Arc<Schema> {
@@ -238,9 +248,19 @@ mod tests {
     #[test]
     fn multiple_global_stages_keep_stable_order_across_spill_runs() {
         let batch = source(350);
-        let sort =
-            Transform::Sort(Sort { keys: vec![SortKey { field: FieldPath::from("ordinal"), descending: true, nulls_first: false }] });
-        let downsample = Transform::Downsample(Downsample { algorithm: Algorithm::Decimate, max_rows: 20, value: None, axis: None });
+        let sort = Transform::Sort(Sort {
+            keys: vec![SortKey {
+                field: FieldPath::from("ordinal"),
+                descending: true,
+                nulls_first: false,
+            }],
+        });
+        let downsample = Transform::Downsample(Downsample {
+            algorithm: Algorithm::Decimate,
+            max_rows: 20,
+            value: None,
+            axis: None,
+        });
         let actual = run(&batch, vec![sort, downsample], RowSlice { offset: 0, limit: None });
         let expected = crate::signal::decimate(350, 20).into_iter().map(|i| 349 - i as u64).collect::<Vec<_>>();
         assert_eq!(actual, expected);
@@ -257,7 +277,13 @@ mod tests {
             vec![Arc::new(UInt64Array::from(keys.clone())), Arc::new(UInt64Array::from((0..rows as u64).collect::<Vec<_>>()))],
         )
         .unwrap();
-        let sort = Transform::Sort(Sort { keys: vec![SortKey { field: FieldPath::from("key"), descending: true, nulls_first: false }] });
+        let sort = Transform::Sort(Sort {
+            keys: vec![SortKey {
+                field: FieldPath::from("key"),
+                descending: true,
+                nulls_first: false,
+            }],
+        });
         let actual = run(&batch, vec![sort], RowSlice { offset: 0, limit: None });
         let mut expected = (0..rows as u64).collect::<Vec<_>>();
         expected.sort_by(|left, right| keys[*right as usize].cmp(&keys[*left as usize]));

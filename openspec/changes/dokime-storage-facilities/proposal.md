@@ -13,4 +13,4 @@ Dokime still owns storage copy/follow loops and cannot admit backend serializati
 
 ## Impact
 
-The Harmos storage backend, file and request ownership interfaces and their direct consumers may change. Preserve durability, exact retries, cancellation safety and source identity. No publication, full CI, benchmark or test execution is authorized; targeted project-task Cargo checks and necessary prototype builds are authorized.
+The Harmos storage backend, file and request ownership interfaces and their direct consumers may change. Preserve durability, exact retries, cancellation safety and source identity. The read-path follow-up authorizes focused executed tests and opt-in timing diagnostics through project tasks, plus local commits. Publication, pushing and full CI remain unauthorized.

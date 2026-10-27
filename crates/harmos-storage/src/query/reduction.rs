@@ -22,18 +22,23 @@ use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::sync::Arc;
 
 // Third Party Imports
-use arrow_array::RecordBatch;
+use arrow_array::{Array, Float64Array, RecordBatch};
 
 // Local Imports
 use super::scalar::ScalarValue;
 use super::spill::{Builder, Spool, io};
 use super::transform::downsample::{Algorithm, Downsample, number};
 use super::transform::{AggregateExecution, FieldPathExecution, HistogramExecution, Transform, TransformExecution, invalid};
+use super::transform::{
+    ProjectExecution,
+    project::{Project, Projection},
+};
 use crate::Result;
 
 /* === Constants === */
 
 const COORDINATES: usize = 4096;
+const COORDINATE_CACHE_BYTES: usize = 32 * 1024 * 1024;
 
 /* === Macros === */
 
@@ -42,7 +47,7 @@ const COORDINATES: usize = 4096;
 /* === Structs === */
 
 struct Coordinates {
-    file: File,
+    file: Option<File>,
     length: usize,
     start: usize,
     cache: Vec<(f64, f64)>,
@@ -64,12 +69,14 @@ impl Coordinates {
         if index < self.start || index >= self.start + self.cache.len() {
             self.start = index / COORDINATES * COORDINATES;
             self.file
+                .as_mut()
+                .expect("uncached coordinates own a file")
                 .seek(SeekFrom::Start((self.start as u64).checked_mul(16).ok_or_else(|| invalid("coordinate offset overflow"))?))
                 .map_err(io)?;
             let count = COORDINATES.min(self.length - self.start);
             self.cache.clear();
             let mut bytes = vec![0; count * 16];
-            self.file.read_exact(&mut bytes).map_err(io)?;
+            self.file.as_mut().unwrap().read_exact(&mut bytes).map_err(io)?;
             for bytes in bytes.as_chunks::<16>().0 {
                 self.cache.push((f64::from_le_bytes(bytes[..8].try_into().unwrap()), f64::from_le_bytes(bytes[8..].try_into().unwrap())));
             }
@@ -209,14 +216,17 @@ pub(super) fn downsample(input: Spool, plan: &Downsample, check: &mut impl FnMut
     if input.rows <= plan.max_rows {
         return Ok(input);
     }
-    let mut selected = Selection { file: tempfile::tempfile().map_err(io)?, last: None };
+    let mut selected = Selection {
+        file: tempfile::tempfile().map_err(io)?,
+        last: None,
+    };
     if matches!(plan.algorithm, Algorithm::Decimate) {
         for index in crate::signal::decimate_indices(input.rows, plan.max_rows) {
             check()?;
             selected.push(index)?;
         }
     } else {
-        let mut coordinates = coordinates(&input, plan, check)?;
+        let mut coordinates = coordinates(&input, plan, COORDINATE_CACHE_BYTES, check)?;
         if matches!(plan.algorithm, Algorithm::Extrema) {
             let span = ((input.rows as f64 / (plan.max_rows / 2) as f64).ceil() as usize).max(1);
             for start in (0..input.rows).step_by(span) {
@@ -244,7 +254,7 @@ pub(super) fn downsample(input: Spool, plan: &Downsample, check: &mut impl FnMut
     selected.file.seek(SeekFrom::Start(0)).map_err(io)?;
     let mut indices = BufReader::new(selected.file);
     let mut next = read_index(&mut indices)?;
-    let mut output = Builder::new(input.schema.clone())?;
+    let mut output = Builder::cached(input.schema.clone())?;
     let mut offset = 0usize;
     for batch in input.reader()? {
         check()?;
@@ -266,22 +276,32 @@ pub(super) fn downsample(input: Spool, plan: &Downsample, check: &mut impl FnMut
     output.finish()
 }
 
-fn coordinates(input: &Spool, plan: &Downsample, check: &mut impl FnMut() -> Result<()>) -> Result<Coordinates> {
-    let mut file = tempfile::tempfile().map_err(io)?;
-    let mut writer = BufWriter::with_capacity(1024 * 1024, &mut file);
+fn coordinates(input: &Spool, plan: &Downsample, cache_bytes: usize, check: &mut impl FnMut() -> Result<()>) -> Result<Coordinates> {
+    let cached = input.rows <= cache_bytes / 16;
+    let mut writer = if cached { None } else { Some(BufWriter::with_capacity(1024 * 1024, tempfile::tempfile().map_err(io)?)) };
+    let mut cache = Vec::with_capacity(if cached { input.rows } else { 0 });
     let mut first_time = None;
     let mut previous = None;
     let mut index = 0usize;
     let field = plan.value.as_ref().ok_or_else(|| invalid("missing downsample value field"))?;
+    let mut fields = vec![Projection { field: field.clone(), name: "y".into() }];
+    if let Some(axis) = &plan.axis
+        && !matches!(plan.algorithm, Algorithm::Extrema)
+    {
+        fields.push(Projection { field: axis.clone(), name: "x".into() });
+    }
+    let projection = Project { fields };
     for batch in input.reader()? {
         let batch = batch.map_err(|_| invalid("coordinate spill decoding failed"))?;
+        // Resolve Paths And Parent Null Masks Once Per Batch.
+        let columns = projection.apply(&batch, check)?;
         for row in 0..batch.num_rows() {
             check()?;
-            let y = number(&field.value(&batch, row)?)?;
+            let y = coordinate(columns.column(0).as_ref(), row)?;
             let x = match &plan.axis {
                 _ if matches!(plan.algorithm, Algorithm::Extrema) => index as f64,
                 None => index as f64,
-                Some(axis) => match axis.value(&batch, row)? {
+                Some(_) => match super::transform::scalar(columns.column(1).as_ref(), row)? {
                     ScalarValue::Datetime(value) => {
                         let first = *first_time.get_or_insert(value);
                         value.checked_sub(first).ok_or_else(|| invalid("LTTB timestamp difference overflow"))? as f64
@@ -295,15 +315,32 @@ fn coordinates(input: &Spool, plan: &Downsample, check: &mut impl FnMut() -> Res
             if matches!(plan.algorithm, Algorithm::LttbLog) && (x <= 0.0 || previous.is_some_and(|previous| previous > x)) {
                 return Err(invalid("logarithmic LTTB requires positive ordered coordinates"));
             }
-            writer.write_all(&x.to_le_bytes()).map_err(io)?;
-            writer.write_all(&y.to_le_bytes()).map_err(io)?;
+            if let Some(writer) = &mut writer {
+                writer.write_all(&x.to_le_bytes()).map_err(io)?;
+                writer.write_all(&y.to_le_bytes()).map_err(io)?;
+            } else {
+                cache.push((x, y));
+            }
             previous = Some(x);
             index += 1;
         }
     }
-    writer.flush().map_err(io)?;
-    drop(writer);
-    Ok(Coordinates { file, length: input.rows, start: 0, cache: Vec::new() })
+    let file = writer.map(|writer| writer.into_inner().map_err(|error| io(error.into_error()))).transpose()?;
+    Ok(Coordinates {
+        file,
+        length: input.rows,
+        start: 0,
+        cache,
+    })
+}
+
+fn coordinate(array: &dyn Array, row: usize) -> Result<f64> {
+    if let Some(values) = array.as_any().downcast_ref::<Float64Array>()
+        && !values.is_null(row)
+    {
+        return Ok(values.value(row));
+    }
+    number(&super::transform::scalar(array, row)?)
 }
 
 fn triangles(points: &mut Coordinates, plan: &Downsample, selected: &mut Selection, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
@@ -383,6 +420,53 @@ mod tests {
     use arrow_schema::{DataType, Field, Schema};
 
     #[test]
+    fn cached_and_disk_coordinates_preserve_timestamps_and_bucket_selection() {
+        use arrow_array::TimestampNanosecondArray;
+        use arrow_schema::TimeUnit;
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("time", DataType::Timestamp(TimeUnit::Nanosecond, None), false),
+            Field::new("value", DataType::Int64, false),
+        ]));
+        let rows = 9001;
+        let timestamps = TimestampNanosecondArray::from((0..rows).map(|row| i64::MAX - 20_000 + row).collect::<Vec<_>>());
+        let values = Int64Array::from((0..rows).map(|row| row * 7919 % 97).collect::<Vec<_>>());
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(timestamps), Arc::new(values)]).unwrap();
+        let plan = Downsample {
+            algorithm: Algorithm::Lttb,
+            max_rows: 103,
+            value: Some(FieldPath::from("value")),
+            axis: Some(FieldPath::from("time")),
+        };
+        let mut builder = Builder::cached(schema).unwrap();
+        builder.push(&batch, &mut || Ok(())).unwrap();
+        let spool = builder.finish().unwrap();
+        let mut cached = coordinates(&spool, &plan, COORDINATE_CACHE_BYTES, &mut || Ok(())).unwrap();
+        let mut disk = coordinates(&spool, &plan, 0, &mut || Ok(())).unwrap();
+        assert!(cached.file.is_none());
+        assert!(disk.file.is_some());
+        for index in [0, 4095, 4096, 8192, 9000, 2, 5000] {
+            assert_eq!(cached.get(index).unwrap(), disk.get(index).unwrap());
+            assert_eq!(cached.get(index).unwrap().0, index as f64);
+        }
+        let x = (0..rows).map(|row| row as f64).collect::<Vec<_>>();
+        let y = (0..rows).map(|row| (row * 7919 % 97) as f64).collect::<Vec<_>>();
+        let expected = crate::signal::lttb(&x, &y, plan.max_rows);
+        for mut coordinates in [cached, disk] {
+            let mut selected = Selection {
+                file: tempfile::tempfile().unwrap(),
+                last: None,
+            };
+            triangles(&mut coordinates, &plan, &mut selected, &mut || Ok(())).unwrap();
+            selected.file.rewind().unwrap();
+            let mut actual = Vec::new();
+            while let Some(index) = read_index(&mut selected.file).unwrap() {
+                actual.push(index);
+            }
+            assert_eq!(actual, expected);
+        }
+    }
+
+    #[test]
     fn spilled_grouped_statistics_match_stable_eager_reduction() {
         let schema = Arc::new(Schema::new(vec![Field::new("group", DataType::Int64, false), Field::new("value", DataType::Int64, false)]));
         let batch = RecordBatch::try_new(
@@ -394,11 +478,26 @@ mod tests {
         )
         .unwrap();
         let plan = Aggregate {
-            groups: vec![Projection { field: FieldPath::from("group"), name: "group".into() }],
+            groups: vec![Projection {
+                field: FieldPath::from("group"),
+                name: "group".into(),
+            }],
             measures: vec![
-                Measure { field: FieldPath::from("value"), statistic: crate::Aggregate::Median, name: "median".into() },
-                Measure { field: FieldPath::from("value"), statistic: crate::Aggregate::Sum, name: "sum".into() },
-                Measure { field: FieldPath::from("value"), statistic: crate::Aggregate::Percentile(77), name: "percentile".into() },
+                Measure {
+                    field: FieldPath::from("value"),
+                    statistic: crate::Aggregate::Median,
+                    name: "median".into(),
+                },
+                Measure {
+                    field: FieldPath::from("value"),
+                    statistic: crate::Aggregate::Sum,
+                    name: "sum".into(),
+                },
+                Measure {
+                    field: FieldPath::from("value"),
+                    statistic: crate::Aggregate::Percentile(77),
+                    name: "percentile".into(),
+                },
             ],
         };
         let expected = plan.apply(&batch, &mut || Ok(())).unwrap();

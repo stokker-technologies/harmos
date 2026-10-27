@@ -35,6 +35,8 @@ pub(super) const PAGE_ROWS: usize = 16_384;
 // Leave Room For Two Merge Inputs, Compact Output, IPC Buffers And Conversions.
 const WORKSPACE_BYTES: usize = 128 * 1024 * 1024;
 pub(super) const PAGE_BYTES: usize = WORKSPACE_BYTES / 16;
+// A Million Two-Column Samples Fit Without IPC; Larger Inputs Spill As Before.
+const CACHE_BYTES: usize = WORKSPACE_BYTES / 4;
 
 /* === Macros === */
 
@@ -44,7 +46,8 @@ pub(super) const PAGE_BYTES: usize = WORKSPACE_BYTES / 16;
 
 #[derive(Clone)]
 pub(super) struct Spool {
-    file: Arc<NamedTempFile>,
+    file: Option<Arc<NamedTempFile>>,
+    batches: Arc<Vec<RecordBatch>>,
     pub schema: Arc<Schema>,
     pub rows: usize,
 
@@ -57,7 +60,9 @@ pub(super) struct Spool {
 
 pub(super) struct Builder {
     spool: Spool,
-    writer: StreamWriter<File>,
+    writer: Option<StreamWriter<File>>,
+    bytes: usize,
+    cache_bytes: usize,
 }
 
 // Selected Rows Wait As Source Indices; One Interleave Writes Each Output Page.
@@ -79,10 +84,15 @@ pub(super) struct Cursor {
 pub(super) struct Pages {
     // Keep The Private File Alive Until The Last Decoded Page Is Released.
     _spool: Spool,
-    reader: StreamReader<File>,
+    reader: Reader,
 }
 
 /* === Enums === */
+
+pub(super) enum Reader {
+    Memory { batches: Arc<Vec<RecordBatch>>, next: usize },
+    Disk(Box<StreamReader<File>>),
+}
 
 /* === Traits === */
 
@@ -90,11 +100,18 @@ pub(super) struct Pages {
 
 impl Builder {
     pub fn new(schema: Arc<Schema>) -> Result<Self> {
-        let file = NamedTempFile::new().map_err(io)?;
-        let writer = StreamWriter::try_new(file.reopen().map_err(io)?, &schema).map_err(|_| invalid("spill schema encoding failed"))?;
+        Self::with_cache(schema, 0)
+    }
+
+    pub fn cached(schema: Arc<Schema>) -> Result<Self> {
+        Self::with_cache(schema, CACHE_BYTES)
+    }
+
+    fn with_cache(schema: Arc<Schema>, cache_bytes: usize) -> Result<Self> {
         Ok(Self {
             spool: Spool {
-                file: Arc::new(file),
+                file: None,
+                batches: Arc::new(Vec::new()),
                 schema,
                 rows: 0,
                 #[cfg(test)]
@@ -102,7 +119,9 @@ impl Builder {
                 #[cfg(test)]
                 peak_page_rows: 0,
             },
-            writer,
+            writer: None,
+            bytes: 0,
+            cache_bytes,
         })
     }
 
@@ -124,7 +143,7 @@ impl Builder {
                 self.spool.peak_page_bytes = self.spool.peak_page_bytes.max(page.get_array_memory_size());
                 self.spool.peak_page_rows = self.spool.peak_page_rows.max(page.num_rows());
             }
-            self.writer.write(&page).map_err(|_| invalid("spill page encoding failed"))?;
+            self.store(page, check)?;
             self.spool.rows = self.spool.rows.checked_add(count).ok_or_else(|| invalid("spill row count overflow"))?;
             offset += count;
         }
@@ -132,15 +151,43 @@ impl Builder {
     }
 
     pub fn finish(mut self) -> Result<Spool> {
-        self.writer.finish().map_err(|_| invalid("spill termination failed"))?;
+        if let Some(writer) = &mut self.writer {
+            writer.finish().map_err(|_| invalid("spill termination failed"))?;
+        }
         drop(self.writer);
         Ok(self.spool)
+    }
+
+    fn store(&mut self, page: RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
+        let bytes = page.get_array_memory_size();
+        if self.writer.is_none() && bytes <= self.cache_bytes.saturating_sub(self.bytes) {
+            self.bytes += bytes;
+            Arc::get_mut(&mut self.spool.batches).expect("unpublished spool").push(page);
+            return Ok(());
+        }
+        if self.writer.is_none() {
+            let file = NamedTempFile::new().map_err(io)?;
+            let mut writer = StreamWriter::try_new(file.reopen().map_err(io)?, &self.spool.schema)
+                .map_err(|_| invalid("spill schema encoding failed"))?;
+            for batch in Arc::get_mut(&mut self.spool.batches).expect("unpublished spool").drain(..) {
+                check()?;
+                writer.write(&batch).map_err(|_| invalid("spill page encoding failed"))?;
+            }
+            self.spool.file = Some(Arc::new(file));
+            self.writer = Some(writer);
+            self.bytes = 0;
+        }
+        self.writer.as_mut().unwrap().write(&page).map_err(|_| invalid("spill page encoding failed"))
     }
 }
 
 impl Spool {
-    pub fn reader(&self) -> Result<StreamReader<File>> {
-        StreamReader::try_new(self.file.reopen().map_err(io)?, None).map_err(|_| invalid("spill schema decoding failed"))
+    pub fn reader(&self) -> Result<Reader> {
+        let Some(file) = &self.file else {
+            return Ok(Reader::Memory { batches: self.batches.clone(), next: 0 });
+        };
+        let reader = StreamReader::try_new(file.reopen().map_err(io)?, None).map_err(|_| invalid("spill schema decoding failed"))?;
+        Ok(Reader::Disk(Box::new(reader)))
     }
 
     pub fn pages(self) -> Result<Pages> {
@@ -149,9 +196,30 @@ impl Spool {
     }
 }
 
+impl Iterator for Reader {
+    type Item = Result<RecordBatch>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Memory { batches, next } => {
+                let batch = batches.get(*next)?.clone();
+                *next += 1;
+                Some(Ok(batch))
+            }
+            Self::Disk(reader) => reader.next().map(|batch| batch.map_err(|_| invalid("spill page decoding failed"))),
+        }
+    }
+}
+
 impl Rows {
     pub fn new(schema: Arc<Schema>) -> Result<Self> {
-        Ok(Self { builder: Builder::new(schema)?, sources: Vec::new(), indices: Vec::new(), bytes: 0, generation: 0 })
+        Ok(Self {
+            builder: Builder::new(schema)?,
+            sources: Vec::new(),
+            indices: Vec::new(),
+            bytes: 0,
+            generation: 0,
+        })
     }
 
     pub fn push(&mut self, cursor: &mut Cursor, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
@@ -201,7 +269,12 @@ impl Rows {
 
 impl Cursor {
     pub fn new(spool: Spool) -> Result<Self> {
-        let mut cursor = Self { pages: spool.pages()?, batch: None, row: 0, source: None };
+        let mut cursor = Self {
+            pages: spool.pages()?,
+            batch: None,
+            row: 0,
+            source: None,
+        };
         cursor.advance()?;
         Ok(cursor)
     }
@@ -258,7 +331,7 @@ mod tests {
         assert_eq!(spool.rows, 7 * 24 * 20_000);
         assert!(spool.peak_page_bytes <= PAGE_BYTES);
         assert!(spool.peak_page_rows <= PAGE_ROWS);
-        let path = spool.file.path().to_owned();
+        let path = spool.file.as_ref().unwrap().path().to_owned();
         let mut pages = spool.pages().unwrap();
         let mut rows = 0;
         while let Some(page) = pages.next().unwrap() {
@@ -269,5 +342,49 @@ mod tests {
         assert_eq!(rows, 7 * 24 * 20_000);
         drop(pages);
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn cached_pages_share_arrays_and_spill_exactly_at_capacity() {
+        let schema = Arc::new(Schema::new(vec![Field::new("value", DataType::UInt64, false)]));
+        let array = UInt64Array::from((0..19).collect::<Vec<u64>>());
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(array)]).unwrap();
+        let mut memory = Builder::cached(schema.clone()).unwrap();
+        memory.push(&batch, &mut || Ok(())).unwrap();
+        let memory = memory.finish().unwrap();
+        assert!(memory.file.is_none());
+        let first = memory.reader().unwrap().next().unwrap().unwrap();
+        let second = memory.reader().unwrap().next().unwrap().unwrap();
+        assert!(Arc::ptr_eq(first.column(0), second.column(0)));
+
+        let bytes = first.get_array_memory_size();
+        let mut builder = Builder::with_cache(schema, bytes).unwrap();
+        builder.push(&batch, &mut || Ok(())).unwrap();
+        assert!(builder.spool.file.is_none());
+        builder.push(&batch, &mut || Ok(())).unwrap();
+        assert!(builder.spool.batches.is_empty());
+        let spool = builder.finish().unwrap();
+        let path = spool.file.as_ref().unwrap().path().to_owned();
+        let expected = arrow_select::concat::concat_batches(&batch.schema(), [&batch, &batch]).unwrap();
+        let pages = spool.reader().unwrap().collect::<Result<Vec<_>>>().unwrap();
+        let actual = arrow_select::concat::concat_batches(&batch.schema(), &pages).unwrap();
+        assert_eq!(actual, expected);
+        drop(spool);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn cancellation_during_cache_spill_preserves_error_and_cleans_file() {
+        let schema = Arc::new(Schema::new(vec![Field::new("value", DataType::UInt64, false)]));
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(UInt64Array::from(vec![7; 100]))]).unwrap();
+        let mut builder = Builder::with_cache(schema, batch.get_array_memory_size()).unwrap();
+        builder.push(&batch, &mut || Ok(())).unwrap();
+        let mut calls = 0;
+        let result = builder.push(&batch, &mut || {
+            calls += 1;
+            if calls == 2 { Err(Error::Closing { domain: "cancel spill" }) } else { Ok(()) }
+        });
+        assert!(matches!(result, Err(Error::Closing { .. })));
+        assert!(builder.spool.file.is_none());
     }
 }

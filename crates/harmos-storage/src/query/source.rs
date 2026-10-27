@@ -11,6 +11,11 @@
 
 /* === Modules === */
 
+mod columns;
+
+#[cfg(test)]
+mod tests;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -22,13 +27,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 // Third Party Imports
-use arrow_array::{
-    ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array, Int32Array, Int64Array, ListArray, RecordBatch, StringArray,
-    StructArray, TimestampNanosecondArray, UInt32Array, UInt64Array,
-};
-use arrow_buffer::{NullBuffer, OffsetBuffer, ScalarBuffer};
+use arrow_array::{ArrayRef, BinaryArray, RecordBatch, StringArray, StructArray, TimestampNanosecondArray, UInt32Array, UInt64Array};
 use arrow_schema::{DataType, Field, Fields, Schema, TimeUnit};
 // Local Imports
+use super::transform::project::Project;
 use crate::schema::{self, Cardinality, Event, PathElement, Scalar, graph};
 use crate::storage::{FileReference, ObjectEntry, StorageCursor, StorageSchema, StoredRecord, StoredRow};
 use crate::{Error, Result};
@@ -39,32 +41,11 @@ const MAX_DEPTH: usize = 32;
 
 /* === Macros === */
 
-macro_rules! scalar_array {
-    ($values:expr, $variant:ident, $array:ty) => {{
-        let values = $values
-            .iter()
-            .map(|value| match value {
-                Some(Node::Scalar(Scalar::$variant(value))) => Ok(Some(*value)),
-                None | Some(Node::Null) => Ok(None),
-                _ => Err(invalid("payload value differs from declared schema")),
-            })
-            .collect::<Result<Vec<_>>>()?;
-        Arc::new(<$array>::from(values)) as ArrayRef
-    }};
-}
-
 /* === Type Aliases === */
 
 /* === Structs === */
 
 /* === Enums === */
-
-enum Node<'a> {
-    Null,
-    Scalar(Scalar<'a>),
-    Message(Vec<(String, Node<'a>)>),
-    List(Vec<Node<'a>>),
-}
 
 /* === Traits === */
 
@@ -84,6 +65,53 @@ pub(super) fn records(schema: &StorageSchema, rows: &[StoredRecord]) -> Result<R
 pub(super) fn stream(schema: &StorageSchema, rows: &[StoredRow]) -> Result<RecordBatch> {
     let refs = rows.iter().map(|row| &row.record).collect::<Vec<_>>();
     record_batch(schema, &refs, Some(rows))
+}
+
+pub(super) fn projected<'a>(
+    schema: &StorageSchema, rows: impl ExactSizeIterator<Item = &'a StoredRecord>, project: &Project, output: Arc<Schema>,
+) -> Result<RecordBatch> {
+    schema.key.require_postcard()?;
+    let settings = harmos_domain::config::SchemaSettings::default();
+    let validator = schema::Validator::from_schema(&schema.schema, &settings).map_err(|_| invalid("invalid payload schema"))?;
+    let mut columns = output.fields().iter().map(|field| columns::Column::new(field.data_type(), rows.len())).collect::<Vec<_>>();
+
+    for (row_index, row) in rows.enumerate() {
+        if row.schema != schema.key {
+            return Err(invalid("record batch has incompatible schemas"));
+        }
+        validator
+            .visit(&row.payload, |path, event| {
+                for (column, projected) in columns.iter_mut().zip(&project.fields) {
+                    let prefix = &projected.field.fields[1..];
+                    if let Event::Variant { index } = event
+                        && prefix.last().is_some_and(|name| name == "__variant")
+                        && path.len() == prefix.len()
+                        && path_matches(&path[..path.len() - 1], &prefix[..prefix.len() - 1])
+                    {
+                        column.event(&[], Event::Scalar(Scalar::U32(index)))?;
+                        continue;
+                    }
+                    if !path_matches(path, prefix) {
+                        continue;
+                    }
+                    let relative = &path[prefix.len()..];
+                    if relative.is_empty() && matches!(event, Event::Variant { .. }) {
+                        continue;
+                    }
+                    column.event(relative, event)?;
+                }
+                Ok::<_, Error>(())
+            })
+            .map_err(|_| invalid("payload decoding failed"))?;
+        // An Absent Parent Or Unselected Enum Variant Nulls The Projected Child.
+        for column in &mut columns {
+            if column.len() == row_index {
+                column.null()?;
+            }
+        }
+    }
+    let columns = columns.into_iter().map(columns::Column::finish).collect::<Result<Vec<_>>>()?;
+    RecordBatch::try_new(output, columns).map_err(|_| invalid("projected payload batch mismatch"))
 }
 
 pub(super) fn objects(schema: &StorageSchema, rows: &[ObjectEntry]) -> Result<RecordBatch> {
@@ -165,6 +193,11 @@ pub(super) fn schemas(rows: &[StorageSchema]) -> Result<RecordBatch> {
 
 /* === Private Functions === */
 
+fn path_matches(path: &[PathElement<'_>], prefix: &[String]) -> bool {
+    path.len() >= prefix.len()
+        && path.iter().zip(prefix).all(|(part, name)| matches!(part, PathElement::Field { name: field, .. } if *field == name))
+}
+
 fn record_batch(schema: &StorageSchema, rows: &[&StoredRecord], streams: Option<&[StoredRow]>) -> Result<RecordBatch> {
     for row in rows {
         if row.schema != schema.key {
@@ -240,138 +273,12 @@ fn payload(schema: &StorageSchema, payloads: &[&[u8]]) -> Result<ArrayRef> {
     schema.key.require_postcard()?;
     let settings = harmos_domain::config::SchemaSettings::default();
     let validator = schema::Validator::from_schema(&schema.schema, &settings).map_err(|_| invalid("invalid payload schema"))?;
-    let mut roots = Vec::with_capacity(payloads.len());
+    let kind = DataType::Struct(payload_fields(&schema.schema)?);
+    let mut columns = columns::Column::new(&kind, payloads.len());
     for bytes in payloads {
-        let mut root = Node::Null;
-        validator
-            .visit(bytes, |path, event| {
-                match event {
-                    Event::BeginMessage => *node_at(&mut root, path)? = Node::Message(Vec::new()),
-                    Event::BeginRepeated { length } => *node_at(&mut root, path)? = Node::List((0..length).map(|_| Node::Null).collect()),
-                    Event::Scalar(value) => *node_at(&mut root, path)? = Node::Scalar(value),
-                    Event::Variant { index } => {
-                        let parent = path.get(..path.len().saturating_sub(1)).ok_or_else(|| invalid("invalid enum path"))?;
-                        let Node::Message(fields) = node_at(&mut root, parent)? else {
-                            return Err(invalid("invalid enum parent"));
-                        };
-                        fields.push(("__variant".into(), Node::Scalar(Scalar::U32(index))));
-                    }
-                    Event::Optional { present: false } => *node_at(&mut root, path)? = Node::Null,
-                    _ => {}
-                }
-                Ok::<_, Error>(())
-            })
-            .map_err(|_| invalid("payload decoding failed"))?;
-        roots.push(root);
+        validator.visit(bytes, |path, event| columns.event(path, event)).map_err(|_| invalid("payload decoding failed"))?;
     }
-    let refs = roots.iter().map(Some).collect::<Vec<_>>();
-    array(&DataType::Struct(payload_fields(&schema.schema)?), &refs)
-}
-
-fn node_at<'n, 'a>(root: &'n mut Node<'a>, path: &[PathElement<'_>]) -> Result<&'n mut Node<'a>> {
-    let Some((part, rest)) = path.split_first() else {
-        return Ok(root);
-    };
-    match (root, part) {
-        (Node::Message(fields), PathElement::Field { name, .. }) => {
-            let index = match fields.iter().position(|(field, _)| field == name) {
-                Some(index) => index,
-                None => {
-                    fields.push(((*name).to_owned(), Node::Null));
-                    fields.len() - 1
-                }
-            };
-            node_at(&mut fields[index].1, rest)
-        }
-        (Node::List(values), PathElement::Index(index)) => {
-            node_at(values.get_mut(*index).ok_or_else(|| invalid("list index exceeds declaration"))?, rest)
-        }
-        _ => Err(invalid("payload path differs from schema")),
-    }
-}
-
-fn array(kind: &DataType, values: &[Option<&Node<'_>>]) -> Result<ArrayRef> {
-    Ok(match kind {
-        DataType::Boolean => scalar_array!(values, Bool, BooleanArray),
-        DataType::UInt32 => scalar_array!(values, U32, UInt32Array),
-        DataType::UInt64 => scalar_array!(values, U64, UInt64Array),
-        DataType::Int32 => scalar_array!(values, I32, Int32Array),
-        DataType::Int64 => scalar_array!(values, I64, Int64Array),
-        DataType::Float32 => scalar_array!(values, F32, Float32Array),
-        DataType::Float64 => scalar_array!(values, F64, Float64Array),
-        DataType::Utf8 => {
-            let items = values
-                .iter()
-                .map(|value| match value {
-                    Some(Node::Scalar(Scalar::String(value))) => Ok(Some(*value)),
-                    None | Some(Node::Null) => Ok(None),
-                    _ => Err(invalid("expected string payload")),
-                })
-                .collect::<Result<Vec<_>>>()?;
-            Arc::new(StringArray::from(items))
-        }
-        DataType::Binary => {
-            let items = values
-                .iter()
-                .map(|value| match value {
-                    Some(Node::Scalar(Scalar::Bytes(value))) => Ok(Some(*value)),
-                    None | Some(Node::Null) => Ok(None),
-                    _ => Err(invalid("expected binary payload")),
-                })
-                .collect::<Result<Vec<_>>>()?;
-            Arc::new(BinaryArray::from(items))
-        }
-        DataType::Struct(fields) => {
-            let mut children = Vec::with_capacity(fields.len());
-            for field in fields {
-                let members = values
-                    .iter()
-                    .map(|value| match value {
-                        Some(Node::Message(entries)) => Ok(entries.iter().find(|(name, _)| name == field.name()).map(|(_, value)| value)),
-                        None | Some(Node::Null) => Ok(None),
-                        _ => Err(invalid("expected nested message payload")),
-                    })
-                    .collect::<Result<Vec<_>>>()?;
-                children.push(array(field.data_type(), &members)?);
-            }
-            let valid = values.iter().map(|value| matches!(value, Some(Node::Message(_)))).collect::<Vec<_>>();
-            if fields.is_empty() {
-                Arc::new(StructArray::new_empty_fields(values.len(), Some(NullBuffer::from(valid))))
-            } else {
-                Arc::new(
-                    StructArray::try_new(fields.clone(), children, Some(NullBuffer::from(valid)))
-                        .map_err(|_| invalid("nested Arrow schema mismatch"))?,
-                )
-            }
-        }
-        DataType::List(field) => {
-            let mut offsets = Vec::with_capacity(values.len() + 1);
-            let mut elements = Vec::new();
-            let mut valid = Vec::with_capacity(values.len());
-            offsets.push(0i32);
-            for value in values {
-                match value {
-                    Some(Node::List(items)) => {
-                        valid.push(true);
-                        elements.extend(items.iter().map(Some));
-                    }
-                    None | Some(Node::Null) => valid.push(false),
-                    _ => return Err(invalid("expected repeated payload")),
-                }
-                offsets.push(i32::try_from(elements.len()).map_err(|_| invalid("list exceeds Arrow offset range"))?);
-            }
-            Arc::new(
-                ListArray::try_new(
-                    field.clone(),
-                    OffsetBuffer::new(ScalarBuffer::from(offsets)),
-                    array(field.data_type(), &elements)?,
-                    Some(NullBuffer::from(valid)),
-                )
-                .map_err(|_| invalid("list Arrow schema mismatch"))?,
-            )
-        }
-        _ => return Err(invalid("unsupported payload type")),
-    })
+    columns.finish()
 }
 
 fn cursor_columns<'a>(rows: impl Iterator<Item = &'a StorageCursor> + Clone) -> Vec<(Field, ArrayRef)> {

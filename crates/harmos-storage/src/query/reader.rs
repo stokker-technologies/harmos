@@ -29,6 +29,7 @@ use tokio::sync::OwnedSemaphorePermit;
 // Local Imports
 use super::execute::Plan;
 use super::object_schemas::NormalizedObjects;
+use super::transform::{ProjectExecution, Transform, project::Project};
 use super::{QueryCompletion, QueryOutput, Source};
 use crate::storage::arrow::{ArrowBatch, ArrowSchema};
 use crate::storage::backend::ScanPage;
@@ -62,6 +63,7 @@ pub struct QueryReader {
     schema: Option<StorageSchema>,
     objects: Option<NormalizedObjects>,
     plan: Option<Plan>,
+    projection: Option<(Project, Arc<arrow_schema::Schema>)>,
     after: u64,
     rows: NonZeroUsize,
     source_done: bool,
@@ -163,6 +165,7 @@ impl<C> StorageManager<C> {
                 schema: None,
                 objects: None,
                 plan: None,
+                projection: None,
                 after,
                 rows: SCAN_ROWS,
                 source_done: false,
@@ -187,7 +190,9 @@ impl QueryReader {
         let future = async {
             if self.failed || self.inflight {
                 self.fail();
-                return Err(Error::NotReady { domain: "failed or interrupted storage query" });
+                return Err(Error::NotReady {
+                    domain: "failed or interrupted storage query",
+                });
             }
             self.inflight = true;
             let result = self.advance().await;
@@ -205,7 +210,10 @@ impl QueryReader {
         if !self.exhausted || self.failed || self.inflight {
             return Err(Error::NotReady { domain: "storage query completion" });
         }
-        Ok(QueryCompletion { at: self.query.at.clone(), rows: self.delivered })
+        Ok(QueryCompletion {
+            at: self.query.at.clone(),
+            rows: self.delivered,
+        })
     }
 
     fn fail(&mut self) {
@@ -214,6 +222,7 @@ impl QueryReader {
         self.plan = None;
         self.schema = None;
         self.objects = None;
+        self.projection = None;
         self.release();
     }
 
@@ -258,6 +267,9 @@ impl QueryReader {
     async fn prepare(&mut self) -> Result<ArrowSchema> {
         let snapshot = self.snapshot.as_ref().expect("prepared query owns its snapshot");
         let mut transforms = std::mem::take(&mut self.query.transforms);
+        if transforms.len() > super::execute::MAX_TRANSFORMS {
+            return Err(super::transform::invalid("too many query transforms"));
+        }
         match &self.query.source {
             Source::Objects(selection) => {
                 let objects = NormalizedObjects::resolve(&self.inner, snapshot, selection, &mut transforms).await?;
@@ -274,7 +286,17 @@ impl QueryReader {
             Source::Schemas(_) | Source::Files(_) => {}
         }
 
-        let empty = self.convert(None)?;
+        let mut empty = self.convert(None)?;
+        crate::storage::arrow::validate_schema(&empty.schema())?;
+        // Payload-Only Projections Decode Their Selected Columns Directly.
+        if matches!(self.query.source, Source::Records(_) | Source::Stream(_))
+            && let Some(Transform::Project(project)) = transforms.first()
+            && project.fields.iter().all(|field| field.field.fields.first().is_some_and(|name| name == "payload"))
+        {
+            empty = project.apply(&empty, &mut || Ok(()))?;
+            let Transform::Project(project) = transforms.remove(0) else { unreachable!() };
+            self.projection = Some((project, empty.schema()));
+        }
         let plan = Plan::new(empty.schema(), transforms, self.query.slice)?;
         let schema = ArrowSchema::try_new(plan.output_schema())?;
         self.plan = Some(plan);
@@ -290,7 +312,11 @@ impl QueryReader {
     #[tracing::instrument(name = "storage.query.reader.page_attempt", level = "trace", skip_all)]
     async fn page_attempt(&mut self) -> Result<()> {
         let scan_bytes = self.inner.settings.scan_bytes();
-        let page = ScanPage { after: self.after, rows: self.rows, bytes: scan_bytes };
+        let page = ScanPage {
+            after: self.after,
+            rows: self.rows,
+            bytes: scan_bytes,
+        };
 
         let snapshot = self.snapshot.as_ref().expect("running query owns its snapshot");
 
@@ -404,9 +430,18 @@ impl QueryReader {
                     _ => Ok(objects.empty()),
                 }
             }
-            (Source::Records(_), Some(Rows::Records(rows))) => super::source::records(schema.expect("record schema"), rows),
+            (Source::Records(_), Some(Rows::Records(rows))) => match &self.projection {
+                Some((project, output)) => super::source::projected(schema.expect("record schema"), rows.iter(), project, output.clone()),
+                None => super::source::records(schema.expect("record schema"), rows),
+            },
             (Source::Records(_), _) => super::source::records(schema.expect("record schema"), &[]),
-            (Source::Stream(_), Some(Rows::Stream(rows))) => super::source::stream(schema.expect("stream schema"), rows),
+            (Source::Stream(_), Some(Rows::Stream(rows))) => match &self.projection {
+                Some((project, output)) => {
+                    let records = rows.iter().map(|row| &row.record);
+                    super::source::projected(schema.expect("stream schema"), records, project, output.clone())
+                }
+                None => super::source::stream(schema.expect("stream schema"), rows),
+            },
             (Source::Stream(_), _) => super::source::stream(schema.expect("stream schema"), &[]),
             (Source::Schemas(_), Some(Rows::Schemas(rows))) => super::source::schemas(rows),
             (Source::Schemas(_), _) => super::source::schemas(&[]),
@@ -433,15 +468,20 @@ impl Rows {
 
 #[tracing::instrument(name = "storage.query.reader.schema_at", level = "trace", skip_all)]
 pub(crate) async fn schema_at(inner: &Arc<Inner>, snapshot: &Snapshot, key: &SchemaKey) -> Result<StorageSchema> {
-    find_schema(inner, snapshot, key)
-        .await?
-        .ok_or(Error::InvalidInput { field: "storage schema", reason: "schema is unavailable at requested cursor" })
+    find_schema(inner, snapshot, key).await?.ok_or(Error::InvalidInput {
+        field: "storage schema",
+        reason: "schema is unavailable at requested cursor",
+    })
 }
 
 #[tracing::instrument(name = "storage.query.reader.find_schema", level = "trace", skip_all)]
 pub(crate) async fn find_schema(inner: &Arc<Inner>, snapshot: &Snapshot, key: &SchemaKey) -> Result<Option<StorageSchema>> {
     let selection = super::SchemaSelection { schema: Some(key.clone()) };
-    let page = ScanPage { after: 0, rows: NonZeroUsize::MIN, bytes: inner.settings.scan_bytes() };
+    let page = ScanPage {
+        after: 0,
+        rows: NonZeroUsize::MIN,
+        bytes: inner.settings.scan_bytes(),
+    };
     let (mut schemas, _) = snapshot.scan::<StorageSchema>(&selection, page).await?;
     Ok(schemas.pop())
 }

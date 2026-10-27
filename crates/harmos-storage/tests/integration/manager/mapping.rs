@@ -226,7 +226,7 @@ async fn projection_scan(rows: usize) {
         let elapsed = started.elapsed();
         let expected = payloads.iter().skip(offset).take(limit).map(|row| (row.x, row.y)).collect::<Vec<_>>();
         assert_eq!(actual, expected);
-        assert_eq!(reader.completion().unwrap().rows as usize, limit);
+        assert_eq!(reader.completion().unwrap().rows as usize, expected.len());
         eprintln!("storage_projection rows={rows} selection={name} elapsed={elapsed:?}");
     }
     mapped.finish().await;

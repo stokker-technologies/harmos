@@ -30,7 +30,15 @@ Batch writes use `StorageBatch::try_scratch` with the existing native write budg
 
 The Dokime manifest keeps its published dependency while an untracked local Cargo patch selects all required Harmos packages from this worktree. Verify the resolved graph before consumer checks. Do not commit the override or local-path lockfile resolution. Publish/pin/remove-override remains a separate future authorized delivery step.
 
-Use project-task compiler preflight and targeted Cargo check. Author deterministic refusal, cancellation, retry and ownership fixtures without executing them under the current authorization. Full agreed source, including consumer removal, must be ready before the prototype build. File polling is allowed under the shared Harmos filesystem policy.
+Use project-task compiler preflight. The read-path follow-up authorizes focused executed tests and timing diagnostics without timing assertions. Other consumer integration and final validation tasks remain open. Full agreed source, including consumer removal, must be ready before the prototype build. File polling is allowed under the shared Harmos filesystem policy.
+
+## Read-Path Decisions
+
+Decode validated Postcard events directly into Arrow column builders, preserving optional parents, lists, variants, values and row order. Push an initial payload-only projection into decoding while validating the complete payload, including unselected fields. Keep the previous row-tree implementation only as the requested equivalence oracle in tests.
+
+Keep internal scans at 16,384 rows / 8 MiB. Query admission concurrency and response sizes remain explicit consumer settings. Cache at most 32 MiB of compact Arrow input pages and 32 MiB of coordinates, spilling above those bounds; external sort runs stay disk-backed so the number of runs cannot multiply retained memory. Exact LTTB, extrema and decimation selection remain unchanged.
+
+The native timing harness uses JsonStorage, not Dokime's separately owned SQLite backend. Measure end-to-end reads independently from payload decoding; neither a decoder microbenchmark nor an optimized build proves Dokime's 1M-sample deadline. SQLite implementation and the consumer's Arrow-to-Postcard conversion remain outside this worktree slice.
 
 ## Publication Decision
 

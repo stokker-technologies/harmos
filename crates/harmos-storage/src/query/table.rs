@@ -35,7 +35,7 @@ use crate::Result;
 
 /* === Structs === */
 
-/// Immutable Derived Rows, Retained On Disk And Reusable Across Query Plans.
+/// Immutable Derived Rows, Retained As Bounded Arrow Pages Or Private Spill Files.
 #[derive(Clone)]
 pub struct Table {
     spool: Spool,
@@ -47,7 +47,7 @@ pub struct TableWriter {
     schema: Arc<Schema>,
 }
 
-/// Owns The Spill File Until Its Last Page Has Been Read Or Dropped.
+/// Retains Shared Arrow Pages Or The Spill File Until The Reader Is Dropped.
 pub struct TableReader {
     pages: Pages,
 }
