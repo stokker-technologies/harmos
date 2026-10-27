@@ -97,6 +97,19 @@ def product(profile: str, scratch: Path) -> None:
     fixtures.copy(cli, export / "bin" / cli.name, files)
     artifacts["schematic-cli"] = f"bin/{cli.name}"
 
+    metadata = json.loads(
+        subprocess.check_output(
+            ["cargo", "metadata", "--locked", "--format-version", "1"],
+            cwd=ROOT,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdin=sys.stdin,
+            stderr=sys.stderr,
+        )
+    )
+    platform = {"linux": "linux-x86_64", "darwin": "macos-x86_64", "win32": "win32"}[sys.platform]
+    package = next(package for package in metadata["packages"] if package["name"] == f"protoc-bin-vendored-{platform}")
+    protoc = Path(package["manifest_path"]).parent / "bin" / ("protoc.exe" if os.name == "nt" else "protoc")
+
     builds = {}
     for package in ("schematic-sidecar", "schematic-guest"):
         capture = (
@@ -113,20 +126,10 @@ def product(profile: str, scratch: Path) -> None:
         fixtures.copy(source, destination, files)
         artifacts[package] = destination.relative_to(export).as_posix()
         builds[package] = f"product/examples/{staged}"
+        if package == "schematic-sidecar":
+            # Consume Producer-Local Schemas Before The Guest Compiler Preflight.
+            fixtures.generate_python(tool, export / builds[package], protoc, files)
 
-    metadata = json.loads(
-        subprocess.check_output(
-            ["cargo", "metadata", "--locked", "--format-version", "1"],
-            cwd=ROOT,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            stdin=sys.stdin,
-            stderr=sys.stderr,
-        )
-    )
-    platform = {"linux": "linux-x86_64", "darwin": "macos-x86_64", "win32": "win32"}[sys.platform]
-    package = next(package for package in metadata["packages"] if package["name"] == f"protoc-bin-vendored-{platform}")
-    protoc = Path(package["manifest_path"]).parent / "bin" / ("protoc.exe" if os.name == "nt" else "protoc")
-    fixtures.generate_python(tool, export / builds["schematic-sidecar"], protoc, files)
     catalog = {
         "artifacts": artifacts,
         "builds": builds,
