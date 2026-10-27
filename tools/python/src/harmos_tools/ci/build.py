@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/build.py; sha256:bbc7b79cae494d83a21458529695df68460b436317176ceb15ece3507624ef5d
+# Rendered by stkr project update from templates/python/ci/build.py; sha256:5d2d1ef3175fb4cf1d51bf5b7fcdbefe451f749d5bb4e1212d5f1923274a70f0
 # ***
 #
 # Harmos
@@ -48,7 +48,18 @@ def run(task: str, output: str, profile: str) -> int:
     command = ["mise", "run", task]
     if profile != "bench":
         command += ["--profile", profile]
-    return _run(command, OUTPUTS[output])
+    if output == "bench":
+        return _run(command, OUTPUTS[output])
+    # Check / Rust Runs lint:rust Over The Product And Tests Selections; These Producers Only Compile.
+    previous = os.environ.get("STKR_CI_CHECK_CLIPPY")
+    os.environ["STKR_CI_CHECK_CLIPPY"] = "1"
+    try:
+        return _run(command, OUTPUTS[output])
+    finally:
+        if previous is None:
+            os.environ.pop("STKR_CI_CHECK_CLIPPY", None)
+        else:
+            os.environ["STKR_CI_CHECK_CLIPPY"] = previous
 
 
 def main() -> int:
@@ -73,7 +84,7 @@ def main() -> int:
     except (OSError, ValueError, KeyError, RuntimeError) as error:
         parser.exit(
             1,
-            f"build: {type(error).__name__}; inspect the command diagnostics and native cache configuration\n",
+            f"build: {type(error).__name__}: {error}; the native command diagnostics precede this line\n",
         )
 
 

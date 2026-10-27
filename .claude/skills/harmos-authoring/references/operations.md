@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/operations.md; sha256:d18e275a911aad6c81f6d8a4fc46a3ce9bc34da1efc531dbc5340b2b8967e46d -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/operations.md; sha256:d472d0f077e7c29fa0c2e49b2658450d02ca96e4314c2273f3f2a0caefe9c8b1 -->
 
 # Operations
 
@@ -157,5 +157,5 @@ IDs use dotted segments `segment(.segment)*`, each `[a-z][a-z0-9_]*`. The runtim
 and `storage.append_file`. `codec = manual` preserves an explicitly authored message codec.
 
 `Message` supplies encoding and decoding; `Portable` supplies structural fingerprints and payload digests. Retries run a clone
-of the original operation request. Large payloads belong in streams. The low-level `Handler` lifecycle is used for carrier proxies
+of the original operation request. Large payloads belong in streams. The low-level `Carrier` lifecycle is used for carrier proxies
 and lifecycle controls; services retain their separate `Service` lifecycle.
