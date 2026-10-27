@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-check.yml; sha256:a56554fc14075b72b16868305fde2e93becb674ffdba9ee65a169533224c14f1
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-check.yml; sha256:453460ae68854b3125c384837f1fc796a5124db809e59a9659e9aab21afd908a
 name: Check / Repository
 "on":
   workflow_call:
@@ -109,6 +109,22 @@ jobs:
         if (!(Test-Path -LiteralPath $compressor -PathType Leaf)) { throw 'Pinned zstd executable missing' }
         $compressorRoot = Split-Path -Parent $compressor
         $env:PATH = (Split-Path -Parent $compiler) + [IO.Path]::PathSeparator + $compressorRoot + [IO.Path]::PathSeparator + $env:PATH
+        # Real-Time Scanning Of Every Compiler Output Dominates Windows Build Time; Only Ephemeral Hosted Runners Are Reconfigured.
+        $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+        $elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if ($env:RUNNER_ENVIRONMENT -eq 'github-hosted' -and $elevated -and (Get-Command Add-MpPreference -ErrorAction SilentlyContinue)) {
+            $workspace = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { $PWD.Path }
+            $rustup = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $HOME '.rustup' }
+            $cargo = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $HOME '.cargo' }
+            $exclusions = @($workspace, $env:CARGO_TARGET_DIR, $cargo, $rustup, $env:MISE_DATA_DIR, [IO.Path]::GetTempPath()) | Where-Object { $_ }
+            try {
+                Add-MpPreference -ExclusionPath $exclusions -ErrorAction Stop
+                Add-MpPreference -ExclusionProcess @('cargo.exe', 'rustc.exe', 'clippy-driver.exe', 'link.exe', 'cl.exe') -ErrorAction Stop
+                Write-Output "Defender exclusions: $($exclusions -join ', ')"
+            } catch {
+                Write-Output "Defender exclusions unavailable: $($_.Exception.Message)"
+            }
+        }
         # === Verification === #
         & $compressor --version
         if ($LASTEXITCODE -ne 0) { throw 'Pinned zstd cannot execute' }
@@ -374,6 +390,22 @@ jobs:
         if (!(Test-Path -LiteralPath $compressor -PathType Leaf)) { throw 'Pinned zstd executable missing' }
         $compressorRoot = Split-Path -Parent $compressor
         $env:PATH = (Split-Path -Parent $compiler) + [IO.Path]::PathSeparator + $compressorRoot + [IO.Path]::PathSeparator + $env:PATH
+        # Real-Time Scanning Of Every Compiler Output Dominates Windows Build Time; Only Ephemeral Hosted Runners Are Reconfigured.
+        $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+        $elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if ($env:RUNNER_ENVIRONMENT -eq 'github-hosted' -and $elevated -and (Get-Command Add-MpPreference -ErrorAction SilentlyContinue)) {
+            $workspace = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { $PWD.Path }
+            $rustup = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $HOME '.rustup' }
+            $cargo = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $HOME '.cargo' }
+            $exclusions = @($workspace, $env:CARGO_TARGET_DIR, $cargo, $rustup, $env:MISE_DATA_DIR, [IO.Path]::GetTempPath()) | Where-Object { $_ }
+            try {
+                Add-MpPreference -ExclusionPath $exclusions -ErrorAction Stop
+                Add-MpPreference -ExclusionProcess @('cargo.exe', 'rustc.exe', 'clippy-driver.exe', 'link.exe', 'cl.exe') -ErrorAction Stop
+                Write-Output "Defender exclusions: $($exclusions -join ', ')"
+            } catch {
+                Write-Output "Defender exclusions unavailable: $($_.Exception.Message)"
+            }
+        }
         # === Verification === #
         & $compressor --version
         if ($LASTEXITCODE -ne 0) { throw 'Pinned zstd cannot execute' }

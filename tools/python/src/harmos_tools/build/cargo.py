@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/build/cargo.py; sha256:a9da817e2b425444a4f997c59add082dace313cffb68ff39a1885dbd4e2be31b
+# Rendered by stkr project update from templates/python/build/cargo.py; sha256:4b48c67f3d351cada6821295b2f64df3abe6c88bf31336ecf2656fc608adcf4c
 # ***
 #
 # Harmos
@@ -40,6 +40,9 @@ from . import paths, storage
 
 def clippy(directory: Path, arguments: Sequence[str], *, environment: Mapping[str, str] | None = None) -> None:
     storage.preflight(directory)
+    # CI Product And Tests Producers Leave Clippy To Check / Rust, Whose lint:rust Covers Their Selections.
+    if os.environ.get("STKR_CI_CHECK_CLIPPY") == "1":
+        return
     selected = dict(os.environ if environment is None else environment, CARGO_BUILD_WARNINGS="deny")
     with summary.phase("Clippy"):
         subprocess.run(

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:16fcbb6016289cf032e5fe4e21c5aacd608b84e93322deaf65dd5705abc19f69
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:e97b0224bdc18efd358ec5e15955b68aa44fc90038fb0c4e7c34e786a9c71d05
 # === Settings === #
 
 [settings]
@@ -19,7 +19,7 @@ uv = "0.13.0"
 "aqua:nextest-rs/nextest/cargo-nextest" = "0.9.148"
 "aqua:taiki-e/cargo-llvm-cov" = "0.9.1"
 "github:bnjbvr/cargo-machete" = "0.9.2"
-sccache = "0.18.0"
+sccache = "0.19.0"
 
 # Formatting And Linting
 "aqua:koalaman/shellcheck" = "0.11.0"
@@ -78,13 +78,20 @@ run = "uv run --locked --project tools/python python -m project_tools.format.tom
 
 [tasks.lint]
 description = "Lint Every Language"
-depends = ["lint:python"]
+depends = ["lint:rust", "lint:python"]
 
 [tasks."lint:python"]
 description = "Lint Python"
 run = [
   'uv run --locked --project tools/python ruff check --force-exclude --exclude "**/.stkr/templates/**" "tools/python"',
   'uv run --locked --project tools/python ty check --exclude "**/.stkr/templates/**" "tools/python"',
+]
+
+[tasks."lint:rust"]
+description = "Lint Rust"
+run = [
+  "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --profile dev",
+  "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --tests --profile test",
 ]
 
 # === Check === #
@@ -103,7 +110,7 @@ run = [{ task = "format:toml --check" }, "uv run --locked --project tools/python
 
 [tasks."check:rust"]
 description = "Check Rust"
-run = [{ task = "format:rust --check" }, "cargo-machete --skip-target-dir"]
+run = [{ task = "format:rust --check" }, { task = "lint:rust" }, "cargo-machete --skip-target-dir"]
 
 # === Build === #
 

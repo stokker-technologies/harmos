@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/compiler.py; sha256:14a70c5d3ecf556072e9cc86809a66578dd60b1c2ac182b6264f6f168f97eff5
+# Rendered by stkr project update from templates/python/ci/compiler.py; sha256:e01f487e74f6bafbbda0fb35eea29cd4f3e70c3a36fcd71add9799ea7c744456
 # ***
 #
 # Harmos
@@ -11,6 +11,7 @@
 # === Imports === #
 
 # Standard Library Imports
+import collections
 import json
 import os
 import queue
@@ -32,6 +33,22 @@ from pathlib import Path
 # === Public Exports === #
 
 # === Constants === #
+
+# The JSON Statistics And Startup Log Shapes Parsed Here Are Verified Against This Release Series.
+SERIES = "0.19."
+# Native Server Lines Retained For Failure Diagnostics.
+TAIL = 40
+# Environment Values Never Printed In Diagnostics.
+SECRETS = (
+    "ACTIONS_RUNTIME_TOKEN",
+    "ACTIONS_RESULTS_URL",
+    "ACTIONS_CACHE_URL",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "STKR_SCCACHE_BUCKET",
+    "STKR_SCCACHE_ENDPOINT",
+)
 
 # === Types === #
 
@@ -106,21 +123,24 @@ def _execute(
 ) -> int:
     endpoint: queue.Queue[str] = queue.Queue(maxsize=1)
     write_errors = dict.fromkeys(("AlreadyExists", "PermissionDenied", "RateLimited", "Unexpected", "Unknown"), 0)
+    tail: collections.deque[str] = collections.deque(maxlen=TAIL)
+    diagnostics = os.environ.get("STKR_SCCACHE_DIAGNOSTICS") == "1"
     server_environment = environment | {
         "SCCACHE_START_SERVER": "1",
         "SCCACHE_NO_DAEMON": "1",
         "SCCACHE_SERVER_PORT": "0",
-        "SCCACHE_LOG": "off,sccache::server=debug/^(server started, listening on |Error executing cache write: )",
+        "SCCACHE_LOG": "warn,sccache::server=debug" + (",sccache::compiler::compiler=debug" if diagnostics else ""),
         "SCCACHE_IDLE_TIMEOUT": "0",
     }
-    # Pinned 0.18.0 Logs This Only After Backend Readiness And Binding Port 0.
+    # The Server Logs Its Port Only After Backend Readiness And Binding Port 0.
     with subprocess.Popen(
         ["sccache"],
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         env=server_environment,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
     ) as server:
 
         def read_endpoint() -> None:
@@ -131,6 +151,10 @@ def _execute(
                 match = re.search(r"server started, listening on 127\.0\.0\.1:([1-9][0-9]*)\s*$", line)
                 if match and endpoint.empty():
                     endpoint.put(match[1])
+                if re.search(r"\b(WARN|ERROR)\b", line[:80]):
+                    tail.append(line.rstrip())
+                if diagnostics and re.search(r"\]: (Cache (hit|miss|none|recache) in |Hash key: |get_cached_or_compile: )", line):
+                    print("sccache diagnostics: " + _redact(line.rstrip()), flush=True)
             if endpoint.empty():
                 endpoint.put("")
 
@@ -140,18 +164,27 @@ def _execute(
             try:
                 port = endpoint.get(timeout=60)
             except queue.Empty:
+                _report("server startup", ["sccache"], None, tail)
                 raise RuntimeError("sccache: backend readiness timed out; check the declared storage access") from None
             if not port or server.poll() is not None:
+                reader.join(timeout=1)
+                _report("server startup", ["sccache"], server.poll(), tail)
                 raise RuntimeError("sccache: backend startup failed; check the declared storage access")
             child_environment = environment | {
                 "SCCACHE_SERVER_PORT": port,
                 "RUSTC_WRAPPER": "sccache",
                 "CARGO_INCREMENTAL": "0",
             }
+            if os.name == "nt":
+                # MSVC link.exe Stamps Each Proc-Macro DLL With A Fresh Timestamp And PDB GUID; Every Crate Hashing That DLL As
+                # An --extern Input Then Misses. /Brepro Makes The Link Output Content-Derived. LINK Is Not A Hashed Input.
+                child_environment["LINK"] = " ".join(filter(None, ("/Brepro", environment.get("LINK"))))
             if backend is not None:
+                readiness = None
+                verification = ["sccache", "--show-stats", "--stats-format", "json"]
                 try:
                     readiness = subprocess.run(
-                        ["sccache", "--show-stats", "--stats-format", "json"],
+                        verification,
                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                         env=child_environment,
                         capture_output=True,
@@ -161,9 +194,13 @@ def _execute(
                     )
                     information = json.loads(readiness.stdout)
                     scheme = "Local disk:" if backend == "disk" else ("ghac," if backend == "gha" else "s3,")
-                    if not information.get("cache_location", "").startswith(scheme) or information.get("version") != "0.18.0":
-                        raise ValueError
-                except (OSError, ValueError, subprocess.SubprocessError):
+                    if not information.get("cache_location", "").startswith(scheme):
+                        raise ValueError(f"unexpected cache location scheme; expected {scheme.rstrip(',:')}")
+                    if not str(information.get("version", "")).startswith(SERIES):
+                        raise ValueError(f"unsupported version {information.get('version')!r}; expected {SERIES}x")
+                except (OSError, ValueError, subprocess.SubprocessError) as error:
+                    output = error if isinstance(error, subprocess.CalledProcessError) else readiness
+                    _report("backend verification", verification, getattr(output, "returncode", None), tail, error, output)
                     raise RuntimeError("sccache: pinned backend verification failed; refusing implicit storage fallback") from None
             if isinstance(command, str):
                 shell = shell or ("pwsh" if os.name == "nt" else "bash")
@@ -199,6 +236,8 @@ def _execute(
                     while child.poll() is None:
                         if server.poll() is not None:
                             child.terminate()
+                            reader.join(timeout=1)
+                            _report("server", ["sccache"], server.poll(), tail)
                             raise RuntimeError("sccache: owned compiler cache server exited during the command")
                         try:
                             return child.wait(timeout=0.2)
@@ -240,6 +279,49 @@ def _execute(
             reader.join(timeout=1)
             if statistics is not None:
                 statistics.update({f"write_error_{category}": count for category, count in write_errors.items()})
+
+
+def _report(
+    stage: str,
+    command: Sequence[str],
+    status: int | None,
+    tail: Sequence[str],
+    error: BaseException | None = None,
+    output: object = None,
+) -> None:
+    """Print The Failed Native Command, Its Tool Version And Redacted Native Output Beside The Fixed Verdict."""
+    try:
+        version = subprocess.run(
+            ["sccache", "--version"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        version = "sccache (version unavailable)"
+    lines = [f"{version or 'sccache (version unavailable)'}: {stage} failed", f"command: {' '.join(command)}"]
+    if status is not None:
+        lines.append(f"exit status: {status}")
+    if error is not None and not isinstance(error, subprocess.CalledProcessError):
+        lines.append(f"error: {type(error).__name__}: {error}")
+    for name in ("stdout", "stderr"):
+        if text := (getattr(output, name, None) or "").strip():
+            lines.append(f"{name}:")
+            lines.extend("  " + line for line in text.splitlines()[-TAIL:])
+    if tail:
+        lines.append("server log:")
+        lines.extend("  " + line for line in tail)
+    print("\n".join(_redact(line) for line in lines), file=sys.stderr, flush=True)
+
+
+def _redact(text: str) -> str:
+    """Remove Credentials And Backend Endpoints From Native Diagnostics."""
+    for name in SECRETS:
+        if (value := os.environ.get(name)) and len(value) > 3:
+            text = text.replace(value, "***")
+    return re.sub(r"\b[a-z][a-z0-9+.-]*://\S+", "<url>", text)
 
 
 def _write_error(line: str) -> str | None:
