@@ -456,3 +456,29 @@ pub(crate) fn fresh_instance() -> Result<OperationInstanceId> {
 /* === Private Functions === */
 
 /* === Tests === */
+
+impl harmos_sdk::operations::instances::Instances for HostContext {
+    fn owned(&self, id: OperationInstanceId) -> Option<Arc<dyn harmos_sdk::operations::instances::InstanceControl>> {
+        self.borrow().owned_instance(id).map(|instance| instance as Arc<dyn harmos_sdk::operations::instances::InstanceControl>)
+    }
+}
+impl harmos_sdk::operations::instances::InstanceControl for crate::supervision::instance::Instance {
+    fn status(&self) -> harmos_domain::operations::instance::Status {
+        self.status().portable()
+    }
+    fn cancel(&self) {
+        self.cancel();
+    }
+    fn subscribe(&self) -> Box<dyn harmos_sdk::operations::instances::InstanceChanges> {
+        Box::new(InstanceChanges(self.settlement()))
+    }
+}
+struct InstanceChanges(tokio::sync::watch::Receiver<super::OperationStatus>);
+impl harmos_sdk::operations::instances::InstanceChanges for InstanceChanges {
+    fn current(&mut self) -> harmos_domain::operations::instance::Status {
+        self.0.borrow_and_update().portable()
+    }
+    fn changed(&mut self) -> harmos_sdk::operations::instances::Changed<'_> {
+        Box::pin(async { self.0.changed().await.is_ok() })
+    }
+}

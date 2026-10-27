@@ -60,6 +60,7 @@ simulation = ["tokio/test-util"]
 
 [dependencies]
 # Local
+harmos-operations = { workspace = true, features = ["runtime"] }
 harmos-domain = { workspace = true, features = ["derive"] }
 harmos-guest = { workspace = true, optional = true }
 harmos-macros = { workspace = true, default-features = true }

@@ -70,7 +70,7 @@ impl<C: 'static> Operation for Handler<C> {
                 at: request.at.clone(),
                 source: request.source.clone(),
                 transforms: request.transforms.clone(),
-                slice: request.slice.clone(),
+                slice: request.slice,
             })
             .await?;
         while let Some(item) = reader.next().await? {

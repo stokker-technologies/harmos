@@ -32,6 +32,7 @@ kit = ["dep:wit-bindgen", "wit-bindgen/inter-task-wakeup"]
 
 [dependencies]
 # Local
+harmos-operations = { workspace = true }
 harmos-domain = { workspace = true }
 harmos-sdk = { workspace = true }
 

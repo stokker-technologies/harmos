@@ -13,14 +13,10 @@
 
 /* === Modules === */
 
-mod instance;
-mod payloads;
 mod plugin;
 
 /* === Re-Exports === */
 
-pub use instance::{Cancel, Status, Watch};
-pub use payloads::{CancelRequest, InstanceState, StatusRequest, WatchRequest};
 pub use plugin::*;
 
 /* === Imports === */

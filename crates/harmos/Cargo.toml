@@ -31,6 +31,7 @@ simulation = ["runtime", "harmos-runtime/simulation"]
 
 [dependencies]
 # Local
+harmos-operations = { workspace = true }
 harmos-domain = { workspace = true, features = ["derive"] }
 
 # Git

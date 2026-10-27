@@ -26,8 +26,8 @@ use std::marker::PhantomData;
 // Local Imports
 use super::{CallError, Supervisor};
 use harmos_domain::operations::instance::{Id, Status};
-use harmos_domain::operations::lifecycle::InstanceState;
 use harmos_domain::{Message, StreamSpec};
+use harmos_operations::lifecycle::InstanceState;
 use harmos_sdk::operations::{CallContext, ContextError, ContextValue, Host, Instance, OperationDeclaration, Response, WireChildAction};
 
 /* === Constants === */

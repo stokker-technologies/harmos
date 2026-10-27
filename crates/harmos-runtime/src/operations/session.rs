@@ -158,7 +158,11 @@ impl<T: MemorySize> SessionInput<T> {
         tokio::select! {
             biased;
             error = ended(&self.control) => Err(error),
-            result = sender.send_with(bytes, make) => result,
+            permit = sender.reserve(bytes) => {
+                let permit = permit?;
+                let value = make()?;
+                Ok(permit.send_with(|| Ok(value))?)
+            },
         }
     }
 }

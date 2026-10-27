@@ -12,6 +12,7 @@
 mod authored;
 mod dependencies;
 pub mod instance;
+pub mod instances;
 pub mod lifecycle;
 pub mod registration;
 pub(crate) mod response;

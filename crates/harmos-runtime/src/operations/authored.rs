@@ -257,6 +257,9 @@ pub(super) fn factory_with<D: OperationDeclaration, P: Send + 'static>(
 fn execution_context(context: Context<'_>) -> Result<harmos_sdk::OperationContext> {
     let mut dependencies = harmos_sdk::Dependencies::new();
     dependencies
+        .insert(Arc::new(harmos_sdk::operations::instances::InstanceAccess(Arc::new(context.owned()))))
+        .map_err(|source| Error::OperationFailed { operation: "instance access".into(), source: Arc::new(source) })?;
+    dependencies
         .insert(Arc::new(context.owned()))
         .map_err(|source| Error::OperationFailed { operation: "host context".to_owned(), source: Arc::new(source) })?;
     Ok(harmos_sdk::OperationContext::new(dependencies, context.context().clone()))

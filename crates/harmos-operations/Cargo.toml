@@ -1,0 +1,87 @@
+# === Package === #
+
+[package]
+name = "harmos-operations"
+description = "Portable Harmos built-in operations and optional execution."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The authoring attributes, on by default the way serde ships its derives. Every
+# trait beneath them is an ordinary public contract, so a crate that turns this
+# off writes the implementations by hand and links no proc-macro chain at all.
+version = { workspace = true }
+
+# === Package Targets === #
+
+# === Features === #
+
+[features]
+default = []
+runtime = ["dep:harmos-sdk", "dep:thiserror", "dep:tokio"]
+
+# === Dependencies === #
+
+[dependencies]
+harmos-domain = { workspace = true, features = ["derive"] }
+harmos-sdk = { workspace = true, features = ["streaming"], optional = true }
+thiserror = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["sync"], optional = true }
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+[dev-dependencies]
+# Local
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+criterion = { workspace = true, default-features = false }
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+[lints]
+workspace = true
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #

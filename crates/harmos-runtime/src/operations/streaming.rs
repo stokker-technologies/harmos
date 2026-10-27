@@ -29,8 +29,8 @@ use harmos_sdk::operations::streaming as portable;
 
 /* === Type Aliases === */
 
-pub type StreamOutput<T> = portable::StreamOutput<T, Error>;
-pub type StreamPermit<'a, T> = portable::StreamPermit<'a, T, Error>;
+pub type StreamOutput<T> = portable::StreamOutput<T>;
+pub type StreamPermit<'a, T> = portable::StreamPermit<'a, T>;
 /* === Structs === */
 
 /* === Enums === */
@@ -60,7 +60,7 @@ impl From<portable::Error> for Error {
 /* === Public Functions === */
 
 pub fn stream<T>(settings: StreamSettings) -> Result<(StreamOutput<T>, StreamInput<T>)> {
-    portable::channel(settings)
+    portable::channel(settings).map_err(Into::into)
 }
 /* === Private Functions === */
 

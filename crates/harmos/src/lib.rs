@@ -13,6 +13,8 @@
 
 /* === Re-Exports === */
 
+pub use harmos_operations as builtins;
+
 pub use harmos_domain as domain;
 #[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
 pub use harmos_runtime::*;

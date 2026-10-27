@@ -160,7 +160,7 @@ impl<T: Message + MemorySize + 'static> StreamEndpoints for StreamOutput<T> {
             }
             // Actual Items Fence Retry Even If A Malformed Peer Omits Its Flag.
             transferred.store(true, Ordering::Release);
-            self.decode(&payload).await.map_err(RemoteStreamError::Output).map_err(P::Error::from)?;
+            self.decode(&payload).await.map_err(|error| RemoteStreamError::Output(error.into())).map_err(P::Error::from)?;
         }
     }
 }

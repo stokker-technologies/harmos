@@ -33,8 +33,8 @@ use wasmtime::{Config, Engine, Store};
 use harmos::guest::capabilities::Refusal as BridgeRefusal;
 use harmos_domain::inventory::{Declaration, Facility};
 use harmos_domain::operations::lifecycle::InitializeRequest;
-use harmos_domain::operations::lifecycle::InstanceState;
 use harmos_domain::{Message, Refusal};
+use harmos_operations::lifecycle::InstanceState;
 use harmos_sdk::operations::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
 use sandbox::{Echo, Echoed};
 
