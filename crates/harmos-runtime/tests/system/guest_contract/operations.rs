@@ -62,21 +62,21 @@ async fn inert_plan_denies() {
     let mut lifecycle = Lifecycle::schematic(&runtime);
     let definitions = lifecycle.candidate(()).await;
     let invalid = definitions.definitions().cloned().map(|mut definition| {
-        if definition.id == "schematic-tools" {
+        if definition.id == "schematic_tools" {
             definition.configuration = b"{}".to_vec();
         }
         definition
     });
     let mut manager = Manager::new(harmos_runtime::plugin::PluginDefinitions::new(invalid, []).unwrap()).unwrap();
-    assert!(manager.caller("schematic-tools").is_err());
+    assert!(manager.caller("schematic_tools").is_err());
     assert!(matches!(runtime.operation(route(4)).run().await, Err(harmos_runtime::Error::NotRegistered { domain: "operation", .. })));
     assert!(manager.initialize(&mut lifecycle).await.is_err(), "a unit configuration refuses an object");
     manager.shutdown(&mut lifecycle).await.unwrap();
 
     let plan = manager.plan_reload(lifecycle.candidate(()).await).unwrap();
-    assert!(manager.caller("schematic-tools").is_err(), "collection and planning retain an inert original store");
+    assert!(manager.caller("schematic_tools").is_err(), "collection and planning retain an inert original store");
     manager.apply_reload(plan, &mut lifecycle).await.unwrap();
-    assert!(manager.caller("schematic-tools").is_ok());
+    assert!(manager.caller("schematic_tools").is_ok());
     let response = runtime.operation(route(3)).run().await.unwrap();
     assert_eq!(response.points, corner(3));
     manager.shutdown(&mut lifecycle).await.unwrap();

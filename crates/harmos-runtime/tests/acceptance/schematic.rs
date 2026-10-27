@@ -66,7 +66,7 @@ fn inspect_reports_plugins() {
 
         let record: Value = serde_json::from_slice(&output.stdout).unwrap();
         assert_eq!(record["facility"], facility);
-        assert_eq!(record["id"], "schematic-tools");
+        assert_eq!(record["id"], "schematic_tools");
         assert_eq!(record["sha256"].as_str().unwrap().len(), 64);
         assert!(!record["operations"].as_array().unwrap().is_empty());
     }

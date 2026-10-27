@@ -35,7 +35,7 @@ use schematic_operations::{
 
 /* === Constants === */
 
-const PLUGIN: &str = "schematic-tools";
+const PLUGIN: &str = "schematic_tools";
 const ENV_SCENE: &str = "HARMOS_SIDECAR_ENV_SCENE";
 
 /* === Macros === */

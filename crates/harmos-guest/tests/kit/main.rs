@@ -75,7 +75,7 @@ fn world_hash_unchanged() {
 fn inventory_owner_isolation() {
     let bytes = fixtures::inspection("schematic-guest");
     let declared = Declaration::inspect(&bytes, Facility::Guest).expect("the real Wasm inventory reads without instantiation");
-    assert_eq!(declared.id, "schematic-tools");
+    assert_eq!(declared.id, "schematic_tools");
     assert!(declared.contracts.requires.is_empty());
     assert_eq!(
         declared.operations.iter().map(|operation| (operation.id.as_str(), operation.policy.timeout.as_millis())).collect::<Vec<_>>(),

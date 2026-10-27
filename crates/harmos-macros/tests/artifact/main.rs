@@ -74,7 +74,7 @@ fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>, required: 
     for kind in OWNED {
         let fragment = identity(bytes, kind);
         assert_eq!(fragment["facility"], facility, "{facility} {kind} facility");
-        assert_eq!(fragment["owner"], "schematic-tools", "{facility} {kind} owner");
+        assert_eq!(fragment["owner"], "schematic_tools", "{facility} {kind} owner");
     }
 
     // Provided Contracts
@@ -140,7 +140,7 @@ fn artifacts_embed_metadata() {
     {
         let declaration = identity(bytes, "plugin");
         assert_eq!(declaration["facility"], facility);
-        assert_eq!(declaration["id"], "schematic-tools");
+        assert_eq!(declaration["id"], "schematic_tools");
         assert!(declaration["version"].as_str().is_some_and(|version| !version.is_empty()), "{facility} declares the package version");
         inventory(bytes, facility, expected, required, published);
         declarations.push([declaration["id"].clone(), declaration["version"].clone(), declaration["description"].clone()]);

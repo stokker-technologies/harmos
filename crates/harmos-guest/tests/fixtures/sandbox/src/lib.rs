@@ -100,7 +100,7 @@ impl lifecycle::Policy for Sandbox {
     id = "sandbox_guest",
     description = "Answers the host harness's sandbox probes.",
     provides = contract::Operations,
-    requires(ProviderEcho, streams::Publish),
+    requires(contract::ProviderEchoOperation, streams::Publish),
     streams(Echoed)
 )]
 impl harmos_guest::Plugin for Sandbox {
@@ -280,12 +280,12 @@ impl harmos_guest::Operation for Declining {
     type Error = OperationRefusal;
     type Endpoints = ();
 
-    async fn initialize(sdk: harmos_guest::OperationContext) -> Result<Self, OperationRefusal> {
+    async fn initialize(_sdk: harmos_guest::OperationContext) -> Result<Self, OperationRefusal> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, sdk: harmos_guest::OperationContext, _: &mut Decline, _: &mut (),
+        &mut self, _sdk: harmos_guest::OperationContext, _: &mut Decline, _: &mut (),
     ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
         let result: Result<Echoed, OperationRefusal> = async move { Err(OperationRefusal::new(7, "the probe declines")) }.await;
         result.map(Into::into)
@@ -298,12 +298,12 @@ impl harmos_guest::Operation for Spinning {
     type Error = OperationRefusal;
     type Endpoints = ();
 
-    async fn initialize(sdk: harmos_guest::OperationContext) -> Result<Self, OperationRefusal> {
+    async fn initialize(_sdk: harmos_guest::OperationContext) -> Result<Self, OperationRefusal> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, sdk: harmos_guest::OperationContext, _: &mut Spin, _: &mut (),
+        &mut self, _sdk: harmos_guest::OperationContext, _: &mut Spin, _: &mut (),
     ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
         let result: Result<Echoed, OperationRefusal> = async move {
             let mut counted = 0u64;
@@ -323,7 +323,7 @@ impl harmos_guest::Operation for Waiting {
     type Error = OperationRefusal;
     type Endpoints = ();
 
-    async fn initialize(sdk: harmos_guest::OperationContext) -> Result<Self, OperationRefusal> {
+    async fn initialize(_sdk: harmos_guest::OperationContext) -> Result<Self, OperationRefusal> {
         Ok(Self)
     }
 
@@ -352,12 +352,12 @@ impl harmos_guest::Operation for Failing {
     type Error = OperationRefusal;
     type Endpoints = ();
 
-    async fn initialize(sdk: harmos_guest::OperationContext) -> Result<Self, OperationRefusal> {
+    async fn initialize(_sdk: harmos_guest::OperationContext) -> Result<Self, OperationRefusal> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, sdk: harmos_guest::OperationContext, _: &mut Fail, _: &mut (),
+        &mut self, _sdk: harmos_guest::OperationContext, _: &mut Fail, _: &mut (),
     ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
         let result: Result<Echoed, OperationRefusal> = async move { panic!("requested guest trap") }.await;
         result.map(Into::into)
@@ -478,7 +478,7 @@ impl harmos_guest::Operation for Counting {
     }
 
     async fn run(
-        &mut self, sdk: harmos_guest::OperationContext, _: &mut Counts, _: &mut (),
+        &mut self, _sdk: harmos_guest::OperationContext, _: &mut Counts, _: &mut (),
     ) -> Result<harmos_guest::operations::Response<Value>, std::io::Error> {
         let result: Result<Value, std::io::Error> = async move {
             let owner = &self.owner;
