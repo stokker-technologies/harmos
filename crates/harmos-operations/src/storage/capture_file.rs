@@ -37,6 +37,18 @@ product!(CaptureFileRequest {
     consistency: Code<CaptureConsistency> => 4,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CaptureFileRequest {
+    pub source: FileSource,
+    pub range: ByteRange,
+    pub metadata: FileMetadata,
+    pub consistency: CaptureConsistency,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_capture_file",
     request = CaptureFileRequest,
@@ -51,29 +63,18 @@ pub struct CaptureFile {
     #[cfg(feature = "runtime")]
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
 }
-impl CaptureFile {
-    fn grant_for(request: &CaptureFileRequest) -> Option<harmos_domain::plugin::Grant> {
-        request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, scope))
-    }
-}
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CaptureFileRequest {
-    pub source: FileSource,
-    pub range: ByteRange,
-    pub metadata: FileMetadata,
-    pub consistency: CaptureConsistency,
-}
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl CaptureFile {
+    fn grant_for(request: &CaptureFileRequest) -> Option<harmos_domain::plugin::Grant> {
+        request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, scope))
+    }
+}
 
 impl MemorySize for CaptureFileRequest {
     fn memory_size(&self) -> usize {
@@ -84,12 +85,6 @@ impl MemorySize for CaptureFileRequest {
             .saturating_add(self.consistency.memory_size().saturating_sub(std::mem::size_of_val(&self.consistency)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -139,3 +134,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

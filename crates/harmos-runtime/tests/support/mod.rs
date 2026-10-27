@@ -107,9 +107,7 @@ pub const HOUSE: Account = Account(0);
 
 pub const VAULT: Account = Account(1);
 
-pub const DEPOSIT: (Kind, &str, u32) = (Kind::Transaction, "ledger.deposit", 2);
-
-pub const DEPOSIT_V1: (Kind, &str, u32) = (Kind::Transaction, "ledger.deposit", 1);
+pub const DEPOSIT: (Kind, &str, u32) = (Kind::Transaction, "ledger.deposit", 1);
 
 pub const WITHDRAW: (Kind, &str, u32) = (Kind::Transaction, "ledger.withdraw", 1);
 
@@ -144,12 +142,6 @@ pub struct Deposit {
     pub amount: i64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct DepositV1 {
-    pub account: Account,
-    pub amount: i64,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Withdraw {
     pub account: Account,
@@ -170,11 +162,6 @@ pub struct Mirror {
 }
 
 pub struct Copied {
-    entries: Stored,
-    resume: Position,
-}
-
-pub struct Ancient {
     entries: Stored,
     resume: Position,
 }
@@ -272,7 +259,7 @@ impl Registration<Bank> for Definitions {
         fn decode(id: &DefinitionId, version: u32, bytes: &[u8]) -> Result<Option<Change>, DecodeError> {
             let malformed = |_| DecodeError::Malformed { id: id.clone(), version };
             match (id.as_str(), version) {
-                ("ledger.deposit", 1 | 2) => serde_json::from_slice(bytes).map(Change::Deposit).map(Some).map_err(malformed),
+                ("ledger.deposit", 1) => serde_json::from_slice(bytes).map(Change::Deposit).map(Some).map_err(malformed),
                 ("ledger.withdraw", 1) => serde_json::from_slice(bytes).map(Change::Withdraw).map(Some).map_err(malformed),
                 ("ledger.freeze", 1) => serde_json::from_slice::<()>(bytes).map(|()| Some(Change::Freeze)).map_err(malformed),
                 ("ledger.explode", 1) => serde_json::from_slice::<()>(bytes).map(|()| Some(Change::Explode)).map_err(malformed),
@@ -304,25 +291,6 @@ impl Undoable for Deposit {
 impl Invert<Ledger> for Deposit {
     fn invert(&self, _before: &Ledger) -> Withdraw {
         Withdraw { account: self.account, amount: self.amount }
-    }
-}
-
-impl Transaction<Ledger> for DepositV1 {
-    type Error = Refusal;
-
-    fn check(&self, _ledger: &Ledger) -> Result<(), Self::Error> {
-        (self.amount > 0).then_some(()).ok_or(Refusal::NotPositive)
-    }
-
-    fn apply(&self, ledger: &mut Ledger) {
-        *ledger.balances.entry(self.account).or_default() += 2 * self.amount;
-        ledger.applications += 1;
-    }
-}
-
-impl From<DepositV1> for Deposit {
-    fn from(old: DepositV1) -> Self {
-        Self { account: old.account, amount: old.amount }
     }
 }
 
@@ -467,54 +435,6 @@ impl Source<Bank> for Copied {
     }
 }
 
-impl Ancient {
-    pub fn resuming(entries: &Stored) -> Self {
-        Self { entries: Arc::clone(entries), resume: Position::ORIGIN }
-    }
-}
-
-impl JournalConsumer<Bank> for Ancient {
-    fn resume(&self) -> Position {
-        self.resume
-    }
-
-    async fn drain(&mut self, _entries: Vec<Arc<Entry<Recorded<Bank>>>>, applied: Position) -> Position {
-        self.resume = applied;
-
-        applied
-    }
-}
-
-impl Source<Bank> for Ancient {
-    async fn load(&mut self) -> Result<Recovery<Bank>, Incompatible> {
-        let entries: Vec<Envelope<Payload<Bank>>> = self
-            .entries
-            .lock()
-            .expect("the copy is never poisoned")
-            .iter()
-            .map(|entry| match &entry.value {
-                Recorded::Transaction(change) => match &**change {
-                    Change::Deposit(deposit) => ancient(entry, *deposit),
-                    _ => stored(entry),
-                },
-                Recorded::Record(_) => stored(entry),
-                Recorded::System(_) => stored(entry),
-            })
-            .collect();
-
-        self.resume = entries.last().map_or(Position::ORIGIN, |envelope| envelope.position);
-
-        Ok(Recovery {
-            commits: Vec::new(),
-            frontier: self.resume,
-            entries,
-            // A copy that keeps values rather than bytes has no stored
-            // encoding to forward.
-            encoded: Vec::new(),
-        })
-    }
-}
-
 impl harmos_runtime::state::CatalogCodec for Change {
     fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
         (
@@ -561,9 +481,7 @@ impl harmos_runtime::state::TransactionCatalog<Ledger> for Change {}
 /* === Public Functions === */
 
 pub fn catalog() -> impl Registration<Bank> {
-    Definitions(
-        [DEPOSIT, DEPOSIT_V1, WITHDRAW, FREEZE, EXPLODE, NOTED].map(|(kind, id, version)| (kind, DefinitionId::new(id), version)).into(),
-    )
+    Definitions([DEPOSIT, WITHDRAW, FREEZE, EXPLODE, NOTED].map(|(kind, id, version)| (kind, DefinitionId::new(id), version)).into())
 }
 
 pub fn deposit(amount: i64) -> Change {
@@ -654,7 +572,7 @@ fn stored(entry: &Entry<Recorded<Bank>>) -> Envelope<Payload<Bank>> {
                 id: id.clone(),
                 version,
                 metadata: entry.metadata.clone(),
-                payload: Payload { prepared: None, id, version, value: Recorded::System(fact.clone()), apply: None },
+                payload: Payload { prepared: None, id, version, value: Recorded::System(fact.clone()) },
             };
         }
     };
@@ -677,27 +595,6 @@ fn stored(entry: &Entry<Recorded<Bank>>) -> Envelope<Payload<Bank>> {
             value,
             // Everything this copy holds was written by the version this build
             // writes, so the catalog's own apply is the one that wrote it.
-            apply: None,
-        },
-    }
-}
-
-fn ancient(entry: &Entry<Recorded<Bank>>, deposit: Deposit) -> Envelope<Payload<Bank>> {
-    let (kind, id, version) = DEPOSIT_V1;
-    let old = DepositV1 { account: deposit.account, amount: deposit.amount };
-
-    Envelope {
-        position: entry.position,
-        kind,
-        id: DefinitionId::new(id),
-        version,
-        metadata: entry.metadata.clone(),
-        payload: Payload {
-            prepared: None,
-            id: DefinitionId::new(id),
-            version,
-            value: Recorded::Transaction(Arc::new(Change::from(Deposit::from(old)))),
-            apply: Some(Box::new(move |ledger: &mut Ledger| old.apply(ledger))),
         },
     }
 }

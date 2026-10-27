@@ -339,7 +339,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             "policy": { "credit": policy.credit, "sustained_health_ms": policy.sustained_health_ms,
                 "backoff_base_ms": policy.backoff_base_ms, "backoff_cap_ms": policy.backoff_cap_ms }
         });
-        let encoded = format!("\0HARMOS:ARTIFACT:V6:{value}\0").into_bytes();
+        let encoded = format!("\0HARMOS:ARTIFACT:V1:{value}\0").into_bytes();
         let length = encoded.len();
         let bytes = syn::LitByteStr::new(&encoded, id.span());
         (

@@ -7,11 +7,19 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
 
 use super::access::AccessError;
 use harmos_domain::model::operations::publication::FollowingRow;
 use std::{future::Future, pin::Pin, sync::Arc};
+
+/* === Constants === */
+
+/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -32,8 +40,18 @@ pub struct Publication<'a> {
     pub following: &'a mut Vec<FollowingRow>,
 }
 
+/* === Enums === */
+
 /* === Traits === */
 
 pub trait PublicationHost: Send + Sync {
-    fn publish<'a>(&'a self, publication: Publication<'a>) -> Published<'a>;
+    fn publish<'a>(&'a self, context: super::OperationContext, publication: Publication<'a>) -> Published<'a>;
 }
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

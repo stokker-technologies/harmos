@@ -34,7 +34,7 @@ use super::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildCont
 
 /* === Constants === */
 
-const VERSION: u8 = 8;
+const VERSION: u8 = 1;
 pub(super) const LIMIT: usize = 16 * 1024 * 1024;
 
 /* === Macros === */
@@ -58,9 +58,6 @@ pub enum WireCodecError {
     #[error("operation envelope exceeds the 16 MiB limit")]
     Oversized,
 
-    #[error("unsupported operation envelope version")]
-    Version,
-
     #[error("unexpected operation envelope kind")]
     Kind,
 
@@ -71,7 +68,7 @@ pub enum WireCodecError {
     Encoding(#[from] postcard::Error),
 }
 
-// Variant Order Is Part Of Version 8. Borrowed Fields Validate Before Allocation.
+// Variant Order Is Part Of Version 1. Borrowed Fields Validate Before Allocation.
 // As In The Transport Experiment, Payloads Use Postcard Byte Strings, Not Sequences.
 #[derive(Serialize, Deserialize)]
 enum Envelope<'a> {
@@ -395,10 +392,7 @@ fn decode(bytes: &[u8]) -> Result<Envelope<'_>, WireCodecError> {
     if bytes.len() > LIMIT {
         return Err(WireCodecError::Oversized);
     }
-    let (version, rest) = postcard::take_from_bytes::<u8>(bytes)?;
-    if version != VERSION {
-        return Err(WireCodecError::Version);
-    }
+    let (_version, rest) = postcard::take_from_bytes::<u8>(bytes)?;
     let (envelope, rest) = postcard::take_from_bytes::<Envelope<'_>>(rest)?;
     if !rest.is_empty() {
         return Err(WireCodecError::Trailing);
@@ -433,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn prepare_identity_roundtrips_and_rejects_version_only_peers() {
+    fn prepare_identity_roundtrips() {
         let command = WireCommand::Prepare {
             invocation: 127,
             operation: "fixture.read".into(),
@@ -441,12 +435,10 @@ mod tests {
             generation: u64::MAX,
             payload: vec![1, 2],
         };
-        let mut bytes = command.encode().unwrap();
+        let bytes = command.encode().unwrap();
         assert!(matches!(WireCommand::decode(&bytes).unwrap(), WireCommand::Prepare {
             invocation: 127, operation, fingerprint, generation: u64::MAX, payload
         } if operation == "fixture.read" && fingerprint == [173; 32] && payload == [1, 2]));
-        bytes[0] = 6;
-        assert!(matches!(WireCommand::decode(&bytes), Err(WireCodecError::Version)));
     }
 
     #[test]

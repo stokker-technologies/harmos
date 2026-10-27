@@ -544,8 +544,8 @@ pub(super) fn published_at() -> Option<i64> {
 mod tests {
     use super::*;
     use harmos_domain::model::storage::files::{ByteRange, FileBatch, FileSource};
-    use harmos_domain::operations::{
-        CallValue,
+    use harmos_domain::operations::CallValue;
+    use harmos_operations::{
         storage::{ReadFile, ReadFileRequest},
         streams::Publish,
     };

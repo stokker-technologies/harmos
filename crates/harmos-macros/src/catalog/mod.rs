@@ -153,69 +153,15 @@ fn crossing(name: &Ident, visibility: &syn::Visibility, members: &[Member], stat
         quote!(Self::#variant(definition) => ::serde::Serialize::serialize(definition, serializer),)
     });
     let named = members.iter().map(|member| &member.definition);
-    let restore = match state {
-        Some(state) => quote! {
-
-
-
-            #[allow(clippy::type_complexity)]
-            #visibility fn restore<'de, D>(
-                id: &#harmos::DefinitionId,
-                version: u32,
-                payload: D,
-            ) -> ::core::result::Result<
-                ::core::option::Option<(
-                    Self,
-                    ::core::option::Option<
-                        ::std::boxed::Box<
-                            dyn ::core::ops::FnOnce(&mut #state) + ::core::marker::Send,
-                        >,
-                    >,
-                )>,
-                D::Error,
-            >
-            where
-                D: ::serde::Deserializer<'de> + ::core::marker::Copy,
-            {
-                #(
-                    if id.as_str() == <#named>::DEFINITION.1 {
-                        return ::core::result::Result::Ok(
-                            <#named>::restore::<#state, D>(version, payload)?.map(
-                                |(definition, applying)| {
-                                    (::core::convert::From::from(definition), applying)
-                                },
-                            ),
-                        );
-                    }
-                )*
-
-                ::core::result::Result::Ok(::core::option::Option::None)
-            }
-        },
-        None => quote! {
-
-
-
-            #visibility fn restore<'de, D>(
-                id: &#harmos::DefinitionId,
-                version: u32,
-                payload: D,
-            ) -> ::core::result::Result<::core::option::Option<Self>, D::Error>
-            where
-                D: ::serde::Deserializer<'de> + ::core::marker::Copy,
-            {
-                #(
-                    if id.as_str() == <#named>::DEFINITION.1 {
-                        return ::core::result::Result::Ok(
-                            <#named>::restore::<D>(version, payload)?
-                                .map(::core::convert::From::from),
-                        );
-                    }
-                )*
-
-                ::core::result::Result::Ok(::core::option::Option::None)
-            }
-        },
+    let restore = quote! {
+        #visibility fn restore<'de, D>(id: &#harmos::DefinitionId, version: u32, payload: D)
+            -> ::core::result::Result<::core::option::Option<Self>, D::Error>
+        where D: ::serde::Deserializer<'de> + ::core::marker::Copy {
+            #(if id.as_str() == <#named>::DEFINITION.1 {
+                return Ok(<#named>::restore::<D>(version, payload)?.map(::core::convert::From::from));
+            })*
+            Ok(None)
+        }
     };
     let record_catalog = state.is_none().then(|| {
         quote! {
@@ -302,9 +248,9 @@ fn behavior(
         impl #harmos::state::TransactionCatalog<#state> for #name {
             fn replay(&self, prepared: &#harmos::state::Prepared, state: &mut #state) -> ::core::result::Result<(), #harmos::state::DecodeError> {
                 let refusal = || #harmos::state::DecodeError::Malformed { id: prepared.id.clone(), version: prepared.version };
-                let (value, applying) = Self::restore(&prepared.id, prepared.version, &prepared.payload)
+                let value = Self::restore(&prepared.id, prepared.version, &prepared.payload)
                     .map_err(|_| refusal())?.ok_or_else(refusal)?;
-                if let Some(apply) = applying { apply(state); } else { #harmos::state::Transaction::apply(&value, state); }
+                #harmos::state::Transaction::apply(&value, state);
                 ::core::result::Result::Ok(())
             }
         }
@@ -395,9 +341,6 @@ fn registration(name: &Ident, visibility: &syn::Visibility, members: &[Member], 
                 let (kind, id, version) = <#definition>::DEFINITION;
                 catalogued.push((kind, #harmos::DefinitionId::new(id), version));
 
-                for (kind, id, version) in <#definition>::HISTORY {
-                    catalogued.push((kind, #harmos::DefinitionId::new(id), version));
-                }
             }
         }
     });
@@ -414,7 +357,7 @@ fn registration(name: &Ident, visibility: &syn::Visibility, members: &[Member], 
                     let payload: #harmos::__private::serde_json::Value =
                         #harmos::__private::serde_json::from_slice(bytes).map_err(|_| malformed())?;
                     let restored = #name::restore(id, version, &payload).map_err(|_| malformed())?;
-                    Ok(restored.map(|(transaction, _apply)| transaction))
+                    Ok(restored)
                 }
                 #harmos::state::TransactionDefinitions {
                     definitions: catalogued,

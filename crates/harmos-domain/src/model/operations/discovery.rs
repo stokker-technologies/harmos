@@ -7,10 +7,20 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
 
 use crate::operations::Contract;
 use crate::plugin::Grant;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -24,3 +34,15 @@ pub struct DiscoveredOperation {
     pub conditional_access: bool,
     pub grpc_available: bool,
 }
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

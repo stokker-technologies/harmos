@@ -960,8 +960,7 @@ where
 {
     let mut dependencies = harmos_runtime::Dependencies::new();
     dependencies.insert(resident).unwrap();
-    harmos_runtime::RegistrationBatch::new(dependencies)
-        .implementation::<harmos_runtime::operations::streams::Publish, harmos_runtime::sidecar::Publish<A, S, H>>()
+    harmos_runtime::RegistrationBatch::new(dependencies).operation::<harmos_operations::streams::Publish>()
 }
 
 fn assembly() -> harmos_runtime::Builder<Bank> {

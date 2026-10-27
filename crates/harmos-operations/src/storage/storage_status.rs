@@ -30,6 +30,14 @@ use harmos_domain::operations::{ReplaySafety, Visibility};
 
 product!(StorageStatusRequest {});
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+// Read The Storage Frontiers, Mutation Window And File Batch Size.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StorageStatusRequest {}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_status",
     request = StorageStatusRequest,
@@ -43,14 +51,6 @@ pub struct StorageStatus {
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
 }
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
-// Read The Storage Frontiers, Mutation Window And File Batch Size.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct StorageStatusRequest {}
-
 /* === Enums === */
 
 /* === Traits === */
@@ -62,12 +62,6 @@ impl MemorySize for StorageStatusRequest {
         std::mem::size_of::<Self>()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -108,3 +102,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

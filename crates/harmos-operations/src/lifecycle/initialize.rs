@@ -7,16 +7,19 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
 
-use harmos_domain::{
-    MemorySize,
-    schema::{
-        Cardinality, Described,
-        declaration::{Field, Kind},
-    },
-};
-use std::borrow::Cow;
+use harmos_domain::{MemorySize, schema::Described};
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -26,25 +29,25 @@ pub struct InitializeRequest {
     pub generation_context: Vec<u8>,
     pub assignments: Vec<u8>,
 }
+
 #[harmos::operation(harmos_path = crate, id = "harmos_initialize", request = InitializeRequest, response = (), policy = super::POLICY, infer_request)]
 pub struct Initialize {
     #[cfg(feature = "runtime")]
     instance: Box<dyn harmos_sdk::operations::lifecycle::LifecycleInstance>,
 }
 
+/* === Enums === */
+
+/* === Traits === */
+
 /* === Implementations === */
 
 harmos_domain::postcard_product!(InitializeRequest { config_json: Vec<u8>, generation_context: Vec<u8>, assignments: Vec<u8> });
 impl Described for InitializeRequest {
-    const NAME: &'static str = "harmos.lifecycle.InitializeRequest";
-    const FIELDS: &'static [Field] = &[
-        Field { name: Cow::Borrowed("config_json"), tag: 1, kind: Kind::Bytes, cardinality: Cardinality::Required },
-        Field { name: Cow::Borrowed("generation_context"), tag: 2, kind: Kind::Bytes, cardinality: Cardinality::Required },
-        Field { name: Cow::Borrowed("assignments"), tag: 3, kind: Kind::Bytes, cardinality: Cardinality::Required },
-    ];
-    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
-        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
-    >(Self::NAME, Self::FIELDS);
+    const NAME: &'static str = <harmos_domain::model::operations::lifecycle::InitializationSchema as Described>::NAME;
+    const FIELDS: &'static [harmos_domain::schema::declaration::Field] =
+        <harmos_domain::model::operations::lifecycle::InitializationSchema as Described>::FIELDS;
+    const MARKER: &'static [u8] = <harmos_domain::model::operations::lifecycle::InitializationSchema as Described>::MARKER;
 }
 
 impl MemorySize for InitializeRequest {
@@ -80,3 +83,9 @@ impl crate::Operation for Initialize {
         self.instance.cleanup().await.map_err(crate::Error::Access)
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

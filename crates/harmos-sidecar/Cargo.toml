@@ -30,7 +30,7 @@ bench = false
 
 [features]
 default = ["derive", "kit"]
-kit = ["transport", "dep:getrandom"]
+kit = ["harmos-operations/runtime", "transport", "dep:getrandom"]
 # The Shared Process Boundary Without Plugin Authoring Or Callback Runners
 transport = ["dep:sha2", "dep:getrandom", "dep:libc", "dep:postcard", "dep:futures-util", "dep:tokio", "dep:windows-sys"]
 
@@ -43,7 +43,7 @@ streaming = ["harmos-sdk/streaming"]
 
 [dependencies]
 # Local
-harmos-operations = { workspace = true, features = ["runtime"] }
+harmos-operations = { workspace = true }
 harmos-domain = { workspace = true }
 harmos-sdk = { workspace = true }
 

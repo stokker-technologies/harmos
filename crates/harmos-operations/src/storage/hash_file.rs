@@ -35,6 +35,16 @@ product!(HashFileRequest {
     range: Nested<ByteRange> => 2,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HashFileRequest {
+    pub source: FileSource,
+    pub range: ByteRange,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_hash_file",
     request = HashFileRequest,
@@ -49,27 +59,18 @@ pub struct HashFile {
     #[cfg(feature = "runtime")]
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
 }
-impl HashFile {
-    fn grant_for(request: &HashFileRequest) -> Option<harmos_domain::plugin::Grant> {
-        request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, scope))
-    }
-}
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HashFileRequest {
-    pub source: FileSource,
-    pub range: ByteRange,
-}
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl HashFile {
+    fn grant_for(request: &HashFileRequest) -> Option<harmos_domain::plugin::Grant> {
+        request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, scope))
+    }
+}
 
 impl MemorySize for HashFileRequest {
     fn memory_size(&self) -> usize {
@@ -78,12 +79,6 @@ impl MemorySize for HashFileRequest {
             .saturating_add(self.range.memory_size().saturating_sub(std::mem::size_of_val(&self.range)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -124,3 +119,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

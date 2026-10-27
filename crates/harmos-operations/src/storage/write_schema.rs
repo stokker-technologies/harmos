@@ -33,6 +33,17 @@ product!(WriteSchemaRequest {
     schema: Nested<SchemaInput> => 2,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+// Register One Payload Schema, Exactly Once Per Mutation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WriteSchemaRequest {
+    pub mutation: MutationId,
+    pub schema: SchemaInput,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_write_schema",
     request = WriteSchemaRequest,
@@ -44,17 +55,6 @@ product!(WriteSchemaRequest {
 pub struct WriteSchema {
     #[cfg(feature = "runtime")]
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
-}
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-// Register One Payload Schema, Exactly Once Per Mutation.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteSchemaRequest {
-    pub mutation: MutationId,
-    pub schema: SchemaInput,
 }
 
 /* === Enums === */
@@ -70,12 +70,6 @@ impl MemorySize for WriteSchemaRequest {
             .saturating_add(self.schema.memory_size().saturating_sub(std::mem::size_of_val(&self.schema)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -122,3 +116,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

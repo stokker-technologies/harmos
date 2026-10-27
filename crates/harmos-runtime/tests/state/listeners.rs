@@ -44,7 +44,7 @@ type Seen = Vec<(bool, u32, Position)>;
 /* === Structs === */
 
 // Neither The Original Native Record Nor Its Decoded Callback Copy Is Clone.
-#[harmos_runtime::record(id = "listener.fact", version = 1)]
+#[harmos_runtime::record(id = "listener.fact")]
 #[derive(Serialize, Deserialize)]
 struct Fact {
     value: u32,

@@ -95,9 +95,6 @@ pub(super) fn stream(schema: &StorageSchema, rows: &[StoredRow], bank: &MemoryBa
 pub(super) fn objects(schema: &StorageSchema, rows: &[ObjectEntry], bank: &MemoryBank) -> Result<RecordBatch> {
     // The caller resolves every selected schema and establishes compatibility.
     // Equivalent payload graphs may have different logical schema identifiers.
-    for row in rows {
-        row.value.schema.require_postcard()?;
-    }
     let mut budget = bank.scope();
     budget.claim(rows.len().checked_mul(std::mem::size_of::<&[u8]>()).ok_or_else(exhausted)?)?;
     let payloads = rows.iter().map(|row| row.value.payload.as_slice()).collect::<Vec<_>>();
@@ -319,7 +316,6 @@ fn expanded_schema_bytes(schema: &graph::Schema, root: usize, depth: usize, coun
 }
 
 fn payload(schema: &StorageSchema, payloads: &[&[u8]], budget: &mut Budget<'_>) -> Result<ArrayRef> {
-    schema.key.require_postcard()?;
     let mut expanded_fields = 0;
     let expanded_bytes = expanded_schema_bytes(&schema.schema, schema.schema.root, 0, &mut expanded_fields)?;
     budget.claim(expanded_bytes)?;
@@ -523,7 +519,6 @@ fn append_schema_columns(
 fn encoding(key: &crate::storage::SchemaKey) -> &'static str {
     match key.payload_encoding {
         crate::storage::PayloadEncoding::PostcardV1 => "postcard_v1",
-        crate::storage::PayloadEncoding::ProtobufV1 => "protobuf_v1",
     }
 }
 fn strings<'a>(values: impl Iterator<Item = Option<&'a str>>) -> ArrayRef {

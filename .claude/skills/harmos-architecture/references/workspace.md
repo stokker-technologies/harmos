@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/references/workspace.md; sha256:a2c7a642d7ae88e5bc063c3ecb36b8f1f6099e8e604a2d9f21cba970909449ce -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/references/workspace.md; sha256:ee4d21f0106012f8f1147f223cc9b27b5143f564b74369d363c21d040d73432c -->
 
 # Consumer Workspace
 
@@ -130,3 +130,12 @@ Host-specific files such as a plugin framework's `settings.rs` may remain;
 do not rename or merge them solely to match this illustration. Framework suites,
 templates and evidence are governed by that framework. Harmos guidance owns
 only the common contracts, resources and carrier integration.
+
+## Harmos Built-Ins
+
+Harmos uses the same separation: `harmos-domain` owns shared portable models,
+`harmos-operations` owns the 30 vertical built-in operation files and concern
+catalogs, and `harmos-runtime` supplies SDK-defined dependency handles and
+storage engines. `harmos` exposes them through `builtins`. Execution is gated
+by the operations crate's `runtime` feature; portable consumers need neither
+SDK nor storage execution dependencies.

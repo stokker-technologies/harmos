@@ -31,7 +31,7 @@ use harmos::{state::Invert, state::Transaction};
 
 /* === Structs === */
 
-#[harmos::transaction(id = "symbol.move", version = 1, inverse = Self)]
+#[harmos::transaction(id = "symbol.move",  inverse = Self)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct MoveSymbol {
     pub symbol: SymbolId,

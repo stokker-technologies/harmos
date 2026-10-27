@@ -118,7 +118,6 @@ impl Registry {
     }
 
     pub(super) fn reserve(self: &Arc<Self>, owner: &str, schema: SchemaKey, graph: Arc<Schema>) -> Result<Pending> {
-        schema.require_postcard()?;
         if !harmos_domain::artifact_subset(owner) || owner.len() > NAME_BYTES || schema.id.as_str().len() > NAME_BYTES {
             return Err(Error::InvalidInput { field: "record schema", reason: "invalid or oversized identity" });
         }
@@ -182,7 +181,7 @@ impl Registry {
     }
 
     pub(super) fn definition(&self, schema: &SchemaKey) -> Option<Arc<Definition>> {
-        if schema.id.as_str().len() > NAME_BYTES || schema.require_postcard().is_err() {
+        if schema.id.as_str().len() > NAME_BYTES {
             return None;
         }
         let state = self.state.lock().expect("record schema registry poisoned");

@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/operations.md; sha256:d592f13ff3c2e08f40a9fb04f9947df57822efc8e2006e1f1ce957a04a2b72eb -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/operations.md; sha256:af37168f08cc17d3c832dac78e296c2de03712883cf61089e74ddc9688740e8e -->
 
 # Operations
 
@@ -48,6 +48,13 @@ The operations crate uses `harmos` with `default-features = false` and
 `runtime = ["harmos/runtime", "dep:device"]`. Cargo feature unification can
 still enable execution elsewhere in a shared graph. Keep contracts usable in
 a separate build without runtime dependencies.
+
+Harmos's own built-ins follow this layout in
+`crates/harmos-operations/src/{host,lifecycle,storage,streams}/`, exposed as
+`harmos::builtins`. Runtime code supplies SDK-owned state access handles;
+operations never depend back on the runtime crate. Shared portable values and
+reserved lifecycle protocol schemas stay in the domain. The current wire and
+storage formats are v1, with no historical decoding or migration.
 
 ## Catalogs And Invocation
 

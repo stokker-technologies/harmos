@@ -195,8 +195,7 @@ use harmos::{
 
 /* === Constants === */
 
-const SCHEMA: u32 = 3;
-const LEGACY_SCHEMA: u32 = 2;
+const SCHEMA: u32 = 1;
 const MAX_HEADER_BYTES: usize = 4096;
 const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
@@ -242,7 +241,6 @@ struct Log {
     file: File,
     generation: u64,
     origin: Position,
-    schema: u32,
     append_ready: bool,
     failed: bool,
     pending: Vec<Arc<Vec<u8>>>,
@@ -479,7 +477,7 @@ impl<A: Wire> Source<A> for Jsonl<A> {
                 commits.push((first, end));
             }
             for member in group {
-                let mut envelope = migrated_member(member)?;
+                let mut envelope = decoded_member(member)?;
                 if grouped {
                     envelope.metadata.commit = Some((first, end));
                 }
@@ -527,7 +525,7 @@ impl<A: Wire> Source<A> for Jsonl<A> {
                 if member.position <= after.0 || member.position > through.0 {
                     continue;
                 }
-                let mut envelope = migrated_member(member).map_err(|_| Error::Unavailable)?;
+                let mut envelope = decoded_member(member).map_err(|_| Error::Unavailable)?;
                 if grouped {
                     envelope.metadata.commit = Some((first, end));
                 }
@@ -589,47 +587,27 @@ impl<'de> serde::de::Visitor<'de> for Members {
 
 impl Log {
     fn open(path: &Path, document: Option<Document>) -> io::Result<Self> {
-        let (mut log, schema) = match wire::Header::read(path)? {
-            Some(header) => {
-                if document.is_none() && !matches!(header.schema, SCHEMA | LEGACY_SCHEMA) {
-                    return Err(io::Error::other(format!(
-                        "the copy was written by schema {}, which this build cannot read",
-                        header.schema
-                    )));
-                }
-                (
-                    Self {
-                        path: path.to_owned(),
-                        file: OpenOptions::new().append(true).open(path)?,
-                        schema: header.schema,
-                        append_ready: false,
-                        failed: false,
-                        generation: header.generation,
-                        origin: Position(header.origin),
-                        pending: Vec::new(),
-                        written: Position(header.origin),
-                        checkpoint: Position(header.origin),
-                    },
-                    header.schema,
-                )
-            }
-            None => (Self::create(path, 0, Position::ORIGIN)?, SCHEMA),
+        let mut log = match wire::Header::read(path)? {
+            Some(header) => Self {
+                path: path.to_owned(),
+                file: OpenOptions::new().append(true).open(path)?,
+                append_ready: false,
+                failed: false,
+                generation: header.generation,
+                origin: Position(header.origin),
+                pending: Vec::new(),
+                written: Position(header.origin),
+                checkpoint: Position(header.origin),
+            },
+            None => Self::create(path, 0, Position::ORIGIN)?,
         };
-        // A retired-format sidecar is reset below without its lines ever
-        // being scanned; only a current-format copy reads its last position.
-        if matches!(schema, SCHEMA | LEGACY_SCHEMA) {
-            log.written = log.last()?.max(log.origin);
-            log.checkpoint = log.written;
-        }
-
-        // A sidecar folded from another save — or written by another format
-        // version — is not this document's history.
+        log.written = log.last()?.max(log.origin);
+        log.checkpoint = log.written;
         if let Some(document) = document
-            && (log.generation != document.generation || !matches!(schema, SCHEMA | LEGACY_SCHEMA))
+            && log.generation != document.generation
         {
             log.reset(document.generation, document.at)?;
         }
-
         Ok(log)
     }
 
@@ -644,7 +622,6 @@ impl Log {
             file: OpenOptions::new().append(true).open(path)?,
             generation,
             origin,
-            schema: SCHEMA,
             append_ready: true,
             failed: false,
             pending: Vec::new(),
@@ -683,7 +660,7 @@ impl Log {
             }
             let terminated = line.last() == Some(&b'\n');
             let prefix = b"{\"group\":";
-            if !terminated && self.schema == SCHEMA && (line.starts_with(prefix) || prefix.starts_with(&line)) {
+            if !terminated && (line.starts_with(prefix) || prefix.starts_with(&line)) {
                 break;
             }
             if terminated {
@@ -692,9 +669,6 @@ impl Log {
             let length = line.len();
             let text = wire::lf_only(std::mem::take(&mut line))?;
             let group = members(&text)?;
-            if self.schema == LEGACY_SCHEMA && is_group(&text) {
-                return Err(io::Error::other("v2 cannot contain group frames"));
-            }
             if Some(group[0].position) != expected {
                 return Err(io::Error::other("journal position gap"));
             }
@@ -717,41 +691,18 @@ impl Log {
         if self.append_ready {
             return Ok(());
         }
-        let (lines, valid) = self.scan()?;
-        if self.schema == SCHEMA {
-            self.truncate(valid)?;
-            use std::io::{Read, Seek};
-            if valid > 0 {
-                let mut last = File::open(&self.path)?;
-                last.seek(std::io::SeekFrom::Start(valid - 1))?;
-                let mut byte = [0];
-                last.read_exact(&mut byte)?;
-                if byte[0] != b'\n' {
-                    self.file.write_all(b"\n")?;
-                }
+        let (_, valid) = self.scan()?;
+        self.truncate(valid)?;
+        use std::io::{Read, Seek};
+        if valid > 0 {
+            let mut last = File::open(&self.path)?;
+            last.seek(std::io::SeekFrom::Start(valid - 1))?;
+            let mut byte = [0];
+            last.read_exact(&mut byte)?;
+            if byte[0] != b'\n' {
+                self.file.write_all(b"\n")?;
             }
-            self.append_ready = true;
-            return Ok(());
         }
-        let temporary = self.path.with_extension("upgrade~");
-        let mut fresh = File::create(&temporary)?;
-        wire::Header { schema: SCHEMA, generation: self.generation, origin: self.origin.0 }.write(&mut fresh)?;
-        for line in lines {
-            writeln!(fresh, "{line}")?;
-        }
-        fresh.sync_all()?;
-        std::fs::rename(&temporary, &self.path)?;
-        // Directory fsync is a POSIX idiom, as it is for the evidence
-        // directory beside this module: opening a directory as a file is
-        // refused on Windows (`ERROR_ACCESS_DENIED`), and NTFS makes rename
-        // metadata durable without a user-mode directory flush.
-        if cfg!(unix)
-            && let Some(parent) = self.path.parent().filter(|p| !p.as_os_str().is_empty())
-        {
-            File::open(parent)?.sync_all()?;
-        }
-        self.file = OpenOptions::new().append(true).open(&self.path)?;
-        self.schema = SCHEMA;
         self.append_ready = true;
         Ok(())
     }
@@ -827,7 +778,6 @@ impl Log {
 
         self.file = OpenOptions::new().append(true).open(&self.path)?;
         self.origin = beneath;
-        self.schema = SCHEMA;
 
         Ok(())
     }
@@ -837,7 +787,6 @@ impl Log {
 
         self.file = fresh.file;
         self.generation = generation;
-        self.schema = SCHEMA;
         self.origin = at;
         self.pending.clear();
         self.written = at;
@@ -853,10 +802,10 @@ impl Log {
 
 fn is_group(line: &str) -> bool {
     #[derive(Deserialize)]
-    struct Discriminator {
+    struct FrameKind {
         group: Option<u32>,
     }
-    serde_json::from_str::<Discriminator>(line).is_ok_and(|value| value.group.is_some())
+    serde_json::from_str::<FrameKind>(line).is_ok_and(|frame| frame.group.is_some())
 }
 
 fn members(line: &str) -> io::Result<Vec<wire::Line<serde_json::Value>>> {
@@ -864,7 +813,11 @@ fn members(line: &str) -> io::Result<Vec<wire::Line<serde_json::Value>>> {
         return Err(io::Error::other("journal frame exceeds byte limit"));
     }
     if !is_group(line) {
-        return serde_json::from_str(line).map(|entry| vec![entry]).map_err(io::Error::other);
+        let record: wire::Line<serde_json::Value> = serde_json::from_str(line).map_err(io::Error::other)?;
+        if !matches!(record.kind, wire::Kind::Record) {
+            return Err(io::Error::other("a standalone journal frame must be a passive record"));
+        }
+        return Ok(vec![record]);
     }
     let group: Group<'_> = serde_json::from_str(line).map_err(io::Error::other)?;
     let count = group.frontier.checked_sub(group.first).and_then(|n| n.checked_add(1));
@@ -898,7 +851,7 @@ fn members(line: &str) -> io::Result<Vec<wire::Line<serde_json::Value>>> {
     Ok(entries)
 }
 
-fn migrated_member(stored: wire::Line<serde_json::Value>) -> Result<Envelope<serde_json::Value>, Incompatible> {
+fn decoded_member(stored: wire::Line<serde_json::Value>) -> Result<Envelope<serde_json::Value>, Incompatible> {
     Ok(Envelope {
         position: Position(stored.position),
         kind: stored.kind.into_kind(),
@@ -922,7 +875,7 @@ fn decoded<A: Wire>(envelope: Envelope<serde_json::Value>) -> Result<Option<Enve
                     id: id.clone(),
                     version,
                     metadata: envelope.metadata,
-                    payload: Payload { prepared: None, id, version, value: Recorded::System(fact), apply: None },
+                    payload: Payload { prepared: None, id, version, value: Recorded::System(fact) },
                 }));
             }
             Ok(None) => {}

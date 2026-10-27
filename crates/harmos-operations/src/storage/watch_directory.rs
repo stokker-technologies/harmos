@@ -27,6 +27,17 @@ use harmos_domain::operations::{ReplaySafety, Visibility};
 /* === Macros === */
 
 product!(WatchDirectoryRequest { selection: Nested<DirectorySelection> => 1, include_existing: Flag => 2 });
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WatchDirectoryRequest {
+    pub selection: DirectorySelection,
+    pub include_existing: bool,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_watch_directory",
     request = WatchDirectoryRequest,
@@ -42,16 +53,6 @@ pub struct WatchDirectory {
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
 }
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WatchDirectoryRequest {
-    pub selection: DirectorySelection,
-    pub include_existing: bool,
-}
-
 /* === Enums === */
 
 /* === Traits === */
@@ -63,12 +64,6 @@ impl MemorySize for WatchDirectoryRequest {
         std::mem::size_of::<Self>().saturating_add(self.selection.memory_size().saturating_sub(std::mem::size_of_val(&self.selection)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -118,3 +113,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

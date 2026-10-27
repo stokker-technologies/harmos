@@ -38,19 +38,18 @@ type Refusal = &'static str;
 
 struct Model;
 
-#[harmos_runtime::transaction(id = "managed.add", version = 2, irreversible, history(OldAdd))]
+#[harmos_runtime::transaction(id = "managed.add", irreversible)]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Add {
     amount: i64,
 }
 
-#[harmos_runtime::transaction(version = 1)]
 #[derive(serde::Serialize, serde::Deserialize)]
 struct OldAdd {
     amount: i64,
 }
 
-#[harmos_runtime::record(id = "managed.seen", version = 1)]
+#[harmos_runtime::record(id = "managed.seen")]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Seen {
     before: i64,

@@ -9,8 +9,7 @@
 
 /* === Modules === */
 
-#[path = "../support/mod.rs"]
-mod support;
+use super::support;
 
 /* === Re-Exports === */
 
@@ -23,21 +22,20 @@ use std::time::Duration;
 
 // Local Imports
 use harmos::{
-    state::CausationId, state::CorrelationId, state::Entry, state::FactSource, state::Focus,
-    state::Link, state::Metadata as JournalMetadata, state::Position, state::PrincipalId,
-    state::Recorded, state::RequestKey, state::SystemFact, state::Timestamp,
-    storage::JournalConsumer,
+    state::CausationId, state::CorrelationId, state::Entry, state::FactSource, state::Focus, state::Link,
+    state::Metadata as JournalMetadata, state::Position, state::PrincipalId, state::Recorded, state::RequestKey, state::SystemFact,
+    state::Timestamp, storage::JournalConsumer,
 };
 use schematic_storage::Jsonl;
 use support::{Bank, Ledger, Noted, alice, booted, deposit, ledger, scratch, withdraw};
 
 /* === Constants === */
 
-const GOLDEN: &str = include_str!("../fixtures/journal.v2.jsonl");
+const GOLDEN: &str = include_str!("../fixtures/journal.v1.jsonl");
 
 const NON_CANONICAL: &str = r#"{ "kind": "Transaction", "version": 1, "position": 4, "id": "ledger.bonus", "payload": { "amount": 3 }, "metadata": { "at_us": -1000001, "correlation": 4, "principal": null, "causation": null, "request": null, "link": null } }"#;
 
-const SYSTEM_FACTS: &str = include_str!("../fixtures/system-facts.v2.jsonl");
+const SYSTEM_FACTS: &str = include_str!("../fixtures/system-facts.v1.jsonl");
 
 /* === Macros === */
 
@@ -61,11 +59,7 @@ impl JournalConsumer<Bank> for Witnesses {
         self.resume
     }
 
-    async fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<Bank>>>>,
-        applied: Position,
-    ) -> Position {
+    async fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<Bank>>>>, applied: Position) -> Position {
         let mut seen = self.seen.lock().expect("the probe is never poisoned");
 
         for entry in entries {
@@ -118,7 +112,7 @@ fn contract_scenario() {
     let lines: Vec<&str> = file.lines().collect();
 
     assert_eq!(
-        lines[0], r#"{"schema":3,"generation":0,"origin":0}"#,
+        lines[0], r#"{"schema":1,"generation":0,"origin":0}"#,
         "the first line is the header, and its marker names the documented format"
     );
 
@@ -168,7 +162,7 @@ fn contract_scenario() {
     assert_eq!(
         lines[3],
         format!(
-            r#"{{"position":3,"kind":"Record","id":"ledger.noted","version":2,"metadata":{{"principal":null,"correlation":3,"causation":null,"request":null,"link":null,"at_us":{}}},"payload":"audited"}}"#,
+            r#"{{"position":3,"kind":"Record","id":"ledger.noted","version":1,"metadata":{{"principal":null,"correlation":3,"causation":null,"request":null,"link":null,"at_us":{}}},"payload":"audited"}}"#,
             stamps[2]
         ),
         "a record line carries the same frame, and an absent witness member is null"
@@ -189,142 +183,111 @@ fn contract_scenario() {
     {
         {
             let mut builder = tokio::runtime::Builder::new_current_thread();
-            builder
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let directory = scratch("golden-wire");
-                    let copy = directory.join("journal.jsonl");
-                    let mirror = directory.join("mirror.jsonl");
-                    std::fs::write(&copy, GOLDEN).expect("the copy is writable");
-                    let witnesses = Arc::new(Mutex::new(Vec::new()));
+            builder.enable_all().build().expect("scenario runtime is valid").block_on(async {
+                let directory = scratch("golden-wire");
+                let copy = directory.join("journal.jsonl");
+                let mirror = directory.join("mirror.jsonl");
+                std::fs::write(&copy, GOLDEN).expect("the copy is writable");
+                let witnesses = Arc::new(Mutex::new(Vec::new()));
 
-                    let recovered = booted(Ledger::default(), |builder| {
-                        builder
-                            .recover(Jsonl::<Bank>::open(&copy).expect("the copy is there"))
-                            .attach(Jsonl::<Bank>::open(&mirror).expect("a fresh mirror"))
-                            .attach(Witnesses {
-                                seen: Arc::clone(&witnesses),
-                                resume: Position::ORIGIN,
-                            })
-                    })
-                    .await;
+                let recovered = booted(Ledger::default(), |builder| {
+                    builder
+                        .recover(Jsonl::<Bank>::open(&copy).expect("the copy is there"))
+                        .attach(Jsonl::<Bank>::open(&mirror).expect("a fresh mirror"))
+                        .attach(Witnesses { seen: Arc::clone(&witnesses), resume: Position::ORIGIN })
+                })
+                .await;
 
-                    assert_eq!(
-                        ledger(&recovered).await,
-                        Ledger {
-                            balance: 6,
-                            applications: 3,
-                            payouts: Vec::new(),
-                        },
-                        "every golden entry decodes and applies through the version that wrote it"
-                    );
-                    assert_eq!(recovered.state.applied(), Position(4));
-                    recovered.stop().await.unwrap();
+                assert_eq!(
+                    ledger(&recovered).await,
+                    Ledger { balance: 3, applications: 3, payouts: Vec::new() },
+                    "every golden entry decodes and applies through the current shape"
+                );
+                assert_eq!(recovered.state.applied(), Position(4));
+                recovered.stop().await.unwrap();
 
-                    let written = std::fs::read_to_string(&mirror).expect("the mirror is there");
-                    assert_eq!(
-                        written,
-                        GOLDEN.replacen("\"schema\":2", "\"schema\":3", 1),
-                        "a stored historical entry redelivers byte-identical, so a lagging \
+                let written = std::fs::read_to_string(&mirror).expect("the mirror is there");
+                assert_eq!(
+                    written, GOLDEN,
+                    "a stored current entry redelivers byte-identical, so a lagging \
          durable copy equals the golden line for line"
-                    );
-                    assert!(
-                        GOLDEN.contains(NON_CANONICAL),
-                        "the fixture still carries the non-canonical line this test is about"
-                    );
-                    assert!(
-                        written.contains(NON_CANONICAL),
-                        "the non-canonical line arrived verbatim, member order and spacing intact"
-                    );
+                );
+                assert!(GOLDEN.contains(NON_CANONICAL), "the fixture still carries the non-canonical line this test is about");
+                assert!(written.contains(NON_CANONICAL), "the non-canonical line arrived verbatim, member order and spacing intact");
 
-                    let seen = witnesses.lock().expect("the probe is never poisoned");
-                    let (_, undo) = seen
-                        .iter()
-                        .find(|(position, _)| *position == Position(2))
-                        .expect("the golden's second entry was redelivered");
-                    assert_eq!(undo.principal, Some(PrincipalId::new("alice")));
-                    assert_eq!(undo.correlation, CorrelationId(Position(1)));
-                    assert_eq!(undo.causation, Some(CausationId(Position(1))));
-                    assert_eq!(undo.request, Some(RequestKey::new("pay-once")));
-                    assert_eq!(undo.link, Some(Link::UndoOf(Position(1))));
-                    assert_eq!(
-                        undo.at,
-                        Timestamp::UNIX_EPOCH + Duration::from_micros(1_700_000_000_000_001),
-                        "at_us reads back as the exact microsecond instant the golden pins"
-                    );
+                let seen = witnesses.lock().expect("the probe is never poisoned");
+                let (_, undo) =
+                    seen.iter().find(|(position, _)| *position == Position(2)).expect("the golden's second entry was redelivered");
+                assert_eq!(undo.principal, Some(PrincipalId::new("alice")));
+                assert_eq!(undo.correlation, CorrelationId(Position(1)));
+                assert_eq!(undo.causation, Some(CausationId(Position(1))));
+                assert_eq!(undo.request, Some(RequestKey::new("pay-once")));
+                assert_eq!(undo.link, Some(Link::UndoOf(Position(1))));
+                assert_eq!(
+                    undo.at,
+                    Timestamp::UNIX_EPOCH + Duration::from_micros(1_700_000_000_000_001),
+                    "at_us reads back as the exact microsecond instant the golden pins"
+                );
 
-                    let (_, historical) = seen
-                        .iter()
-                        .find(|(position, _)| *position == Position(4))
-                        .expect("the golden's non-canonical entry was redelivered");
-                    assert_eq!(
-                        historical.at,
-                        Timestamp::UNIX_EPOCH - Duration::from_micros(1_000_001),
-                        "a negative at_us decodes as the exact pre-epoch microsecond instant"
-                    );
-                });
+                let (_, current) =
+                    seen.iter().find(|(position, _)| *position == Position(4)).expect("the golden's non-canonical entry was redelivered");
+                assert_eq!(
+                    current.at,
+                    Timestamp::UNIX_EPOCH - Duration::from_micros(1_000_001),
+                    "a negative at_us decodes as the exact pre-epoch microsecond instant"
+                );
+            });
         }
     }
     {
         {
             let mut builder = tokio::runtime::Builder::new_current_thread();
-            builder
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let directory = scratch("system-fact-wire");
-                    let copy = directory.join("journal.jsonl");
-                    let mirror = directory.join("mirror.jsonl");
-                    std::fs::write(&copy, SYSTEM_FACTS)
-                        .expect("the system-fact golden is writable");
+            builder.enable_all().build().expect("scenario runtime is valid").block_on(async {
+                let directory = scratch("system-fact-wire");
+                let copy = directory.join("journal.jsonl");
+                let mirror = directory.join("mirror.jsonl");
+                std::fs::write(&copy, SYSTEM_FACTS).expect("the system-fact golden is writable");
 
-                    let recovered = booted(Ledger::default(), |builder| {
-                        builder
-                            .recover(Jsonl::<Bank>::open(&copy).expect("the golden opens"))
-                            .attach(Jsonl::<Bank>::open(&mirror).expect("a fresh mirror"))
-                    })
-                    .await;
+                let recovered = booted(Ledger::default(), |builder| {
+                    builder
+                        .recover(Jsonl::<Bank>::open(&copy).expect("the golden opens"))
+                        .attach(Jsonl::<Bank>::open(&mirror).expect("a fresh mirror"))
+                })
+                .await;
 
-                    assert_eq!(
-                        ledger(&recovered).await,
-                        Ledger::default(),
-                        "system records replay no application behavior"
-                    );
-                    let facts: Vec<SystemFact> = recovered
-                        .state
-                        .query::<SystemFact>(Position::ORIGIN)
-                        .await
-                        .map(|entry| entry.expect("the golden is inside the tail").value)
-                        .collect();
-                    assert_eq!(
-                        facts[0],
-                        SystemFact {
-                            source: FactSource::Work("autoroute".to_owned()),
-                            name: "finding".to_owned(),
-                            version: 3,
-                            payload: vec![1, 2, 3],
-                        }
-                    );
-                    assert_eq!(
-                        facts[1],
-                        SystemFact {
-                            source: FactSource::Work("exporter".to_owned()),
-                            name: "deactivated".to_owned(),
-                            version: 1,
-                            payload: vec![9, 8],
-                        }
-                    );
+                assert_eq!(ledger(&recovered).await, Ledger::default(), "system records replay no application behavior");
+                let facts: Vec<SystemFact> = recovered
+                    .state
+                    .query::<SystemFact>(Position::ORIGIN)
+                    .await
+                    .map(|entry| entry.expect("the golden is inside the tail").value)
+                    .collect();
+                assert_eq!(
+                    facts[0],
+                    SystemFact {
+                        source: FactSource::Work("autoroute".to_owned()),
+                        name: "finding".to_owned(),
+                        version: 1,
+                        payload: vec![1, 2, 3],
+                    }
+                );
+                assert_eq!(
+                    facts[1],
+                    SystemFact {
+                        source: FactSource::Work("exporter".to_owned()),
+                        name: "deactivated".to_owned(),
+                        version: 1,
+                        payload: vec![9, 8],
+                    }
+                );
 
-                    recovered.stop().await.unwrap();
-                    assert_eq!(
-                        std::fs::read_to_string(&mirror).expect("the mirror is there"),
-                        SYSTEM_FACTS.replacen("\"schema\":2", "\"schema\":3", 1),
-                        "every admitted work frame forwards byte-identically"
-                    );
-                });
+                recovered.stop().await.unwrap();
+                assert_eq!(
+                    std::fs::read_to_string(&mirror).expect("the mirror is there"),
+                    SYSTEM_FACTS,
+                    "every admitted work frame forwards byte-identically"
+                );
+            });
         }
     }
     {
@@ -336,7 +299,7 @@ fn contract_scenario() {
     std::fs::write(
         &copy,
         concat!(
-            "{\"schema\":2,\"generation\":0,\"origin\":0}\n",
+            "{\"schema\":1,\"generation\":0,\"origin\":0}\n",
             r#"{"position":1,"kind":"Transaction","id":"ledger.deposit","version":1,"metadata":{"principal":null,"correlation":1,"causation":null,"request":null,"link":null,"at":{"secs_since_epoch":0,"nanos_since_epoch":0}},"payload":{"amount":40}}"#,
             "\n"
         ),
@@ -364,7 +327,7 @@ fn contract_scenario() {
     std::fs::write(
         &copy,
         concat!(
-            "{\"schema\":2,\"generation\":0,\"origin\":0}\n",
+            "{\"schema\":1,\"generation\":0,\"origin\":0}\n",
             r#"{"position":1,"kind":"Transaction","id":"ledger.deposit","version":1,"metadata":{"principal":null,"correlation":1,"causation":null,"request":null,"link":null,"at_us":0,"at":{"secs_since_epoch":0,"nanos_since_epoch":0}},"payload":{"amount":40}}"#,
             "\n"
         ),
@@ -383,35 +346,7 @@ fn contract_scenario() {
 });
         }
     }
-    {
-        {
-            let directory = scratch("retired-wire");
-            let copy = directory.join("journal.jsonl");
-            std::fs::write(&copy, include_str!("../fixtures/journal.v1.retired.jsonl"))
-                .expect("the copy is writable");
 
-            let Err(refused) = Jsonl::<Bank>::open(&copy) else {
-                panic!("a retired copy must not open — for a source or a mirror alike");
-            };
-            assert!(
-                refused.to_string().contains("schema 1"),
-                "the refusal names the retired version: {refused}"
-            );
-
-            // Regardless of entry count: a header-only retired file is refused the
-            // same way, before anything is read back or appended under it.
-            let bare = directory.join("header-only.jsonl");
-            std::fs::write(&bare, "{\"schema\":1,\"generation\":0,\"origin\":0}\n")
-                .expect("the copy is writable");
-            let Err(refused) = Jsonl::<Bank>::open(&bare) else {
-                panic!("an empty retired copy is still a retired copy");
-            };
-            assert!(
-                refused.to_string().contains("schema 1"),
-                "the refusal does not depend on any entry being present: {refused}"
-            );
-        }
-    }
     {
         {
             let directory = scratch("crlf-wire");
@@ -421,41 +356,28 @@ fn contract_scenario() {
             let Err(refused) = Jsonl::<Bank>::open(&copy) else {
                 panic!("a CRLF copy must refuse, because forwarding it would rewrite its bytes");
             };
-            assert!(
-                refused.to_string().contains("carriage return"),
-                "the refusal names the stray byte: {refused}"
-            );
+            assert!(refused.to_string().contains("carriage return"), "the refusal names the stray byte: {refused}");
 
             // The same answer when only the entries carry CR: the header parses, and
             // the first stored line refuses before the copy is opened for append.
             let mixed = directory.join("mixed.jsonl");
-            std::fs::write(
-                &mixed,
-                GOLDEN.replace('\n', "\r\n").replacen("\r\n", "\n", 1),
-            )
-            .expect("the copy is writable");
+            std::fs::write(&mixed, GOLDEN.replace('\n', "\r\n").replacen("\r\n", "\n", 1)).expect("the copy is writable");
             let Err(refused) = Jsonl::<Bank>::open(&mixed) else {
                 panic!("one CRLF line is enough to refuse the copy");
             };
-            assert!(
-                refused.to_string().contains("carriage return"),
-                "the refusal names the stray byte: {refused}"
-            );
+            assert!(refused.to_string().contains("carriage return"), "the refusal names the stray byte: {refused}");
         }
     }
 }
 
 fn at_us(line: &str) -> i64 {
-    serde_json::from_str::<serde_json::Value>(line).expect("a stored line is JSON")["metadata"]
-        ["at_us"]
+    serde_json::from_str::<serde_json::Value>(line).expect("a stored line is JSON")["metadata"]["at_us"]
         .as_i64()
         .expect("at_us is a signed integer")
 }
 
 fn micros() -> i64 {
-    let since = Timestamp::now()
-        .duration_since(Timestamp::UNIX_EPOCH)
-        .expect("the test clock stands after the epoch");
+    let since = Timestamp::now().duration_since(Timestamp::UNIX_EPOCH).expect("the test clock stands after the epoch");
 
     i64::try_from(since.as_micros()).expect("the test clock stands before the year 294247")
 }

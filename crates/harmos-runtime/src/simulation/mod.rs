@@ -655,7 +655,7 @@ where
         id: id.clone(),
         version,
         metadata: entry.metadata.clone(),
-        payload: Payload { prepared: entry.prepared.clone(), id, version, value, apply: None },
+        payload: Payload { prepared: entry.prepared.clone(), id, version, value },
     })
 }
 

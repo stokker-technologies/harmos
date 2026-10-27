@@ -7,10 +7,8 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
+autotests = false
 
-# The authoring attributes, on by default the way serde ships its derives. Every
-# trait beneath them is an ordinary public contract, so a crate that turns this
-# off writes the implementations by hand and links no proc-macro chain at all.
 version = { workspace = true }
 
 # === Package Targets === #
@@ -67,11 +65,14 @@ tokio = { workspace = true, features = ["sync", "macros", "time"], optional = tr
 # UI
 
 # Testing
-criterion = { workspace = true, default-features = false }
 
 # === Target Dependencies === #
 
 # === Test Targets === #
+
+[[test]]
+name = "unit"
+path = "tests/unit/main.rs"
 
 # === Bench Targets === #
 

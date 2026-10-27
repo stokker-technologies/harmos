@@ -126,7 +126,6 @@ impl<C> crate::ReadSession<C> {
     #[tracing::instrument(name = "storage.read_session.read_records", level = "trace", skip_all)]
     pub async fn read_records<T: Message + MemorySize>(&self, read: RecordRead) -> Result<RecordReader<T>> {
         super::Source::Records(read.selection.clone()).validate()?;
-        read.selection.schema.require_postcard()?;
         let mut pages = Pages::open(&self.manager, &self.held, self.queued, read.at, read.selection).await?;
         pages.after = read.after;
         Ok(RecordReader { pages, _payload: PhantomData })

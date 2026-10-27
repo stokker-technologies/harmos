@@ -20,7 +20,6 @@ mod lifecycle;
 mod managed;
 mod observers;
 mod physical;
-mod publication;
 
 /* === Re-Exports === */
 
@@ -78,11 +77,6 @@ pub struct DemandLease {
 struct Inbound<A: Application> {
     streams: BTreeMap<&'static str, Ingest<A>>,
     demands: BTreeMap<&'static str, fn(&StreamManager<A>) -> Demand>,
-}
-
-pub struct Publish<A: Application, S, H> {
-    _resources: Arc<Supervised<A, S, H>>,
-    endpoint: Arc<Endpoint>,
 }
 
 pub struct Supervised<A: Application, S, H> {

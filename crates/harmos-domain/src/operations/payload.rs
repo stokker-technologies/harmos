@@ -7,7 +7,7 @@
  * ***
  */
 
-// Hand-Declared Payloads For Built-In Operations, Whose Historical Tags Stay
+// Hand-Declared Payloads For Built-In Operations, Whose Fixed Tags Stay
 // Independent Of The Authored Field-Name Tags.
 
 /* === Modules === */
@@ -66,7 +66,7 @@ macro_rules! builtin_payload {
 
 pub use builtin_payload as payload;
 
-// Keep Historical Host Tags Independent Of Authored Field-Name Tags
+// Keep Fixed Host Tags Independent Of Authored Field-Name Tags
 
 /* === Type Aliases === */
 

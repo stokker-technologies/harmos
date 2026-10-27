@@ -96,3 +96,11 @@ runtime.unregister(&harmos::QualifiedId::parse("host.read")?).await?;
 ```
 
 Facade defaults become domain-only; optional runtime enables SDK/runtime exports, and existing execution features imply runtime. Consumer operation crates use default-features = false and runtime = ["harmos/runtime", "dep:device"]. Feature unification is acknowledged, not hard isolation. Keep shared models/transactions in product-domain and resource-owning services in product-runtime. Built-ins use `harmos-operations/src/{host,lifecycle,storage,streams}/`: one file per operation owns messages, the operation macro struct and its runtime-gated implementation. Concern catalogs and Builtins are exported from lib.rs. The crate depends on harmos-domain and optionally harmos-sdk/harmos-storage, never harmos-runtime. Runtime inserts SDK-owned state access handles through OperationContext dependencies and consumes harmos-operations with runtime enabled. The facade re-exports the operations crate. Remove the old domain declarations/common directory and split runtime implementations without shims.
+
+## Current Format Ownership
+
+Only current v1 protocol, artifact, envelope, journal and persisted payload shapes
+are supported. Transaction, record and stream authoring emits schema version 1.
+Remove historical shape catalogs, replay callbacks, protobuf storage encoding,
+version-only peer checks and schematic journal upgrades. Retain current-format
+bounds, integrity, ownership, fingerprint, generation and durability checks.

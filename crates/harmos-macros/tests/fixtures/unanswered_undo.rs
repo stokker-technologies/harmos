@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 
 /* === Structs === */
 
-#[harmos::transaction(id = "sheet.rename", version = 1)]
+#[harmos::transaction(id = "sheet.rename", )]
 #[derive(Deserialize, Serialize)]
 struct Rename {
     to: String,

@@ -35,6 +35,16 @@ product!(FollowProductionRequest {
     offset: Unsigned => 2,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FollowProductionRequest {
+    pub file: StagedFile,
+    pub offset: u64,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_follow_production",
     request = FollowProductionRequest,
@@ -50,27 +60,18 @@ pub struct FollowProduction {
     #[cfg(feature = "runtime")]
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
 }
-impl FollowProduction {
-    fn grant_for(request: &FollowProductionRequest) -> Option<harmos_domain::plugin::Grant> {
-        Some(harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, request.file.id.as_str().to_owned()))
-    }
-}
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FollowProductionRequest {
-    pub file: StagedFile,
-    pub offset: u64,
-}
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl FollowProduction {
+    fn grant_for(request: &FollowProductionRequest) -> Option<harmos_domain::plugin::Grant> {
+        Some(harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, request.file.id.as_str().to_owned()))
+    }
+}
 
 impl MemorySize for FollowProductionRequest {
     fn memory_size(&self) -> usize {
@@ -79,12 +80,6 @@ impl MemorySize for FollowProductionRequest {
             .saturating_add(self.offset.memory_size().saturating_sub(std::mem::size_of_val(&self.offset)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -136,3 +131,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

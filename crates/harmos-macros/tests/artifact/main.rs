@@ -25,7 +25,7 @@ use serde_json::{Value, json};
 
 /* === Constants === */
 
-const PREFIX: &[u8] = b"\0HARMOS:ARTIFACT:V6:";
+const PREFIX: &[u8] = b"\0HARMOS:ARTIFACT:V1:";
 
 const OWNED: [&str; 5] = ["contracts", "contributions", "publications", "listeners", "observers"];
 

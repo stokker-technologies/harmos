@@ -33,6 +33,17 @@ product!(DeleteFileRequest {
     file: Nested<StagedFile> => 2,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+// Delete A Staged File, Exactly Once Per Mutation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeleteFileRequest {
+    pub mutation: MutationId,
+    pub file: StagedFile,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_delete_file",
     request = DeleteFileRequest,
@@ -44,17 +55,6 @@ product!(DeleteFileRequest {
 pub struct DeleteFile {
     #[cfg(feature = "runtime")]
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
-}
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-// Delete A Staged File, Exactly Once Per Mutation.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DeleteFileRequest {
-    pub mutation: MutationId,
-    pub file: StagedFile,
 }
 
 /* === Enums === */
@@ -70,12 +70,6 @@ impl MemorySize for DeleteFileRequest {
             .saturating_add(self.file.memory_size().saturating_sub(std::mem::size_of_val(&self.file)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -118,3 +112,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

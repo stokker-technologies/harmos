@@ -48,7 +48,7 @@ pub struct Plugin {
 
 /* === Implementations === */
 
-impl harmos_guest::operations::lifecycle::Policy for Plugin {
+impl harmos_guest::builtins::lifecycle::Policy for Plugin {
     const INITIALIZATION_POLICY: OperationPolicy = schematic_operations::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -69,7 +69,7 @@ impl harmos_guest::Plugin for Plugin {
                         use harmos_guest::Host;
                         let host = context.dependency::<harmos_guest::Context>()?;
                         let response = host
-                            .call::<harmos_guest::operations::storage::HashFile>(request)
+                            .call::<harmos_guest::builtins::storage::HashFile>(request)
                             .await
                             .map_err(|error| schematic_operations::Error::Host(Box::new(error)))?;
                         Ok(*response)

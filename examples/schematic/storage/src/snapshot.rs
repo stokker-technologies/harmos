@@ -76,8 +76,7 @@ impl<A: Application> JournalConsumer<A> for Snapshot<A> {
                         return self.durable;
                     }
                 } else {
-                    // Without original bytes a carried historical value cannot
-                    // prove which apply produced the accepted state.
+                    // Replay Requires The Original Accepted Bytes.
                     self.halted = true;
                     return self.durable;
                 }

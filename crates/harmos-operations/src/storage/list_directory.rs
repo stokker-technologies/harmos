@@ -27,6 +27,16 @@ use harmos_domain::operations::{ReplaySafety, Visibility};
 /* === Macros === */
 
 product!(ListDirectoryRequest { selection: Nested<DirectorySelection> => 1 });
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ListDirectoryRequest {
+    pub selection: DirectorySelection,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_list_directory",
     request = ListDirectoryRequest,
@@ -42,15 +52,6 @@ pub struct ListDirectory {
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
 }
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ListDirectoryRequest {
-    pub selection: DirectorySelection,
-}
-
 /* === Enums === */
 
 /* === Traits === */
@@ -62,12 +63,6 @@ impl MemorySize for ListDirectoryRequest {
         std::mem::size_of::<Self>().saturating_add(self.selection.memory_size().saturating_sub(std::mem::size_of_val(&self.selection)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -113,3 +108,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

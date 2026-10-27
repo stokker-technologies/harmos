@@ -1121,7 +1121,6 @@ dependencies = [
 name = "harmos-operations"
 version = "0.1.6"
 dependencies = [
- "criterion",
  "harmos-domain",
  "harmos-sdk",
  "harmos-storage",
@@ -1215,7 +1214,6 @@ version = "0.1.6"
 dependencies = [
  "criterion",
  "harmos-domain",
- "harmos-operations",
  "postcard",
  "prost",
  "serde",

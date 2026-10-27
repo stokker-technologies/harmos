@@ -17,7 +17,7 @@ version = { workspace = true }
 
 [features]
 default = []
-runtime = ["dep:harmos-runtime", "dep:harmos-sdk"]
+runtime = ["dep:harmos-runtime", "dep:harmos-sdk", "harmos-operations/runtime"]
 plugin = ["runtime", "harmos-runtime/plugin"]
 plugin-sidecar = ["runtime", "harmos-runtime/plugin-sidecar"]
 plugin-guest = ["runtime", "harmos-runtime/plugin-guest"]

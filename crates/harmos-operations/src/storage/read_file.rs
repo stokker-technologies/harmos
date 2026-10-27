@@ -34,6 +34,17 @@ product!(ReadFileRequest {
     range: Nested<ByteRange> => 2,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+// Read A Bounded Byte Range Of A Stored Or Local File.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReadFileRequest {
+    pub source: FileSource,
+    pub range: ByteRange,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_read_file",
     request = ReadFileRequest,
@@ -49,28 +60,18 @@ pub struct ReadFile {
     #[cfg(feature = "runtime")]
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
 }
-impl ReadFile {
-    fn grant_for(request: &ReadFileRequest) -> Option<harmos_domain::plugin::Grant> {
-        request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, scope))
-    }
-}
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-// Read A Bounded Byte Range Of A Stored Or Local File.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ReadFileRequest {
-    pub source: FileSource,
-    pub range: ByteRange,
-}
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl ReadFile {
+    fn grant_for(request: &ReadFileRequest) -> Option<harmos_domain::plugin::Grant> {
+        request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, scope))
+    }
+}
 
 impl MemorySize for ReadFileRequest {
     fn memory_size(&self) -> usize {
@@ -79,12 +80,6 @@ impl MemorySize for ReadFileRequest {
             .saturating_add(self.range.memory_size().saturating_sub(std::mem::size_of_val(&self.range)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -137,3 +132,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

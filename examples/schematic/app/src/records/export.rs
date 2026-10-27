@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 
 /* === Structs === */
 
-#[harmos::record(id = "export.completed", version = 1)]
+#[harmos::record(id = "export.completed")]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ExportCompleted {
     pub format: ExportFormat,

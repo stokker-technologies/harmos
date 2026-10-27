@@ -32,6 +32,16 @@ product!(WriteFileRequest {
     metadata: Nested<FileMetadata> => 1,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+// Write One Finished File From Streamed Batches.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WriteFileRequest {
+    pub metadata: FileMetadata,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_write_file",
     request = WriteFileRequest,
@@ -47,21 +57,6 @@ pub struct WriteFile {
     #[cfg(feature = "runtime")]
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
 }
-impl WriteFile {
-    fn grant_for(request: &WriteFileRequest) -> Option<harmos_domain::plugin::Grant> {
-        Some(harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, request.metadata.id.as_str().to_owned()))
-    }
-}
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-// Write One Finished File From Streamed Batches.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteFileRequest {
-    pub metadata: FileMetadata,
-}
 
 /* === Enums === */
 
@@ -69,17 +64,17 @@ pub struct WriteFileRequest {
 
 /* === Implementations === */
 
+impl WriteFile {
+    fn grant_for(request: &WriteFileRequest) -> Option<harmos_domain::plugin::Grant> {
+        Some(harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, request.metadata.id.as_str().to_owned()))
+    }
+}
+
 impl MemorySize for WriteFileRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.metadata.memory_size().saturating_sub(std::mem::size_of_val(&self.metadata)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -139,3 +134,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

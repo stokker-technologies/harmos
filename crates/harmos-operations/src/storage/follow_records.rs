@@ -185,12 +185,6 @@ impl Followed {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
-
 #[cfg(feature = "runtime")]
 mod execution {
     use super::*;
@@ -240,3 +234,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

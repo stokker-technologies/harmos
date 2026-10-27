@@ -43,7 +43,7 @@ struct State {
     applications: usize,
 }
 
-#[harmos_runtime::record(id = "atomic.observed", version = 2, history(ObservedV1))]
+#[harmos_runtime::record(id = "atomic.observed")]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Observed {
     before: i64,
@@ -51,19 +51,19 @@ struct Observed {
     ordinal: usize,
 }
 
-#[harmos_runtime::record(id = "atomic.foreign", version = 1)]
+#[harmos_runtime::record(id = "atomic.foreign")]
 #[derive(Serialize, Deserialize)]
 struct Foreign;
 
-#[harmos_runtime::record(id = "harmos:sidecar/my.sidecar-2/result", version = 1)]
+#[harmos_runtime::record(id = "harmos:sidecar/my.sidecar-2/result")]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Reserved;
 
-#[harmos_runtime::record(id = "atomic.broken", version = 1)]
+#[harmos_runtime::record(id = "atomic.broken")]
 #[derive(Deserialize)]
 struct Broken;
 
-#[harmos_runtime::transaction(id = "atomic.add", version = 2, inverse = Self, history(AddV1))]
+#[harmos_runtime::transaction(id = "atomic.add",  inverse = Self,)]
 #[derive(Clone, Debug, Deserialize)]
 struct Add {
     amount: i64,
@@ -76,25 +76,11 @@ struct Add {
 
 struct Model;
 
-#[harmos_runtime::transaction(version = 1)]
-#[derive(Clone, Serialize, Deserialize)]
-struct AddV1 {
-    amount: i64,
-}
-
-#[harmos_runtime::record(id = "atomic.large", version = 1)]
+#[harmos_runtime::record(id = "atomic.large")]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Large(String);
 
-#[harmos_runtime::record(version = 1)]
-#[derive(Serialize, Deserialize)]
-struct ObservedV1 {
-    before: i64,
-    amount: i64,
-    ordinal: usize,
-}
-
-#[harmos_runtime::record(id = "atomic.observed", version = 1)]
+#[harmos_runtime::record(id = "atomic.observed")]
 #[derive(Serialize, Deserialize)]
 struct Obsolete {
     before: i64,
@@ -236,49 +222,16 @@ impl Wire for Model {
         kind: harmos_runtime::state::Kind, id: &harmos_runtime::DefinitionId, version: u32, payload: D,
     ) -> Result<Option<harmos_runtime::storage::Payload<Self>>, D::Error> {
         Ok(match kind {
-            harmos_runtime::state::Kind::Transaction => {
-                Changes::restore(id, version, payload)?.map(|(value, apply)| harmos_runtime::storage::Payload {
-                    prepared: None,
-                    id: id.clone(),
-                    version,
-                    value: Recorded::Transaction(Arc::new(value)),
-                    apply,
-                })
-            }
+            harmos_runtime::state::Kind::Transaction => Changes::restore(id, version, payload)?.map(|value| {
+                harmos_runtime::storage::Payload { prepared: None, id: id.clone(), version, value: Recorded::Transaction(Arc::new(value)) }
+            }),
             harmos_runtime::state::Kind::Record => Facts::restore(id, version, payload)?.map(|value| harmos_runtime::storage::Payload {
                 prepared: None,
                 id: id.clone(),
                 version,
                 value: Recorded::Record(value),
-                apply: None,
             }),
         })
-    }
-}
-
-impl Transaction<State> for AddV1 {
-    type Error = Refusal;
-    fn check(&self, _: &State) -> Result<(), Self::Error> {
-        panic!("historical check must not run")
-    }
-    fn records(&self, _: &State, _: &mut Records) {
-        panic!("historical records must not run")
-    }
-    fn apply(&self, state: &mut State) {
-        state.balance += 2 * self.amount;
-        state.applications += 1;
-    }
-}
-
-impl From<AddV1> for Add {
-    fn from(old: AddV1) -> Self {
-        add(old.amount, 1, 0)
-    }
-}
-
-impl From<ObservedV1> for Observed {
-    fn from(old: ObservedV1) -> Self {
-        Self { before: old.before, amount: old.amount, ordinal: old.ordinal }
     }
 }
 
@@ -364,37 +317,6 @@ async fn reversals_emit_records() {
     assert_eq!(restarted.state.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (9, 3));
     assert_eq!(restarted.state.query::<Facts>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap().len(), 3);
     restarted.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn historical_snapshot_boundary() {
-    let copy = Store::default();
-    let live = boot(&copy, 1).await;
-    live.state.commit(add(5, 1, 0)).await.unwrap();
-    live.stop().await.unwrap();
-    let [line] = copy.lines().try_into().unwrap();
-    let mut group: serde_json::Value = serde_json::from_str(&line).unwrap();
-    group[0]["version"] = 1.into();
-    group[0]["payload"] = serde_json::json!({"amount":5});
-    copy.replace(vec![group.to_string()]);
-    let snapshots = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let observed = Arc::clone(&snapshots);
-    let snapshot = Snapshot::<Model>::folding(State::default(), Position::ORIGIN, move |state, position| {
-        observed.lock().unwrap().push((state.balance, state.applications, position));
-        Ok(())
-    });
-    let runtime = Runtime::<Model>::builder(State::default(), ())
-        .register(Changes::catalog())
-        .register(Facts::catalog())
-        .recover(Journal::<Model>::open(&copy))
-        .snapshot(snapshot)
-        .tail(1)
-        .runtime()
-        .await
-        .unwrap();
-    assert_eq!(runtime.state.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (10, 1));
-    runtime.stop().await.unwrap();
-    assert_eq!(*snapshots.lock().unwrap(), vec![(10, 1, Position(2))]);
 }
 
 #[tokio::test]

@@ -28,7 +28,7 @@ use harmos_runtime::{Error, Runtime, state::DecodeError, state::Position, state:
 
 /* === Structs === */
 
-#[harmos_runtime::record(id = "manager.note", version = 1)]
+#[harmos_runtime::record(id = "manager.note")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Noted(String);
 

@@ -47,6 +47,13 @@ The operations crate uses `harmos` with `default-features = false` and
 still enable execution elsewhere in a shared graph. Keep contracts usable in
 a separate build without runtime dependencies.
 
+Harmos's own built-ins follow this layout in
+`crates/harmos-operations/src/{host,lifecycle,storage,streams}/`, exposed as
+`harmos::builtins`. Runtime code supplies SDK-owned state access handles;
+operations never depend back on the runtime crate. Shared portable values and
+reserved lifecycle protocol schemas stay in the domain. The current wire and
+storage formats are v1, with no historical decoding or migration.
+
 ## Catalogs And Invocation
 
 ```rust

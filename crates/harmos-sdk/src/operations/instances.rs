@@ -7,10 +7,18 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
 
 use harmos_domain::operations::instance::{Id, Status};
 use std::{future::Future, pin::Pin, sync::Arc};
+
+/* === Constants === */
+
+/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -20,6 +28,8 @@ pub type Changed<'a> = Pin<Box<dyn Future<Output = bool> + Send + 'a>>;
 
 #[derive(Clone)]
 pub struct InstanceAccess(pub Arc<dyn Instances>);
+
+/* === Enums === */
 
 /* === Traits === */
 
@@ -35,3 +45,11 @@ pub trait InstanceChanges: Send {
     fn current(&mut self) -> Status;
     fn changed(&mut self) -> Changed<'_>;
 }
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

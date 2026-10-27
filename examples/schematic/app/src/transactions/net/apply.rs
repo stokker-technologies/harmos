@@ -31,7 +31,7 @@ use harmos::{state::Invert, state::Transaction};
 
 /* === Structs === */
 
-#[harmos::transaction(id = "net.route", version = 1, inverse = Self)]
+#[harmos::transaction(id = "net.route",  inverse = Self)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ApplyRoute {
     pub net: NetId,

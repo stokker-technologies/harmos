@@ -7,11 +7,21 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
 
 #[cfg(feature = "runtime")]
 use crate::{Error, Operation, OperationContext, Response};
 use harmos_domain::operations::instance::Id;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -26,6 +36,10 @@ pub struct WatchRequest {
     visibility = harmos_domain::operations::Visibility::Shared,
     grpc(package = "harmos.host.v1", service = "Operations", method = "Watch"))]
 pub struct Watch;
+
+/* === Enums === */
+
+/* === Traits === */
 
 /* === Implementations === */
 
@@ -62,3 +76,9 @@ impl Operation for Watch {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

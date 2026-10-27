@@ -33,6 +33,17 @@ product!(FinishFileRequest {
     session: Nested<FileSession> => 2,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+// Finish A Producing File Session Into An Immutable Reference.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FinishFileRequest {
+    pub mutation: MutationId,
+    pub session: FileSession,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_finish_file",
     request = FinishFileRequest,
@@ -44,17 +55,6 @@ product!(FinishFileRequest {
 pub struct FinishFile {
     #[cfg(feature = "runtime")]
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
-}
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-// Finish A Producing File Session Into An Immutable Reference.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FinishFileRequest {
-    pub mutation: MutationId,
-    pub session: FileSession,
 }
 
 /* === Enums === */
@@ -70,12 +70,6 @@ impl MemorySize for FinishFileRequest {
             .saturating_add(self.session.memory_size().saturating_sub(std::mem::size_of_val(&self.session)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -118,3 +112,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

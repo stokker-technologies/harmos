@@ -7,9 +7,15 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
 
 pub use harmos_domain::model::operations::publication::FollowingRow;
+
+/* === Constants === */
 
 /* === Macros === */
 
@@ -23,12 +29,21 @@ harmos_domain::builtin_payload! { PublishRequest,
     following: Vec<FollowingRow> => (7, Kind::Message { definition: FollowingRow::DEFINITION }, Repeated),
 }
 
+/* === Type Aliases === */
+
 /* === Structs === */
 
 #[harmos::operation(harmos_path = crate, id = "host_publish", request = PublishRequest,
  response = (), policy = crate::host::POLICY, infer_request,
  visibility = harmos_domain::operations::Visibility::Shared)]
-pub struct Publish;
+pub struct Publish {
+    #[cfg(feature = "runtime")]
+    access: std::sync::Arc<harmos_sdk::operations::publication::PublicationAccess>,
+}
+
+/* === Enums === */
+
+/* === Traits === */
 
 /* === Implementations === */
 
@@ -38,13 +53,12 @@ impl crate::Operation for Publish {
     type Response = ();
     type Error = crate::Error;
     type Endpoints = ();
-    async fn initialize(_: crate::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self)
+    async fn initialize(context: crate::OperationContext) -> Result<Self, Self::Error> {
+        Ok(Self { access: context.dependency()? })
     }
     async fn run(
         &mut self, context: crate::OperationContext, request: &mut PublishRequest, _: &mut (),
     ) -> Result<crate::Response<()>, Self::Error> {
-        let access = context.dependency::<harmos_sdk::operations::publication::PublicationAccess>()?;
         let publication = harmos_sdk::operations::publication::Publication {
             stream: &request.stream,
             schema: request.schema,
@@ -54,7 +68,13 @@ impl crate::Operation for Publish {
             payload: &mut request.payload,
             following: &mut request.following,
         };
-        access.0.publish(publication).await.map_err(crate::Error::Access)?;
+        self.access.0.publish(context, publication).await.map_err(crate::Error::Access)?;
         Ok(().into())
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

@@ -33,6 +33,16 @@ product!(WriteRecordsRequest {
     scope: Optional<Id> => 1,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+// Admit Streamed Arrow Batches Of Records Into One Optional Scope.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WriteRecordsRequest {
+    pub scope: Option<Identifier>,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_write_records",
     request = WriteRecordsRequest,
@@ -49,16 +59,6 @@ pub struct WriteRecords {
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
 }
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
-// Admit Streamed Arrow Batches Of Records Into One Optional Scope.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteRecordsRequest {
-    pub scope: Option<Identifier>,
-}
-
 /* === Enums === */
 
 /* === Traits === */
@@ -70,12 +70,6 @@ impl MemorySize for WriteRecordsRequest {
         std::mem::size_of::<Self>().saturating_add(self.scope.memory_size().saturating_sub(std::mem::size_of_val(&self.scope)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -106,7 +100,7 @@ mod execution {
         ) -> Result<harmos_sdk::operations::Response<WriteCompletion>> {
             let host = ctx.dependency::<harmos_sdk::operations::access::GrantAccess>()?;
             let ctx = &host.0;
-            let completion = exchange(&self.storage, &ctx, request.scope.as_ref(), endpoints, WriteKind::Records, WriteRecords::ID).await?;
+            let completion = exchange(&self.storage, ctx, request.scope.as_ref(), endpoints, WriteKind::Records, WriteRecords::ID).await?;
             Ok(completion.into())
         }
 
@@ -115,3 +109,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

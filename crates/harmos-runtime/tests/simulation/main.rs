@@ -23,13 +23,13 @@ mod atomic_records {
     use serde::{Deserialize, Serialize};
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
     struct State(i64);
-    #[harmos_runtime::record(id = "sim.observed", version = 1)]
+    #[harmos_runtime::record(id = "sim.observed")]
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     struct Observed {
         before: i64,
         amount: i64,
     }
-    #[harmos_runtime::transaction(id = "sim.add", version = 1, inverse = Self)]
+    #[harmos_runtime::transaction(id = "sim.add",  inverse = Self)]
     #[derive(Clone, Debug, Serialize, Deserialize)]
     struct Add(i64);
     impl Transaction<State> for Add {

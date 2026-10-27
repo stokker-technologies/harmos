@@ -189,7 +189,7 @@ impl<S: serde::Serialize + Send + Sync + 'static> RowReader<S> {
                         if partition.as_ref().is_some_and(|p| !(p.matches)(typed)) {
                             continue;
                         }
-                        // Validate the borrowed original before allocating a legacy raw copy.
+                        // Validate The Borrowed Original Before Copying Its Row.
                         let encoded_bytes = encoded_size(typed, limits.row_bytes)?;
                         let row_value = if let Some(managed) = row.value.downcast_ref::<super::ManagedPublication>() {
                             Arc::new(managed.row().clone()) as Arc<dyn std::any::Any + Send + Sync>

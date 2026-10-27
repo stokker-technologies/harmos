@@ -24,7 +24,7 @@ use serde::de::DeserializeOwned;
 /* === Constants === */
 
 const FAMILY: &[u8] = b"\0HARMOS:ARTIFACT:\0";
-pub const PREFIX: &[u8] = b"\0HARMOS:ARTIFACT:V6:";
+pub const PREFIX: &[u8] = b"\0HARMOS:ARTIFACT:V1:";
 
 pub const FRAGMENT_LIMIT: usize = 64 * 1024;
 
@@ -63,9 +63,6 @@ struct Kinded {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ScanError {
-    #[error("the artifact uses another Harmos metadata format; rebuild it with the current SDK")]
-    IncompatiblePayload,
-
     #[error("artifact metadata exceeds the schema preparation memory or work budget")]
     Budget,
 
@@ -97,19 +94,11 @@ pub(crate) fn fragments_with_settings<F: DeserializeOwned>(
 ) -> Result<Vec<F>, ScanError> {
     // Keep Complete Search Markers Out Of Reader Binaries Themselves.
     let family = &FAMILY[..FAMILY.len() - 1];
-    let retired = memmem::Finder::new(family);
-    // One Current Format: Any Other Versioned Fragment Is Refused, Never Interpreted.
-    for position in retired.find_iter(artifact) {
-        let version = &artifact[position + family.len()..];
-        if version.starts_with(b"V") && !version.starts_with(b"V6:") {
-            return Err(ScanError::IncompatiblePayload);
-        }
-    }
     let mut prefix = [0; PREFIX.len()];
     prefix[..family.len()].copy_from_slice(std::hint::black_box(family));
     // A Terminator Separates The Family Literal From Adjacent Version Literals.
     prefix[family.len()] = std::hint::black_box(b'V');
-    prefix[family.len() + 1] = std::hint::black_box(b'6');
+    prefix[family.len() + 1] = std::hint::black_box(b'1');
     prefix[family.len() + 2] = std::hint::black_box(b':');
     let current = memmem::Finder::new(&prefix);
     let mut found = Vec::new();

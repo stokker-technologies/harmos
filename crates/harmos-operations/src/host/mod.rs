@@ -16,9 +16,17 @@ mod catalog;
 pub use catalog::{Catalog, CatalogKind, CatalogPage, CatalogRequest};
 pub use harmos_domain::model::operations::discovery::DiscoveredOperation;
 
+/* === Imports === */
+
 /* === Constants === */
 
 pub const POLICY: harmos_domain::OperationPolicy = crate::lifecycle::POLICY;
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
 
 /* === Enums === */
 
@@ -26,3 +34,13 @@ pub const POLICY: harmos_domain::OperationPolicy = crate::lifecycle::POLICY;
 pub enum Host {
     Catalog(Catalog),
 }
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

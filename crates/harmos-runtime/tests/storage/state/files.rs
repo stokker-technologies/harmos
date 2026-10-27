@@ -18,7 +18,7 @@ use std::{fs::OpenOptions, io::Write, num::NonZeroUsize};
 // Third Party Imports
 // Local Imports
 use harmos_runtime::storage::state::{RecoveryEntry, RecoverySnapshot, StateBackend, StorageStateSettings, file::FileBackend};
-use harmos_runtime::storage::{ReadLimits, RecoveryPosition, StorageCursor, StoreHistory};
+use harmos_runtime::storage::{ReadLimits, RecoveryPosition, StorageCursor};
 
 /* === Constants === */
 
@@ -37,22 +37,6 @@ use harmos_runtime::storage::{ReadLimits, RecoveryPosition, StorageCursor, Store
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-fn retired_header(history: &StoreHistory) -> Vec<u8> {
-    use sha2::Digest;
-
-    let value = serde_json::json!({
-        "version": 1,
-        "after": RecoveryPosition {
-            history: history.clone(),
-            sequence: 0,
-        },
-    });
-    let json = serde_json::to_vec(&value).unwrap();
-    let digest = sha2::Sha256::digest(&json);
-    let hex = digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
-    [b"{\"value\":".as_slice(), &json, b",\"sha256\":\"", hex.as_bytes(), b"\"}\n"].concat()
-}
 
 /* === Tests === */
 
@@ -228,15 +212,4 @@ async fn limits_bound_records() {
     let value_bytes = serde_json::to_vec(&snapshot(3000)).unwrap().len();
     assert_eq!(reopened.read_snapshot(NonZeroUsize::new(value_bytes).unwrap(), memory.clone()).await.unwrap(), Some(snapshot(3000)));
     reopened.close().await.unwrap();
-}
-
-#[tokio::test]
-async fn retired_format_refused() {
-    let root = tempfile::tempdir().unwrap();
-    let history = crate::storage::history();
-    std::fs::write(root.path().join("state.jsonl"), retired_header(&history)).unwrap();
-
-    let backend = FileBackend::new(root.path().to_owned(), history, crate::storage::state_settings());
-    let error = backend.open().await.unwrap_err();
-    assert!(error.to_string().contains("fresh state root"), "{error}");
 }

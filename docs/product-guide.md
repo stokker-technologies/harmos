@@ -345,10 +345,10 @@ result. Delivery emits a schema, bounded Arrow record batches, and a final
 operation completion. Response `batch_rows` and `batch_bytes` bound each delivery
 batch; they do not truncate the query result. In process, the manager's reader
 yields native `QueryArrow` items whose shared Arrow buffers keep their storage
-charge through clones and slices. The `storage.query` operation, declared in
-`harmos-domain`, carries the same items as Arrow IPC (`QueryOutput`), and the
+charge through clones and slices. The `storage_query` operation, declared in
+`harmos-operations`, carries the same items as Arrow IPC (`QueryOutput`), and the
 write operations take `DataBatch` values whose data is Arrow IPC; serve them with
-`harmos::storage::operations::registration`.
+`harmos::builtin::storage_registration`.
 
 `ArrowSchema::from_ipc` and `ArrowBatch::from_ipc` consume encoded `Vec<u8>`
 buffers. `QueryArrow::output` and `TryFrom<QueryOutput>` consume their inputs;
@@ -779,3 +779,22 @@ in its output. HTML rendering uses Plotters and does not require Gnuplot.
 - [Cargo Features](../crates/harmos/Cargo.toml) — select the facilities your application needs.
 - [Storage Adapter](../examples/schematic/storage/) — own your persistence format.
 
+
+## Built-In Operation Ownership
+
+`crates/harmos-operations/src/{host,lifecycle,storage,streams}/` holds the 30
+built-in operations. Each operation file owns its request and response shapes,
+operation declaration and runtime-gated implementation. Shared portable values
+and lifecycle protocol schemas remain in `harmos-domain`. The facade exports
+these catalogs under `harmos::builtins`; `Builtins::catalog()` includes the two
+reserved plugin lifecycle controls.
+
+The operations crate uses `harmos-sdk` and `harmos-storage` only with `runtime`.
+It never depends on `harmos-runtime`. Runtime composition supplies SDK-owned
+instance, discovery, publication, lifecycle and grant-access handles through
+`OperationContext`, along with the erased storage engine. State owners retain
+authorization, generation fencing and resource lifecycle ownership.
+
+Protocol, artifact, envelope, journal and schema formats are v1. Only current
+shapes are supported; there are no old-peer checks, historical shape converters,
+legacy decoders or journal upgrades.

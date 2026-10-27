@@ -231,11 +231,9 @@ async fn future_cancellations_refused() {
 #[tokio::test]
 async fn binary_sdk_lifecycle() {
     use super::protocol::{Echo, TransportPlugin};
+    use harmos_operations::lifecycle::{Initialize, InitializeRequest, Shutdown};
     use harmos_sidecar::Message;
-    use harmos_sidecar::operations::{
-        OperationDeclaration, WireAnswer, WireCommand,
-        lifecycle::{Initialize, InitializeRequest, Shutdown},
-    };
+    use harmos_sidecar::operations::{OperationDeclaration, WireAnswer, WireCommand};
     use std::num::NonZeroUsize;
     let (host_data, sdk_data) = tokio::io::duplex(65536);
     let (host_control, sdk_control) = tokio::io::duplex(64);

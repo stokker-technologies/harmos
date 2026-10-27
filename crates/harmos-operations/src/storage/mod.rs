@@ -155,12 +155,31 @@ fn output_timeout() -> crate::Error {
     )
     .into()
 }
+
 #[cfg(feature = "runtime")]
 fn classify(error: &crate::Error) -> harmos_domain::operations::FailureKind {
     match error {
-        crate::Error::Storage(harmos_storage::Error::Backend { kind: harmos_storage::BackendFailure::Transient, .. }) => {
+        crate::Error::Storage(source) if source.backend_failure() == Some(harmos_storage::BackendFailure::Transient) => {
             harmos_domain::operations::FailureKind::Transient
         }
         _ => harmos_domain::operations::FailureKind::Permanent,
+    }
+}
+
+#[cfg(all(test, feature = "runtime"))]
+mod tests {
+    use super::classify;
+    use harmos_domain::operations::FailureKind;
+    use harmos_storage::{BackendFailure, Error as StorageError};
+
+    #[test]
+    fn persistence_preserves_failure_kind() {
+        for (backend, expected) in
+            [(BackendFailure::Transient, FailureKind::Transient), (BackendFailure::Permanent, FailureKind::Permanent)]
+        {
+            let source = StorageError::backend("write", backend, std::io::Error::other("backend failed"));
+            let error = StorageError::Persistence { source: std::sync::Arc::new(source) };
+            assert_eq!(classify(&crate::Error::Storage(error)), expected);
+        }
     }
 }

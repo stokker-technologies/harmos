@@ -169,10 +169,7 @@ impl<P> Group<P> {
         let invalid = || Incompatible::unreadable("invalid managed recovery group");
         let first = self.entries.first().ok_or_else(invalid)?;
         let last = self.entries.last().ok_or_else(invalid)?;
-        if self.version != 1
-            || self.entries.len() > crate::state::Records::MAX_RECORDS + 1
-            || before.0.checked_add(1) != Some(first.position.0)
-        {
+        if self.entries.len() > crate::state::Records::MAX_RECORDS + 1 || before.0.checked_add(1) != Some(first.position.0) {
             return Err(invalid());
         }
         let commit = if first.kind == Kind::Transaction { Some((first.position, last.position)) } else { None };
@@ -243,7 +240,7 @@ fn decode_json<A: Application>(
         id: id.clone(),
         version,
         metadata,
-        payload: Payload { prepared: Some(prepared), id, version, value, apply: None },
+        payload: Payload { prepared: Some(prepared), id, version, value },
     }))
 }
 

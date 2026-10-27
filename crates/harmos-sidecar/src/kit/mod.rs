@@ -485,7 +485,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
             Err(error) => {
                 return Answered::Frame(Frame::Refusal {
                     id,
-                    refusal: Refusal::new(UNREADABLE, format!("owner assignment required; version-only peers are unsupported: {error}")),
+                    refusal: Refusal::new(UNREADABLE, format!("invalid owner assignment: {error}")),
                 });
             }
         };

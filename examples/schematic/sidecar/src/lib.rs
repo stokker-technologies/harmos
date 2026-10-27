@@ -50,7 +50,7 @@ pub struct Plugin {
 
 /* === Implementations === */
 
-impl harmos_sidecar::operations::lifecycle::Policy for Plugin {
+impl harmos_sidecar::builtins::lifecycle::Policy for Plugin {
     const INITIALIZATION_POLICY: OperationPolicy = schematic_operations::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -71,7 +71,7 @@ impl harmos_sidecar::Plugin for Plugin {
                         use harmos_sidecar::Host;
                         let host = context.dependency::<harmos_sidecar::Supervisor>()?;
                         let response = host
-                            .call::<harmos_sidecar::operations::storage::HashFile>(request)
+                            .call::<harmos_sidecar::builtins::storage::HashFile>(request)
                             .await
                             .map_err(|error| schematic_operations::Error::Host(Box::new(error)))?;
                         Ok(*response)

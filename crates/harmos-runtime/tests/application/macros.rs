@@ -23,32 +23,7 @@ mod sheet {
     #[error("the title must not be empty")]
     pub struct Untitled;
 
-    #[harmos_runtime::transaction(version = 1)]
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-    pub struct RenameV1 {
-        pub to: String,
-    }
-
-    impl Transaction<Sheet> for RenameV1 {
-        type Error = Untitled;
-
-        fn check(&self, _sheet: &Sheet) -> Result<(), Self::Error> {
-            Ok(())
-        }
-
-        fn apply(&self, sheet: &mut Sheet) {
-            sheet.title.clone_from(&self.to);
-            sheet.applications += 1;
-        }
-    }
-
-    impl From<RenameV1> for Rename {
-        fn from(old: RenameV1) -> Self {
-            Self { to: old.to }
-        }
-    }
-
-    #[harmos_runtime::transaction(id = "sheet.rename", version = 2, inverse = Self, history(RenameV1))]
+    #[harmos_runtime::transaction(id = "sheet.rename",  inverse = Self,)]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Rename {
         pub to: String,
@@ -73,7 +48,7 @@ mod sheet {
         }
     }
 
-    #[harmos_runtime::transaction(id = "sheet.erase", version = 1, irreversible)]
+    #[harmos_runtime::transaction(id = "sheet.erase", irreversible)]
     #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Erase;
 
@@ -90,7 +65,7 @@ mod sheet {
         }
     }
 
-    #[harmos_runtime::record(id = "sheet.noted", version = 1)]
+    #[harmos_runtime::record(id = "sheet.noted")]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Noted(pub String);
 
@@ -147,7 +122,7 @@ mod counter {
     #[error("the tally would go negative")]
     pub struct Underflow;
 
-    #[harmos_runtime::transaction(id = "tally.up", version = 1, inverse = Down)]
+    #[harmos_runtime::transaction(id = "tally.up",  inverse = Down)]
     #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Up(pub i64);
 
@@ -169,7 +144,7 @@ mod counter {
         }
     }
 
-    #[harmos_runtime::transaction(id = "tally.down", version = 1, inverse = Up)]
+    #[harmos_runtime::transaction(id = "tally.down",  inverse = Up)]
     #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Down(pub i64);
 
@@ -823,10 +798,7 @@ async fn product_commits_refuses() {
 async fn catalog_declares_records() {
     {
         // The stamped identity is the permanent wire name, not the Rust type name.
-        assert_eq!(Rename::DEFINITION, (Kind::Transaction, "sheet.rename", 2));
-        assert_eq!(Rename::HISTORY, [(Kind::Transaction, "sheet.rename", 1)]);
-        assert!(Erase::HISTORY.is_empty(), "a definition with no earlier version declares none");
-        assert_eq!(sheet::RenameV1::VERSION, 1);
+        assert_eq!(Rename::DEFINITION, (Kind::Transaction, "sheet.rename", 1));
 
         // The generated conversions and dispatch are ordinary Rust the application
         // could have written itself.
@@ -861,9 +833,8 @@ async fn catalog_declares_records() {
                 (("sheet.erase".to_owned(), 1), Kind::Transaction),
                 (("sheet.noted".to_owned(), 1), Kind::Record),
                 (("sheet.rename".to_owned(), 1), Kind::Transaction),
-                (("sheet.rename".to_owned(), 2), Kind::Transaction),
             ]),
-            "one variant per definition, plus every version its history declares"
+            "one variant per current definition"
         );
     }
     {
@@ -918,11 +889,11 @@ async fn derived_aggregate_writer() {
 
 #[test]
 fn catalog_projects_borrowed() {
-    #[harmos_runtime::record(id = "projection.first", version = 1)]
+    #[harmos_runtime::record(id = "projection.first")]
     #[derive(serde::Deserialize, serde::Serialize)]
     struct First(String);
 
-    #[harmos_runtime::record(id = "projection.second", version = 1)]
+    #[harmos_runtime::record(id = "projection.second")]
     #[derive(serde::Deserialize, serde::Serialize)]
     struct Second(String);
 

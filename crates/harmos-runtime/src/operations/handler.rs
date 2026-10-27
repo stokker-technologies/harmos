@@ -530,7 +530,7 @@ impl harmos_sdk::operations::access::GrantAuthority for HostContext {
 #[cfg(feature = "plugin-sidecar")]
 impl harmos_sdk::operations::publication::PublicationHost for HostContext {
     fn publish<'a>(
-        &'a self, publication: harmos_sdk::operations::publication::Publication<'a>,
+        &'a self, _: harmos_sdk::OperationContext, publication: harmos_sdk::operations::publication::Publication<'a>,
     ) -> harmos_sdk::operations::publication::Published<'a> {
         Box::pin(async move {
             let context = self.borrow();

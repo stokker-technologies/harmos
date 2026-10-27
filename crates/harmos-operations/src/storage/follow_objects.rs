@@ -33,6 +33,16 @@ product!(FollowObjectsRequest {
     selection: Nested<ObjectSelection> => 2,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FollowObjectsRequest {
+    pub after: Option<StorageCursor>,
+    pub selection: ObjectSelection,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_follow_objects",
     request = FollowObjectsRequest,
@@ -44,16 +54,6 @@ product!(FollowObjectsRequest {
 pub struct FollowObjects {
     #[cfg(feature = "runtime")]
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
-}
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FollowObjectsRequest {
-    pub after: Option<StorageCursor>,
-    pub selection: ObjectSelection,
 }
 
 /* === Enums === */
@@ -69,12 +69,6 @@ impl MemorySize for FollowObjectsRequest {
             .saturating_add(self.selection.memory_size().saturating_sub(std::mem::size_of_val(&self.selection)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -120,3 +114,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

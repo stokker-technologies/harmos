@@ -33,6 +33,16 @@ product!(FollowStreamRequest {
     selection: Nested<StreamSelection> => 2,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FollowStreamRequest {
+    pub after: Option<StorageCursor>,
+    pub selection: StreamSelection,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_follow_stream",
     request = FollowStreamRequest,
@@ -44,16 +54,6 @@ product!(FollowStreamRequest {
 pub struct FollowStream {
     #[cfg(feature = "runtime")]
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
-}
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FollowStreamRequest {
-    pub after: Option<StorageCursor>,
-    pub selection: StreamSelection,
 }
 
 /* === Enums === */
@@ -69,12 +69,6 @@ impl MemorySize for FollowStreamRequest {
             .saturating_add(self.selection.memory_size().saturating_sub(std::mem::size_of_val(&self.selection)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -118,3 +112,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

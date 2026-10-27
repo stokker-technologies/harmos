@@ -33,6 +33,17 @@ product!(CreateFileRequest {
     metadata: Nested<FileMetadata> => 2,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+// Open A Producing File Session For New Metadata.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CreateFileRequest {
+    pub mutation: MutationId,
+    pub metadata: FileMetadata,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_create_file",
     request = CreateFileRequest,
@@ -44,17 +55,6 @@ product!(CreateFileRequest {
 pub struct CreateFile {
     #[cfg(feature = "runtime")]
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
-}
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-// Open A Producing File Session For New Metadata.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CreateFileRequest {
-    pub mutation: MutationId,
-    pub metadata: FileMetadata,
 }
 
 /* === Enums === */
@@ -70,12 +70,6 @@ impl MemorySize for CreateFileRequest {
             .saturating_add(self.metadata.memory_size().saturating_sub(std::mem::size_of_val(&self.metadata)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -118,3 +112,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

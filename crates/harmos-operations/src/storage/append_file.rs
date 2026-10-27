@@ -35,6 +35,19 @@ product!(AppendFileRequest {
     bytes: Bytes => 4,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+// Append Bytes At An Offset Of A Producing File Session.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AppendFileRequest {
+    pub mutation: MutationId,
+    pub session: FileSession,
+    pub offset: u64,
+    pub bytes: Vec<u8>,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_append_file",
     request = AppendFileRequest,
@@ -48,19 +61,6 @@ pub struct AppendFile {
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
     #[cfg(feature = "runtime")]
     payload: Option<harmos_storage::FileChunk>,
-}
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-// Append Bytes At An Offset Of A Producing File Session.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AppendFileRequest {
-    pub mutation: MutationId,
-    pub session: FileSession,
-    pub offset: u64,
-    pub bytes: Vec<u8>,
 }
 
 /* === Enums === */
@@ -78,12 +78,6 @@ impl MemorySize for AppendFileRequest {
             .saturating_add(self.bytes.memory_size().saturating_sub(std::mem::size_of_val(&self.bytes)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -133,3 +127,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

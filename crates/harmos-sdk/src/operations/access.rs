@@ -7,9 +7,17 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
 
 use std::sync::Arc;
+
+/* === Constants === */
+
+/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -23,6 +31,8 @@ pub struct DiscoveryAccess(pub Arc<dyn Discovery>);
 #[derive(Clone)]
 pub struct GrantAccess(pub Arc<dyn GrantAuthority>);
 
+/* === Enums === */
+
 /* === Traits === */
 
 pub trait Discovery: Send + Sync {
@@ -31,3 +41,11 @@ pub trait Discovery: Send + Sync {
 pub trait GrantAuthority: Send + Sync {
     fn admit(&self, grant: &harmos_domain::plugin::Grant) -> Result<(), AccessError>;
 }
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

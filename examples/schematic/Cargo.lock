@@ -843,6 +843,7 @@ name = "harmos"
 version = "0.1.6"
 dependencies = [
  "harmos-domain",
+ "harmos-operations",
  "harmos-runtime",
  "harmos-sdk",
 ]
@@ -867,6 +868,7 @@ name = "harmos-guest"
 version = "0.1.6"
 dependencies = [
  "harmos-domain",
+ "harmos-operations",
  "harmos-sdk",
  "thiserror",
  "tracing",
@@ -883,6 +885,20 @@ dependencies = [
  "quote",
  "serde_json",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "harmos-operations"
+version = "0.1.6"
+dependencies = [
+ "harmos-domain",
+ "harmos-sdk",
+ "harmos-storage",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -914,6 +930,7 @@ dependencies = [
  "harmos-domain",
  "harmos-guest",
  "harmos-macros",
+ "harmos-operations",
  "harmos-packaging",
  "harmos-sdk",
  "harmos-sidecar",
@@ -952,6 +969,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "harmos-domain",
+ "harmos-operations",
  "harmos-sdk",
  "libc",
  "postcard",

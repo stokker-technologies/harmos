@@ -120,7 +120,12 @@ On Windows, run the corresponding executable under
 [Cargo features](crates/harmos/Cargo.toml) your application needs.
 
 Harmos is pre-1.0; public APIs and plugin contracts can change. Keep application
-and plugin revisions compatible and review release notes before updating.
+and plugin revisions aligned and review release notes before updating. Stored data
+and wire formats support only the current v1 shape; no migration is provided.
+
+Built-in operation contracts live in `harmos-operations`, re-exported as
+`harmos::builtins`. Its `host`, `lifecycle`, `storage` and `streams` catalogs
+and `Builtins::catalog()` are available without runtime dependencies.
 
 For agent-assisted consumer development, use the self-contained
 [architecture](.agents/skills/harmos-architecture/SKILL.md),

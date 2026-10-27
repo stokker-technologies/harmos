@@ -7,11 +7,21 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
 
 #[cfg(feature = "runtime")]
 use crate::{Error, Operation, OperationContext, Response};
 use harmos_domain::operations::instance::Id;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -26,6 +36,10 @@ pub struct StatusRequest {
     visibility = harmos_domain::operations::Visibility::Shared,
     grpc(package = "harmos.host.v1", service = "Operations", method = "Status"))]
 pub struct Status;
+
+/* === Enums === */
+
+/* === Traits === */
 
 /* === Implementations === */
 
@@ -85,3 +99,9 @@ impl TryFrom<&InstanceState> for harmos_domain::operations::instance::Status {
         Ok(Self { phase, outcome, cancellation_requested: state.cancellation_requested, attempt: state.attempt })
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

@@ -37,7 +37,6 @@ pub struct SchemaKey {
     pub id: Identifier,
     pub version: NonZeroU32,
 
-    #[serde(default)]
     pub payload_encoding: PayloadEncoding,
 }
 
@@ -64,8 +63,6 @@ struct KeyWriter {
 #[serde(rename_all = "snake_case")]
 pub enum PayloadEncoding {
     #[default]
-    ProtobufV1 = 0,
-
     PostcardV1 = 1,
 }
 
@@ -80,15 +77,6 @@ pub enum ObjectRetention {
 /* === Traits === */
 
 /* === Implementations === */
-
-impl SchemaKey {
-    pub fn require_postcard(&self) -> Result<()> {
-        if self.payload_encoding != PayloadEncoding::PostcardV1 {
-            return Err(invalid("payload requires an explicitly selected legacy decoder or migration"));
-        }
-        Ok(())
-    }
-}
 
 impl MemorySize for SchemaKey {
     fn memory_size(&self) -> usize {

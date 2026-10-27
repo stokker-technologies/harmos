@@ -33,6 +33,16 @@ product!(FollowFileRequest {
     start: Nested<FollowStart> => 2,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FollowFileRequest {
+    pub source: FileSource,
+    pub start: FollowStart,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_follow_file",
     request = FollowFileRequest,
@@ -47,27 +57,18 @@ pub struct FollowFile {
     #[cfg(feature = "runtime")]
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
 }
-impl FollowFile {
-    fn grant_for(request: &FollowFileRequest) -> Option<harmos_domain::plugin::Grant> {
-        request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, scope))
-    }
-}
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FollowFileRequest {
-    pub source: FileSource,
-    pub start: FollowStart,
-}
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl FollowFile {
+    fn grant_for(request: &FollowFileRequest) -> Option<harmos_domain::plugin::Grant> {
+        request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, scope))
+    }
+}
 
 impl MemorySize for FollowFileRequest {
     fn memory_size(&self) -> usize {
@@ -76,12 +77,6 @@ impl MemorySize for FollowFileRequest {
             .saturating_add(self.start.memory_size().saturating_sub(std::mem::size_of_val(&self.start)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -138,3 +133,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

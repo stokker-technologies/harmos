@@ -77,7 +77,7 @@ operation!(Nested, NestedDeclaration, "process_nested", Host);
 
 type Source = harmos_sidecar::PluginNative<Process>;
 type Resident = Supervised<Bank, Source, fn(&ServiceContext<Bank>, Notice)>;
-type PublicationCall = harmos_runtime::sidecar::Publish<Bank, Source, fn(&ServiceContext<Bank>, Notice)>;
+type PublicationCall = harmos_operations::streams::Publish;
 
 /* === Structs === */
 
@@ -113,7 +113,7 @@ struct Work<'a> {
 
 // The Host Publication Handler: It Calls Back Into The Sidecar Before Publishing.
 struct Callback {
-    resident: Arc<Resident>,
+    _resident: Arc<Resident>,
     echo: Arc<Forced>,
     calls: Arc<AtomicUsize>,
 }
@@ -294,13 +294,9 @@ impl Operation for CallbackPublication {
 
     async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
         let owner = context.dependency::<Callback>().expect("fixture dependency");
-        let resident = Arc::clone(&owner.resident);
-        let publication = harmos_runtime::sidecar::Publish::initialize({
-            let mut dependencies = context.dependencies().clone();
-            dependencies.insert(resident).unwrap();
-            harmos_runtime::OperationContext::new(dependencies, context.call.clone())
-        })
-        .await?;
+        let publication = harmos_operations::streams::Publish::initialize(context)
+            .await
+            .map_err(|source| harmos_runtime::Error::OperationFailed { operation: "host_publish".into(), source: Arc::new(source) })?;
         Ok(Self { owner, publication })
     }
 
@@ -313,7 +309,10 @@ impl Operation for CallbackPublication {
         let id = self.owner.echo.forced().unwrap_or_else(|| request.sequence.unwrap());
         let echoed = host.borrow().call::<EchoDeclaration>(Echo::from(Blob { id, data: request.payload.clone() })).await?;
         assert_eq!(echoed.data, request.payload, "the original connection carried the nested response");
-        self.publication.run(context, request, endpoints).await
+        self.publication
+            .run(context, request, endpoints)
+            .await
+            .map_err(|source| harmos_runtime::Error::OperationFailed { operation: "host_publish".into(), source: Arc::new(source) })
     }
 }
 
@@ -353,7 +352,7 @@ impl Fixture {
                     let mut dependencies = harmos_runtime::Dependencies::new();
                     dependencies
                         .insert(Arc::new(Callback {
-                            resident: Arc::new(resident.clone()),
+                            _resident: Arc::new(resident.clone()),
                             echo: Arc::clone(&echo),
                             calls: Arc::clone(&calls),
                         }))

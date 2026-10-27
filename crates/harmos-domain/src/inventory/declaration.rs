@@ -88,9 +88,6 @@ pub enum CarrierSection {
 
 #[derive(Debug, thiserror::Error)]
 pub enum DeclarationError {
-    #[error("the artifact uses another Harmos metadata format; rebuild it with the current SDK")]
-    IncompatiblePayload,
-
     #[error(transparent)]
     Schema(#[from] crate::schema::graph::Error),
 
@@ -307,7 +304,6 @@ impl RestartPolicy {
 impl From<ScanError> for DeclarationError {
     fn from(error: ScanError) -> Self {
         match error {
-            ScanError::IncompatiblePayload => Self::IncompatiblePayload,
             ScanError::Budget => Self::Schema(crate::schema::graph::Error::Budget),
             ScanError::Oversized => Self::OversizedFragment,
             ScanError::Malformed { source } => Self::Malformed { source },

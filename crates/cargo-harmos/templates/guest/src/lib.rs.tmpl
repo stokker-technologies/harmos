@@ -45,7 +45,7 @@ pub struct Plugin {
 
 /* === Implementations === */
 #[cfg(feature = "runtime")]
-impl harmos_guest::operations::lifecycle::Policy for Plugin {
+impl harmos_guest::builtins::lifecycle::Policy for Plugin {
     const INITIALIZATION_POLICY: harmos::OperationPolicy = operations::POLICY;
     const SHUTDOWN_POLICY: harmos::OperationPolicy = operations::POLICY;
 }

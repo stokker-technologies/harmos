@@ -24,6 +24,8 @@ pub use shutdown::{Shutdown, ShutdownRequest};
 pub use status::{InstanceState, Status, StatusRequest};
 pub use watch::{Watch, WatchRequest};
 
+/* === Imports === */
+
 /* === Constants === */
 
 pub const POLICY: harmos_domain::OperationPolicy = harmos_domain::OperationPolicy {
@@ -36,6 +38,12 @@ const WATCH_POLICY: harmos_domain::OperationPolicy = harmos_domain::OperationPol
     attempt_timeout: harmos_domain::operations::UNBOUNDED,
     ..POLICY
 };
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
 
 /* === Enums === */
 
@@ -69,3 +77,13 @@ pub fn bind<P: harmos_sdk::Plugin>(
         .install_lifecycle::<Shutdown, Shutdown>(dependencies, shutdown)
         .map_err(|error| harmos_sdk::plugin::Error::Serving(std::sync::Arc::new(error)))
 }
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

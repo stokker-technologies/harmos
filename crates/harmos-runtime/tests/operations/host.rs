@@ -152,7 +152,7 @@ fn hidden(error: Option<Error>) -> bool {
     let Some(Error::OperationFailed { source, .. }) = error else {
         return false;
     };
-    matches!(source.downcast_ref::<Error>(), Some(Error::NotRegistered { .. }))
+    matches!(source.downcast_ref::<harmos_operations::Error>(), Some(harmos_operations::Error::UnknownInstance(_)))
 }
 
 /* === Tests === */

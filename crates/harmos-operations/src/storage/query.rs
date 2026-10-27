@@ -40,6 +40,18 @@ product!(QueryRequest {
     slice: Nested<RowSlice> => 4,
 });
 
+/* === Type Aliases === */
+
+/* === Structs === */
+
+#[derive(Clone, Debug)]
+pub struct QueryRequest {
+    pub at: StorageCursor,
+    pub source: Source,
+    pub transforms: Vec<Transform>,
+    pub slice: RowSlice,
+}
+
 #[harmos::operation(harmos_path = crate,
     id = "storage_query",
     request = QueryRequest,
@@ -55,29 +67,18 @@ pub struct Query {
     #[cfg(feature = "runtime")]
     storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
 }
-impl Query {
-    fn grant_for(request: &QueryRequest) -> Option<harmos_domain::plugin::Grant> {
-        Some(harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, request.source.grant_scope()))
-    }
-}
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-#[derive(Clone, Debug)]
-pub struct QueryRequest {
-    pub at: StorageCursor,
-    pub source: Source,
-    pub transforms: Vec<Transform>,
-    pub slice: RowSlice,
-}
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Query {
+    fn grant_for(request: &QueryRequest) -> Option<harmos_domain::plugin::Grant> {
+        Some(harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, request.source.grant_scope()))
+    }
+}
 
 impl MemorySize for QueryRequest {
     fn memory_size(&self) -> usize {
@@ -88,12 +89,6 @@ impl MemorySize for QueryRequest {
             .saturating_add(self.slice.memory_size().saturating_sub(std::mem::size_of_val(&self.slice)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 mod execution {
@@ -153,3 +148,9 @@ mod execution {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */
