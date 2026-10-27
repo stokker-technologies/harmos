@@ -26,7 +26,7 @@ use std::sync::Arc;
 use super::Stream;
 use super::calls::{Calls, InvocationError, Target};
 use super::{
-    CallContext, EndpointSet, Executable, FailureKind, Handler, Invokes, NoStream, ExecutionContext, OperationDeclaration, Requires,
+    CallContext, EndpointSet, Executable, ExecutionContext, FailureKind, Handler, Invokes, NoStream, OperationDeclaration, Requires,
     Response,
 };
 
@@ -202,28 +202,17 @@ mod tests {
     use super::*;
     use crate::operations::{Dependencies, RegistrationBatch};
 
-    #[crate::message(harmos_path = crate)]
-    #[derive(Clone)]
+    #[crate::operation(harmos_path = crate, resources = [u64], id = "test.increment", response = u64,
+        policy = crate::OperationPolicy {
+            timeout: std::time::Duration::from_secs(1),
+            attempt_timeout: std::time::Duration::from_secs(1),
+            retries: crate::RetryPolicy::Never,
+        },
+    )]
     struct Increment {
         value: u64,
     }
 
-    impl OperationDeclaration for Increment {
-        type Request = Self;
-        type Response = u64;
-        type Input = NoStream;
-        type Output = NoStream;
-        const ID: &'static str = "test.increment";
-        const POLICY: crate::OperationPolicy = crate::OperationPolicy {
-            timeout: std::time::Duration::from_secs(1),
-            attempt_timeout: std::time::Duration::from_secs(1),
-            retries: crate::RetryPolicy::Never,
-        };
-    }
-    impl Requires<u64> for Increment {}
-    impl Dependent for Increment {
-        const RESOURCES: &'static [Resource] = &[Resource::of::<u64>()];
-    }
     impl Operation for Increment {
         type Error = std::convert::Infallible;
         async fn run(mut self, ctx: Context<'_, Self>) -> Result<Response<u64>, Self::Error> {

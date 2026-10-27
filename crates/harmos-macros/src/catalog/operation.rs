@@ -161,10 +161,11 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
         item.attrs.push(syn::parse_quote!(#[derive(Clone)]));
     }
     let message = if manual { quote!(#item) } else { crate::message::expand(quote!(harmos_path = #sdk), quote!(#item))? };
+    let execution_gate = sdk.execution_gate();
     let requirements = resources.iter().map(|resource| {
         quote! {
             #(#gates)*
-            #[cfg(feature = "runtime")]
+            #execution_gate
             impl #sdk::operations::Requires<#resource> for #name {}
         }
     });
@@ -203,7 +204,7 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
         const _: () = {
         #(#requirements)*
         #(#gates)*
-        #[cfg(feature = "runtime")]
+        #execution_gate
         impl #sdk::Dependent for #name {
             const RESOURCES: &'static [#sdk::Resource] = &[#(#sdk::Resource::of::<#resources>()),*];
         }

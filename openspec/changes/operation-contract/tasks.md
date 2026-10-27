@@ -26,9 +26,14 @@
 ## 3. Workspace Clean Break
 
 - [x] 3.5 Rename the shared execution snapshot and all references without aliases; focused five-package compilation succeeds.
-- [ ] 3.6 Emit declared resources for execution-only runtime/SDK macro paths and migrate the first stateless fixtures; preserve runtime gating for reusable guest declarations.
+- [x] 3.6 Emit declared resources for execution-only runtime/SDK macro paths and migrate SDK/resource unit fixtures; preserve runtime gating for reusable guest declarations. Focused SDK and macro tests pass.
 
 - [ ] 3.1 Audit every remaining lifecycle-shaped implementation; migrate runtime test support, tests, benches and sidecar fixtures to request-owned operations with declared resources, streams and dotted IDs.
 - [ ] 3.2 Restrict low-level handlers to carrier machinery; rename the shared execution snapshot and migrate SDK/runtime/service consumers and exports without compatibility aliases.
 - [ ] 3.3 Migrate lifecycle built-ins and inspect guest fixtures, examples, scaffold templates and README claims; remove superseded operation lifecycle stories.
 - [ ] 3.4 Run the requested five-package focused tests, Wasm/guest fixture builds, schematic consumer check and Rust formatting; record signature counts and commit closed steps locally.
+
+- [ ] 3.7 Close migration of shared compute/policy fixtures, stateless native and sidecar operations, owned-response fixtures, dispatch/throughput fixtures and SDK/runtime unit fixtures; repair focused tracing proof and run feature-enabled compilation before committing this slice.
+- [ ] 3.8 Migrate remaining stateful/streaming handler fixtures in operation wire, plugin, sidecar, guest host, listener and service tests; preserve carrier settlement coverage while removing authored initialization/cleanup assumptions.
+
+- [ ] 3.9 Retire per-operation initialization/finalization stories superseded by consuming attempts; validate cancellation/drop, retry cloning, stream settlement and retained resource/plugin lifecycle coverage.

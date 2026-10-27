@@ -22,7 +22,7 @@ use std::pin::Pin;
 
 // Local Imports
 use super::{
-    Contract, Dependencies, Executable, Handler, ExecutionContext, OperationDeclaration, OperationDefinition, Resource, ServingError,
+    Contract, Dependencies, Executable, ExecutionContext, Handler, OperationDeclaration, OperationDefinition, Resource, ServingError,
     WireDeclaration, WireTable,
 };
 use crate::ServicePolicy;
@@ -468,49 +468,21 @@ mod tests {
 
     struct Worker(Arc<AtomicUsize>);
 
-    struct Read {
-        value: Arc<u64>,
-        calls: usize,
-    }
-
-    impl OperationDeclaration for Read {
-        type Request = ();
-        type Response = u64;
-        type Input = crate::operations::NoStream;
-        type Output = crate::operations::NoStream;
-        const ID: &'static str = "read";
-        const POLICY: crate::OperationPolicy = crate::OperationPolicy {
+    #[crate::operation(harmos_path = crate, resources = [u64], id = "fixture.read", response = u64,
+        policy = crate::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
             retries: crate::RetryPolicy::Never,
-        };
+        },
+        key = |_: &Read| Some(super::super::CacheKey::new(vec![42]).unwrap()),
+    )]
+    struct Read;
 
-        fn key(_: &()) -> Option<super::super::CacheKey> {
-            Some(super::super::CacheKey::new(vec![42]).unwrap())
-        }
-    }
+    impl crate::Operation for Read {
+        type Error = std::convert::Infallible;
 
-    impl Executable for Read {
-        type Handler = Self;
-    }
-
-    impl Handler for Read {
-        type Request = ();
-        type Response = u64;
-        type Error = crate::ResourceError;
-        type StreamEndpoints = ();
-
-        async fn initialize(context: ExecutionContext) -> Result<Self, Self::Error> {
-            Ok(Self {
-                value: context.resource::<u64>()?,
-                calls: 0,
-            })
-        }
-
-        async fn run(&mut self, _: ExecutionContext, _: &mut (), _: &mut ()) -> Result<crate::Response<u64>, Self::Error> {
-            self.calls += 1;
-            assert!(self.calls <= 2);
-            Ok(crate::Response::from_owner(self.value.clone()))
+        async fn run(self, ctx: crate::Context<'_, Self>) -> Result<crate::Response<u64>, Self::Error> {
+            Ok(crate::Response::from_owner(ctx.resource::<u64>()))
         }
     }
 
@@ -560,7 +532,7 @@ mod tests {
         let batch = RegistrationBatch::new(dependencies).operation::<Read>();
         let factory = &batch.operations[0];
         assert!(factory.prepare_native(Box::new(7u64), Box::new(())).is_err());
-        let mut invocation = factory.prepare_native(Box::new(()), Box::new(())).unwrap();
+        let mut invocation = factory.prepare_native(Box::new(Read), Box::new(())).unwrap();
         let context = ExecutionContext::new(Dependencies::new(), super::super::CallContext::default());
 
         ready(invocation.initialize(context.clone()));
@@ -586,8 +558,8 @@ mod tests {
         let mut dependencies = Dependencies::new();
         dependencies.insert(Arc::new(42u64)).unwrap();
         let batch = RegistrationBatch::new(dependencies).operation::<Read>();
-        let mut prepared = batch.operations[0].prepare_encoded(&().encode()).unwrap();
-        assert_eq!(prepared.key, Read::key(&()));
+        let mut prepared = batch.operations[0].prepare_encoded(&Read.encode()).unwrap();
+        assert_eq!(prepared.key, Read::key(&Read));
         let context = ExecutionContext::new(Dependencies::new(), super::super::CallContext::default());
         ready(prepared.instance.initialize(context.clone()));
         let response = ready(prepared.instance.run(context)).restore::<Vec<u8>>().unwrap();
@@ -629,15 +601,15 @@ mod tests {
         let mut table = WireTable::new("fixture").unwrap();
         table.capacity(std::num::NonZeroUsize::MIN);
         table.register(batch.clone()).unwrap();
-        assert!(matches!(table.prepare(1, "spoof.read", fingerprint, 1, ().encode()), Err(ServingError::Unknown { .. })));
-        assert!(matches!(table.prepare(1, "fixture.read", [0; 32], 1, vec![255]), Err(ServingError::Identity { .. })));
-        assert!(matches!(table.prepare(1, "fixture.read", fingerprint, 0, vec![255]), Err(ServingError::Identity { .. })));
-        table.prepare(1, "fixture.read", fingerprint, 7, ().encode()).unwrap();
-        ready(Box::pin(table.unregister(&QualifiedId::qualify("fixture", "read").unwrap())));
+        assert!(matches!(table.prepare(1, "spoof.fixture.read", fingerprint, 1, Read.encode()), Err(ServingError::Unknown { .. })));
+        assert!(matches!(table.prepare(1, "fixture.fixture.read", [0; 32], 1, vec![255]), Err(ServingError::Identity { .. })));
+        assert!(matches!(table.prepare(1, "fixture.fixture.read", fingerprint, 0, vec![255]), Err(ServingError::Identity { .. })));
+        table.prepare(1, "fixture.fixture.read", fingerprint, 7, Read.encode()).unwrap();
+        ready(Box::pin(table.unregister(&QualifiedId::qualify("fixture", "fixture.read").unwrap())));
         table.register(batch).unwrap();
-        assert!(matches!(table.prepare(2, "fixture.read", fingerprint, 7, vec![255]), Err(ServingError::Identity { .. })));
-        table.prepare(2, "fixture.read", fingerprint, 8, ().encode()).unwrap();
-        assert!(matches!(table.prepare(3, "fixture.read", fingerprint, 9, vec![255]), Err(ServingError::Identity { .. })));
+        assert!(matches!(table.prepare(2, "fixture.fixture.read", fingerprint, 7, vec![255]), Err(ServingError::Identity { .. })));
+        table.prepare(2, "fixture.fixture.read", fingerprint, 8, Read.encode()).unwrap();
+        assert!(matches!(table.prepare(3, "fixture.fixture.read", fingerprint, 9, vec![255]), Err(ServingError::Identity { .. })));
         ready(Box::pin(table.settle()));
     }
 

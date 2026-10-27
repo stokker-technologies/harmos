@@ -174,7 +174,7 @@ impl MemorySize for Answer {
 mod tests {
     use super::*;
     use crate::RegistrationExt;
-    use harmos_sdk::{Context, Dependent, Operation, Resource, Response};
+    use harmos_sdk::{Context, Operation, Response};
 
     #[crate::lanes]
     enum Lanes {
@@ -197,14 +197,10 @@ mod tests {
         retries: crate::RetryPolicy::Never,
     };
 
-    #[crate::operation(harmos_path = crate, id = "test.leaf", response = u64, policy = POLICY,
+    #[crate::operation(harmos_path = crate, resources = [u64], id = "test.leaf", response = u64, policy = POLICY,
         key = |request: &Leaf| crate::operations::CacheKey::new(request.value.to_le_bytes()).ok())]
     struct Leaf {
         value: u64,
-    }
-    impl crate::operations::Requires<u64> for Leaf {}
-    impl Dependent for Leaf {
-        const RESOURCES: &'static [Resource] = &[Resource::of::<u64>()];
     }
     impl Operation for Leaf {
         type Error = std::convert::Infallible;
@@ -216,9 +212,6 @@ mod tests {
     #[crate::operation(harmos_path = crate, id = "test.parent", response = u64, policy = POLICY, operations = [Leaf])]
     struct Parent {
         value: u64,
-    }
-    impl Dependent for Parent {
-        const RESOURCES: &'static [Resource] = &[];
     }
     impl Operation for Parent {
         type Error = InvocationError;
