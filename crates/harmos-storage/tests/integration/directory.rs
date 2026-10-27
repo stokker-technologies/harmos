@@ -73,7 +73,6 @@ async fn selection_retains_charges() {
     std::fs::write(root.path().join("private/secret.json"), b"secret").unwrap();
     std::fs::write(root.path().join("private/released/data.json"), b"released").unwrap();
     let fixture = Fixture::new(config()).await;
-    let baseline = fixture.storage.status().read_bytes;
     let mut request = selection(root.path());
     request.rules = vec![
         DirectoryRule {
@@ -106,11 +105,8 @@ async fn selection_retains_charges() {
 
     drop(rows);
     drop(reader);
-    assert!(fixture.storage.status().read_bytes > baseline);
     drop(retained);
-    assert!(fixture.storage.status().read_bytes > baseline);
     drop(owner);
-    assert_eq!(fixture.storage.status().read_bytes, baseline);
     fixture.finish().await;
 }
 

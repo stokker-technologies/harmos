@@ -146,6 +146,7 @@ impl<C> StorageManager<C> {
                         id: *id,
                         progress: file.progress.clone(),
                         session: Some(token),
+                        append: None,
                     })
                 } else {
                     if session.generation != token.generation || file.abandoned {

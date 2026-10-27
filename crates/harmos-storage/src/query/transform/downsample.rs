@@ -25,7 +25,7 @@ use arrow_schema::{DataType, Schema, TimeUnit};
 use harmos_domain::model::storage::query::scalar::ScalarValue;
 
 // Local Imports
-use super::{invalid, numeric_type, take};
+use super::{invalid, numeric_type};
 use crate::Result;
 use crate::storage::query::transform::FieldPathExecution;
 
@@ -83,58 +83,17 @@ impl DownsampleExecution for Downsample {
         if input.num_rows() <= self.max_rows {
             return Ok(input.clone());
         }
-        let indices = match self.algorithm {
-            Algorithm::Decimate => crate::signal::decimate(input.num_rows(), self.max_rows),
-            Algorithm::Extrema => {
-                let field = self.value.as_ref().ok_or_else(|| invalid("missing extrema value field"))?;
-                let mut values = Vec::with_capacity(input.num_rows());
-                for row in 0..input.num_rows() {
-                    check()?;
-                    let value = number(&field.value(input, row)?)?;
-                    if !value.is_finite() {
-                        return Err(invalid("extrema requires finite non-null values"));
-                    }
-                    values.push(value);
-                }
-                crate::signal::extrema(&values, self.max_rows / 2)
-            }
-            Algorithm::Lttb | Algorithm::LttbLog => {
-                let field = self.value.as_ref().ok_or_else(|| invalid("missing LTTB value field"))?;
-                let mut x = Vec::with_capacity(input.num_rows());
-                let mut y = Vec::with_capacity(input.num_rows());
-                let mut first_time = None;
-                for row in 0..input.num_rows() {
-                    check()?;
-                    let value = number(&field.value(input, row)?)?;
-                    let axis = match &self.axis {
-                        None => row as f64,
-                        Some(axis) => match axis.value(input, row)? {
-                            ScalarValue::Datetime(value) => {
-                                let first = *first_time.get_or_insert(value);
-                                value.checked_sub(first).ok_or_else(|| invalid("LTTB timestamp difference overflow"))? as f64
-                            }
-                            value => number(&value)?,
-                        },
-                    };
-                    if !axis.is_finite() || !value.is_finite() {
-                        return Err(invalid("LTTB requires finite non-null coordinates"));
-                    }
-                    if matches!(self.algorithm, Algorithm::LttbLog) && (axis <= 0.0 || x.last().is_some_and(|previous| *previous > axis)) {
-                        return Err(invalid("logarithmic LTTB requires positive ordered coordinates"));
-                    }
-                    x.push(axis);
-                    y.push(value);
-                }
-                let selected = match self.algorithm {
-                    Algorithm::Lttb => crate::signal::lttb(&x, &y, self.max_rows),
-                    Algorithm::LttbLog => crate::signal::lttb_log(&x, &y, self.max_rows),
-                    _ => unreachable!(),
-                };
-                check()?;
-                selected
-            }
-        };
-        take(input, indices.into_iter().map(|index| index as u64).collect())
+        let mut spool = crate::query::spill::Builder::new(input.schema())?;
+        spool.push(input, check)?;
+        let output = crate::query::reduction::downsample(spool.finish()?, self, check)?;
+        let mut pages = output.pages()?;
+        let mut batches = Vec::new();
+        while let Some(batch) = pages.next()? {
+            check()?;
+            batches.push(batch);
+        }
+        // This Eager API Owns Only Its Requested Output, Never Coordinate Copies.
+        arrow_select::concat::concat_batches(&input.schema(), batches.iter()).map_err(|_| invalid("downsample output construction failed"))
     }
 }
 

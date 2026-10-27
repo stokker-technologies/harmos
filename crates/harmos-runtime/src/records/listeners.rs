@@ -32,7 +32,7 @@ use harmos_domain::listeners::{Context, Source};
 
 /* === Constants === */
 
-const PAGE_ROWS: usize = 64;
+const PAGE_ROWS: usize = 512;
 const REGISTRATIONS: usize = 64;
 
 /* === Macros === */
@@ -54,6 +54,7 @@ struct Binding<A: Application> {
     ordinal: usize,
     callback: PluginCallback,
     submit: Submit<A>,
+    bytes: fn(&A::Record) -> usize,
 }
 
 #[must_use = "retain the listener registration until shutdown positively settles"]
@@ -197,11 +198,11 @@ impl<A: Application> PluginListenerBindings<'_, A> {
             if source.as_ref() != id.as_str() || *revision != version {
                 continue;
             }
-            let graph = crate::schema::graph::Schema::from_declaration(R::DEFINITION, &harmos_domain::config::SchemaSettings::default())
+            let graph = crate::schema::graph::Schema::from_declaration(R::DEFINITION, &self.records.schemas.settings)
                 .map_err(|source| Error::RecordSchema { source: source.into() })?;
             let source_graph = listener.source().schema();
             if !graph
-                .equivalent(graph.root, source_graph, source_graph.root, &harmos_domain::config::SchemaSettings::default())
+                .equivalent(graph.root, source_graph, source_graph.root, &self.records.schemas.settings)
                 .map_err(|source| Error::RecordSchema { source: source.into() })?
             {
                 return Err(Error::InvalidInput {
@@ -219,6 +220,7 @@ impl<A: Application> PluginListenerBindings<'_, A> {
                 ordinal,
                 callback: self.operations.capture_callback(self.scope, listener.callback())?,
                 submit: submit::<A, R>,
+                bytes: |record| record.project().map_or(0, R::encoded_len),
             });
             selected = true;
         }
@@ -334,7 +336,11 @@ async fn deliver<A: Application>(
             return Ok(());
         }
         let after = Position(frontier.load(Ordering::Acquire));
-        let page = feed.shared_page(after, journal.applied(), NonZeroUsize::new(PAGE_ROWS).unwrap()).await?;
+        let page = feed
+            .shared_page(after, journal.applied(), NonZeroUsize::new(PAGE_ROWS).unwrap(), |record| {
+                entries.iter().map(|binding| (binding.bytes)(record)).max().unwrap_or(0)
+            })
+            .await?;
         if page.entries.is_empty() {
             tokio::select! {
                 biased;
@@ -361,6 +367,7 @@ async fn deliver<A: Application>(
             }
             frontier.store(source.position.0, Ordering::Release);
         }
+        tokio::task::yield_now().await;
     }
 }
 

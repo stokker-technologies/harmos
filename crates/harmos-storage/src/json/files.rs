@@ -65,6 +65,11 @@ pub(super) struct Production<C = FileCheckpoint> {
     pub deleted: bool,
 }
 
+pub(super) struct Reader {
+    pub reference: FileReference,
+    file: File,
+}
+
 /* === Enums === */
 
 /* === Traits === */
@@ -200,6 +205,7 @@ impl Files {
         if bytes.is_empty() {
             return Err(format::invalid("file chunk is empty"));
         }
+
         let production = self.load(key)?;
         if production.phase == FilePhase::Abandoned {
             return Err(format::conflict("file is abandoned"));
@@ -215,7 +221,7 @@ impl Files {
         }
         let overlap = (length - offset).min(bytes.len() as u64) as usize;
         file.seek(SeekFrom::Start(offset)).map_err(format::io)?;
-        let mut existing = [0_u8; 64 * 1024];
+        let mut existing = vec![0_u8; 1024 * 1024];
         let mut checked = 0;
         while checked < overlap {
             let count = (overlap - checked).min(existing.len());
@@ -236,6 +242,7 @@ impl Files {
         if position.sequence == 0 {
             return Err(format::invalid("file position is zero"));
         }
+
         let mut production = self.load(key)?;
         let reference = FileReference {
             position,
@@ -272,15 +279,25 @@ impl Files {
         Ok(reference)
     }
 
-    pub fn read(
-        &self, key: &str, offset: u64, maximum: NonZeroUsize, reference: Option<&FileReference>, memory: &crate::arrow::RetainedMemory,
-        base: usize,
-    ) -> Result<Vec<u8>> {
+    // Validate Once Before The Snapshot Owns The Immutable Native Handle.
+    pub fn open_reader(&self, key: &str, reference: FileReference) -> Result<Reader> {
+        let production = self.load(key)?;
+        if production.deleted || production.phase != FilePhase::Finished || production.finish.as_ref() != Some(&reference) {
+            return Err(format::conflict("immutable file reference differs"));
+        }
+        let path = self.final_path(key);
+        format::regular(&path)?;
+        let file = File::open(path).map_err(format::io)?;
+        if file.metadata().map_err(format::io)?.len() != reference.length {
+            return Err(format::corrupt("immutable file length differs"));
+        }
+        Ok(Reader { reference, file })
+    }
+
+    pub fn read(&self, key: &str, offset: u64, maximum: NonZeroUsize, reference: Option<&FileReference>) -> Result<Vec<u8>> {
         let length = if let Some(reference) = reference {
-            let production = format::load_admitted::<Production>(&self.metadata_path(key), self.maximum, memory, base, |encoded| {
-                format::flat_decoding_bytes(encoded, std::mem::size_of::<Production>())
-            })?
-            .ok_or_else(|| format::invalid("unknown staged file"))?;
+            let production = format::load::<Production>(&self.metadata_path(key), self.maximum)?
+                .ok_or_else(|| format::invalid("unknown staged file"))?;
             if production.deleted {
                 return Err(format::conflict("file has been deleted"));
             }
@@ -289,7 +306,7 @@ impl Files {
             }
             reference.length
         } else {
-            self.progress(key, memory, base)?.length
+            self.progress(key)?.length
         };
         if offset > length {
             return Err(format::invalid("read exceeds file length"));
@@ -303,11 +320,6 @@ impl Files {
         }
         file.seek(SeekFrom::Start(offset)).map_err(format::io)?;
         let count = (length - offset).min(maximum.get() as u64) as usize;
-        let needed = base
-            .checked_add(count)
-            .and_then(|size| size.checked_add(std::mem::size_of::<Vec<u8>>()))
-            .ok_or_else(|| format::invalid("file read memory overflow"))?;
-        memory.try_grow_to(needed)?;
         let mut bytes = vec![0; count];
         file.read_exact(&mut bytes).map_err(format::io)?;
         Ok(bytes)
@@ -344,6 +356,19 @@ impl Files {
     }
 }
 
+impl Reader {
+    pub fn read(&mut self, offset: u64, maximum: NonZeroUsize) -> Result<Vec<u8>> {
+        if offset > self.reference.length {
+            return Err(format::invalid("read exceeds file length"));
+        }
+        let count = (self.reference.length - offset).min(maximum.get() as u64) as usize;
+        self.file.seek(SeekFrom::Start(offset)).map_err(format::io)?;
+        let mut bytes = vec![0; count];
+        self.file.read_exact(&mut bytes).map_err(format::io)?;
+        Ok(bytes)
+    }
+}
+
 /* === Public Functions === */
 
 pub(super) fn key(id: &crate::Identifier) -> String {
@@ -356,7 +381,7 @@ pub(super) fn verify(path: &Path, length: u64, expected: [u8; 32]) -> Result<()>
     if file.metadata().map_err(format::io)?.len() != length {
         return Err(format::corrupt("file length differs"));
     }
-    let mut buffer = [0; 64 * 1024];
+    let mut buffer = vec![0; 1024 * 1024];
     let mut digest = Sha256::new();
     loop {
         let count = file.read(&mut buffer).map_err(format::io)?;

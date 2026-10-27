@@ -79,6 +79,7 @@ pub struct Context<'a> {
     pub(crate) scope: Scope<'a>,
     pub(crate) operations: Manager,
     pub(super) admission: Admission,
+    pub(super) request_claims: Option<super::RequestClaims>,
     pub(super) source: Source,
     pub(super) origin: Origin,
 
@@ -88,6 +89,7 @@ pub struct Context<'a> {
 
 #[derive(Clone)]
 pub struct HostContext {
+    request_claims: Option<super::RequestClaims>,
     scope: super::scope::ScopeCore,
     id: OperationInstanceId,
     attempt: usize,
@@ -286,6 +288,7 @@ where
 impl Context<'_> {
     pub(crate) fn owned(&self) -> HostContext {
         HostContext {
+            request_claims: self.request_claims.clone(),
             scope: self.scope.owned(),
             id: self.id,
             attempt: self.attempt,
@@ -373,6 +376,20 @@ impl Context<'_> {
         self.operations.submit_scoped::<O, ()>((request.into(), ()), &self.scope, &self.admission, &self.source, None)
     }
 
+    pub fn request_claims(&self) -> Option<&super::RequestClaims> {
+        self.request_claims.as_ref()
+    }
+
+    pub fn submit_owned<O: OperationDeclaration>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
+        self.operations.submit_scoped::<O, ()>(
+            (super::binding::Request::owned(request, claims), ()),
+            &self.scope,
+            &self.admission,
+            &self.source,
+            None,
+        )
+    }
+
     pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(&self, request: O::Request, endpoints: P) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, P>((request.into(), endpoints), &self.scope, &self.admission, &self.source, None)
     }
@@ -407,8 +424,12 @@ impl Context<'_> {
 /* === Public Functions === */
 
 impl HostContext {
+    pub fn request_claims(&self) -> Option<&super::RequestClaims> {
+        self.request_claims.as_ref()
+    }
     pub fn borrow(&self) -> Context<'_> {
         Context {
+            request_claims: self.request_claims.clone(),
             scope: Scope::over(&self.scope),
             id: self.id,
             attempt: self.attempt,
@@ -462,6 +483,10 @@ impl harmos_sdk::operations::Host for HostContext {
 
     async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>> {
         self.borrow().submit::<O>(request)
+    }
+
+    async fn submit_owned<O: OperationDeclaration>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
+        self.borrow().submit_owned::<O>(request, claims)
     }
 
     async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<super::Response<O::Response>> {

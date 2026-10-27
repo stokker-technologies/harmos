@@ -146,7 +146,11 @@ impl Manager {
         H: Send + Sync + 'static,
         F: Fn(Arc<R>) -> H + Send + Sync + 'static,
     {
-        self.register_observer(crate::observers::Native { instance, factory: Arc::new(factory) })
+        self.register_observer(crate::observers::Native {
+            instance,
+            factory: Arc::new(factory),
+            schema_settings: Arc::clone(&self.schema_settings),
+        })
     }
 
     #[cfg(feature = "plugin-sidecar")]
@@ -161,7 +165,11 @@ impl Manager {
         let factory = Arc::new(factory);
         self.stage_observers(
             resources,
-            instances.into_iter().map(|instance| crate::observers::Native { instance, factory: Arc::clone(&factory) }),
+            instances.into_iter().map(|instance| crate::observers::Native {
+                instance,
+                factory: Arc::clone(&factory),
+                schema_settings: Arc::clone(&self.schema_settings),
+            }),
         )
     }
 

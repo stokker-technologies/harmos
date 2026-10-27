@@ -251,11 +251,10 @@ singular `local_addr()` returns an address only when exactly one listener is
 active. Register shared services and middleware before attachment; they remain
 frozen while any listener is active.
 
-Storage uses explicit budget, request, response and filesystem settings, with no defaults:
+Storage uses explicit request, response and filesystem settings, with no defaults:
 
 ```rust
 let settings = StorageSettings {
-    budget: StorageBudget { read_memory_bytes },
     request: StorageRequestSettings {
         max_pending_queries,
         max_active_queries,
@@ -312,13 +311,10 @@ predecessors. Recovery writes consume `StorageBatch<RecoveryEntry>` and snapshot
 consume a singleton `StorageBatch<RecoverySnapshot>`, preserving shared ownership
 through retries and blocking filesystem work.
 
-Backend reads receive an owned `RetainedMemory` guard. Move it into blocking
-work and retain it with the completed result until the awaiting caller takes
-ownership; cancellation must not release the charge while that work still owns
-data. Admit additional parsing scratch with `try_grow_to` before allocation.
-Direct backend callers obtain a guard through `StorageManager::read_memory`
-and keep a clone for as long as they retain the returned data. Manager readers
-return shared owners that retain these charges automatically.
+Backend readers return shared page owners. Blocking work retains its input and
+output owners through cancellation and completion. Query concurrency, serialized
+page sizes and pending writes remain bounded by the configured request and response
+settings. Consumers own budgets for their retained results and conversion scratch.
 
 File operations share `FileSource::Stored(reference)` and `FileSource::Local(path)`.
 `ReadFile` streams a selected byte range; `HashFile` returns its byte count and
@@ -331,6 +327,20 @@ boundaries, path-scoped grants or extra per-plugin allowlists for local sources.
 Normal operation exposure and existing stored-file scope grants still apply.
 Transport paths use UTF-8 and reject unrepresentable paths; native readers retain
 the host path representation. Symlink traversal is rejected.
+
+Native `read_opened_file(file, range)` reads the supplied process-local handle,
+preserving its original inode even when its pathname is replaced. On Windows,
+the handle must permit a separate read open; exclusive handles are rejected so
+native reads can keep the caller's cursor independent without reopening by path.
+The shared
+`ReadSession` supports this reader, `follow_file`, `follow_production` and
+`file_progress` alongside retained metadata. `capture_opened_file(file, target,
+range, consistency)` synchronously returns an `OpenedCapture` that owns the
+original handle and `StorageFile`. Its asynchronous `finish` retains setup,
+copy progress and exact pending bytes across errors and caller cancellation.
+Existing producer prefixes are compared before a suffix is appended;
+`acknowledged()` reports completed copy progress. Stable capture detects source
+changes but does not freeze concurrent writers into an atomic snapshot.
 
 `FollowFile` starts at `Beginning`, `End` or `At(offset)` and streams data with
 explicit truncation/replacement events. Staged-production observation uses the
@@ -413,69 +423,34 @@ let pages = storage
     .await?; // ReadBatch<Vec<ReadBatch<Vec<StoredRecord<Reading>>>>>
 ```
 
-Typed `next()` results retain each page and its memory charge. `collect()` retains
-a collection of those pages without copying their records; its outer length is
-the page count. Borrow rows with `pages.iter().flat_map(|page| page.iter())`.
-For owned conversion, `page.try_map(additional_peak, convert_owned)` returns a
-new retained batch. The callback consumes the unique input; strong or weak
-aliases are refused. Bound all new output allocations and simultaneous conversion
-scratch before calling it. Admission is nonblocking and precedes the callback;
-Harmos accounts private owner growth. Existing charges remain retained without
-automatic shrinking, and failure consumes this handle. Nested pages must retain
-or map their own guards. Conversion errors and external captures must not retain
-payloads. The callback error type implements `From<harmos::storage::Error>`.
+Typed `next()` results share their page backing. `collect()` retains pages without
+copying records; its outer length is the page count. Borrow rows with
+`pages.iter().flat_map(|page| page.iter())`. `page.try_map(convert_owned)` and
+`left.try_map_with(right, combine_owned)` consume unique owners into new results;
+strong aliases refuse the move. The callback error implements
+`From<harmos::storage::Error>`. Consumers bound their own conversion allocations.
 
-`left.try_map_with(right, additional_peak, combine_owned)` moves two unique
-payloads into one retained result. It preserves every input claim and admits
-internal guard storage before allocation. This supports folding command pages
-into a retained parent object without cloning payloads or detaching their guards.
-Use one read session for dependent inputs; combining owners does not retroactively
-merge independent admission groups. Both handles are consumed on failure.
+Read directly through the storage manager with explicit cursors and versions.
+Drop a reader to release its active query slot. Retained pages remain valid after
+the reader is dropped. Queries use temporary disk-backed Arrow pages for global
+sorting and reductions, retaining their query slot through output. Cancellation
+stops detached reduction work and releases temporary files.
 
-Use one `storage.read_session()` when a read retains results while starting other
-object, record, Arrow or file reads. Pass that session to all participating helpers; its
-`read_objects`, `read_records`, `read_object`, `query` and `read_file` calls share admission dependencies.
-Explicit cursors and versions still select the data: a session is not a snapshot.
-Grouped reader creation returns resource exhaustion when an active query slot is
-unavailable. Independent manager reads retain their queued admission behavior.
+Native callers can attach their own allocation owner with
+`operations::RequestClaims::retain(owner)` and submit using `Host::call_owned` or
+`submit_owned`. Accepted work retains that owner after caller cancellation.
+Guest and sidecar bindings refuse process-local claims.
 
-`session.collection::<Vec<ProjectedRow>>()` creates an empty retained collection
-for bounded pagination. Grow it with `try_map`, reserving the full replacement
-Vec backing before allocation; child pages keep their own charges. Stop reading
-at the selected limit and drop the reader to release its active query slot.
-Retained results remain valid after the reader and session are dropped. Do not
-use an independent `read_memory` reservation for a collection that subsequent
-reads depend on: it does not establish the shared admission dependency.
-
-For mutable metadata, `session.try_memory(payload_bytes)` reserves a nonblocking
-claim including private scaffolding. Keep the claim with the table it covers and
-call `try_grow_by(additional_peak)` before allocating or mutating. Refusal preserves
-the existing claim and table. `bytes()` includes scaffolding; `try_grow_to(total)`
-is an absolute high-water operation, not an atomic increment across aliases.
-
-`ArrowBatch::try_map` consumes its RecordBatch handle into a retained DTO result,
-admitting new allocations and scratch first. Immutable Arrow buffer aliases keep
-the shared charge; batches created by unadmitted decoding utilities refuse this
-projection. `arrow::encode_payloads_memory(schema, payload, encoding, max_bytes)`
-counts output collection and row storage using the encoding walker without heap
-scratch. First admit and retain encoded rows, then inspect their bytes for the
-consumer codec decoding bound and admit the typed projection separately.
-`FileReadBatch::try_map` delegates to its unique retained owner, so
-existing file-slice aliases refuse an owned move. Runtime query streaming retains
-the Arrow source until destination admission, then converts to IPC inside the
-admitted send closure.
+`ArrowBatch::try_map(convert_owned)` projects a RecordBatch into a shared result.
+`FileReadBatch::try_map` requires a unique owner. Direct Arrow projections decode
+only selected payload fields, and repeated reads can reuse immutable Arrow pages.
 
 `harmos::filesystem::input::read(path, limit)` bounds regular-file reads.
 `harmos::filesystem::publication` owns staged atomic installation, replacement,
 removal and explicit durability confirmation across Unix and Windows.
 
-Before a write whose receipt must remain in pending ownership, use
-`storage.object_receipts_memory(count)` for the producer's response bound, add
-caller-owned pending/response scaffolding, and preclaim through the same session.
-Move the final receipt's cursor and claim into pending ownership before the next
-await. Retry durability or delivery using that receipt; reissuing an ordinary
-`write_object_group` creates new revisions. The bound uses declared producer
-history and covers receipt-vector capacity and both history copies per receipt.
+Keep write receipts with pending work and retry durability or delivery using
+those receipts; reissuing an ordinary `write_object_group` creates new revisions.
 Stored objects can enforce domain invariants through `StoredObject::validate`;
 object encoding, decoding and catalog validation apply the same check.
 

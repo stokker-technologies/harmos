@@ -43,6 +43,13 @@ struct Checked {
     kind: Wire,
 }
 
+// Each Message Contributes At Most A Variant And Payload Field; Repeated
+// Indexes Consume Their Own Reader Nesting Level.
+struct Path<'schema> {
+    entries: [PathElement<'schema>; 2 * crate::message::postcard::MAX_DEPTH],
+    len: usize,
+}
+
 /* === Enums === */
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,6 +112,32 @@ pub struct PayloadError(#[from] MessageError);
 
 /* === Implementations === */
 
+impl<'schema> Path<'schema> {
+    fn new() -> Self {
+        Self {
+            entries: [PathElement::Index(0); 2 * crate::message::postcard::MAX_DEPTH],
+            len: 0,
+        }
+    }
+
+    fn push(&mut self, element: PathElement<'schema>) {
+        self.entries[self.len] = element;
+        self.len += 1;
+    }
+
+    fn pop(&mut self) {
+        self.len -= 1;
+    }
+}
+
+impl<'schema> std::ops::Deref for Path<'schema> {
+    type Target = [PathElement<'schema>];
+
+    fn deref(&self) -> &Self::Target {
+        &self.entries[..self.len]
+    }
+}
+
 impl Validator {
     // Reuse The Checked Definitions For Another Root Without Recompiling Them.
     pub fn at(&self, root: usize) -> Result<Self, graph::Error> {
@@ -143,7 +176,7 @@ impl Validator {
         &'schema self, bytes: &'payload [u8], mut visitor: impl FnMut(&[PathElement<'schema>], Event<'payload>) -> Result<(), E>,
     ) -> Result<(), VisitError<E>> {
         let mut input = PostcardReader::new(bytes);
-        let mut path = Vec::new();
+        let mut path = Path::new();
         let mut failure = None;
         let result = self.read(self.root, &mut input, &mut path, &mut |path, event| {
             visitor(path, event).map_err(|error| {
@@ -195,7 +228,7 @@ impl Validator {
         })
     }
     fn read<'schema, 'payload>(
-        &'schema self, definition: usize, input: &mut PostcardReader<'payload>, path: &mut Vec<PathElement<'schema>>,
+        &'schema self, definition: usize, input: &mut PostcardReader<'payload>, path: &mut Path<'schema>,
         visitor: &mut impl FnMut(&[PathElement<'schema>], Event<'payload>) -> Result<(), MessageError>,
     ) -> Result<(), MessageError> {
         input.nested(|input| {
@@ -219,7 +252,7 @@ impl Validator {
         })
     }
     fn read_fields<'schema, 'payload>(
-        &'schema self, definition: usize, input: &mut PostcardReader<'payload>, path: &mut Vec<PathElement<'schema>>,
+        &'schema self, definition: usize, input: &mut PostcardReader<'payload>, path: &mut Path<'schema>,
         visitor: &mut impl FnMut(&[PathElement<'schema>], Event<'payload>) -> Result<(), MessageError>,
     ) -> Result<(), MessageError> {
         for field in &self.definitions[definition] {
@@ -253,7 +286,7 @@ impl Validator {
 }
 impl Wire {
     fn read<'schema, 'payload>(
-        &'schema self, schema: &'schema Validator, input: &mut PostcardReader<'payload>, path: &mut Vec<PathElement<'schema>>,
+        &'schema self, schema: &'schema Validator, input: &mut PostcardReader<'payload>, path: &mut Path<'schema>,
         visitor: &mut impl FnMut(&[PathElement<'schema>], Event<'payload>) -> Result<(), MessageError>,
     ) -> Result<(), MessageError> {
         let scalar = match self {
@@ -309,3 +342,81 @@ fn graph_compilation_bytes(schema: &graph::Schema) -> Result<usize, graph::Error
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn enum_chain(depth: usize) -> (Validator, Vec<u8>) {
+        let mut definitions = Vec::new();
+        for level in 0..depth {
+            let variant = Checked {
+                name: "variant".into(),
+                tag: 1,
+                cardinality: Cardinality::Variant,
+                kind: Wire::Message(2 * level + 1),
+            };
+            let kind = if level + 1 == depth { Wire::Bool } else { Wire::Message(2 * level + 2) };
+            let field = Checked {
+                name: "value".into(),
+                tag: 1,
+                cardinality: Cardinality::Required,
+                kind,
+            };
+            definitions.push(vec![variant].into_boxed_slice());
+            definitions.push(vec![field].into_boxed_slice());
+        }
+        let validator = Validator { root: 0, definitions: definitions.into() };
+        let mut bytes = vec![0; depth];
+        bytes.push(1);
+        (validator, bytes)
+    }
+
+    #[test]
+    fn deepest_enum_path_preserves_events_and_consumer_errors() {
+        let depth = crate::message::postcard::MAX_DEPTH;
+        let (validator, bytes) = enum_chain(depth);
+        let mut longest = 0;
+        validator
+            .visit(&bytes, |path, event| {
+                longest = longest.max(path.len());
+                if let Event::Scalar(value) = event {
+                    assert_eq!(value, Scalar::Bool(true));
+                    assert_eq!(path.len(), 2 * depth);
+                }
+                Ok::<_, ()>(())
+            })
+            .unwrap();
+        assert_eq!(longest, 2 * depth);
+        let failure = validator.visit(&bytes, |_, event| if matches!(event, Event::Scalar(_)) { Err(7) } else { Ok(()) });
+        assert!(matches!(failure, Err(VisitError::Consumer(7))));
+    }
+
+    #[test]
+    fn excessive_enum_depth_returns_payload_error() {
+        let (validator, bytes) = enum_chain(crate::message::postcard::MAX_DEPTH + 1);
+        let result = validator.visit(&bytes, |_, _| Ok::<_, ()>(()));
+        assert!(matches!(result, Err(VisitError::Payload(_))));
+    }
+
+    #[test]
+    fn repeated_index_uses_its_existing_nesting_level() {
+        let depth = crate::message::postcard::MAX_DEPTH - 1;
+        let (mut validator, mut bytes) = enum_chain(depth);
+        let definitions = Arc::get_mut(&mut validator.definitions).unwrap();
+        definitions.last_mut().unwrap()[0].cardinality = Cardinality::Repeated;
+        bytes.insert(depth, 1);
+        let mut scalars = 0;
+        validator
+            .visit(&bytes, |path, event| {
+                if matches!(event, Event::Scalar(Scalar::Bool(true))) {
+                    assert_eq!(path.len(), 2 * depth + 1);
+                    assert_eq!(path.last(), Some(&PathElement::Index(0)));
+                    scalars += 1;
+                }
+                Ok::<_, ()>(())
+            })
+            .unwrap();
+        assert_eq!(scalars, 1);
+    }
+}

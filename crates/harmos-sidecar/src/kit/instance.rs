@@ -125,7 +125,7 @@ impl Host for Supervisor {
     where
         S::Row: Message,
     {
-        self.publication::<S>(std::slice::from_ref(row), &[self.now()], None).await.map_err(|error| match error {
+        self.publication::<S>(&[row.encode()], &[self.now()], None).await.map_err(|error| match error {
             super::PublishError::Publication(error) => CallError::Publication(error),
             super::PublishError::Call(error) => error,
         })
@@ -153,6 +153,12 @@ impl Host for Supervisor {
             released: false,
             _operation: PhantomData,
         })
+    }
+
+    async fn submit_owned<O: OperationDeclaration>(
+        &self, _: O::Request, _: harmos_sdk::operations::RequestClaims,
+    ) -> Result<OperationInstance<O>, CallError> {
+        Err(CallError::LocalResources { method: O::ID })
     }
 
     async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<Response<O::Response>, CallError> {

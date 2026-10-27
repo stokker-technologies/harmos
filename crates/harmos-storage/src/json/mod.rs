@@ -34,7 +34,6 @@ use std::{
 use tokio::sync::Mutex;
 
 // Local Imports
-use crate::arrow::RetainedMemory;
 use crate::{
     query::{FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection},
     *,
@@ -103,35 +102,22 @@ impl JsonStorage {
         .map_err(task)?
     }
 
-    async fn read<T: Send + 'static>(
-        &self, memory: RetainedMemory, action: impl FnOnce(&mut Log, &RetainedMemory) -> Result<T> + Send + 'static,
-    ) -> Result<T> {
-        let (result, _memory) = self.call(move |log| Ok((action(log, &memory), memory))).await?;
-        result
+    async fn read<T: Send + 'static>(&self, action: impl FnOnce(&mut Log) -> Result<T> + Send + 'static) -> Result<T> {
+        self.call(action).await
     }
 
     async fn read_selected<T: Send + 'static, S: Clone + MemorySize + Send + Sync + 'static>(
-        &self, snapshot: &BackendSnapshot, selection: &S, memory: RetainedMemory,
-        action: impl FnOnce(&mut Log, &BackendSnapshot, &S, &RetainedMemory, usize) -> Result<T> + Send + 'static,
+        &self, snapshot: &BackendSnapshot, selection: &S, action: impl FnOnce(&mut Log, &BackendSnapshot, &S) -> Result<T> + Send + 'static,
     ) -> Result<T> {
-        let base = snapshot
-            .at
-            .memory_size()
-            .saturating_add(snapshot.token.capacity())
-            .saturating_add(std::mem::size_of::<Vec<u8>>())
-            .saturating_add(selection.memory_size())
-            .saturating_add(crate::manager::ENTRY_OVERHEAD);
-        memory.try_grow_to(base)?;
         let snapshot = snapshot.clone();
         let selection = selection.clone();
-        self.read(memory, move |log, memory| action(log, &snapshot, &selection, memory, base)).await
+        self.read(move |log| action(log, &snapshot, &selection)).await
     }
 
     async fn file_read<T: Send + 'static>(
-        &self, file: StagedFile, memory: RetainedMemory, action: impl FnOnce(&Files, &str) -> Result<T> + Send + 'static,
+        &self, file: StagedFile, action: impl FnOnce(&Files, &str) -> Result<T> + Send + 'static,
     ) -> Result<T> {
-        let (result, _memory) = self.file(file, move |files, key| Ok((action(files, key), memory))).await?;
-        result
+        self.file(file, action).await
     }
 
     async fn write<T: Row>(&self, batch: StorageBatch<T>) -> Result<StorageCursor> {
@@ -163,7 +149,7 @@ impl StorageBackend for JsonStorage {
                         let settings = self.settings.clone();
                         let history = self.history.clone();
                         let files = self.files.clone();
-                        {
+                        let result = {
                             let context = crate::execution::Context::current();
                             tokio::task::spawn_blocking(move || {
                                 context.blocking(|| {
@@ -179,7 +165,8 @@ impl StorageBackend for JsonStorage {
                             })
                         }
                         .await
-                        .map_err(task)?
+                        .map_err(task)??;
+                        Ok(result)
                     }
                 })
                 .await
@@ -189,7 +176,7 @@ impl StorageBackend for JsonStorage {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "cursor_saved", outcome = "cancelled"));
-            context.result(span, self.call(|log| Ok(log.cursor()))).await
+            context.result(span, self.read(|log| Ok(log.cursor()))).await
         })
     }
     fn close(&self) -> StorageFuture<'_, ()> {
@@ -262,7 +249,11 @@ impl StorageBackend for JsonStorage {
                     let files = self.files.clone();
                     self.call(move |log| {
                         for reference in batch.as_slice() {
-                            let production = files.load(&files::key(&reference.metadata.id))?;
+                            let production = format::load::<files::Production>(
+                                &files.metadata_path(&files::key(&reference.metadata.id)),
+                                files.maximum,
+                            )?
+                            .ok_or_else(|| format::invalid("unknown staged file"))?;
                             if production.phase != FilePhase::Finished || production.finish.as_ref() != Some(reference) {
                                 return Err(format::conflict("file publication precedes durable finish"));
                             }
@@ -273,20 +264,15 @@ impl StorageBackend for JsonStorage {
                 .await
         })
     }
-    fn open_snapshot<'a>(&'a self, at: &'a StorageCursor, memory: RetainedMemory) -> StorageFuture<'a, BackendSnapshot> {
+    fn open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "open_snapshot", outcome = "cancelled"));
             context
                 .result(span, {
                     async move {
-                        let base = at
-                            .memory_size()
-                            .saturating_add(std::mem::size_of::<BackendSnapshot>())
-                            .saturating_add(32 + crate::manager::ENTRY_OVERHEAD);
-                        memory.try_grow_to(base)?;
                         let at = at.clone();
-                        self.read(memory, move |log, _memory| log.snapshot(at)).await
+                        self.read(move |log| log.snapshot(at)).await
                     }
                 })
                 .await
@@ -299,9 +285,10 @@ impl StorageBackend for JsonStorage {
             context
                 .result(span, {
                     let snapshot = snapshot.clone();
-                    self.call(move |log| {
+                    self.read(move |log| {
                         log.pin(&snapshot)?;
                         log.snapshots.remove(&snapshot.token);
+                        log.readers.remove(&snapshot.token);
                         Ok(())
                     })
                 })
@@ -309,16 +296,16 @@ impl StorageBackend for JsonStorage {
         })
     }
     fn read_schemas<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage, memory: RetainedMemory,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StorageSchema>> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "read_schemas", outcome = "cancelled"));
             context
                 .result(span, {
-                    self.read_selected(snapshot, selection, memory, move |log, snapshot, selection, memory, base| {
+                    self.read_selected(snapshot, selection, move |log, snapshot, selection| {
                         let generation = log.pin(snapshot)?;
-                        log.scan(snapshot.at.sequence, generation, page, memory, base, |row: &StorageSchema| {
+                        log.scan(snapshot.at.sequence, generation, page, |row: &StorageSchema| {
                             Ok(selection.schema.as_ref().is_none_or(|key| key == &row.key))
                         })
                     })
@@ -327,16 +314,16 @@ impl StorageBackend for JsonStorage {
         })
     }
     fn read_records<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage, memory: RetainedMemory,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRecord>> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "read_records", outcome = "cancelled"));
             context
                 .result(span, {
-                    self.read_selected(snapshot, selection, memory, move |log, snapshot, selection, memory, base| {
+                    self.read_selected(snapshot, selection, move |log, snapshot, selection| {
                         let generation = log.pin(snapshot)?;
-                        log.scan(snapshot.at.sequence, generation, page, memory, base, |row: &StoredRecord| {
+                        log.scan(snapshot.at.sequence, generation, page, |row: &StoredRecord| {
                             Ok(crate::selection::Entry::matches(row, selection))
                         })
                     })
@@ -345,16 +332,16 @@ impl StorageBackend for JsonStorage {
         })
     }
     fn read_stream<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage, memory: RetainedMemory,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRow>> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "read_stream", outcome = "cancelled"));
             context
                 .result(span, {
-                    self.read_selected(snapshot, selection, memory, move |log, snapshot, selection, memory, base| {
+                    self.read_selected(snapshot, selection, move |log, snapshot, selection| {
                         let generation = log.pin(snapshot)?;
-                        log.scan(snapshot.at.sequence, generation, page, memory, base, |row: &StoredRow| {
+                        log.scan(snapshot.at.sequence, generation, page, |row: &StoredRow| {
                             Ok(crate::selection::Entry::matches(row, selection))
                         })
                     })
@@ -363,16 +350,16 @@ impl StorageBackend for JsonStorage {
         })
     }
     fn read_files<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage, memory: RetainedMemory,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<FileReference>> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "read_files", outcome = "cancelled"));
             context
                 .result(span, {
-                    self.read_selected(snapshot, selection, memory, move |log, snapshot, selection, memory, base| {
+                    self.read_selected(snapshot, selection, move |log, snapshot, selection| {
                         let generation = log.pin(snapshot)?;
-                        log.scan(snapshot.at.sequence, generation, page, memory, base, |row: &FileReference| {
+                        log.scan(snapshot.at.sequence, generation, page, |row: &FileReference| {
                             Ok(crate::selection::Entry::matches(row, selection))
                         })
                     })
@@ -381,37 +368,27 @@ impl StorageBackend for JsonStorage {
         })
     }
     fn read_objects<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage, memory: RetainedMemory,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<ObjectEntry>> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "read_objects", outcome = "cancelled"));
             context
                 .result(span, {
-                    self.read_selected(snapshot, selection, memory, move |log, snapshot, selection, memory, base| {
-                        log.objects(snapshot, selection, page, memory, base)
-                    })
+                    self.read_selected(snapshot, selection, move |log, snapshot, selection| log.objects(snapshot, selection, page))
                 })
                 .await
         })
     }
-    fn read_object<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, point: &'a ObjectPoint, memory: RetainedMemory,
-    ) -> StorageFuture<'a, Option<ObjectEntry>> {
+    fn read_object<'a>(&'a self, snapshot: &'a BackendSnapshot, point: &'a ObjectPoint) -> StorageFuture<'a, Option<ObjectEntry>> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "read_object", outcome = "cancelled"));
-            context
-                .result(span, {
-                    self.read_selected(snapshot, point, memory, move |log, snapshot, point, memory, base| {
-                        log.object(snapshot, point, memory, base)
-                    })
-                })
-                .await
+            context.result(span, self.read_selected(snapshot, point, move |log, snapshot, point| log.object(snapshot, point))).await
         })
     }
     fn read_file<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, file: &'a FileReference, offset: u64, maximum: NonZeroUsize, memory: RetainedMemory,
+        &'a self, snapshot: &'a BackendSnapshot, file: &'a FileReference, offset: u64, maximum: NonZeroUsize,
     ) -> StorageFuture<'a, Vec<u8>> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
@@ -419,26 +396,22 @@ impl StorageBackend for JsonStorage {
             context
                 .result(span, {
                     async move {
-                        self.read_selected(snapshot, file, memory.clone(), |log, snapshot, reference, memory, base| {
+                        let files = Arc::clone(&self.files);
+                        self.read_selected(snapshot, file, move |log, snapshot, reference| {
                             log.pin(snapshot)?;
-                            if reference.position.sequence <= snapshot.at.sequence
-                                && log.one::<FileReference>(reference.position.sequence, memory, base)?.as_ref() != Some(reference)
-                            {
-                                return Err(format::conflict("file differs from pinned saved view"));
+                            if log.readers.get(&snapshot.token).is_none_or(|reader| reader.reference != *reference) {
+                                if reference.position.sequence <= snapshot.at.sequence
+                                    && log.one::<FileReference>(reference.position.sequence)?.as_ref() != Some(reference)
+                                {
+                                    return Err(format::conflict("file differs from pinned saved view"));
+                                }
+                                let key = files::key(&reference.metadata.id);
+                                let reader = files.open_reader(&key, reference.clone())?;
+                                log.readers.insert(snapshot.token.clone(), reader);
                             }
-                            Ok(())
+                            log.readers.get_mut(&snapshot.token).expect("pinned file reader").read(offset, maximum)
                         })
-                        .await?;
-                        let base = file.memory_size().saturating_mul(2).saturating_add(crate::manager::ENTRY_OVERHEAD);
-                        memory.try_grow_to(base)?;
-                        let reference = file.clone();
-                        let file = StagedFile {
-                            history: reference.position.history.clone(),
-                            id: reference.metadata.id.clone(),
-                        };
-                        let scratch = memory.clone();
-                        self.file_read(file, memory, move |files, key| files.read(key, offset, maximum, Some(&reference), &scratch, base))
-                            .await
+                        .await
                     }
                 })
                 .await
@@ -457,7 +430,7 @@ impl StorageBackend for JsonStorage {
                     let schema = schema.clone();
                     let item = item.clone();
                     let through = through.clone();
-                    self.call(move |log| log.release(schema, item, through))
+                    self.read(move |log| log.release(schema, item, through))
                 })
                 .await
         })
@@ -471,7 +444,7 @@ impl StorageBackend for JsonStorage {
             context
                 .result(span, {
                     let through = through.clone();
-                    self.call(move |log| log.prune(&through, maximum, retention))
+                    self.read(move |log| log.prune(&through, maximum, retention))
                 })
                 .await
         })
@@ -485,7 +458,14 @@ impl StorageBackend for JsonStorage {
                     let metadata = metadata.clone();
                     let files = self.files.clone();
                     let id = metadata.id.clone();
-                    async move { files.call(&id, move |files, key| files.create(key, metadata, false)).await }
+                    async move {
+                        files
+                            .call(&id, move |files, key| {
+                                let result = files.create(key, metadata, false);
+                                Ok(result)
+                            })
+                            .await?
+                    }
                 })
                 .await
         })
@@ -494,7 +474,8 @@ impl StorageBackend for JsonStorage {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "write_file", outcome = "cancelled"));
-            context.result(span, self.file(staging.clone(), move |files, key| files.write(key, offset, bytes.as_slice()))).await
+
+            context.result(span, self.file_read(staging.clone(), move |files, key| files.write(key, offset, bytes.as_slice()))).await
         })
     }
     fn finish_file<'a>(
@@ -506,7 +487,7 @@ impl StorageBackend for JsonStorage {
             context
                 .result(span, {
                     let position = position.clone();
-                    self.file(staging.clone(), move |files, key| files.finish(key, position, length, sha256))
+                    self.file_read(staging.clone(), move |files, key| files.finish(key, position, length, sha256))
                 })
                 .await
         })
@@ -515,7 +496,8 @@ impl StorageBackend for JsonStorage {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "abort_file", outcome = "cancelled"));
-            context.result(span, self.file(staging.clone(), |files, key| files.abort(key, false, false))).await
+
+            context.result(span, self.file_read(staging.clone(), move |files, key| files.abort(key, false, false))).await
         })
     }
     fn supports_file_sessions(&self) -> bool {
@@ -530,7 +512,14 @@ impl StorageBackend for JsonStorage {
                     let metadata = metadata.clone();
                     let files = self.files.clone();
                     let id = metadata.id.clone();
-                    async move { files.call(&id, move |files, key| files.create(key, metadata, true)).await }
+                    async move {
+                        files
+                            .call(&id, move |files, key| {
+                                let result = files.create(key, metadata, true);
+                                Ok(result)
+                            })
+                            .await?
+                    }
                 })
                 .await
         })
@@ -539,7 +528,8 @@ impl StorageBackend for JsonStorage {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "fence_production", outcome = "cancelled"));
-            context.result(span, self.file(file.clone(), move |files, key| files.fence(key, expected, next))).await
+
+            context.result(span, self.file_read(file.clone(), move |files, key| files.fence(key, expected, next))).await
         })
     }
     fn save_production(&self, checkpoint: StorageBatch<FileCheckpoint>) -> StorageFuture<'_, ()> {
@@ -562,49 +552,33 @@ impl StorageBackend for JsonStorage {
                 .await
         })
     }
-    fn recover_productions(&self, limits: ReadLimits, memory: RetainedMemory) -> StorageFuture<'_, Vec<FileCheckpoint>> {
+    fn recover_productions(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "recover_productions", outcome = "cancelled"));
             context
                 .result(span, {
                     let files = self.files.clone();
-                    self.read(memory, move |_, memory| files.recover(limits, memory))
+                    self.read(move |_| files.recover(limits))
                 })
                 .await
         })
     }
-    fn file_progress<'a>(&'a self, file: &'a StagedFile, memory: RetainedMemory) -> StorageFuture<'a, FileProgress> {
+    fn file_progress<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "file_progress", outcome = "cancelled"));
-            context
-                .result(span, {
-                    async move {
-                        let base = file.memory_size().saturating_add(crate::manager::ENTRY_OVERHEAD);
-                        memory.try_grow_to(base)?;
-                        let scratch = memory.clone();
-                        self.file_read(file.clone(), memory, move |files, key| files.progress(key, &scratch, base)).await
-                    }
-                })
-                .await
+            context.result(span, async move { self.file_read(file.clone(), move |files, key| files.progress(key)).await }).await
         })
     }
 
-    fn read_production<'a>(
-        &'a self, file: &'a StagedFile, offset: u64, maximum: NonZeroUsize, memory: RetainedMemory,
-    ) -> StorageFuture<'a, Vec<u8>> {
+    fn read_production<'a>(&'a self, file: &'a StagedFile, offset: u64, maximum: NonZeroUsize) -> StorageFuture<'a, Vec<u8>> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "read_production", outcome = "cancelled"));
             context
                 .result(span, {
-                    async move {
-                        let base = file.memory_size().saturating_add(crate::manager::ENTRY_OVERHEAD);
-                        memory.try_grow_to(base)?;
-                        let scratch = memory.clone();
-                        self.file_read(file.clone(), memory, move |files, key| files.read(key, offset, maximum, None, &scratch, base)).await
-                    }
+                    async move { self.file_read(file.clone(), move |files, key| files.read(key, offset, maximum, None)).await }
                 })
                 .await
         })
@@ -614,7 +588,8 @@ impl StorageBackend for JsonStorage {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "abandon_file", outcome = "cancelled"));
-            context.result(span, self.file(file.clone(), |files, key| files.abort(key, true, false))).await
+
+            context.result(span, self.file_read(file.clone(), move |files, key| files.abort(key, true, false))).await
         })
     }
     fn supports_file_deletion(&self) -> bool {
@@ -624,7 +599,8 @@ impl StorageBackend for JsonStorage {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "delete_file", outcome = "cancelled"));
-            context.result(span, self.file(file.clone(), |files, key| files.abort(key, false, true))).await
+
+            context.result(span, self.file_read(file.clone(), move |files, key| files.abort(key, false, true))).await
         })
     }
     fn supports_mutation_receipts(&self) -> bool {
@@ -647,29 +623,27 @@ impl StorageBackend for JsonStorage {
                 .await
         })
     }
-    fn recover_mutations(&self, limits: ReadLimits, memory: RetainedMemory) -> StorageFuture<'_, Vec<MutationReceipt>> {
+    fn recover_mutations(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "recover_mutations", outcome = "cancelled"));
             context
                 .result(span, {
                     let files = self.files.clone();
-                    self.read(memory, move |_, memory| files.receipts(limits, memory))
+                    self.read(move |_| files.receipts(limits))
                 })
                 .await
         })
     }
     fn read_identities<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, selection: &'a IdentitySelection, page: ScanPage, memory: RetainedMemory,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a IdentitySelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredIdentity>> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.json.backend", method = "read_identities", outcome = "cancelled"));
             context
                 .result(span, {
-                    self.read_selected(snapshot, selection, memory, move |log, snapshot, selection, memory, base| {
-                        log.catalog(snapshot, selection, page, memory, base)
-                    })
+                    self.read_selected(snapshot, selection, move |log, snapshot, selection| log.catalog(snapshot, selection, page))
                 })
                 .await
         })

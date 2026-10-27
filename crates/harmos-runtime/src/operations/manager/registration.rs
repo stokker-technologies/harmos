@@ -121,7 +121,7 @@ impl Manager {
                     source: Arc::new(source),
                 },
             })?;
-            let contract = match factory.contract() {
+            let contract = match factory.contract_with_settings(&self.schema_settings) {
                 Ok(contract) => Some(contract),
                 Err(crate::operations::ContractError::Codec { .. }) => None,
                 Err(source) => {

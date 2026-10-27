@@ -247,7 +247,6 @@ async fn failed_recovery_releases() {
         let storage: StorageManager = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery }, settings).unwrap();
         assert!(storage.start(&runtime).await.is_err());
         storage.close().await.unwrap();
-        assert_eq!(storage.status().read_bytes, 0);
         assert_eq!(storage.status().pending_bytes, 0);
         assert_eq!(data.saved_productions.lock().unwrap().len(), 2);
         runtime.stop().await.unwrap();

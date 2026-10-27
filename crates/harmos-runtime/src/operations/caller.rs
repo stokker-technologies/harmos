@@ -46,7 +46,7 @@ use crate::operations::OperationDeclaration;
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 #[derive(Clone)]
 pub struct Caller {
-    pub(super) operations: Manager,
+    pub(crate) operations: Manager,
     pub(super) source: PluginCaller,
 }
 

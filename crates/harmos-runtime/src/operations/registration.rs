@@ -194,10 +194,12 @@ impl Bindings<'_> {
         D: OperationDeclaration,
         O: harmos_sdk::operations::Carrier<Declaration = D>,
     {
-        let contract = harmos_sdk::operations::WireDeclaration::of::<D>().contract().map_err(|source| Error::OperationFailed {
-            operation: D::ID.to_owned(),
-            source: Arc::new(source),
-        })?;
+        let contract = harmos_sdk::operations::WireDeclaration::of::<D>()
+            .contract_with_settings(&self.operations.schema_settings)
+            .map_err(|source| Error::OperationFailed {
+                operation: D::ID.to_owned(),
+                source: Arc::new(source),
+            })?;
         let wire = (contract.input().is_none() && contract.output().is_none())
             .then_some(crate::operations::wire::dispatch_native as crate::operations::wire::Dispatch);
         let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).carrier::<D, O>();

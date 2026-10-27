@@ -44,7 +44,7 @@ type Payload<D> = <D as OperationDeclaration>::Response;
 
 struct Physical {
     instance: Box<dyn harmos_sdk::operations::NativeInstance>,
-    _request: Option<super::streaming::RequestClaims>,
+    _request: Option<super::RequestClaims>,
 }
 struct Bound<D: OperationDeclaration> {
     physical: Physical,
@@ -101,6 +101,7 @@ impl<D: OperationDeclaration> Bound<D> {
             scope,
             operations: self.operations.clone(),
             admission: self.admission.clone(),
+            request_claims: self.physical._request.clone(),
             source: self.source.for_attempt(&self.entry, scope, &origin),
             #[cfg(feature = "plugin-sidecar")]
             retirement: self.entry.retirement_control() || origin.has_lifecycle_loan(),
@@ -225,6 +226,7 @@ pub(super) fn factory_projected<D: OperationDeclaration, P: Send + 'static>(
     let instances = operations.instances.clone();
     let lanes = operations.lanes.clone();
     let preparation_budget = operations.preparation.clone();
+    let schema_settings = Arc::clone(&operations.schema_settings);
     let resident = operations.resident.clone();
     Typed {
         prepare: Box::new(move |(request, endpoints), id, control, entry, admission, source, origin, preparation| {
@@ -233,6 +235,7 @@ pub(super) fn factory_projected<D: OperationDeclaration, P: Send + 'static>(
             } = request;
             let registry = registry.upgrade().ok_or(Error::Closing { domain: "operations" })?;
             let operations = Manager {
+                schema_settings: Arc::clone(&schema_settings),
                 registry,
                 context,
                 instances: instances.clone(),

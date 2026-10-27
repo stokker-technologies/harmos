@@ -44,7 +44,7 @@ pub fn storage_settings() -> StorageSettings {
             max_entries: std::num::NonZeroUsize::new(100_000).unwrap(),
             event_capacity: std::num::NonZeroUsize::new(1024).unwrap(),
         },
-        budget: StorageBudget { read_memory_bytes: nz(16 * 1024 * 1024) },
+
         request: StorageRequestSettings {
             max_pending_queries: nz(64),
             max_active_queries: nz(4),

@@ -37,8 +37,10 @@ use super::*;
 impl Manager {
     pub(crate) fn new<A: crate::Application>(
         instances: Arc<Instances>, settings: &crate::operations::Settings, reserved: std::collections::BTreeSet<String>, identity: Arc<()>,
+        schema_settings: Arc<crate::config::SchemaSettings>,
     ) -> Self {
         Self {
+            schema_settings,
             resident: crate::operations::resident::Registry::new(&instances, reserved, identity),
             context: Arc::new(std::sync::OnceLock::from(crate::operations::CallContext::default())),
             instances,
@@ -118,7 +120,7 @@ impl Manager {
                 crate::operations::authorization::Authorization::Full(contract) => contract,
                 crate::operations::authorization::Authorization::Restricted(required) => &required.contract,
             };
-            if !contract.compatible(selected_contract) {
+            if !contract.compatible_with_settings(selected_contract, &self.schema_settings) {
                 return Err(denied());
             }
             return Ok(Some(selected));

@@ -253,6 +253,12 @@ impl Host for Context {
         })
     }
 
+    async fn submit_owned<O: OperationDeclaration>(
+        &self, _: O::Request, _: harmos_sdk::operations::RequestClaims,
+    ) -> Result<OperationInstance<O>, OperationRefusal> {
+        Err(OperationRefusal::of(format!("`{}` needs process-local request ownership a guest cannot carry", O::ID)))
+    }
+
     async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<Response<O::Response>, OperationRefusal> {
         let bytes = self.child_call::<O>(&request, false).await?;
         let response = O::Response::decode(&bytes).map_err(OperationRefusal::of)?;

@@ -26,8 +26,8 @@ use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Field, Schema};
 // Local Imports
 use super::{exact_type, invalid, numeric_type, scalar_type, values_array};
-use crate::storage::query::accumulate::{Accumulator, Scratch};
-use crate::{MemorySize, Result};
+use crate::Result;
+use crate::storage::query::accumulate::Accumulator;
 use harmos_domain::model::storage::query::scalar::{Agg, ScalarValue};
 
 /* === Constants === */
@@ -43,7 +43,6 @@ pub struct Groups {
     schema: Arc<Schema>,
     groups: Vec<Group>,
     capture: u64,
-    retained: usize,
 }
 
 struct Group {
@@ -127,11 +126,9 @@ impl AggregateExecution for Aggregate {
             schema,
             groups: Vec::new(),
             capture: 0,
-            retained: 0,
         };
         // An ungrouped reduction always yields its identity row, even for no input.
         if self.groups.is_empty() {
-            groups.retained = group_bound(self, &[])?;
             groups.groups.push(new_group(self, Vec::new()));
         }
         Ok(groups)
@@ -145,59 +142,23 @@ impl AggregateExecution for Aggregate {
 }
 
 impl Groups {
-    pub fn retained_bytes(&self) -> usize {
-        self.retained
-    }
-
-    pub fn finish_bytes(&self) -> Result<usize> {
-        let text = self
-            .groups
-            .iter()
-            .flat_map(|group| &group.keys)
-            .map(MemorySize::memory_size)
-            .try_fold(0usize, |total, bytes| total.checked_add(bytes))
-            .ok_or_else(|| invalid("aggregate output estimate overflow"))?;
-        self.groups
-            .len()
-            .max(1)
-            .checked_mul(self.schema.fields().len())
-            .and_then(|cells| cells.checked_mul(512))
-            .and_then(|bytes| bytes.checked_add(text.saturating_mul(4)))
-            .and_then(|bytes| bytes.checked_add(65536))
-            .ok_or_else(|| invalid("aggregate finish estimate overflow"))
-    }
-
     pub fn push(&mut self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
-        // Extract Keys And Values Before Any Group Changes.
-        let mut rows = Vec::with_capacity(input.num_rows());
+        // Fold One Row At A Time Without A Page-Sized Scalar Copy.
         for row in 0..input.num_rows() {
             check()?;
             let keys = self.plan.groups.iter().map(|group| group.field.value(input, row).map(normalized)).collect::<Result<Vec<_>>>()?;
             let values =
                 self.plan.measures.iter().map(|measure| measure.field.value(input, row).map(normalized)).collect::<Result<Vec<_>>>()?;
-            rows.push((keys, values));
-        }
-
-        // Fold Rows Into Sorted Groups.
-        for (keys, values) in rows {
-            check()?;
             let index = match self.find(&keys)? {
                 Ok(index) => index,
                 Err(index) => {
-                    let bytes = group_bound(&self.plan, &keys)?;
                     self.groups.insert(index, new_group(&self.plan, keys));
-                    self.retained = self.retained.saturating_add(bytes);
                     index
                 }
             };
             let group = &mut self.groups[index];
-            for ((measure, accumulator), value) in self.plan.measures.iter().zip(&mut group.accumulators).zip(values) {
-                // Retained order statistics grow only by the selected scalars.
-                if Agg::Of(measure.statistic).retains_values() || matches!(value, ScalarValue::Text(_)) {
-                    let bytes = value.memory_size().saturating_mul(4).saturating_add(128);
-                    self.retained = self.retained.saturating_add(bytes);
-                }
-                accumulator.push(self.capture, &value, &mut Scratch::new(usize::MAX))?;
+            for (accumulator, value) in group.accumulators.iter_mut().zip(values) {
+                accumulator.push(self.capture, &value)?;
             }
             self.capture = self.capture.checked_add(1).ok_or_else(|| invalid("query capture count overflow"))?;
         }
@@ -245,18 +206,6 @@ impl Groups {
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-fn group_bound(plan: &Aggregate, keys: &[ScalarValue]) -> Result<usize> {
-    keys.iter()
-        .map(MemorySize::memory_size)
-        .try_fold(0usize, |total, bytes| total.checked_add(bytes))
-        .and_then(|bytes| {
-            plan.measures.len().checked_mul(std::mem::size_of::<Accumulator>() * 4).and_then(|accumulators| bytes.checked_add(accumulators))
-        })
-        .and_then(|bytes| bytes.checked_mul(4))
-        .and_then(|bytes| bytes.checked_add(1024))
-        .ok_or_else(|| invalid("aggregate group memory overflow"))
-}
 
 fn new_group(plan: &Aggregate, keys: Vec<ScalarValue>) -> Group {
     Group {

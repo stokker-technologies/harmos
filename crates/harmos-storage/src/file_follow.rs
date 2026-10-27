@@ -22,12 +22,9 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use crate::FileRead;
-use crate::arrow::RetainedMemory;
-use crate::capacity::{Held, Pool, Refusal, Reservation};
 use crate::local::LocalReader;
-use crate::manager::{ENTRY_OVERHEAD, Inner};
-use crate::{ByteRange, Error, FileBatch, FileCompletion, FileReadEvent, FileReader, MemorySize, Result, StorageManager};
+use crate::manager::Inner;
+use crate::{ByteRange, Error, FileBatch, FileCompletion, FileRead, FileReadEvent, FileReader, Result, StorageManager};
 use harmos_domain::model::storage::files::{FileEvent, FileSource, FollowStart};
 
 /* === Constants === */
@@ -48,10 +45,9 @@ pub struct FileFollower {
     context: crate::execution::Context,
     inner: Arc<Inner>,
     source: Source,
-    held: Held,
+
     delivered: u64,
     finished: bool,
-    _description: Reservation,
 }
 
 struct Local {
@@ -68,7 +64,7 @@ enum Source {
 }
 
 enum Step {
-    Data(FileBatch, RetainedMemory),
+    Data(FileBatch),
     Signal(FileEvent),
     Wait,
     Done,
@@ -81,38 +77,32 @@ enum Step {
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.file_follow.follow_file", level = "debug", skip_all)]
     pub async fn follow_file(&self, request: FileFollow) -> Result<FileFollower> {
+        self.open_follower(request).await
+    }
+
+    pub(crate) async fn open_follower(&self, request: FileFollow) -> Result<FileFollower> {
         let context = crate::execution::Context::current();
         let span = context.sync(|| tracing::debug_span!("storage.file.follow_file", outcome = "cancelled"));
         context
             .result(span, async {
-                let held = Held::default();
                 let source = match request.source {
                     FileSource::Local(path) => FileSource::Local(std::path::absolute(path).map_err(crate::local::io_error)?),
                     stored => stored,
                 };
-                let path_bytes = match &source {
-                    FileSource::Local(path) => path.capacity(),
-                    FileSource::Stored(_) => 0,
-                };
-                let charge = path_bytes.saturating_add(std::mem::size_of::<FileFollower>() + ENTRY_OVERHEAD);
-                let description = Reservation::wait(&self.inner, Pool::Read, &held, charge, None).await.map_err(Refusal::into_error)?;
+
                 let source = match source {
                     FileSource::Stored(file) => {
                         let offset = start(request.start, file.length);
                         let reader = self
-                            .read_file_with_held(
-                                FileRead {
-                                    source: FileSource::Stored(file),
-                                    range: ByteRange { offset, limit: None },
-                                },
-                                held.clone(),
-                            )
+                            .open_file(FileRead {
+                                source: FileSource::Stored(file),
+                                range: ByteRange { offset, limit: None },
+                            })
                             .await?;
                         Source::Stored(reader)
                     }
                     FileSource::Local(path) => {
-                        let mut reader =
-                            LocalReader::open(&self.inner, path.clone(), ByteRange { offset: 0, limit: None }, held.clone()).await?;
+                        let mut reader = LocalReader::open(&self.inner, path.clone(), ByteRange { offset: 0, limit: None }).await?;
                         reader.start(start(request.start, reader.length()))?;
                         Source::Local(Local {
                             path,
@@ -125,10 +115,9 @@ impl<C> StorageManager<C> {
                     context: crate::execution::Context::current(),
                     inner: Arc::clone(&self.inner),
                     source,
-                    held,
+
                     delivered: 0,
                     finished: false,
-                    _description: description,
                 })
             })
             .await
@@ -149,21 +138,18 @@ impl FileFollower {
                 }
                 let step = match &mut self.source {
                     Source::Stored(reader) => match reader.next_raw(true).await? {
-                        Some((batch, memory)) => Step::Data(batch, memory),
+                        Some(batch) => Step::Data(batch),
                         None => Step::Done,
                     },
-                    Source::Local(local) => local.next(&self.inner, &self.held).await?,
+                    Source::Local(local) => local.next(&self.inner).await?,
                 };
                 match step {
-                    Step::Data(batch, memory) => {
+                    Step::Data(batch) => {
                         self.delivered += batch.bytes.len() as u64;
-                        return Ok(Some(FileReadEvent::retained(FileEvent::Data(batch), memory)));
+                        return Ok(Some(FileReadEvent::new(FileEvent::Data(batch))));
                     }
                     Step::Signal(event) => {
-                        let charge = event.memory_size().saturating_add(ENTRY_OVERHEAD);
-                        let memory =
-                            Reservation::wait(&self.inner, Pool::Read, &self.held, charge, None).await.map_err(Refusal::into_error)?;
-                        return Ok(Some(FileReadEvent::new(event, memory)));
+                        return Ok(Some(FileReadEvent::new(event)));
                     }
                     Step::Done => {
                         self.finished = true;
@@ -191,9 +177,9 @@ impl FileFollower {
 }
 
 impl Local {
-    async fn next(&mut self, inner: &Arc<Inner>, held: &Held) -> Result<Step> {
+    async fn next(&mut self, inner: &Arc<Inner>) -> Result<Step> {
         if self.reader.is_none() {
-            self.reader = Some(LocalReader::open(inner, self.path.clone(), ByteRange { offset: 0, limit: None }, held.clone()).await?);
+            self.reader = Some(LocalReader::open(inner, self.path.clone(), ByteRange { offset: 0, limit: None }).await?);
         }
         let reader = self.reader.as_ref().expect("local follower retains its current file");
         let Some((same, length)) = reader.inspect().await? else {
@@ -205,7 +191,7 @@ impl Local {
         };
         if !same {
             self.reader.take();
-            self.reader = Some(LocalReader::open(inner, self.path.clone(), ByteRange { offset: 0, limit: None }, held.clone()).await?);
+            self.reader = Some(LocalReader::open(inner, self.path.clone(), ByteRange { offset: 0, limit: None }).await?);
             let signaled = std::mem::replace(&mut self.missing, false);
             return Ok(if signaled { Step::Wait } else { Step::Signal(FileEvent::Replaced) });
         }
@@ -213,12 +199,12 @@ impl Local {
         self.missing = false;
         if length < reader.offset() {
             self.reader.take();
-            self.reader = Some(LocalReader::open(inner, self.path.clone(), ByteRange { offset: 0, limit: None }, held.clone()).await?);
+            self.reader = Some(LocalReader::open(inner, self.path.clone(), ByteRange { offset: 0, limit: None }).await?);
             return Ok(Step::Signal(FileEvent::Truncated { length }));
         }
         reader.retarget(length);
         match reader.next(true).await? {
-            Some((batch, memory)) => Ok(Step::Data(batch, memory)),
+            Some(batch) => Ok(Step::Data(batch)),
             None => Ok(Step::Wait),
         }
     }

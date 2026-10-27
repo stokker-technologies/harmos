@@ -48,7 +48,7 @@ pub use serving::{WireEndpoints, WireStreamLimits, WireStreams};
 
 #[cfg(feature = "streaming")]
 pub use streaming::{Error as StreamError, StreamInput, StreamItem, StreamOutput, StreamPermit, StreamSettings, stream};
-pub use surface::Host;
+pub use surface::{Host, RequestClaims};
 
 /* === Imports === */
 

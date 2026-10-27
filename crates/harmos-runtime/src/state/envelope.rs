@@ -17,7 +17,6 @@ pub use harmos_domain::state::{DefinitionId, Envelope, FactSource, Kind, SystemF
 
 // Standard Library Imports
 use std::any::Any;
-use std::sync::Arc;
 
 // Third Party Imports
 
@@ -35,7 +34,7 @@ use crate::Application;
 /* === Enums === */
 
 pub enum Recorded<A: Application> {
-    Transaction(Arc<A::Transaction>),
+    Transaction(crate::operations::Response<A::Transaction>),
     Record(A::Record),
     System(SystemFact),
 }
@@ -50,7 +49,7 @@ where
 {
     fn clone(&self) -> Self {
         match self {
-            Self::Transaction(value) => Self::Transaction(Arc::clone(value)),
+            Self::Transaction(value) => Self::Transaction(value.clone()),
             Self::Record(value) => Self::Record(value.clone()),
             Self::System(value) => Self::System(value.clone()),
         }

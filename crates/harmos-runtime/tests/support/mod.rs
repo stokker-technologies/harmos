@@ -600,7 +600,7 @@ fn stored(entry: &Entry<Recorded<Bank>>) -> Envelope<Payload<Bank>> {
         }
     };
     let value = match &entry.value {
-        Recorded::Transaction(change) => Recorded::Transaction(Arc::clone(change)),
+        Recorded::Transaction(change) => Recorded::Transaction(change.clone()),
         Recorded::Record(fact) => Recorded::Record(fact.clone()),
         Recorded::System(fact) => Recorded::System(fact.clone()),
     };

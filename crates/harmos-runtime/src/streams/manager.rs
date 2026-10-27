@@ -42,6 +42,7 @@ use crate::{Application, state::At, state::Position, storage::Batch, storage::Cu
 /* === Structs === */
 
 pub struct StreamManager<A: Application> {
+    pub(super) schema_settings: Arc<crate::config::SchemaSettings>,
     pub(super) windows: Arc<Table>,
     pub(super) applied: watch::Receiver<Position>,
     pub(super) tier: Tier,
@@ -118,8 +119,11 @@ impl<A: Application> StreamFeed<A> {
 }
 
 impl<A: Application> StreamManager<A> {
-    pub(crate) fn wired(windows: Table, applied: watch::Receiver<Position>, tier: Tier) -> Self {
+    pub(crate) fn wired(
+        windows: Table, applied: watch::Receiver<Position>, tier: Tier, schema_settings: Arc<crate::config::SchemaSettings>,
+    ) -> Self {
         Self {
+            schema_settings,
             windows: Arc::new(windows),
             applied,
             tier,
@@ -248,6 +252,7 @@ impl<A: Application> StreamManager<A> {
 impl<A: Application> Clone for StreamManager<A> {
     fn clone(&self) -> Self {
         Self {
+            schema_settings: Arc::clone(&self.schema_settings),
             windows: Arc::clone(&self.windows),
             applied: self.applied.clone(),
             tier: self.tier.clone(),

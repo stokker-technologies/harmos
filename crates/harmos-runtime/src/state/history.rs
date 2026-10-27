@@ -37,6 +37,8 @@ use crate::supervision::executor::InContext;
 
 /* === Constants === */
 
+const SHARED_PAGE_BYTES: usize = 8 * 1024 * 1024;
+
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -68,8 +70,8 @@ pub struct Reversals {
 
 pub(crate) struct Undoable<A: Application> {
     pub(crate) principal: PrincipalId,
-    pub(crate) forward: Arc<A::Transaction>,
-    pub(crate) inverse: Option<Arc<A::Transaction>>,
+    pub(crate) forward: crate::operations::Response<A::Transaction>,
+    pub(crate) inverse: Option<crate::operations::Response<A::Transaction>>,
     pub(crate) undone: Option<Position>,
 }
 
@@ -126,7 +128,7 @@ pub(crate) trait ReplayPayload<A: Application>: Sized {
         None
     }
 
-    fn forward(&self) -> Option<Arc<A::Transaction>>;
+    fn forward(&self) -> Option<crate::operations::Response<A::Transaction>>;
     fn restore(
         envelope: Envelope<Self>, catalog: Option<&Dispatch<A, Self>>, state: &mut A::State,
     ) -> Result<Option<Recorded<A>>, DecodeError>;
@@ -240,8 +242,8 @@ impl<A: Application> fmt::Debug for Focus<A> {
 
 impl<A: Application> Undos<A> {
     pub(crate) fn record(
-        &mut self, position: Position, principal: Option<&PrincipalId>, link: Option<Link>, forward: &Arc<A::Transaction>,
-        inverse: Option<A::Transaction>,
+        &mut self, position: Position, principal: Option<&PrincipalId>, link: Option<Link>,
+        forward: &crate::operations::Response<A::Transaction>, inverse: Option<A::Transaction>,
     ) {
         match link {
             Some(Link::UndoOf(original)) => {
@@ -255,7 +257,7 @@ impl<A: Application> Undos<A> {
                     // The redo re-applied the change, so the inverse captured
                     // against the state it just left is the one that undoes it
                     // next time.
-                    entry.inverse = inverse.map(Arc::new);
+                    entry.inverse = inverse.map(crate::operations::Response::new);
                 }
             }
             None => {
@@ -272,8 +274,8 @@ impl<A: Application> Undos<A> {
                     position,
                     Undoable {
                         principal: principal.clone(),
-                        forward: Arc::clone(forward),
-                        inverse: inverse.map(Arc::new),
+                        forward: forward.clone(),
+                        inverse: inverse.map(crate::operations::Response::new),
                         undone: None,
                     },
                 );
@@ -281,7 +283,9 @@ impl<A: Application> Undos<A> {
         }
     }
 
-    pub(crate) fn undoable(&self, principal: &PrincipalId, focus: &Focus<A>) -> Option<(Position, Arc<A::Transaction>)> {
+    pub(crate) fn undoable(
+        &self, principal: &PrincipalId, focus: &Focus<A>,
+    ) -> Option<(Position, crate::operations::Response<A::Transaction>)> {
         for (position, entry) in self.entries.iter().rev() {
             if entry.principal != *principal {
                 continue;
@@ -290,16 +294,18 @@ impl<A: Application> Undos<A> {
                 continue;
             }
             let inverse = entry.inverse.as_ref()?;
-            return Some((*position, Arc::clone(inverse)));
+            return Some((*position, inverse.clone()));
         }
         None
     }
 
-    pub(crate) fn redoable(&self, principal: &PrincipalId, focus: &Focus<A>) -> Option<(Position, Arc<A::Transaction>)> {
+    pub(crate) fn redoable(
+        &self, principal: &PrincipalId, focus: &Focus<A>,
+    ) -> Option<(Position, crate::operations::Response<A::Transaction>)> {
         self.entries
             .iter()
             .filter(|(_, entry)| entry.principal == *principal && focus.admits(&entry.forward))
-            .filter_map(|(position, entry)| entry.undone.map(|at| (at, *position, Arc::clone(&entry.forward))))
+            .filter_map(|(position, entry)| entry.undone.map(|at| (at, *position, entry.forward.clone())))
             .max_by_key(|(at, _position, _forward)| *at)
             .map(|(_at, position, forward)| (position, forward))
     }
@@ -396,6 +402,12 @@ impl<A: Application> Tail<A> {
 
     #[tracing::instrument(target = "harmos::state", name = "state.shared_page", level = "debug", skip_all)]
     pub(crate) fn shared_page(&self, after: Position, through: Position, max_rows: NonZeroUsize) -> Result<SharedPage<A>, Error> {
+        self.shared_page_sized(after, through, max_rows, |_| 0)
+    }
+
+    pub(crate) fn shared_page_sized(
+        &self, after: Position, through: Position, max_rows: NonZeroUsize, size: impl Fn(&A::Record) -> usize,
+    ) -> Result<SharedPage<A>, Error> {
         if after < self.floor {
             return Err(Error::BeyondTail);
         }
@@ -403,9 +415,17 @@ impl<A: Application> Tail<A> {
         let count = max_rows.get().min(self.entries.len() - start);
         let mut entries = Vec::with_capacity(count);
         let mut reaches = after;
+        let mut bytes = 0usize;
         for entry in self.entries.iter().skip(start).take(count) {
             if entry.position > through {
                 break;
+            }
+            if let Recorded::Record(record) = &entry.value {
+                let count = size(record);
+                if !entries.is_empty() && count > SHARED_PAGE_BYTES.saturating_sub(bytes) {
+                    break;
+                }
+                bytes = bytes.saturating_add(count);
             }
             reaches = entry.position;
             entries.push(Arc::clone(entry));
@@ -575,3 +595,65 @@ where
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::{CorrelationId, Metadata};
+    use serde::{Deserialize, Serialize};
+
+    #[crate::record(id = "listener.page")]
+    #[derive(Clone, Serialize, Deserialize)]
+    struct PageRecord(u64);
+
+    struct Model;
+
+    #[crate::lanes]
+    enum Lanes {
+        #[default]
+        Default,
+    }
+
+    impl Application for Model {
+        type Lanes = Lanes;
+        type State = ();
+        type Transaction = crate::state::Never;
+        type Record = PageRecord;
+        type Streams = ();
+        type Resources = ();
+    }
+
+    #[test]
+    fn listener_pages_bound_bytes_without_losing_the_next_record() {
+        let mut tail = Tail::<Model>::new(Position::ORIGIN, 600);
+        for sequence in 1..=600 {
+            tail.push_group(vec![Entry {
+                prepared: None,
+                position: Position(sequence),
+                value: Recorded::Record(PageRecord(1024 * 1024)),
+                metadata: Metadata {
+                    commit: None,
+                    principal: None,
+                    correlation: CorrelationId(Position(sequence)),
+                    causation: None,
+                    request: None,
+                    link: None,
+                    at: std::time::UNIX_EPOCH,
+                },
+            }]);
+        }
+        let mut after = Position::ORIGIN;
+        let mut delivered = 0;
+        while after < Position(600) {
+            let page = tail.shared_page_sized(after, Position(600), NonZeroUsize::new(512).unwrap(), |record| record.0 as usize).unwrap();
+            assert_eq!(page.entries.len(), 8);
+            for (index, entry) in page.entries.iter().enumerate() {
+                assert_eq!(entry.position.0, after.0 + index as u64 + 1);
+            }
+            delivered += page.entries.len();
+            after = page.reaches;
+        }
+        assert_eq!(delivered, 600);
+        assert_eq!(tail.shared_page(Position::ORIGIN, Position(600), NonZeroUsize::new(512).unwrap()).unwrap().entries.len(), 512);
+    }
+}

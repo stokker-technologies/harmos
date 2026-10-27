@@ -15,9 +15,6 @@
 
 /* === Imports === */
 
-use crate::storage::query::transform::AggregateExecution;
-use crate::storage::query::transform::HistogramExecution;
-use crate::storage::query::transform::TransformExecution;
 // Standard Library Imports
 use std::sync::Arc;
 
@@ -27,16 +24,13 @@ use arrow_schema::Schema;
 
 // Local Imports
 use super::RowSlice;
-use super::transform::aggregate::Groups;
-use super::transform::histogram::Bins;
-use super::transform::{Transform, invalid};
-use crate::storage::arrow::{RetainedMemory, resident_bytes, retain_native, schema_memory};
-use crate::storage::memory::MemoryBank;
-use crate::{MemorySize, Result};
+use super::spill::{Builder, Pages};
+use super::transform::{Transform, TransformExecution, invalid};
+use crate::Result;
 
 /* === Constants === */
 
-const MAX_TRANSFORMS: usize = 64;
+pub(super) const MAX_TRANSFORMS: usize = 64;
 
 /* === Macros === */
 
@@ -48,22 +42,15 @@ pub(super) struct Plan {
     input: Arc<Schema>,
     output: Arc<Schema>,
     prefix: Vec<Transform>,
-    stage: Stage,
-    suffix: Vec<Transform>,
+    global: Vec<Transform>,
+    spool: Option<Builder>,
+    pages: Option<Pages>,
     slice: RowSlice,
     skipped: u64,
     emitted: u64,
-    retained: Vec<RetainedMemory>,
 }
 
 /* === Enums === */
-
-enum Stage {
-    Stream,
-    Aggregate(Option<Groups>),
-    Histogram(Option<Bins>),
-    Collect(Transform, Vec<RecordBatch>),
-}
 
 /* === Traits === */
 
@@ -76,43 +63,30 @@ impl Plan {
         if transforms.len() > MAX_TRANSFORMS {
             return Err(invalid("too many query transforms"));
         }
-
-        // Validate The Whole Chain Before Any Execution.
         let mut schema = input.as_ref().clone();
-        let mut stage_input = None;
+        let mut stage = None;
         for (index, transform) in transforms.iter().enumerate() {
-            if stage_input.is_none() && !transform.is_streaming() {
-                stage_input = Some((index, Arc::new(schema.clone())));
+            if stage.is_none() && !transform.is_streaming() {
+                stage = Some((index, Arc::new(schema.clone())));
             }
             schema = transform.output_schema(&schema)?;
             crate::storage::arrow::validate_schema(&schema)?;
         }
-
-        // Split Into Page Prefix, Global Stage And Suffix.
-        let mut transforms = transforms;
-        let (prefix, stage, suffix) = match stage_input {
-            None => (transforms, Stage::Stream, Vec::new()),
-            Some((index, stage_schema)) => {
-                let suffix = transforms.split_off(index + 1);
-                let transform = transforms.pop().expect("global stage transform");
-                let stage = match &transform {
-                    Transform::Aggregate(aggregate) => Stage::Aggregate(Some(aggregate.start(&stage_schema)?)),
-                    Transform::Histogram(histogram) => Stage::Histogram(Some(histogram.start(&stage_schema)?)),
-                    _ => Stage::Collect(transform, Vec::new()),
-                };
-                (transforms, stage, suffix)
-            }
+        let mut prefix = transforms;
+        let (global, spool) = match stage {
+            None => (Vec::new(), None),
+            Some((index, schema)) => (prefix.split_off(index), Some(Builder::cached(schema)?)),
         };
         Ok(Self {
             input,
             output: Arc::new(schema),
             prefix,
-            stage,
-            suffix,
+            global,
+            spool,
+            pages: None,
             slice,
             skipped: 0,
             emitted: 0,
-            retained: Vec::new(),
         })
     }
 
@@ -120,119 +94,53 @@ impl Plan {
         Arc::clone(&self.output)
     }
 
-    pub(super) fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(schema_memory(&self.input))
-            .saturating_add(schema_memory(&self.output))
-            .saturating_add(self.prefix.memory_size())
-            .saturating_add(self.suffix.memory_size())
-    }
-
     pub(super) fn is_satisfied(&self) -> bool {
-        matches!(self.stage, Stage::Stream) && self.slice.limit.is_some_and(|limit| self.emitted >= limit)
+        self.slice.limit.is_some_and(|limit| self.emitted >= limit)
     }
 
     #[tracing::instrument(name = "storage.query.execute.page", level = "trace", skip_all)]
-    pub(super) fn page(
-        &mut self, input: &RecordBatch, bank: &MemoryBank, check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<Option<RecordBatch>> {
+    pub(super) fn page(&mut self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<Option<RecordBatch>> {
         if input.schema() != self.input {
             return Err(invalid("source batch schema changed"));
         }
-        let current = apply(&self.prefix, input.clone(), bank, check)?;
-        match &mut self.stage {
-            Stage::Stream => {
-                let current = self.slice_output(&current)?;
-                Ok(Some(current))
-            }
-            Stage::Aggregate(groups) => {
-                let groups = groups.as_mut().ok_or_else(|| invalid("finished reduction"))?;
-                let transform_bound = working_bound(&current, &self.output)?;
-                let _scratch = claim(bank, transform_bound)?;
-                // The Growth Bound Is Claimed Before The Groups Change.
-                let before = groups.retained_bytes();
-                let growth = bank.reserve(transform_bound)?;
-                groups.push(&current, check)?;
-                let grown = groups.retained_bytes().saturating_sub(before);
-                growth.shrink_to(grown.min(transform_bound))?;
-                self.retained.push(growth);
-                Ok(None)
-            }
-            Stage::Histogram(bins) => {
-                let bins = bins.as_mut().ok_or_else(|| invalid("finished reduction"))?;
-                if self.retained.is_empty() {
-                    self.retained.push(bank.reserve(bins.retained_bytes())?);
-                }
-                let _scratch = claim(bank, bins.retained_bytes())?;
-                bins.push(&current, check)?;
-                Ok(None)
-            }
-            Stage::Collect(_, batches) => {
-                let retained = bank.reserve(resident_bytes(&current)?)?;
-                let current = retain_native(current, retained)?;
-                batches.push(current);
-                Ok(None)
-            }
+        let current = apply(&self.prefix, input.clone(), check)?;
+        if let Some(spool) = &mut self.spool {
+            spool.push(&current, check)?;
+            Ok(None)
+        } else {
+            Ok(Some(self.slice_output(&current)?))
         }
     }
 
-    pub(super) fn finish_bytes(&self) -> Result<usize> {
-        let stage = match &self.stage {
-            Stage::Stream => 0,
-            Stage::Aggregate(groups) => groups.as_ref().map_or(Ok(0), Groups::finish_bytes)?,
-            Stage::Histogram(bins) => bins.as_ref().map_or(0, Bins::finish_bytes),
-            Stage::Collect(_, batches) => batches.iter().try_fold(0usize, |total, batch| {
-                resident_bytes(batch)?
-                    .checked_mul(8)
-                    .and_then(|bytes| total.checked_add(bytes))
-                    .ok_or_else(|| invalid("query collection estimate overflow"))
-            })?,
-        };
-        stage
-            .checked_mul(1 + self.suffix.len())
-            .and_then(|bytes| bytes.checked_add(65536))
-            .ok_or_else(|| invalid("query finish estimate overflow"))
-    }
-
     #[tracing::instrument(name = "storage.query.execute.finish", level = "trace", skip_all)]
-    pub(super) fn finish(&mut self, bank: &MemoryBank, check: &mut impl FnMut() -> Result<()>) -> Result<Option<RecordBatch>> {
-        let output = match &mut self.stage {
-            Stage::Stream => return Ok(None),
-            Stage::Aggregate(groups) => {
-                let Some(groups) = groups.take() else {
-                    return Ok(None);
-                };
-                let _scratch = claim(bank, groups.finish_bytes()?)?;
-                groups.finish(check)?
+    pub(super) fn finish(&mut self, check: &mut impl FnMut() -> Result<()>) -> Result<Option<RecordBatch>> {
+        if let Some(spool) = self.spool.take() {
+            let mut input = spool.finish()?;
+            // Each Global Transform Sees The Complete Previous Result In Paged Form.
+            for transform in &self.global {
+                check()?;
+                input = super::reduction::transform(input, transform, check)?;
             }
-            Stage::Histogram(bins) => {
-                let Some(bins) = bins.take() else {
-                    return Ok(None);
-                };
-                let _scratch = claim(bank, bins.finish_bytes())?;
-                bins.finish()?
+            self.pages = Some(input.pages()?);
+        }
+        if self.is_satisfied() {
+            self.pages = None;
+            return Ok(None);
+        }
+        loop {
+            check()?;
+            let Some(pages) = &mut self.pages else {
+                return Ok(None);
+            };
+            let Some(batch) = pages.next()? else {
+                self.pages = None;
+                return Ok(None);
+            };
+            let batch = self.slice_output(&batch)?;
+            if batch.num_rows() != 0 {
+                return Ok(Some(batch));
             }
-            Stage::Collect(transform, batches) => {
-                let inputs = std::mem::take(batches);
-                let schema = inputs.first().map_or_else(
-                    || Ok(Arc::new(transform_input(&self.input, &self.prefix)?)),
-                    |batch| Ok::<_, crate::Error>(batch.schema()),
-                )?;
-                let resident =
-                    inputs.iter().try_fold(0usize, |total, batch| resident_bytes(batch).map(|bytes| total.saturating_add(bytes)))?;
-                let _concat = claim(bank, resident.saturating_mul(2).saturating_add(65536))?;
-                let combined = arrow_select::concat::concat_batches(&schema, inputs.iter())
-                    .map_err(|_| invalid("query input concatenation failed"))?;
-                drop(inputs);
-                let _work = claim(bank, working_bound(&combined, &self.output)?)?;
-                transform.apply(&combined, check)?
-            }
-        };
-        self.retained.clear();
-        let output = apply(&self.suffix, output, bank, check)?;
-        let output = self.slice_output(&output)?;
-        let retained = bank.reserve(resident_bytes(&output)?)?;
-        retain_native(output, retained).map(Some)
+        }
     }
 
     // Apply The Invocation-Wide Offset And Limit To One Output Batch.
@@ -251,44 +159,152 @@ impl Plan {
 
 /* === Public Functions === */
 
-pub(super) fn working_bound(input: &RecordBatch, output: &Schema) -> Result<usize> {
-    let resident = resident_bytes(input)?;
-    let width = output.fields().len().max(input.num_columns()).max(1);
-    let rows = input.num_rows().max(1);
-    resident
-        .checked_mul(8)
-        .and_then(|bytes| rows.checked_mul(width).and_then(|cells| cells.checked_mul(512)).and_then(|scratch| bytes.checked_add(scratch)))
-        .and_then(|bytes| bytes.checked_add(schema_memory(output).saturating_mul(4)))
-        .and_then(|bytes| bytes.checked_add(4096))
-        .ok_or_else(|| invalid("query transform working memory overflow"))
-}
-
 /* === Private Functions === */
 
-// Run Transforms In Order, Retaining Each Output Under The Attempt Bank.
+// Run The Streaming Prefix In Source Order.
 #[tracing::instrument(name = "storage.query.execute.apply", level = "trace", skip_all)]
-fn apply(
-    transforms: &[Transform], mut current: RecordBatch, bank: &MemoryBank, check: &mut impl FnMut() -> Result<()>,
-) -> Result<RecordBatch> {
+fn apply(transforms: &[Transform], mut current: RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch> {
     for transform in transforms {
         check()?;
-        let output_schema = transform.output_schema(current.schema().as_ref())?;
-        let _scratch = claim(bank, working_bound(&current, &output_schema)?)?;
+
         let output = transform.apply(&current, check)?;
-        let retained = bank.reserve(crate::storage::arrow::new_resident_bytes(&output, &[&current])?)?;
-        current = retain_native(output, retained)?;
+        current = output;
     }
     Ok(current)
 }
 
-fn claim(bank: &MemoryBank, bytes: usize) -> Result<crate::storage::memory::MemoryScope<'_>> {
-    let mut scope = bank.scope();
-    scope.claim(bytes)?;
-    Ok(scope)
-}
-
-fn transform_input(input: &Schema, prefix: &[Transform]) -> Result<Schema> {
-    prefix.iter().try_fold(input.clone(), |schema, transform| transform.output_schema(&schema))
-}
-
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::query::transform::{
+        FieldPath,
+        downsample::{Algorithm, Downsample},
+        sort::{Sort, SortKey},
+    };
+    use arrow_array::{Float64Array, UInt64Array};
+    use arrow_schema::{DataType, Field};
+
+    fn source(length: usize) -> RecordBatch {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("x", DataType::Float64, false),
+            Field::new("y", DataType::Float64, false),
+            Field::new("ordinal", DataType::UInt64, false),
+        ]));
+        RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(Float64Array::from((0..length).map(|i| (i + 1) as f64).collect::<Vec<_>>())),
+                Arc::new(Float64Array::from((0..length).map(|i| ((i * 17 % 101) as f64 - 50.0).sin()).collect::<Vec<_>>())),
+                Arc::new(UInt64Array::from((0..length as u64).collect::<Vec<_>>())),
+            ],
+        )
+        .unwrap()
+    }
+
+    fn run(batch: &RecordBatch, transforms: Vec<Transform>, slice: RowSlice) -> Vec<u64> {
+        let mut plan = Plan::new(batch.schema(), transforms, slice).unwrap();
+        let mut output = Vec::new();
+        let mut collect = |batch: RecordBatch| {
+            let column = batch.column_by_name("ordinal").unwrap().as_any().downcast_ref::<UInt64Array>().unwrap();
+            output.extend(column.values().iter().copied());
+        };
+        for offset in (0..batch.num_rows()).step_by(37) {
+            let page = batch.slice(offset, 37.min(batch.num_rows() - offset));
+            if let Some(batch) = plan.page(&page, &mut || Ok(())).unwrap() {
+                collect(batch);
+            }
+        }
+        while let Some(batch) = plan.finish(&mut || Ok(())).unwrap() {
+            collect(batch);
+        }
+        output
+    }
+
+    #[test]
+    fn spilled_reductions_preserve_seven_day_indices_and_slicing() {
+        let batch = source(7 * 24 * 60);
+        let x = batch.column(0).as_any().downcast_ref::<Float64Array>().unwrap().values();
+        let y = batch.column(1).as_any().downcast_ref::<Float64Array>().unwrap().values();
+        for algorithm in [Algorithm::Decimate, Algorithm::Extrema, Algorithm::Lttb, Algorithm::LttbLog] {
+            let expected = match algorithm {
+                Algorithm::Decimate => crate::signal::decimate(batch.num_rows(), 40),
+                Algorithm::Extrema => crate::signal::extrema(y, 20),
+                Algorithm::Lttb => crate::signal::lttb(x, y, 40),
+                Algorithm::LttbLog => crate::signal::lttb_log(x, y, 40),
+            };
+            let transform = Transform::Downsample(Downsample {
+                algorithm,
+                max_rows: 40,
+                value: Some(FieldPath::from("y")),
+                axis: Some(FieldPath::from("x")),
+            });
+            let actual = run(&batch, vec![transform], RowSlice { offset: 2, limit: Some(17) });
+            assert_eq!(actual, expected.into_iter().skip(2).take(17).map(|i| i as u64).collect::<Vec<_>>());
+        }
+    }
+
+    #[test]
+    fn multiple_global_stages_keep_stable_order_across_spill_runs() {
+        let batch = source(350);
+        let sort = Transform::Sort(Sort {
+            keys: vec![SortKey {
+                field: FieldPath::from("ordinal"),
+                descending: true,
+                nulls_first: false,
+            }],
+        });
+        let downsample = Transform::Downsample(Downsample {
+            algorithm: Algorithm::Decimate,
+            max_rows: 20,
+            value: None,
+            axis: None,
+        });
+        let actual = run(&batch, vec![sort, downsample], RowSlice { offset: 0, limit: None });
+        let expected = crate::signal::decimate(350, 20).into_iter().map(|i| 349 - i as u64).collect::<Vec<_>>();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn merged_spill_runs_keep_stable_ties() {
+        let rows = 2 * super::super::spill::PAGE_ROWS + 1_000;
+        let schema =
+            Arc::new(Schema::new(vec![Field::new("key", DataType::UInt64, false), Field::new("ordinal", DataType::UInt64, false)]));
+        let keys = (0..rows as u64).map(|row| row * 7_919 % 13).collect::<Vec<_>>();
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![Arc::new(UInt64Array::from(keys.clone())), Arc::new(UInt64Array::from((0..rows as u64).collect::<Vec<_>>()))],
+        )
+        .unwrap();
+        let sort = Transform::Sort(Sort {
+            keys: vec![SortKey {
+                field: FieldPath::from("key"),
+                descending: true,
+                nulls_first: false,
+            }],
+        });
+        let actual = run(&batch, vec![sort], RowSlice { offset: 0, limit: None });
+        let mut expected = (0..rows as u64).collect::<Vec<_>>();
+        expected.sort_by(|left, right| keys[*right as usize].cmp(&keys[*left as usize]));
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn cancellation_refuses_spilled_global_work() {
+        let batch = source(120);
+        let mut plan = Plan::new(
+            batch.schema(),
+            vec![Transform::Downsample(Downsample {
+                algorithm: Algorithm::Lttb,
+                max_rows: 5,
+                value: Some(FieldPath::from("y")),
+                axis: None,
+            })],
+            RowSlice { offset: 0, limit: None },
+        )
+        .unwrap();
+        plan.page(&batch, &mut || Ok(())).unwrap();
+        assert!(plan.finish(&mut || Err(crate::Error::Closing { domain: "test cancellation" })).is_err());
+    }
+}

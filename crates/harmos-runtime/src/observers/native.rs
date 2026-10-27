@@ -35,6 +35,7 @@ use harmos_sidecar::{Activity, Instance};
 /* === Structs === */
 
 pub(crate) struct Native<R, H, F> {
+    pub(crate) schema_settings: Arc<crate::config::SchemaSettings>,
     pub(crate) instance: Instance<R, H>,
     pub(crate) factory: Arc<F>,
 }
@@ -80,7 +81,7 @@ where
                         row_metadata: entry.row_metadata(),
                         schema: entry.schema,
                         window: entry.window,
-                        row: crate::schema::graph::Schema::from_declaration(entry.row, &crate::config::SchemaSettings::default())
+                        row: crate::schema::graph::Schema::from_declaration(entry.row, &self.schema_settings)
                             .map_err(|source| Error::RecordSchema { source: source.into() })?,
                     })
                 })

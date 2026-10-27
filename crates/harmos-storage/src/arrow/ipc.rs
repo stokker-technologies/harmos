@@ -69,12 +69,11 @@ pub(super) fn decode(bytes: &[u8], batch: bool) -> Result<(Arc<Schema>, Option<R
     Ok((schema, value))
 }
 
-pub(super) fn preflight(bytes: &[u8], batch: bool) -> Result<usize> {
+pub(super) fn preflight(bytes: &[u8], batch: bool) -> Result<()> {
     let mut offset = 0usize;
     let mut schemas = 0usize;
     let mut batches = 0usize;
     let mut fields = 0usize;
-    let mut bound = bytes.len().checked_mul(8).ok_or_else(|| invalid("IPC memory bound overflow"))?;
     let mut terminated = false;
     while offset < bytes.len() {
         let first = read_u32(bytes, &mut offset)?;
@@ -107,7 +106,7 @@ pub(super) fn preflight(bytes: &[u8], batch: bool) -> Result<usize> {
                 let schema = message.header_as_schema().ok_or_else(|| invalid("missing IPC schema"))?;
                 if let Some(values) = schema.fields() {
                     for field in values {
-                        inspect_field(field, 0, &mut fields, &mut bound)?;
+                        inspect_field(field, 0, &mut fields)?;
                     }
                 }
                 schemas += 1;
@@ -117,8 +116,8 @@ pub(super) fn preflight(bytes: &[u8], batch: bool) -> Result<usize> {
                 if record.compression().is_some() || record.variadicBufferCounts().is_some() {
                     return Err(invalid("compressed or variadic IPC batches are unsupported"));
                 }
-                let rows = usize::try_from(record.length()).map_err(|_| invalid("negative IPC row count"))?;
-                bound = add(bound, rows.checked_mul(8))?;
+                let _rows = usize::try_from(record.length()).map_err(|_| invalid("negative IPC row count"))?;
+
                 let nodes = record.nodes().ok_or_else(|| invalid("missing IPC array nodes"))?;
                 if nodes.len() != fields {
                     return Err(invalid("IPC node count differs from schema"));
@@ -129,7 +128,6 @@ pub(super) fn preflight(bytes: &[u8], batch: bool) -> Result<usize> {
                     if nulls > length {
                         return Err(invalid("IPC null count exceeds array length"));
                     }
-                    bound = add(bound, length.checked_add(64))?;
                 }
                 let buffers = record.buffers().ok_or_else(|| invalid("missing IPC buffers"))?;
                 if buffers.len() > fields.saturating_mul(3) {
@@ -141,7 +139,6 @@ pub(super) fn preflight(bytes: &[u8], batch: bool) -> Result<usize> {
                     if start.checked_add(length).is_none_or(|end| end > body) {
                         return Err(invalid("IPC buffer is outside its body"));
                     }
-                    bound = add(bound, length.checked_add(128))?;
                 }
                 batches += 1;
             }
@@ -153,12 +150,12 @@ pub(super) fn preflight(bytes: &[u8], batch: bool) -> Result<usize> {
     if !terminated || offset != bytes.len() || schemas != 1 || batches != usize::from(batch) {
         return Err(invalid("invalid IPC schema/batch/termination sequence"));
     }
-    add(bound, fields.checked_mul(4096).and_then(|size| size.checked_add(4096)))
+    Ok(())
 }
 
 /* === Private Functions === */
 
-fn inspect_field(field: arrow_ipc::Field<'_>, depth: usize, fields: &mut usize, bound: &mut usize) -> Result<()> {
+fn inspect_field(field: arrow_ipc::Field<'_>, depth: usize, fields: &mut usize) -> Result<()> {
     *fields = fields.checked_add(1).ok_or_else(|| invalid("IPC field count overflow"))?;
     if depth > MAX_DEPTH || *fields > MAX_FIELDS || field.dictionary().is_some() {
         return Err(invalid("IPC field depth/count or dictionary encoding unsupported"));
@@ -197,28 +194,15 @@ fn inspect_field(field: arrow_ipc::Field<'_>, depth: usize, fields: &mut usize, 
     }
     if let Some(children) = children {
         for child in children {
-            inspect_field(child, depth + 1, fields, bound)?;
+            inspect_field(child, depth + 1, fields)?;
         }
     }
-    if let Some(name) = field.name() {
-        *bound = add(*bound, name.len().checked_mul(4))?;
-    }
-    if let Some(metadata) = field.custom_metadata() {
-        if metadata.len() > MAX_FIELDS {
-            return Err(invalid("excessive IPC field metadata"));
-        }
-        for entry in metadata {
-            *bound = add(
-                *bound,
-                entry.key().unwrap_or("").len().checked_add(entry.value().unwrap_or("").len()).and_then(|length| length.checked_mul(4)),
-            )?;
-        }
+    if let Some(metadata) = field.custom_metadata()
+        && metadata.len() > MAX_FIELDS
+    {
+        return Err(invalid("excessive IPC field metadata"));
     }
     Ok(())
-}
-
-fn add(value: usize, additional: Option<usize>) -> Result<usize> {
-    value.checked_add(additional.ok_or_else(|| invalid("IPC memory bound overflow"))?).ok_or_else(|| invalid("IPC memory bound overflow"))
 }
 
 fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32> {

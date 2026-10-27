@@ -72,7 +72,7 @@ impl Operation for Cancel {
 ## Risks
 
 - Implementation ownership is this worktree alone, including the inherited partial edits. Task order is domain/SDK, macros,
-  carriers, built-ins and all workspace consumers, then documentation and targeted proof. No push or PR is authorized.
+  carriers, built-ins and all workspace consumers, then documentation and targeted proof. Owner now authorizes consolidation, dependency/tool refresh and delivery by PR with squash auto-merge into dev; release remains excluded.
 - `Resource` and `Dependent` live in the SDK because they describe execution resources; domain owns `Requires` and `Invokes`.
 - Shared stream access uses an asynchronous receiver mutex; receiving remains serialized and cancellation-safe.
 - Stateful carrier and lifecycle machinery retains the internal `Carrier` lifecycle; consumer `Operation` has only consuming `run`.

@@ -27,7 +27,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-pub use crate::storage::config::{StorageBudget, StorageRequestSettings, StorageResponseSettings, StorageSettings};
+pub use crate::storage::config::{StorageRequestSettings, StorageResponseSettings, StorageSettings};
 pub use crate::storage::state::StorageStateSettings;
 use crate::{Error, Result};
 

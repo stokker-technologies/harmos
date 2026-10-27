@@ -59,12 +59,6 @@ struct Sink<'a, W> {
 
 /* === Implementations === */
 
-impl Line {
-    pub fn allocated_bytes(&self) -> usize {
-        self.bytes.capacity()
-    }
-}
-
 impl std::ops::Deref for Line {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
@@ -103,10 +97,6 @@ pub(super) fn write<W: Write>(writer: &mut W, maximum: usize, encode: impl FnOnc
 }
 
 pub(super) fn line(reader: &mut impl BufRead, maximum: usize) -> Result<Option<Line>> {
-    line_admitted(reader, maximum, |_| Ok(()))
-}
-
-pub(super) fn line_admitted(reader: &mut impl BufRead, maximum: usize, mut admit: impl FnMut(usize) -> Result<()>) -> Result<Option<Line>> {
     let mut line = Vec::new();
     loop {
         let available = reader.fill_buf().map_err(io)?;
@@ -121,8 +111,6 @@ pub(super) fn line_admitted(reader: &mut impl BufRead, maximum: usize, mut admit
         let required = line.len() + count;
         if required > line.capacity() {
             let capacity = required.max(line.capacity().saturating_mul(2)).min(maximum);
-            let peak = line.capacity().checked_add(capacity).ok_or_else(|| invalid("JSON framing memory overflow"))?;
-            admit(peak)?;
             line.try_reserve_exact(capacity - line.len()).map_err(|_| invalid("JSON framing allocation failed"))?;
         }
         line.extend_from_slice(&available[..count]);
@@ -159,43 +147,6 @@ pub(super) fn load<T: DeserializeOwned>(path: &Path, maximum: usize) -> Result<O
     };
     let mut reader = BufReader::new(file);
     let bytes = line(&mut reader, maximum)?.ok_or_else(|| corrupt("empty JSON metadata"))?;
-    let value = serde_json::from_slice(&bytes).map_err(json)?;
-    if !reader.fill_buf().map_err(io)?.is_empty() {
-        return Err(corrupt("JSON metadata has trailing entries"));
-    }
-    Ok(Some(value))
-}
-
-// Fixed-Shape JSON Values Containing Only Strings And Byte Vectors.
-// String Scratch Plus Its Owned Copy And Geometric Byte-Vector Growth Fit
-// Within Four Times Their Disjoint Encoded Spans; Fixed Boxes Are Added By Callers.
-pub(super) fn flat_decoding_bytes(encoded: usize, fixed: usize) -> Option<usize> {
-    encoded.checked_mul(4)?.checked_add(fixed)
-}
-
-pub(super) fn load_admitted<T: DeserializeOwned>(
-    path: &Path, maximum: usize, memory: &crate::arrow::RetainedMemory, base: usize, decoding_bytes: impl FnOnce(usize) -> Option<usize>,
-) -> Result<Option<T>> {
-    regular(path)?;
-    let file = match File::open(path) {
-        Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(io(error)),
-    };
-    let buffered = base.checked_add(8192).ok_or_else(|| invalid("JSON read memory overflow"))?;
-    memory.try_grow_to(buffered)?;
-    let mut reader = BufReader::with_capacity(8192, file);
-    let bytes = line_admitted(&mut reader, maximum, |peak| {
-        let needed = buffered.checked_add(peak).ok_or_else(|| invalid("JSON read memory overflow"))?;
-        memory.try_grow_to(needed)
-    })?
-    .ok_or_else(|| corrupt("empty JSON metadata"))?;
-    let decoded = decoding_bytes(bytes.len()).ok_or_else(|| invalid("JSON decode memory overflow"))?;
-    let needed = buffered
-        .checked_add(bytes.allocated_bytes())
-        .and_then(|size| size.checked_add(decoded))
-        .ok_or_else(|| invalid("JSON decode memory overflow"))?;
-    memory.try_grow_to(needed)?;
     let value = serde_json::from_slice(&bytes).map_err(json)?;
     if !reader.fill_buf().map_err(io)?.is_empty() {
         return Err(corrupt("JSON metadata has trailing entries"));
@@ -291,22 +242,11 @@ mod tests {
     }
 
     #[test]
-    fn growth_admitted_first() {
+    fn fragmented_framing() {
         let mut encoded = Vec::new();
         write(&mut encoded, 4096, |writer| encode(&"x".repeat(1024), writer)).unwrap();
-        let mut input = encoded.as_slice();
-        assert!(line_admitted(&mut input, 4096, |_| Err(invalid("admission denied"))).is_err());
-        assert_eq!(input.len(), encoded.len());
-
         let mut reader = BufReader::with_capacity(31, encoded.as_slice());
-        let mut admitted = 0;
-        let decoded = line_admitted(&mut reader, 4096, |peak| {
-            admitted = admitted.max(peak);
-            Ok(())
-        })
-        .unwrap()
-        .unwrap();
-        assert!(admitted >= decoded.allocated_bytes());
+        let decoded = line(&mut reader, 4096).unwrap().unwrap();
         assert_eq!(serde_json::from_slice::<String>(&decoded).unwrap(), "x".repeat(1024));
     }
 }

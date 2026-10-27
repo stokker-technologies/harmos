@@ -260,6 +260,12 @@ impl<L: Lane> harmos_sdk::operations::Host for super::OperationManager<L> {
         std::future::ready(Manager::submit::<O>(self, request))
     }
 
+    fn submit_owned<O: OperationDeclaration>(
+        &self, request: O::Request, claims: super::RequestClaims,
+    ) -> impl Future<Output = Result<Running<O>>> + Send {
+        std::future::ready(Manager::submit_owned::<O>(self, request, claims))
+    }
+
     fn call<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Response<O::Response>>> + Send {
         let submitted = Manager::submit::<O>(self, request);
         async move { submitted?.await }
@@ -303,6 +309,12 @@ impl harmos_sdk::operations::Host for Manager {
 
     fn submit<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Running<O>>> + Send {
         std::future::ready(Manager::submit::<O>(self, request))
+    }
+
+    fn submit_owned<O: OperationDeclaration>(
+        &self, request: O::Request, claims: super::RequestClaims,
+    ) -> impl Future<Output = Result<Running<O>>> + Send {
+        std::future::ready(Manager::submit_owned::<O>(self, request, claims))
     }
 
     fn call<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Response<O::Response>>> + Send {
@@ -350,6 +362,12 @@ impl harmos_sdk::operations::Host for Context<'_> {
 
     fn submit<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Running<O>>> + Send {
         std::future::ready(Context::submit::<O>(self, request))
+    }
+
+    fn submit_owned<O: OperationDeclaration>(
+        &self, request: O::Request, claims: super::RequestClaims,
+    ) -> impl Future<Output = Result<Running<O>>> + Send {
+        std::future::ready(Context::submit_owned::<O>(self, request, claims))
     }
 
     fn call<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Response<O::Response>>> + Send {

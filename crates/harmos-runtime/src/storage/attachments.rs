@@ -138,9 +138,9 @@ impl<A: Application> ReplayPayload<A> for Payload<A> {
         self.prepared.clone()
     }
 
-    fn forward(&self) -> Option<Arc<A::Transaction>> {
+    fn forward(&self) -> Option<crate::operations::Response<A::Transaction>> {
         match &self.value {
-            Recorded::Transaction(transaction) => Some(Arc::clone(transaction)),
+            Recorded::Transaction(transaction) => Some(transaction.clone()),
             Recorded::Record(_) | Recorded::System(_) => None,
         }
     }
@@ -156,7 +156,7 @@ impl<A: Application> ReplayPayload<A> for Payload<A> {
             return Ok(Some(Recorded::System(fact)));
         }
         let forward = match &envelope.payload.value {
-            Recorded::Transaction(transaction) => Some(Arc::clone(transaction)),
+            Recorded::Transaction(transaction) => Some(transaction.clone()),
             Recorded::Record(_) | Recorded::System(_) => None,
         };
 

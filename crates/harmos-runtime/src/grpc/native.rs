@@ -261,10 +261,11 @@ pub(crate) fn serve(authority: server::Authority, settings: server::Settings, re
                 .map_err(|_| Status::internal("operation decoding panicked"))?
                 .map_err(|error| Status::invalid_argument(error.to_string()))
         });
+        let preparation = binding.operations.preparation.clone();
         let endpoint = Endpoint { binding, settings };
         if input {
             let codec = match Codec::<Raw, InputEnvelope<Vec<u8>, Vec<u8>>, Output>::new(settings.decode, settings.encode) {
-                Ok(codec) => codec.with_additional_memory(memory),
+                Ok(codec) => codec.with_additional_memory(memory).with_preparation(preparation),
                 Err(error) => return error.into_http(),
             };
             if output {
@@ -274,7 +275,7 @@ pub(crate) fn serve(authority: server::Authority, settings: server::Settings, re
             }
         } else {
             let codec = match Codec::<Raw, Vec<u8>, Output>::new(settings.decode, settings.encode) {
-                Ok(codec) => codec.with_additional_memory(memory),
+                Ok(codec) => codec.with_additional_memory(memory).with_preparation(preparation),
                 Err(error) => return error.into_http(),
             };
             if output { codec.server().server_streaming(endpoint, request).await } else { codec.server().unary(endpoint, request).await }

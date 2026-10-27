@@ -65,7 +65,7 @@ pub struct OperationFactory {
     builtin: bool,
     resources: &'static [Resource],
     pub dependencies: Dependencies,
-    contract: fn() -> Result<Contract, super::ContractError>,
+    contract: fn(&harmos_domain::config::SchemaSettings) -> Result<Contract, super::ContractError>,
     install: Install,
     native: PrepareNative,
     endpoints_valid: fn() -> bool,
@@ -161,11 +161,11 @@ impl RegistrationBatch {
             declared: D::definition,
             builtin: std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>(),
             dependencies: self.dependencies.clone(),
-            contract: || {
+            contract: |settings| {
                 if std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>() {
                     return crate::observers::contract();
                 }
-                WireDeclaration::of::<D>().contract()
+                WireDeclaration::of::<D>().contract_with_settings(settings)
             },
             install: WireTable::install::<D, O>,
             native_types: || {
@@ -349,7 +349,11 @@ impl OperationFactory {
     }
 
     pub fn contract(&self) -> Result<Contract, super::ContractError> {
-        (self.contract)()
+        self.contract_with_settings(&harmos_domain::config::SchemaSettings::default())
+    }
+
+    pub fn contract_with_settings(&self, settings: &harmos_domain::config::SchemaSettings) -> Result<Contract, super::ContractError> {
+        (self.contract)(settings)
     }
 
     pub fn install(self, table: &mut WireTable) -> Result<(), ServingError> {

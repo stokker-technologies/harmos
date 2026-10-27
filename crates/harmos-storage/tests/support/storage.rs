@@ -327,7 +327,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         &self.history
     }
     fn open(&self) -> StorageFuture<'_, StorageCursor> {
-        Box::pin(async {
+        Box::pin(async move {
             self.control.open.store(true, Ordering::SeqCst);
             if self.control.block_open.load(Ordering::SeqCst) {
                 self.control.open_entered.notify_one();
@@ -340,7 +340,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         })
     }
     fn cursor_saved(&self) -> StorageFuture<'_, StorageCursor> {
-        Box::pin(async {
+        Box::pin(async move {
             if self.control.regressed_saved.load(Ordering::SeqCst) {
                 return Ok(self.at(0));
             }
@@ -451,49 +451,40 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         })
     }
     fn close(&self) -> StorageFuture<'_, ()> {
-        Box::pin(async { self.control.close() })
+        Box::pin(async move { self.control.close() })
     }
-    fn open_snapshot<'a>(
-        &'a self, at: &'a StorageCursor, _memory: harmos_storage::arrow::RetainedMemory,
-    ) -> StorageFuture<'a, BackendSnapshot> {
+    fn open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
         self.fixture_open_snapshot(at)
     }
     fn release_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
-        self.fixture_release_snapshot(snapshot)
+        Box::pin(async move { self.fixture_release_snapshot(snapshot).await })
     }
     fn read_schemas<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,
-        _memory: harmos_storage::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<StorageSchema>> {
         self.fixture_read_schemas(snapshot, selection, page)
     }
     fn read_objects<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage,
-        _memory: harmos_storage::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<ObjectEntry>> {
         self.fixture_read_objects(snapshot, selection, page)
     }
     fn read_records<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
-        _memory: harmos_storage::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<StoredRecord>> {
         self.fixture_read_records(snapshot, selection, page)
     }
     fn read_stream<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage,
-        _memory: harmos_storage::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<StoredRow>> {
         self.fixture_read_stream(snapshot, selection, page)
     }
     fn read_files<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,
-        _memory: harmos_storage::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<FileReference>> {
         self.fixture_read_files(snapshot, selection, page)
     }
-    fn read_object<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, query: &'a ObjectPoint, _memory: harmos_storage::arrow::RetainedMemory,
-    ) -> StorageFuture<'a, Option<ObjectEntry>> {
+    fn read_object<'a>(&'a self, snapshot: &'a BackendSnapshot, query: &'a ObjectPoint) -> StorageFuture<'a, Option<ObjectEntry>> {
         self.fixture_read_object(snapshot, query)
     }
     fn supports_file_sessions(&self) -> bool {
@@ -505,41 +496,30 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     fn save_mutations(&self, receipts: StorageBatch<MutationReceipt>) -> StorageFuture<'_, ()> {
         Box::pin(async move { self.fixture_save_mutations(receipts.as_slice()).await })
     }
-    fn recover_mutations(
-        &self, limits: ReadLimits, _memory: harmos_storage::arrow::RetainedMemory,
-    ) -> StorageFuture<'_, Vec<MutationReceipt>> {
+    fn recover_mutations(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         self.fixture_recover_mutations(limits)
     }
     fn create_production<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
-        self.fixture_create_production(metadata)
+        Box::pin(async move { self.fixture_create_production(metadata).await })
     }
     fn fence_production<'a>(&'a self, file: &'a StagedFile, expected: u64, next: u64) -> StorageFuture<'a, ()> {
-        self.fixture_fence_production(file, expected, next)
+        Box::pin(async move { self.fixture_fence_production(file, expected, next).await })
     }
     fn save_production(&self, checkpoint: StorageBatch<FileCheckpoint>) -> StorageFuture<'_, ()> {
         Box::pin(async move {
-            if checkpoint.len() != 1 {
-                return Err(harmos_storage::Error::InvalidInput {
-                    field: "file checkpoint",
-                    reason: "requires exactly one checkpoint",
-                });
+            for checkpoint in checkpoint.as_slice() {
+                self.fixture_save_production(checkpoint).await?;
             }
-            self.fixture_save_production(&checkpoint.as_slice()[0]).await
+            Ok(())
         })
     }
-    fn recover_productions(
-        &self, limits: ReadLimits, _memory: harmos_storage::arrow::RetainedMemory,
-    ) -> StorageFuture<'_, Vec<FileCheckpoint>> {
+    fn recover_productions(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> {
         self.fixture_recover_productions(limits)
     }
-    fn file_progress<'a>(
-        &'a self, file: &'a StagedFile, _memory: harmos_storage::arrow::RetainedMemory,
-    ) -> StorageFuture<'a, FileProgress> {
+    fn file_progress<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
         self.fixture_file_progress(file)
     }
-    fn read_production<'a>(
-        &'a self, file: &'a StagedFile, offset: u64, max_bytes: NonZeroUsize, _memory: harmos_storage::arrow::RetainedMemory,
-    ) -> StorageFuture<'a, Vec<u8>> {
+    fn read_production<'a>(&'a self, file: &'a StagedFile, offset: u64, max_bytes: NonZeroUsize) -> StorageFuture<'a, Vec<u8>> {
         self.fixture_read_production(file, offset, max_bytes)
     }
 
@@ -547,14 +527,14 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         self.fixture_supports_file_deletion()
     }
     fn delete_file<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, ()> {
-        self.fixture_delete_file(file)
+        Box::pin(async move { self.fixture_delete_file(file).await })
     }
 
     fn abandon_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
-        self.fixture_abandon_file(staging)
+        Box::pin(async move { self.fixture_abandon_file(staging).await })
     }
     fn create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
-        self.fixture_create_file(metadata)
+        Box::pin(async move { self.fixture_create_file(metadata).await })
     }
     fn write_file<'a>(&'a self, staging: &'a StagedFile, offset: u64, bytes: FileChunk) -> StorageFuture<'a, ()> {
         self.fixture_write_file(staging, offset, bytes)
@@ -562,14 +542,13 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     fn finish_file<'a>(
         &'a self, staging: &'a StagedFile, position: &'a StorageCursor, length: u64, sha256: [u8; 32],
     ) -> StorageFuture<'a, FileReference> {
-        self.fixture_finish_file(staging, position, length, sha256)
+        Box::pin(async move { self.fixture_finish_file(staging, position, length, sha256).await })
     }
     fn abort_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
-        self.fixture_abort_file(staging)
+        Box::pin(async move { self.fixture_abort_file(staging).await })
     }
     fn read_file<'a>(
         &'a self, snapshot: &'a BackendSnapshot, file: &'a FileReference, offset: u64, max_bytes: NonZeroUsize,
-        _memory: harmos_storage::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<u8>> {
         self.fixture_read_file(snapshot, file, offset, max_bytes)
     }
@@ -698,9 +677,7 @@ impl StateBackend for Recovery {
             Ok(())
         })
     }
-    fn read_snapshot(
-        &self, _: NonZeroUsize, _memory: harmos_storage::arrow::RetainedMemory,
-    ) -> StorageFuture<'_, Option<RecoverySnapshot>> {
+    fn read_snapshot(&self, _: NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>> {
         Box::pin(async {
             if self.control.block_read.load(Ordering::SeqCst) {
                 self.control.read_entered.notify_one();
@@ -711,7 +688,6 @@ impl StateBackend for Recovery {
     }
     fn read_entries<'a>(
         &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,
-        _memory: harmos_storage::arrow::RetainedMemory,
     ) -> StorageFuture<'a, RecoveryPage> {
         Box::pin(async move {
             if self.control.block_read.load(Ordering::SeqCst) {

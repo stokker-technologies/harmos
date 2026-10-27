@@ -35,7 +35,8 @@ use harmos_domain::listeners::{Context, Source};
 
 /* === Constants === */
 
-const PAGE_ROWS: usize = 64;
+const PAGE_ROWS: usize = 512;
+const PAGE_BYTES: usize = 8 * 1024 * 1024;
 const SOURCES: usize = 64;
 const REGISTRATIONS: usize = 64;
 
@@ -65,6 +66,7 @@ struct Binding {
 struct Captured {
     wired: Arc<Wired>,
     frontier: Arc<AtomicU64>,
+    bytes: fn(&Row) -> Result<usize>,
 }
 
 #[must_use = "retain the listener registration until shutdown positively settles"]
@@ -219,9 +221,9 @@ impl<A: Application> PluginListenerBindings<'_, A> {
                 reason: "source differs from the compiled native catalog member",
             });
         }
-        let graph = Schema::from_declaration(S::DEFINITION, &harmos_domain::config::SchemaSettings::default())
+        let graph = Schema::from_declaration(S::DEFINITION, &self.streams.schema_settings)
             .map_err(|source| Error::RecordSchema { source: source.into() })?;
-        self.bind(wired, &graph, after, submit_native::<S>)
+        self.bind(wired, &graph, after, submit_native::<S>, native_bytes::<S>)
     }
 
     pub fn publication(&mut self, id: &str, schema_ordinal: u32, after: u64) -> Result<()> {
@@ -236,7 +238,7 @@ impl<A: Application> PluginListenerBindings<'_, A> {
             field: "managed listener stream",
             reason: "source has no admitted row schema",
         })?;
-        self.bind(Arc::clone(&wired), graph, after, submit_publication)
+        self.bind(Arc::clone(&wired), graph, after, submit_publication, publication_bytes)
     }
 
     fn source(&self, id: &str, version: u32) -> Result<Arc<Wired>> {
@@ -263,7 +265,7 @@ impl<A: Application> PluginListenerBindings<'_, A> {
         Ok(wired)
     }
 
-    fn bind(&mut self, wired: Arc<Wired>, graph: &Schema, after: u64, submit: Submit) -> Result<()> {
+    fn bind(&mut self, wired: Arc<Wired>, graph: &Schema, after: u64, submit: Submit, bytes: fn(&Row) -> Result<usize>) -> Result<()> {
         if self.sources.len() == SOURCES {
             return Err(Error::ResourceExhausted {
                 resource: "stream listener source windows",
@@ -289,7 +291,7 @@ impl<A: Application> PluginListenerBindings<'_, A> {
             }
             let source_graph = listener.source().schema();
             if !graph
-                .equivalent(graph.root, source_graph, source_graph.root, &harmos_domain::config::SchemaSettings::default())
+                .equivalent(graph.root, source_graph, source_graph.root, &self.streams.schema_settings)
                 .map_err(|source| Error::RecordSchema { source: source.into() })?
             {
                 return Err(Error::InvalidInput {
@@ -314,6 +316,7 @@ impl<A: Application> PluginListenerBindings<'_, A> {
         self.sources.push(Captured {
             wired,
             frontier: Arc::new(AtomicU64::new(after)),
+            bytes,
         });
         Ok(())
     }
@@ -449,19 +452,48 @@ async fn closed_provider(providers: &[PluginScope]) {
     .await
 }
 
-fn page(table: &Table, sources: &[Captured], after: u64) -> Chunk {
+fn native_bytes<S: Message + 'static>(row: &Row) -> Result<usize> {
+    row.downcast_ref::<S>().map(Message::encoded_len).ok_or(Error::InvalidInput {
+        field: "listener row",
+        reason: "original native row type differs",
+    })
+}
+
+fn publication_bytes(row: &Row) -> Result<usize> {
+    row.downcast_ref::<ManagedPublication>().map(|row| row.payload().len()).ok_or(Error::InvalidInput {
+        field: "listener row",
+        reason: "original publication owner is absent",
+    })
+}
+
+fn page(table: &Table, sources: &[Captured], after: u64) -> Result<Chunk> {
     let _visibility = table.visibility.read().expect("stream visibility poisoned");
     let cut = sources.iter().map(|source| source.wired.window.latest_locked()).max().unwrap_or(after).max(after);
     let mut selected = Vec::with_capacity(PAGE_ROWS);
     for (index, source) in sources.iter().enumerate() {
         source.wired.window.listener_candidates(after, cut, index, PAGE_ROWS, &mut selected);
     }
-    let through = if selected.len() == PAGE_ROWS { selected.last().unwrap().cursor } else { cut };
-    let rows = selected
-        .into_iter()
-        .filter_map(|candidate| sources[candidate.source].wired.window.listener_row(candidate.cursor).map(|row| (candidate, row)))
-        .collect();
-    Chunk { rows, through }
+    let mut through = if selected.len() == PAGE_ROWS { selected.last().unwrap().cursor } else { cut };
+    let mut rows = Vec::new();
+    let mut bytes = 0usize;
+    let mut accepted = after;
+    for candidate in selected {
+        let source = &sources[candidate.source];
+        if let Some(row) = source.wired.window.listener_row(candidate.cursor) {
+            let size = (source.bytes)(&row)?;
+            // A Single Admitted Row Must Make Progress Even Above The Page Target.
+            if !rows.is_empty() && size > PAGE_BYTES.saturating_sub(bytes) {
+                through = accepted;
+                break;
+            }
+            bytes = bytes.saturating_add(size);
+            accepted = candidate.cursor;
+            rows.push((candidate, row));
+        } else {
+            accepted = candidate.cursor;
+        }
+    }
+    Ok(Chunk { rows, through })
 }
 
 async fn deliver<A: Application>(
@@ -478,7 +510,7 @@ async fn deliver<A: Application>(
         if *stopping.borrow() || scope.is_closed() || streams.closed.load(Ordering::Acquire) {
             return Ok(());
         }
-        let page = page(&streams.windows, &sources, after);
+        let page = page(&streams.windows, &sources, after)?;
         for (candidate, row) in page.rows {
             let source = &sources[candidate.source];
             let previous = source.frontier.load(Ordering::Acquire);
@@ -505,6 +537,7 @@ async fn deliver<A: Application>(
         let advanced = page.through > after;
         after = page.through;
         if advanced {
+            tokio::task::yield_now().await;
             continue;
         }
         tokio::select! {

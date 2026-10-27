@@ -10,8 +10,6 @@
 /* === Modules === */
 
 mod other {
-    use std::sync::Arc;
-
     use harmos_runtime::{Application, DefinitionId, state::Kind, state::Recorded, storage::Payload};
     use serde::{Deserializer, Serializer};
 
@@ -76,7 +74,7 @@ mod other {
                     prepared: None,
                     id: id.clone(),
                     version,
-                    value: Recorded::Transaction(Arc::new(change)),
+                    value: Recorded::Transaction(harmos_runtime::operations::Response::new(change)),
                 }),
                 Kind::Record => Observed::restore(id, version, payload)?.map(|fact| Payload {
                     prepared: None,

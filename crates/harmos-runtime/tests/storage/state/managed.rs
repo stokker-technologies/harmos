@@ -451,7 +451,9 @@ async fn cancelled_replay_releases() {
             _ = &mut opening => panic!("replay must wait for the backend"),
             _ = store.recovery.control.read_entered.notified() => {}
         }
-        assert!(storage.status().pending_bytes > 0);
+        assert!(store.recovery.control.open.load(Ordering::SeqCst));
+        assert!(store.data.control.open.load(Ordering::SeqCst));
+        assert_eq!(storage.status().pending_bytes, 0);
     }
     closed(&storage, &cleanup).await;
     assert_eq!(storage.status().pending_bytes, 0);

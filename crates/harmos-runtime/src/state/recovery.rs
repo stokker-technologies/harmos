@@ -271,7 +271,7 @@ fn decode_json<A: Application>(
                 .transaction(|bytes| catalog.decode_transaction(&id, version, bytes))
                 .map_err(Incompatible::unreadable)?
                 .map_err(Incompatible::unreadable)?;
-            (Recorded::Transaction(Arc::new(transaction)), payload.value().map_err(Incompatible::unreadable)?)
+            (Recorded::Transaction(crate::operations::Response::new(transaction)), payload.value().map_err(Incompatible::unreadable)?)
         }
         Kind::Record => {
             if let Some(system) = payload.system(&id, version).map_err(Incompatible::unreadable)? {

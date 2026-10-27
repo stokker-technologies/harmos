@@ -25,15 +25,13 @@ use sha2::{Digest, Sha256};
 
 // Local Imports
 use super::backend::ScanPage;
-use super::capacity::{Held, Pool, Refusal, Reservation};
-use super::manager::{ENTRY_OVERHEAD, Inner, Operation, encoded_size};
+use super::manager::{Inner, Operation, encoded_size};
 use super::query::FileSelection;
 use super::snapshot::Snapshot;
 use super::{ByteRange, FileBatch, FileCompletion, FileReference, StorageManager};
 use crate::FileReadBatch;
-use crate::arrow::RetainedMemory;
 use crate::local::LocalReader;
-use crate::{BackendFailure, Error, MemorySize, Result};
+use crate::{BackendFailure, Error, Result};
 use harmos_domain::model::storage::files::{FileHash, FileSource};
 
 /* === Constants === */
@@ -62,7 +60,7 @@ enum Source {
 
 struct StoredReader {
     inner: Arc<Inner>,
-    held: Held,
+
     snapshot: Option<Snapshot>,
     file: FileReference,
     offset: u64,
@@ -70,7 +68,6 @@ struct StoredReader {
     bytes: u64,
     verify: bool,
     hash: Sha256,
-    _metadata: RetainedMemory,
 }
 
 /* === Enums === */
@@ -84,13 +81,27 @@ impl<C> StorageManager<C> {
     pub async fn read_file(&self, request: FileRead) -> Result<FileReader> {
         let context = crate::execution::Context::current();
         let span = context.sync(|| tracing::debug_span!("storage.file.read_file", outcome = "cancelled"));
-        context.result(span, async { self.read_file_with_held(request, Held::default()).await }).await
+        context.result(span, async { self.open_file(request).await }).await
     }
 
-    pub(crate) async fn read_file_with_held(&self, request: FileRead, held: Held) -> Result<FileReader> {
+    /// Reads the supplied file object without changing the caller's cursor.
+    /// On Windows, `file` must allow a separate read open; exclusive handles are refused.
+    pub async fn read_opened_file(&self, file: std::fs::File, range: ByteRange) -> Result<FileReader> {
+        self.open_file_handle(file, range).await
+    }
+
+    pub(crate) async fn open_file_handle(&self, file: std::fs::File, range: ByteRange) -> Result<FileReader> {
+        let reader = LocalReader::opened(&self.inner, file, range).await?;
+        Ok(FileReader {
+            context: crate::execution::Context::current(),
+            source: Source::Local(reader),
+        })
+    }
+
+    pub(crate) async fn open_file(&self, request: FileRead) -> Result<FileReader> {
         let source = match request.source {
-            FileSource::Stored(file) => Source::Stored(Box::new(self.read_stored_file(file, request.range, held).await?)),
-            FileSource::Local(path) => Source::Local(LocalReader::open(&self.inner, path, request.range, held).await?),
+            FileSource::Stored(file) => Source::Stored(Box::new(self.read_stored_file(file, request.range).await?)),
+            FileSource::Local(path) => Source::Local(LocalReader::open(&self.inner, path, request.range).await?),
         };
         Ok(FileReader {
             context: crate::execution::Context::current(),
@@ -98,7 +109,7 @@ impl<C> StorageManager<C> {
         })
     }
 
-    async fn read_stored_file(&self, file: FileReference, range: ByteRange, held: Held) -> Result<StoredReader> {
+    async fn read_stored_file(&self, file: FileReference, range: ByteRange) -> Result<StoredReader> {
         let end = range.end(file.length)?;
         self.inner.primary.history().check(&file.position.history)?;
 
@@ -117,17 +128,8 @@ impl<C> StorageManager<C> {
         if pending == Some(false) {
             return Err(invalid("immutable metadata does not match a finished file"));
         }
-        let metadata = Reservation::wait(
-            &self.inner,
-            Pool::Read,
-            &held,
-            file.memory_size().saturating_mul(3).saturating_add(std::mem::size_of::<StoredReader>() + ENTRY_OVERHEAD),
-            None,
-        )
-        .await
-        .map_err(Refusal::into_error)?
-        .retain();
-        let snapshot = self.snapshot(&saved, &held).await?;
+
+        let snapshot = self.snapshot(&saved).await?;
 
         // Saved References Must Be Visible In The Pinned Image.
         if pending.is_none() {
@@ -140,14 +142,17 @@ impl<C> StorageManager<C> {
                 rows: NonZeroUsize::MIN,
                 bytes: NonZeroUsize::new(encoded_size(&file)?.max(1)).unwrap(),
             };
-            let (stored, _) = snapshot.scan::<FileReference>(&selection, page, metadata.clone()).await?;
+            let (stored, _) = snapshot.scan::<FileReference>(&selection, page).await?;
             if stored.first() != Some(&file) {
                 return Err(invalid("immutable metadata does not match the stored file"));
             }
         }
+        // Acquire The Backend's Immutable Read Lease Before Returning The Reader.
+        // The Byte Is Re-Read On Delivery So Digest/Offset Acknowledgment Is Unchanged.
+        snapshot.read_file(&file, range.offset, NonZeroUsize::MIN).await?;
         Ok(StoredReader {
             inner: Arc::clone(&self.inner),
-            held,
+
             snapshot: Some(snapshot),
             offset: range.offset,
             verify: range.offset == 0 && end == file.length,
@@ -155,12 +160,35 @@ impl<C> StorageManager<C> {
             file,
             bytes: 0,
             hash: Sha256::new(),
-            _metadata: metadata,
         })
     }
 }
 
 impl FileReader {
+    pub(crate) fn observation(&self) -> Option<(u64, std::time::SystemTime)> {
+        match &self.source {
+            Source::Local(reader) => Some(reader.observation()),
+            Source::Stored(_) => None,
+        }
+    }
+
+    pub(crate) fn start_opened(&mut self, offset: u64) -> Result<()> {
+        match &mut self.source {
+            Source::Local(reader) => reader.start(offset),
+            Source::Stored(_) => Err(Error::InvalidInput {
+                field: "opened capture",
+                reason: "requires an opened source",
+            }),
+        }
+    }
+
+    pub(crate) async fn observation_unchanged(&self) -> Result<bool> {
+        match &self.source {
+            Source::Local(reader) => reader.observation_unchanged().await,
+            Source::Stored(_) => Ok(true),
+        }
+    }
+
     pub(crate) fn stored_hash(&self) -> Result<Option<FileHash>> {
         self.completion()?;
         Ok(match &self.source {
@@ -184,10 +212,10 @@ impl FileReader {
     }
 
     pub async fn next(&mut self) -> Result<Option<FileReadBatch>> {
-        Ok(self.next_raw(false).await?.map(|(batch, memory)| FileReadBatch::retained(batch, memory)))
+        Ok(self.next_raw(false).await?.map(FileReadBatch::new))
     }
 
-    pub(crate) async fn next_raw(&mut self, event: bool) -> Result<Option<(FileBatch, RetainedMemory)>> {
+    pub(crate) async fn next_raw(&mut self, event: bool) -> Result<Option<FileBatch>> {
         let context = self.context.clone();
         let span = context.sync(|| tracing::trace_span!("storage.reader.page", outcome = "cancelled"));
         let future = async {
@@ -215,7 +243,7 @@ impl FileReader {
 }
 
 impl StoredReader {
-    async fn next(&mut self, event: bool) -> Result<Option<(FileBatch, RetainedMemory)>> {
+    async fn next(&mut self, event: bool) -> Result<Option<FileBatch>> {
         let Some(snapshot) = &self.snapshot else {
             return Ok(None);
         };
@@ -231,9 +259,8 @@ impl StoredReader {
         // The Response Envelope Shares The Batch Byte Ceiling.
         let ceiling = self.inner.settings.response.batch_bytes.get();
         let maximum = crate::file_batch::batch_limit(ceiling, self.offset, self.end - self.offset, event)?;
-        let charge = maximum.get().saturating_mul(2).saturating_add(std::mem::size_of::<FileBatch>() + ENTRY_OVERHEAD);
-        let transfer = Reservation::wait(&self.inner, Pool::Read, &self.held, charge, None).await.map_err(Refusal::into_error)?.retain();
-        let bytes = snapshot.read_file(&self.file, self.offset, maximum, transfer.clone()).await?;
+
+        let bytes = snapshot.read_file(&self.file, self.offset, maximum).await?;
         if bytes.is_empty() || bytes.capacity() > maximum.get() || bytes.len() as u64 > self.end - self.offset {
             return Err(corrupt("file batch is empty or outside the immutable length"));
         }
@@ -248,7 +275,7 @@ impl StoredReader {
         self.hash = hash;
         self.offset = next;
         self.bytes += bytes.len() as u64;
-        Ok(Some((FileBatch { offset, bytes }, transfer)))
+        Ok(Some(FileBatch { offset, bytes }))
     }
 
     pub fn completion(&self) -> Result<FileCompletion> {

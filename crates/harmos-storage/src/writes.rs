@@ -23,10 +23,9 @@ pub use harmos_domain::model::storage::{BatchReceipt, DataBatch, WriteCompletion
 use std::sync::Arc;
 // Third Party Imports
 // Local Imports
-use super::manager::ENTRY_OVERHEAD;
-use super::{SchemaKey, StorageCursor, StoreHistory};
+use super::{SchemaKey, StorageCursor};
+use crate::MemorySize;
 use crate::schema::graph::Schema;
-use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
 
@@ -62,32 +61,10 @@ impl StorageSchema {
     pub fn new(position: StorageCursor, key: SchemaKey, schema: impl Into<Arc<Schema>>) -> Self {
         Self { position, key, schema: schema.into() }
     }
-
-    pub(super) fn resident_bytes(key: &SchemaKey, schema: &Schema, history: &StoreHistory) -> Result<usize> {
-        let allocations = schema.memory_size().checked_add(2 * std::mem::size_of::<usize>()).ok_or_else(size_error)?;
-        [
-            std::mem::size_of::<Self>(),
-            ENTRY_OVERHEAD,
-            key.id.as_str().len(),
-            history.store.as_str().len(),
-            history.epoch.as_str().len(),
-            allocations,
-        ]
-        .into_iter()
-        .try_fold(0usize, |bytes, next| bytes.checked_add(next))
-        .ok_or_else(size_error)
-    }
 }
 
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-fn size_error() -> Error {
-    Error::InvalidInput {
-        field: "storage schema",
-        reason: "size overflow",
-    }
-}
 
 /* === Tests === */

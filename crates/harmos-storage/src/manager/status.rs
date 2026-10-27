@@ -110,14 +110,6 @@ impl<C> StorageManager<C> {
         true
     }
 
-    #[tracing::instrument(name = "storage.manager.status.reserve_arrow_memory", level = "trace", skip_all, fields(bytes = bytes, outcome = "cancelled"))]
-    pub fn reserve_arrow_memory(&self, bytes: usize) -> Result<RetainedMemory> {
-        let result: Result<RetainedMemory> =
-            Reservation::try_new(&self.inner, Pool::Read, &Held::default(), bytes).map(Reservation::retain).map_err(Refusal::into_error);
-        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
-        result
-    }
-
     pub fn write_receipt_capacity(&self) -> usize {
         self.inner.settings.request.max_pending_write_batches.get()
     }
@@ -141,6 +133,22 @@ impl<C> StorageManager<C> {
         self.inner.state.lock().unwrap().objects_pruned = 0;
         self.inner.notify();
         Ok(())
+    }
+}
+
+impl<C> StorageManager<C> {
+    pub(crate) fn position(&self, sequence: u64) -> StorageCursor {
+        StorageCursor {
+            history: self.inner.primary.history().clone(),
+            sequence,
+        }
+    }
+
+    pub(super) fn recovery_position(&self, sequence: u64) -> RecoveryPosition {
+        RecoveryPosition {
+            history: self.inner.recovery.history().clone(),
+            sequence,
+        }
     }
 }
 

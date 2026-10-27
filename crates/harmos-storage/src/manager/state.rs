@@ -65,17 +65,9 @@ impl State {
     pub(crate) fn collect(&mut self) {
         let now = self.execution.now();
         self.receipts.purge(now);
-        self.status.mutation_bytes = self.receipts.snapshot_bytes();
         self.status.pending_batches =
             self.reserved_batches + self.queue.len() + self.files.values().filter(|file| file.pending_batch()).count();
-        self.status.pending_bytes = self.reserved
-            + self.scratch_bytes
-            + self.retained_write_bytes.load(std::sync::atomic::Ordering::SeqCst)
-            + self.queue.bytes()
-            + self.files.values().map(|file| file.bytes()).sum::<usize>();
-        self.status.read_bytes = self.read_bytes
-            + self.deletions.values().map(|deletion| deletion.bytes).sum::<usize>()
-            + self.retained_read_bytes.load(std::sync::atomic::Ordering::SeqCst);
+        self.status.pending_bytes = self.reserved + self.queue.bytes() + self.files.values().map(|file| file.bytes()).sum::<usize>();
     }
 
     pub(crate) fn needs_write(&self, entry: &Pending) -> bool {
@@ -123,9 +115,10 @@ impl Inner {
 
     #[tracing::instrument(name = "storage.backend", level = "debug", skip_all, fields(method = method, outcome = "cancelled"))]
     pub(crate) async fn bounded<T>(&self, method: &'static str, future: StorageFuture<'_, T>) -> Result<T> {
+        let timeout = if method == "recovery.open" { crate::config::RECOVERY_TIMEOUT } else { IO_TIMEOUT };
         let result = self
             .execution
-            .timeout(IO_TIMEOUT, future)
+            .timeout(timeout, future)
             .await
             .map_err(|_| {
                 Error::backend(

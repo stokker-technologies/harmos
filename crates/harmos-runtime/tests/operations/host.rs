@@ -18,8 +18,8 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 // Third Party Imports
@@ -46,7 +46,7 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
 /* === Structs === */
 
 // The declaration is its own request, so `call` and `submit` infer it.
-#[harmos_runtime::operation(resources = [Gate], id = "fixture.hold",  response = u64, policy = POLICY)]
+#[harmos_runtime::operation(resources = [Gate, harmos_runtime::operations::HostContext], id = "fixture.hold",  response = u64, policy = POLICY)]
 struct HoldDeclaration {
     value: u64,
 }
@@ -57,6 +57,7 @@ struct Gate {
     completed: AtomicUsize,
     cleaned: AtomicUsize,
     cleanup: Notify,
+    request: Mutex<Option<harmos_runtime::operations::RequestClaims>>,
 }
 
 struct CompletionGuard(Arc<Gate>);
@@ -79,6 +80,7 @@ impl harmos_runtime::Operation for HoldDeclaration {
 
     async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u64>, Error> {
         let gate = ctx.resource::<Gate>();
+        *gate.request.lock().unwrap() = ctx.resource::<harmos_runtime::operations::HostContext>().request_claims().cloned();
         let _guard = CompletionGuard(gate.clone());
         gate.started.notify_one();
         gate.release.acquire().await.unwrap().forget();
@@ -105,6 +107,7 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
         completed: AtomicUsize::new(0),
         cleaned: AtomicUsize::new(0),
         cleanup: Notify::new(),
+        request: Mutex::new(None),
     });
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     runtime
@@ -145,6 +148,37 @@ fn hidden(error: Option<Error>) -> bool {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn owned_request_survives_caller_cancellation() {
+    let (runtime, gate) = runtime().await;
+    let budget = Arc::new(Semaphore::new(64));
+    let permit = Arc::new(budget.clone().try_acquire_many_owned(64).unwrap());
+    let claims = harmos_runtime::operations::RequestClaims::retain(permit);
+    let instance = Host::submit_owned::<HoldDeclaration>(&runtime.operations, HoldDeclaration { value: 21 }, claims).await.unwrap();
+    gate.started.notified().await;
+    assert_eq!(budget.available_permits(), 0);
+    let retained = gate.request.lock().unwrap().take().unwrap();
+    assert!(retained.owner::<tokio::sync::OwnedSemaphorePermit>().is_some());
+
+    // A Native Worker May Own The Request Allocation After The Caller Cancels.
+    assert!(instance.cancel_and_join().await.is_err());
+    runtime.stop().await.unwrap();
+    assert_eq!(budget.available_permits(), 0);
+    drop(retained);
+    assert_eq!(budget.available_permits(), 64);
+}
+
+#[tokio::test]
+async fn refused_owned_request_releases_admission() {
+    let (runtime, _) = runtime().await;
+    let budget = Arc::new(Semaphore::new(64));
+    let permit = Arc::new(budget.clone().try_acquire_many_owned(64).unwrap());
+    let claims = harmos_runtime::operations::RequestClaims::retain(permit);
+    assert!(Host::submit_owned::<TickerDeclaration>(&runtime.operations, TickerDeclaration {}, claims).await.is_err());
+    assert_eq!(budget.available_permits(), 64);
+    runtime.stop().await.unwrap();
+}
 
 #[tokio::test]
 async fn host_instances_settle() {

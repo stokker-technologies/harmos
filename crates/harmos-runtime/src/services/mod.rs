@@ -434,6 +434,12 @@ impl<A: Application> harmos_sdk::operations::Host for ServiceContext<A> {
         harmos_sdk::operations::Host::submit::<O>(&self.operations, request)
     }
 
+    fn submit_owned<O: OperationDeclaration>(
+        &self, request: O::Request, claims: crate::operations::RequestClaims,
+    ) -> impl Future<Output = Result<Running<O>>> + Send {
+        harmos_sdk::operations::Host::submit_owned::<O>(&self.operations, request, claims)
+    }
+
     fn call<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Response<O::Response>>> + Send {
         harmos_sdk::operations::Host::call::<O>(&self.operations, request)
     }

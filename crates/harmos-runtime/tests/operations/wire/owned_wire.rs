@@ -249,3 +249,53 @@ fn payload(value: &str) -> Vec<u8> {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn wire_registration_uses_supplied_schema_snapshot() {
+    use harmos_runtime::operations::{Contract, WireDeclaration};
+    let declaration = WireDeclaration::of::<ReadContractDeclaration>().contract().unwrap();
+    let tiny = harmos_runtime::config::SchemaSettings {
+        preparation_bytes: std::num::NonZeroUsize::MIN,
+        ..Default::default()
+    };
+    assert!(WireDeclaration::of::<ReadContractDeclaration>().contract_with_settings(&tiny).is_err());
+    assert!(
+        Contract::new_with_settings(
+            declaration.operation().clone(),
+            declaration.fingerprint(),
+            declaration.codec(),
+            declaration.schema().clone(),
+            &tiny
+        )
+        .is_err()
+    );
+    assert!(declaration.compatible(&declaration));
+    assert!(!declaration.compatible_with_settings(&declaration, &tiny));
+
+    for initial in [false, true] {
+        for accepted in [true, false] {
+            let settings = if accepted { harmos_runtime::config::SchemaSettings::default() } else { tiny };
+            let builder = Runtime::<App>::builder((), ()).schema_settings(settings).register(Lanes::catalog());
+            let mut dependencies = harmos_runtime::Dependencies::new();
+            dependencies.insert(Arc::new(Resources::default())).unwrap();
+            let batch = harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new(dependencies).operation::<ReadContractDeclaration>(),
+                Lanes::Open,
+            );
+            if initial {
+                let result = builder.with_registration(batch).runtime().await;
+                assert_eq!(result.is_ok(), accepted);
+                if let Ok(runtime) = result {
+                    assert!(runtime.operations.definition(ReadContractDeclaration::ID).is_ok());
+                    runtime.stop().await.unwrap();
+                }
+            } else {
+                let runtime = builder.runtime().await.unwrap();
+                let result = runtime.operations.register(batch).await;
+                assert_eq!(result.is_ok(), accepted);
+                assert_eq!(runtime.operations.definition(ReadContractDeclaration::ID).is_ok(), accepted);
+                runtime.stop().await.unwrap();
+            }
+        }
+    }
+}

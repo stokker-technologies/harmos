@@ -75,9 +75,10 @@ pub struct OperationManager<L: Lane> {
 #[derive(Clone)]
 pub struct Manager {
     pub(crate) registry: Arc<Registry>,
+    pub(super) schema_settings: Arc<crate::config::SchemaSettings>,
     pub(super) instances: Arc<Instances>,
     pub(super) lanes: Arc<Lanes>,
-    pub(super) preparation: Option<Arc<Semaphore>>,
+    pub(crate) preparation: Option<Arc<Semaphore>>,
     pub(super) context: Arc<std::sync::OnceLock<super::CallContext>>,
     pub(crate) resident: super::resident::Registry,
 }

@@ -37,9 +37,7 @@ const SAMPLE_INTERVAL: Duration = Duration::from_millis(1);
 
 #[derive(Default)]
 pub struct Observed {
-    read_bytes: usize,
     pending_write_bytes: usize,
-    accounted_bytes: usize,
     rss_baseline_bytes: Option<usize>,
     sampled_peak_rss_bytes: Option<usize>,
     samples: u64,
@@ -59,15 +57,15 @@ impl Probe {
     pub fn start<C: 'static>(storage: StorageManager<C>) -> Self {
         Self::begin(move || {
             let status = storage.status();
-            (status.read_bytes, status.pending_bytes, status.mutation_bytes)
+            status.pending_bytes
         })
     }
 
     pub fn start_process() -> Self {
-        Self::begin(|| (0, 0, 0))
+        Self::begin(|| 0)
     }
 
-    fn begin(sample: impl Fn() -> (usize, usize, usize) + Send + 'static) -> Self {
+    fn begin(sample: impl Fn() -> usize + Send + 'static) -> Self {
         let stop = Arc::new((Mutex::new(false), Condvar::new()));
         let signal = Arc::clone(&stop);
         let thread = thread::spawn(move || {
@@ -76,10 +74,8 @@ impl Probe {
                 ..Observed::default()
             };
             loop {
-                let (read, write, mutation) = sample();
-                observed.read_bytes = observed.read_bytes.max(read);
+                let write = sample();
                 observed.pending_write_bytes = observed.pending_write_bytes.max(write);
-                observed.accounted_bytes = observed.accounted_bytes.max(read.saturating_add(write).saturating_add(mutation));
                 if let Some(bytes) = rss() {
                     observed.sampled_peak_rss_bytes = Some(observed.sampled_peak_rss_bytes.unwrap_or(0).max(bytes));
                 }
@@ -122,9 +118,7 @@ impl Drop for Probe {
 
 impl Observed {
     pub fn merge(&mut self, other: Self) {
-        self.read_bytes = self.read_bytes.max(other.read_bytes);
         self.pending_write_bytes = self.pending_write_bytes.max(other.pending_write_bytes);
-        self.accounted_bytes = self.accounted_bytes.max(other.accounted_bytes);
         if let Some(bytes) = other.rss_baseline_bytes {
             self.rss_baseline_bytes = Some(self.rss_baseline_bytes.unwrap_or(0).max(bytes));
         }
@@ -140,8 +134,7 @@ impl Observed {
             json!({
                 "kind": "storage_benchmark_resources", "story": story, "dataset_rows_or_bytes": dataset,
                 "backend": if settings.is_some() {"shipped_json_storage"} else {"arrow_transform_kernel"}, "concurrency": concurrency,
-                "read_accounted_sampled_peak_bytes": self.read_bytes, "pending_write_accounted_sampled_peak_bytes": self.pending_write_bytes,
-                "combined_accounted_sampled_peak_bytes": self.accounted_bytes,
+                "pending_write_sampled_peak_bytes": self.pending_write_bytes,
                 "process_rss_baseline_max_bytes": self.rss_baseline_bytes, "process_sampled_peak_rss_bytes": self.sampled_peak_rss_bytes,
                 "rss_available": self.sampled_peak_rss_bytes.is_some(), "sample_interval_us": SAMPLE_INTERVAL.as_micros(), "samples": self.samples,
                 "settings": settings.map(|settings| format!("{settings:?}")),

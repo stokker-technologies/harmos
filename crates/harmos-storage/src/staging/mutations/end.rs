@@ -45,8 +45,8 @@ impl<C> StorageManager<C> {
             if file.command.is_some() || file.in_flight { return Ok(false); }
             let digest: [u8; 32] = file.hash.clone().finalize().into();
             let valid = file.metadata.expected_length.is_none_or(|length| length == file.length) && file.metadata.expected_sha256.is_none_or(|expected| expected == digest);
-            let bytes = file.base_bytes.checked_add(std::mem::size_of::<MutationValue>()).ok_or_else(size_error)?;
-            reserve(state, mutation, fingerprint, bytes, 0, &self.inner.settings)?;
+            let bytes = file.reference_bytes;
+            reserve(state, mutation, fingerprint, bytes, &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
             file.mutation = Some(Mutation { id: mutation.clone(), kind: Kind::Finish });
             if valid { file.context = crate::execution::Context::current();
@@ -77,7 +77,7 @@ impl<C> StorageManager<C> {
             if file.command.is_some() || file.in_flight {
                 return Ok(false);
             }
-            reserve(state, mutation, fingerprint, std::mem::size_of::<MutationValue>(), 0, &self.inner.settings)?;
+            reserve(state, mutation, fingerprint, 0, &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
             file.mutation = Some(Mutation {
                 id: mutation.clone(),

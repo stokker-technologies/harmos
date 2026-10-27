@@ -144,7 +144,6 @@ async fn cancelled_delete_settles() {
     f.data.control.delete_release.notify_one();
     f.storage.delete_file_once(&request.mutation, &request.file).await.unwrap();
     assert!(f.data.mutation_receipts.lock().unwrap().contains_key(&request.mutation));
-    assert_eq!(f.storage.status().read_bytes, 0);
     f.finish().await;
 }
 
@@ -212,6 +211,5 @@ async fn close_settles_deletion() {
     closing.await.unwrap();
     assert!(f.data.mutation_receipts.lock().unwrap().contains_key(&request.mutation));
     assert!(f.data.blobs.lock().unwrap().is_empty());
-    assert_eq!(f.storage.status().read_bytes, 0);
     f.runtime.stop().await.unwrap();
 }

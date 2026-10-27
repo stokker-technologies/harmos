@@ -41,7 +41,7 @@ use crate::path::HarmosPath;
 
 // The Authored Struct With Its Message Debug And Default Surface. Transport
 // Codecs Derive From Its Postcard Value And Described Shape Elsewhere.
-pub(super) fn declare(item: &mut ItemStruct, harmos: &HarmosPath, skip_debug: bool) -> Result<TokenStream, Error> {
+pub(super) fn declare(item: &mut ItemStruct, harmos: &HarmosPath, skip_debug: bool, skip_default: bool) -> Result<TokenStream, Error> {
     if !derives(item, "Clone") {
         item.attrs.push(syn::parse_quote!(#[derive(Clone)]));
     }
@@ -55,7 +55,7 @@ pub(super) fn declare(item: &mut ItemStruct, harmos: &HarmosPath, skip_debug: bo
     if !skip_debug && !derives(item, "Debug") {
         item.attrs.push(syn::parse_quote!(#[derive(Debug)]));
     }
-    if defaultable && !derives(item, "Default") {
+    if !skip_default && defaultable && !derives(item, "Default") {
         item.attrs.push(syn::parse_quote!(#[derive(Default)]));
     }
     Ok(quote!(#item))

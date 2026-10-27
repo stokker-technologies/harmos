@@ -35,14 +35,16 @@ pub struct Publisher<P> {
     _plugin: PhantomData<fn() -> P>,
 }
 
-// Rows for one stream, each stamped with the time it was produced: `push`
-// reads the kit clock, never earlier than the previous stamp, and `push_at`
-// takes an explicit stamp. Publishing sends the stamps, not the send time.
+// Rows for one stream, each encoded once when pushed and stamped with the
+// time it was produced: `push` reads the kit clock, never earlier than the
+// previous stamp, and `push_at` takes an explicit stamp. Publishing sends the
+// stamps, not the send time.
 pub struct Batch<S: StreamSpec> {
-    rows: Vec<S::Row>,
+    payloads: Vec<Vec<u8>>,
     stamps: Vec<Option<i64>>,
     latest: Option<i64>,
     clock: fn() -> Option<i64>,
+    stream: PhantomData<fn(S)>,
 }
 
 /* === Enums === */
@@ -105,22 +107,20 @@ impl<P: Declared> Publisher<P> {
     {
         Self::declared::<S>()?;
         let stamps = [self.supervisor.now()];
-        self.supervisor.publication::<S>(std::slice::from_ref(row), &stamps, context).await
+        self.supervisor.publication::<S>(&[row.encode()], &stamps, context).await
     }
 
     pub fn batch<S: StreamSpec>(&self) -> Batch<S> {
         Batch {
-            rows: Vec::new(),
+            payloads: Vec::new(),
             stamps: Vec::new(),
             latest: None,
             clock: self.supervisor.clock(),
+            stream: PhantomData,
         }
     }
 
-    pub async fn publish_batch_on<S: StreamSpec>(&self, batch: &Batch<S>) -> Result<(), PublishError>
-    where
-        S::Row: Message,
-    {
+    pub async fn publish_batch_on<S: StreamSpec>(&self, batch: &Batch<S>) -> Result<(), PublishError> {
         self.publish_batch_on_context::<S>(batch, None).await
     }
 
@@ -129,12 +129,9 @@ impl<P: Declared> Publisher<P> {
     // rows). Each call answers once the host's ingest has taken in every row
     // published before it on the stream, so no row is dropped unread. Rows
     // before a refused row stay published.
-    pub async fn publish_batch_on_context<S: StreamSpec>(&self, batch: &Batch<S>, context: Option<&str>) -> Result<(), PublishError>
-    where
-        S::Row: Message,
-    {
+    pub async fn publish_batch_on_context<S: StreamSpec>(&self, batch: &Batch<S>, context: Option<&str>) -> Result<(), PublishError> {
         Self::declared::<S>()?;
-        self.supervisor.publication::<S>(&batch.rows, &batch.stamps, context).await
+        self.supervisor.publication::<S>(&batch.payloads, &batch.stamps, context).await
     }
 
     fn declared<S: StreamSpec>() -> Result<(), PublicationError> {
@@ -146,40 +143,51 @@ impl<P: Declared> Publisher<P> {
     }
 }
 
-impl<S: StreamSpec> Batch<S> {
+impl<S: StreamSpec> Batch<S>
+where
+    S::Row: Message,
+{
     pub fn push(&mut self, row: S::Row) {
         let stamp = match ((self.clock)(), self.latest) {
             (Some(now), Some(latest)) => Some(now.max(latest)),
             (now, latest) => now.or(latest),
         };
-        self.stamped(row, stamp);
+        self.stamped(row.encode(), stamp);
     }
 
     pub fn push_at(&mut self, row: S::Row, published_unix_micros: i64) {
-        self.stamped(row, Some(published_unix_micros));
+        self.stamped(row.encode(), Some(published_unix_micros));
+    }
+}
+
+impl<S: StreamSpec> Batch<S> {
+    // A row its producer already encoded as the stream's row message; the host
+    // validates it against the stream schema like any other publication.
+    pub fn push_encoded_at(&mut self, payload: Vec<u8>, published_unix_micros: i64) {
+        self.stamped(payload, Some(published_unix_micros));
     }
 
-    pub fn rows(&self) -> &[S::Row] {
-        &self.rows
+    pub fn payloads(&self) -> &[Vec<u8>] {
+        &self.payloads
     }
 
     pub fn len(&self) -> usize {
-        self.rows.len()
+        self.payloads.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.rows.is_empty()
+        self.payloads.is_empty()
     }
 
     // Empty the batch for reuse; later `push` stamps still never go back.
     pub fn clear(&mut self) {
-        self.rows.clear();
+        self.payloads.clear();
         self.stamps.clear();
     }
 
-    fn stamped(&mut self, row: S::Row, stamp: Option<i64>) {
+    fn stamped(&mut self, payload: Vec<u8>, stamp: Option<i64>) {
         self.latest = self.latest.max(stamp);
-        self.rows.push(row);
+        self.payloads.push(payload);
         self.stamps.push(stamp);
     }
 }
@@ -219,7 +227,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::Batch;
-    use harmos_domain::StreamSpec;
+    use harmos_domain::{Message, StreamSpec};
+    use std::marker::PhantomData;
+
+    fn rows(batch: &Batch<Samples>) -> Vec<u8> {
+        batch.payloads().iter().map(|payload| u8::decode(payload).unwrap()).collect()
+    }
 
     struct Samples;
 
@@ -233,10 +246,11 @@ mod tests {
     #[test]
     fn clock_never_regresses() {
         let mut batch = Batch::<Samples> {
-            rows: Vec::new(),
+            payloads: Vec::new(),
             stamps: Vec::new(),
             latest: None,
             clock: || None,
+            stream: PhantomData,
         };
         batch.push(0);
         batch.clock = || Some(100);
@@ -247,7 +261,7 @@ mod tests {
         batch.push(3);
         batch.clock = || Some(120);
         batch.push(4);
-        assert_eq!(batch.rows(), &[0, 1, 2, 3, 4]);
+        assert_eq!(rows(&batch), [0, 1, 2, 3, 4]);
         assert_eq!(batch.stamps, [None, Some(100), Some(100), Some(100), Some(120)]);
         batch.clear();
         assert!(batch.is_empty());
@@ -259,17 +273,80 @@ mod tests {
     #[test]
     fn explicit_source_stamps() {
         let mut batch = Batch::<Samples> {
-            rows: Vec::new(),
+            payloads: Vec::new(),
             stamps: Vec::new(),
             latest: None,
             clock: || panic!("explicit stamps do not consult the kit clock"),
+            stream: PhantomData,
         };
         batch.push_at(1, 100);
         batch.push_at(2, 90);
-        assert_eq!(batch.rows(), &[1, 2]);
-        assert_eq!(batch.stamps, [Some(100), Some(90)]);
+        batch.push_encoded_at(7_u8.encode(), 95);
+        assert_eq!(rows(&batch), [1, 2, 7]);
+        assert_eq!(batch.stamps, [Some(100), Some(90), Some(95)]);
         batch.clock = || Some(80);
         batch.push(3);
-        assert_eq!(batch.stamps, [Some(100), Some(90), Some(100)]);
+        assert_eq!(batch.stamps, [Some(100), Some(90), Some(95), Some(100)]);
+    }
+
+    #[test]
+    fn publication_never_reencodes_rows() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        struct Counted(Arc<AtomicUsize>);
+        impl Message for Counted {
+            const CODEC: &'static str = u8::CODEC;
+            fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_domain::MessageError> {
+                u8::decoding_memory(bytes)
+            }
+            fn encode(&self) -> Vec<u8> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                7_u8.encode()
+            }
+            fn encoded_size(&self) -> usize {
+                panic!("publication must size retained bytes");
+            }
+            fn decode(_: &[u8]) -> Result<Self, harmos_domain::MessageError> {
+                panic!("publication must forward retained bytes");
+            }
+        }
+        struct Stream;
+        impl StreamSpec for Stream {
+            type Row = Counted;
+            const ID: &'static str = "batch.once";
+            const VERSION: u32 = 1;
+            const WINDOW: usize = 8;
+        }
+
+        let encodes = Arc::new(AtomicUsize::new(0));
+        let mut batch = Batch::<Stream> {
+            payloads: Vec::new(),
+            stamps: Vec::new(),
+            latest: None,
+            clock: || None,
+            stream: PhantomData,
+        };
+        batch.push_at(Counted(Arc::clone(&encodes)), 100);
+        batch.push_encoded_at(8_u8.encode(), 90);
+
+        let (outgoing, _receiver) = tokio::sync::mpsc::channel(1);
+        let host = super::Supervisor::new(outgoing, || None);
+        let taken = host
+            .with_publication::<Stream, super::CallError>(batch.payloads(), &batch.stamps, Some("scope"), 0, |request| {
+                let wire = request.encode();
+                let received = harmos_operations::streams::Publish::decode(&wire).unwrap();
+                assert_eq!(received.payload, [7]);
+                assert_eq!(received.following[0].payload, [8]);
+                assert_eq!(received.published_unix_micros, Some(100));
+                assert_eq!(received.following[0].published_delta_micros, Some(-10));
+                assert_eq!(received.context.as_deref(), Some("scope"));
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(taken, 2);
+        assert_eq!(encodes.load(Ordering::Relaxed), 1);
     }
 }

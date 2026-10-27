@@ -213,7 +213,7 @@ async fn storage_trace_handoffs() {
     let directory = tempfile::tempdir().unwrap();
     let backend = harmos_storage::state::file::FileBackend::new(directory.path().to_owned(), history, super::fixture::state_settings());
     let position = backend.open().with_subscriber(dispatch.clone()).await.unwrap();
-    backend.read_snapshot(NonZeroUsize::new(4096).unwrap(), super::memory::read().await).with_subscriber(dispatch.clone()).await.unwrap();
+    backend.read_snapshot(NonZeroUsize::new(4096).unwrap()).with_subscriber(dispatch.clone()).await.unwrap();
     backend.flush(&position).with_subscriber(dispatch.clone()).await.unwrap();
     backend.close().with_subscriber(dispatch.clone()).await.unwrap();
 
@@ -629,16 +629,14 @@ async fn typed_batch_retries() {
     f.data.control.block_write.store(true, Ordering::SeqCst);
     f.data.control.failures.store(1, Ordering::SeqCst);
     let accepted = f.storage.write_records((records).to_vec()).await.unwrap();
-    let admitted = f.storage.status().pending_bytes;
 
-    // A Typed Batch Retains Its Entire Reservation While The Backend Is Blocked.
+    // A Typed Batch Keeps Its Original Data While The Backend Is Blocked.
     let flushing = {
         let storage = f.storage.clone();
         tokio::spawn(async move { storage.flush().await })
     };
     f.data.control.write_entered.notified().await;
     assert_eq!(f.storage.cursor_saved().sequence, 0);
-    assert_eq!(f.storage.status().pending_bytes, admitted);
     f.data.control.block_write.store(false, Ordering::SeqCst);
     f.data.control.write_release.notify_one();
     assert!(flushing.await.unwrap().is_err());
@@ -646,7 +644,6 @@ async fn typed_batch_retries() {
     // A Failed Attempt Leaves The Whole Batch Available At Its Original Cursor.
     assert_eq!(f.storage.cursor_saved().sequence, 0);
     assert_eq!(f.storage.status().pending_batches, 1);
-    assert_eq!(f.storage.status().pending_bytes, admitted);
     assert_eq!(f.storage.flush_until(&accepted).await.unwrap(), accepted);
     assert_eq!(f.data.records.lock().unwrap().len(), 8);
     assert_eq!(f.data.control.write_sizes.lock().unwrap().as_slice(), &[8, 8]);
@@ -709,69 +706,10 @@ async fn schema_decoding_bounded() {
             graph.definitions = vec![Vec::new(); definitions];
             graph.definitions[0] = fields;
             let encoded = serde_json::to_vec(&metadata).unwrap();
-            let admitted = harmos_storage::StorageSchema::decoding_memory_bytes(encoded.len()).unwrap();
             let decoded: harmos_storage::StorageSchema = serde_json::from_slice(&encoded).unwrap();
             assert_eq!(decoded, metadata);
-            assert!(harmos_storage::MemorySize::memory_size(&decoded) <= admitted + std::mem::size_of::<harmos_storage::StorageSchema>());
         }
-        assert!(harmos_storage::StorageSchema::decoding_memory_bytes(usize::MAX).is_none());
-        assert!(harmos_storage::StorageSchema::decoding_memory_bytes(usize::MAX / 36).is_none());
     }
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn schema_capacity_charged() {
-    let mut definitions = Vec::with_capacity(4096);
-    definitions.push(Vec::new());
-    let graph = harmos_storage::schema::graph::Schema { root: 0, definitions };
-    let mut policy = config();
-    policy.request.max_pending_write_bytes = NonZeroUsize::new(4096).unwrap();
-    let f = Fixture::new(policy).await;
-    assert!(matches!(f.storage.write_schema(schema(), graph).await, Err(harmos_storage::Error::ResourceExhausted { .. })));
-    assert_eq!(f.storage.cursor_accepted().sequence, 0);
-    assert!(f.data.schemas.lock().unwrap().is_empty());
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn schema_validation_reserves() {
-    static CHILDREN: std::sync::LazyLock<Vec<Field>> = std::sync::LazyLock::new(|| {
-        (1..=256)
-            .map(|tag| Field {
-                name: Cow::Owned(format!("child-{tag}")),
-                tag,
-                kind: Kind::U64,
-                cardinality: Cardinality::Required,
-            })
-            .collect()
-    });
-    let fields = [Field {
-        name: Cow::Borrowed("parent"),
-        tag: 1,
-        kind: Kind::Message { definition: 1 },
-        cardinality: Cardinality::Required,
-    }];
-    let graph = harmos_storage::schema::graph::Schema {
-        root: 0,
-        definitions: vec![fields.to_vec(), CHILDREN.to_vec()],
-    };
-    let mut policy = config();
-    policy.request.max_pending_write_bytes = NonZeroUsize::new(4096).unwrap();
-    let f = Fixture::new(policy.clone()).await;
-    assert!(matches!(
-        f.storage.write_schema(schema(), graph.clone()).await,
-        Err(harmos_storage::Error::ResourceExhausted { resource: "storage write memory" })
-    ));
-    assert_eq!(f.storage.cursor_accepted().sequence, 0);
-    assert_eq!(f.storage.status().pending_bytes, 0);
-    assert!(f.data.schemas.lock().unwrap().is_empty());
-    f.finish().await;
-    policy.request.max_pending_write_bytes = NonZeroUsize::new(64 * 1024).unwrap();
-    let f = Fixture::new(policy).await;
-    f.storage.write_schema(schema(), graph.clone()).await.unwrap();
-    f.storage.flush().await.unwrap();
-    assert_eq!(f.storage.status().pending_bytes, 0);
     f.finish().await;
 }
 
@@ -803,11 +741,9 @@ async fn raw_reads_retained() {
     let owner = alias.owner();
     drop(page);
     drop(alias);
-    assert!(f.storage.status().read_bytes > 0);
     let retained: &harmos_storage::state::RecoveryPage = std::borrow::Borrow::borrow(owner.as_ref());
     assert_eq!(retained.entries[0].payload.as_ptr(), pointer);
     drop(owner);
-    assert_eq!(f.storage.status().read_bytes, 0);
 
     f.storage
         .write_snapshot(harmos_storage::state::RecoverySnapshot {
@@ -821,9 +757,7 @@ async fn raw_reads_retained() {
     let snapshot = f.storage.read_snapshot(NonZeroUsize::new(4096).unwrap()).await.unwrap().unwrap();
     let alias = snapshot.clone();
     drop(snapshot);
-    assert!(f.storage.status().read_bytes > 0);
     drop(alias);
-    assert_eq!(f.storage.status().read_bytes, 0);
     f.finish().await;
 }
 
@@ -835,15 +769,12 @@ async fn recovery_owner_retained() {
     let pointer = payload.as_ptr() as usize;
     f.recovery.control.retain_recovery.store(true, Ordering::SeqCst);
     f.storage.write_recovery(vec![payload]).await.unwrap();
-    let admitted = f.storage.status().pending_bytes;
     f.storage.flush_recovery().await.unwrap();
     assert_eq!(f.storage.status().pending_batches, 0);
-    assert_eq!(f.storage.status().pending_bytes, admitted);
     let detached = f.recovery.control.retained_recovery.lock().unwrap().take().unwrap();
     assert_eq!(detached.as_slice()[0].payload.as_ptr() as usize, pointer);
     let empty = detached.slice(1..1);
     drop(detached);
-    assert_eq!(f.storage.status().pending_bytes, admitted);
     drop(empty);
     assert_eq!(f.storage.status().pending_bytes, 0);
 
@@ -857,11 +788,9 @@ async fn recovery_owner_retained() {
         payload,
     };
     f.storage.write_snapshot(snapshot).await.unwrap();
-    let admitted = f.storage.status().pending_bytes;
     f.storage.flush_recovery().await.unwrap();
     let detached = f.recovery.control.retained_snapshot.lock().unwrap().take().unwrap();
     assert_eq!(detached.as_slice()[0].payload.as_ptr() as usize, pointer);
-    assert_eq!(f.storage.status().pending_bytes, admitted);
     drop(detached);
     assert_eq!(f.storage.status().pending_bytes, 0);
     f.finish().await;
@@ -891,10 +820,7 @@ async fn retained_observer_traced() {
             let payload = harmos_storage::Message::encode(&value);
             f.storage.write_records(vec![record(&key, &Identifier::new("trace-row").unwrap(), &payload)]).await.unwrap();
             let saved = f.storage.flush().await.unwrap();
-            let session = f.storage.read_session();
-            let memory = session.try_memory(NonZeroUsize::new(1024).unwrap()).unwrap();
-            memory.try_grow_by(128).unwrap();
-            assert!(f.storage.object_receipts_memory(NonZeroUsize::MIN).unwrap() > 0);
+            let session = f.storage.clone();
             let mut reader = session
                 .read_records::<TracedRow>(harmos_storage::RecordRead {
                     at: saved.clone(),
@@ -910,7 +836,7 @@ async fn retained_observer_traced() {
                 .await
                 .unwrap();
             let page = reader.next().await.unwrap().unwrap();
-            let projected = page.try_map(0, |mut rows| Ok::<_, harmos_storage::Error>(rows.pop().unwrap().payload.value)).unwrap();
+            let projected = page.try_map(|mut rows| Ok::<_, harmos_storage::Error>(rows.pop().unwrap().payload.value)).unwrap();
             let peer = projected.clone();
             drop(reader);
             drop(session);
@@ -930,10 +856,7 @@ async fn retained_observer_traced() {
             assert_eq!(f.storage.wait_saved_after(&older).await.unwrap(), saved);
             assert_eq!(projected.as_str(), "private-projection");
             drop(projected);
-            drop(memory);
-            assert!(f.storage.status().read_bytes > 0);
             drop(peer);
-            assert_eq!(f.storage.status().read_bytes, 0);
         }
         .instrument(request)
         .await;
@@ -947,15 +870,7 @@ async fn retained_observer_traced() {
     assert!(observers.iter().any(|span| span.fields["outcome"] == "\"cancelled\""));
     assert!(observers.iter().any(|span| span.fields["outcome"] == "\"completed\""));
     assert!(captured.spans.values().all(|span| span.closed.is_some()));
-    for boundary in [
-        "storage.read_session.new",
-        "storage.read_session.try_memory",
-        "storage.read_session.read_records",
-        "storage.arrow.memory.try_grow_by",
-        "storage.objects.object_receipts_memory",
-    ] {
-        assert!(captured.spans.values().any(|span| span.name == boundary && span.parent.is_some()));
-    }
+    assert!(captured.spans.values().any(|span| span.name == "storage.manager.read_records" && span.parent.is_some()));
     assert!(captured.spans.values().flat_map(|span| span.fields.values()).all(|value| !value.contains("private-")));
     assert!(captured.spans.values().all(|span| !span.fields.contains_key("payload") && !span.fields.contains_key("path")));
 }

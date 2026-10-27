@@ -35,7 +35,7 @@ use crate::operations::OperationDeclaration;
 
 #[derive(Clone)]
 pub struct GrpcBinding {
-    pub(super) operations: Manager,
+    pub(crate) operations: Manager,
     pub(super) entry: Arc<Entry>,
 }
 

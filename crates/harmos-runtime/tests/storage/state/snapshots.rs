@@ -376,7 +376,9 @@ async fn cancelled_snapshot_releases() {
             _ = &mut opening => panic!("snapshot load must wait"),
             _ = store.recovery.control.read_entered.notified() => {}
         }
-        assert!(storage.status().pending_bytes > 0);
+        assert!(store.recovery.control.open.load(Ordering::SeqCst));
+        assert!(store.data.control.open.load(Ordering::SeqCst));
+        assert_eq!(storage.status().pending_bytes, 0);
     }
     closed(&storage, &cleanup).await;
     assert_eq!(storage.status().pending_bytes, 0);
@@ -385,12 +387,19 @@ async fn cancelled_snapshot_releases() {
 }
 
 #[tokio::test]
-async fn snapshot_budget_blocks() {
+async fn snapshot_read_ignores_write_queue_budget() {
     let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = builder(policy(100)).runtime_with_storage(&storage).await.unwrap();
+    runtime.state.commit(deposit(4)).await.unwrap();
+    runtime.stop().await.unwrap();
     let mut config = config();
     config.request.max_pending_write_bytes = NonZeroUsize::new(256 * 1024).unwrap();
     let storage = store.manager(config);
-    assert!(builder(policy(100)).runtime_with_storage(&storage).await.is_err());
+    let runtime = builder(policy(100)).runtime_with_storage(&storage).await.unwrap();
+    assert_eq!(balance(&runtime).await, 4);
+    assert_eq!(storage.status().pending_bytes, 0);
+    runtime.stop().await.unwrap();
     assert!(storage.status().closed);
 }
 

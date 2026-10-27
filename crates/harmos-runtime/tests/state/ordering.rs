@@ -14,9 +14,14 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::task::Poll;
+use std::{
+    borrow::Borrow,
+    sync::{Arc, Weak},
+    task::Poll,
+};
 // Third Party Imports
 use futures_core::Stream;
+use futures_util::StreamExt;
 use support::{Change, Deposit, deposit, runtime};
 // Local Imports
 use crate::state::support;
@@ -30,15 +35,94 @@ use harmos_runtime::{state::Entry, state::Position};
 
 /* === Structs === */
 
+struct OwnedChange {
+    transaction: Change,
+}
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
 
+impl Borrow<Change> for OwnedChange {
+    fn borrow(&self) -> &Change {
+        &self.transaction
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn owned(change: Change) -> (harmos_runtime::operations::Response<Change>, Weak<OwnedChange>) {
+    let owner = Arc::new(OwnedChange { transaction: change });
+    let weak = Arc::downgrade(&owner);
+    (harmos_runtime::operations::Response::from_owner(owner), weak)
+}
+
+#[tokio::test]
+async fn owned_commit_survives_queued_caller_cancellation_and_tail_eviction() {
+    let runtime = support::booted(support::Ledger::default(), |builder| builder.tail(1)).await;
+    let (transaction, owner) = owned(deposit(4));
+    let mut commit = Box::pin(runtime.state.commit_owned(transaction));
+    let queued = std::future::poll_fn(|context| Poll::Ready(commit.as_mut().poll(context))).await;
+    assert!(queued.is_pending());
+    drop(commit);
+    assert!(owner.upgrade().is_some());
+
+    let mut feed = Box::pin(runtime.state.watch::<harmos_runtime::state::Recorded<support::Bank>>(Position::ORIGIN));
+    let entry = feed.next().await.unwrap().unwrap();
+    let harmos_runtime::state::Recorded::Transaction(transaction) = &entry.value else {
+        panic!("expected transaction");
+    };
+    let original = owner.upgrade().unwrap();
+    assert!(std::ptr::eq(transaction.as_ref(), &original.transaction));
+    drop(original);
+    runtime.state.commit(deposit(1)).await.unwrap();
+    assert!(owner.upgrade().is_some());
+
+    drop(entry);
+    drop(feed);
+    assert!(owner.upgrade().is_none());
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn owned_forward_history_survives_undo_and_redo() {
+    let runtime = support::booted(support::Ledger::default(), |builder| builder.tail(1)).await;
+    let journal = runtime.state.as_principal(support::alice());
+    let (transaction, owner) = owned(deposit(4));
+    journal.commit_owned(transaction).await.unwrap();
+    runtime.state.commit(deposit(1)).await.unwrap();
+    assert!(owner.upgrade().is_some());
+
+    journal.undo(support::alice(), harmos_runtime::state::Focus::all()).await.unwrap();
+    assert!(owner.upgrade().is_some());
+    journal.redo(support::alice(), harmos_runtime::state::Focus::all()).await.unwrap();
+    assert!(owner.upgrade().is_some());
+    assert_eq!(support::balance(&runtime, support::HOUSE).await, 5);
+
+    journal.undo(support::alice(), harmos_runtime::state::Focus::all()).await.unwrap();
+    journal.commit(deposit(2)).await.unwrap();
+    assert!(owner.upgrade().is_none());
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn keyed_owned_duplicate_releases_the_unused_owner() {
+    let runtime = runtime().await;
+    let key = harmos_runtime::state::RequestKey::new("owned.duplicate");
+    let (first, original) = owned(deposit(4));
+    let receipt = runtime.state.commit_keyed_owned(key.clone(), first).await.unwrap();
+    let (retry, unused) = owned(deposit(99));
+    let repeated = runtime.state.commit_keyed_owned(key, retry).await.unwrap();
+    assert_eq!(receipt, repeated);
+    assert_eq!(support::balance(&runtime, support::HOUSE).await, 4);
+    assert!(original.upgrade().is_some());
+    assert!(unused.upgrade().is_none());
+    runtime.stop().await.unwrap();
+}
 
 #[tokio::test]
 async fn publish_precedes_receipt() {

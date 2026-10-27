@@ -38,11 +38,26 @@ use harmos_runtime::storage::{ReadLimits, RecoveryPosition, StorageCursor};
 
 /* === Private Functions === */
 
+fn unsupported_header(history: &harmos_runtime::storage::StoreHistory) -> Vec<u8> {
+    use sha2::Digest;
+
+    let value = serde_json::json!({
+        "version": 2,
+        "after": RecoveryPosition {
+            history: history.clone(),
+            sequence: 0,
+        },
+    });
+    let json = serde_json::to_vec(&value).unwrap();
+    let digest = sha2::Sha256::digest(&json);
+    let hex = digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    [b"{\"value\":".as_slice(), &json, b",\"sha256\":\"", hex.as_bytes(), b"\"}\n"].concat()
+}
+
 /* === Tests === */
 
 #[tokio::test]
 async fn checkpoint_survives_reopen() {
-    let memory = super::super::memory::read().await;
     let root = tempfile::tempdir().unwrap();
     let history = crate::storage::history();
     let settings = crate::storage::state_settings();
@@ -75,10 +90,7 @@ async fn checkpoint_survives_reopen() {
 
     let reopened = FileBackend::new(root.path().to_owned(), history, settings);
     assert_eq!(reopened.open().await.unwrap().sequence, 3);
-    assert_eq!(
-        reopened.read_snapshot(std::num::NonZeroUsize::new(1024 * 1024).unwrap(), memory.clone()).await.unwrap(),
-        Some(snapshot.clone())
-    );
+    assert_eq!(reopened.read_snapshot(std::num::NonZeroUsize::new(1024 * 1024).unwrap()).await.unwrap(), Some(snapshot.clone()));
     let through = RecoveryPosition {
         history: snapshot.through.history.clone(),
         sequence: 3,
@@ -91,7 +103,6 @@ async fn checkpoint_survives_reopen() {
                 rows: std::num::NonZeroUsize::new(64).unwrap(),
                 bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap(),
             },
-            memory.clone(),
         )
         .await
         .unwrap();
@@ -133,7 +144,6 @@ async fn corruption_refused_preserved() {
 
 #[tokio::test]
 async fn state_root_exclusive() {
-    let memory = super::super::memory::read().await;
     let root = tempfile::tempdir().unwrap();
     let history = crate::storage::history();
     let settings = crate::storage::state_settings();
@@ -162,7 +172,6 @@ async fn state_root_exclusive() {
                 rows: std::num::NonZeroUsize::new(64).unwrap(),
                 bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap(),
             },
-            memory.clone(),
         )
         .await
         .unwrap();
@@ -176,7 +185,6 @@ async fn state_root_exclusive() {
 
 #[tokio::test]
 async fn limits_bound_records() {
-    let memory = super::super::memory::read().await;
     let history = crate::storage::history();
     let at = |sequence| RecoveryPosition { history: history.clone(), sequence };
     let entry = |sequence, bytes: usize| RecoveryEntry {
@@ -221,12 +229,20 @@ async fn limits_bound_records() {
 
     let reopened = FileBackend::new(root.path().to_owned(), history.clone(), settings);
     assert_eq!(reopened.open().await.unwrap(), at(1));
-    assert_eq!(
-        reopened.read_snapshot(NonZeroUsize::new(checkpoint_bytes as usize).unwrap(), memory.clone()).await.unwrap(),
-        Some(snapshot(3000))
-    );
+    assert_eq!(reopened.read_snapshot(NonZeroUsize::new(checkpoint_bytes as usize).unwrap()).await.unwrap(), Some(snapshot(3000)));
     // A Caller Bound Covers The Snapshot Value, Not The Integrity Envelope.
     let value_bytes = serde_json::to_vec(&snapshot(3000)).unwrap().len();
-    assert_eq!(reopened.read_snapshot(NonZeroUsize::new(value_bytes).unwrap(), memory.clone()).await.unwrap(), Some(snapshot(3000)));
+    assert_eq!(reopened.read_snapshot(NonZeroUsize::new(value_bytes).unwrap()).await.unwrap(), Some(snapshot(3000)));
     reopened.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn unsupported_format_refused() {
+    let root = tempfile::tempdir().unwrap();
+    let history = crate::storage::history();
+    std::fs::write(root.path().join("state.jsonl"), unsupported_header(&history)).unwrap();
+
+    let backend = FileBackend::new(root.path().to_owned(), history, crate::storage::state_settings());
+    let error = backend.open().await.unwrap_err();
+    assert!(error.to_string().contains("fresh state root"), "{error}");
 }
