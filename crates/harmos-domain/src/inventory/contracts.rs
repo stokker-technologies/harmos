@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use crate::model::operations::lifecycle;
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -23,9 +25,7 @@ use serde::{Deserialize, Serialize};
 use crate::PREFIX;
 use crate::catalog::Node;
 use crate::config::SchemaSettings;
-use crate::operations::{
-    Backoff, Contract, Entry, Jitter, OperationPolicy, ReplaySafety, RetryPolicy, Visibility, WireDeclaration, lifecycle,
-};
+use crate::operations::{Backoff, Contract, Entry, Jitter, OperationPolicy, ReplaySafety, RetryPolicy, Visibility, WireDeclaration};
 use crate::plugin::{Grant, Requirement};
 use crate::schema::declaration::Named;
 use crate::schema::graph::Schema;

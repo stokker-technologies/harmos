@@ -28,7 +28,8 @@ use std::sync::Arc;
 use serde::de::DeserializeOwned;
 
 // Local Imports
-use crate::operations::{ServingError, WireTable, lifecycle};
+use crate::operations::{ServingError, WireTable};
+use harmos_domain::model::operations::lifecycle;
 
 /* === Constants === */
 

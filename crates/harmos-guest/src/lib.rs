@@ -16,6 +16,7 @@ pub mod kit;
 
 /* === Re-Exports === */
 
+pub use harmos_domain::model;
 pub use harmos_operations as builtins;
 
 pub use error::{Error, Result};

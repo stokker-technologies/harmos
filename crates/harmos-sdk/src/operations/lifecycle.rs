@@ -7,51 +7,26 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-pub use harmos_domain::operations::lifecycle::*;
-
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
+use super::{OperationContext, access::AccessError};
+use harmos_domain::model::operations::lifecycle::Action;
+use std::{future::Future, pin::Pin, sync::Arc};
 
 /* === Type Aliases === */
 
+pub type Transition<'a> = Pin<Box<dyn Future<Output = Result<(), AccessError>> + Send + 'a>>;
+
 /* === Structs === */
 
-/* === Enums === */
+pub struct LifecycleAccess(pub Arc<dyn PluginLifecycle>);
 
 /* === Traits === */
 
-/* === Implementations === */
-
-/* === Public Functions === */
-
-// Bind A Plugin's Two Lifecycle Handlers Under Its Own Lifecycle Policy.
-pub fn bind<P, I, S>(
-    table: &mut crate::operations::WireTable, dependencies: crate::Dependencies,
-) -> Result<(), crate::operations::ServingError>
-where
-    P: Policy,
-    I: crate::Operation<Request = <Initialize as crate::OperationDeclaration>::Request, Response = (), Endpoints = ()>,
-    S: crate::Operation<Request = <Shutdown as crate::OperationDeclaration>::Request, Response = (), Endpoints = ()>,
-{
-    let initialize = Descriptor::of_initialize::<P>()?;
-    let shutdown = Descriptor::of_shutdown::<P>()?;
-    table.install_lifecycle::<Initialize, I>(dependencies.clone(), initialize)?;
-    table.install_lifecycle::<Shutdown, S>(dependencies, shutdown)
+pub trait PluginLifecycle: Send + Sync {
+    fn begin(self: Arc<Self>, action: Action) -> Box<dyn LifecycleInstance>;
 }
-
-/* === Private Functions === */
-
-/* === Tests === */
+pub trait LifecycleInstance: Send {
+    fn run<'a>(&'a mut self, context: OperationContext, config: &'a [u8], generation: &'a [u8], assignments: &'a [u8]) -> Transition<'a>;
+    fn cleanup(&mut self) -> Transition<'_>;
+}

@@ -211,7 +211,7 @@ impl PluginLifecycleAuthority<'_> {
         self.backend_kind
     }
 
-    pub fn declaration(&self) -> Option<&harmos_domain::operations::lifecycle::Descriptor> {
+    pub fn declaration(&self) -> Option<&harmos_operations::lifecycle::Descriptor> {
         let pair = self.scope.lifecycle()?;
         Some(match self.phase {
             PluginLifecyclePhase::Initialize => &pair[0],

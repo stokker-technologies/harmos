@@ -135,13 +135,13 @@ enum Choice {
 impl harmos_domain::listeners::Listener for Selections {
     type Row = Selection;
     const CALLBACK: &'static str = "allocation.selections";
-    const POLICY: harmos_domain::operations::OperationPolicy = harmos_domain::operations::lifecycle::POLICY;
+    const POLICY: harmos_domain::operations::OperationPolicy = harmos_domain::model::operations::lifecycle::POLICY;
 }
 
 impl harmos_domain::listeners::Listener for Leaves {
     type Row = Leaf;
     const CALLBACK: &'static str = "allocation.leaves";
-    const POLICY: harmos_domain::operations::OperationPolicy = harmos_domain::operations::lifecycle::POLICY;
+    const POLICY: harmos_domain::operations::OperationPolicy = harmos_domain::model::operations::lifecycle::POLICY;
 }
 
 // A Pass-Through Allocator Measures Only This Test Thread's Encoding Buffers

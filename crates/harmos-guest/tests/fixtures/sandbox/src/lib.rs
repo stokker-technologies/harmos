@@ -18,6 +18,8 @@ pub mod contract;
 
 /* === Imports === */
 
+use harmos_guest::builtins::{lifecycle, streams};
+
 // Standard Library Imports
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -26,7 +28,7 @@ use std::time::Duration;
 
 // Local Imports
 use contract::{Counts, Decline, Echo, Echoed, Fail, ProviderEcho, Read, Spin, Stage, Value, Wait};
-use harmos_domain::operations::{FailureKind, OperationPolicy, RetryPolicy, lifecycle, streams};
+use harmos_domain::operations::{FailureKind, OperationPolicy, RetryPolicy};
 use harmos_guest::operations::{ServingError, WireTable};
 use harmos_guest::{Context, Host, OperationRefusal, PublishError};
 

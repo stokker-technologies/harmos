@@ -71,7 +71,7 @@ impl Entry {
 
     pub(in crate::operations) fn retirement_control(&self) -> bool {
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-        if self.sdk == Some(harmos_domain::operations::lifecycle::Action::Shutdown) {
+        if self.sdk == Some(harmos_operations::lifecycle::Action::Shutdown) {
             return true;
         }
         false
@@ -88,7 +88,7 @@ impl Entry {
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(in crate::operations) fn admitted_shutdown(&self, control: &Arc<Instance>) -> bool {
-        self.sdk == Some(harmos_domain::operations::lifecycle::Action::Shutdown)
+        self.sdk == Some(harmos_operations::lifecycle::Action::Shutdown)
             && self.active.load(Ordering::Acquire)
             && !control.is_settled()
             && self.pending.lock().expect("operation settlement lock is healthy").values().any(|original| Arc::ptr_eq(original, control))
@@ -119,7 +119,7 @@ impl Entry {
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         if let Some(scope) = &self.plugin {
             if let Some(action) = self.sdk {
-                use harmos_domain::operations::lifecycle::Action;
+                use harmos_operations::lifecycle::Action;
                 return match action {
                     Action::Initialize if scope.is_closed() => Err(Error::Closing { domain: "SDK initialization" }),
                     Action::Initialize if scope.has_committed() => {

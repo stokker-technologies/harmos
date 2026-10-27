@@ -9,8 +9,6 @@
 
 /* === Modules === */
 
-pub mod lifecycle;
-
 mod catalog;
 mod context;
 mod contract;

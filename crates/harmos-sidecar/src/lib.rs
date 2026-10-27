@@ -25,6 +25,7 @@ mod wire;
 
 /* === Re-Exports === */
 
+pub use harmos_domain::model;
 pub use harmos_operations as builtins;
 
 #[cfg(feature = "transport")]

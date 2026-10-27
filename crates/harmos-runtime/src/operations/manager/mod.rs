@@ -154,7 +154,7 @@ pub(super) struct Entry {
     plugin: Option<PluginScope>,
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-    pub(super) sdk: Option<harmos_domain::operations::lifecycle::Action>,
+    pub(super) sdk: Option<harmos_operations::lifecycle::Action>,
 }
 
 pub(super) struct Submission {

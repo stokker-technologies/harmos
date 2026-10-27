@@ -32,8 +32,8 @@ use wasmtime::{Config, Engine, Store};
 // Local Imports
 use harmos::guest::capabilities::Refusal as BridgeRefusal;
 use harmos_domain::inventory::{Declaration, Facility};
-use harmos_domain::operations::lifecycle::InitializeRequest;
 use harmos_domain::{Message, Refusal};
+use harmos_operations::lifecycle::InitializeRequest;
 use harmos_operations::lifecycle::InstanceState;
 use harmos_sdk::operations::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
 use sandbox::{Echo, Echoed};
@@ -234,7 +234,7 @@ impl Session {
             ])
             .unwrap(),
         };
-        self.call::<harmos_domain::operations::lifecycle::Initialize>(1, request.encode()).await.map(|_| ())
+        self.call::<harmos_operations::lifecycle::Initialize>(1, request.encode()).await.map(|_| ())
     }
 }
 
@@ -331,7 +331,7 @@ async fn shutdown_current_context() {
     let closing = Stub { provider: VecDeque::from([initial, refusal]), ..Stub::default() };
     let mut session = instantiate(&support::sandbox(), closing).await;
     session.initialize(r#""dependencies""#).await.expect("the admitted dependency call is accepted");
-    session.call::<harmos_domain::operations::lifecycle::Shutdown>(2, ().encode()).await.expect("shutdown observes the host refusal");
+    session.call::<harmos_operations::lifecycle::Shutdown>(2, ().encode()).await.expect("shutdown observes the host refusal");
     assert_eq!(session.store.into_data().calls, [Call::Provider { say: "initialize".into() }, Call::Provider { say: "cleanup".into() },]);
 }
 

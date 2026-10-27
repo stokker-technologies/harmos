@@ -22,7 +22,8 @@ use std::sync::{Arc, Mutex, Weak};
 
 // Local Imports
 use super::{Attachment, Context as PluginContext, Error, Plugin};
-use crate::operations::{Contract, Dependencies, Operation, OperationContext, OperationDeclaration, ServingError, WireTable, lifecycle};
+use crate::operations::{Contract, OperationContext, ServingError, WireTable};
+use harmos_domain::model::operations::lifecycle;
 
 /* === Constants === */
 
@@ -43,14 +44,10 @@ pub struct Owner<P: Plugin> {
     retirement: Mutex<Retirement<P>>,
 }
 
-struct Initializing<P: Plugin> {
+struct LifecycleInvocation<P: Plugin> {
     owner: Arc<Owner<P>>,
     state: Option<State<P>>,
-}
-
-struct ShuttingDown<P: Plugin> {
-    owner: Arc<Owner<P>>,
-    state: Option<State<P>>,
+    action: lifecycle::Action,
 }
 
 struct Retirement<P: Plugin> {
@@ -123,13 +120,6 @@ impl<P: Plugin> Owner<P> {
             observers: observers.into(),
             retirement: Mutex::new(Retirement { state: None, active: false, finished: false }),
         });
-        {
-            let mut bindings = table.lock().map_err(|_| Error::Poisoned)?;
-            let mut dependencies = Dependencies::new();
-            dependencies.insert(Arc::clone(&owner)).map_err(|error| Error::Dependency(Arc::new(error)))?;
-            lifecycle::bind::<P, Initializing<P>, ShuttingDown<P>>(&mut bindings, dependencies)
-                .map_err(|error| Error::Serving(Arc::new(error)))?;
-        }
         Ok((owner, table))
     }
 
@@ -200,17 +190,17 @@ impl<P: Plugin> Drop for RetirementLoan<P> {
 }
 
 impl<P: Plugin> Owner<P> {
-    fn prepare_initialize(&self, request: &<lifecycle::Initialize as OperationDeclaration>::Request) -> Result<State<P>, Error<P>> {
-        let generation_context = if request.generation_context.is_empty() {
+    fn prepare_initialize(&self, config_json: &[u8], generation_context: &[u8], assignments: &[u8]) -> Result<State<P>, Error<P>> {
+        let generation_context = if generation_context.is_empty() {
             None
         } else {
-            let token: [u8; 32] = request.generation_context.as_slice().try_into().map_err(|_| Error::GenerationContext)?;
+            let token: [u8; 32] = generation_context.try_into().map_err(|_| Error::GenerationContext)?;
             if token == [0; 32] {
                 return Err(Error::GenerationContext);
             }
             Some(token)
         };
-        let config = crate::decode_config(&request.config_json).map_err(|error| Error::Configuration(Arc::new(error)))?;
+        let config = crate::decode_config(config_json).map_err(|error| Error::Configuration(Arc::new(error)))?;
         let plugin = P::prepare(config).map_err(|error| Error::Plugin(Arc::new(error)))?;
         let mut slot = self.slot.lock().map_err(|_| Error::Poisoned)?;
         if slot.phase != Phase::Empty {
@@ -219,7 +209,7 @@ impl<P: Plugin> Owner<P> {
         slot.phase = Phase::Initializing;
         let mut state = self.state(Some(plugin), lifecycle::Action::Initialize);
         state.generation_context = generation_context;
-        state.assignments = request.assignments.clone();
+        state.assignments = assignments.to_vec();
         Ok(state)
     }
 
@@ -302,77 +292,52 @@ impl<P: Plugin> Owner<P> {
     }
 }
 
-impl<P: Plugin> Operation for Initializing<P> {
-    type Request = <lifecycle::Initialize as OperationDeclaration>::Request;
-    type Response = ();
-    type Error = Error<P>;
-    type Endpoints = ();
-
-    async fn initialize(context: OperationContext) -> Result<Self, Error<P>> {
-        let owner = context.dependency::<Owner<P>>().map_err(|error| Error::Dependency(Arc::new(error)))?;
-        Ok(Self { owner, state: None })
-    }
-
-    async fn run(
-        &mut self, context: OperationContext, request: &mut <lifecycle::Initialize as OperationDeclaration>::Request,
-        _endpoints: &mut Self::Endpoints,
-    ) -> Result<crate::operations::Response<()>, Error<P>> {
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            if self.state.is_none() {
-                self.state = Some(self.owner.prepare_initialize(request)?);
-            }
-            let carrier = context.dependency::<P::Context>().map_err(|error| Error::Dependency(Arc::new(error)))?;
-            self.owner.initialize(self.state.as_mut().ok_or(Error::Phase)?, &carrier).await
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Error<P>> {
-        match self.state.as_mut() {
-            Some(state) => state.finalize().await,
-            None => Ok(()),
-        }
+impl<P: Plugin> crate::operations::lifecycle::PluginLifecycle for Owner<P> {
+    fn begin(self: Arc<Self>, action: lifecycle::Action) -> Box<dyn crate::operations::lifecycle::LifecycleInstance> {
+        Box::new(LifecycleInvocation { owner: self, state: None, action })
     }
 }
-
-impl<P: Plugin> Operation for ShuttingDown<P> {
-    type Request = <lifecycle::Shutdown as OperationDeclaration>::Request;
-    type Response = ();
-    type Error = Error<P>;
-    type Endpoints = ();
-
-    async fn initialize(context: OperationContext) -> Result<Self, Error<P>> {
-        let owner = context.dependency::<Owner<P>>().map_err(|error| Error::Dependency(Arc::new(error)))?;
-        Ok(Self { owner, state: None })
-    }
-
-    async fn run(
-        &mut self, context: OperationContext, _request: &mut <lifecycle::Shutdown as OperationDeclaration>::Request,
-        _endpoints: &mut Self::Endpoints,
-    ) -> Result<crate::operations::Response<()>, Error<P>> {
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            if self.state.is_none() {
-                self.state = Some(self.owner.prepare_shutdown()?);
+impl<P: Plugin> crate::operations::lifecycle::LifecycleInstance for LifecycleInvocation<P> {
+    fn run<'a>(
+        &'a mut self, context: OperationContext, config: &'a [u8], generation: &'a [u8], assignments: &'a [u8],
+    ) -> crate::operations::lifecycle::Transition<'a> {
+        Box::pin(async move {
+            let result: Result<(), Error<P>> = async {
+                match self.action {
+                    lifecycle::Action::Initialize => {
+                        if self.state.is_none() {
+                            self.state = Some(self.owner.prepare_initialize(config, generation, assignments)?);
+                        }
+                        let carrier = context.dependency::<P::Context>().map_err(|error| Error::Dependency(Arc::new(error)))?;
+                        self.owner.initialize(self.state.as_mut().ok_or(Error::Phase)?, &carrier).await
+                    }
+                    lifecycle::Action::Shutdown => {
+                        if self.state.is_none() {
+                            self.state = Some(self.owner.prepare_shutdown()?);
+                        }
+                        let state = self.state.as_mut().ok_or(Error::Phase)?;
+                        if state.work.is_none() && state.result.is_none() {
+                            let carrier = context.dependency::<P::Context>().map_err(|error| Error::Dependency(Arc::new(error)))?;
+                            state.context =
+                                Some(state.generation_context.map_or_else(|| (*carrier).clone(), |token| carrier.with_generation(token)));
+                            state.start_shutdown()?;
+                        }
+                        state.finish().await?;
+                        state.result.as_ref().ok_or(Error::Phase)?.clone()
+                    }
+                }
             }
-            let state = self.state.as_mut().ok_or(Error::Phase)?;
-            if state.work.is_none() && state.result.is_none() {
-                let carrier = context.dependency::<P::Context>().map_err(|error| Error::Dependency(Arc::new(error)))?;
-                state.context = Some(state.generation_context.map_or_else(|| (*carrier).clone(), |token| carrier.with_generation(token)));
-                state.start_shutdown()?;
-            }
-            state.finish().await?;
-            state.result.as_ref().ok_or(Error::Phase)?.clone()
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+            .await;
+            result.map_err(Into::into)
+        })
     }
-
-    async fn cleanup(&mut self) -> Result<(), Error<P>> {
-        match self.state.as_mut() {
-            Some(state) => state.finalize().await,
-            None => Ok(()),
-        }
+    fn cleanup(&mut self) -> crate::operations::lifecycle::Transition<'_> {
+        Box::pin(async {
+            match self.state.as_mut() {
+                Some(state) => state.finalize().await.map_err(Into::into),
+                None => Ok(()),
+            }
+        })
     }
 }
 

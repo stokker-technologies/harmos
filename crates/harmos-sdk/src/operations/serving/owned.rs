@@ -125,17 +125,20 @@ impl WireTable {
         Ok(())
     }
 
-    pub(crate) fn install_lifecycle<D, T>(
-        &mut self, dependencies: Dependencies, descriptor: crate::operations::lifecycle::Descriptor,
+    pub fn install_lifecycle<D, T>(
+        &mut self, dependencies: Dependencies, descriptor: harmos_domain::model::operations::lifecycle::Descriptor,
     ) -> Result<(), ServingError>
     where
-        D: crate::operations::lifecycle::SdkOperation,
+        D: crate::OperationDeclaration,
         T: Operation<Request = D::Request, Response = D::Response, Endpoints = ()>,
     {
         if self.closed || self.ordinary_closed {
             return Err(ServingError::Closing);
         }
-        if descriptor.action() != D::ACTION {
+        if descriptor.action().id() != D::ID
+            || descriptor.contract().fingerprint()
+                != (harmos_domain::operations::Entry::of::<D>().fingerprint)().map_err(|_| ServingError::Catalog)?
+        {
             return Err(ServingError::Catalog);
         }
         self.bind_owned_contract::<D, T>(

@@ -76,7 +76,7 @@ mod tests {
 
 mod sdk {
     use super::super::protocol::{Echo, EchoOperation, TransportPlugin};
-    use harmos_domain::operations::lifecycle::{Initialize, InitializeRequest, Shutdown};
+    use harmos_operations::lifecycle::{Initialize, InitializeRequest, Shutdown};
     use harmos_sidecar::operations::{OperationDeclaration, WIRE_METHOD, WireAnswer, WireCommand};
     use harmos_sidecar::transport::{Connection, Receiver, Sender};
     use harmos_sidecar::{Attach, Frame, Message, PluginCatalog, PluginNative};

@@ -132,8 +132,8 @@ where
         harmos_domain::inventory::publications::validate_match(P::STREAMS, &declaration.streams).map_err(refusal)?;
         let contracts = &declaration.contracts;
         let sdk = [
-            harmos_domain::operations::lifecycle::Descriptor::of_initialize::<P>().map_err(refusal)?,
-            harmos_domain::operations::lifecycle::Descriptor::of_shutdown::<P>().map_err(refusal)?,
+            harmos_operations::lifecycle::Descriptor::of_initialize::<P>().map_err(refusal)?,
+            harmos_operations::lifecycle::Descriptor::of_shutdown::<P>().map_err(refusal)?,
         ];
         if declaration.id != P::ID || contracts.provides != provides || contracts.requires != required || contracts.lifecycle != sdk {
             return Err(refusal("SDK manifest differs from authored contracts"));
@@ -144,7 +144,8 @@ where
         if declaration.sections != P::CONTRIBUTIONS {
             return Err(refusal("contribution sections differ from authored selection"));
         }
-        let (_, table) = Owner::<P>::new(assigned_owner, provides, capacity).map_err(refusal)?;
+        let (owner, table) = Owner::<P>::new(assigned_owner, provides, capacity).map_err(refusal)?;
+        harmos_operations::lifecycle::bind(owner, &table).map_err(refusal)?;
         let assignments = harmos_sdk::operations::OperationAssignments::default();
         *active = Some(Instance {
             owner: TypeId::of::<P>(),

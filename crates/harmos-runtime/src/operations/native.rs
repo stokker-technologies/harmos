@@ -54,7 +54,7 @@ struct NativeState {
     invocation: Option<u64>,
     operation: Identifier,
     fingerprint: [u8; 32],
-    sdk: Option<harmos_domain::operations::lifecycle::Action>,
+    sdk: Option<harmos_operations::lifecycle::Action>,
     acknowledged: bool,
     _capacity: Option<OwnedSemaphorePermit>,
 }
@@ -582,7 +582,7 @@ impl Native {
         match self.endpoint.phase(command).await {
             Ok(answer) => {
                 acknowledged(answer)?;
-                if state.acknowledged && state.sdk == Some(harmos_domain::operations::lifecycle::Action::Initialize) {
+                if state.acknowledged && state.sdk == Some(harmos_operations::lifecycle::Action::Initialize) {
                     self.endpoint.acknowledge_initialize();
                 }
                 Ok(())

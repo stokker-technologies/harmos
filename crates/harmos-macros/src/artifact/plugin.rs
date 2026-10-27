@@ -328,8 +328,8 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     let entry = quote!(#inventory::publications::Entry);
     let lifecycle = quote! {
         [
-            <#name as #harmos::operations::lifecycle::Policy>::INITIALIZATION_POLICY,
-            <#name as #harmos::operations::lifecycle::Policy>::SHUTDOWN_POLICY,
+            <#name as #harmos::model::operations::lifecycle::Policy>::INITIALIZATION_POLICY,
+            <#name as #harmos::model::operations::lifecycle::Policy>::SHUTDOWN_POLICY,
         ]
     };
     let restart_name = format_ident!("__HARMOS_PLUGIN_RESTART_{symbol}");

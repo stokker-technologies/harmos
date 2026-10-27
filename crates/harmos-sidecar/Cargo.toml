@@ -43,7 +43,7 @@ streaming = ["harmos-sdk/streaming"]
 
 [dependencies]
 # Local
-harmos-operations = { workspace = true }
+harmos-operations = { workspace = true, features = ["runtime"] }
 harmos-domain = { workspace = true }
 harmos-sdk = { workspace = true }
 

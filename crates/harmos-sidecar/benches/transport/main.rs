@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 use tokio::io::{duplex, split};
 // Local Imports
 use capacity::{Case, MIB, Observation, Settings, WARMUP_MIB};
-use harmos_domain::operations::lifecycle::{Initialize, InitializeRequest, Shutdown};
+use harmos_operations::lifecycle::{Initialize, InitializeRequest, Shutdown};
 use harmos_sidecar::Message;
 use harmos_sidecar::operations::{OperationDeclaration, WIRE_METHOD, WireAnswer, WireCommand};
 use harmos_sidecar::transport;

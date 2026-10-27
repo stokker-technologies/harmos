@@ -50,7 +50,7 @@ pub struct PluginScope {
     observe_contract: Arc<Option<crate::operations::Contract>>,
     streams: Arc<[harmos_domain::StreamDeclaration]>,
     listeners: Arc<[harmos_domain::listeners::Definition]>,
-    lifecycle: Arc<Option<[harmos_domain::operations::lifecycle::Descriptor; 2]>>,
+    lifecycle: Arc<Option<[harmos_operations::lifecycle::Descriptor; 2]>>,
     activation: Arc<Mutex<Option<Weak<crate::streams::Activation>>>>,
 
     // The live native call surface of this generation, answering its host publications.
@@ -159,12 +159,12 @@ impl PluginScope {
         scope
     }
 
-    pub(super) fn with_lifecycle(mut self, pair: Option<&[harmos_domain::operations::lifecycle::Descriptor; 2]>) -> Self {
+    pub(super) fn with_lifecycle(mut self, pair: Option<&[harmos_operations::lifecycle::Descriptor; 2]>) -> Self {
         self.lifecycle = Arc::new(pair.cloned());
         self
     }
 
-    pub fn lifecycle(&self) -> Option<&[harmos_domain::operations::lifecycle::Descriptor; 2]> {
+    pub fn lifecycle(&self) -> Option<&[harmos_operations::lifecycle::Descriptor; 2]> {
         self.lifecycle.as_ref().as_ref()
     }
 

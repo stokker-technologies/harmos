@@ -19,8 +19,9 @@
 
 // Local Imports
 use harmos_domain::inventory::{contracts, listeners, observers, publications};
-use harmos_domain::operations::lifecycle::Policy;
-use harmos_sdk::operations::{OperationPolicy, RetryPolicy, ServingError, WireTable, lifecycle};
+use harmos_operations::lifecycle;
+use harmos_operations::lifecycle::Policy;
+use harmos_sdk::operations::{OperationPolicy, RetryPolicy, ServingError, WireTable};
 use harmos_sdk::plugin::{Declared, Plugin};
 use harmos_sidecar::{Refusal, Registrar, RegistrationError, Supervisor};
 

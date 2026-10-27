@@ -137,7 +137,7 @@ pub trait Attach: Clone + Send + Sync + 'static {
         Ok(None)
     }
 
-    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_domain::model::operations::lifecycle::Descriptor; 2]>> {
         Ok(None)
     }
 
@@ -342,7 +342,7 @@ impl Attach for Executable {
         Ok(Some(self.declaration.contracts.requires.clone()))
     }
 
-    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_domain::model::operations::lifecycle::Descriptor; 2]>> {
         Ok(Some(self.declaration.contracts.lifecycle.clone()))
     }
 

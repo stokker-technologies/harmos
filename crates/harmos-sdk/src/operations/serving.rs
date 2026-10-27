@@ -216,7 +216,7 @@ pub enum ServingError {
     StreamPhase,
 
     #[error(transparent)]
-    Lifecycle(#[from] crate::operations::lifecycle::Error),
+    Lifecycle(#[from] harmos_domain::model::operations::lifecycle::Error),
 
     #[error(transparent)]
     Contract(#[from] ContractError),

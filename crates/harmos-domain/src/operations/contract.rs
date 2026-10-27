@@ -219,8 +219,10 @@ impl Contract {
     }
 
     // Only The Closed SDK Action Can Construct Reserved Metadata
-    pub(crate) fn lifecycle(action: crate::operations::lifecycle::Action, policy: super::OperationPolicy) -> Result<Self, ContractError> {
-        use crate::operations::lifecycle::{self, Action, Initialize, Shutdown};
+    pub(crate) fn lifecycle(
+        action: crate::model::operations::lifecycle::Action, policy: super::OperationPolicy,
+    ) -> Result<Self, ContractError> {
+        use crate::model::operations::lifecycle::{self, Action};
         policy.validate().map_err(crate::Error::from)?;
         let cache = match action {
             Action::Initialize => &INITIALIZE_CONTRACT,
@@ -229,10 +231,33 @@ impl Contract {
         let template = if let Some(contract) = cache.get() {
             contract
         } else {
-            let contract = match action {
-                Action::Initialize => Self::reserved::<Initialize>(lifecycle::POLICY)?,
-                Action::Shutdown => Self::reserved::<Shutdown>(lifecycle::POLICY)?,
+            let request = action.request();
+            let request_schema = Schema::from_declaration(request, &SchemaSettings::default()).map_err(|source| ContractError::Schema {
+                id: action.id().into(),
+                direction: "request",
+                source: source.into(),
+            })?;
+            let request_root = request_schema.root().map_err(|source| ContractError::Schema {
+                id: action.id().into(),
+                direction: "request",
+                source: source.into(),
+            })?;
+            let request_fingerprint = crate::schema::identity::fingerprint(request_root, Codec::Postcard.id())
+                .map_err(|source| ContractError::Schema { id: action.id().into(), direction: "request", source: source.into() })?;
+            let fingerprint =
+                crate::schema::identity::operation(action.id(), request_fingerprint, <() as crate::Portable>::fingerprint(), None, None);
+            let operation = OperationDefinition {
+                id: crate::Identifier::new(action.id()).map_err(crate::Error::from)?,
+                description: String::new(),
+                policy: lifecycle::POLICY,
+                visibility: super::Visibility::Private,
+                replay: super::ReplaySafety::Unknown,
+                fingerprint,
             };
+            let schema =
+                Schema::from_declarations(&[("request", request), ("response", <() as Described>::DEFINITION)], &SchemaSettings::default())
+                    .map_err(|source| ContractError::Schema { id: action.id().into(), direction: "contract", source: source.into() })?;
+            let contract = Self::canonical(operation, fingerprint, Codec::Postcard, schema)?;
             cache.get_or_init(|| contract)
         };
         let mut contract = template.clone();
@@ -343,12 +368,12 @@ impl TryFrom<DecodedContract> for Contract {
         }
 
         // Read Only Exact SDK Metadata; Ordinary Declaration Admission Still Rejects These Names.
-        use crate::operations::lifecycle::{Action, Descriptor, Initialize, Shutdown};
+        use crate::model::operations::lifecycle::{Action, Descriptor};
         let refused = || crate::Error::ReservedOperation { id: decoded.operation.id.to_string() }.into();
         let expected = match decoded.operation.id.as_str() {
             crate::observers::Control::ID => crate::observers::contract()?,
-            Initialize::ID => Descriptor::new(Action::Initialize, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
-            Shutdown::ID => Descriptor::new(Action::Shutdown, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
+            "harmos_initialize" => Descriptor::new(Action::Initialize, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
+            "harmos_shutdown" => Descriptor::new(Action::Shutdown, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
             _ => return Err(refused()),
         };
         let identity_matches =
@@ -422,7 +447,7 @@ fn append(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operations::lifecycle::{self, Action, Descriptor};
+    use crate::model::operations::lifecycle::{self, Action, Descriptor};
     use crate::operations::{Backoff, Jitter, RetryPolicy};
     use serde_json::json;
 
