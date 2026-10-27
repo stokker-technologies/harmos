@@ -23,7 +23,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::operations::{Handler, RetryPolicy, Visibility};
+use harmos_runtime::operations::{Handler, RetryPolicy};
 
 /* === Constants === */
 
@@ -36,7 +36,7 @@ use harmos_runtime::operations::{Handler, RetryPolicy, Visibility};
 pub struct Model;
 
 #[harmos_runtime::operation(id = "benchmark_echo",  response = Payload,
-    visibility = Visibility::Shared,
+    visibility = Shared,
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30), attempt_timeout: Duration::from_secs(30),
         retries: RetryPolicy::Never,

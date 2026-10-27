@@ -22,7 +22,9 @@ use super::POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::StorageInfo;
 use harmos_domain::model::storage::codec::product;
-use harmos_domain::operations::{ReplaySafety, Visibility};
+use harmos_domain::operations::ReplaySafety;
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
@@ -35,11 +37,11 @@ product!(StorageStatus {});
 /* === Structs === */
 
 // Read The Storage Frontiers, Mutation Window And File Batch Size.
-#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>], codec = manual,
+#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
     id = "storage.status",
     response = StorageInfo,
     policy = POLICY,
-    visibility = Visibility::Host,
+    visibility = Host,
     replay = ReplaySafety::Idempotent)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StorageStatus {}

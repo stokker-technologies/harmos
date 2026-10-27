@@ -22,7 +22,9 @@ use super::POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::{FileProgress, FileSession, MutationId};
-use harmos_domain::operations::{ReplaySafety, Visibility};
+use harmos_domain::operations::ReplaySafety;
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
@@ -38,11 +40,11 @@ product!(AbandonFile {
 /* === Structs === */
 
 // Abandon A Producing File Session, Exactly Once Per Mutation.
-#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>], codec = manual,
+#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
     id = "storage.abandon_file",
     response = FileProgress,
     policy = POLICY,
-    visibility = Visibility::Host,
+    visibility = Host,
     replay = ReplaySafety::Idempotent)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AbandonFile {
@@ -82,12 +84,11 @@ mod execution {
         type Error = Error;
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.abandon_file", level = "trace", skip_all)]
-        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileProgress>> {
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileProgress>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let request = &mut self;
 
             let result: ::core::result::Result<FileProgress, Self::Error> =
-                async move { storage.abandon_file_once(&request.mutation, &request.session).await.map_err(Into::into) }.await;
+                async move { storage.abandon_file_once(&self.mutation, &self.session).await.map_err(Into::into) }.await;
             result.map(::core::convert::Into::into)
         }
 

@@ -22,7 +22,9 @@ use super::POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::{MutationId, SchemaInput, StorageCursor};
-use harmos_domain::operations::{ReplaySafety, Visibility};
+use harmos_domain::operations::ReplaySafety;
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
@@ -38,11 +40,11 @@ product!(WriteSchema {
 /* === Structs === */
 
 // Register One Payload Schema, Exactly Once Per Mutation.
-#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>], codec = manual,
+#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
     id = "storage.write_schema",
     response = StorageCursor,
     policy = POLICY,
-    visibility = Visibility::Host,
+    visibility = Host,
     replay = ReplaySafety::Idempotent)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WriteSchema {
@@ -82,15 +84,11 @@ mod execution {
     impl Operation for super::WriteSchema {
         type Error = Error;
 
-        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<StorageCursor>> {
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<StorageCursor>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let request = &mut self;
 
             let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
-                storage
-                    .write_schema_once(&request.mutation, request.schema.key.clone(), request.schema.graph_owner())
-                    .await
-                    .map_err(Into::into)
+                storage.write_schema_once(&self.mutation, self.schema.key.clone(), self.schema.graph_owner()).await.map_err(Into::into)
             }
             .await;
             result.map(::core::convert::Into::into)

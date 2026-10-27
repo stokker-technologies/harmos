@@ -14,13 +14,25 @@
 /* === Imports === */
 
 // Standard Library Imports
+#[cfg(feature = "runtime")]
+use std::{num::NonZeroUsize, sync::Arc};
 
 // Third Party Imports
+#[cfg(feature = "runtime")]
+use serde::Serialize;
 
 // Local Imports
+#[cfg(feature = "runtime")]
+use crate::{Error, Operation, Response};
 use harmos_domain::model::storage::codec::{Bytes, Code, Id, Index, Optional, Text, coded, product};
 use harmos_domain::plugin::Grant;
 use harmos_domain::{Identifier, MemorySize};
+#[cfg(feature = "runtime")]
+use harmos_sdk::operations::access::DiscoveryAccess;
+#[cfg(feature = "runtime")]
+use harmos_storage::{
+    ErasedCatalog, IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection,
+};
 
 /* === Constants === */
 
@@ -45,14 +57,14 @@ coded!(CatalogKind { Operations, Schemas, Streams, Objects });
 #[harmos::operation(
     harmos_path = crate,
     resources = [
-        Option<std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>>,
-        harmos_sdk::operations::access::DiscoveryAccess,
+        Option<Arc<StorageManager<ErasedCatalog>>>,
+        DiscoveryAccess,
     ],
     codec = manual,
     id = "host.catalog",
     response = CatalogPage,
     policy = super::POLICY,
-    visibility = harmos_domain::operations::Visibility::Shared,
+    visibility = Shared,
     grant = Catalog::required_grant,
     grpc(package = "harmos.host.v1", service = "Host", method = "Catalog"),
 )]
@@ -125,52 +137,42 @@ impl MemorySize for CatalogPage {
 /* === Tests === */
 
 #[cfg(feature = "runtime")]
-use {
-    crate::{Error, Operation, Response},
-    harmos_storage::{
-        ErasedCatalog, IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection,
-    },
-    serde::Serialize,
-    std::num::NonZeroUsize,
-};
-#[cfg(feature = "runtime")]
 type Result<T> = std::result::Result<T, Error>;
 #[cfg(feature = "runtime")]
 impl Operation for Catalog {
     type Error = Error;
 
-    async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<Response<CatalogPage>> {
+    async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<Response<CatalogPage>> {
         let storage = context.resource::<Option<std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>>>();
         let access = context.resource::<harmos_sdk::operations::access::DiscoveryAccess>();
-        let request = &mut self;
 
         let host = access;
 
-        let page = match request.kind {
+        let page = match self.kind {
             CatalogKind::Operations => {
-                let (rows, bytes) = request.limits()?;
-                let (entries, next) = host.0.discover(request.after.as_deref(), rows, bytes).map_err(Error::Access)?;
+                let (rows, bytes) = self.limits()?;
+                let (entries, next) = host.0.discover(self.after.as_deref(), rows, bytes).map_err(Error::Access)?;
                 CatalogPage { entries, next }
             }
             CatalogKind::Schemas => {
-                let schema = request.schema.clone();
+                let schema = self.schema.clone();
                 stored::<StorageSchema>(
                     storage.as_deref().as_ref().ok_or(Error::NotReady { domain: "catalog storage" })?,
                     &SchemaSelection { schema: None },
-                    request,
+                    &self,
                     |entry| schema.as_ref().is_none_or(|schema| schema == &entry.key.id),
                 )
                 .await?
             }
             CatalogKind::Streams | CatalogKind::Objects => {
                 let selection = IdentitySelection {
-                    kind: if request.kind == CatalogKind::Streams { IdentityKind::Streams } else { IdentityKind::Objects },
-                    schema: request.schema.clone(),
+                    kind: if self.kind == CatalogKind::Streams { IdentityKind::Streams } else { IdentityKind::Objects },
+                    schema: self.schema.clone(),
                 };
                 stored::<StoredIdentity>(
                     storage.as_deref().as_ref().ok_or(Error::NotReady { domain: "catalog storage" })?,
                     &selection,
-                    request,
+                    &self,
                     |_| true,
                 )
                 .await?

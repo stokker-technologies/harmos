@@ -29,7 +29,7 @@ use super::{
     Compute, ComputeCall, Failed, Lanes, Operations, Owner, Parent, ParentCall, ParentOwner, Request, Response, Slow, SlowCall, State,
     request, runtime,
 };
-use harmos_runtime::operations::{FailureKind, OperationDeclaration, PluginRegistration, Visibility, WireDeclaration};
+use harmos_runtime::operations::{FailureKind, OperationDeclaration, PluginRegistration, WireDeclaration};
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginManager, PluginScope, PluginTransition, Requirement, Router,
@@ -48,7 +48,7 @@ type Backends = PluginBackend<Resources, Resources, Resources>;
 
 #[harmos_runtime::operation(id = "fixture_selected_provider",
     response = String,
-    visibility = Visibility::Shared,
+    visibility = Shared,
     policy = super::cases::EchoDeclaration::POLICY
 )]
 struct SelectedDeclaration {
@@ -66,7 +66,7 @@ struct SelectedHost {
 // Shares The Compute Request, Which Stays In Process.
 #[harmos_runtime::operation(codec = manual, id = "test_shared",
     response = Response,
-    visibility = Visibility::Shared,
+    visibility = Shared,
     policy = Compute::POLICY,
     key = |request: &Shared| Compute::key(&request.0),
 )]

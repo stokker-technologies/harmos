@@ -72,7 +72,7 @@ struct EmbeddedReading {
 }
 
 #[harmos_runtime::operation(id = "client_forward",  response = Echoed, policy = super::sandbox::EchoOperation::POLICY,
-    visibility = harmos_runtime::operations::Visibility::Shared)]
+    visibility = Shared)]
 #[derive(Clone)]
 struct ForwardDeclaration {
     say: String,

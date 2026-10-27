@@ -71,7 +71,7 @@ use std::time::Duration;
 
 // Local Imports
 use harmos_runtime::Message;
-use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable};
+use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireTable};
 use harmos_runtime::sidecar::{Frame, Notice, SidecarError, Supervised};
 use harmos_runtime::{
     Runtime, services::ServiceContext, services::ServiceExit, services::ServiceStatus, state::FactSource, state::Position,
@@ -103,7 +103,7 @@ const GAUGE_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         retries: RetryPolicy::Never,
     },
     response = Amplified,
-    visibility = Visibility::Shared,
+    visibility = Shared,
 )]
 #[derive(Clone, PartialEq)]
 struct AmplifyDeclaration {
@@ -123,7 +123,7 @@ struct Amplified {
         retries: RetryPolicy::Never,
     },
     response = (),
-    visibility = Visibility::Host,
+    visibility = Host,
 )]
 #[derive(Clone, PartialEq, Eq)]
 struct SampleDeclaration {
@@ -137,7 +137,7 @@ struct SampleDeclaration {
         retries: RetryPolicy::Never,
     },
     response = (),
-    visibility = Visibility::Shared,
+    visibility = Shared,
 )]
 #[derive(Clone, PartialEq)]
 struct EmitDeclaration {
@@ -151,7 +151,7 @@ struct EmitDeclaration {
         retries: RetryPolicy::Never,
     },
     response = (),
-    visibility = Visibility::Shared,
+    visibility = Shared,
 )]
 #[derive(Clone, PartialEq)]
 struct PublishPulseDeclaration {
@@ -165,7 +165,7 @@ struct PublishPulseDeclaration {
         retries: RetryPolicy::Never,
     },
     response = (),
-    visibility = Visibility::Shared,
+    visibility = Shared,
 )]
 #[derive(Clone, PartialEq)]
 struct CollapseDeclaration {}
@@ -177,7 +177,7 @@ struct CollapseDeclaration {}
         retries: RetryPolicy::Never,
     },
     response = (),
-    visibility = Visibility::Shared,
+    visibility = Shared,
 )]
 #[derive(Clone, PartialEq)]
 struct FinishDeclaration {
@@ -191,7 +191,7 @@ struct FinishDeclaration {
         retries: RetryPolicy::Never,
     },
     response = BudgetedReply,
-    visibility = Visibility::Shared,
+    visibility = Shared,
 )]
 #[derive(Clone, PartialEq)]
 struct BudgetedRouteDeclaration {

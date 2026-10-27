@@ -18,7 +18,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::operations::{OperationPolicy, RetryPolicy, Visibility};
+use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 
 /* === Constants === */
 
@@ -43,7 +43,7 @@ pub struct Step {
 #[harmos_runtime::operation(id = "process_graph_read",
     policy = POLICY,
     response = Step,
-    visibility = Visibility::Shared,
+    visibility = Shared,
 )]
 #[derive(Clone, PartialEq)]
 pub struct ReadDeclaration {
@@ -53,7 +53,7 @@ pub struct ReadDeclaration {
 #[harmos_runtime::operation(id = "process_graph_probe",
     policy = POLICY,
     response = Step,
-    visibility = Visibility::Host,
+    visibility = Host,
 )]
 #[derive(Clone, PartialEq)]
 pub struct ProbeDeclaration {

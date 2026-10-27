@@ -20,9 +20,7 @@ use std::time::Duration;
 
 // Local Imports
 use super::{Failed, Lanes, Owner, runtime};
-use harmos_runtime::operations::{
-    Backoff, CacheKey, FailureKind, Handler, Jitter, OperationDeclaration, OperationPolicy, RetryPolicy, Visibility,
-};
+use harmos_runtime::operations::{Backoff, CacheKey, FailureKind, Handler, Jitter, OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Message, Refusal};
 
 /* === Constants === */
@@ -127,7 +125,7 @@ macro_rules! scripted_codec {
 
 #[harmos_runtime::operation(id = "fixture_echo",
     response = String,
-    visibility = Visibility::Shared,
+    visibility = Shared,
     policy = ECHO_POLICY,
     key = |request: &EchoDeclaration| (request.value == "retry")
         .then(|| CacheKey::new(request.value.as_bytes().to_vec()).unwrap()),
@@ -147,7 +145,7 @@ pub(super) struct PrivateEchoDeclaration {
 
 #[harmos_runtime::operation(id = "fixture_nested_echo",
     response = String,
-    visibility = Visibility::Shared,
+    visibility = Shared,
     policy = NESTED_POLICY
 )]
 #[derive(Debug)]

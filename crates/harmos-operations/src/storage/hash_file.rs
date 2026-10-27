@@ -24,7 +24,9 @@ use super::IO_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::files::{ByteRange, FileHash, FileSource};
-use harmos_domain::operations::{ReplaySafety, Visibility};
+use harmos_domain::operations::ReplaySafety;
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
@@ -39,11 +41,11 @@ product!(HashFile {
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>], codec = manual,
+#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
     id = "storage.hash_file",
     response = FileHash,
     policy = IO_POLICY,
-    visibility = Visibility::Shared,
+    visibility = Shared,
     replay = ReplaySafety::Idempotent,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "HashFile"),
     grant = Self::grant_for)]
@@ -91,14 +93,13 @@ mod execution {
         type Error = Error;
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.hash_file", level = "trace", skip_all)]
-        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileHash>> {
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileHash>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let request = &mut self;
 
             Ok(storage
                 .hash_file(harmos_storage::FileRead {
-                    source: request.source.clone(),
-                    range: request.range,
+                    source: self.source.clone(),
+                    range: self.range,
                 })
                 .await?
                 .into())

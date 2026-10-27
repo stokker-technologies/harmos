@@ -22,7 +22,7 @@ use std::time::Duration;
 
 // Local Imports
 use harmos_domain::StreamSpec;
-use harmos_domain::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy, Visibility};
+use harmos_domain::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
 
 /* === Constants === */
 
@@ -43,7 +43,7 @@ const PROBE: OperationPolicy = OperationPolicy {
     id = "probe_echo",
     response = Echoed,
     policy = PROBE,
-    visibility = Visibility::Shared,
+    visibility = Shared,
 )]
 #[derive(Clone, PartialEq)]
 
@@ -99,7 +99,7 @@ pub struct Stage {
         timeout: Duration::from_millis(100),
         attempt_timeout: Duration::from_millis(100),
         retries: RetryPolicy::Never,
-    }, visibility = Visibility::Shared)]
+    }, visibility = Shared)]
 #[derive(Clone, PartialEq)]
 
 pub struct ProviderEchoOperation {

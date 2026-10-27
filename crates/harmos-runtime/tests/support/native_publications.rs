@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 // Local Imports
-use harmos_runtime::operations::{Handler, OperationDeclaration, OperationPolicy, RetryPolicy, Visibility, WireTable};
+use harmos_runtime::operations::{Handler, OperationDeclaration, OperationPolicy, RetryPolicy, WireTable};
 use harmos_runtime::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
 use harmos_runtime::sidecar::{Attach, Notice, Refusal, Supervised, Supervisor};
 use harmos_runtime::{Message, Runtime, services::ServiceContext, services::ServiceStatus};
@@ -62,7 +62,7 @@ pub struct Sample {
 #[harmos_runtime::operation(id = "publication_publish",
     policy = POLICY,
     response = Timings,
-    visibility = Visibility::Shared,
+    visibility = Shared,
 )]
 pub struct PublishDeclaration {
     pub rows: u32,

@@ -22,7 +22,9 @@ use super::POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::{MutationId, StagedFile};
-use harmos_domain::operations::{ReplaySafety, Visibility};
+use harmos_domain::operations::ReplaySafety;
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
@@ -38,11 +40,11 @@ product!(DeleteFile {
 /* === Structs === */
 
 // Delete A Staged File, Exactly Once Per Mutation.
-#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>], codec = manual,
+#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
     id = "storage.delete_file",
     response = StagedFile,
     policy = POLICY,
-    visibility = Visibility::Host,
+    visibility = Host,
     replay = ReplaySafety::Idempotent)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeleteFile {
@@ -82,12 +84,11 @@ mod execution {
     impl Operation for super::DeleteFile {
         type Error = Error;
 
-        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<StagedFile>> {
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<StagedFile>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let request = &mut self;
 
             let result: ::core::result::Result<StagedFile, Self::Error> =
-                async move { storage.delete_file_once(&request.mutation, &request.file).await.map_err(Into::into) }.await;
+                async move { storage.delete_file_once(&self.mutation, &self.file).await.map_err(Into::into) }.await;
             result.map(::core::convert::Into::into)
         }
 

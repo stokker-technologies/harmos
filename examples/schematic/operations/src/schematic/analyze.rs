@@ -13,14 +13,13 @@
 
 /* === Imports === */
 
-#[cfg(feature = "runtime")]
-use harmos::MemorySize;
-
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
+#[cfg(feature = "runtime")]
+use harmos::MemorySize;
 
 /* === Constants === */
 
@@ -41,7 +40,7 @@ pub struct Finding {
     response = Analysis,
     output = Finding,
     policy = crate::POLICY,
-    visibility = harmos::operations::Visibility::Shared,
+    visibility = Shared,
     replay = harmos::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "Analyze"),
 )]
@@ -66,14 +65,10 @@ pub struct Analysis {
 impl harmos::Operation for AnalyzeSchematic {
     type Error = crate::Error;
 
-    async fn run(
-        mut self, ctx: harmos::Context<'_, Self>,
-    ) -> Result<harmos::Response<<Self as harmos::OperationDeclaration>::Response>, Self::Error> {
-        let request = &mut self;
-
+    async fn run(self, ctx: harmos::Context<'_, Self>) -> Result<harmos::Response<Analysis>, Self::Error> {
         let findings = [
-            format!("{} symbols", request.schematic.symbols.len()),
-            format!("{} connections", request.schematic.connections.len()),
+            format!("{} symbols", self.schematic.symbols.len()),
+            format!("{} connections", self.schematic.connections.len()),
             "Analysis complete".to_owned(),
         ];
         for text in findings {

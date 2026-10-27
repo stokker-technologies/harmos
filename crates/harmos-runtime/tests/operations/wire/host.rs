@@ -24,7 +24,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use super::cases::Text;
 use harmos_domain::inventory::contracts::Required;
 use harmos_domain::plugin::Grant;
-use harmos_runtime::operations::{Handler, OperationDeclaration, PluginRegistration, Visibility, WireDeclaration};
+use harmos_runtime::operations::{Handler, OperationDeclaration, PluginRegistration, WireDeclaration};
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition, Requirement, Router,
@@ -43,7 +43,7 @@ type Backends = PluginBackend<Resources, Resources, Resources>;
 
 #[harmos_runtime::operation(id = "fixture_host_control",
     response = String,
-    visibility = Visibility::Host,
+    visibility = Host,
     policy = super::cases::EchoDeclaration::POLICY
 )]
 struct ControlDeclaration {

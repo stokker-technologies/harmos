@@ -26,7 +26,7 @@ use super::operations::{Lanes, Managed};
 use harmos_domain::plugin::Grant;
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::Invocation;
-use harmos_runtime::operations::{Handler, OperationPolicy, RetryPolicy, Visibility, WireTable};
+use harmos_runtime::operations::{Handler, OperationPolicy, RetryPolicy, WireTable};
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -75,7 +75,7 @@ struct Fetch {
 #[harmos_runtime::operation(id = "gated_remote",
     policy = POLICY,
     response = Fetch,
-    visibility = Visibility::Host,
+    visibility = Host,
     grpc(package = "fixture.gated.v1", service = "Remote", method = "Fetch"),
     grant = |request: &RemoteFetchDeclaration| scoped("gated_remote", request.value),
 )]
@@ -91,7 +91,7 @@ struct RemoteFetching {
 #[harmos_runtime::operation(id = "gated_local",
     policy = POLICY,
     response = Fetch,
-    visibility = Visibility::Host,
+    visibility = Host,
     grpc(package = "fixture.gated.v1", service = "Local", method = "Fetch"),
     grant = |request: &LocalFetchDeclaration| scoped("gated_local", request.value),
 )]

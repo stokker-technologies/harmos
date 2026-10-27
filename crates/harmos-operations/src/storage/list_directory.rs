@@ -20,7 +20,9 @@ use super::IO_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::{DirectoryCompletion, DirectoryEntry, DirectorySelection};
-use harmos_domain::operations::{ReplaySafety, Visibility};
+use harmos_domain::operations::ReplaySafety;
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
@@ -32,12 +34,12 @@ product!(ListDirectory { selection: Nested<DirectorySelection> => 1 });
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>], codec = manual,
+#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
     id = "storage.list_directory",
     response = DirectoryCompletion,
     policy = IO_POLICY,
     output = DirectoryEntry,
-    visibility = Visibility::Shared,
+    visibility = Shared,
     replay = ReplaySafety::Idempotent,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "ListDirectory"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -73,12 +75,11 @@ mod execution {
         type Error = Error;
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.list_directory", level = "trace", skip_all)]
-        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<Response<DirectoryCompletion>> {
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<Response<DirectoryCompletion>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let request = &mut self;
             let output = context.streams();
 
-            let mut reader = storage.list_directory(request.selection.clone()).await?;
+            let mut reader = storage.list_directory(self.selection.clone()).await?;
             while let Some(item) = reader.next().await? {
                 let response = Response::from_owner(item.owner());
                 tokio::time::timeout(crate::storage::IO_TIMEOUT, output.send_owned(response))

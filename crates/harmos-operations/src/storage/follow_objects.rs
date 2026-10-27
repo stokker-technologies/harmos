@@ -22,7 +22,8 @@ use super::STREAM_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, Optional, product};
 use harmos_domain::model::storage::{ObjectEntry, ObjectSelection, StorageCursor};
-use harmos_domain::operations::Visibility;
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
@@ -37,12 +38,12 @@ product!(FollowObjects {
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>], codec = manual,
+#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
     id = "storage.follow_objects",
     response = StorageCursor,
     policy = STREAM_POLICY,
     output = ObjectEntry,
-    visibility = Visibility::Host)]
+    visibility = Host)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowObjects {
     pub after: Option<StorageCursor>,
@@ -81,18 +82,17 @@ mod execution {
     impl Operation for super::FollowObjects {
         type Error = Error;
 
-        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<StorageCursor>> {
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<StorageCursor>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let request = &mut self;
             let output = context.streams();
 
-            if !request.selection.follows_revisions() {
+            if !self.selection.follows_revisions() {
                 return Err(Error::InvalidInput {
                     field: "storage follow",
                     reason: "following delivers every object revision",
                 });
             }
-            let mut follower = storage.follow::<ObjectEntry>(request.after.as_ref(), request.selection.clone()).await?;
+            let mut follower = storage.follow::<ObjectEntry>(self.after.as_ref(), self.selection.clone()).await?;
             loop {
                 let page = follower.next().await?;
                 for entry in page.entries() {

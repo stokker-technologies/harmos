@@ -32,7 +32,7 @@ struct WireClient;
 #[harmos_runtime::operation(harmos_path = harmos_runtime,
     id = "run",
     response = String,
-    visibility = Visibility::Shared,
+    visibility = Shared,
     policy = Run::<1, 100, false>::POLICY,
     grpc(package = "fixture.embedded.v1", service = "Client", method = "Run"),
 )]

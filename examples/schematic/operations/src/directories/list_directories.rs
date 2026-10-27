@@ -31,7 +31,7 @@
     id = "schematic_list_directories",
     response = Directories,
     policy = crate::POLICY,
-    visibility = harmos::operations::Visibility::Shared,
+    visibility = Shared,
     grpc(package = "schematic.v1", service = "Schematic", method = "ListDirectories"),
 )]
 #[derive(Clone, Debug, PartialEq)]

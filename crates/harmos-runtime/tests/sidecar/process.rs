@@ -28,7 +28,7 @@ use std::time::Duration;
 use super::{HostLanes, assembly, operations, service_status};
 use crate::sidecar::support::Bank;
 use crate::sidecar::witness::Witness;
-use harmos_runtime::operations::{Handler, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable};
+use harmos_runtime::operations::{Handler, OperationPolicy, RestartPolicy, RetryPolicy, WireTable};
 use harmos_runtime::sidecar::{Notice, Refusal, Supervised, Supervisor};
 use harmos_runtime::{Runtime, services::ServiceContext, services::ServiceStatus};
 
@@ -51,7 +51,7 @@ const ABANDON: u64 = u64::MAX;
 
 macro_rules! operation {
     ($name:ident, $id:literal, $visibility:ident) => {
-        #[harmos_runtime::operation(id = $id, response = Blob, policy = POLICY, visibility = Visibility::$visibility)]
+        #[harmos_runtime::operation(id = $id, response = Blob, policy = POLICY, visibility = $visibility)]
         #[derive(Clone)]
         pub struct $name {
             pub id: u64,

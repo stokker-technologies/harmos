@@ -14,6 +14,9 @@
 /* === Imports === */
 
 #[cfg(feature = "runtime")]
+use harmos_sdk::operations::instances::InstanceAccess;
+
+#[cfg(feature = "runtime")]
 use crate::{Error, Operation, Response};
 use harmos_domain::operations::instance::Id;
 
@@ -27,12 +30,12 @@ use harmos_domain::operations::instance::Id;
 
 #[harmos::operation(
     harmos_path = crate,
-    resources = [harmos_sdk::operations::instances::InstanceAccess],
+    resources = [InstanceAccess],
     id = "host.operations.watch",
     response = super::InstanceState,
     output = super::InstanceState,
     policy = super::WATCH_POLICY,
-    visibility = harmos_domain::operations::Visibility::Shared,
+    visibility = Shared,
     grpc(package = "harmos.host.v1", service = "Operations", method = "Watch"),
 )]
 #[derive(Clone, Default, PartialEq)]
@@ -56,15 +59,11 @@ impl Watch {
 impl Operation for Watch {
     type Error = Error;
 
-    async fn run(
-        mut self, context: harmos_sdk::Context<'_, Self>,
-    ) -> Result<Response<<Self as harmos_domain::OperationDeclaration>::Response>, Error> {
+    async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<Response<super::InstanceState>, Error> {
         let access = context.resource::<harmos_sdk::operations::instances::InstanceAccess>();
-        let request = &mut self;
         let output = context.streams();
 
-        let access = access;
-        let instance = access.0.owned(Id::new(request.instance)).ok_or(Error::UnknownInstance(request.instance))?;
+        let instance = access.0.owned(Id::new(self.instance)).ok_or(Error::UnknownInstance(self.instance))?;
         use harmos_domain::MemorySize;
         let mut changes = instance.subscribe();
         drop(instance);

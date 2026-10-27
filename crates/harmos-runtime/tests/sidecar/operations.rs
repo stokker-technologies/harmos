@@ -34,7 +34,7 @@ use super::assembly;
 use crate::sidecar::support::Bank;
 use harmos_runtime::operations::Host as _;
 use harmos_runtime::operations::{
-    Declarations, Handler, OperationDeclaration, OperationDefinition as Definition, OperationPolicy, RetryPolicy, Visibility,
+    Declarations, Handler, OperationDeclaration, OperationDefinition as Definition, OperationPolicy, RetryPolicy,
 };
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginLifecycleAuthority,
@@ -123,7 +123,7 @@ struct Endpoint {
     },
     response = (),
     description = "Reads a device",
-    visibility = Visibility::Shared,
+    visibility = Shared,
     grpc(package = "fixture.v1", service = "Native", method = "Read"),
 )]
 struct ReadDeclaration {}

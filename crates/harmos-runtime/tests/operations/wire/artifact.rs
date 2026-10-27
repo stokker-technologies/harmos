@@ -22,7 +22,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::operations::{Backoff, Declarations, OperationDeclaration, OperationPolicy, ReplaySafety, RetryPolicy, Visibility};
+use harmos_runtime::operations::{Backoff, Declarations, OperationDeclaration, OperationPolicy, ReplaySafety, RetryPolicy};
 
 /* === Constants === */
 
@@ -79,7 +79,7 @@ inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest:
 #[harmos_runtime::operation(id = "fixture_selected",
     response = Response,
     description = "SelectedDeclaration \"operation\" Русский",
-    visibility = Visibility::Shared,
+    visibility = Shared,
     replay = ReplaySafety::Deduplicated,
     policy = OperationPolicy {
         timeout: Duration::from_secs(2),

@@ -31,7 +31,7 @@
     id = "schematic_validate",
     response = Validation,
     policy = crate::POLICY,
-    visibility = harmos::operations::Visibility::Shared,
+    visibility = Shared,
     replay = harmos::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "Validate"),
 )]
@@ -56,12 +56,8 @@ pub struct Validation {
 impl harmos::Operation for ValidateSchematic {
     type Error = crate::Error;
 
-    async fn run(
-        mut self, _: harmos::Context<'_, Self>,
-    ) -> Result<harmos::Response<<Self as harmos::OperationDeclaration>::Response>, Self::Error> {
-        let request = &mut self;
-
-        let diagnostics = request.schematic.diagnostics();
+    async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<Validation>, Self::Error> {
+        let diagnostics = self.schematic.diagnostics();
         Ok(Validation { diagnostics }.into())
     }
 }

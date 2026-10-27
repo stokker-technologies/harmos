@@ -23,7 +23,11 @@ use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::files::FileSource;
 use harmos_domain::model::storage::{ByteRange, FileBatch, FileCompletion};
-use harmos_domain::operations::{ReplaySafety, Visibility};
+use harmos_domain::operations::ReplaySafety;
+#[cfg(feature = "runtime")]
+use harmos_sdk::operations::access::GrantAccess;
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
@@ -41,13 +45,13 @@ product!(ReadFile {
 // Read A Bounded Byte Range Of A Stored Or Local File.
 #[harmos::operation(
     harmos_path = crate,
-    resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess],
+    resources = [StorageManager<ErasedCatalog>, GrantAccess],
     codec = manual,
     id = "storage.read_file",
     response = FileCompletion,
     policy = IO_POLICY,
     output = FileBatch,
-    visibility = Visibility::Shared,
+    visibility = Shared,
     replay = ReplaySafety::Idempotent,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "ReadFile"),
     grant = Self::grant_for,
@@ -94,22 +98,21 @@ mod execution {
         type Error = Error;
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.read_file", level = "trace", skip_all)]
-        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileCompletion>> {
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileCompletion>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
             let grants = context.resource::<harmos_sdk::operations::access::GrantAccess>();
-            let request = &mut self;
             let output = context.streams();
 
             let host = grants;
             let ctx = &host.0;
-            let grant = request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(ReadFile::ID, scope));
+            let grant = self.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(ReadFile::ID, scope));
             if let Some(grant) = &grant {
                 ctx.admit(grant).map_err(Error::Access)?;
             }
             let mut reader = storage
                 .read_file(harmos_storage::FileRead {
-                    source: request.source.clone(),
-                    range: request.range,
+                    source: self.source.clone(),
+                    range: self.range,
                 })
                 .await?;
             while let Some(batch) = reader.next().await? {

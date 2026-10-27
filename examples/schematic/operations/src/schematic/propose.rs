@@ -31,7 +31,7 @@
     id = "schematic_route",
     response = Route,
     policy = crate::POLICY,
-    visibility = harmos::operations::Visibility::Shared,
+    visibility = Shared,
     replay = harmos::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "ProposeRoute"),
 )]
@@ -57,13 +57,9 @@ pub struct Route {
 impl harmos::Operation for ProposeRoute {
     type Error = crate::Error;
 
-    async fn run(
-        mut self, _: harmos::Context<'_, Self>,
-    ) -> Result<harmos::Response<<Self as harmos::OperationDeclaration>::Response>, Self::Error> {
-        let request = &mut self;
-
-        let corner = schematic_domain::model::Point { x: request.to.x, y: request.from.y };
-        let mut points = vec![request.from.clone(), corner, request.to.clone()];
+    async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<Route>, Self::Error> {
+        let corner = schematic_domain::model::Point { x: self.to.x, y: self.from.y };
+        let mut points = vec![self.from.clone(), corner, self.to.clone()];
         points.dedup();
         Ok(Route { points }.into())
     }

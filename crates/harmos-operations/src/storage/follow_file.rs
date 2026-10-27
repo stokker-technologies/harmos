@@ -22,7 +22,10 @@ use super::IO_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::files::{FileCompletion, FileEvent, FileSource, FollowStart};
-use harmos_domain::operations::Visibility;
+#[cfg(feature = "runtime")]
+use harmos_sdk::operations::access::GrantAccess;
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
@@ -39,13 +42,13 @@ product!(FollowFile {
 
 #[harmos::operation(
     harmos_path = crate,
-    resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess],
+    resources = [StorageManager<ErasedCatalog>, GrantAccess],
     codec = manual,
     id = "storage.follow_file",
     response = FileCompletion,
     policy = IO_POLICY,
     output = FileEvent,
-    visibility = Visibility::Shared,
+    visibility = Shared,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "FollowFile"),
     grant = Self::grant_for,
 )]
@@ -95,22 +98,21 @@ mod execution {
         type Error = Error;
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.follow_file", level = "trace", skip_all)]
-        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileCompletion>> {
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileCompletion>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
             let grants = context.resource::<harmos_sdk::operations::access::GrantAccess>();
-            let request = &mut self;
             let output = context.streams();
 
             let host = grants;
             let ctx = &host.0;
-            let grant = request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(FollowFile::ID, scope));
+            let grant = self.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(FollowFile::ID, scope));
             if let Some(grant) = &grant {
                 ctx.admit(grant).map_err(Error::Access)?;
             }
             let mut follower = storage
                 .follow_file(harmos_storage::FileFollow {
-                    source: request.source.clone(),
-                    start: request.start,
+                    source: self.source.clone(),
+                    start: self.start,
                 })
                 .await?;
             while let Some(event) = follower.next().await? {

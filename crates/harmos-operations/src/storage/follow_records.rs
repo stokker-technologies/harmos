@@ -22,6 +22,8 @@ use harmos_domain::model::storage::{RecordSelection, StorageCursor, StoredRecord
 use harmos_domain::schema::declaration::{Field, Kind};
 use harmos_domain::schema::{Cardinality, Described};
 use harmos_domain::{MemorySize, MessageError};
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
@@ -36,12 +38,12 @@ product!(FollowBoundaries {
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>], codec = manual,
+#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
     id = "storage.follow_records",
     response = StorageCursor,
     policy = super::STREAM_POLICY,
     output = Followed,
-    visibility = harmos_domain::operations::Visibility::Shared,
+    visibility = Shared,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "FollowRecords"),
     grant = Self::grant_for)]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -199,13 +201,12 @@ mod execution {
     impl Operation for super::FollowRecords {
         type Error = Error;
 
-        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<StorageCursor>> {
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<StorageCursor>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let request = &mut self;
             let output = context.streams();
 
-            harmos_storage::query::Source::Records(request.selection.clone()).validate()?;
-            let mut follower = storage.follow::<StoredRecord>(request.after.as_ref(), request.selection.clone()).await?;
+            harmos_storage::query::Source::Records(self.selection.clone()).validate()?;
+            let mut follower = storage.follow::<StoredRecord>(self.after.as_ref(), self.selection.clone()).await?;
             let first = Followed::Boundaries(FollowBoundaries {
                 saved: follower.saved_boundary().clone(),
                 accepted: follower.accepted_boundary().clone(),

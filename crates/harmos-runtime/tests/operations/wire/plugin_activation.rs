@@ -92,7 +92,7 @@ async fn callbacks_guard_admission() {
         drop(bytes);
 
         #[harmos_runtime::operation(response = u32, id = "fixture_echo",
-            visibility = Visibility::Shared, policy = super::super::cases::EchoDeclaration::POLICY)]
+            visibility = Shared, policy = super::super::cases::EchoDeclaration::POLICY)]
         struct Changed {
             pub value: String,
         }

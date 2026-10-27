@@ -22,7 +22,11 @@ use super::IO_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::{FileBatch, FileMetadata, FileReference};
-use harmos_domain::operations::{ReplaySafety, Visibility};
+use harmos_domain::operations::ReplaySafety;
+#[cfg(feature = "runtime")]
+use harmos_sdk::operations::access::GrantAccess;
+#[cfg(feature = "runtime")]
+use harmos_storage::{ErasedCatalog, StorageManager};
 
 /* === Constants === */
 
@@ -39,13 +43,13 @@ product!(WriteFile {
 // Write One Finished File From Streamed Batches.
 #[harmos::operation(
     harmos_path = crate,
-    resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess],
+    resources = [StorageManager<ErasedCatalog>, GrantAccess],
     codec = manual,
     id = "storage.write_file",
     response = FileReference,
     policy = IO_POLICY,
     input = FileBatch,
-    visibility = Visibility::Shared,
+    visibility = Shared,
     replay = ReplaySafety::Unknown,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "WriteFile"),
     grant = Self::grant_for,
@@ -87,18 +91,17 @@ mod execution {
     impl Operation for super::WriteFile {
         type Error = Error;
 
-        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileReference>> {
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileReference>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
             let grants = context.resource::<harmos_sdk::operations::access::GrantAccess>();
-            let request = &mut self;
             let input = context.streams();
 
             let host = grants;
             let ctx = &host.0;
-            let grant = harmos_domain::plugin::Grant::of(WriteFile::ID, request.metadata.id.as_str().to_owned());
+            let grant = harmos_domain::plugin::Grant::of(WriteFile::ID, self.metadata.id.as_str().to_owned());
             ctx.admit(&grant).map_err(Error::Access)?;
             storage.retry_transient_persistence();
-            let mut file = storage.create_file(request.metadata.clone()).await?;
+            let mut file = storage.create_file(self.metadata.clone()).await?;
 
             let mut offset = 0u64;
             while let Some(batch) = input.recv().await {
