@@ -52,7 +52,7 @@ def wire(target: Path, alpha: Path, beta: Path) -> None:
     encoded = sys.stdin.buffer.read()
     value = None
     for operation in _operations(package):
-        if operation.id.startswith("fixture."):
+        if operation.id.startswith("fixture_"):
             continue
         value = operation.request.FromString(encoded)
         assert value.text == "line\n∞"
@@ -75,11 +75,10 @@ def descriptors(target: Path, alpha: Path, beta: Path) -> None:
     }
     for operation in operations:
         assert issubclass(operation.request, Message)
-        if operation.id.startswith("fixture."):
+        if operation.id.startswith("fixture_"):
             assert operation.request is operation.response
         else:
-            # The Operation Is Its Own Request; Its Payload Response Is A Distinct
-            # Message Of The Same Shape
+            # The Request And Response Are Distinct Messages Of The Same Shape
             assert operation.request is not operation.response
             request = [field.name for field in operation.request.DESCRIPTOR.fields]
             response = [field.name for field in operation.response.DESCRIPTOR.fields]

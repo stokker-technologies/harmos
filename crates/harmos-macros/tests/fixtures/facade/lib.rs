@@ -16,7 +16,7 @@ pub mod __harmos {
     };
     #[cfg(feature = "runtime")]
     pub use harmos::{Dependencies, Operation, OperationContext, RegistrationBatch, Response};
-    pub use harmos::{catalog, guest, listeners, operations, plugin, schema, sidecar, streams};
+    pub use harmos::{builtins, catalog, guest, listeners, model, operations, plugin, schema, sidecar, streams};
 }
 
 /* === Re-Exports === */

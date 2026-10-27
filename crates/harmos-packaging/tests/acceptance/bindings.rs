@@ -333,7 +333,7 @@ fn export_refuses_invalid() {
         cardinality: Cardinality::Variant,
         kind: Kind::Message { definition: 1 },
     });
-    let collision = contract(&contracts[0], "fixture.collision", "Collision", collision);
+    let collision = contract(&contracts[0], "fixture_collision", "Collision", collision);
     assert!(Artifacts::new([&collision]).is_err());
     assert!(!output.exists());
 
@@ -434,7 +434,7 @@ fn aggregate_members_typed() {
     // The Generated Surface Of A Request Carrying Aggregates Is Stable
     let template = Contracts::of::<Routes>().unwrap()[0].clone();
     let schema = Schema::from_declaration(Summary::DEFINITION, &SchemaSettings::default()).unwrap();
-    let summary = contract(&template, "fixture.aggregate", "Aggregate", schema);
+    let summary = contract(&template, "fixture_aggregate", "Aggregate", schema);
     let artifacts = Artifacts::new([&summary]).unwrap();
     let target = tempfile::tempdir().unwrap();
     let package = target.path().join("package");
