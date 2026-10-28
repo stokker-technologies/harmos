@@ -47,7 +47,7 @@ impl harmos::builtins::lifecycle::Policy for Program {
     const SHUTDOWN_POLICY: OperationPolicy = controls::POLICY;
 }
 
-#[harmos::plugin(id = "invalid-requirement", provides = (), requires(harmos::builtins::lifecycle::Status: invoke("ledger.deposit")),
+#[harmos::plugin(id = "invalid_requirement", provides = (), requires(harmos::builtins::lifecycle::Status: invoke("ledger.deposit")),
     context = harmos::sidecar::Supervisor, config = ())]
 impl ProductPlugin for Program {}
 

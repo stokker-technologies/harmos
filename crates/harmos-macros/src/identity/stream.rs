@@ -97,6 +97,8 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         let version = 1u32;
         return Ok(quote! {
             #item
+            const _: () = assert!(#harmos::__private::stream_identity(#id),
+                "a stream id must be a filesystem-safe dotted name with non-keyword ASCII segments; owner must match [a-z][a-z0-9_]*");
             impl #harmos::StreamSpec for #name {
                 type Row = #row;
                 const ID: &'static str = #id;
@@ -253,6 +255,9 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
 
     Ok(quote! {
         #item
+
+        const _: () = assert!(#harmos::__private::stream_identity(#id),
+            "a stream id must be a filesystem-safe dotted name with non-keyword ASCII segments; owner must match [a-z][a-z0-9_]*");
 
         #tracked
         #axial
@@ -490,17 +495,11 @@ fn positive_usize(literal: &LitInt, message: &str) -> Result<(), Error> {
 
 fn validate_id(id: &LitStr) -> Result<(), Error> {
     let value = id.value();
-    let safe = value.split('.').all(|segment| {
-        let mut characters = segment.chars();
-        characters.next().is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
-            && characters.all(|character| character == '_' || character == '-' || character.is_ascii_alphanumeric())
-            && !python_keyword(segment)
-            && !filesystem_reserved(segment)
-    });
+    let safe = value.split('.').all(|segment| !python_keyword(segment) && !filesystem_reserved(segment));
     if !safe {
         return Err(Error::new(
             id.span(),
-            "a stream id must be a filesystem-safe dotted name with non-keyword ASCII segments; use letters, digits, `_`, and `-`, starting each segment with a letter or `_`",
+            "a stream id must be a filesystem-safe dotted name with non-keyword ASCII segments; owner must match [a-z][a-z0-9_]*",
         ));
     }
     Ok(())

@@ -41,21 +41,6 @@ use syn::{Error, LitStr};
 
 /* === Public Functions === */
 
-pub(crate) fn validate_id(id: &LitStr) -> Result<(), Error> {
-    let value = id.value();
-    let valid = !value.is_empty()
-        && value.starts_with(|first: char| first.is_ascii_lowercase())
-        && value.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'.' | b'_'));
-
-    valid.then_some(()).ok_or_else(|| {
-        Error::new(
-            id.span(),
-            "an artifact id is lowercase ASCII letters, digits, dots, hyphens, and underscores, \
-             starting with a letter",
-        )
-    })
-}
-
 pub(crate) fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &str) -> Result<(), Error> {
     if place.replace(value).is_some() {
         return Err(Error::new(span, format!("`{name}` is declared only once")));

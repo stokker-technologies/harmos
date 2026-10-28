@@ -74,7 +74,7 @@ struct Bridge {
 
 struct Host(Publisher<Bridge>);
 
-#[harmos_runtime::stream(id = "custom-host.pulse", window = 8, row = Pulse)]
+#[harmos_runtime::stream(id = "custom_host.pulse", window = 8, row = Pulse)]
 struct Published;
 
 struct ReadValue;
@@ -242,7 +242,7 @@ async fn exercise(panic_first: bool) {
     fixture.initialize().await.unwrap();
     assert!(!SEEDS.lock().unwrap().contains_key(&seed.id));
     fixture.ready().wait_for(|ready| *ready).await.unwrap();
-    let stream = fixture.runtime.streams.publication("custom-host.pulse", 1).unwrap();
+    let stream = fixture.runtime.streams.publication("custom_host.pulse", 1).unwrap();
     let mut rows = stream.watch();
     let values = async {
         let mut values = BTreeSet::new();

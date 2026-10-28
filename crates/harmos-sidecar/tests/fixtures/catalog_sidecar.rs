@@ -110,7 +110,7 @@ impl Plugin for Catalog {
 }
 
 impl Declared for Catalog {
-    const ID: &'static str = "catalog-fixture";
+    const ID: &'static str = "catalog_fixture";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
     const DESCRIPTION: &'static str = "Exports a catalog and never runs.";
     const PROVIDES: &'static [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>] =

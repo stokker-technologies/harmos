@@ -325,7 +325,9 @@ impl<F: std::future::Future> Drop for Contextual<F> {
 
 impl WireTable {
     pub fn new(owner: &str) -> Result<Self, ServingError> {
-        QualifiedId::qualify(owner, "validation").map_err(|_| ServingError::Catalog)?;
+        if !harmos_domain::identity::segment(owner) {
+            return Err(ServingError::Catalog);
+        }
         Ok(Self {
             owner: owner.to_owned(),
             services: BTreeMap::new(),

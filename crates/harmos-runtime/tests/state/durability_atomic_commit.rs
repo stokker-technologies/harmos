@@ -55,7 +55,7 @@ struct Observed {
 #[derive(Serialize, Deserialize)]
 struct Foreign;
 
-#[harmos_runtime::record(id = "harmos:sidecar/my.sidecar-2/result")]
+#[harmos_runtime::record(id = "harmos:sidecar/my_sidecar_2/result")]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Reserved;
 
@@ -138,7 +138,7 @@ impl Transaction<State> for Add {
                 11 => "Bad",
                 12 => "a/b",
                 13 => "",
-                _ => "my.sidecar-2",
+                _ => "my_sidecar_2",
             };
             let _ = out.push_system(harmos_runtime::state::SystemFact {
                 source: harmos_runtime::state::FactSource::Sidecar(owner.to_owned()),
@@ -370,13 +370,13 @@ async fn facts_share_group() {
     assert_eq!(
         facts[0].value,
         harmos_runtime::state::SystemFact {
-            source: harmos_runtime::state::FactSource::Sidecar("my.sidecar-2".to_owned()),
+            source: harmos_runtime::state::FactSource::Sidecar("my_sidecar_2".to_owned()),
             name: "result/sample".to_owned(),
             version: 1,
             payload: vec![0, 255, 17],
         }
     );
-    assert_eq!(facts[0].value.identify().0.as_str(), "harmos:sidecar/my.sidecar-2/result/sample");
+    assert_eq!(facts[0].value.identify().0.as_str(), "harmos:sidecar/my_sidecar_2/result/sample");
     let typed = runtime.state.query::<Facts>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(typed.len(), 1);
     assert_eq!(typed[0].position, Position(3));

@@ -270,7 +270,7 @@ impl PluginDefinition {
             }
         }
 
-        if !artifact_subset(&self.id) {
+        if !harmos_domain::identity::segment(&self.id) {
             return Err(invalid("identity", "identity is outside the portable subset"));
         }
         self.artifact.validate()?;

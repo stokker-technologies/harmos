@@ -171,8 +171,7 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
             }
         }
     }
-    let id = id.ok_or_else(|| Error::new(span, "a plugin requires `id = \"artifact-id\"`"))?;
-    super::validate_id(&id)?;
+    let id = id.ok_or_else(|| Error::new(span, "a plugin requires `id = \"artifact_id\"`"))?;
     if context.is_some() != config.is_some() {
         return Err(Error::new(span, "SDK inert projection supplies both context and config types"));
     }
@@ -355,6 +354,11 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     Ok(quote! {
         #block
         #restart_marker
+
+        const _: () = assert!(
+            #harmos::__private::owner_segment(#id),
+            "plugin id must match [a-z][a-z0-9_]* (one owner segment)"
+        );
 
         impl #declarations for #name {
             const ID: &'static str = #id;
