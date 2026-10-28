@@ -15,9 +15,9 @@
 ## Validation And Delivery
 
 - [ ] 2.1 Strict OpenSpec validation and stkr project check pass with HX3 findings repaired.
-- [ ] 2.2 Focused Clippy and no-run builds pass for every touched crate/example and relevant feature combination.
+- [x] 2.2 Focused Clippy and no-run builds pass for every touched crate/example and relevant feature combination.
 - [x] 2.3 Focused operation/resident/shutdown, carrier lifecycle, macro compile and schematic tests pass, including aggregate setup, lifecycle order, CATALOGS inert inventory and facade attributes.
-- [ ] 2.4 Commit breaking changes, push and verify the remote SHA, and write the requested report under 25 lines.
+- [x] 2.4 Commit breaking changes, push and verify the remote SHA, and write the requested report under 25 lines.
 
 ## Workflow Follow-Up
 
