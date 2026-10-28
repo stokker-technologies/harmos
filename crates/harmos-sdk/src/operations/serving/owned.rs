@@ -21,7 +21,7 @@
 use super::{Answer, Finalization, Finished, Prepare, Prepared, Route, ServingError, WireTable, guarded};
 use crate::Message;
 use crate::QualifiedId;
-use crate::operations::{Carrier, Dependencies, EndpointSet, ExecutionContext, OperationDeclaration};
+use crate::operations::{Carrier, EndpointSet, ExecutionContext, OperationDeclaration, ResourceSet};
 
 /* === Constants === */
 
@@ -49,7 +49,7 @@ struct State<T: Carrier> {
 }
 
 struct Physical<T: Carrier> {
-    dependencies: Dependencies,
+    dependencies: ResourceSet,
     operation: Option<T>,
     request: <T::Declaration as OperationDeclaration>::Request,
     endpoints: T::StreamEndpoints,
@@ -76,11 +76,13 @@ enum Initialization {
 /* === Implementations === */
 
 impl WireTable {
-    pub(crate) fn install<D, T>(&mut self, dependencies: Dependencies, contract: crate::operations::Contract) -> Result<(), ServingError>
+    pub(crate) fn install<D, T>(&mut self, dependencies: ResourceSet, contract: crate::operations::Contract) -> Result<(), ServingError>
     where
         D: OperationDeclaration,
         T: Carrier<Declaration = D>,
     {
+        let context = ExecutionContext::new(self.trusted_resources.clone(), super::super::CallContext::default());
+        let dependencies = context.with_resources(dependencies).resources().clone();
         #[cfg(feature = "grpc")]
         let protobuf = D::GRPC.is_some().then(super::protobuf::Codec::of::<D>);
         #[cfg(feature = "streaming")]
@@ -126,7 +128,7 @@ impl WireTable {
     }
 
     pub fn install_lifecycle<D, T>(
-        &mut self, dependencies: Dependencies, descriptor: harmos_domain::model::operations::lifecycle::Descriptor,
+        &mut self, dependencies: ResourceSet, descriptor: harmos_domain::model::operations::lifecycle::Descriptor,
     ) -> Result<(), ServingError>
     where
         D: crate::OperationDeclaration,
@@ -159,7 +161,7 @@ impl WireTable {
     }
 
     fn bind_owned_contract<D, T>(
-        &mut self, dependencies: Dependencies, contract: crate::operations::Contract, lifecycle: bool, builtin: bool,
+        &mut self, dependencies: ResourceSet, contract: crate::operations::Contract, lifecycle: bool, builtin: bool,
         endpoints: impl Fn() -> Result<StreamEndpoints<T::StreamEndpoints>, ServingError> + Send + Sync + 'static,
         #[cfg(feature = "grpc")] protobuf: Option<super::protobuf::Codec>,
     ) -> Result<(), ServingError>
@@ -279,7 +281,7 @@ impl<T: Carrier> Prepared for State<T> {
                 Initialization::Pending => self.initialization = Initialization::Started,
             }
             let physical = self.physical.as_mut().expect("original operation before cleanup");
-            let context = context.for_registration(physical.dependencies.clone());
+            let context = context.with_resources(physical.dependencies.clone());
             let operation = guarded(async { T::bind(context).await.map_err(operation_error::<T>) }).await?;
             physical.operation = Some(operation);
             self.initialization = Initialization::Ready;
@@ -299,7 +301,7 @@ impl<T: Carrier> Prepared for State<T> {
             guarded(async {
                 let operation = physical.operation.as_mut().expect("initialized operation");
                 let response = operation
-                    .attempt(context.for_registration(physical.dependencies.clone()), &mut physical.request, &mut physical.endpoints)
+                    .attempt(context.with_resources(physical.dependencies.clone()), &mut physical.request, &mut physical.endpoints)
                     .await
                     .map_err(operation_error::<T>)?;
                 #[cfg(feature = "grpc")]

@@ -36,7 +36,6 @@ thiserror = { workspace = true, default-features = true, optional = true }
 
 # Serialization
 
-
 # Configuration
 
 # Filesystem

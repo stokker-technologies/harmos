@@ -29,7 +29,7 @@ use schematic_app::operations::{ProposeRoute, ValidateSchematic};
 use schematic_app::state::{NetId, NetName, PinRef, Point, Rotation, SymbolId};
 use schematic_app::transactions::net::{ApplyRoute, ConnectPins};
 use schematic_app::transactions::symbol::{MoveSymbol, PlaceSymbol};
-use schematic_app::{app, config::Settings, document::Document, services::Plugin, storage};
+use schematic_app::{app, config::Settings, document::Document, services::Plugin};
 
 /* === Constants === */
 
@@ -55,12 +55,8 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     let document = Document::new(&path);
     let recordings = scratch.path().join("streams");
     let config = Settings::new(recordings);
-    let recovery = document.recovering()?;
-    let checkpoint = recovery.sidecars();
-    let origin = document.into_origin();
-    let builder = app::builder(origin, ());
-    let builder = storage::attach(builder, recovery, &config)?;
-    let runtime = builder.runtime().await?;
+    let runtime = app::launch(document, &config).await?;
+    let checkpoint = runtime.operations.context().resource::<schematic_app::storage::Sidecar>().map_err(std::io::Error::other)?;
 
     // Choose A Backend For The Same Operations
     let plugin = match guest {
@@ -70,7 +66,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     let plugin = match plugin {
         Ok(plugin) => plugin,
         Err(error) => {
-            runtime.stop().await?;
+            runtime.shutdown().await?;
             return Err(error.into());
         }
     };
@@ -78,7 +74,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     let result = edit(&runtime, advanced, guest.is_none()).await;
     let stopped = plugin.stop().await;
     let snapshot = runtime.state.state().read(Clone::clone).await;
-    let settled = runtime.stop().await;
+    let settled = runtime.shutdown().await;
     result?;
     stopped?;
     settled?;
@@ -89,7 +85,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     let document = Document::open(&path)?;
     let reopened = app::launch(document, &config).await?;
     let saved = reopened.state.state().read(Clone::clone).await;
-    reopened.stop().await?;
+    reopened.shutdown().await?;
     let saved = saved?;
     println!(
         "Reopened: {} symbols, {} net, {} route points",

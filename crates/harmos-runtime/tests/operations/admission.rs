@@ -105,17 +105,17 @@ impl Drop for AttemptGuard {
 
 /* === Private Functions === */
 
-async fn runtime() -> Runtime<App> {
-    Runtime::<App>::builder((), ())
-        .register(Lanes::catalog())
-        .operation_settings(Settings {
+async fn runtime(counts: Arc<Counts>) -> Runtime<App> {
+    Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Counts>(counts);
+        setup.settings().operation_settings(Settings {
             queued: NonZeroUsize::new(1).unwrap(),
             lifecycle_queued: NonZeroUsize::new(1).unwrap(),
             ..Settings::default()
-        })
-        .runtime()
-        .await
-        .unwrap()
+        });
+    })
+    .await
+    .unwrap()
 }
 
 fn request(blocked: bool) -> HoldContractDeclaration {
@@ -129,21 +129,9 @@ fn request(blocked: bool) -> HoldContractDeclaration {
 
 #[tokio::test]
 async fn queue_refuses_construction() {
-    let runtime = runtime().await;
     let counts = Arc::new(Counts::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(counts.clone()).unwrap();
-                dependencies
-            })
-            .operation::<HoldContractDeclaration>(),
-            Lanes::Serial,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime(counts.clone()).await;
+    runtime.operations.register::<Operations>(Lanes::Serial).await.unwrap();
     let first_request = request(true);
     let started = first_request.started.clone();
     let first = runtime.operation(first_request).start().await.unwrap();
@@ -154,27 +142,15 @@ async fn queue_refuses_construction() {
         Err(Error::ResourceExhausted { resource: "operation admission queue" })
     ));
 
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     drop((first, second));
 }
 
 #[tokio::test]
 async fn queued_cancel_unbuilt() {
-    let runtime = runtime().await;
     let counts = Arc::new(Counts::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(counts.clone()).unwrap();
-                dependencies
-            })
-            .operation::<HoldContractDeclaration>(),
-            Lanes::Serial,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime(counts.clone()).await;
+    runtime.operations.register::<Operations>(Lanes::Serial).await.unwrap();
     let first_request = request(true);
     let started = first_request.started.clone();
     let first = runtime.operation(first_request).start().await.unwrap();
@@ -202,26 +178,14 @@ async fn queued_cancel_unbuilt() {
     first.cancel();
     assert!(matches!(first.join().await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn instances_leave_lookup() {
-    let runtime = runtime().await;
     let counts = Arc::new(Counts::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(counts.clone()).unwrap();
-                dependencies
-            })
-            .operation::<HoldContractDeclaration>(),
-            Lanes::Serial,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime(counts.clone()).await;
+    runtime.operations.register::<Operations>(Lanes::Serial).await.unwrap();
     for _ in 0..64 {
         let instance = runtime.operation(request(false)).start().await.unwrap();
         let id = instance.id();
@@ -229,30 +193,18 @@ async fn instances_leave_lookup() {
         assert!(runtime.operations.status(id).is_none());
     }
     assert_eq!(counts.drops.load(Ordering::SeqCst), 64);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn thread_submission_works() {
-    let runtime = runtime().await;
     let counts = Arc::new(Counts::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(counts.clone()).unwrap();
-                dependencies
-            })
-            .operation::<HoldContractDeclaration>(),
-            Lanes::Serial,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime(counts.clone()).await;
+    runtime.operations.register::<Operations>(Lanes::Serial).await.unwrap();
     let operations = runtime.operations.clone();
     let instance = std::thread::spawn(move || operations.submit::<HoldContractDeclaration>(request(false))).join().unwrap().unwrap();
     instance.join().await.unwrap();
     assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }

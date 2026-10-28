@@ -76,7 +76,9 @@ enum Event {
 
 #[harmos_runtime::observer(id = "execution.watch", interval_ms = 5)]
 impl Watch {
-    async fn initialize(resources: &Resources) -> Result<Self, std::io::Error> {
+    async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, std::io::Error> {
+        let resolved = context.resource::<Resources>().unwrap();
+        let resources = resolved.as_ref();
         let constructed: Result<Self, std::io::Error> = async move { Ok(Self(resources.clone())) }.await;
         let mut observer = constructed?;
         let started: Result<(), std::io::Error> = async {
@@ -89,13 +91,13 @@ impl Watch {
         Ok(observer)
     }
 
-    async fn observe(&mut self, ctx: &ObserverContext<'_, Resources, Host>) -> Result<(), std::io::Error> {
+    async fn observe(&mut self, ctx: &ObserverContext<'_, Host>) -> Result<(), std::io::Error> {
         let _callback = Callback(self.0.clone());
         if let Some(identities) = &self.0.identities {
             identities.send((ctx.observer_id(), ctx.activation_id(), ctx.tick().ordinal())).unwrap();
         }
         assert_eq!(ctx.extension::<u64>(), Some(&ctx.host().token));
-        ctx.resources().events.send(Event::Tick(ctx.tick().ordinal(), ctx.host().token)).unwrap();
+        ctx.resource::<Resources>().unwrap().events.send(Event::Tick(ctx.tick().ordinal(), ctx.host().token)).unwrap();
 
         match ctx.host().behavior {
             Behavior::FailFirst if ctx.tick().ordinal() == 1 => Err(std::io::Error::other("tick refused")),
@@ -135,7 +137,9 @@ impl std::io::Write for Diagnostics {
 
 #[harmos_runtime::observer(interval_ms = 5)]
 impl NeverStarts {
-    async fn initialize(resources: &Resources) -> Result<Self, std::io::Error> {
+    async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, std::io::Error> {
+        let resolved = context.resource::<Resources>().unwrap();
+        let resources = resolved.as_ref();
         let constructed: Result<Self, std::io::Error> = async move { Ok(Self(resources.clone())) }.await;
         let mut observer = constructed?;
         let started: Result<(), std::io::Error> = async {
@@ -149,7 +153,7 @@ impl NeverStarts {
         Ok(observer)
     }
 
-    async fn observe(&mut self, _ctx: &ObserverContext<'_, Resources, ()>) -> Result<(), std::io::Error> {
+    async fn observe(&mut self, _ctx: &ObserverContext<'_, ()>) -> Result<(), std::io::Error> {
         panic!("an uninitialized observer cannot run");
     }
 }
@@ -158,14 +162,14 @@ impl NeverStarts {
 
 /* === Private Functions === */
 
-fn declaration() -> Instance<Resources, Host> {
-    Instance::<Resources, Host>::of::<Watch>().with_context(|host| host.token)
+fn declaration() -> Instance<Host> {
+    Instance::<Host>::of::<Watch>().with_context(|host| host.token)
 }
 
 fn start(behavior: Behavior, stop_gate: Option<Arc<Notify>>) -> (Observing, mpsc::UnboundedReceiver<Event>) {
     let (events, received) = mpsc::unbounded_channel();
     let resources = Arc::new(Resources { events, stop_gate, identities: None });
-    let activity = declaration().activate(resources, Host { token: 73, behavior }).unwrap();
+    let activity = declaration().activate(super::observer_context(resources), Host { token: 73, behavior }).unwrap();
     (Observing::start(activity), received)
 }
 
@@ -242,25 +246,26 @@ async fn cancelled_stop_rejoins() {
 #[tokio::test]
 async fn drop_cleans_callback() {
     // A host-run activation stops its observer when the last lease drops.
-    let runtime = super::runtime().await;
-    let manager = &runtime.operations;
-    manager.register_native_observer(declaration(), |_| Host { token: 73, behavior: Behavior::Hang }).unwrap();
     let (events, mut received) = mpsc::unbounded_channel();
     let resources = Arc::new(Resources {
         events,
         identities: None,
         stop_gate: None,
     });
-    let lease = manager.submit_with_resources_at("execution.watch", resources.clone()).await.unwrap();
+    let runtime = super::runtime_with(resources.clone()).await;
+    let manager = &runtime.operations;
+    manager.register_native_observer(declaration(), |_| Host { token: 73, behavior: Behavior::Hang }).unwrap();
+    let lease = manager.submit_resident("execution.watch").await.unwrap();
     entered(&mut received).await;
     drop(lease);
     assert_eq!(next(&mut received).await, Event::Dropped);
     assert_eq!(next(&mut received).await, Event::Stopping);
     assert_eq!(next(&mut received).await, Event::Stopped);
-    manager.retire_resources(&resources).await.unwrap();
+    manager.unregister_resident("execution.watch").await.unwrap();
     drop(resources);
+    runtime.shutdown().await.unwrap();
+    drop(runtime);
     assert_eq!(received.recv().await, None);
-    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -271,7 +276,7 @@ async fn cancellation_drops_init() {
         identities: None,
         stop_gate: None,
     });
-    let mut task = Observing::start(Instance::<Resources, ()>::of::<NeverStarts>().activate(resources, ()).unwrap());
+    let mut task = Observing::start(Instance::<()>::of::<NeverStarts>().activate(super::observer_context(resources), ()).unwrap());
     assert_eq!(next(&mut received).await, Event::Opened);
     task.shutdown().await.unwrap();
     assert_eq!(next(&mut received).await, Event::Dropped);
@@ -329,7 +334,7 @@ async fn restart_fresh_identity() {
             identities: Some(identities),
             stop_gate: None,
         });
-        let activity = declaration.activate(resources, Host { token: 73, behavior: Behavior::FailFirst }).unwrap();
+        let activity = declaration.activate(super::observer_context(resources), Host { token: 73, behavior: Behavior::FailFirst }).unwrap();
         let activation = activity.activation_id();
         assert_eq!(activity.observer_id(), declaration.id());
         assert_ne!(previous, Some(activation));
@@ -341,7 +346,7 @@ async fn restart_fresh_identity() {
         task.shutdown().await.unwrap();
         previous = Some(activation);
     }
-    assert_eq!(Instance::<Resources, ()>::of::<NeverStarts>().id(), concat!(module_path!(), "::NeverStarts"));
+    assert_eq!(Instance::<()>::of::<NeverStarts>().id(), concat!(module_path!(), "::NeverStarts"));
 }
 
 #[tokio::test]

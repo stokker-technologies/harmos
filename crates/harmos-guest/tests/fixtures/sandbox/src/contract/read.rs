@@ -32,7 +32,7 @@ use super::{Backoff, Duration, Jitter, OperationPolicy, RetryPolicy, Value};
 
 /* === Structs === */
 
-#[harmos_guest::operation(harmos_path = ::harmos_guest,
+#[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(harmos_path = ::harmos_domain,
     resources = [crate::Owner, harmos_guest::kit::Context],
     operations = [ReadOperation], id = "fixture.read", response = Value, policy = OperationPolicy {
         timeout: Duration::from_secs(2),
@@ -44,7 +44,20 @@ use super::{Backoff, Duration, Jitter, OperationPolicy, RetryPolicy, Value};
                 jitter: Jitter::None,
             },
         },
-    })]
+    }))]
+#[cfg_attr(target_arch = "wasm32", harmos::guest::operation(harmos_path = ::harmos::guest,
+    resources = [crate::Owner, harmos::guest::kit::Context],
+    operations = [ReadOperation], id = "fixture.read", response = Value, policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_millis(500),
+        retries: RetryPolicy::OnTransient {
+            max_retries: 1,
+            backoff: Backoff::Fixed {
+                delay: Duration::from_millis(1),
+                jitter: Jitter::None,
+            },
+        },
+    }))]
 #[derive(Clone, PartialEq)]
 
 pub struct ReadOperation {
@@ -95,12 +108,12 @@ mod runtime {
 
     /* === Implementations === */
 
-    impl harmos_guest::Operation for ReadOperation {
+    impl harmos::guest::Operation for ReadOperation {
         type Error = std::io::Error;
 
-        async fn run(mut self, ctx: harmos_guest::Context<'_, Self>) -> Result<harmos_guest::Response<Value>, Self::Error> {
+        async fn run(mut self, ctx: harmos::guest::Context<'_, Self>) -> Result<harmos::guest::Response<Value>, Self::Error> {
             let owner = ctx.resource::<crate::Owner>();
-            let carrier = ctx.resource::<harmos_guest::kit::Context>();
+            let carrier = ctx.resource::<harmos::guest::kit::Context>();
             owner.ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
             // Call Metadata And Explicit Child Overlays
@@ -111,7 +124,7 @@ mod runtime {
             if self.value == "context-parent" {
                 let parent = ctx.call().value::<Stage>().map_err(std::io::Error::other)?.expect("the caller set a stage");
                 let caller = carrier.with_value(Stage { id: "child".into() }).map_err(std::io::Error::other)?;
-                let child = harmos_guest::Host::call::<ReadOperation>(&caller, ReadOperation { value: "context-leaf".into() })
+                let child = harmos::guest::Host::call::<ReadOperation>(&caller, ReadOperation { value: "context-leaf".into() })
                     .await
                     .map_err(std::io::Error::other)?;
                 return Ok(Value {
@@ -133,7 +146,7 @@ mod runtime {
             if self.value == "parent" {
                 let saved = owner.saved_attempts.lock().map_err(|error| std::io::Error::other(error.to_string()))?.remove(&self.value);
                 if let Some(saved) = saved
-                    && harmos_guest::Host::call::<ReadOperation>(&saved, ReadOperation { value: "leaf".into() }).await.is_ok()
+                    && harmos::guest::Host::call::<ReadOperation>(&saved, ReadOperation { value: "leaf".into() }).await.is_ok()
                 {
                     return Err(std::io::Error::other("stale context was accepted"));
                 }
@@ -161,8 +174,8 @@ mod runtime {
             .into())
         }
 
-        fn classify(_: &Self::Error) -> harmos_guest::operations::FailureKind {
-            harmos_guest::operations::FailureKind::Transient
+        fn classify(_: &Self::Error) -> harmos::guest::operations::FailureKind {
+            harmos::guest::operations::FailureKind::Transient
         }
     }
 

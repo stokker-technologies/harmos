@@ -2,7 +2,7 @@
 name: harmos-architecture
 description: Structure consumer applications using Harmos, including reusable domains and runtimes, self-contained plugins, resource libraries and interface crates.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:de4d5ea49d75eeeeaa4d5975e61538508bb9fd4707f3b1bcb7bcd118a3213738 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:c803dbbc7fc9d3dc66232c31aa1df7582a607297e5da8801411ff3b6e6f197b0 -->
 
 # Harmos Architecture
 
@@ -76,10 +76,12 @@ shortcut; use `target_os = "linux"` only for a genuinely Linux-only path.
 
 In a reusable product, use one file per operation for its request struct, response and runtime-gated `Operation` implementation in
 `<p>-operations/src/<concern>/<operation>.rs`. Its catalog supplies both
-`catalog() -> Vec<OperationDefinition>` and, with `runtime`,
-`registration(Dependencies) -> RegistrationBatch`. There is one operation tree.
-Shared models remain in the domain; resource crates remain optional lower-level
-dependencies. Runtime composition supplies dependencies and lane placement.
+`catalog() -> Vec<OperationDefinition>` and, with `runtime`, implements
+`operations::OperationCatalog` with an executable `CATALOG` descriptor. There is one
+operation tree. Shared models remain in the domain; resource crates remain
+optional lower-level dependencies. Application `Lifecycle::prepare` supplies resources through `Setup<Self>`
+and places each catalog on a declared lane. Plugin `const CATALOGS` is the single
+source for inert inventory and executable binding.
 
 A self-contained crate can use the same vertical layout under `operations/`.
 Create a separate operations crate when independent contract consumers justify

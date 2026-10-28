@@ -71,7 +71,7 @@ use std::time::Duration;
 
 // Local Imports
 use harmos_runtime::Message;
-use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireTable};
+use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos_runtime::sidecar::{Frame, Notice, SidecarError, Supervised};
 use harmos_runtime::{
     Runtime, services::ServiceContext, services::ServiceExit, services::ServiceStatus, state::FactSource, state::Position,
@@ -211,13 +211,11 @@ struct BudgetedReply {
 #[harmos_runtime::stream(description = "The whole meter sidecar, served in this process.\nCounting attachments is how a restart is observed from outside: the factory runs once per attempt, exactly as a process would be started once per attempt.", id = "meter.pulse", window = 8, row = support::Pulse)]
 struct MeterPulse;
 
-struct SampleProjection {
-    streams: harmos_runtime::streams::StreamManager<Bank>,
+pub(crate) struct SampleProjection {
+    streams: std::sync::OnceLock<harmos_runtime::streams::StreamManager<Bank>>,
 }
 
-struct Joinable {
-    resources: Arc<()>,
-}
+struct Joinable;
 
 #[derive(Clone, Debug, Default, PartialEq, serde::Deserialize, serde::Serialize)]
 struct Calibration {
@@ -318,6 +316,16 @@ enum MeterOperations {
     Budgeted(BudgetedRouteDeclaration),
 }
 
+#[harmos_runtime::catalog]
+enum PublicationOperations {
+    Publish(harmos_operations::streams::Publish),
+}
+
+#[harmos_runtime::catalog]
+enum SampleOperations {
+    Sample(SampleDeclaration),
+}
+
 // A handler error shaped like a gRPC client failure: every layer repeats the
 // one beneath it, the way tonic and hyper render a reset connection.
 #[derive(Debug, thiserror::Error)]
@@ -338,30 +346,31 @@ impl harmos_operations::lifecycle::Policy for Joinable {
     const SHUTDOWN_POLICY: OperationPolicy = GAUGE_POLICY;
 }
 
-#[harmos_runtime::plugin(id = "joined", provides = (), requires = ())]
-impl harmos_runtime::Plugin for Joinable {
+impl harmos_runtime::Lifecycle for Joinable {
     type Config = ();
     type Context = Supervisor;
     type Error = Refusal;
-    type Resources = ();
-    fn prepare(_: ()) -> Result<Self, Self::Error> {
-        Ok(Self { resources: Arc::new(()) })
+
+    async fn prepare(_: (), _setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
+        Ok(Self)
     }
+
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn resources(&self) -> Arc<()> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, _: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        Ok(())
-    }
+
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "joined", requires = ())]
+impl harmos_runtime::Plugin for Joinable {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[];
 }
 
 impl harmos_operations::lifecycle::Policy for Gauge {
@@ -369,93 +378,41 @@ impl harmos_operations::lifecycle::Policy for Gauge {
     const SHUTDOWN_POLICY: OperationPolicy = GAUGE_POLICY;
 }
 
-#[harmos_runtime::plugin(description = "Measures Scaled Gauge Values With One SDK Resource Owner.", id = "gauge", provides = GaugeOperations, requires = (),
-    restart(credit = 2, sustained_health_ms = 250, backoff_base_ms = 10, backoff_cap_ms = 5_000))]
-impl harmos_runtime::Plugin for Gauge {
+impl harmos_runtime::Lifecycle for Gauge {
     type Config = Calibration;
     type Context = Supervisor;
     type Error = Refusal;
-    type Resources = GaugeResources;
-    fn prepare(config: Calibration) -> Result<Self, Self::Error> {
-        Ok(Self {
+
+    async fn prepare(config: Calibration, setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
+        let plugin = Self {
             resources: Arc::new(GaugeResources {
                 factor: config.factor,
                 stopped: AtomicUsize::new(0),
             }),
-        })
+        };
+        setup.resource::<GaugeResources>(plugin.resources.clone());
+        Ok(plugin)
     }
+
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn resources(&self) -> Arc<GaugeResources> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<GetMeasureDeclaration>(),
-        )?;
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<RunEchoDeclaration>(),
-        )?;
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<RunUppercaseDeclaration>(),
-        )?;
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<StopSamplingDeclaration>(),
-        )?;
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<GetFactorDeclaration>(),
-        )?;
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<visibility::ScalePrivatelyDeclaration>(),
-        )?;
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<visibility::ScalePubliclyDeclaration>(),
-        )
-    }
+
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         tokio::task::yield_now().await;
         GAUGE_DEACTIVATED.store(true, Ordering::SeqCst);
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Measures Scaled Gauge Values With One SDK Resource Owner.", id = "gauge", requires = (),
+    restart(credit = 2, sustained_health_ms = 250, backoff_base_ms = 10, backoff_cap_ms = 5_000))]
+impl harmos_runtime::Plugin for Gauge {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[GaugeOperations::CATALOG];
 }
 
 impl harmos_runtime::Operation for GetMeasureDeclaration {
@@ -628,7 +585,11 @@ impl harmos_runtime::Operation for SampleDeclaration {
     async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
         let resources = ctx.resource::<SampleProjection>();
         let result: ::core::result::Result<(), Self::Error> = async move {
-            resources.streams.publish(support::pulse(self.value));
+            resources
+                .streams
+                .get()
+                .expect("the fixture installs its stream manager before runtime startup")
+                .publish(support::pulse(self.value));
             Ok(())
         }
         .await;
@@ -645,77 +606,33 @@ impl harmos_operations::lifecycle::Policy for Meter {
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(id = "meter", provides = MeterOperations, requires(harmos_operations::streams::Publish),  streams(MeterPulse))]
-impl harmos_runtime::Plugin for Meter {
+impl harmos_runtime::Lifecycle for Meter {
     type Config = ();
     type Context = Supervisor;
-    type Resources = MeterHandler;
     type Error = Refusal;
-    fn prepare(_: ()) -> Result<Self, Self::Error> {
-        Ok(Self { resources: Arc::new(MeterHandler) })
+
+    async fn prepare(_: (), setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
+        let plugin = Self { resources: Arc::new(MeterHandler) };
+        setup.resource::<MeterHandler>(plugin.resources.clone());
+        Ok(plugin)
     }
+
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn resources(&self) -> Arc<MeterHandler> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<AmplifyDeclaration>(),
-        )?;
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<EmitDeclaration>(),
-        )?;
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<PublishPulseDeclaration>(),
-        )?;
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<CollapseDeclaration>(),
-        )?;
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<FinishDeclaration>(),
-        )?;
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<BudgetedRouteDeclaration>(),
-        )
-    }
+
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "meter", requires(harmos_operations::streams::Publish),  streams(MeterPulse))]
+impl harmos_runtime::Plugin for Meter {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[MeterOperations::CATALOG];
 }
 
 impl Attach for MeterSource {
@@ -765,19 +682,13 @@ fn meter(attachments: Arc<AtomicUsize>) -> MeterSource {
     }
 }
 
-fn publication_registration<A, S, H>(resident: Arc<Supervised<A, S, H>>) -> harmos_runtime::RegistrationBatch
-where
-    A: harmos_runtime::Application,
-    S: harmos_runtime::sidecar::Attach,
-    H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
-{
-    let mut dependencies = harmos_runtime::Dependencies::new();
-    dependencies.insert(resident).unwrap();
-    harmos_runtime::RegistrationBatch::new(dependencies).operation::<harmos_operations::streams::Publish>()
-}
-
-fn assembly() -> harmos_runtime::Builder<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).register(streams()).register(HostLanes::catalog())
+async fn assembly(configure: impl FnOnce(&mut harmos_runtime::Setup<Bank>)) -> Runtime<Bank> {
+    Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(catalog()).register(streams());
+        configure(setup);
+    })
+    .await
+    .unwrap()
 }
 
 /* === Tests === */

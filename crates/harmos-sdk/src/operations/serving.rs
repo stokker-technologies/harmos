@@ -10,6 +10,7 @@
 /* === Modules === */
 
 mod codec;
+mod configuration;
 mod owned;
 #[cfg(feature = "grpc")]
 pub(crate) mod protobuf;
@@ -35,7 +36,7 @@ use std::task::{Poll, Waker};
 use serde::{Deserialize, Serialize};
 use tracing::Instrument;
 // Local Imports
-use super::{Contract, ContractError, ExecutionContext, FailureKind, OperationDefinition, RegistrationBatch};
+use super::{Contract, ContractError, ExecutionContext, FailureKind, OperationDefinition, RegistrationBatch, StartupError};
 use crate::QualifiedId;
 
 /* === Constants === */
@@ -94,6 +95,13 @@ pub struct WireChildControl {
 
 pub struct WireTable {
     owner: String,
+    resources: super::ResourceSet,
+    resources_frozen: bool,
+    trusted_resources: super::ResourceSet,
+    pending: Vec<RegistrationBatch>,
+    catalogs: std::collections::HashSet<std::any::TypeId>,
+    configuration_errors: Vec<StartupError>,
+    binding_failed: bool,
     handlers: BTreeMap<String, Route>,
     retired: BTreeMap<String, u64>,
     services: BTreeMap<String, super::registration::ServiceFactory>,
@@ -192,6 +200,12 @@ pub enum WireAnswer {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServingError {
+    #[error(transparent)]
+    Startup(#[from] Box<StartupError>),
+
+    #[error("the carrier resource store is frozen")]
+    StoreFrozen,
+
     #[error("caller may not invoke operation `{operation}` without a host assignment")]
     Unassigned { operation: &'static str },
 
@@ -325,9 +339,18 @@ impl<F: std::future::Future> Drop for Contextual<F> {
 
 impl WireTable {
     pub fn new(owner: &str) -> Result<Self, ServingError> {
-        QualifiedId::qualify(owner, "validation").map_err(|_| ServingError::Catalog)?;
+        if !harmos_domain::identity::segment(owner) {
+            return Err(ServingError::Catalog);
+        }
         Ok(Self {
             owner: owner.to_owned(),
+            resources: super::ResourceSet::new(),
+            resources_frozen: false,
+            trusted_resources: super::ResourceSet::new(),
+            pending: Vec::new(),
+            catalogs: std::collections::HashSet::new(),
+            configuration_errors: Vec::new(),
+            binding_failed: false,
             services: BTreeMap::new(),
             handlers: BTreeMap::new(),
             retired: BTreeMap::new(),
@@ -361,11 +384,25 @@ impl WireTable {
         Ok(())
     }
 
+    #[doc(hidden)]
     pub fn register(&mut self, batch: RegistrationBatch) -> Result<(), ServingError> {
         if self.closed || self.ordinary_closed {
             return Err(ServingError::Closing);
         }
+        if !self.resources_frozen {
+            self.pending.push(batch);
+            return Ok(());
+        }
+        self.register_now(batch)
+    }
+
+    fn register_now(&mut self, batch: RegistrationBatch) -> Result<(), ServingError> {
+        if self.closed || self.ordinary_closed {
+            return Err(ServingError::Closing);
+        }
         let mut staged = Self::new(&self.owner)?;
+        staged.resources = self.resources.clone();
+        staged.trusted_resources = self.trusted_resources.clone();
         staged.capacity = self.capacity;
         staged.provided.clone_from(&self.provided);
         #[cfg(feature = "streaming")]
@@ -388,6 +425,7 @@ impl WireTable {
         }
         self.handlers.append(&mut staged.handlers);
         self.services.append(&mut staged.services);
+        self.resources_frozen = true;
         Ok(())
     }
 

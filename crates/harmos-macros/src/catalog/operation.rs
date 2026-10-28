@@ -42,7 +42,7 @@ use crate::path::HarmosPath;
 
 /* === Public Functions === */
 
-pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &HarmosPath) -> Result<TokenStream, Error> {
+pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &HarmosPath, executable: bool) -> Result<TokenStream, Error> {
     if !item.generics.params.is_empty() {
         return Err(Error::new_spanned(&item.generics, "an operation implementation struct cannot be generic"));
     }
@@ -109,17 +109,6 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
     let gates = crate::operation::configuration(&item.attrs)?;
     let derived = name.to_string().trim_start_matches("r#").to_snake_case();
     let id = id.unwrap_or_else(|| syn::parse_quote!(#derived));
-    if let Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(value), .. }) = &id {
-        let text = value.value();
-        let valid = text.split('.').all(|segment| {
-            let mut bytes = segment.bytes();
-            bytes.next().is_some_and(|byte| byte.is_ascii_lowercase())
-                && bytes.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
-        });
-        if !valid {
-            return Err(Error::new_spanned(value, "operation id must contain dotted [a-z][a-z0-9_]* segments"));
-        }
-    }
 
     let direction =
         |item: Option<Type>| item.map_or_else(|| quote!(#sdk::operations::NoStream), |item| quote!(#sdk::operations::Stream<#item>));
@@ -175,8 +164,28 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
             impl #sdk::operations::Invokes<#operation> for #name {}
         }
     });
+    let execution = executable.then(|| {
+        quote! {
+            #(#invokes)*
+            #[allow(unexpected_cfgs)]
+            const _: () = {
+                #(#requirements)*
+                #(#gates)*
+                #execution_gate
+                impl #sdk::Dependent for #name {
+                    const RESOURCES: &'static [#sdk::Resource] = &[#(#sdk::Resource::of::<#resources>()),*];
+                }
+            };
+        }
+    });
     Ok(quote! {
         #message
+
+        #(#gates)*
+        const _: () = assert!(
+            #sdk::__private::operation_identity(#id),
+            "operation id must contain dotted [a-z][a-z0-9_]* segments"
+        );
 
         #(#gates)*
         impl #sdk::OperationDeclaration for #name {
@@ -199,16 +208,7 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
 
 
         }
-        #(#invokes)*
-        #[allow(unexpected_cfgs)]
-        const _: () = {
-        #(#requirements)*
-        #(#gates)*
-        #execution_gate
-        impl #sdk::Dependent for #name {
-            const RESOURCES: &'static [#sdk::Resource] = &[#(#sdk::Resource::of::<#resources>()),*];
-        }
-        };
+        #execution
     })
 }
 

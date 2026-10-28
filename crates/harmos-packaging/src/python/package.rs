@@ -99,7 +99,10 @@ pub(super) fn export(
     // Isolate Runtime Descriptors And Retain Standard Generated Typing Stubs.
     let runtime = isolate(&source, &settings.module)?;
     fs::write(wire.join("_pool.py"), include_str!("pool.py"))?;
-    fs::write(module.join("operation.py"), include_str!("operation.py"))?;
+    let operation = include_str!("operation.py")
+        .replace("__HARMOS_OWNER_INITIAL__", harmos_domain::identity::SEGMENT_INITIAL)
+        .replace("__HARMOS_OWNER_EXTRA__", harmos_domain::identity::SEGMENT_EXTRA);
+    fs::write(module.join("operation.py"), operation)?;
     fs::write(module.join("dynamic.py"), include_str!("dynamic.py"))?;
     fs::write(module.join("py.typed"), "")?;
     fs::write(module.join("contracts.json"), artifacts.contracts())?;

@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 // Local Imports
 use super::cases::Text;
-use super::{Compute, Failed, Lanes, Operations, Owner, Parent, ParentOwner, Request, Response, Slow, request, runtime};
+use super::{Compute, Failed, Lanes, Operations, Owner, Parent, ParentOwner, Request, Response, request};
 use harmos_runtime::operations::{OperationDeclaration, PluginRegistration, WireDeclaration};
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
@@ -175,23 +175,15 @@ impl PluginLifecycle for SelectedHost {
         let scope = endpoint.scope().unwrap();
         self.scopes.insert(definition.id.clone(), scope.clone());
         self.callers.insert(definition.id.clone(), endpoint.caller());
-        let owner = match definition.id.as_str() {
-            "first" => SelectedOwner("first"),
-            "second" => SelectedOwner("second"),
+        match definition.id.as_str() {
+            "first" | "second" => {}
             "client" => return Ok(()),
             _ => unreachable!("closed fixture owner set"),
-        };
-        resources.registration = Some(self.operations.stage_plugin(scope, |bindings| {
-            bindings.register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(owner)).unwrap();
-                    dependencies
-                })
-                .operation::<SelectedDeclaration>(),
-                Lanes::Open,
-            ))
-        })?);
+        }
+        resources.registration = Some(
+            self.operations
+                .stage_plugin(scope, |bindings| bindings.operations::<crate::operations::Single<SelectedDeclaration>>(Lanes::Open))?,
+        );
         Ok(())
     }
     async fn stop(_: &PluginDefinition, _: &harmos_runtime::plugin::PluginLifecycleAuthority<'_>, backend: &mut Backends) -> Result<()> {
@@ -276,58 +268,13 @@ impl PluginLifecycle for Host {
             return Ok(());
         }
         resources.registration = Some(self.operations.stage_plugin(scope, |bindings| {
-            bindings.register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(self.owner.clone()).unwrap();
-                    dependencies
-                })
-                .operation::<Compute>()
-                .operation::<Slow>(),
-                Lanes::Open,
-            ))?;
-            bindings.register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(self.owner.clone()).unwrap();
-                    dependencies.insert(Arc::new(super::cases::Destination("fixture"))).unwrap();
-                    dependencies
-                })
-                .operation::<super::cases::EchoDeclaration>()
-                .operation::<super::cases::PrivateEchoDeclaration>()
-                .operation::<super::cases::NestedDeclaration>()
-                .operation::<super::cases::DetachedDeclaration>(),
-                Lanes::Open,
-            ))?;
-            if let Some(cleanup) = &self.cleanup {
-                bindings.register(harmos_runtime::RegistrationExt::lane(
-                    harmos_runtime::RegistrationBatch::new({
-                        let mut dependencies = harmos_runtime::Dependencies::new();
-                        dependencies.insert(cleanup.clone()).unwrap();
-                        dependencies
-                    })
-                    .operation::<CleanupDeclaration>(),
-                    Lanes::Open,
-                ))?;
+            bindings.operations::<Operations>(Lanes::Open)?;
+            bindings.operations::<super::cases::Operations>(Lanes::Open)?;
+            if self.cleanup.is_some() {
+                bindings.operations::<crate::operations::Single<CleanupDeclaration>>(Lanes::Open)?;
             }
-            bindings.register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(self.owner.clone()).unwrap();
-                    dependencies
-                })
-                .operation::<Shared>(),
-                Lanes::Serial,
-            ))?;
-            bindings.register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(ParentOwner)).unwrap();
-                    dependencies
-                })
-                .operation::<Parent>(),
-                Lanes::Serial,
-            ))
+            bindings.operations::<crate::operations::Single<Shared>>(Lanes::Serial)?;
+            bindings.operations::<crate::operations::Single<Parent>>(Lanes::Serial)
         })?);
 
         assert!(self.operations.definitions().is_empty());
@@ -365,10 +312,17 @@ impl PluginLifecycle for Host {
 
 impl Credit {
     async fn start() -> Self {
-        let runtime = super::runtime_with_preparation(NonZeroUsize::new(128).unwrap()).await;
+        let cleanup = Arc::new(CleanupOwner::default());
+        let runtime = runtime_with(|setup| {
+            setup.resource::<CleanupOwner>(cleanup.clone());
+            setup.settings().operation_settings(harmos_runtime::operations::Settings {
+                preparation_bytes: Some(NonZeroUsize::new(128).unwrap()),
+                ..Default::default()
+            });
+        })
+        .await;
         let mut manager = PluginManager::new(candidate_with_cleanup()).unwrap();
         let mut host = host(runtime.operations.clone());
-        let cleanup = Arc::new(CleanupOwner::default());
         host.cleanup = Some(cleanup.clone());
         manager.initialize(&mut host).await.unwrap();
         let scope = host.scope.as_ref().unwrap();
@@ -409,7 +363,7 @@ impl Credit {
         let bytes = self.echo.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(Text::from("settled").encode())).unwrap().await.unwrap();
         assert_eq!(String::decode(&bytes).unwrap(), "settled:1");
         self.manager.shutdown(&mut self.host).await.unwrap();
-        self.runtime.stop().await.unwrap();
+        self.runtime.shutdown().await.unwrap();
     }
 }
 
@@ -438,6 +392,28 @@ impl Running {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+async fn runtime() -> harmos_runtime::Runtime<super::Bank> {
+    runtime_with(|_| {}).await
+}
+
+async fn runtime_with(update: impl FnOnce(&mut harmos_runtime::Setup<super::Bank>)) -> harmos_runtime::Runtime<super::Bank> {
+    super::runtime_with(|setup| {
+        setup.resource(super::cases::Destination("fixture"));
+        update(setup);
+    })
+    .await
+}
+
+async fn runtime_with_preparation(bytes: NonZeroUsize) -> harmos_runtime::Runtime<super::Bank> {
+    runtime_with(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(bytes),
+            ..Default::default()
+        });
+    })
+    .await
+}
 
 fn selected_candidate(provider: &str, first: bool) -> PluginDefinitions {
     let contract = WireDeclaration::of::<SelectedDeclaration>().contract().unwrap();
@@ -525,9 +501,10 @@ fn with_clients(client_requires_provider: bool) -> PluginDefinitions {
 }
 
 fn host(operations: OperationManager<Lanes>) -> Host {
+    let owner = operations.context().resource::<Owner>().unwrap();
     Host {
         operations,
-        owner: Arc::new(Owner::default()),
+        owner,
         scope: None,
         fail_start: false,
         skip_operations: false,

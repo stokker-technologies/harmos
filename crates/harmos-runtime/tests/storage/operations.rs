@@ -31,7 +31,6 @@ mod writes;
 
 // Standard Library Imports
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 
 // Third Party Imports
 
@@ -105,15 +104,7 @@ fn catalog_serves_operations() {
 async fn record_follow_resumes() {
     use harmos_operations::storage::{FollowRecords, Followed};
     let fixture = Fixture::new(config()).await;
-    fixture
-        .runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     write(&fixture.storage, "historical").await;
     fixture.storage.flush().await.unwrap();
     let request = harmos_operations::storage::FollowRecords { after: None, selection: records() };
@@ -157,15 +148,7 @@ async fn stream_follow_sequence() {
     use harmos_operations::storage::FollowStream;
     use harmos_runtime::storage::{StoredRow, StreamInput};
     let fixture = Fixture::new(config()).await;
-    fixture
-        .runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     let key = super::schema();
     let stream = harmos_runtime::Identifier::new("voltage").unwrap();
     let item = harmos_runtime::Identifier::new("row").unwrap();
@@ -210,15 +193,7 @@ async fn foreign_cursor_refused() {
     use harmos_operations::storage::FollowStream;
     use harmos_runtime::storage::StoredRow;
     let fixture = Fixture::new(config()).await;
-    fixture
-        .runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     let mut foreign = fixture.storage.cursor_accepted();
     foreign.history.epoch = harmos_runtime::Identifier::new("foreign").unwrap();
     let request = harmos_operations::storage::FollowStream {
@@ -249,15 +224,7 @@ async fn following_spends_budget() {
     use harmos_operations::storage::{FollowRecords, Followed};
     use std::time::Duration;
     let fixture = Fixture::new(config()).await;
-    fixture
-        .runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     write(&fixture.storage, "first").await;
     let (sender, receiver) = harmos_runtime::operations::stream::<Followed>(harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::MIN,

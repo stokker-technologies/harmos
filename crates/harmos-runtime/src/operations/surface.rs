@@ -48,6 +48,7 @@ pub struct Invocation<O: OperationDeclaration, L: Lane, E: EndpointSet = ()> {
 
 enum Target {
     Host(Manager),
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     Plugin(crate::plugin::PluginScope),
 }
@@ -124,7 +125,12 @@ impl crate::plugin::PluginScope {
         }
     }
 
-    pub async fn register<L: Lane>(&self, mut registration: super::Registration<L>) -> Result<()> {
+    pub async fn register<C: harmos_sdk::operations::OperationCatalog, L: Lane>(&self, lane: L) -> Result<()> {
+        use super::RegistrationExt;
+        self.register_batch(C::batch().lane(lane)).await
+    }
+
+    pub(crate) async fn register_batch<L: Lane>(&self, mut registration: super::Registration<L>) -> Result<()> {
         if !self.is_ready() {
             return Err(Error::Closing { domain: "plugin scope" });
         }
@@ -134,7 +140,7 @@ impl crate::plugin::PluginScope {
             let entries = operations.native_entries(registration, self.owner(), Some(self))?;
             return operations.reserve(&entries);
         }
-        let mut batch = harmos_sdk::RegistrationBatch::new(registration.batch.dependencies.clone());
+        let mut batch = harmos_sdk::__private::RegistrationBatch::new();
         batch.services = services;
         let manager = crate::ServiceManager::scoped(operations.clone(), self.clone());
         let (staged, ids) = manager.stage(batch)?;
@@ -160,12 +166,17 @@ impl<A: crate::Application> crate::Runtime<A> {
         crate::ServiceManager::new(self.operations.execution())
     }
 
-    pub async fn register(&self, mut registration: super::Registration<A::Lanes>) -> Result<()> {
+    pub async fn register<C: harmos_sdk::operations::OperationCatalog>(&self, lane: A::Lanes) -> Result<()> {
+        use super::RegistrationExt;
+        self.register_batch(C::batch().lane(lane)).await
+    }
+
+    pub(crate) async fn register_batch(&self, mut registration: super::Registration<A::Lanes>) -> Result<()> {
         let services = std::mem::take(&mut registration.batch.services);
         if services.is_empty() {
-            return self.operations.register(registration).await;
+            return self.operations.register_batch(registration).await;
         }
-        let mut batch = harmos_sdk::RegistrationBatch::new(registration.batch.dependencies.clone());
+        let mut batch = harmos_sdk::__private::RegistrationBatch::new();
         batch.services = services;
         let manager = self.services();
         let (staged, ids) = manager.stage(batch)?;
@@ -193,12 +204,17 @@ impl<A: crate::Application> crate::runtime::Handle<A> {
         crate::ServiceManager::new(self.operations.execution())
     }
 
-    pub async fn register(&self, mut registration: super::Registration<A::Lanes>) -> Result<()> {
+    pub async fn register<C: harmos_sdk::operations::OperationCatalog>(&self, lane: A::Lanes) -> Result<()> {
+        use super::RegistrationExt;
+        self.register_batch(C::batch().lane(lane)).await
+    }
+
+    pub(crate) async fn register_batch(&self, mut registration: super::Registration<A::Lanes>) -> Result<()> {
         let services = std::mem::take(&mut registration.batch.services);
         if services.is_empty() {
-            return self.operations.register(registration).await;
+            return self.operations.register_batch(registration).await;
         }
-        let mut batch = harmos_sdk::RegistrationBatch::new(registration.batch.dependencies.clone());
+        let mut batch = harmos_sdk::__private::RegistrationBatch::new();
         batch.services = services;
         let manager = self.services();
         let (staged, ids) = manager.stage(batch)?;
@@ -388,7 +404,8 @@ impl harmos_sdk::operations::Host for Context<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Application, RegistrationExt};
+    use crate::Application;
+    use crate::operations::RegistrationExt;
     use std::sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -401,13 +418,34 @@ mod tests {
     }
 
     struct Model;
+    impl crate::Lifecycle for Model {
+        type Config = ();
+        type Error = std::convert::Infallible;
+        type Context = crate::Startup<Self>;
+
+        async fn prepare(_: (), _: &mut crate::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+            Ok(Self)
+        }
+
+        async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
     impl Application for Model {
         type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
         type Streams = ();
-        type Resources = ();
     }
 
     #[crate::operation(harmos_path = crate, resources = [AtomicUsize, crate::operations::HostContext],
@@ -456,64 +494,87 @@ mod tests {
 
     #[tokio::test]
     async fn mixed_registration_releases_invalid_batch_reservations() {
-        let runtime = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-        let mut dependencies = harmos_sdk::Dependencies::new();
-        dependencies.insert(Arc::new(AtomicUsize::new(0))).unwrap();
-        let batch = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Probe>().service::<Idle>(
+        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+            setup.resource::<AtomicUsize>(Arc::new(AtomicUsize::new(0)));
+        })
+        .await
+        .unwrap();
+        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<Probe>().service::<Idle>(
             "idle",
             crate::ServicePolicy {
                 stop_timeout: std::time::Duration::from_secs(1),
                 restart: crate::RestartPolicy::Never,
             },
         );
-        assert!(runtime.register(batch.clone().operation::<Probe>().defaults()).await.is_err());
+        assert!(
+            runtime
+                .register_batch(batch.clone().operation::<Probe>().lane(<Lanes as crate::operations::Lane>::default_lane()))
+                .await
+                .is_err()
+        );
         assert!(runtime.operations.definition(Probe::ID).is_err());
         assert!(runtime.operations.resident.definition("host.idle").is_none());
-        runtime.register(batch.defaults()).await.unwrap();
+        runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
         assert!(runtime.operations.definition(Probe::ID).is_ok());
         assert!(runtime.operations.resident.definition("host.idle").is_some());
         runtime.unregister(&crate::QualifiedId::parse("host.idle").unwrap()).await.unwrap();
         runtime.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 
     #[tokio::test]
     async fn operation_and_service_share_one_identity_namespace() {
-        let runtime = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-        let mut dependencies = harmos_sdk::Dependencies::new();
-        dependencies.insert(Arc::new(AtomicUsize::new(0))).unwrap();
-        let operation = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Probe>();
+        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+            setup.resource::<AtomicUsize>(Arc::new(AtomicUsize::new(0)));
+        })
+        .await
+        .unwrap();
+        let operation = harmos_sdk::__private::RegistrationBatch::new().operation::<Probe>();
         let policy = crate::ServicePolicy {
             stop_timeout: std::time::Duration::from_secs(1),
             restart: crate::RestartPolicy::Never,
         };
-        let service = harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).service::<Idle>("test.probe", policy);
-        assert!(runtime.register(operation.clone().service::<Idle>("test.probe", policy).defaults()).await.is_err());
+        let service = harmos_sdk::__private::RegistrationBatch::new().service::<Idle>("test.probe", policy);
+        assert!(
+            runtime
+                .register_batch(
+                    operation.clone().service::<Idle>("test.probe", policy).lane(<Lanes as crate::operations::Lane>::default_lane())
+                )
+                .await
+                .is_err()
+        );
         assert!(runtime.operations.definition(Probe::ID).is_err());
         assert!(!runtime.operations.resident.contains("host.test.probe"));
-        runtime.operations.register(operation.clone().defaults()).await.unwrap();
-        assert!(runtime.services().register(service.clone()).await.is_err());
+        runtime.operations.register_batch(operation.clone().lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
+        assert!(runtime.services().register_batch(service.clone()).await.is_err());
         runtime.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
-        runtime.services().register(service).await.unwrap();
-        assert!(runtime.operations.register(operation.defaults()).await.is_err());
+        runtime.services().register_batch(service).await.unwrap();
+        assert!(runtime.operations.register_batch(operation.lane(<Lanes as crate::operations::Lane>::default_lane())).await.is_err());
         runtime.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 
     #[tokio::test]
     async fn native_registration_is_atomic_and_invocation_policy_is_local() {
-        let runtime = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
         let initialized = Arc::new(AtomicUsize::new(0));
-        let mut dependencies = harmos_sdk::Dependencies::new();
-        dependencies.insert(initialized.clone()).unwrap();
-        let batch = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Probe>();
-        assert!(runtime.register(batch.clone().operation::<Probe>().defaults()).await.is_err());
+        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+            setup.resource::<AtomicUsize>(initialized.clone());
+        })
+        .await
+        .unwrap();
+        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<Probe>();
+        assert!(
+            runtime
+                .register_batch(batch.clone().operation::<Probe>().lane(<Lanes as crate::operations::Lane>::default_lane()))
+                .await
+                .is_err()
+        );
         assert!(runtime.operations.definition(Probe::ID).is_err());
         let mut mismatched = batch.clone();
         mismatched.operations[0].definition.id = crate::Identifier::new("different").unwrap();
-        assert!(runtime.register(mismatched.defaults()).await.is_err());
+        assert!(runtime.register_batch(mismatched.lane(<Lanes as crate::operations::Lane>::default_lane())).await.is_err());
         assert!(runtime.operations.definition("different").is_err());
-        runtime.operations.register(batch.defaults()).await.unwrap();
+        runtime.operations.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
         assert!(matches!(
             runtime.operations.call_encoded("host.test.probe", Vec::new()).await,
             Err(Error::InvalidInput { field: "operation preparation bytes", .. })
@@ -537,6 +598,6 @@ mod tests {
         assert_eq!(runtime.operations.definition(Probe::ID).unwrap().policy.retries, RetryPolicy::Never);
         runtime.operations.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
         assert!(runtime.operation(Probe { value: 0 }).start().await.is_err());
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }

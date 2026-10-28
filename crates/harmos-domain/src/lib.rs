@@ -36,6 +36,7 @@ mod value;
 
 pub mod __private {
     pub use crate::config::SchemaSettings;
+    pub use crate::identity::{dotted as operation_identity, segment as owner_segment, stream_subset as stream_identity};
     pub use crate::plugin::schema_markers as PluginSchemaMarkers;
     pub use crate::postcard_product;
     pub extern crate serde;
@@ -85,7 +86,8 @@ pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]
 pub use harmos_macros::{
-    catalog, listener, message, observer, operation, plugin, record, records, stream, streams, transaction, transactions,
+    domain_catalog as catalog, domain_operation as operation, listener, message, observer, plugin, record, records, stream, streams,
+    transaction, transactions,
 };
 pub use message::{Digest, Fingerprint, MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};
 pub use model::operations::policy::{Backoff, Jitter, OperationPolicy, RetryPolicy};

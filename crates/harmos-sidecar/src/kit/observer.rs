@@ -46,12 +46,12 @@ use harmos_domain::inventory::publications;
 /* === Type Aliases === */
 
 type ContextFactory<H> = Arc<dyn Fn(&H) -> Arc<dyn Any + Send + Sync> + Send + Sync>;
-type Open<R, H> = fn(Arc<R>, H, Option<ContextFactory<H>>, Identity) -> Result<Activity, ObserverError>;
+type Open<H> = fn(Arc<harmos_sdk::ExecutionContext>, H, Option<ContextFactory<H>>, Identity) -> Result<Activity, ObserverError>;
 type Step<'a> = Pin<Box<dyn Future<Output = Result<(), ObserverError>> + Send + 'a>>;
 
 /* === Structs === */
 
-pub struct Declarations<R, H = Supervisor>(std::marker::PhantomData<(R, H)>);
+pub struct Declarations<H = Supervisor>(std::marker::PhantomData<H>);
 
 pub struct Inventory<H = Supervisor>(std::marker::PhantomData<H>);
 
@@ -63,18 +63,18 @@ pub struct Tick {
     elapsed: Duration,
 }
 
-pub struct ObserverContext<'a, R, H = Supervisor> {
+pub struct ObserverContext<'a, H = Supervisor> {
     identity: Identity,
-    resources: &'a R,
+    resources: &'a harmos_sdk::ExecutionContext,
     tick: &'a Tick,
     host: &'a H,
     streams: &'static [publications::Entry],
     extension: Option<&'a (dyn Any + Send + Sync)>,
 }
 
-pub struct Instance<R, H = Supervisor> {
+pub struct Instance<H = Supervisor> {
     entry: harmos_domain::inventory::observers::Entry,
-    open: Open<R, H>,
+    open: Open<H>,
     context: Option<ContextFactory<H>>,
 }
 
@@ -88,7 +88,7 @@ pub struct Activity {
 
 struct Bound<S: Observer<H>, H: Send + Sync + 'static> {
     identity: Identity,
-    resources: Arc<S::Resources>,
+    resources: Arc<harmos_sdk::ExecutionContext>,
     host: H,
     extension: Option<Arc<dyn Any + Send + Sync>>,
     observer: Option<S>,
@@ -134,8 +134,6 @@ trait Body: Send {
 }
 
 pub trait Observer<H: Send + Sync + 'static = Supervisor>: Sized + Send + 'static {
-    type Resources: Send + Sync + 'static;
-
     type Error: std::error::Error + Send + Sync + 'static;
 
     const ID: &'static str;
@@ -150,9 +148,9 @@ pub trait Observer<H: Send + Sync + 'static = Supervisor>: Sized + Send + 'stati
 
     const INTERVAL: Duration;
 
-    fn initialize(resources: &Self::Resources) -> impl Future<Output = Result<Self, Self::Error>> + Send;
+    fn initialize(resources: &harmos_sdk::ExecutionContext) -> impl Future<Output = Result<Self, Self::Error>> + Send;
 
-    fn observe(&mut self, ctx: &ObserverContext<'_, Self::Resources, H>) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    fn observe(&mut self, ctx: &ObserverContext<'_, H>) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     fn stop(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
         std::future::ready(Ok(()))
@@ -165,14 +163,12 @@ pub trait Observer<H: Send + Sync + 'static = Supervisor>: Sized + Send + 'stati
 
 /* === Implementations === */
 
-impl<R: Send + Sync + 'static, H: Send + Sync + 'static> harmos_domain::catalog::Visitor for Declarations<R, H> {
-    type Entry = fn() -> Instance<R, H>;
+impl<H: Send + Sync + 'static> harmos_domain::catalog::Visitor for Declarations<H> {
+    type Entry = fn() -> Instance<H>;
 }
 
-impl<R: Send + Sync + 'static, H: Send + Sync + 'static, S: Observer<H, Resources = R>> harmos_domain::catalog::Member<S>
-    for Declarations<R, H>
-{
-    const ENTRY: fn() -> Instance<R, H> = Instance::of::<S>;
+impl<H: Send + Sync + 'static, S: Observer<H>> harmos_domain::catalog::Member<S> for Declarations<H> {
+    const ENTRY: fn() -> Instance<H> = Instance::of::<S>;
 }
 
 impl<H: Send + Sync + 'static> harmos_domain::catalog::Visitor for Outputs<H> {
@@ -215,7 +211,7 @@ impl Tick {
     }
 }
 
-impl<R, H> ObserverContext<'_, R, H> {
+impl<H> ObserverContext<'_, H> {
     pub fn observer_id(&self) -> &'static str {
         self.identity.observer
     }
@@ -224,8 +220,8 @@ impl<R, H> ObserverContext<'_, R, H> {
         self.identity.activation
     }
 
-    pub fn resources(&self) -> &R {
-        self.resources
+    pub fn resource<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, harmos_sdk::operations::ResourceError> {
+        self.resources.resource::<T>()
     }
 
     pub fn tick(&self) -> &Tick {
@@ -237,20 +233,21 @@ impl<R, H> ObserverContext<'_, R, H> {
     }
 
     pub fn extension<T: Send + Sync + 'static>(&self) -> Option<&T> {
-        self.extension.and_then(|extension| extension.downcast_ref())
+        let extension = self.extension?;
+        extension.downcast_ref()
     }
 }
 
-impl<R> ObserverContext<'_, R, Supervisor> {
+impl ObserverContext<'_, Supervisor> {
     pub fn supervisor(&self) -> &Supervisor {
         self.host
     }
 }
 
-impl<R: Sync, H> ObserverContext<'_, R, H> {
+impl<H> ObserverContext<'_, H> {
     pub async fn publish<V: Send>(&self, value: V) -> Result<(), H::Error>
     where
-        H: ObserverPublisher<R, V>,
+        H: ObserverPublisher<V>,
     {
         if let Some(stream) = H::STREAM {
             self.check_stream(stream.id, stream.schema)?;
@@ -261,7 +258,7 @@ impl<R: Sync, H> ObserverContext<'_, R, H> {
     pub async fn publish_on<S: harmos_domain::StreamSpec>(&self, row: &S::Row) -> Result<(), H::Error>
     where
         S::Row: Sync,
-        H: ObserverStreamPublisher<R, S>,
+        H: ObserverStreamPublisher<S>,
     {
         self.check_stream(S::ID, S::VERSION)?;
         self.host.publish_on(self, row).await
@@ -269,7 +266,7 @@ impl<R: Sync, H> ObserverContext<'_, R, H> {
 
     pub async fn call<C>(&self, request: H::Request) -> Result<H::Response, H::Error>
     where
-        H: ObserverCaller<R, C>,
+        H: ObserverCaller<C>,
     {
         self.host.call(self, request).await
     }
@@ -283,8 +280,8 @@ impl<R: Sync, H> ObserverContext<'_, R, H> {
     }
 }
 
-impl<R: Send + Sync + 'static, H: Send + Sync + 'static> Instance<R, H> {
-    pub fn of<S: Observer<H, Resources = R>>() -> Self {
+impl<H: Send + Sync + 'static> Instance<H> {
+    pub fn of<S: Observer<H>>() -> Self {
         assert!(
             !S::ID.trim().is_empty() && !S::ID.chars().any(char::is_control),
             "an observer identity must be nonempty and contain no control characters"
@@ -307,7 +304,11 @@ impl<R: Send + Sync + 'static, H: Send + Sync + 'static> Instance<R, H> {
     }
 
     pub fn with_context<T: Send + Sync + 'static>(mut self, factory: impl Fn(&H) -> T + Send + Sync + 'static) -> Self {
-        self.context = Some(Arc::new(move |host| Arc::new(factory(host))));
+        let erased = move |host: &H| -> Arc<dyn Any + Send + Sync> {
+            let extension = factory(host);
+            Arc::new(extension)
+        };
+        self.context = Some(Arc::new(erased));
         self
     }
 
@@ -337,7 +338,7 @@ impl<R: Send + Sync + 'static, H: Send + Sync + 'static> Instance<R, H> {
 
     // Open one activation over its resources and bound host. Nothing runs
     // until the caller drives `observe`.
-    pub fn activate(&self, resources: Arc<R>, host: H) -> Result<Activity, ObserverError> {
+    pub fn activate(&self, resources: Arc<harmos_sdk::ExecutionContext>, host: H) -> Result<Activity, ObserverError> {
         let identity = Identity::new(self.entry.id).map_err(ObserverError::Identity)?;
         (self.open)(resources, host, self.context.clone(), identity)
     }
@@ -345,9 +346,17 @@ impl<R: Send + Sync + 'static, H: Send + Sync + 'static> Instance<R, H> {
 
 impl Activity {
     fn open<S: Observer<H>, H: Send + Sync + 'static>(
-        resources: Arc<S::Resources>, host: H, context: Option<ContextFactory<H>>, identity: Identity,
+        resources: Arc<harmos_sdk::ExecutionContext>, host: H, context: Option<ContextFactory<H>>, identity: Identity,
     ) -> Result<Self, ObserverError> {
-        let extension = std::panic::catch_unwind(AssertUnwindSafe(|| context.map(|factory| factory(&host)))).map_err(|_| {
+        let create_extension = || match context {
+            Some(factory) => {
+                let extension = factory(&host);
+                Some(extension)
+            }
+            None => None,
+        };
+        let guarded_extension = AssertUnwindSafe(create_extension);
+        let extension = std::panic::catch_unwind(guarded_extension).map_err(|_| {
             tracing::error!(
                 observer = identity.observer, activation_id = %identity.activation,
                 "observer context factory panicked; activation refused"
@@ -428,11 +437,7 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
             let observer = self.observer.as_mut().expect("initialized observer");
             loop {
                 clock.tick().await;
-                if let Err(exhausted) = tick.advance(opened.elapsed()) {
-                    tracing::error!(observer = name, activation_id = %activation,
-                        "observer tick ordinal exhausted; activation stopping");
-                    return Err(exhausted);
-                }
+                advance_tick(&mut tick, opened.elapsed(), self.identity)?;
                 let context = ObserverContext {
                     identity: self.identity,
                     resources: self.resources.as_ref(),
@@ -442,20 +447,7 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
                     streams: S::STREAMS,
                 };
                 let observed = AssertUnwindSafe(async { observer.observe(&context).await }).catch_unwind().await;
-                match observed {
-                    Ok(Ok(())) => {}
-                    Ok(Err(error)) => tracing::warn!(
-                        observer = name, activation_id = %activation, tick = tick.ordinal(), error = %harmos_domain::failure::Report(&error),
-                        "observer callback refused"
-                    ),
-                    Err(_) => {
-                        tracing::error!(
-                            observer = name, activation_id = %activation, tick = tick.ordinal(),
-                            "observer callback panicked; activation stopping"
-                        );
-                        return Err(ObserverError::CallbackPanicked);
-                    }
-                }
+                observed_result(observed, self.identity, tick.ordinal())?;
             }
         })
     }
@@ -492,19 +484,53 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
 
 /* === Public Functions === */
 
-pub(super) fn validate_outputs<R, H>(instances: &[Instance<R, H>], grants: &[publications::Entry]) -> Result<(), String> {
-    for output in instances.iter().flat_map(|instance| instance.entry.streams) {
-        if !grants
-            .iter()
-            .any(|grant| grant.id == output.id && grant.schema == output.schema && grant.window == output.window && grant.row == output.row)
-        {
-            return Err(format!("observer output `{}` differs from the artifact publication grant", output.id));
+pub(super) fn validate_outputs<H>(instances: &[Instance<H>], grants: &[publications::Entry]) -> Result<(), String> {
+    let outputs = instances.iter().flat_map(|instance| instance.entry.streams);
+    let missing = |output: &&publications::Entry| !matches_output(output, grants);
+    let mut invalid = outputs.filter(missing);
+    match invalid.next() {
+        Some(output) => {
+            let message = format!("observer output `{}` differs from the artifact publication grant", output.id);
+            Err(message)
         }
+        None => Ok(()),
     }
-    Ok(())
 }
 
 /* === Private Functions === */
+
+fn observed_result<E: std::error::Error + 'static>(
+    observed: Result<Result<(), E>, Box<dyn Any + Send>>, identity: Identity, tick: u64,
+) -> Result<(), ObserverError> {
+    match observed {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(error)) => {
+            tracing::warn!(observer = identity.observer, activation_id = %identity.activation,
+                tick, error = %harmos_domain::failure::Report(&error), "observer callback refused");
+            Ok(())
+        }
+        Err(_) => {
+            tracing::error!(observer = identity.observer, activation_id = %identity.activation,
+                tick, "observer callback panicked; activation stopping");
+            Err(ObserverError::CallbackPanicked)
+        }
+    }
+}
+
+fn matches_output(output: &publications::Entry, grants: &[publications::Entry]) -> bool {
+    grants
+        .iter()
+        .any(|grant| grant.id == output.id && grant.schema == output.schema && grant.window == output.window && grant.row == output.row)
+}
+
+fn advance_tick(tick: &mut Tick, elapsed: Duration, identity: Identity) -> Result<(), ObserverError> {
+    let result = tick.advance(elapsed);
+    if result.is_err() {
+        tracing::error!(observer = identity.observer, activation_id = %identity.activation,
+            "observer tick ordinal exhausted; activation stopping");
+    }
+    result
+}
 
 async fn guarded<E: std::error::Error + Send + Sync + 'static>(
     work: impl Future<Output = Result<(), E>>, refused: fn(Arc<dyn std::error::Error + Send + Sync>) -> ObserverError,
@@ -512,9 +538,41 @@ async fn guarded<E: std::error::Error + Send + Sync + 'static>(
 ) -> Result<(), ObserverError> {
     match AssertUnwindSafe(work).catch_unwind().await {
         Ok(Ok(())) => Ok(()),
-        Ok(Err(source)) => Err(refused(Arc::new(source))),
+        Ok(Err(source)) => {
+            let source = Arc::new(source);
+            let error = refused(source);
+            Err(error)
+        }
         Err(_) => Err(panicked),
     }
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::{Identity, ObserverContext, Tick};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    #[test]
+    fn context_resource_resolution() {
+        let value = Arc::new(17_u32);
+        let mut table = harmos_sdk::__private::WireTable::new("observer").unwrap();
+        table.provide_resource(Arc::clone(&value)).unwrap();
+        let resources = table.context();
+        let tick = Tick { ordinal: 1, elapsed: Duration::ZERO };
+        let context = ObserverContext {
+            identity: Identity::new("resource_observer").unwrap(),
+            resources: &resources,
+            tick: &tick,
+            host: &(),
+            streams: &[],
+            extension: None,
+        };
+
+        let resolved = context.resource::<u32>().unwrap();
+        assert!(Arc::ptr_eq(&value, &resolved));
+        assert!(context.resource::<u64>().is_err());
+    }
+}

@@ -52,7 +52,6 @@ struct RetainedCleanup {
 enum CleanupRequest {
     Instance,
     Definition,
-    Scope,
     Runtime,
 }
 
@@ -98,7 +97,7 @@ impl Resident<App> for RetainedCleanup {
 /* === Private Functions === */
 
 async fn stop_cleanup(
-    runtime: &Runtime<App>, scope: &Arc<()>, request: CleanupRequest,
+    runtime: &Runtime<App>, request: CleanupRequest,
     lease: &harmos_runtime::operations::Running<harmos_runtime::operations::resident::Activation>,
 ) -> harmos_runtime::Result<()> {
     match request {
@@ -107,8 +106,7 @@ async fn stop_cleanup(
             lease.settle().await
         }
         CleanupRequest::Definition => runtime.operations.unregister_resident("retained-cleanup").await,
-        CleanupRequest::Scope => runtime.operations.retire_resources(scope).await,
-        CleanupRequest::Runtime => runtime.stop().await.map(|_| ()),
+        CleanupRequest::Runtime => runtime.shutdown().await.map(|_| ()),
     }
 }
 
@@ -117,7 +115,7 @@ async fn stop_cleanup(
 #[tokio::test]
 async fn unregister_retains_cleanup() {
     for retry in [true, false] {
-        let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
+        let runtime = Runtime::<App>::launch((), ()).await.unwrap();
         let entered = Arc::new(Notify::new());
         let release = Arc::new(Notify::new());
         let cleaned = Arc::new(AtomicBool::new(false));
@@ -129,7 +127,7 @@ async fn unregister_retains_cleanup() {
                     id: "reload".into(),
                     policy: harmos_runtime::services::POLICY,
                 },
-                move |_: Arc<()>| {
+                move |_: Arc<harmos_sdk::ExecutionContext>| {
                     let signals = signals.clone();
                     move |mut context: harmos_runtime::services::ServiceContext<App>| {
                         let (entered, release, cleaned) = signals.clone();
@@ -171,9 +169,9 @@ async fn unregister_retains_cleanup() {
             assert!(
                 !runtime.operations.watch_residents().borrow().contains_key(&harmos_runtime::operations::resident::Key::root("reload"))
             );
-            runtime.stop().await.unwrap();
+            runtime.shutdown().await.unwrap();
         } else {
-            let stopping = runtime.stop();
+            let stopping = runtime.shutdown();
             tokio::pin!(stopping);
             let pending =
                 std::future::poll_fn(|cx| std::task::Poll::Ready(std::future::Future::poll(stopping.as_mut(), cx).is_pending())).await;
@@ -205,7 +203,7 @@ async fn stop_joins_cleanup() {
         };
         let mut lease = None;
         let runtime = if tenant {
-            let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
+            let runtime = Runtime::<App>::launch((), ()).await.unwrap();
             runtime
                 .operations
                 .register_service(
@@ -213,25 +211,29 @@ async fn stop_joins_cleanup() {
                         id: "cleanup".into(),
                         policy: harmos_runtime::services::POLICY,
                     },
-                    move |_: Arc<()>| resident.clone(),
+                    move |_: Arc<harmos_sdk::ExecutionContext>| resident.clone(),
                 )
                 .unwrap();
             lease = Some(runtime.operations.submit_resident("cleanup").await.unwrap());
             runtime
         } else {
-            Runtime::<App>::builder((), ()).service("cleanup", resident).runtime().await.unwrap()
+            Runtime::<App>::launch_with((), (), |setup| {
+                setup.settings().service("cleanup", resident);
+            })
+            .await
+            .unwrap()
         };
         service_status(runtime.operations.watch_residents(), "cleanup", |status| matches!(status, ServiceStatus::Running { .. })).await;
 
         {
-            let stop = runtime.stop();
+            let stop = runtime.shutdown();
             tokio::pin!(stop);
             tokio::select! {
                 _ = &mut stop => panic!("cleanup has not finished"),
                 _ = entered.notified() => {}
             }
         }
-        let stop = runtime.stop();
+        let stop = runtime.shutdown();
         tokio::pin!(stop);
         assert!(futures_util::poll!(&mut stop).is_pending());
         assert!(!cleaned.load(Ordering::SeqCst));
@@ -245,10 +247,9 @@ async fn stop_joins_cleanup() {
 #[tokio::test]
 async fn timeout_retains_cleanup() {
     for (panic_first, request) in [false, true].into_iter().flat_map(|panic_first| {
-        [CleanupRequest::Instance, CleanupRequest::Definition, CleanupRequest::Scope, CleanupRequest::Runtime]
-            .map(|request| (panic_first, request))
+        [CleanupRequest::Instance, CleanupRequest::Definition, CleanupRequest::Runtime].map(|request| (panic_first, request))
     }) {
-        let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
+        let runtime = Runtime::<App>::launch((), ()).await.unwrap();
         let (release, gate) = tokio::sync::oneshot::channel();
         let gate = Arc::new(Mutex::new(Some(gate)));
         let factories = Arc::new(AtomicUsize::new(0));
@@ -266,7 +267,7 @@ async fn timeout_retains_cleanup() {
                         ..harmos_runtime::services::POLICY
                     },
                 },
-                move |_: Arc<()>| {
+                move |_: Arc<harmos_sdk::ExecutionContext>| {
                     let (gate, factories, attempts, completed, finalizing) = &resources;
                     factories.fetch_add(1, Ordering::AcqRel);
                     RetainedCleanup {
@@ -281,10 +282,9 @@ async fn timeout_retains_cleanup() {
                 },
             )
             .unwrap();
-        let scope = runtime.operations.root_resources();
         let lease = runtime.operations.submit_resident("retained-cleanup").await.unwrap();
         lease.ready().await.unwrap();
-        assert!(stop_cleanup(&runtime, &scope, request, &lease).await.is_err());
+        assert!(stop_cleanup(&runtime, request, &lease).await.is_err());
         assert_eq!(lease.status().phase(), OperationPhase::Finalizing);
         assert_eq!(lease.status().outcome(), Some(OperationOutcome::TimedOut));
         assert!(lease.status().cleanup_pending());
@@ -295,7 +295,7 @@ async fn timeout_retains_cleanup() {
             assert!(matches!(runtime.operations.submit_resident("retained-cleanup").await, Err(harmos_runtime::Error::Closing { .. })));
         }
         {
-            let retry = stop_cleanup(&runtime, &scope, request, &lease);
+            let retry = stop_cleanup(&runtime, request, &lease);
             tokio::pin!(retry);
             tokio::select! {
                 _ = &mut retry => panic!("the original blocking owner is still running"),
@@ -307,7 +307,7 @@ async fn timeout_retains_cleanup() {
         release.send(()).unwrap();
         // Physical cleanup completes, while the original timeout still reports
         // failure. The cancelled retry never starts another finalizer or factory.
-        let error = stop_cleanup(&runtime, &scope, request, &lease).await.unwrap_err();
+        let error = stop_cleanup(&runtime, request, &lease).await.unwrap_err();
         let mut cause = &error;
         loop {
             let harmos_runtime::Error::TaskFailed { source, .. } = cause else {
@@ -326,21 +326,21 @@ async fn timeout_retains_cleanup() {
         assert!(lease.status().settled_at().is_some());
         assert_eq!(attempts.load(Ordering::Acquire), 2);
         assert_eq!(factories.load(Ordering::Acquire), 1);
-        if matches!(request, CleanupRequest::Definition | CleanupRequest::Scope) {
+        if matches!(request, CleanupRequest::Definition) {
             assert!(runtime.operations.resident(&harmos_runtime::operations::resident::Key::root("retained-cleanup")).is_none());
         }
         drop(lease);
         if matches!(request, CleanupRequest::Instance | CleanupRequest::Runtime) {
-            assert!(runtime.stop().await.is_err());
+            assert!(runtime.shutdown().await.is_err());
         } else {
-            runtime.stop().await.unwrap();
+            runtime.shutdown().await.unwrap();
         }
     }
 }
 
 #[tokio::test]
 async fn exit_cause_preserved() {
-    let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
+    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
     let (release, gate) = tokio::sync::oneshot::channel();
     let gate = Arc::new(Mutex::new(Some(gate)));
     let attempts = Arc::new(AtomicUsize::new(0));
@@ -353,7 +353,7 @@ async fn exit_cause_preserved() {
                 id: "environmental-cleanup".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            move |_: Arc<()>| RetainedCleanup {
+            move |_: Arc<harmos_sdk::ExecutionContext>| RetainedCleanup {
                 gate: gate.lock().unwrap().take(),
                 join: None,
                 finalizing: Arc::new(Notify::new()),
@@ -378,5 +378,5 @@ async fn exit_cause_preserved() {
     assert_eq!(source.to_string(), "original transport exit");
     assert!(observed.load(Ordering::Acquire));
     drop(lease);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }

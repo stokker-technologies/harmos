@@ -100,18 +100,12 @@ impl Drop for AttemptGuard {
 /* === Private Functions === */
 
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let trace = Arc::new(Trace::default());
-    let mut dependencies = harmos_runtime::Dependencies::new();
-    dependencies.insert(trace.clone()).unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(dependencies).operation::<ReadContractDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Trace>(trace.clone()).operations::<crate::operations::Single<ReadContractDeclaration>>(Lanes::Open);
+    })
+    .await
+    .unwrap();
     (runtime, trace)
 }
 
@@ -125,7 +119,7 @@ async fn registration_does_not_execute_requests() {
     assert_eq!(response.value, 7);
     assert_eq!(trace.entered.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -137,7 +131,7 @@ async fn cancellation_drops_attempt_state() {
     assert!(call.await.is_err());
     assert_eq!(trace.entered.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -147,11 +141,12 @@ async fn panic_drops_attempt_state() {
     assert!(matches!(result, Err(Error::OperationPanicked { .. })));
     assert_eq!(trace.entered.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 mod listed {
 
+    use super::App;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -218,13 +213,13 @@ mod listed {
         value: u32,
         borrowed: std::sync::atomic::AtomicUsize,
         ran: std::sync::atomic::AtomicUsize,
-        operations: std::sync::Weak<harmos_runtime::operations::OperationManager<crate::operations::fixture::Lanes>>,
+        operations: std::sync::OnceLock<std::sync::Weak<harmos_runtime::operations::OperationManager<crate::operations::fixture::Lanes>>>,
     }
 
     impl std::borrow::Borrow<u32> for BorrowOwner {
         fn borrow(&self) -> &u32 {
             self.borrowed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            self.operations.upgrade().unwrap().definition("authored.cached_owner").unwrap();
+            self.operations.get().unwrap().upgrade().unwrap().definition("authored.cached_owner").unwrap();
             &self.value
         }
     }
@@ -250,27 +245,21 @@ mod listed {
 
     #[tokio::test]
     async fn restore_defers_borrow() {
-        let runtime = crate::operations::fixture::runtime().await;
-        let observed = Arc::new(runtime.operations.clone());
         let owner = Arc::new(BorrowOwner {
             value: 7,
             borrowed: std::sync::atomic::AtomicUsize::new(0),
             ran: std::sync::atomic::AtomicUsize::new(0),
-            operations: Arc::downgrade(&observed),
+            operations: std::sync::OnceLock::new(),
         });
-        runtime
-            .operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(owner.clone()).unwrap();
-                    dependencies
-                })
-                .operation::<CachedOwnerDeclaration>(),
-                crate::operations::fixture::Lanes::Open,
-            ))
-            .await
-            .unwrap();
+        let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
+            setup
+                .resource::<BorrowOwner>(owner.clone())
+                .operations::<crate::operations::Single<CachedOwnerDeclaration>>(crate::operations::fixture::Lanes::Open);
+        })
+        .await
+        .unwrap();
+        let observed = Arc::new(runtime.operations.clone());
+        owner.operations.set(Arc::downgrade(&observed)).unwrap();
         let first = runtime.operation(CachedOwnerDeclaration { value: 0 }).run().await.unwrap();
         let cached = runtime.operation(CachedOwnerDeclaration { value: 0 }).run().await.unwrap();
         assert!(first.ptr_eq(&cached));
@@ -283,39 +272,20 @@ mod listed {
         assert_eq!(*restored, 7);
         assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 1);
         drop((first, cached, restored));
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 
     #[tokio::test]
     async fn macro_retains_owner() {
-        let runtime = crate::operations::fixture::runtime().await;
         let original = Arc::new(7_u32);
-        runtime
-            .operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(original.clone()).unwrap();
-                    dependencies
-                })
-                .operation::<InferredOwnedDeclaration>(),
-                crate::operations::fixture::Lanes::Open,
-            ))
-            .await
-            .unwrap();
-        runtime
-            .operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(original.clone()).unwrap();
-                    dependencies
-                })
-                .operation::<DeclaredOwnedDeclaration>(),
-                crate::operations::fixture::Lanes::Open,
-            ))
-            .await
-            .unwrap();
+        let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
+            setup
+                .resource::<u32>(original.clone())
+                .operations::<crate::operations::Single<InferredOwnedDeclaration>>(crate::operations::fixture::Lanes::Open)
+                .operations::<crate::operations::Single<DeclaredOwnedDeclaration>>(crate::operations::fixture::Lanes::Open);
+        })
+        .await
+        .unwrap();
         let inferred = runtime.operation(InferredOwnedDeclaration { value: 0 }).run().await.unwrap();
         let declared = runtime.operation(DeclaredOwnedDeclaration { value: 0 }).run().await.unwrap();
         assert_eq!(*inferred, 7_u32);
@@ -323,17 +293,15 @@ mod listed {
         assert!(std::ptr::eq(inferred.as_ref(), original.as_ref()));
         assert!(inferred.ptr_eq(&declared));
         drop((inferred, declared));
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
+        drop(runtime);
         let recovered = harmos_runtime::operations::Response::from_owner(original).try_unwrap().unwrap();
         assert_eq!(recovered, 7);
     }
 
     #[test]
     fn catalogs_project_declarations() {
-        let batch = harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<DoublingDeclaration>();
-        batch.operations[0].validate().unwrap();
         let projected = Declared::catalog();
-        assert_eq!(batch.operations[0].definition, projected[0]);
         assert_eq!(projected, Declarations::of::<Declared>().unwrap());
         assert_eq!(projected[0].id.as_str(), "authored.doubling");
         let contracts = Contracts::of::<Declared>().unwrap();

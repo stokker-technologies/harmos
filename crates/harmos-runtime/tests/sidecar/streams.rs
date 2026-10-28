@@ -27,7 +27,8 @@ use super::{Counts, ReadDeclaration};
 use super::{Lanes, Managed, source};
 #[cfg(feature = "grpc")]
 use harmos_runtime::grpc::{Codec, InputEnvelope, OutputEnvelope};
-use harmos_runtime::operations::{StreamSettings, WireStreamLimits, WireTable};
+use harmos_runtime::operations::{StreamSettings, WireStreamLimits};
+use harmos_sdk::__private::WireTable;
 
 /* === Constants === */
 
@@ -105,8 +106,7 @@ pub(super) enum Operations {
     ExchangeDeclaration(ExchangeDeclaration),
 }
 
-// Runtime-error endpoints bind through the same catalog projection as
-// `bind_operations`, which is the authored sidecar route.
+// Runtime-Error Endpoints Use The Plugin's Constant Catalog
 
 /* === Traits === */
 
@@ -142,21 +142,13 @@ serving!(ExchangeDeclaration, request, ports, {
 
 /* === Public Functions === */
 
-pub(super) fn bind(table: &mut WireTable, counts: Arc<Counts>) -> Result<(), harmos_runtime::operations::ServingError> {
+pub(super) fn configure(table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
     let direction = StreamSettings {
         items: NonZeroUsize::MIN,
         bytes: NonZeroUsize::new(64).unwrap(),
     };
     let limits = WireStreamLimits { input: direction, output: direction };
-    table.stream_limits(limits)?;
-    let mut dependencies = harmos_runtime::Dependencies::new();
-    dependencies.insert(counts).unwrap();
-    table.register(
-        harmos_runtime::RegistrationBatch::new(dependencies)
-            .operation::<UploadDeclaration>()
-            .operation::<DownloadDeclaration>()
-            .operation::<ExchangeDeclaration>(),
-    )
+    table.stream_limits(limits)
 }
 
 /* === Private Functions === */
@@ -262,7 +254,7 @@ async fn grpc_stream_lifecycle() {
     assert_eq!(counts.finished.load(Ordering::SeqCst), 3);
     fixture.shutdown().await.unwrap();
     assert!(fixture.runtime.grpc().methods().is_empty());
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
@@ -323,5 +315,5 @@ async fn grpc_shape_refusal() {
     assert_eq!(counts.runs.load(Ordering::SeqCst), 0);
 
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }

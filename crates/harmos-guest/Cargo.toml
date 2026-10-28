@@ -16,7 +16,7 @@ version = { workspace = true }
 
 [features]
 default = ["derive"]
-derive = ["harmos-domain/derive"]
+derive = ["harmos-domain/derive", "harmos-sdk/derive", "dep:harmos-macros"]
 # Provider Protobuf Decoding For Contracts That Bind A gRPC Method; No Host Networking.
 grpc = ["harmos-sdk/grpc"]
 # Stream Endpoints Add Rust Channel Traffic.
@@ -32,8 +32,9 @@ kit = ["harmos-operations/lifecycle", "dep:wit-bindgen", "wit-bindgen/inter-task
 
 [dependencies]
 # Local
-harmos-operations = { workspace = true }
 harmos-domain = { workspace = true }
+harmos-macros = { workspace = true, optional = true }
+harmos-operations = { workspace = true }
 harmos-sdk = { workspace = true }
 
 # Git
@@ -117,6 +118,7 @@ tracing-perfetto-file = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 # Utilities
+sha2 = { workspace = true, default-features = true }
 wasmtime = { workspace = true }
 wit-component = { workspace = true, default-features = true }
 

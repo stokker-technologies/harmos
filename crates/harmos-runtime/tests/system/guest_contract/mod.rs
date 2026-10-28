@@ -57,16 +57,15 @@ use support::Lanes as GuestLanes;
 /* === Private Functions === */
 
 async fn runtime() -> Runtime<Bank> {
-    Runtime::builder(support::Ledger::default(), ())
-        .register(GuestLanes::catalog())
-        .register(support::catalog())
-        .operation_settings(harmos_runtime::operations::Settings {
+    Runtime::<Bank>::launch_with(support::Ledger::default(), (), |setup| {
+        setup.settings().register(support::catalog());
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .expect("an empty ledger has nothing to recover")
+        });
+    })
+    .await
+    .expect("an empty ledger has nothing to recover")
 }
 
 fn schematic() -> Vec<u8> {

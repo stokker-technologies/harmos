@@ -520,73 +520,6 @@ package = "__PACKAGE_NAME__"
 module = "__RUST_MODULE__"
 product = "__PRODUCT_NAME__"
 
-# === === Release === === #
-
-[release]
-provider = "github"
-repository = "stokker-technologies/harmos"
-product = "harmos"
-targets = ["linux-x86_64", "windows-x86_64"]
-crates_bootstrap_secret = "CARGO_REGISTRY_TOKEN"
-lock_commands = [
-  [
-    "cargo",
-    "update",
-    "--workspace",
-  ],
-  [
-    "cargo",
-    "update",
-    "--manifest-path",
-    "examples/schematic/Cargo.toml",
-    "--workspace",
-  ],
-  [
-    "cargo",
-    "update",
-    "--manifest-path",
-    "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml",
-    "--workspace",
-  ],
-]
-
-[version]
-value = "0.1.8"
-files = ["Cargo.toml", "examples/schematic/Cargo.toml", "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"]
-
-[[package.executables]]
-package = "cargo-harmos"
-command = "cargo-harmos"
-name = "cargo-harmos"
-targets = { linux-x86_64 = "x86_64-unknown-linux-gnu", windows-x86_64 = "x86_64-pc-windows-msvc" }
-release = true
-verify = ["--version"]
-installers = ["mise"]
-
-[[package.bundles]]
-language = "rust"
-name = "schematic-{version}-{target}.zip"
-profiles = ["dev", "release"]
-targets = ["linux-x86_64"]
-release = true
-inputs = [
-  { path = "target/build/{profile}/{target}/bin/schematic-cli", destination = "schematic-cli" },
-  { path = "target/build/{profile}/{target}/bin/plugins/schematic-sidecar", destination = "plugins/schematic-sidecar" },
-  { path = "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm", destination = "plugins/schematic-guest.wasm" },
-]
-
-[[package.bundles]]
-language = "rust"
-name = "schematic-{version}-{target}.zip"
-profiles = ["dev", "release"]
-targets = ["windows-x86_64"]
-release = true
-inputs = [
-  { path = "target/build/{profile}/{target}/bin/schematic-cli.exe", destination = "schematic-cli.exe" },
-  { path = "target/build/{profile}/{target}/bin/plugins/schematic-sidecar.exe", destination = "plugins/schematic-sidecar.exe" },
-  { path = "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm", destination = "plugins/schematic-guest.wasm" },
-]
-
 [[template]]
 name = "header"
 language = "c-header"
@@ -719,3 +652,70 @@ language = "yaml"
 path = "yaml/module.yaml"
 default = true
 snippet = "stkr-yaml"
+
+# === === Release === === #
+
+[release]
+provider = "github"
+repository = "stokker-technologies/harmos"
+product = "harmos"
+targets = ["linux-x86_64", "windows-x86_64"]
+crates_bootstrap_secret = "CARGO_REGISTRY_TOKEN"
+lock_commands = [
+  [
+    "cargo",
+    "update",
+    "--workspace",
+  ],
+  [
+    "cargo",
+    "update",
+    "--manifest-path",
+    "examples/schematic/Cargo.toml",
+    "--workspace",
+  ],
+  [
+    "cargo",
+    "update",
+    "--manifest-path",
+    "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml",
+    "--workspace",
+  ],
+]
+
+[version]
+value = "0.1.12"
+files = ["Cargo.toml", "examples/schematic/Cargo.toml", "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"]
+
+[[package.executables]]
+package = "cargo-harmos"
+command = "cargo-harmos"
+name = "cargo-harmos"
+targets = { linux-x86_64 = "x86_64-unknown-linux-gnu", windows-x86_64 = "x86_64-pc-windows-msvc" }
+release = true
+verify = ["--version"]
+installers = ["mise"]
+
+[[package.bundles]]
+language = "rust"
+name = "schematic-{version}-{target}.zip"
+profiles = ["dev", "release"]
+targets = ["linux-x86_64"]
+release = true
+inputs = [
+  { path = "target/build/{profile}/{target}/bin/schematic-cli", destination = "schematic-cli" },
+  { path = "target/build/{profile}/{target}/bin/plugins/schematic-sidecar", destination = "plugins/schematic-sidecar" },
+  { path = "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm", destination = "plugins/schematic-guest.wasm" },
+]
+
+[[package.bundles]]
+language = "rust"
+name = "schematic-{version}-{target}.zip"
+profiles = ["dev", "release"]
+targets = ["windows-x86_64"]
+release = true
+inputs = [
+  { path = "target/build/{profile}/{target}/bin/schematic-cli.exe", destination = "schematic-cli.exe" },
+  { path = "target/build/{profile}/{target}/bin/plugins/schematic-sidecar.exe", destination = "plugins/schematic-sidecar.exe" },
+  { path = "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm", destination = "plugins/schematic-guest.wasm" },
+]

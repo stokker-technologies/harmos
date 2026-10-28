@@ -131,7 +131,6 @@ impl Drop for AttemptGuard {
 /* === Private Functions === */
 
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let trace = Arc::new(Trace {
         attempting: Semaphore::new(0),
         finishing: Semaphore::new(0),
@@ -143,19 +142,11 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
         finished: AtomicUsize::new(0),
         dropped: AtomicUsize::new(0),
     });
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ProduceDeclaration>(),
-            Lanes::Serial,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Trace>(trace.clone()).operations::<crate::operations::Single<ProduceDeclaration>>(Lanes::Serial);
+    })
+    .await
+    .unwrap();
     (runtime, trace)
 }
 fn item(
@@ -206,7 +197,7 @@ async fn items_precede_settled() {
     assert!(stream.next().await.is_none());
     assert!(runtime.operations.status(id).is_none());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -224,7 +215,7 @@ async fn output_releases_backpressure() {
     assert!(matches!(stream.next().await.unwrap().unwrap(), Event::Completion(value) if *value == 3));
     assert!(stream.next().await.is_none());
     assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -236,7 +227,7 @@ async fn abandonment_drops_attempt() {
     let stream = harmos_runtime::grpc::stream(instance, receiver);
     trace.attempting.acquire().await.unwrap().forget();
     drop(stream);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert!(runtime.operations.status(id).is_none());
     assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -254,7 +245,7 @@ async fn items_remain_visible() {
     assert_eq!(item(stream.next().await.unwrap()), 1);
     assert!(stream.next().await.unwrap().is_err());
     assert!(stream.next().await.is_none());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -282,7 +273,7 @@ async fn failure_not_success() {
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     trace.fail_finish.store(false, Ordering::SeqCst);
     trace.release.add_permits(1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(trace.finished.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -305,7 +296,7 @@ async fn deadline_settles_draining() {
     assert!(runtime.operations.status(id).is_none());
     assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -334,7 +325,7 @@ async fn held_item_backpressures() {
     trace.release.add_permits(1);
     assert!(matches!(stream.next().await.unwrap().unwrap(), Event::Completion(value) if *value == 2));
     assert!(stream.next().await.is_none());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -355,7 +346,7 @@ async fn abandonment_cancels_operation() {
     assert_eq!(trace.items_created.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     trace.release.add_permits(1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert!(runtime.operations.status(id).is_none());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(*held, 0);

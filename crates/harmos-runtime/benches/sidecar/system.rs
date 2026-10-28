@@ -19,6 +19,8 @@ mod transfers;
 
 /* === Imports === */
 
+extern crate harmos_runtime as harmos;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -71,7 +73,7 @@ fn benchmarks(c: &mut criterion::Criterion) {
             consumers.bench_with_input(criterion::BenchmarkId::new(carrier, size), &size, |b, &size| {
                 b.iter(|| runtime.block_on(transfer(&fixture, &mut sequence, size)));
             });
-            runtime.block_on(fixture.runtime.stop()).unwrap();
+            runtime.block_on(fixture.runtime.shutdown()).unwrap();
         }
     }
     consumers.finish();

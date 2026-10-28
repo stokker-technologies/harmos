@@ -88,6 +88,9 @@ pub struct NamedManifest {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("publication inventory requires a guest or sidecar facility and a valid owner segment")]
+    Identity,
+
     #[error("publication inventory differs from authored streams")]
     Mismatch,
 
@@ -150,6 +153,9 @@ pub trait StreamSpec {
 
 impl NamedManifest {
     pub fn resolve(self, declarations: &[Named], settings: &mut SchemaSettings) -> Result<Manifest, Error> {
+        if !super::contracts::valid_identity(&self.facility, &self.owner) {
+            return Err(Error::Identity);
+        }
         let streams = self
             .streams
             .into_iter()
@@ -270,6 +276,9 @@ pub const fn require_subset(outputs: &[&[Entry]], grants: &[Entry]) {
 }
 
 pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str) -> Result<Vec<StreamDeclaration>, Error> {
+    if !super::contracts::valid_identity(facility, owner) {
+        return Err(Error::Identity);
+    }
     let mut matching = manifests.into_iter().filter(|m| m.facility == facility && m.owner == owner);
     let manifest = matching.next().ok_or_else(|| Error::Missing {
         facility: facility.into(),
@@ -371,6 +380,7 @@ pub fn validate(stream: &StreamDeclaration) -> Result<(), Error> {
 }
 
 pub const fn encoded_len(facility: &str, owner: &str, streams: &[Entry]) -> usize {
+    assert!(super::contracts::valid_identity(facility, owner), "invalid publication inventory identity");
     let mut len = HEAD.len() + quoted_len(facility) + OWNER.len() + quoted_len(owner) + STREAMS.len() + TAIL.len();
     let mut index = 0;
     while index < streams.len() {

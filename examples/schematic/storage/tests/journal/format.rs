@@ -85,8 +85,9 @@ fn contract_scenario() {
     let copy = scratch("frozen-wire").join("journal.jsonl");
     let before = micros();
 
-    let live = booted(Ledger::default(), |builder| {
-        builder.recover(Jsonl::<Bank>::open(&copy).expect("a fresh copy"))
+    let live = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Jsonl::<Bank>::open(&copy).expect("a fresh copy"));
+
     })
     .await;
     let handle = live.state.as_principal(alice());
@@ -105,7 +106,7 @@ fn contract_scenario() {
         .await
         .expect("the withdraw is invertible");
     drop(handle);
-    live.stop().await.unwrap();
+    live.shutdown().await.unwrap();
 
     let after = micros();
     let file = std::fs::read_to_string(&copy).expect("the copy is there");
@@ -190,14 +191,13 @@ fn contract_scenario() {
                 std::fs::write(&copy, GOLDEN).expect("the copy is writable");
                 let witnesses = Arc::new(Mutex::new(Vec::new()));
 
-                let recovered = booted(Ledger::default(), |builder| {
-                    builder
-                        .recover(Jsonl::<Bank>::open(&copy).expect("the copy is there"))
-                        .attach(Jsonl::<Bank>::open(&mirror).expect("a fresh mirror"))
-                        .attach(Witnesses {
-                            seen: Arc::clone(&witnesses),
-                            resume: Position::ORIGIN,
-                        })
+                let recovered = booted(Ledger::default(), |setup| {
+                    setup.settings().recover(Jsonl::<Bank>::open(&copy).expect("the copy is there"));
+                    setup.settings().attach(Jsonl::<Bank>::open(&mirror).expect("a fresh mirror"));
+                    setup.settings().attach(Witnesses {
+                        seen: Arc::clone(&witnesses),
+                        resume: Position::ORIGIN,
+                    });
                 })
                 .await;
 
@@ -211,7 +211,7 @@ fn contract_scenario() {
                     "every golden entry decodes and applies through the current shape"
                 );
                 assert_eq!(recovered.state.applied(), Position(4));
-                recovered.stop().await.unwrap();
+                recovered.shutdown().await.unwrap();
 
                 let written = std::fs::read_to_string(&mirror).expect("the mirror is there");
                 assert_eq!(
@@ -255,10 +255,9 @@ fn contract_scenario() {
                 let mirror = directory.join("mirror.jsonl");
                 std::fs::write(&copy, SYSTEM_FACTS).expect("the system-fact golden is writable");
 
-                let recovered = booted(Ledger::default(), |builder| {
-                    builder
-                        .recover(Jsonl::<Bank>::open(&copy).expect("the golden opens"))
-                        .attach(Jsonl::<Bank>::open(&mirror).expect("a fresh mirror"))
+                let recovered = booted(Ledger::default(), |setup| {
+                    setup.settings().recover(Jsonl::<Bank>::open(&copy).expect("the golden opens"));
+                    setup.settings().attach(Jsonl::<Bank>::open(&mirror).expect("a fresh mirror"));
                 })
                 .await;
 
@@ -288,7 +287,7 @@ fn contract_scenario() {
                     }
                 );
 
-                recovered.stop().await.unwrap();
+                recovered.shutdown().await.unwrap();
                 assert_eq!(
                     std::fs::read_to_string(&mirror).expect("the mirror is there"),
                     SYSTEM_FACTS,

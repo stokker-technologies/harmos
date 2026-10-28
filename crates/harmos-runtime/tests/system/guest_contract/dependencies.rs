@@ -118,7 +118,7 @@ struct DependencyHost {
 
 #[harmos_runtime::catalog]
 enum ProviderOperations {
-    EchoOperation(ProviderEchoOperation),
+    EchoOperation(ProviderRead),
 }
 
 #[harmos_runtime::catalog]
@@ -126,7 +126,7 @@ enum ForwardOperations {
     ForwardDeclaration(ForwardDeclaration),
 }
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 enum NativeRequirements {
     EchoOperation(EchoOperation),
 }
@@ -231,43 +231,39 @@ impl harmos_operations::lifecycle::Policy for NativeProviderPlugin {
     const SHUTDOWN_POLICY: OperationPolicy = super::sandbox::EchoOperation::POLICY;
 }
 
-#[harmos_runtime::plugin(id = "provider", provides = ProviderOperations, requires = ())]
-impl harmos_runtime::Plugin for NativeProviderPlugin {
+impl harmos_runtime::Lifecycle for NativeProviderPlugin {
     type Context = harmos_sidecar::Supervisor;
     type Config = u64;
     type Error = std::io::Error;
-    type Resources = ProviderOwner;
-    fn prepare(id: u64) -> Result<Self, Self::Error> {
+
+    async fn prepare(id: u64, setup: &mut harmos_sdk::Setup<Self>) -> std::result::Result<Self, Self::Error> {
         let provider = NATIVE_SEEDS
             .lock()
             .unwrap()
             .remove(&id)
             .and_then(|resource| resource.upgrade())
             .ok_or_else(|| std::io::Error::other("the original native fixture resource is unavailable"))?;
-        Ok(Self { resources: provider })
+        let plugin = Self { resources: provider };
+        setup.resource::<ProviderOwner>(plugin.resources.clone());
+        Ok(plugin)
     }
-    fn resources(&self) -> std::sync::Arc<ProviderOwner> {
-        self.resources.clone()
-    }
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
-    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<ProviderRead>(),
-        )
-    }
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "provider", requires = ())]
+impl harmos_runtime::Plugin for NativeProviderPlugin {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[ProviderOperations::CATALOG];
 }
 
 impl harmos_operations::lifecycle::Policy for NativeClientPlugin {
@@ -275,39 +271,35 @@ impl harmos_operations::lifecycle::Policy for NativeClientPlugin {
     const SHUTDOWN_POLICY: OperationPolicy = super::sandbox::EchoOperation::POLICY;
 }
 
-#[harmos_runtime::plugin(id = "client", provides = ForwardOperations, requires = NativeRequirements)]
-impl harmos_runtime::Plugin for NativeClientPlugin {
+impl harmos_runtime::Lifecycle for NativeClientPlugin {
     type Context = harmos_sidecar::Supervisor;
     type Config = ();
     type Error = std::io::Error;
-    type Resources = NativeClient;
-    fn prepare(_: ()) -> Result<Self, Self::Error> {
-        Ok(Self {
+
+    async fn prepare(_: (), setup: &mut harmos_sdk::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        let plugin = Self {
             resources: std::sync::Arc::new(NativeClient),
-        })
+        };
+        setup.resource::<NativeClient>(plugin.resources.clone());
+        Ok(plugin)
     }
-    fn resources(&self) -> std::sync::Arc<NativeClient> {
-        self.resources.clone()
-    }
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
-    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<ForwardDeclaration>(),
-        )
-    }
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "client", requires = NativeRequirements)]
+impl harmos_runtime::Plugin for NativeClientPlugin {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[ForwardOperations::CATALOG];
 }
 
 impl harmos_sidecar::Attach for NativeAttachment {
@@ -373,17 +365,8 @@ impl harmos_runtime::plugin::PluginLifecycle for DependencyHost {
             harmos_runtime::plugin::PluginBackend::Embedded(resources) => {
                 resources.endpoint = Some(router.enter(&definition.id).unwrap());
                 let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
-                resources.registration = Some(self.operations.stage_plugin(scope, |bindings| {
-                    bindings.register(harmos_runtime::RegistrationExt::lane(
-                        harmos_runtime::RegistrationBatch::new({
-                            let mut dependencies = harmos_runtime::Dependencies::new();
-                            dependencies.insert(self.provider.clone()).unwrap();
-                            dependencies
-                        })
-                        .operation::<ProviderRead>(),
-                        GuestLanes::Open,
-                    ))
-                })?);
+                resources.registration =
+                    Some(self.operations.stage_plugin(scope, |bindings| bindings.operations::<ProviderOperations>(GuestLanes::Open))?);
             }
             harmos_runtime::plugin::PluginBackend::Guest(resources) => {
                 resources.start::<GuestOperations>(&self.operations, definition, router, authority, GuestLanes::Open).await?;
@@ -404,7 +387,7 @@ impl harmos_runtime::plugin::PluginLifecycle for DependencyHost {
                         id: definition.id.clone(),
                         policy: harmos_runtime::services::POLICY,
                     },
-                    move |_: std::sync::Arc<()>| resident.clone(),
+                    move |_: std::sync::Arc<harmos_sdk::ExecutionContext>| resident.clone(),
                 )?;
                 resources.registered = true;
                 resources.lease = Some(self.operations.submit_resident(&definition.id).await?);
@@ -530,6 +513,18 @@ fn native_client() -> harmos_sidecar::PluginNative<NativeClientPlugin> {
 }
 
 fn dependency_notice(_: &harmos_runtime::services::ServiceContext<Bank>, _: harmos_runtime::sidecar::Notice) {}
+
+async fn runtime_with_provider(provider: std::sync::Arc<ProviderOwner>) -> Runtime<Bank> {
+    Runtime::<Bank>::launch_with(super::support::Ledger::default(), (), |setup| {
+        setup.resource::<ProviderOwner>(provider);
+        setup.settings().register(super::support::catalog()).operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        });
+    })
+    .await
+    .unwrap()
+}
 
 async fn dependency_candidate(lifecycle: &mut DependencyHost, configuration: &str) -> harmos_runtime::plugin::PluginDefinitions {
     lifecycle.guest.candidate(configuration).await

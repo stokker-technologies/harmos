@@ -22,14 +22,13 @@ pub use entropy::entropy;
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::fmt;
-use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 // Third Party Imports
 use tokio::sync::broadcast;
 // Local Imports
 use crate::{
-    Application, Builder, DefinitionId, Error, Identified, Runtime, evidence::Vault, runtime::Catalog, runtime::Incompatible,
+    Application, DefinitionId, Error, Identified, Runtime, Setup, StartupError, runtime::Catalog, runtime::Incompatible,
     runtime::Registration, services::Resident, services::ServiceContext, state::At, state::Entry, state::Envelope, state::Focus,
     state::Origin, state::Position, state::PrincipalId, state::Receipt, state::Recorded, state::Transaction, storage::Cursor,
     storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source, streams::Stream,
@@ -42,7 +41,7 @@ use crate::{
 /* === Type Aliases === */
 
 type Inverting<A> = fn(&<A as Application>::Transaction, &<A as Application>::State) -> Option<<A as Application>::Transaction>;
-type BuildStep<A> = Arc<dyn Fn(Builder<A>) -> Builder<A> + Send + Sync>;
+type Configure<A> = Arc<dyn Fn(&mut Setup<A>) + Send + Sync>;
 type UndoResult<A> = Result<Receipt, Error<<<A as Application>::Transaction as Transaction<<A as Application>::State>>::Error>>;
 
 /* === Structs === */
@@ -50,14 +49,15 @@ type UndoResult<A> = Result<Receipt, Error<<<A as Application>::Transaction as T
 pub struct SimulatedRuntime<A>
 where
     A: Application,
+    A::Config: Clone,
     A::State: Clone + fmt::Debug + PartialEq,
     A::Transaction: Clone + fmt::Debug,
     A::Record: Clone + fmt::Debug,
 {
     origin: Origin<A::State>,
-    resources: Arc<A::Resources>,
     executor: executor::Executor,
-    assembly: Assembly<A>,
+    config: A::Config,
+    configure: Configure<A>,
     memory: Memory<A>,
     runtime: Option<Runtime<A>>,
     services: BTreeMap<String, Arc<ServiceControl>>,
@@ -73,19 +73,13 @@ struct Divergence<S> {
 }
 
 pub(crate) struct Configuration<A: Application> {
-    assembly: Assembly<A>,
     services: BTreeMap<String, Arc<ServiceControl>>,
     inverses: Option<Inverting<A>>,
-    entropy_seed: u64,
 }
 
 #[derive(Clone)]
 pub struct ServiceProbe {
     control: Arc<ServiceControl>,
-}
-
-struct Assembly<A: Application> {
-    steps: Vec<BuildStep<A>>,
 }
 
 struct ServiceControl {
@@ -164,99 +158,53 @@ impl ServiceProbe {
 impl<A: Application> Configuration<A> {
     pub(crate) fn new() -> Self {
         Self {
-            assembly: Assembly::new(),
             services: BTreeMap::new(),
             inverses: None,
-            entropy_seed: 0,
         }
     }
 
-    pub(crate) fn register<C>(&mut self, catalog: C)
-    where
-        C: Registration<A> + 'static,
-    {
-        if let Catalog::Transactions { inverses: Some(inverses), .. } = catalog.clone().register() {
+    pub(crate) fn register<C: Registration<A> + 'static>(&mut self, catalog: C) {
+        if let Catalog::Transactions { inverses: Some(inverses), .. } = catalog.register() {
             self.inverses = Some(inverses);
         }
-        let catalog = std::sync::Mutex::new(catalog);
-        self.assembly.push(move |builder| builder.register(catalog.lock().unwrap().clone()));
     }
 
-    pub(crate) fn operation_middleware(&mut self, middleware: Arc<dyn crate::operations::middleware::Middleware>) {
-        self.assembly.push(move |builder| builder.operation_middleware(middleware.clone()));
-    }
-
-    pub(crate) fn operation_settings(&mut self, settings: crate::operations::Settings) {
-        self.assembly.push(move |builder| builder.operation_settings(settings));
-    }
-
-    pub(crate) fn operations(&mut self, binding: crate::operations::CatalogBinding) {
-        self.assembly.push(move |builder| builder.bind_operations(binding.clone()));
-    }
-
-    pub(crate) fn initialize<F, Fut, E>(&mut self, timeout: std::time::Duration, initialize: F)
-    where
-        F: Fn(crate::runtime::Handle<A>) -> Fut + Clone + Send + Sync + 'static,
-        Fut: Future<Output = std::result::Result<(), E>> + Send + 'static,
-        E: std::error::Error + Send + Sync + 'static,
-    {
-        self.assembly.push(move |builder| builder.initialize(timeout, initialize.clone()));
-    }
-
-    pub(crate) fn evidence(&mut self, vault: impl Vault + Clone, kinds: impl IntoIterator<Item = (DefinitionId, u32)>) {
-        let kinds: Vec<_> = kinds.into_iter().collect();
-        self.assembly.push(move |builder| builder.evidence(vault.clone(), kinds.clone()));
-    }
-
-    pub(crate) fn service<R>(&mut self, name: impl Into<String>, resident: R)
-    where
-        R: Resident<A> + Clone,
-    {
-        self.service_with(name, crate::services::POLICY, resident);
-    }
-
-    pub(crate) fn service_with<R>(&mut self, name: impl Into<String>, policy: crate::ServicePolicy, resident: R)
-    where
-        R: Resident<A> + Clone,
-    {
+    pub(crate) fn service_with<R: Resident<A>>(
+        &mut self, name: impl Into<String>, policy: crate::ServicePolicy, resident: R,
+    ) -> crate::services::Once<A> {
         let name = name.into();
         let control = Arc::new(ServiceControl::new());
         self.services.insert(name.clone(), Arc::clone(&control));
+        crate::services::Once::new(crate::services::ServiceDefinition { id: name, policy }, ScriptedResident { control, resident })
+    }
+}
 
-        let resident = std::sync::Mutex::new(resident);
-        self.assembly.push(move |builder| {
-            builder.service_with(
-                name.clone(),
-                policy,
-                ScriptedResident {
-                    control: Arc::clone(&control),
-                    resident: resident.lock().unwrap().clone(),
-                },
-            )
-        });
+impl<A> Runtime<A>
+where
+    A: Application,
+    A::Config: Clone,
+    A::State: Clone + fmt::Debug + PartialEq,
+    A::Transaction: Clone + fmt::Debug,
+    A::Record: Clone + fmt::Debug,
+{
+    pub fn simulate(origin: impl Into<Origin<A::State>>, config: A::Config, seed: u64) -> Result<SimulatedRuntime<A>, StartupError> {
+        Self::simulate_with(origin, config, seed, |_| {})
     }
 
-    pub(crate) fn entropy_seed(&mut self, seed: u64) {
-        self.entropy_seed = seed;
-    }
-
-    pub(crate) fn simulate(self, origin: Origin<A::State>, resources: Arc<A::Resources>) -> Result<SimulatedRuntime<A>, Incompatible>
-    where
-        A::State: Clone + fmt::Debug + PartialEq,
-        A::Transaction: Clone + fmt::Debug,
-        A::Record: Clone + fmt::Debug,
-    {
+    pub fn simulate_with(
+        origin: impl Into<Origin<A::State>>, config: A::Config, seed: u64, configure: impl Fn(&mut Setup<A>) + Send + Sync + 'static,
+    ) -> Result<SimulatedRuntime<A>, StartupError> {
         let mut sim = SimulatedRuntime {
-            origin,
-            resources,
-            executor: executor::Executor::seeded(self.entropy_seed),
-            assembly: self.assembly,
+            origin: origin.into(),
+            config,
+            configure: Arc::new(configure),
+            executor: executor::Executor::seeded(seed),
             memory: Memory::new(),
             runtime: None,
-            services: self.services,
+            services: BTreeMap::new(),
             cursors: Vec::new(),
             stopped: Position::ORIGIN,
-            inverses: self.inverses,
+            inverses: None,
         };
         sim.boot()?;
         Ok(sim)
@@ -266,6 +214,7 @@ impl<A: Application> Configuration<A> {
 impl<A> SimulatedRuntime<A>
 where
     A: Application,
+    A::Config: Clone,
     A::State: Clone + fmt::Debug + PartialEq,
     A::Transaction: Clone + fmt::Debug,
     A::Record: Clone + fmt::Debug,
@@ -339,13 +288,13 @@ where
         let Some(runtime) = self.runtime.as_ref() else {
             return Ok(self.stopped);
         };
-        self.stopped = self.executor.block_on(runtime.stop())?;
+        self.stopped = self.executor.block_on(runtime.shutdown())?;
         self.runtime.take();
         Ok(self.stopped)
     }
 
-    pub fn reboot(&mut self) -> Result<(), Incompatible> {
-        self.stop().map_err(Incompatible::work)?;
+    pub fn reboot(&mut self) -> Result<(), StartupError> {
+        self.stop().map_err(|source| StartupError::Runtime { source: Box::new(source) })?;
         self.boot()
     }
 
@@ -436,13 +385,26 @@ where
         assert_eq!(self.trace(), other.trace(), "simulation traces diverged");
     }
 
-    fn boot(&mut self) -> Result<(), Incompatible> {
+    fn boot(&mut self) -> Result<(), StartupError> {
         let origin = Origin::at(self.origin.value.clone(), self.origin.position);
-        // The same resources on every boot, exactly as the same in-memory copy
-        // is recovered from: a reboot is a recovery of one runtime, not the
-        // assembly of a second one.
-        let builder = self.assembly.build(origin, Arc::clone(&self.resources)).tail(usize::MAX).recover(self.memory.source(true));
-        let runtime = self.executor.block_on(builder.runtime())?;
+        let configure = Arc::clone(&self.configure);
+        let memory = self.memory.source(true);
+        let mut runtime = self.executor.block_on(Runtime::<A>::launch_with(origin, self.config.clone(), move |setup| {
+            configure(setup);
+            setup.settings().simulation_recovery(memory);
+        }))?;
+        let configuration = std::mem::replace(&mut runtime.simulation, Configuration::new());
+        for (name, control) in &configuration.services {
+            if let Some(previous) = self.services.get(name) {
+                control.attempts.fetch_add(previous.attempts.load(Ordering::Acquire), Ordering::AcqRel);
+                let mut exits = previous.exits.lock().expect("simulation service trace lock is healthy").clone();
+                let mut current = control.exits.lock().expect("simulation service trace lock is healthy");
+                exits.append(&mut current);
+                *current = exits;
+            }
+        }
+        self.services = configuration.services;
+        self.inverses = configuration.inverses;
         self.runtime = Some(runtime);
         self.executor.drive();
         Ok(())
@@ -452,6 +414,7 @@ where
 impl<A> Drop for SimulatedRuntime<A>
 where
     A: Application,
+    A::Config: Clone,
     A::State: Clone + fmt::Debug + PartialEq,
     A::Transaction: Clone + fmt::Debug,
     A::Record: Clone + fmt::Debug,
@@ -461,20 +424,6 @@ where
             let error = harmos_domain::failure::Report(&error);
             tracing::error!(%error, "simulated runtime shutdown failed during drop");
         }
-    }
-}
-
-impl<A: Application> Assembly<A> {
-    fn new() -> Self {
-        Self { steps: Vec::new() }
-    }
-
-    fn push(&mut self, step: impl Fn(Builder<A>) -> Builder<A> + Send + Sync + 'static) {
-        self.steps.push(Arc::new(step));
-    }
-
-    fn build(&self, origin: Origin<A::State>, resources: Arc<A::Resources>) -> Builder<A> {
-        self.steps.iter().fold(Runtime::<A>::builder(origin, resources), |builder, step| step(builder))
     }
 }
 
@@ -502,15 +451,15 @@ where
     async fn run(&mut self, context: ServiceContext<A>) -> Result<(), Self::Error> {
         self.control.attempts.fetch_add(1, Ordering::AcqRel);
         let mut faults = self.control.faults.subscribe();
-        let answer = tokio::select! {
-            answer = self.resident.run(context) => answer.map_err(std::io::Error::other),
-            delivered = faults.recv() => Err(std::io::Error::other(delivered.unwrap_or_else(|_| {
+        let (answer, classification) = tokio::select! {
+            answer = self.resident.run(context) => (answer.map_err(std::io::Error::other), "application"),
+            delivered = faults.recv() => (Err(std::io::Error::other(delivered.unwrap_or_else(|_| {
                 "simulation fault channel closed".to_owned()
-            }))),
+            }))), "environmental"),
         };
         self.control.exited(match &answer {
             Ok(()) => "stopped".to_owned(),
-            Err(error) => format!("application:{error}"),
+            Err(error) => format!("{classification}:{error}"),
         });
         answer
     }

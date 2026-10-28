@@ -15,6 +15,7 @@ mod directory;
 mod json;
 mod json_sessions;
 mod manager;
+mod query;
 mod state;
 
 /* === Re-Exports === */
@@ -24,6 +25,7 @@ mod state;
 // Standard Library Imports
 
 // Third Party Imports
+extern crate harmos_domain as harmos;
 
 // Local Imports
 

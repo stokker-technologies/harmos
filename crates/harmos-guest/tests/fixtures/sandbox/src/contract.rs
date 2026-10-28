@@ -47,8 +47,14 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
+#[cfg(target_arch = "wasm32")]
+use harmos::domain as harmos_domain;
+#[cfg(target_arch = "wasm32")]
+use harmos::guest;
 use harmos_domain::StreamSpec;
 use harmos_domain::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
+#[cfg(not(target_arch = "wasm32"))]
+use harmos_guest as guest;
 
 /* === Constants === */
 
@@ -64,25 +70,26 @@ const PROBE: OperationPolicy = OperationPolicy {
 
 /* === Structs === */
 
-#[harmos_guest::message(harmos_path = ::harmos_guest)]
+#[guest::message(harmos_path = guest)]
 #[derive(Clone, PartialEq)]
 pub struct Echoed {
     pub said: String,
 }
 
-#[harmos_guest::message(harmos_path = ::harmos_guest)]
+#[guest::message(harmos_path = guest)]
 pub struct Value {
     pub value: String,
 }
 
-#[harmos_guest::message(harmos_path = ::harmos_guest)]
+#[guest::message(harmos_path = guest)]
 pub struct Stage {
     pub id: String,
 }
 
 /* === Enums === */
 
-#[harmos_guest::catalog(harmos_path = ::harmos_guest)]
+#[cfg_attr(not(target_arch = "wasm32"), harmos_domain::catalog(harmos_path = ::harmos_domain))]
+#[cfg_attr(target_arch = "wasm32", harmos::guest::catalog)]
 pub enum Operations {
     EchoOperation(EchoOperation),
     DeclineOperation(DeclineOperation),
@@ -104,7 +111,7 @@ impl StreamSpec for Echoed {
     const WINDOW: usize = 4;
 }
 
-impl harmos_guest::operations::ContextValue for Stage {
+impl guest::operations::ContextValue for Stage {
     const KEY: &'static str = "fixture.stage";
 }
 

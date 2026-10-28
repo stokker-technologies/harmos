@@ -92,6 +92,27 @@ mod sheet {
         #[default]
         Open,
     }
+    impl harmos_runtime::Lifecycle for Studio {
+        type Config = ();
+        type Error = std::convert::Infallible;
+        type Context = harmos_runtime::Startup<Self>;
+
+        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+            Ok(Self)
+        }
+
+        async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+    }
 
     impl harmos_runtime::Application for Studio {
         type Lanes = StudioLanes;
@@ -99,7 +120,6 @@ mod sheet {
         type Transaction = Change;
         type Record = Fact;
         type Streams = ();
-        type Resources = ();
     }
 
     pub fn rename(title: &str) -> Rename {
@@ -187,6 +207,27 @@ mod counter {
         #[default]
         Open,
     }
+    impl harmos_runtime::Lifecycle for Counter {
+        type Config = ();
+        type Error = std::convert::Infallible;
+        type Context = harmos_runtime::Startup<Self>;
+
+        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+            Ok(Self)
+        }
+
+        async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+    }
 
     impl harmos_runtime::Application for Counter {
         type Lanes = CounterLanes;
@@ -194,7 +235,6 @@ mod counter {
         type Transaction = Step;
         type Record = ();
         type Streams = ();
-        type Resources = ();
     }
 }
 
@@ -205,16 +245,23 @@ mod unified_plugins {
 
     use harmos_operations::lifecycle;
     use harmos_runtime::__private::{PluginDeclared, PluginInventory};
-    use harmos_runtime::operations::{Contracts, OperationPolicy, RetryPolicy, ServingError, WireTable};
+    use harmos_runtime::operations::{Contracts, OperationPolicy, RetryPolicy};
 
     #[harmos_runtime::operation(id = "fixture.unified.echo",  response = (), policy = POLICY)]
     struct Echo {}
 
-    #[harmos_runtime::catalog]
+    impl harmos_runtime::operations::Operation for Echo {
+        type Error = Infallible;
+        async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
+            panic!("metadata inspection must not execute operations")
+        }
+    }
+
+    #[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
     enum Leaves {
         Echo(Echo),
     }
-    #[harmos_runtime::catalog]
+    #[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
     enum Selected {
         #[nested]
         Leaves(Leaves),
@@ -246,29 +293,15 @@ mod unified_plugins {
         const SHUTDOWN_POLICY: OperationPolicy = POLICY;
     }
 
-    #[harmos_runtime::plugin(description = "Native Authored Plugin",
-        id = "unified_native",
-        provides = Selected,
-        requires = Selected,
-        streams(Row),
-        stream_entries = PROJECTED
-    )]
-    impl harmos_runtime::Plugin for Native {
+    impl harmos_runtime::Lifecycle for Native {
         type Config = ();
         type Error = Infallible;
         type Context = harmos_runtime::sidecar::Supervisor;
-        type Resources = ();
-        fn resources(&self) -> std::sync::Arc<()> {
-            std::sync::Arc::new(())
-        }
 
-        fn prepare(_: ()) -> Result<Self, Self::Error> {
+        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
             Ok(Self)
         }
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -279,42 +312,65 @@ mod unified_plugins {
         }
     }
 
-    #[harmos_runtime::catalog]
+    #[harmos_runtime::plugin(description = "Native Authored Plugin",
+        id = "unified_native",
+        requires = Selected,
+        streams(Row),
+        stream_entries = PROJECTED
+    )]
+    impl harmos_runtime::Plugin for Native {
+        const CATALOGS: &'static [harmos_runtime::Catalog] = &[Selected::CATALOG];
+    }
+
+    #[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
     enum ObserverOperations {
         #[nested]
         Selected(Selected),
     }
 
     struct CustomHost;
-    impl harmos_runtime::sidecar::ObserverHost<()> for CustomHost {
-        fn bind(_: std::sync::Arc<()>, _: harmos_runtime::sidecar::Supervisor) -> Self {
+    impl harmos_runtime::sidecar::ObserverHost for CustomHost {
+        fn bind(_: std::sync::Arc<harmos_sdk::ExecutionContext>, _: harmos_runtime::sidecar::Supervisor) -> Self {
             Self
         }
     }
     struct InertObserver;
     #[harmos_runtime::observer(id = "fixture.unified.inert-observer", interval_ms = 1000)]
     impl InertObserver {
-        async fn initialize(_: &()) -> Result<Self, Infallible> {
+        async fn initialize(_: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
             panic!("metadata inspection must not initialize callback resources")
         }
-        async fn observe(&mut self, _: &harmos_runtime::sidecar::ObserverContext<'_, (), CustomHost>) -> Result<(), Infallible> {
+        async fn observe(&mut self, _: &harmos_runtime::sidecar::ObserverContext<'_, CustomHost>) -> Result<(), Infallible> {
             panic!("metadata inspection must not start a callback")
         }
     }
-    #[harmos_runtime::catalog]
+    #[harmos_domain::catalog]
     enum ObserverLeaves {
         Inert(InertObserver),
     }
-    #[harmos_runtime::catalog]
+    #[harmos_domain::catalog]
     enum ObserverCatalog {
         #[nested]
         Leaves(ObserverLeaves),
     }
 
     struct SdkAuthored;
-    trait ProductPlugin {
-        type Settings;
-        fn prepare(settings: Self::Settings) -> Self;
+    impl harmos_runtime::Lifecycle for SdkAuthored {
+        type Config = SdkInitialization;
+        type Error = Infallible;
+        type Context = harmos_runtime::sidecar::Supervisor;
+        async fn prepare(_: SdkInitialization, _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
+            panic!("inert inspection must not prepare the product plugin")
+        }
+        async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+            Ok(())
+        }
+        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+            Ok(())
+        }
+        async fn cleanup(&mut self) -> Result<(), Self::Error> {
+            Ok(())
+        }
     }
 
     impl lifecycle::Policy for SdkAuthored {
@@ -325,21 +381,15 @@ mod unified_plugins {
     #[harmos_runtime::plugin(
         id = "unified_sdk_projection",
         description = "Inert Product SDK Declaration",
-        provides = ObserverOperations,
         requires(
             harmos_operations::streams::Publish,
             harmos_operations::lifecycle::Status: scope("reading", "power")
         ),
         observers = ObserverCatalog,
-        context = harmos_runtime::sidecar::Supervisor,
-        config = SdkInitialization,
         restart = "never"
     )]
-    impl ProductPlugin for SdkAuthored {
-        type Settings = String;
-        fn prepare(_: String) -> Self {
-            panic!("inert inspection must not prepare the product plugin")
-        }
+    impl harmos_runtime::Plugin for SdkAuthored {
+        const CATALOGS: &'static [harmos_runtime::Catalog] = &[ObserverOperations::CATALOG];
     }
 
     #[derive(Default, serde::Deserialize)]
@@ -350,7 +400,6 @@ mod unified_plugins {
 
     #[test]
     fn metadata_never_require() {
-        let _prepare: fn(String) -> SdkAuthored = <SdkAuthored as ProductPlugin>::prepare;
         let initialization = SdkInitialization::default();
         assert!(initialization.settings.is_empty());
         assert!(initialization.snapshot.is_empty());
@@ -512,29 +561,15 @@ mod unified_plugins {
         const SHUTDOWN_POLICY: OperationPolicy = POLICY;
     }
 
-    #[harmos_runtime::plugin(
-        id = "unified_guest",
-        description = "Guest Authored Plugin",
-        provides = Selected,
-        requires = (),
-        streams(Row)
-    )]
-    impl harmos_runtime::Plugin for Guest {
+    impl harmos_runtime::Lifecycle for Guest {
         type Config = ();
         type Error = Infallible;
         type Context = harmos_runtime::guest::kit::Context;
-        type Resources = ();
-        fn resources(&self) -> std::sync::Arc<()> {
-            std::sync::Arc::new(())
-        }
 
-        fn prepare(_: ()) -> Result<Self, Self::Error> {
+        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
             Ok(Self)
         }
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -543,6 +578,16 @@ mod unified_plugins {
         async fn cleanup(&mut self) -> Result<(), Self::Error> {
             Ok(())
         }
+    }
+
+    #[harmos_runtime::plugin(
+        id = "unified_guest",
+        description = "Guest Authored Plugin",
+        requires = (),
+        streams(Row)
+    )]
+    impl harmos_runtime::Plugin for Guest {
+        const CATALOGS: &'static [harmos_runtime::Catalog] = &[Selected::CATALOG];
     }
 
     struct Catalog;
@@ -570,27 +615,14 @@ mod unified_plugins {
         const SHUTDOWN_POLICY: OperationPolicy = POLICY;
     }
 
-    #[harmos_runtime::plugin(
-        id = "unified_contributing",
-        provides = (),
-        requires = (),
-        contributions(Catalog, Panels)
-    )]
-    impl harmos_runtime::Plugin for Contributing {
+    impl harmos_runtime::Lifecycle for Contributing {
         type Config = ();
         type Error = Infallible;
         type Context = harmos_runtime::sidecar::Supervisor;
-        type Resources = ();
-        fn resources(&self) -> std::sync::Arc<()> {
-            std::sync::Arc::new(())
-        }
-        fn prepare(_: ()) -> Result<Self, Self::Error> {
+        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
             Ok(Self)
         }
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -599,6 +631,15 @@ mod unified_plugins {
         async fn cleanup(&mut self) -> Result<(), Self::Error> {
             Ok(())
         }
+    }
+
+    #[harmos_runtime::plugin(
+        id = "unified_contributing",
+        requires = (),
+        contributions(Catalog, Panels)
+    )]
+    impl harmos_runtime::Plugin for Contributing {
+        const CATALOGS: &'static [harmos_runtime::Catalog] = &[];
     }
 
     #[harmos_runtime::listener(
@@ -608,13 +649,51 @@ mod unified_plugins {
         policy = POLICY
     )]
     struct RowListener;
-    #[harmos_runtime::catalog]
+    #[harmos_domain::catalog]
     enum Audience {
         Row(RowListener),
     }
-    #[harmos_runtime::catalog]
+    #[harmos_runtime::operation(codec = manual, resources = [], id = "fixture.unified.heard", response = (),
+    policy = <RowListener as harmos_runtime::listeners::Listener>::POLICY, visibility = Shared)]
+    #[derive(Clone)]
+    struct RowCallback(harmos_runtime::listeners::Delivery<RowListener>);
+
+    impl harmos_runtime::Message for RowCallback {
+        const CODEC: &'static str = <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::Message>::CODEC;
+        fn encode(&self) -> Vec<u8> {
+            harmos_runtime::Message::encode(&self.0)
+        }
+        fn encoded_size(&self) -> usize {
+            harmos_runtime::Message::encoded_size(&self.0)
+        }
+        fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
+            <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::Message>::decoding_memory(bytes)
+        }
+        fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
+            <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::Message>::decode(bytes).map(Self)
+        }
+    }
+    impl harmos_runtime::MemorySize for RowCallback {
+        fn memory_size(&self) -> usize {
+            harmos_runtime::MemorySize::memory_size(&self.0)
+        }
+    }
+    impl harmos_runtime::schema::Described for RowCallback {
+        const NAME: &'static str = <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::schema::Described>::NAME;
+        const FIELDS: &'static [harmos_runtime::schema::Field] =
+            <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::schema::Described>::FIELDS;
+        const MARKER: &'static [u8] = <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::schema::Described>::MARKER;
+    }
+
+    impl harmos_runtime::operations::Operation for RowCallback {
+        type Error = Infallible;
+        async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
+            panic!("metadata inspection must not execute callbacks")
+        }
+    }
+    #[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
     enum Callbacks {
-        Heard(harmos_runtime::listeners::Callback<RowListener>),
+        Heard(RowCallback),
     }
 
     struct Listening;
@@ -622,22 +701,14 @@ mod unified_plugins {
         const INITIALIZATION_POLICY: OperationPolicy = POLICY;
         const SHUTDOWN_POLICY: OperationPolicy = POLICY;
     }
-    #[harmos_runtime::plugin(id = "unified_listening", provides = Callbacks, requires = (), listeners = Audience)]
-    impl harmos_runtime::Plugin for Listening {
+    impl harmos_runtime::Lifecycle for Listening {
         type Config = ();
         type Error = Infallible;
         type Context = harmos_runtime::sidecar::Supervisor;
-        type Resources = ();
-        fn resources(&self) -> std::sync::Arc<()> {
-            std::sync::Arc::new(())
-        }
-        fn prepare(_: ()) -> Result<Self, Self::Error> {
+        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
             Ok(Self)
         }
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -648,27 +719,24 @@ mod unified_plugins {
         }
     }
 
+    #[harmos_runtime::plugin(id = "unified_listening", requires = (), listeners = Audience)]
+    impl harmos_runtime::Plugin for Listening {
+        const CATALOGS: &'static [harmos_runtime::Catalog] = &[Callbacks::CATALOG];
+    }
+
     struct ListeningGuest;
     impl lifecycle::Policy for ListeningGuest {
         const INITIALIZATION_POLICY: OperationPolicy = POLICY;
         const SHUTDOWN_POLICY: OperationPolicy = POLICY;
     }
-    #[harmos_runtime::plugin(id = "unified_listening_guest", provides = Callbacks, requires = (), listeners = Audience)]
-    impl harmos_runtime::Plugin for ListeningGuest {
+    impl harmos_runtime::Lifecycle for ListeningGuest {
         type Config = ();
         type Error = Infallible;
         type Context = harmos_runtime::guest::kit::Context;
-        type Resources = ();
-        fn resources(&self) -> std::sync::Arc<()> {
-            std::sync::Arc::new(())
-        }
-        fn prepare(_: ()) -> Result<Self, Self::Error> {
+        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
             Ok(Self)
         }
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -677,6 +745,11 @@ mod unified_plugins {
         async fn cleanup(&mut self) -> Result<(), Self::Error> {
             Ok(())
         }
+    }
+
+    #[harmos_runtime::plugin(id = "unified_listening_guest", requires = (), listeners = Audience)]
+    impl harmos_runtime::Plugin for ListeningGuest {
+        const CATALOGS: &'static [harmos_runtime::Catalog] = &[Callbacks::CATALOG];
     }
 
     fn inspect<P: PluginDeclared>(facility: &str, streams: usize, requires: usize) {
@@ -856,11 +929,11 @@ async fn catalog_declares_records() {
 async fn derived_aggregate_writer() {
     use counter::{Counter, Down, Step, StepError, Tally, Underflow, Up};
 
-    let runtime = Runtime::<Counter>::builder(Tally::default(), ())
-        .register(Step::catalog())
-        .runtime()
-        .await
-        .expect("a memory-only boot recovers nothing");
+    let runtime = Runtime::<Counter>::launch_with(Tally::default(), (), |setup| {
+        setup.settings().register(Step::catalog());
+    })
+    .await
+    .expect("a memory-only boot recovers nothing");
 
     // Catalog-typed commits are the shape every application can always write:
     // the aggregated error is the catalog's own, so the extraction is
@@ -923,7 +996,7 @@ fn catalog_projects_borrowed() {
 fn definitions_of<A: harmos_runtime::Application>(catalog: impl Registration<A>) -> Vec<(Kind, harmos_runtime::DefinitionId, u32)> {
     match catalog.register() {
         harmos_runtime::runtime::Catalog::Transactions { definitions, .. } => definitions,
-        harmos_runtime::runtime::Catalog::Streams(_) | harmos_runtime::runtime::Catalog::Lanes(_) => {
+        harmos_runtime::runtime::Catalog::Streams(_) => {
             unreachable!("a transaction or fact catalog always registers as `Transactions`")
         }
     }
@@ -937,12 +1010,12 @@ async fn studio() -> Runtime<Studio> {
         applications: 0,
     };
 
-    Runtime::<Studio>::builder(origin, ())
-        .register(Change::catalog())
-        .register(Fact::catalog())
-        .runtime()
-        .await
-        .expect("a memory-only boot recovers nothing")
+    Runtime::<Studio>::launch_with(origin, (), |setup| {
+        setup.settings().register(Change::catalog());
+        setup.settings().register(Fact::catalog());
+    })
+    .await
+    .expect("a memory-only boot recovers nothing")
 }
 
 async fn title(runtime: &Runtime<Studio>) -> String {

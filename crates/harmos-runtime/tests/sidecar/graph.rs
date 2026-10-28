@@ -128,35 +128,36 @@ impl harmos_operations::lifecycle::Policy for Independent {
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos_runtime::plugin(id = "process_independent", provides = (), requires = ())]
-impl harmos_runtime::Plugin for Independent {
+impl harmos_runtime::Lifecycle for Independent {
     type Context = Supervisor;
     type Config = String;
     type Error = Refusal;
-    type Resources = Witness;
-    fn prepare(key: String) -> Result<Self, Refusal> {
+
+    async fn prepare(key: String, _setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Refusal> {
         Ok(Self {
             resources: Witness::find(&key).ok_or_else(|| Refusal::of("the story witness is gone"))?,
         })
     }
+
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         self.resources.mark("initialized");
         Ok(())
     }
-    fn resources(&self) -> Arc<Witness> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, _: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        Ok(())
-    }
+
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         self.resources.mark("shutdown");
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Refusal> {
         self.resources.mark("cleaned");
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "process_independent", requires = ())]
+impl harmos_runtime::Plugin for Independent {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[];
 }
 
 impl AsyncRead for CutRead {
@@ -309,14 +310,13 @@ impl Fixture {
         assert!(encoding_bytes <= 4096);
         let definitions = harmos_runtime::plugin::PluginDefinitions::new(definitions, []).unwrap();
         let residents = sources.map(|source| Supervised::new(source, notices as fn(&ServiceContext<Bank>, Notice)));
-        let runtime = assembly()
-            .operation_settings(harmos_runtime::operations::Settings {
+        let runtime = assembly(|setup| {
+            setup.settings().operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
                 ..Default::default()
-            })
-            .runtime()
-            .await
-            .unwrap();
+            });
+        })
+        .await;
         runtime
             .operations
             .register_service(
@@ -327,7 +327,7 @@ impl Fixture {
                         ..harmos_runtime::services::POLICY
                     },
                 },
-                move |_: Arc<()>| {
+                move |_: Arc<harmos_sdk::ExecutionContext>| {
                     harmos_runtime::sidecar::Managed::new_graph(
                         residents.clone(),
                         definitions.clone(),
@@ -377,7 +377,7 @@ async fn cancelled_stop_retains() {
     let fixture = Fixture::new().await;
     fixture.client.hold.store(true, Ordering::SeqCst);
     {
-        let stop = fixture.runtime.stop();
+        let stop = fixture.runtime.shutdown();
         tokio::pin!(stop);
         tokio::select! {
             result = &mut stop => panic!("stop returned before original ending: {result:?}"),
@@ -393,7 +393,7 @@ async fn cancelled_stop_retains() {
     assert!(!fixture.marks("process_provider").seen("shutdown"));
     assert_eq!(fixture.marks("process_provider").count("read-finalized-2"), 1);
     fixture.client.release.notify_one();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
     fixture.settled();
 }
 
@@ -401,7 +401,7 @@ async fn cancelled_stop_retains() {
 async fn failed_ending_retires() {
     let fixture = Fixture::new().await;
     fixture.client.fail.store(true, Ordering::SeqCst);
-    let result = fixture.runtime.stop().await;
+    let result = fixture.runtime.shutdown().await;
     assert!(matches!(result, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
     assert!(!fixture.client.joined.load(Ordering::SeqCst));
     assert!(!fixture.provider.joined.load(Ordering::SeqCst));
@@ -410,7 +410,7 @@ async fn failed_ending_retires() {
     assert_eq!(fixture.marks("process_independent").count("cleaned"), 1);
     let failures = fixture.client.failures.load(Ordering::SeqCst);
     assert!(failures > 0);
-    let result = fixture.runtime.stop().await;
+    let result = fixture.runtime.shutdown().await;
     assert!(matches!(result, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
     assert!(fixture.client.failures.load(Ordering::SeqCst) > failures);
     assert_eq!(fixture.client.starts.load(Ordering::SeqCst), 1);
@@ -418,7 +418,7 @@ async fn failed_ending_retires() {
     assert!(!fixture.marks("process_provider").seen("shutdown"));
     let failures = fixture.client.failures.load(Ordering::SeqCst);
     fixture.client.fail.store(false, Ordering::SeqCst);
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
     fixture.settled();
     assert_eq!(fixture.client.failures.load(Ordering::SeqCst), failures);
 }
@@ -427,7 +427,7 @@ async fn failed_ending_retires() {
 async fn unrelated_failure_retires() {
     let fixture = Fixture::new().await;
     fixture.independent.fail.store(true, Ordering::SeqCst);
-    let result = fixture.runtime.stop().await;
+    let result = fixture.runtime.shutdown().await;
     assert!(matches!(result, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
     assert!(!fixture.independent.joined.load(Ordering::SeqCst));
     assert!(fixture.client.joined.load(Ordering::SeqCst));
@@ -438,7 +438,7 @@ async fn unrelated_failure_retires() {
         assert_eq!(fixture.marks(owner).count("cleaned"), 1);
     }
     fixture.independent.fail.store(false, Ordering::SeqCst);
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
     fixture.settled();
 }
 
@@ -449,7 +449,7 @@ async fn eof_retains_child() {
     provider.mark("hold-read-2");
     fixture.provider.hold.store(true, Ordering::SeqCst);
     {
-        let stop = fixture.runtime.stop();
+        let stop = fixture.runtime.shutdown();
         tokio::pin!(stop);
         tokio::select! {
             result = &mut stop => panic!("stop returned before child request: {result:?}"),
@@ -467,14 +467,14 @@ async fn eof_retains_child() {
     }
     fixture.provider.fail.store(true, Ordering::SeqCst);
     fixture.provider.release.notify_one();
-    let failed = fixture.runtime.stop().await;
+    let failed = fixture.runtime.shutdown().await;
     assert!(matches!(failed, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
     assert!(fixture.provider.failures.load(Ordering::SeqCst) > 0);
     assert!(!fixture.provider.joined.load(Ordering::SeqCst));
     assert!(!fixture.client.joined.load(Ordering::SeqCst));
     fixture.provider.fail.store(false, Ordering::SeqCst);
     for _ in 0..3 {
-        let result = fixture.runtime.stop().await;
+        let result = fixture.runtime.shutdown().await;
         assert!(result.is_ok() || matches!(result, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
         if fixture.provider.joined.load(Ordering::SeqCst) && fixture.client.joined.load(Ordering::SeqCst) {
             break;
@@ -529,7 +529,7 @@ async fn dependency_precedes_admission() {
     assert_eq!(client.count("probe-finalized"), 1);
 
     // Reverse Retirement Keeps The Provider Through The Client's Shutdown Call
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
     assert_eq!(client.count("dependency-shutdown"), 1);
     assert_eq!(provider.count("read-started-2"), 1);
     fixture.settled();

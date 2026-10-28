@@ -23,7 +23,7 @@ from google.protobuf.message import Message
 from google.protobuf.message_factory import GetMessageClass
 
 # Local Imports
-from .operation import Mode, Operation
+from .operation import Mode, Operation, owner_segment
 
 # Type Checking Imports
 
@@ -336,7 +336,7 @@ def from_contract(
     if (
         not isinstance(operation, Mapping)
         or not isinstance(operation.get("id"), str)
-        or re.fullmatch(r"[a-z][a-z0-9_]*", operation["id"]) is None
+        or not all(owner_segment(part) for part in operation["id"].split("."))
         or len(operation["id"].encode("utf-8")) > 256
         or not isinstance(fingerprint, str)
         or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None

@@ -174,15 +174,7 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
 #[tokio::test]
 async fn write_grants_enforced() {
     let fixture = Fixture::new(config()).await;
-    fixture
-        .runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     let mut host = Host {
         operations: fixture.runtime.operations.clone(),
         callers: BTreeMap::new(),
@@ -246,15 +238,7 @@ async fn write_grants_enforced() {
 async fn query_grants_enforced() {
     let fixture = Fixture::new(config()).await;
     seed(&fixture, &[9_007_199_254_740_993, 9_007_199_254_740_995]).await;
-    fixture
-        .runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     let mut host = Host {
         operations: fixture.runtime.operations.clone(),
         callers: BTreeMap::new(),

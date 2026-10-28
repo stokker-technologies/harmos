@@ -60,7 +60,7 @@ struct Observed {
 #[derive(Serialize, Deserialize)]
 struct Foreign;
 
-#[harmos::record(id = "harmos:sidecar/my.sidecar-2/result")]
+#[harmos::record(id = "harmos:sidecar/my_sidecar_2/result")]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Reserved;
 
@@ -149,7 +149,7 @@ impl Transaction<State> for Add {
                 11 => "Bad",
                 12 => "a/b",
                 13 => "",
-                _ => "my.sidecar-2",
+                _ => "my_sidecar_2",
             };
             let _ = out.push_system(harmos::state::SystemFact {
                 source: harmos::state::FactSource::Sidecar(owner.to_owned()),
@@ -194,12 +194,30 @@ impl harmos::state::Invertible<State> for Add {
     }
 }
 
+impl harmos::Lifecycle for Model {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos::Startup<Self>;
+
+    async fn prepare(_: (), _setup: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {
+        Ok(Self)
+    }
+    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl Application for Model {
     type State = State;
     type Transaction = Changes;
     type Record = Facts;
     type Streams = ();
-    type Resources = ();
     type Lanes = TestLanes;
 }
 
@@ -252,14 +270,11 @@ fn add(amount: i64, count: usize, mode: u8) -> Add {
 }
 
 async fn boot(path: &std::path::Path, tail: usize) -> Runtime<Model> {
-    Runtime::<Model>::builder(State::default(), ())
-        .register(Changes::catalog())
-        .register(Facts::catalog())
-        .recover(Jsonl::<Model>::open(path).unwrap())
-        .tail(tail)
-        .runtime()
-        .await
-        .unwrap()
+    Runtime::<Model>::launch_with(State::default(), (), |setup| {
+        setup.settings().register(Changes::catalog()).register(Facts::catalog()).recover(Jsonl::<Model>::open(path).unwrap()).tail(tail);
+    })
+    .await
+    .unwrap()
 }
 
 #[test]
@@ -273,7 +288,7 @@ fn contract_scenario() {
                 let path = directory.join("journal.jsonl");
                 let runtime = boot(&path, 16).await;
                 runtime.state.commit(add(3, 2, 0)).await.unwrap();
-                runtime.stop().await.unwrap();
+                runtime.shutdown().await.unwrap();
                 let bytes = std::fs::read(&path).unwrap();
                 let header = bytes.iter().position(|byte| *byte == b'\n').unwrap() + 1;
                 for cut in header..=bytes.len() {
@@ -302,7 +317,7 @@ fn contract_scenario() {
                 let path = directory.join("journal.jsonl");
                 let runtime = boot(&path, 1).await;
                 runtime.state.commit(add(4, 1, 0)).await.unwrap();
-                runtime.stop().await.unwrap();
+                runtime.shutdown().await.unwrap();
                 let bytes = std::fs::read(&path).unwrap();
                 let mut partial = bytes.clone();
                 partial.extend_from_slice(b"{\"group\":1,\"first\":3,\"frontier\":4,\"entries\":[{");
@@ -312,11 +327,11 @@ fn contract_scenario() {
                 let receipt = runtime.state.commit(add(2, 1, 0)).await.unwrap();
                 assert_eq!(receipt.frontier, Position(4));
                 runtime.state.wait_until_stored(receipt.frontier).await;
-                runtime.stop().await.unwrap();
+                runtime.shutdown().await.unwrap();
                 assert!(std::fs::read(&path).unwrap().starts_with(&bytes));
                 let runtime = boot(&path, 1).await;
                 assert_eq!(runtime.state.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (6, 2));
-                runtime.stop().await.unwrap();
+                runtime.shutdown().await.unwrap();
             });
         }
     }

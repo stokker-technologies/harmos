@@ -37,6 +37,16 @@ one owner for edits, undo/redo, and recovery. Neither plugin imports the app.
 The operations crate exposes contracts with default features. Its `runtime` feature
 enables common SDK implementations; each carrier supplies its own dependencies.
 
+`SchematicEditor` implements the shared `Lifecycle`. Its async `prepare` opens
+the recovery journal and recordings, configures `Setup<Self>`, and places the
+operation catalog. `app::launch` calls `Runtime::launch`; shutdown drains work
+before owner stop and cleanup. Tests can replace prepared resource allocations
+through `Runtime::launch_with` while keeping that preparation path.
+
+Both plugins depend on the `harmos` facade, with its `sidecar` or `guest`
+feature. Their constant `CATALOGS` selects the same descriptors for inert
+inspection and executable binding; prepare supplies resources through setup.
+
 ## Streaming And Native Access
 
 After running the build tasks above, add `--advanced` to the CLI:

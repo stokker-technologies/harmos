@@ -17,7 +17,7 @@
 use std::num::NonZeroUsize;
 use std::sync::{
     Arc,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 // Third Party Imports
 
@@ -58,6 +58,7 @@ struct Projection {
 struct IncrementalProjection {
     calls: Arc<AtomicUsize>,
     data: Arc<Data>,
+    cancelled: Arc<AtomicBool>,
     cancel: bool,
 }
 
@@ -90,6 +91,27 @@ pub enum ModelLanes {
     #[default]
     Open,
 }
+impl harmos_runtime::Lifecycle for Model {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 impl harmos_runtime::Application for Model {
     type Lanes = ModelLanes;
@@ -97,7 +119,6 @@ impl harmos_runtime::Application for Model {
     type Transaction = Transactions;
     type Record = Records;
     type Streams = ();
-    type Resources = ();
 }
 
 impl harmos_runtime::state::Transaction<u64> for Advance {
@@ -138,16 +159,19 @@ impl RecordProjection for IncrementalProjection {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = harmos_runtime::Result<()>> + Send + 'a>> {
         Box::pin(async move {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            let payload = vec![0; 100 * 1024];
+            // Two JSON-Encoded Records Fit Before The Partial Group Must Refuse.
+            let payload = vec![0; 50 * 1024];
             for index in 0..4 {
                 let item = Identifier::new(format!("projected-{index}")).unwrap();
                 let key = schema();
                 let input = record(&key, &item, &payload);
                 if self.cancel && index == 1 {
                     tokio::select! {
+                        biased;
                         result = output.push(input) => panic!("capacity must wait: {result:?}"),
                         _ = self.data.control.write_entered.notified() => {}
                     }
+                    self.cancelled.store(true, Ordering::SeqCst);
                     // Abandon the pending push and ignore it: the sink must
                     // still refuse the complete transaction, including record 0.
                     return Ok(());
@@ -178,19 +202,22 @@ impl Store {
         .unwrap()
     }
     async fn boot(&self, storage: &StorageManager, capture: ReadLimits, duplicate: bool) -> Runtime<Model> {
-        Runtime::<Model>::builder(0, ())
-            .register(Transactions::catalog())
-            .register(Records::catalog())
-            .managed_storage(harmos_runtime::config::ManagedStorageSettings {
-                replay: limits(1, 64 * 1024),
-                capture,
-                snapshots: None,
-                journal_tail: 1,
-            })
-            .store_records(Projection { calls: self.calls.clone(), duplicate })
-            .runtime_with_storage(storage)
-            .await
-            .unwrap()
+        Runtime::<Model>::launch_with(0, (), |setup| {
+            setup
+                .settings()
+                .storage(storage)
+                .register(Transactions::catalog())
+                .register(Records::catalog())
+                .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                    replay: limits(1, 64 * 1024),
+                    capture,
+                    snapshots: None,
+                    journal_tail: 1,
+                })
+                .store_records(Projection { calls: self.calls.clone(), duplicate });
+        })
+        .await
+        .unwrap()
     }
     async fn ready(&self, storage: &StorageManager) {
         storage.write_schema(schema(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
@@ -237,7 +264,7 @@ async fn capture_never_replays() {
     assert_eq!(entry.position, Position(2));
     assert_eq!(entry.metadata.commit, Some((Position(1), Position(2))));
     assert_eq!(entry.payload["before"], 0);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     let storage = store.manager(config());
     let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
@@ -248,7 +275,7 @@ async fn capture_never_replays() {
     assert_eq!(read(&store).await.len(), 5);
     storage.flush().await.unwrap();
     assert_eq!(read(&store).await.len(), 6);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -264,7 +291,7 @@ async fn capture_overflow_refuses() {
         assert_eq!(storage.status().recovery_accepted.sequence, 0);
         assert_eq!(storage.status().pending_bytes, 0);
         assert_eq!(storage.status().pending_batches, 0);
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
@@ -291,7 +318,7 @@ async fn capture_awaits_capacity() {
     store.data.control.write_release.notify_one();
     next.await.unwrap();
     assert_eq!(store.calls.load(Ordering::SeqCst), 2);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -307,7 +334,7 @@ async fn panic_releases_reservation() {
     assert_eq!(storage.status().pending_bytes, 0);
     assert_eq!(storage.status().pending_batches, 0);
     assert!(store.data.records.lock().unwrap().is_empty());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -318,8 +345,8 @@ async fn primary_stop_retries() {
     store.ready(&storage).await;
     runtime.state.commit(Advance { panic: false }).await.unwrap();
     store.data.control.flush_failures.store(1, Ordering::SeqCst);
-    assert!(runtime.stop().await.is_err());
-    runtime.stop().await.unwrap();
+    assert!(runtime.shutdown().await.is_err());
+    runtime.shutdown().await.unwrap();
     assert_eq!(store.calls.load(Ordering::SeqCst), 1);
     assert_eq!(store.data.records.lock().unwrap().len(), 1);
     assert_eq!(store.recovery.entries.lock().unwrap().len(), 1);
@@ -330,14 +357,14 @@ async fn primary_stop_retries() {
 #[tokio::test]
 async fn capture_requires_managed() {
     assert!(
-        Runtime::<Model>::builder(0, ())
-            .store_records(Projection {
+        Runtime::<Model>::launch_with(0, (), |setup| {
+            setup.settings().store_records(Projection {
                 calls: Arc::new(AtomicUsize::new(0)),
-                duplicate: false
-            })
-            .runtime()
-            .await
-            .is_err()
+                duplicate: false,
+            });
+        })
+        .await
+        .is_err()
     );
 }
 
@@ -354,7 +381,7 @@ async fn undersized_queue_refuses() {
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     assert_eq!(storage.status().accepted.sequence, 1);
     assert_eq!(storage.status().recovery_accepted.sequence, 0);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -370,7 +397,7 @@ async fn primary_failure_halts() {
     assert_eq!(runtime.state.state().read(|value| *value).await.unwrap().value, 1);
     assert_eq!(store.calls.load(Ordering::SeqCst), 1);
     assert_eq!(storage.status().recovery_saved.sequence, 0);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert_eq!(store.data.records.lock().unwrap().len(), 1);
     assert_eq!(store.recovery.entries.lock().unwrap().len(), 1);
 }
@@ -382,42 +409,45 @@ async fn reconciliation_saves_capture() {
     let observed = Arc::new(tokio::sync::Notify::new());
     let notify = observed.clone();
     let check = storage.clone();
-    let runtime = Runtime::<Model>::builder(0, ())
-        .register(Transactions::catalog())
-        .register(Records::catalog())
-        .managed_storage(harmos_runtime::config::ManagedStorageSettings {
-            replay: limits(1, 64 * 1024),
-            capture: limits(4, 16 * 1024),
-            snapshots: None,
-            journal_tail: 1024,
-        })
-        .store_records(Projection {
-            calls: store.calls.clone(),
-            duplicate: false,
-        })
-        .reconcile(|_, storage| async move {
-            storage.write_schema(schema(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await?;
-            Ok(())
-        })
-        .service("producer", move |context: harmos_runtime::services::ServiceContext<Model>| {
-            let check = check.clone();
-            let notify = notify.clone();
-            async move {
-                assert_eq!(check.status().saved.sequence, 1);
-                context.records().publish(Observed { before: 0 }).await.unwrap();
-                notify.notify_one();
-                Ok::<(), std::io::Error>(())
-            }
-        })
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
+    let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
+        setup
+            .settings()
+            .storage(&storage)
+            .register(Transactions::catalog())
+            .register(Records::catalog())
+            .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(1, 64 * 1024),
+                capture: limits(4, 16 * 1024),
+                snapshots: None,
+                journal_tail: 1024,
+            })
+            .store_records(Projection {
+                calls: store.calls.clone(),
+                duplicate: false,
+            })
+            .reconcile(|_, storage| async move {
+                storage.write_schema(schema(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await?;
+                Ok(())
+            })
+            .service("producer", move |context: harmos_runtime::services::ServiceContext<Model>| {
+                let check = check.clone();
+                let notify = notify.clone();
+                async move {
+                    assert_eq!(check.status().saved.sequence, 1);
+                    context.records().publish(Observed { before: 0 }).await.unwrap();
+                    notify.notify_one();
+                    Ok::<(), std::io::Error>(())
+                }
+            });
+    })
+    .await
+    .unwrap();
     observed.notified().await;
     assert!(read(&store).await.is_empty());
     storage.flush().await.unwrap();
     assert_eq!(read(&store).await.len(), 1);
     assert_eq!(store.calls.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -449,7 +479,7 @@ async fn capture_coalesces_writes() {
         assert!(sizes.iter().all(|size| *size <= 64));
         assert!(control.writes.lock().unwrap().windows(2).all(|pair| pair[0] < pair[1]));
     }
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -486,7 +516,7 @@ async fn recovery_failure_retries() {
     assert_eq!(storage.status().pending_bytes, 0);
     let writes = store.data.control.write_sizes.lock().unwrap().clone();
     assert_eq!(writes.iter().filter(|size| **size == 20).count(), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -513,7 +543,7 @@ async fn flush_skips_recovery() {
     storage.flush_recovery().await.unwrap();
     assert_eq!(runtime.state.stored(), Position(40));
     assert_eq!(storage.status().pending_bytes, 0);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -533,42 +563,48 @@ async fn capture_reserves_actual() {
     assert_eq!(storage.cursor_saved().sequence, 1);
     assert!(storage.status().pending_bytes < 32 * 1024);
     assert_eq!(runtime.state.state().read(|value| *value).await.unwrap().value, 4);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn partial_projection_refused() {
     for cancel in [false, true] {
         let store = Store::new();
+        let cancelled = Arc::new(AtomicBool::new(false));
         let mut policy = config();
         policy.request.max_pending_write_bytes = NonZeroUsize::new(256 * 1024).unwrap();
         let storage = store.manager(policy);
-        let runtime = Runtime::<Model>::builder(0, ())
-            .register(Transactions::catalog())
-            .register(Records::catalog())
-            .managed_storage(harmos_runtime::config::ManagedStorageSettings {
-                replay: limits(1, 64 * 1024),
-                capture: limits(8, 4 * 1024 * 1024),
-                snapshots: None,
-                journal_tail: 1024,
-            })
-            .store_records(IncrementalProjection {
-                calls: store.calls.clone(),
-                data: store.data.clone(),
-                cancel,
-            })
-            .runtime_with_storage(&storage)
-            .await
-            .unwrap();
+        let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
+            setup
+                .settings()
+                .storage(&storage)
+                .register(Transactions::catalog())
+                .register(Records::catalog())
+                .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                    replay: limits(1, 64 * 1024),
+                    capture: limits(8, 4 * 1024 * 1024),
+                    snapshots: None,
+                    journal_tail: 1024,
+                })
+                .store_records(IncrementalProjection {
+                    calls: store.calls.clone(),
+                    data: store.data.clone(),
+                    cancelled: cancelled.clone(),
+                    cancel,
+                });
+        })
+        .await
+        .unwrap();
         store.ready(&storage).await;
         if cancel {
             store.data.control.block_write.store(true, Ordering::SeqCst);
             let item = Identifier::new("already-accepted").unwrap();
-            storage.write_records(vec![record(&schema(), &item, &vec![0; 100 * 1024])]).await.unwrap();
+            storage.write_records(vec![record(&schema(), &item, &vec![0; 50 * 1024])]).await.unwrap();
         }
         let accepted = storage.cursor_accepted();
         assert!(runtime.state.commit(Advance { panic: false }).await.is_err());
         assert_eq!(store.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(cancelled.load(Ordering::SeqCst), cancel);
         assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 0);
         assert_eq!(storage.cursor_accepted(), accepted);
         assert_eq!(storage.status().recovery_accepted.sequence, 0);
@@ -577,7 +613,7 @@ async fn partial_projection_refused() {
         storage.flush().await.unwrap();
         assert_eq!(storage.status().pending_bytes, 0);
         assert_eq!(storage.status().pending_batches, 0);
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
@@ -649,7 +685,7 @@ async fn registration_stores_schema() {
     drop(definition);
     Validator::from_schema(&stored[0], &harmos_runtime::config::SchemaSettings::default()).unwrap().validate(&payload).unwrap();
     drop(reader);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */

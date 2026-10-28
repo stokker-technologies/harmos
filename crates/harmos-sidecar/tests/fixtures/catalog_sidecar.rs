@@ -21,7 +21,7 @@
 use harmos_domain::inventory::{contracts, listeners, observers, publications};
 use harmos_operations::lifecycle;
 use harmos_operations::lifecycle::Policy;
-use harmos_sdk::operations::{OperationPolicy, RetryPolicy, ServingError, WireTable};
+use harmos_sdk::operations::{OperationPolicy, RetryPolicy};
 use harmos_sdk::plugin::{Declared, Plugin};
 use harmos_sidecar::{Refusal, Registrar, RegistrationError, Supervisor};
 
@@ -66,9 +66,22 @@ struct ReadOperation {}
 
 /* === Enums === */
 
+#[harmos_macros::sidecar_catalog(harmos_path = ::harmos_sidecar)]
+enum Readings {
+    Read(ReadOperation),
+}
+
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_sdk::Operation for ReadOperation {
+    type Error = Refusal;
+
+    async fn run(self, _: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::Response<()>, Refusal> {
+        panic!("catalog export must never execute an operation")
+    }
+}
 
 impl lifecycle::Policy for Catalog {
     const INITIALIZATION_POLICY: OperationPolicy = OperationPolicy {
@@ -79,42 +92,43 @@ impl lifecycle::Policy for Catalog {
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-impl Plugin for Catalog {
-    fn register(registrar: &mut Registrar) -> Result<(), RegistrationError> {
-        registrar.register("zeta.catalog", 2, &serde_json::json!({"suite": "probe"}))?;
-        registrar.register("alpha.catalog", 1, &vec![1, 2])
-    }
-
+impl harmos_sdk::Lifecycle for Catalog {
     type Config = ();
     type Error = Refusal;
     type Context = Supervisor;
-    type Resources = ();
-    fn prepare(_: ()) -> Result<Self, Refusal> {
+
+    async fn prepare(_: (), _setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Refusal> {
         panic!("export must never prepare an authored instance")
     }
-    fn resources(&self) -> std::sync::Arc<()> {
-        panic!("export must never acquire resources")
-    }
+
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         panic!("export must never initialize resources")
     }
-    fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
-        panic!("export must never bind authored handlers")
-    }
+
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         panic!("export must never enter domain shutdown")
     }
+
     async fn cleanup(&mut self) -> Result<(), Refusal> {
         panic!("export must never acquire a cleanup owner")
     }
 }
 
+impl Plugin for Catalog {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[Readings::CATALOG];
+
+    fn register(registrar: &mut Registrar) -> Result<(), RegistrationError> {
+        registrar.register("zeta.catalog", 2, &serde_json::json!({"suite": "probe"}))?;
+        registrar.register("alpha.catalog", 1, &vec![1, 2])
+    }
+}
+
 impl Declared for Catalog {
-    const ID: &'static str = "catalog-fixture";
+    const ID: &'static str = "catalog_fixture";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
     const DESCRIPTION: &'static str = "Exports a catalog and never runs.";
     const PROVIDES: &'static [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>] =
-        &[harmos_domain::catalog::Node::Leaf(harmos_domain::operations::WireDeclaration::of::<ReadOperation>())];
+        <Self as Plugin>::CATALOGS[0].declarations;
     const REQUIRES: &'static [harmos_domain::catalog::Node<harmos_domain::plugin::Requirement>] = &[];
     const STREAMS: &'static [publications::Entry] = &[];
     fn markers() -> Result<Vec<&'static [u8]>, harmos_domain::schema::graph::Error> {

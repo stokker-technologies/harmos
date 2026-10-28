@@ -43,7 +43,10 @@ use support::journal::{Journal, Store};
 #[tokio::test]
 async fn state_matches_replay() {
     let copy = Store::default();
-    let runtime = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy)).tail(1)).await;
+    let runtime = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy)).tail(1);
+    })
+    .await;
     let journal = runtime.state.as_principal(alice());
     let first = journal.commit(deposit(4)).await.expect("accepted");
     let second = journal.commit(deposit(7)).await.expect("accepted");
@@ -62,9 +65,12 @@ async fn state_matches_replay() {
     assert_eq!(at_undo.value.balance, 4);
     assert_eq!(at_undo.position, undone.position);
     drop(journal);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
-    let replayed = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy))).await;
+    let replayed = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy));
+    })
+    .await;
     let from_snapshot = replayed
         .state
         .state()
@@ -83,13 +89,16 @@ async fn state_matches_replay() {
         .expect("boot replay rebuilt the same state");
 
     assert_eq!(from_snapshot, rebuilt);
-    replayed.stop().await.unwrap();
+    replayed.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn source_query_equals() {
     let copy = Store::default();
-    let runtime = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy)).tail(2)).await;
+    let runtime = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy)).tail(2);
+    })
+    .await;
 
     let mut expected = Vec::new();
     let mut after = Position::ORIGIN;
@@ -109,12 +118,15 @@ async fn source_query_equals() {
         runtime.state.query::<Change>(Position::ORIGIN).await.collect::<Result<_, _>>().expect("the source serves the evicted prefix");
 
     assert_eq!(entries, expected);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn refusals_distinguish_origin() {
-    let runtime = booted(Ledger::default(), |builder| builder.tail(1)).await;
+    let runtime = booted(Ledger::default(), |setup| {
+        setup.settings().tail(1);
+    })
+    .await;
     runtime.state.commit(deposit(1)).await.expect("accepted");
     runtime.state.commit(deposit(2)).await.expect("accepted");
 
@@ -134,18 +146,21 @@ async fn refusals_distinguish_origin() {
     );
     let exact = runtime.state.state().at(anchor, Position(2)).await.expect("the caller's exact anchor needs no source");
     assert_eq!(exact.value.balance, 3);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn inspector_recovers_read() {
     let copy = Store::default();
-    let runtime = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy))).await;
+    let runtime = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy));
+    })
+    .await;
     for amount in [2, 5] {
         let receipt = runtime.state.commit(deposit(amount)).await.expect("accepted");
         runtime.state.wait_until_stored(receipt.position).await;
     }
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     let inspector = Runtime::<Bank>::inspect(Origin::initial(Ledger::default()), Journal::<Bank>::open(&copy))
         .await

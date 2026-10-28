@@ -853,17 +853,20 @@ dependencies = [
 
 [[package]]
 name = "harmos"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "harmos-domain",
+ "harmos-guest",
+ "harmos-macros",
  "harmos-operations",
  "harmos-runtime",
  "harmos-sdk",
+ "harmos-sidecar",
 ]
 
 [[package]]
 name = "harmos-domain"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "harmos-macros",
  "memchr",
@@ -878,9 +881,10 @@ dependencies = [
 
 [[package]]
 name = "harmos-guest"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "harmos-domain",
+ "harmos-macros",
  "harmos-operations",
  "harmos-sdk",
  "thiserror",
@@ -890,7 +894,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-macros"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "heck",
  "proc-macro-crate",
@@ -902,9 +906,10 @@ dependencies = [
 
 [[package]]
 name = "harmos-operations"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "harmos-domain",
+ "harmos-macros",
  "harmos-sdk",
  "harmos-storage",
  "serde",
@@ -916,7 +921,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-packaging"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "harmos-domain",
  "heck",
@@ -935,7 +940,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-runtime"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "futures-core",
  "futures-util",
@@ -963,9 +968,10 @@ dependencies = [
 
 [[package]]
 name = "harmos-sdk"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "harmos-domain",
+ "harmos-macros",
  "postcard",
  "prost",
  "serde",
@@ -977,11 +983,12 @@ dependencies = [
 
 [[package]]
 name = "harmos-sidecar"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "harmos-domain",
+ "harmos-macros",
  "harmos-operations",
  "harmos-sdk",
  "libc",
@@ -997,7 +1004,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-storage"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -1658,7 +1665,7 @@ dependencies = [
 
 [[package]]
 name = "schematic-app"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "harmos",
  "schematic-domain",
@@ -1673,7 +1680,7 @@ dependencies = [
 
 [[package]]
 name = "schematic-cli"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "clap",
  "harmos",
@@ -1692,7 +1699,7 @@ dependencies = [
 
 [[package]]
 name = "schematic-domain"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "harmos-domain",
  "serde",
@@ -1701,17 +1708,17 @@ dependencies = [
 
 [[package]]
 name = "schematic-guest"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
+ "harmos",
  "harmos-domain",
- "harmos-guest",
  "harmos-packaging",
  "schematic-operations",
 ]
 
 [[package]]
 name = "schematic-operations"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "harmos",
  "schematic-domain",
@@ -1721,11 +1728,11 @@ dependencies = [
 
 [[package]]
 name = "schematic-sidecar"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
+ "harmos",
  "harmos-domain",
  "harmos-packaging",
- "harmos-sidecar",
  "schematic-domain",
  "schematic-operations",
  "tempfile",
@@ -1737,7 +1744,7 @@ dependencies = [
 
 [[package]]
 name = "schematic-storage"
-version = "0.1.8"
+version = "0.1.12"
 dependencies = [
  "harmos",
  "serde",

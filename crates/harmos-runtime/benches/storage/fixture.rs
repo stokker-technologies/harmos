@@ -49,12 +49,12 @@ impl Fixture {
         let settings = settings();
         let backends = backends(directory.path());
         let storage = StorageManager::new(backends, settings.clone()).unwrap();
-        let runtime = Runtime::<Model>::builder(State::default(), ())
-            .register(super::Transactions::catalog())
-            .register(super::Records::catalog())
-            .runtime_with_storage(&storage)
-            .await
-            .unwrap();
+        let runtime = Runtime::<Model>::launch_with(State::default(), (), |setup| {
+            setup.resource::<StorageManager>(storage.clone());
+            setup.settings().register(super::Transactions::catalog()).register(super::Records::catalog()).storage(&storage);
+        })
+        .await
+        .unwrap();
         Self {
             settings,
             _directory: directory,
@@ -64,8 +64,7 @@ impl Fixture {
     }
 
     pub async fn finish(self) {
-        self.storage.close().await.unwrap();
-        self.runtime.stop().await.unwrap();
+        self.runtime.shutdown().await.unwrap();
     }
 }
 /* === Public Functions === */

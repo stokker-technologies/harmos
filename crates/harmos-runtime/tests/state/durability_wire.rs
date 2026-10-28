@@ -39,6 +39,27 @@ mod other {
         #[default]
         Open,
     }
+    impl harmos_runtime::Lifecycle for Branch {
+        type Config = ();
+        type Error = std::convert::Infallible;
+        type Context = harmos_runtime::Startup<Self>;
+
+        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+            Ok(Self)
+        }
+
+        async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+    }
 
     impl Application for Branch {
         type Lanes = BranchLanes;
@@ -46,7 +67,6 @@ mod other {
         type Transaction = Movement;
         type Record = Observed;
         type Streams = ();
-        type Resources = ();
     }
 
     impl Wire for Branch {
@@ -124,11 +144,14 @@ const VARIANTS: [&str; 9] = ["Deposit", "Withdraw", "Pay", "Explode", "Noted", "
 async fn payload_own_shape() {
     let copy = Store::default();
 
-    let runtime = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy))).await;
+    let runtime = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy));
+    })
+    .await;
     let deposited = runtime.state.commit(deposit(7)).await.expect("accepted");
     let noted = runtime.records.publish(Noted("audited".to_owned())).await.expect("a fact cannot be refused");
     runtime.state.wait_until_stored(noted.position).await;
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     let lines = copy.members();
 
@@ -157,23 +180,26 @@ async fn payload_own_shape() {
 async fn another_build_reads() {
     let copy = Store::default();
 
-    let runtime = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy))).await;
+    let runtime = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy));
+    })
+    .await;
     runtime.state.commit(deposit(10)).await.expect("accepted");
     runtime.state.commit(withdraw(4)).await.expect("accepted");
     runtime.records.publish(Noted("audited".to_owned())).await.expect("a fact cannot be refused");
     let expected = ledger(&runtime).await;
     let frontier = runtime.state.applied();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     // The other build's catalogs share not one variant name or position with
     // the ones that wrote this file, and share every definition.
-    let recovered = Runtime::<other::Branch>::builder(Ledger::default(), ())
-        .register(other::Movement::catalog())
-        .register(other::Observed::catalog())
-        .recover(Journal::<other::Branch>::open(&copy))
-        .runtime()
-        .await
-        .expect("every definition is declared, under the names the file carries");
+    let recovered = Runtime::<other::Branch>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(other::Movement::catalog());
+        setup.settings().register(other::Observed::catalog());
+        setup.settings().recover(Journal::<other::Branch>::open(&copy));
+    })
+    .await
+    .expect("every definition is declared, under the names the file carries");
 
     assert_eq!(
         recovered.state.state().read(Clone::clone).await.expect("reads are open").value,
@@ -186,12 +212,12 @@ async fn another_build_reads() {
 
 #[tokio::test]
 async fn decode_matches_recovery() {
-    let runtime = Runtime::<other::Branch>::builder(Ledger::default(), ())
-        .register(other::Movement::catalog())
-        .register(other::Observed::catalog())
-        .runtime()
-        .await
-        .expect("the generated catalogs freeze");
+    let runtime = Runtime::<other::Branch>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(other::Movement::catalog());
+        setup.settings().register(other::Observed::catalog());
+    })
+    .await
+    .expect("the generated catalogs freeze");
     let id = DefinitionId::new("ledger.deposit");
     let value = serde_json::json!({ "amount": 7 });
     let bytes = serde_json::to_vec(&value).expect("the envelope payload is JSON");

@@ -65,27 +65,12 @@ impl harmos_operations::lifecycle::Policy for Program {
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos_runtime::plugin(description = "Witnesses Registration And Initialization Separately.",
-    id = "admission_fixture",
-    provides = (),
-    requires = (),
-)]
-impl harmos_runtime::Plugin for Program {
-    fn register(registrar: &mut Registrar) -> Result<(), RegistrationError> {
-        let marks = current();
-        let catalog = if marks.seen("catalog-changed") { "changed" } else { "first" };
-        registrar.register("fixture", 1, &catalog)?;
-        registrar.register("unknown", 2, &vec![3, 4])?;
-        marks.mark("registered");
-        Ok(())
-    }
-
+impl harmos_runtime::Lifecycle for Program {
     type Context = Supervisor;
     type Config = ();
     type Error = Refusal;
-    type Resources = ();
 
-    fn prepare(_: ()) -> Result<Self, Refusal> {
+    async fn prepare(_: (), _setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Refusal> {
         Ok(Self { marks: current() })
     }
 
@@ -104,14 +89,6 @@ impl harmos_runtime::Plugin for Program {
         Ok(())
     }
 
-    fn resources(&self) -> Arc<()> {
-        Arc::new(())
-    }
-
-    fn bind_operations(&self, _: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        Ok(())
-    }
-
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         Ok(())
     }
@@ -121,7 +98,22 @@ impl harmos_runtime::Plugin for Program {
     }
 }
 
-/* === Public Functions === */
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Witnesses Registration And Initialization Separately.",
+    id = "admission_fixture",
+    requires = (),
+)]
+impl harmos_runtime::Plugin for Program {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[];
+
+    fn register(registrar: &mut Registrar) -> Result<(), RegistrationError> {
+        let marks = current();
+        let catalog = if marks.seen("catalog-changed") { "changed" } else { "first" };
+        registrar.register("fixture", 1, &catalog)?;
+        registrar.register("unknown", 2, &vec![3, 4])?;
+        marks.mark("registered");
+        Ok(())
+    }
+} /* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -148,14 +140,13 @@ async fn native(expected: &[Registration]) -> operations::Managed<Source> {
     let source = Source::new(NonZeroUsize::new(1).unwrap()).unwrap();
     let definitions = operations::inspected(&source, serde_json::to_vec(&()).unwrap());
     let resident = Supervised::new(source, notices as fn(&ServiceContext<Bank>, Notice)).expected_registrations(expected);
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     operations::Managed::from_runtime(
         runtime,
         definitions,
@@ -197,7 +188,7 @@ async fn catalog_drift_refused() {
         assert!(!marks.seen("initialized"));
         assert!(!*ready.borrow());
         assert!(registrations.borrow().is_none());
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
@@ -237,7 +228,7 @@ async fn readiness_requires_init() {
     service_status(services.watch_residents(), NAME, |value| matches!(value, ServiceStatus::Running { .. })).await;
     assert_eq!(marks.count("initialized"), 1);
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
     assert!(!*ready.borrow());
     assert!(registrations.borrow().is_none());
 }
@@ -258,7 +249,7 @@ async fn refused_init_unready() {
     assert!(!*ready.borrow());
     assert_eq!(fixture.status(NAME).unwrap().state, harmos_runtime::plugin::PluginState::Failed);
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -283,27 +274,29 @@ async fn restart_closes_admission() {
     let calls = Supervised::new(source, notices as fn(&ServiceContext<Bank>, Notice)).expected_registrations(&expected());
     let ready = calls.ready();
     let registrations = calls.registrations();
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let resident = calls.clone();
     runtime
         .operations
-        .register_service(harmos_runtime::services::ServiceDefinition { id: NAME.into(), policy }, move |_: Arc<()>| {
-            harmos_runtime::sidecar::Managed::new(
-                resident.clone(),
-                definition.clone(),
-                HostLanes::Open,
-                NonZeroUsize::new(1).unwrap(),
-                NonZeroUsize::new(4096).unwrap(),
-            )
-            .unwrap()
-        })
+        .register_service(
+            harmos_runtime::services::ServiceDefinition { id: NAME.into(), policy },
+            move |_: Arc<harmos_sdk::ExecutionContext>| {
+                harmos_runtime::sidecar::Managed::new(
+                    resident.clone(),
+                    definition.clone(),
+                    HostLanes::Open,
+                    NonZeroUsize::new(1).unwrap(),
+                    NonZeroUsize::new(4096).unwrap(),
+                )
+                .unwrap()
+            },
+        )
         .unwrap();
     let _lease = runtime.operations.submit_resident(NAME).await.unwrap();
     service_status(runtime.operations.watch_residents(), NAME, |status| matches!(status, ServiceStatus::Running { .. })).await;
@@ -317,7 +310,7 @@ async fn restart_closes_admission() {
     assert!(matches!(calls.operations(), Err(SidecarError::Unavailable)));
     assert_eq!(marks.count("initialized"), 1);
     assert_eq!(marks.count("registered"), 2, "{status:?}");
-    assert!(matches!(runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
+    assert!(matches!(runtime.shutdown().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 }
 
 /* === Tests === */

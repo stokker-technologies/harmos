@@ -62,6 +62,8 @@ struct Model;
 // Each Callback Over The Same Row Is Its Own Listener.
 struct Heard<const FIRST: bool>;
 
+struct OwnerResource(std::sync::OnceLock<Arc<Owner>>);
+
 struct Owner {
     streams: harmos_runtime::streams::StreamManager<Model>,
     seen: Mutex<Seen>,
@@ -100,12 +102,18 @@ struct Host {
 
 /* === Enums === */
 
+#[harmos_runtime::catalog]
+enum HandlerOperations {
+    First(HearingFirst),
+    Second(HearingSecond),
+}
+
 #[harmos_runtime::streams]
 enum Rows {
     Fact(Fact),
 }
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 enum Callbacks {
     First(harmos_runtime::listeners::Callback<Heard<true>>),
     Second(harmos_runtime::listeners::Callback<Heard<false>>),
@@ -183,6 +191,27 @@ impl Message for Fact {
         })
     }
 }
+impl harmos_runtime::Lifecycle for Model {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 impl harmos_runtime::Application for Model {
     type Lanes = Lanes;
@@ -190,7 +219,6 @@ impl harmos_runtime::Application for Model {
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
     type Streams = Rows;
-    type Resources = ();
 }
 
 impl<const FIRST: bool> Listener for Heard<FIRST> {
@@ -210,7 +238,7 @@ impl Drop for AttemptGuard {
         self.0.settled.notify_one();
     }
 }
-#[harmos_runtime::operation(codec = manual, resources = [Owner], id = <Heard<true> as Listener>::CALLBACK, response = (),
+#[harmos_runtime::operation(codec = manual, resources = [OwnerResource], id = <Heard<true> as Listener>::CALLBACK, response = (),
     policy = <Heard<true> as Listener>::POLICY, visibility = Shared)]
 #[derive(Clone)]
 struct HearingFirst(Delivery<Heard<true>>);
@@ -243,7 +271,8 @@ impl harmos_runtime::schema::Described for HearingFirst {
 impl harmos_runtime::Operation for HearingFirst {
     type Error = Failed;
     async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<()>, Self::Error> {
-        let resources = ctx.resource::<Owner>();
+        let owner = ctx.resource::<OwnerResource>();
+        let resources = owner.0.get().expect("listener owner configured before registration").clone();
         let _guard = AttemptGuard(resources.clone());
         let request = self.0;
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -268,7 +297,7 @@ impl harmos_runtime::Operation for HearingFirst {
         result.map(::core::convert::Into::into)
     }
 }
-#[harmos_runtime::operation(codec = manual, resources = [Owner], id = <Heard<false> as Listener>::CALLBACK, response = (),
+#[harmos_runtime::operation(codec = manual, resources = [OwnerResource], id = <Heard<false> as Listener>::CALLBACK, response = (),
     policy = <Heard<false> as Listener>::POLICY, visibility = Shared)]
 #[derive(Clone)]
 struct HearingSecond(Delivery<Heard<false>>);
@@ -301,7 +330,8 @@ impl harmos_runtime::schema::Described for HearingSecond {
 impl harmos_runtime::Operation for HearingSecond {
     type Error = Failed;
     async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<()>, Self::Error> {
-        let resources = ctx.resource::<Owner>();
+        let owner = ctx.resource::<OwnerResource>();
+        let resources = owner.0.get().expect("listener owner configured before registration").clone();
         let _guard = AttemptGuard(resources.clone());
         let request = self.0;
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -348,18 +378,7 @@ impl PluginLifecycle for Host {
         resources.endpoint = Some(router.enter("listener").unwrap());
         let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
         self.scope = Some(scope.clone());
-        resources.operations = Some(self.operations.stage_plugin(scope, |bindings| {
-            bindings.register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(self.owner.clone()).unwrap();
-                    dependencies
-                })
-                .operation::<HearingFirst>()
-                .operation::<HearingSecond>(),
-                Lanes::Open,
-            ))
-        })?);
+        resources.operations = Some(self.operations.stage_plugin(scope, |bindings| bindings.operations::<HandlerOperations>(Lanes::Open))?);
         if self.managed {
             resources.streams = Some(self.owner.streams.stage_plugin(scope, [publication()]).await.unwrap());
             self.lease = Some(resources.streams.as_ref().unwrap().leases()[0].clone());
@@ -500,17 +519,17 @@ async fn setup(block: bool, reenter: bool, tail: usize) -> (Runtime<Model>, Plug
 async fn setup_source(
     block: bool, reenter: bool, tail: usize, managed: bool,
 ) -> (Runtime<Model>, PluginManager<Resources, Resources, Resources>, Host) {
-    let runtime = Runtime::<Model>::builder((), ())
-        .register(if managed { vec![] } else { Rows::catalog() })
-        .register(Lanes::catalog())
-        .tail(tail)
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = Runtime::<Model>::launch_with((), (), |setup| {
+        setup.resource::<OwnerResource>(OwnerResource(std::sync::OnceLock::new()));
+        setup.settings().register(if managed { vec![] } else { Rows::catalog() });
+        setup.settings().tail(tail);
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await
+    .unwrap();
     let owner = Arc::new(Owner {
         streams: runtime.streams.clone(),
         seen: Mutex::new(Vec::new()),
@@ -523,6 +542,14 @@ async fn setup_source(
         block,
         reenter,
     });
+    runtime
+        .operations
+        .context()
+        .resource::<OwnerResource>()
+        .unwrap()
+        .0
+        .set(owner.clone())
+        .unwrap_or_else(|_| panic!("listener owner configured once"));
     let host = Host {
         operations: runtime.operations.clone(),
         owner,
@@ -573,7 +600,7 @@ async fn reentrancy_preserve_logical() {
         ]
     );
     manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -587,7 +614,7 @@ async fn sources_never_commit() {
         assert!(!host.scope.as_ref().unwrap().is_ready());
         assert!(host.owner.seen.lock().unwrap().is_empty());
         manager.shutdown(&mut host).await.unwrap();
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
@@ -604,7 +631,7 @@ async fn listener_failure_fences() {
         assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationFailed { .. })));
         assert!(matches!(runtime.operations.definition(Heard::<false>::CALLBACK), Err(Error::Closing { .. })));
         manager.shutdown(&mut host).await.unwrap();
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
     {
         let (runtime, mut manager, mut host) = setup(false, false, 8).await;
@@ -616,20 +643,19 @@ async fn listener_failure_fences() {
         assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::plugin::PluginState::Failed);
         assert_eq!(host.owner.seen.lock().unwrap().len(), 2);
         manager.shutdown(&mut host).await.unwrap();
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
 #[tokio::test]
 async fn runtime_signals_listener() {
-    struct BlockedObserver;
+    struct BlockedObserver(Arc<Gates>);
     struct Gates {
         running: Notify,
         stopping: Notify,
         release: Notify,
     }
     impl harmos_runtime::observers::ObserverBackend for BlockedObserver {
-        type Resources = Gates;
         fn definition(&self) -> harmos_runtime::Result<harmos_runtime::observers::ObserverDefinition> {
             Ok(harmos_runtime::observers::ObserverDefinition {
                 id: "blocked-cleanup".into(),
@@ -638,7 +664,10 @@ async fn runtime_signals_listener() {
                 demand_keys: vec![],
             })
         }
-        async fn run(&self, gates: Arc<Gates>, mut activation: harmos_runtime::observers::ObserverActivation) -> Result<()> {
+        async fn run(
+            &self, _: Arc<harmos_sdk::ExecutionContext>, mut activation: harmos_runtime::observers::ObserverActivation,
+        ) -> Result<()> {
+            let gates = &self.0;
             activation.ready();
             gates.running.notify_one();
             activation.stopping().await;
@@ -655,10 +684,10 @@ async fn runtime_signals_listener() {
         stopping: Notify::new(),
         release: Notify::new(),
     });
-    runtime.operations.register_observer(BlockedObserver).unwrap();
-    let lease = runtime.operations.submit_with_resources_at("blocked-cleanup", gates.clone()).await.unwrap();
+    runtime.operations.register_observer(BlockedObserver(gates.clone())).unwrap();
+    let lease = runtime.operations.submit_resident("blocked-cleanup").await.unwrap();
     gates.running.notified().await;
-    let mut stopping = Box::pin(runtime.stop());
+    let mut stopping = Box::pin(runtime.shutdown());
     tokio::select! {
         _ = async {
             gates.stopping.notified().await;
@@ -669,7 +698,7 @@ async fn runtime_signals_listener() {
     assert_eq!(host.owner.finished.load(Ordering::SeqCst), 1);
     drop(stopping);
     gates.release.notify_one();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     drop(lease);
 }
 
@@ -703,7 +732,7 @@ async fn pages_deliver_native() {
         }
     }
     manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -724,7 +753,7 @@ async fn overwrite_reports_logical() {
     }
     assert!(host.scope.as_ref().unwrap().is_ready());
     manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -743,7 +772,7 @@ async fn receipt_cleans_replacement() {
     assert!(runtime.streams.shutdown_listeners_for(&old).await.is_err());
     assert!(current.is_ready());
     manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -761,7 +790,7 @@ async fn source_preserves_staged() {
     assert_eq!(host.view.as_ref().unwrap().lock().await.frontier("listener.samples", 1), Some(5));
     manager.shutdown(&mut host).await.unwrap();
     assert!(lease.admit_row(publication_row(6), 6, 0).is_err());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */
@@ -776,7 +805,7 @@ async fn shutdown_releases_callback_before_source() {
     assert_eq!(host.owner.finished.load(Ordering::SeqCst), 1);
     let source_dropped = host.original_drop.clone();
     assert_eq!(source_dropped.load(Ordering::SeqCst), 0);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     drop((manager, host, runtime));
     assert_eq!(source_dropped.load(Ordering::SeqCst), 1);
 }

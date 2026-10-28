@@ -15,7 +15,6 @@
 
 // Standard Library Imports
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 
 // Third Party Imports
 
@@ -46,15 +45,7 @@ use harmos_runtime::storage::{FileMetadata, FilePhase, StagedFile};
 
 async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, harmos_operations::storage::FollowProduction) {
     let fixture = Fixture::new(config()).await;
-    fixture
-        .runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     let mut producer = fixture
         .storage
         .produce_file(FileMetadata {

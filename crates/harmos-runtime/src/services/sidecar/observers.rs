@@ -50,6 +50,7 @@ pub(super) struct Remote {
     control: OnceLock<ControlContext>,
     fenced: watch::Sender<bool>,
     retirement: OnceLock<Weak<Retirement>>,
+    context: OnceLock<Weak<harmos_sdk::ExecutionContext>>,
     outcome: Arc<Mutex<Option<Arc<crate::Error>>>>,
 }
 
@@ -66,7 +67,7 @@ pub(super) struct Session {
 
 struct Retirement {
     operations: Manager,
-    remote: Arc<Remote>,
+    context: Arc<harmos_sdk::ExecutionContext>,
 }
 
 struct Closing {
@@ -91,6 +92,7 @@ impl Remote {
             control: OnceLock::new(),
             fenced: watch::channel(false).0,
             retirement: OnceLock::new(),
+            context: OnceLock::new(),
             outcome: Arc::new(Mutex::new(None)),
         })
     }
@@ -103,7 +105,7 @@ impl Remote {
         let Some(original) = self.retirement.get().and_then(Weak::upgrade) else {
             return Ok(());
         };
-        let retired = original.operations.retire_scope_of(&original.remote).await?;
+        let retired = original.operations.retire_scope_of(&original.context).await?;
         *self.outcome.lock().expect("observer outcome is healthy") = retired.and_then(|retired| retired.into_outcome().err());
         Ok(())
     }
@@ -170,13 +172,15 @@ impl crate::supervision::cleanup::Resource for RetainedControl {
 }
 
 impl ObserverBackend for Backend {
-    type Resources = Remote;
-
     fn definition(&self) -> crate::Result<ObserverDefinition> {
         Ok(self.definition.clone())
     }
 
-    async fn run(&self, remote: Arc<Remote>, mut activation: ObserverActivation) -> crate::Result<()> {
+    async fn run(&self, context: Arc<harmos_sdk::ExecutionContext>, mut activation: ObserverActivation) -> crate::Result<()> {
+        let remote = context.resource::<Remote>().map_err(|_| crate::Error::InvalidInput {
+            field: "observer context",
+            reason: "remote observer resource is missing",
+        })?;
         if let Some(provider) = &remote.provider {
             activation.depend_on(provider)?;
         }
@@ -258,14 +262,14 @@ impl Session {
     }
 
     // Bind retirement of this connection's observers to the session.
-    pub(super) fn bind(&mut self) -> Result<(), String> {
+    pub(super) fn bind(&mut self, context: Arc<harmos_sdk::ExecutionContext>) -> Result<(), String> {
         let closing = self.closing.as_mut().ok_or("native session already ended")?;
         if closing.scope.is_some() {
             return Err("native observer scope already bound".to_owned());
         }
         let original = Arc::new(Retirement {
             operations: closing.operations.clone(),
-            remote: Arc::clone(&closing.remote),
+            context,
         });
         closing.remote.retirement.set(Arc::downgrade(&original)).map_err(|_| "native observer retirement already bound".to_owned())?;
         closing.scope = Some(original);
@@ -334,7 +338,7 @@ impl Closing {
     async fn finish(&mut self) -> Result<Option<Arc<crate::Error>>, String> {
         self.end().await?;
         if let Some(scope) = &self.scope {
-            let retirement = scope.operations.retire_scope_of(&scope.remote).await;
+            let retirement = scope.operations.retire_scope_of(&scope.context).await;
             match retirement {
                 Ok(retirement) => {
                     let outcome = retirement.and_then(|retirement| retirement.into_outcome().err());
@@ -355,7 +359,17 @@ impl Closing {
 pub(super) fn stage(
     operations: &Manager, remote: &Arc<Remote>, plugin: Option<&crate::plugin::PluginScope>, definitions: &[Declaration],
     publications: &[harmos_sidecar::StreamDeclaration],
-) -> crate::Result<ObserverRegistration> {
+) -> crate::Result<(ObserverRegistration, Arc<harmos_sdk::ExecutionContext>)> {
+    let mut resources = harmos_sdk::__private::ResourceSet::new();
+    resources.insert(Arc::clone(remote)).map_err(|_| crate::Error::InvalidInput {
+        field: "observer context",
+        reason: "remote observer resource already configured",
+    })?;
+    let context = Arc::new(harmos_sdk::ExecutionContext::new(resources, Default::default()));
+    remote.context.set(Arc::downgrade(&context)).map_err(|_| crate::Error::InvalidInput {
+        field: "observer context",
+        reason: "remote observer context already configured",
+    })?;
     let backends = definitions.iter().map(|entry| Backend {
         definition: ObserverDefinition {
             id: entry.id.clone(),
@@ -364,10 +378,11 @@ pub(super) fn stage(
             streams: publications.iter().filter(|row| entry.streams.contains(&row.id)).cloned().collect(),
         },
     });
-    match plugin {
-        Some(plugin) => operations.stage_plugin_observers(remote, plugin, backends),
-        None => operations.stage_observers(remote, backends),
-    }
+    let registration = match plugin {
+        Some(plugin) => operations.stage_plugin_observers(&context, plugin, backends),
+        None => operations.stage_observers_in(&context, backends),
+    }?;
+    Ok((registration, context))
 }
 
 // Hold one activation lease per observer whose plugin or demand wants it.
@@ -375,6 +390,9 @@ pub(super) async fn demand(
     operations: Manager, remote: Arc<Remote>, plugin: Option<crate::plugin::PluginScope>, definitions: Vec<Declaration>,
     mut changes: watch::Receiver<BTreeMap<String, bool>>, arrivals: mpsc::Sender<Arrival>,
 ) {
+    let Some(context) = remote.context.get().and_then(Weak::upgrade) else {
+        return;
+    };
     if let Some(plugin) = plugin
         && plugin.ready().await.is_err()
     {
@@ -390,7 +408,7 @@ pub(super) async fn demand(
             if !active {
                 leases.remove(&definition.id);
             } else if !leases.contains_key(&definition.id) {
-                match operations.submit_with_resources_at(&definition.id, Arc::clone(&remote)).await {
+                match operations.submit_resident_in(&definition.id, Arc::clone(&context)).await {
                     Ok(lease) => {
                         leases.insert(definition.id.clone(), lease);
                     }

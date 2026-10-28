@@ -14,7 +14,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::sync::{Arc, atomic::Ordering};
+use std::sync::atomic::Ordering;
 
 // Third Party Imports
 
@@ -74,14 +74,7 @@ async fn resume_receipt_replays() {
 #[tokio::test(start_paused = true)]
 async fn operation_retries_three() {
     let f = Fixture::new(config()).await;
-    f.runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
-            crate::storage::operations::Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    f.runtime.operations.register::<harmos_operations::Storage>(crate::storage::operations::Lanes::Open).await.unwrap();
     let file = f.storage.produce_file(metadata("retry")).await.unwrap();
     let request = harmos_operations::storage::ResumeFile {
         mutation: identity(&f.storage, "resume"),
@@ -146,14 +139,7 @@ async fn duplicate_resumes_share() {
 #[tokio::test(start_paused = true)]
 async fn budgets_never_multiply() {
     let f = Fixture::new(config()).await;
-    f.runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
-            crate::storage::operations::Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    f.runtime.operations.register::<harmos_operations::Storage>(crate::storage::operations::Lanes::Open).await.unwrap();
     let file = f.storage.produce_file(metadata("retry-budget")).await.unwrap();
     let request = harmos_operations::storage::ResumeFile {
         mutation: identity(&f.storage, "resume"),

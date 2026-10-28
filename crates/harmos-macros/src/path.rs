@@ -32,7 +32,7 @@ pub(crate) const KEY: &str = "harmos_path";
 
 /* === Structs === */
 
-pub(crate) struct HarmosPath(Path);
+pub(crate) struct HarmosPath(Path, bool);
 
 /* === Enums === */
 
@@ -42,42 +42,29 @@ pub(crate) struct HarmosPath(Path);
 
 impl HarmosPath {
     pub(crate) fn catalog() -> Self {
-        for package in [
-            "harmos",
-            "dokime",
-            // The Host Runtime Hosts Guest And Sidecar Kits; It Resolves Before Them.
-            "harmos-runtime",
-            "harmos-guest",
-            "harmos-sidecar",
-            "harmos-sdk",
-            "harmos-domain",
-        ] {
-            if let Ok(found) = proc_macro_crate::crate_name(package) {
-                let name = match found {
-                    proc_macro_crate::FoundCrate::Itself => package.replace('-', "_"),
-                    proc_macro_crate::FoundCrate::Name(name) => name,
-                };
-                let name = syn::Ident::new(&name, proc_macro2::Span::call_site());
-
-                return Self(if package == "dokime" { syn::parse_quote!(::#name::__harmos) } else { syn::parse_quote!(::#name) });
-            }
-        }
-
-        Self(syn::parse_quote!(::harmos))
+        let package = "harmos";
+        let Ok(found) = proc_macro_crate::crate_name(package) else {
+            return Self(syn::parse_quote!(::harmos), true);
+        };
+        let name = match found {
+            proc_macro_crate::FoundCrate::Itself => package.replace('-', "_"),
+            proc_macro_crate::FoundCrate::Name(name) => name,
+        };
+        let name = syn::Ident::new(&name, proc_macro2::Span::call_site());
+        Self(syn::parse_quote!(::#name), true)
     }
 
     pub(crate) fn resolve(explicit: Option<Path>) -> Self {
-        explicit.map(Self).unwrap_or_else(Self::catalog)
+        explicit.map(|path| Self(path, true)).unwrap_or_else(Self::catalog)
     }
 
     pub(crate) fn execution_gate(&self) -> TokenStream {
-        let Some(segment) = self.0.segments.last() else { return TokenStream::new() };
-        let mut name = segment.ident.to_string();
-        if name == "crate" {
-            name = std::env::var("CARGO_PKG_NAME").unwrap_or_default().replace('-', "_");
-        }
-        let execution = matches!(name.as_str(), "harmos_runtime" | "harmos_sdk");
-        if execution { TokenStream::new() } else { quote::quote!(#[cfg(feature = "runtime")]) }
+        if self.1 { quote::quote!(#[cfg(feature = "runtime")]) } else { TokenStream::new() }
+    }
+
+    pub(crate) fn runtime_enabled(mut self) -> Self {
+        self.1 = false;
+        self
     }
 }
 

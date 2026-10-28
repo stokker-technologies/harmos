@@ -21,7 +21,7 @@ use tokio::sync::{RwLockReadGuard, watch};
 
 // Local Imports
 use super::{RecoveryPage, RecoverySnapshot};
-use crate::storage::manager::{Lifecycle, encoded_size};
+use crate::storage::manager::{Lifecycle, encoded_size, recovery_encoded_bound};
 use crate::storage::{ReadLimits, RecoveryPosition, StorageManager};
 use crate::{Error, Result};
 use harmos_domain::state::Position;
@@ -40,7 +40,7 @@ pub struct RecoveryReader<'a, C> {
     _lifecycle: RwLockReadGuard<'a, Lifecycle>,
     through: RecoveryPosition,
     limits: ReadLimits,
-    snapshot_bound: Option<NonZeroUsize>,
+    snapshot_bytes: Option<NonZeroUsize>,
 }
 
 /* === Enums === */
@@ -54,7 +54,6 @@ impl<C> StorageManager<C> {
     pub async fn recovery_reader(&self, limits: ReadLimits, snapshot_bytes: Option<NonZeroUsize>) -> Result<RecoveryReader<'_, C>> {
         let lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         let invalid = |reason| Error::InvalidInput { field: "state recovery", reason };
-        let snapshot_bound = snapshot_bytes;
         let through = {
             let mut current = self.inner.state.lock().unwrap();
             current.collect();
@@ -69,7 +68,7 @@ impl<C> StorageManager<C> {
             _lifecycle: lifecycle,
             through,
             limits,
-            snapshot_bound,
+            snapshot_bytes,
         })
     }
 }
@@ -83,12 +82,16 @@ impl<C> RecoveryReader<'_, C> {
         let context = self.context.clone();
         let span = context.sync(|| tracing::trace_span!("storage.reader.page"));
         let future = async {
-            let Some(bound) = self.snapshot_bound else {
+            let Some(payload_limit) = self.snapshot_bytes else {
                 return Ok(None);
             };
-            let snapshot = self.storage.inner.bounded("recovery.read_snapshot", self.storage.inner.recovery.read_snapshot(bound)).await?;
+            let encoded_bound =
+                recovery_encoded_bound(payload_limit.get(), self.storage.inner.recovery.history(), self.storage.inner.primary.history())?;
+            let encoded_bound = NonZeroUsize::new(encoded_bound).expect("recovery envelope is nonempty");
+            let snapshot =
+                self.storage.inner.bounded("recovery.read_snapshot", self.storage.inner.recovery.read_snapshot(encoded_bound)).await?;
             if let Some(snapshot) = &snapshot
-                && (!self.through.covers(&snapshot.through)? || encoded_size(snapshot)? > bound.get())
+                && (!self.through.covers(&snapshot.through)? || snapshot.payload.len() > payload_limit.get())
             {
                 return Err(Error::InvalidInput {
                     field: "state snapshot",

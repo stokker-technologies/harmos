@@ -13,11 +13,18 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 use harmos_domain::{MemorySize, schema::Described};
 
 /* === Constants === */
 
 /* === Macros === */
+
+harmos_domain::postcard_product!(Initialize { config_json: Vec<u8>, generation_context: Vec<u8>, assignments: Vec<u8> });
 
 /* === Type Aliases === */
 
@@ -44,6 +51,7 @@ pub struct Control {
 pub enum ControlError {
     #[error(transparent)]
     Dependency(#[from] harmos_sdk::ResourceError),
+
     #[error("plugin lifecycle access failed: {0}")]
     Access(#[source] harmos_sdk::operations::access::AccessError),
 }
@@ -52,7 +60,6 @@ pub enum ControlError {
 
 /* === Implementations === */
 
-harmos_domain::postcard_product!(Initialize { config_json: Vec<u8>, generation_context: Vec<u8>, assignments: Vec<u8> });
 impl Described for Initialize {
     const NAME: &'static str = <harmos_domain::model::operations::lifecycle::InitializationSchema as Described>::NAME;
     const FIELDS: &'static [harmos_domain::schema::declaration::Field] =
@@ -95,13 +102,13 @@ impl harmos_sdk::operations::Carrier for Control {
     }
 }
 
+#[cfg(feature = "lifecycle")]
+impl crate::Executable for Initialize {
+    type Carrier = Control;
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
 
 /* === Tests === */
-
-#[cfg(feature = "lifecycle")]
-impl crate::Executable for Initialize {
-    type Carrier = Control;
-}

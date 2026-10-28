@@ -54,7 +54,7 @@ pub mod writes;
 
 pub use backend::{BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture};
 pub use batch::{FileChunk, StorageBatch};
-pub use config::{StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings};
+pub use config::{StorageAccumulatorSettings, StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings};
 pub use directory::{DirectoryReader, DirectoryWatcher};
 pub use error::{BackendFailure, Error, Result};
 pub use file_batch::{FileReadBatch, FileReadEvent, FileReadSlice};
@@ -91,6 +91,8 @@ pub use writes::StorageSchema;
 // Standard Library Imports
 
 // Third Party Imports
+#[cfg(test)]
+extern crate harmos_domain as harmos;
 extern crate self as harmos_storage;
 
 // Local Imports

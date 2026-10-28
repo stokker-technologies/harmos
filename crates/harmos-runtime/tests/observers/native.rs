@@ -23,7 +23,7 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{Semaphore, watch};
 // Local Imports
-use super::{RUNNING, STOPPING, key, pending, phase, runtime};
+use super::{RUNNING, STOPPING, key, pending, phase};
 use harmos_runtime::operations::OperationPhase;
 use harmos_runtime::sidecar::{Instance, Observer, ObserverContext, ObserverError};
 
@@ -67,24 +67,23 @@ struct ConfiguredWatch;
 
 impl harmos_runtime::sidecar::StreamSpec for ConfiguredRow {
     type Row = Self;
-    const ID: &'static str = "schema-budget.row";
+    const ID: &'static str = "schema_budget.row";
     const VERSION: u32 = 1;
     const WINDOW: usize = 1;
 }
 
 impl Observer<()> for ConfiguredWatch {
-    type Resources = ();
     type Error = Error;
     const ID: &'static str = "schema-budget.native";
     const INTERVAL: Duration = Duration::from_millis(5);
     const STREAMS: &'static [harmos_runtime::sidecar::inventory::publications::Entry] =
         &[harmos_runtime::sidecar::inventory::publications::Entry::of::<ConfiguredRow>()];
 
-    async fn initialize(_: &()) -> Result<Self, Error> {
+    async fn initialize(_: &harmos_sdk::ExecutionContext) -> Result<Self, Error> {
         Ok(Self)
     }
 
-    async fn observe(&mut self, _: &ObserverContext<'_, (), ()>) -> Result<(), Error> {
+    async fn observe(&mut self, _: &ObserverContext<'_, ()>) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -108,15 +107,16 @@ impl Counts {
 }
 
 impl<const PANIC: bool> Observer<()> for Watch<PANIC> {
-    type Resources = Arc<Counts>;
     type Error = Error;
     const ID: &'static str = "native";
     const INTERVAL: Duration = Duration::from_millis(5);
-    async fn initialize(resources: &Arc<Counts>) -> Result<Self, Error> {
+    async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Error> {
+        let resolved = context.resource::<Counts>().unwrap();
+        let resources = &resolved;
         resources.initialized.fetch_add(1, Ordering::SeqCst);
         Ok(Self(resources.clone()))
     }
-    async fn observe(&mut self, _: &ObserverContext<'_, Arc<Counts>, ()>) -> Result<(), Error> {
+    async fn observe(&mut self, _: &ObserverContext<'_, ()>) -> Result<(), Error> {
         self.0.ticks.fetch_add(1, Ordering::SeqCst);
         self.0.progress.send_replace(());
         assert!(!PANIC, "native callback panic");
@@ -152,8 +152,8 @@ impl<const PANIC: bool> Drop for Watch<PANIC> {
 
 /* === Private Functions === */
 
-fn watch<const PANIC: bool>() -> Instance<Arc<Counts>, ()> {
-    Instance::<Arc<Counts>, ()>::of::<Watch<PANIC>>()
+fn watch<const PANIC: bool>() -> Instance<()> {
+    Instance::<()>::of::<Watch<PANIC>>()
 }
 
 #[tokio::test]
@@ -163,13 +163,12 @@ async fn native_observer_definition_uses_supplied_schema_snapshot() {
         if !accepted {
             settings.preparation_bytes = std::num::NonZeroUsize::new(1).unwrap();
         }
-        let runtime = harmos_runtime::Runtime::<super::Bank>::builder(super::Ledger::default(), ())
-            .schema_settings(settings)
-            .register(super::catalog())
-            .runtime()
-            .await
-            .unwrap();
-        let result = runtime.operations.register_native_observer(Instance::<(), ()>::of::<ConfiguredWatch>(), |_| ());
+        let runtime = harmos_runtime::Runtime::<super::Bank>::launch_with(super::Ledger::default(), (), |setup| {
+            setup.settings().schema_settings(settings).register(super::catalog());
+        })
+        .await
+        .unwrap();
+        let result = runtime.operations.register_native_observer(Instance::<()>::of::<ConfiguredWatch>(), |_| ());
         assert_eq!(result.is_ok(), accepted);
         let definitions = runtime.operations.resident_definitions();
         let present = definitions.iter().any(|definition| {
@@ -179,13 +178,14 @@ async fn native_observer_definition_uses_supplied_schema_snapshot() {
             )
         });
         assert_eq!(present, accepted);
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
 #[tokio::test]
 async fn leases_share_existing() {
-    let runtime = runtime().await;
+    let counts = Counts::new();
+    let runtime = super::runtime_with(counts.clone()).await;
     let manager = &runtime.operations;
     // Native observers run on the runtime executor, not a dedicated thread.
     let owner_thread = std::thread::current().id();
@@ -194,17 +194,16 @@ async fn leases_share_existing() {
             assert_eq!(std::thread::current().id(), owner_thread);
         })
         .unwrap();
-    let counts = Counts::new();
-    let resources = Arc::new(counts.clone());
-    let first = manager.submit_with_resources_at("native", resources.clone()).await.unwrap();
-    let second = manager.submit_with_resources_at("native", resources.clone()).await.unwrap();
+
+    let first = manager.submit_resident("native").await.unwrap();
+    let second = manager.submit_resident("native").await.unwrap();
     phase(manager, &key(manager, &first), RUNNING).await;
     counts.progress.subscribe().wait_for(|_| counts.ticks.load(Ordering::SeqCst) >= 2).await.unwrap();
     first.release().await.unwrap();
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 1);
     assert_eq!(counts.stopped.load(Ordering::SeqCst), 0);
     counts.cleanup.add_permits(1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert_eq!(counts.stopped.load(Ordering::SeqCst), 1);
     let ticks = counts.ticks.load(Ordering::SeqCst);
     second.release().await.unwrap();
@@ -213,14 +212,14 @@ async fn leases_share_existing() {
 
 #[tokio::test]
 async fn native_panic_closes() {
-    let runtime = runtime().await;
+    let counts = Counts::new();
+    let runtime = super::runtime_with(counts.clone()).await;
     let manager = &runtime.operations;
     manager.register_native_observer(watch::<true>(), |_| ()).unwrap();
-    let counts = Counts::new();
-    let resources = Arc::new(counts.clone());
-    let lease = manager.submit_with_resources_at("native", resources.clone()).await.unwrap();
+
+    let lease = manager.submit_resident("native").await.unwrap();
     phase(manager, &key(manager, &lease), STOPPING).await;
-    pending::parked(std::pin::pin!(manager.submit_with_resources_at("native", resources.clone()))).await;
+    pending::parked(std::pin::pin!(manager.submit_resident("native"))).await;
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 1);
     counts.cleanup.add_permits(1);
     let failure = lease.release().await.unwrap_err();
@@ -230,20 +229,20 @@ async fn native_panic_closes() {
     };
     assert!(matches!(source.downcast_ref::<ObserverError>(), Some(ObserverError::CallbackPanicked)));
     assert_eq!(counts.stopped.load(Ordering::SeqCst), 1);
-    assert!(runtime.stop().await.is_err());
+    assert!(runtime.shutdown().await.is_err());
 }
 
 #[tokio::test]
 async fn binding_owns_cleanup() {
-    let runtime = runtime().await;
-    let manager = &runtime.operations;
     let counts = Counts::new();
-    let resources = Arc::new(counts.clone());
+    let runtime = super::runtime_with(counts.clone()).await;
+    let manager = &runtime.operations;
+
     let bindings = Arc::new(AtomicUsize::new(0));
     let bound = bindings.clone();
     let owner_thread = std::thread::current().id();
     let candidate = manager
-        .stage_native_observers(&resources, [watch::<false>()], move |_| {
+        .stage_native_observers([watch::<false>()], move |_| {
             assert_eq!(std::thread::current().id(), owner_thread);
             bound.fetch_add(1, Ordering::SeqCst);
         })
@@ -251,19 +250,19 @@ async fn binding_owns_cleanup() {
     candidate.commit().unwrap();
     assert_eq!(bindings.load(Ordering::SeqCst), 0);
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 0);
-    let first = manager.submit_with_resources_at("native", resources.clone()).await.unwrap();
-    let second = manager.submit_with_resources_at("native", resources.clone()).await.unwrap();
+    let first = manager.submit_resident("native").await.unwrap();
+    let second = manager.submit_resident("native").await.unwrap();
     phase(manager, &key(manager, &first), RUNNING).await;
     assert_eq!(first.id(), second.id());
     assert_eq!(bindings.load(Ordering::SeqCst), 1);
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 1);
     counts.cleanup.add_permits(1);
-    manager.retire_resources(&resources).await.unwrap();
+    manager.unregister_resident("native").await.unwrap();
     first.release().await.unwrap();
     second.release().await.unwrap();
     assert_eq!(counts.stopped.load(Ordering::SeqCst), 1);
     assert!(manager.resident_definition("native").is_none());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -278,18 +277,16 @@ async fn failure_preserves_cleanup() {
 
 #[tokio::test]
 async fn handles_keep_cleanup() {
-    let runtime = runtime().await;
+    let counts = Counts::new();
+    let runtime = super::runtime_with(counts.clone()).await;
     let manager = &runtime.operations;
     manager.register_native_observer(watch::<false>(), |_| ()).unwrap();
-    let counts = Counts::new();
     counts.refuse_stop.store(true, Ordering::SeqCst);
-    let resources = Arc::new(counts.clone());
-    let lease = manager.submit_with_resources_at("native", resources.clone()).await.unwrap();
+    let lease = manager.submit_resident("native").await.unwrap();
     phase(manager, &key(manager, &lease), RUNNING).await;
     lease.cancel();
     assert!(lease.settle().await.is_err());
     drop(lease);
-    drop(resources);
     assert_eq!(counts.dropped.load(Ordering::SeqCst), 0);
     assert_eq!(counts.stop_attempts.load(Ordering::SeqCst), 1);
 
@@ -300,14 +297,14 @@ async fn handles_keep_cleanup() {
     assert_eq!(counts.stopped.load(Ordering::SeqCst), 1);
     assert_eq!(counts.finalizations.load(Ordering::SeqCst), 1);
     assert_eq!(counts.dropped.load(Ordering::SeqCst), 1);
-    assert!(runtime.stop().await.is_err());
+    assert!(runtime.shutdown().await.is_err());
 }
 
 async fn cleanup_recovery(finalizing: bool) {
-    let runtime = runtime().await;
+    let counts = Counts::new();
+    let runtime = super::runtime_with(counts.clone()).await;
     let manager = &runtime.operations;
     manager.register_native_observer(watch::<false>(), |_| ()).unwrap();
-    let counts = Counts::new();
     if finalizing {
         counts.cleanup.add_permits(1);
         counts.finalization.try_acquire().unwrap().forget();
@@ -318,8 +315,7 @@ async fn cleanup_recovery(finalizing: bool) {
     // A refused stop is retained while stopping; a refused cleanup while
     // finalizing.
     let expected = if finalizing { OperationPhase::Finalizing } else { OperationPhase::Stopping };
-    let resources = Arc::new(counts.clone());
-    let lease = manager.submit_with_resources_at("native", resources.clone()).await.unwrap();
+    let lease = manager.submit_resident("native").await.unwrap();
     phase(manager, &key(manager, &lease), RUNNING).await;
     lease.cancel();
     assert!(lease.settle().await.is_err());
@@ -346,7 +342,7 @@ async fn cleanup_recovery(finalizing: bool) {
     assert_eq!(counts.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(counts.stopped.load(Ordering::SeqCst), 1);
     assert!(lease.release().await.is_err());
-    assert!(runtime.stop().await.is_err());
+    assert!(runtime.shutdown().await.is_err());
 }
 
 /* === Tests === */

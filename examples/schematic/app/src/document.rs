@@ -43,7 +43,7 @@ struct Artifact {
     schematic: Schematic,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Document {
     origin: Schematic,
     generation: u64,

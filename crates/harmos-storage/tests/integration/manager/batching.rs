@@ -762,6 +762,102 @@ async fn raw_reads_retained() {
 }
 
 #[tokio::test]
+async fn snapshot_payload_limit_survives_reopen() {
+    use harmos_domain::state::Position;
+    use harmos_storage::state::file::FileBackend;
+    use harmos_storage::{ReadLimits, StorageBackends, StorageManager};
+
+    let maximum = NonZeroUsize::new(4096).unwrap();
+    let limits = ReadLimits { rows: NonZeroUsize::MIN, bytes: maximum };
+    for length in [maximum.get() - 2, maximum.get() - 1, maximum.get()] {
+        let directory = tempfile::tempdir().unwrap();
+        let data = super::backend::Data::new(super::backend::history());
+        let data = Arc::new(data);
+        let recovery = FileBackend::new(directory.path().to_owned(), super::backend::history(), super::fixture::state_settings());
+        let recovery = Arc::new(recovery);
+        let backends = || StorageBackends {
+            primary: data.clone(),
+            state: recovery.clone(),
+        };
+        let storage: StorageManager = StorageManager::new(backends(), config()).unwrap();
+
+        storage.acquire().await.unwrap();
+        let reader = storage.recovery_reader(limits, Some(maximum)).await.unwrap();
+        let _durable = reader.finish(Position::ORIGIN);
+        super::fixture::start(&storage).await;
+
+        let mut permit = storage.reserve_snapshot(maximum.get()).await.unwrap();
+        let error = permit.snapshot_payload(vec![7; maximum.get() + 1]).unwrap_err();
+        assert!(matches!(
+            error,
+            harmos_storage::Error::InvalidInput {
+                field: "state snapshot",
+                reason: "payload exceeds reservation",
+            }
+        ));
+        drop(permit);
+        assert_eq!(storage.status().pending_bytes, 0);
+        assert!(storage.read_snapshot(NonZeroUsize::new(8192).unwrap()).await.unwrap().is_none());
+
+        let payload = vec![7; length];
+        let mut permit = storage.reserve_snapshot(maximum.get()).await.unwrap();
+        permit.snapshot_payload(payload.clone()).unwrap();
+        permit.commit(Position::ORIGIN);
+        storage.flush_recovery().await.unwrap();
+        let written = storage.read_snapshot(NonZeroUsize::new(8192).unwrap()).await.unwrap().unwrap();
+        assert!(serde_json::to_vec(&*written).unwrap().len() > maximum.get());
+        drop(written);
+        storage.close().await.unwrap();
+
+        let reopened: StorageManager = StorageManager::new(backends(), config()).unwrap();
+        reopened.acquire().await.unwrap();
+        let reader = reopened.recovery_reader(limits, Some(maximum)).await.unwrap();
+        let snapshot = reader.snapshot().await.unwrap().unwrap();
+        assert_eq!(snapshot.payload, payload);
+        drop(snapshot);
+        drop(reader);
+        reopened.close().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn snapshot_recovery_enforces_payload_limit() {
+    use harmos_storage::{ReadLimits, StorageBackends, StorageManager};
+
+    let f = Fixture::new(config()).await;
+    let maximum = NonZeroUsize::new(4096).unwrap();
+    f.storage
+        .write_snapshot(harmos_storage::state::RecoverySnapshot {
+            required_data: f.storage.cursor_saved(),
+            through: f.storage.status().recovery_saved,
+            payload: vec![7; maximum.get() + 1],
+        })
+        .await
+        .unwrap();
+    f.storage.flush_recovery().await.unwrap();
+    let backends = StorageBackends {
+        primary: f.data.clone(),
+        state: f.recovery.clone(),
+    };
+    f.finish().await;
+
+    let reopened: StorageManager = StorageManager::new(backends, config()).unwrap();
+    reopened.acquire().await.unwrap();
+    let limits = ReadLimits { rows: NonZeroUsize::MIN, bytes: maximum };
+    let reader = reopened.recovery_reader(limits, Some(maximum)).await.unwrap();
+    let error = reader.snapshot().await.unwrap_err();
+    assert!(matches!(
+        error,
+        harmos_storage::Error::InvalidInput {
+            field: "state snapshot",
+            reason: "invalid managed snapshot boundary or size",
+        }
+    ));
+    drop(reader);
+    reopened.close().await.unwrap();
+}
+
+#[tokio::test]
 async fn recovery_owner_retained() {
     let f = Fixture::new(config()).await;
     let mut payload = Vec::with_capacity(4096);

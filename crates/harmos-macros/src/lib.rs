@@ -50,8 +50,48 @@ pub fn catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
+pub fn sidecar_catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    catalog::typed::declare_runtime(attribute.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn guest_catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    catalog::typed::declare_runtime(attribute.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn domain_catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    catalog::typed::declare_domain(attribute.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn runtime_catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    catalog::typed::declare_runtime(attribute.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
 pub fn operation(attribute: TokenStream, item: TokenStream) -> TokenStream {
     operation::declare(attribute.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn sidecar_operation(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    operation::declare_runtime(attribute.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn guest_operation(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    operation::declare_runtime(attribute.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn domain_operation(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    operation::declare_domain(attribute.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn runtime_operation(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    operation::declare_runtime(attribute.into(), item.into()).into()
 }
 
 #[proc_macro_attribute]

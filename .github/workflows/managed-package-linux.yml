@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-package-linux.yml; sha256:cacadef0b647b1d60c73650c4f8ef246385c0133fb8c58622e458cf52f011017
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-package-linux.yml; sha256:07242c6d5ec0adb58a06e030f8cae985278af3f5cbe099a643cc5d5fbcfe1dd8
 name: Package / Linux
 "on":
   workflow_call:
@@ -113,6 +113,22 @@ jobs:
         if (!(Test-Path -LiteralPath $compressor -PathType Leaf)) { throw 'Pinned zstd executable missing' }
         $compressorRoot = Split-Path -Parent $compressor
         $env:PATH = (Split-Path -Parent $compiler) + [IO.Path]::PathSeparator + $compressorRoot + [IO.Path]::PathSeparator + $env:PATH
+        # Real-Time Scanning Of Every Compiler Output Dominates Windows Build Time; Only Ephemeral Hosted Runners Are Reconfigured.
+        $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+        $elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if ($env:RUNNER_ENVIRONMENT -eq 'github-hosted' -and $elevated -and (Get-Command Add-MpPreference -ErrorAction SilentlyContinue)) {
+            $workspace = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { $PWD.Path }
+            $rustup = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $HOME '.rustup' }
+            $cargo = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $HOME '.cargo' }
+            $exclusions = @($workspace, $env:CARGO_TARGET_DIR, $cargo, $rustup, $env:MISE_DATA_DIR, [IO.Path]::GetTempPath()) | Where-Object { $_ }
+            try {
+                Add-MpPreference -ExclusionPath $exclusions -ErrorAction Stop
+                Add-MpPreference -ExclusionProcess @('cargo.exe', 'rustc.exe', 'clippy-driver.exe', 'link.exe', 'cl.exe') -ErrorAction Stop
+                Write-Output "Defender exclusions: $($exclusions -join ', ')"
+            } catch {
+                Write-Output "Defender exclusions unavailable: $($_.Exception.Message)"
+            }
+        }
         # === Verification === #
         & $compressor --version
         if ($LASTEXITCODE -ne 0) { throw 'Pinned zstd cannot execute' }

@@ -16,7 +16,6 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::sync::Arc;
 
 // Third Party Imports
 use arrow_array::{Array, Int64Array, StringArray, StructArray};
@@ -112,24 +111,18 @@ async fn runtime_baseline_walks() {
     let data = JsonStorage::new(settings.clone(), history());
     let backends = data.into_backends(state_settings());
     let storage: StorageManager = StorageManager::new(backends, config()).unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(Lanes::catalog())
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(catalog());
+        setup.settings().storage(&storage);
+        setup.resource::<StorageManager>(storage.clone());
+    })
+    .await
+    .unwrap();
     assert!(storage.status().running);
 
     // Read The Catalog Before And After Serving Storage
     assert!(!served(&runtime).iter().any(|id| id.starts_with("storage_")), "nothing is served before the host registers it");
-    runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    runtime.operations.register::<harmos_operations::storage::Storage>(Lanes::Open).await.unwrap();
     let catalogue = served(&runtime);
     for required in ["storage.query", "storage.write_records", "storage.read_file"] {
         assert!(catalogue.iter().any(|id| id == required), "missing {required}");
@@ -152,20 +145,20 @@ async fn runtime_baseline_walks() {
     assert_eq!(expected, [("first".to_owned(), -3), ("second".to_owned(), 8)]);
 
     // Shut Down; The Runtime Closes The Storage It Owns
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert!(!storage.status().running);
     assert!(storage.status().closed);
 
     // Reopening The Shipped Backends Proves Shutdown Released Their Ownership.
     let backends = JsonStorage::new(settings, history()).into_backends(state_settings());
     let reopened: StorageManager = StorageManager::new(backends, config()).unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(Lanes::catalog())
-        .runtime_with_storage(&reopened)
-        .await
-        .unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(catalog());
+        setup.settings().storage(&reopened);
+    })
+    .await
+    .unwrap();
     assert_eq!(saved(&reopened, &schema).await, expected);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert!(reopened.status().closed);
 }

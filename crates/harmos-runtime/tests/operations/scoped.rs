@@ -186,46 +186,14 @@ async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
         release: Notify::new(),
         free_started: Notify::new(),
     });
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ParentContractDeclaration>(),
-            parent_lane,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<BoundContractDeclaration>(),
-            Lanes::Serial,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<FreeContractDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Trace>(trace.clone());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<super::Single<ParentContractDeclaration>>(parent_lane).await.unwrap();
+    runtime.operations.register::<super::Single<BoundContractDeclaration>>(Lanes::Serial).await.unwrap();
+    runtime.operations.register::<super::Single<FreeContractDeclaration>>(Lanes::Open).await.unwrap();
     (runtime, trace)
 }
 
@@ -239,7 +207,7 @@ async fn ancestor_cycles_rejected() {
         assert_eq!(*answer, 7);
         assert_eq!(trace.parent_constructions.load(Ordering::SeqCst), 1);
         assert!(trace.free_dropped.load(Ordering::SeqCst));
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
@@ -252,7 +220,7 @@ async fn refusal_survives_parent() {
         matches!(source.downcast_ref::<Error>(), Some(Error::OperationLaneCycle { parent, child }) if *parent == "Serial" && *child == "Serial")
     );
     assert_eq!(trace.parent_constructions.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -267,6 +235,6 @@ async fn child_settles_another() {
 
     trace.release.notify_one();
     assert_eq!(*blocker.await.unwrap(), 7);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert_eq!(trace.queued_runs.load(Ordering::SeqCst), 0, "the cancelled child never runs after capacity returns");
 }

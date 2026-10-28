@@ -34,9 +34,9 @@ use harmos_sidecar::{Activity, Instance};
 
 /* === Structs === */
 
-pub(crate) struct Native<R, H, F> {
+pub(crate) struct Native<H, F> {
     pub(crate) schema_settings: Arc<crate::config::SchemaSettings>,
-    pub(crate) instance: Instance<R, H>,
+    pub(crate) instance: Instance<H>,
     pub(crate) factory: Arc<F>,
 }
 
@@ -57,14 +57,11 @@ impl crate::supervision::cleanup::Resource for Retained {
     }
 }
 
-impl<R, H, F> ObserverBackend for Native<R, H, F>
+impl<H, F> ObserverBackend for Native<H, F>
 where
-    R: Send + Sync + 'static,
     H: Send + Sync + 'static,
-    F: Fn(Arc<R>) -> H + Send + Sync + 'static,
+    F: Fn(Arc<harmos_sdk::ExecutionContext>) -> H + Send + Sync + 'static,
 {
-    type Resources = R;
-
     fn definition(&self) -> Result<ObserverDefinition> {
         Ok(ObserverDefinition {
             id: self.instance.id().to_owned(),
@@ -89,7 +86,7 @@ where
         })
     }
 
-    async fn run(&self, resources: Arc<R>, mut activation: ObserverActivation) -> Result<()> {
+    async fn run(&self, resources: Arc<harmos_sdk::ExecutionContext>, mut activation: ObserverActivation) -> Result<()> {
         let host = (self.factory)(Arc::clone(&resources));
         let mut activity = self.instance.activate(resources, host).map_err(failed)?;
 

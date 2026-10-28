@@ -26,7 +26,7 @@ required-features = ["runtime"]
 
 [features]
 default = ["runtime"]
-runtime = ["harmos/runtime", "dep:harmos-sidecar", "dep:tokio"]
+runtime = ["harmos/sidecar", "dep:tokio"]
 
 # === Dependencies === #
 
@@ -39,14 +39,6 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"], optional = tr
 git = "https://github.com/stokker-technologies/harmos"
 rev = "__HARMOS_REVISION__"
 default-features = false
-
-[dependencies.harmos-sidecar]
-git = "https://github.com/stokker-technologies/harmos"
-rev = "__HARMOS_REVISION__"
-default-features = false
-features = ["derive", "kit"]
-optional = true
-
 
 # === Build Dependencies === #
 

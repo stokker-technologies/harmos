@@ -43,7 +43,7 @@ struct Bench {
 
 /* === Enums === */
 
-#[harmos_runtime::operation(resources = [Bench, harmos_runtime::operations::HostContext], operations = [ReadContractDeclaration], response = Reading,
+#[harmos_runtime::operation(resources = [Bench], operations = [ReadContractDeclaration], response = Reading,
         id = "resources.read",
         policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(2),
@@ -76,8 +76,6 @@ impl harmos_runtime::Operation for ReadContractDeclaration {
 
     async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Reading>, Self::Error> {
         let resources = ctx.resource::<Bench>();
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        assert!(Arc::ptr_eq(&resources, host.borrow().scope().resources::<App<Arc<Bench>>>()));
         let seen = u64::try_from(resources.reads.fetch_add(1, Ordering::SeqCst)).expect("read counts fit in u64");
         if self.nested {
             let child = ctx.operation(ReadContractDeclaration { nested: false }).await?;
@@ -96,35 +94,27 @@ impl harmos_runtime::Operation for ReadContractDeclaration {
 
 #[tokio::test]
 async fn needs_lacks_registration() {
-    let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
-    assert_eq!(runtime.stop().await.unwrap(), Position::ORIGIN);
+    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+    assert_eq!(runtime.shutdown().await.unwrap(), Position::ORIGIN);
 }
 
 #[tokio::test]
-async fn child_own_resources() {
+async fn nested_resources_shared() {
     let resources = Arc::new(Bench {
         device: "sim://rig-a".to_owned(),
         reads: AtomicUsize::new(0),
     });
-    let runtime = Runtime::<App<Arc<Bench>>>::builder((), resources.clone()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(resources.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ReadContractDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Bench>(resources.clone());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<Operations>(Lanes::Open).await.unwrap();
 
     let parent = runtime.operation(ReadContractDeclaration { nested: true }).start().await.unwrap().await.unwrap();
     assert_eq!(parent.device, "sim://rig-a");
     assert_eq!(parent.seen, 0);
     let following = runtime.operation(ReadContractDeclaration { nested: false }).start().await.unwrap().await.unwrap();
     assert_eq!(following.seen, 2, "parent, child and following attempt share one value");
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }

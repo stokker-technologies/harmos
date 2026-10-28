@@ -233,18 +233,18 @@ impl<A: Application> PluginHost<A> {
         self.shared.cleanup.clone()
     }
 
-    pub async fn register_embedded<L: Lane>(
-        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings,
-        registration: crate::operations::Registration<L>,
+    pub async fn register_embedded<C: harmos_sdk::operations::OperationCatalog, L: Lane>(
+        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, lane: L,
     ) -> Result<()> {
-        self.embedded(definition, restart, registration, false).await
+        use crate::operations::RegistrationExt;
+        self.embedded(definition, restart, C::batch().lane(lane), false).await
     }
 
-    pub async fn reload_embedded<L: Lane>(
-        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings,
-        registration: crate::operations::Registration<L>,
+    pub async fn reload_embedded<C: harmos_sdk::operations::OperationCatalog, L: Lane>(
+        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, lane: L,
     ) -> Result<()> {
-        self.embedded(definition, restart, registration, true).await
+        use crate::operations::RegistrationExt;
+        self.embedded(definition, restart, C::batch().lane(lane), true).await
     }
 
     async fn embedded<L: Lane>(

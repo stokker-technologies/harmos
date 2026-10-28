@@ -70,18 +70,18 @@ impl harmos_runtime::operations::Operation for WireCallDeclaration {
 async fn embedded_wire_contracts() {
     use harmos_domain::inventory::contracts::Required;
     use harmos_runtime::operations::Contracts;
-    let runtime = harmos_runtime::Runtime::<Fixture>::builder((), ())
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = harmos_runtime::Runtime::<Fixture>::launch_with((), (), |setup| {
+        setup.resource::<Owner>(Owner);
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .register(Lanes::catalog())
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await
+    .unwrap();
     let mut provider = plan().ordered().iter().find(|definition| definition.id == "provider").unwrap().clone();
     provider.contributions = PluginContributions::default();
-    runtime.plugin.register_embedded(provider, Default::default(), registration::<ProviderRun>()).await.unwrap();
+    runtime.plugin.register_embedded::<Operations<ProviderRun>, _>(provider, Default::default(), Lanes::Open).await.unwrap();
     let registered = runtime.plugin.status("provider").unwrap();
     assert_eq!(registered.attempts, 0);
     let contracts = Contracts::of::<Operations<ProviderRun>>().unwrap();
@@ -94,18 +94,7 @@ async fn embedded_wire_contracts() {
         contract: contracts[0].clone(),
         grants: vec![],
     }]);
-    runtime
-        .plugin
-        .register_embedded(
-            client,
-            Default::default(),
-            harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<WireCallDeclaration>(),
-                Lanes::Open,
-            ),
-        )
-        .await
-        .unwrap();
+    runtime.plugin.register_embedded::<Operations<WireCallDeclaration>, _>(client, Default::default(), Lanes::Open).await.unwrap();
     runtime.plugin.initialize().await.unwrap();
     let ready = runtime.plugin.status("provider").unwrap();
     #[cfg(feature = "grpc")]
@@ -157,14 +146,14 @@ async fn embedded_wire_contracts() {
     let mut replacement = ready.definition.clone().unwrap();
     replacement.contributions.wire_contracts = vec![harmos_runtime::operations::WireDeclaration::of::<Incompatible>().contract().unwrap()];
     assert!(matches!(
-        runtime.plugin.reload_embedded(replacement, Default::default(), registration::<ProviderRun>()).await,
+        runtime.plugin.reload_embedded::<Operations<ProviderRun>, _>(replacement, Default::default(), Lanes::Open).await,
         Err(Error::InvalidInput { field: "embedded plugin contracts", .. })
     ));
     assert_eq!(runtime.plugin.status("provider").unwrap(), ready);
 
     let mut replacement = ready.definition.clone().unwrap();
     replacement.artifact = PluginArtifact::Embedded { revision: "wire-provider-v2".into() };
-    runtime.plugin.reload_embedded(replacement, Default::default(), registration::<ProviderRun>()).await.unwrap();
+    runtime.plugin.reload_embedded::<Operations<ProviderRun>, _>(replacement, Default::default(), Lanes::Open).await.unwrap();
     let reloaded = runtime.plugin.status("provider").unwrap();
     assert_ne!(reloaded.generation, ready.generation);
     assert_eq!(reloaded.attempts, 2);
@@ -174,7 +163,7 @@ async fn embedded_wire_contracts() {
     assert_eq!(runtime.plugin.status("client").unwrap().attempts, 2);
     let response = runtime.operations.call_encoded("client.fixture.run", request_payload()).await.unwrap();
     assert_eq!(<String as harmos_runtime::Message>::decode(&response).unwrap(), "");
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     #[cfg(feature = "grpc")]
     assert!(runtime.grpc().methods().is_empty());
 
@@ -184,14 +173,18 @@ async fn embedded_wire_contracts() {
 
 #[tokio::test]
 async fn owned_embedded_plugins() {
-    let runtime = harmos_runtime::Runtime::<Fixture>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+    let runtime = harmos_runtime::Runtime::<Fixture>::launch_with((), (), |setup| {
+        setup.resource::<Owner>(Owner);
+    })
+    .await
+    .unwrap();
     let handle = runtime.handle();
     assert!(runtime.plugin.same_instance(&handle.plugin));
     assert!(handle.plugin.same_instance(&handle.clone().plugin));
     let mut definition = plan().ordered().iter().find(|definition| definition.id == "provider").unwrap().clone();
     definition.artifact = PluginArtifact::Embedded { revision: "runtime-owned".into() };
     definition.contributions = PluginContributions::default();
-    handle.plugin.register_embedded(definition, Default::default(), registration::<ProviderRun>()).await.unwrap();
+    handle.plugin.register_embedded::<Operations<ProviderRun>, _>(definition, Default::default(), Lanes::Open).await.unwrap();
     let registered = runtime.plugin.status("provider").unwrap();
     assert_eq!(registered.state, PluginState::Registered);
     assert_eq!(registered.attempts, 0);
@@ -219,12 +212,12 @@ async fn owned_embedded_plugins() {
     );
     let mut replacement = reloaded.definition.clone().unwrap();
     replacement.artifact = PluginArtifact::Embedded { revision: "runtime-owned-v2".into() };
-    handle.plugin.reload_embedded(replacement.clone(), Default::default(), registration::<ProviderRun>()).await.unwrap();
+    handle.plugin.reload_embedded::<Operations<ProviderRun>, _>(replacement.clone(), Default::default(), Lanes::Open).await.unwrap();
     let updated = runtime.plugin.status("provider").unwrap();
     assert_eq!(updated.attempts, 3);
     assert_ne!(updated.generation, reloaded.generation);
     assert_eq!(updated.active_definition, Some(replacement.clone()));
-    assert!(runtime.plugin.reload_embedded(replacement, Default::default(), registration::<ChangedRun>()).await.is_err());
+    assert!(runtime.plugin.reload_embedded::<Operations<ChangedRun>, _>(replacement, Default::default(), Lanes::Open).await.is_err());
     assert_eq!(runtime.plugin.status("provider").unwrap(), updated);
     assert_eq!(
         runtime.operations.call::<ProviderRun>(ProviderRun { value: "after replacement".into() }).await.unwrap().as_str(),
@@ -236,7 +229,7 @@ async fn owned_embedded_plugins() {
         runtime.operations.call::<ProviderRun>(ProviderRun { value: "removed".into() }).await,
         Err(Error::NotRegistered { .. })
     ));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert!(handle.plugin.initialize().await.is_err());
     assert!(matches!(handle.plugin.cleanup().status(), PluginCleanupStatus::Settled));
     assert!(handle.plugin.statuses().iter().all(|status| status.generation.is_none()));

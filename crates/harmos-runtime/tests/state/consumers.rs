@@ -163,13 +163,16 @@ impl Source<Bank> for Networked {
 #[tokio::test]
 async fn drain_precedes_flush() {
     let (recorder, asked) = Recorder::new();
-    let runtime = booted(Ledger::default(), |builder| builder.attach(recorder)).await;
+    let runtime = booted(Ledger::default(), |setup| {
+        setup.settings().attach(recorder);
+    })
+    .await;
 
     for amount in [10, 20] {
         runtime.state.commit(deposit(amount)).await.expect("accepted");
     }
     let applied = runtime.state.applied();
-    let settled = runtime.stop().await.unwrap();
+    let settled = runtime.shutdown().await.unwrap();
 
     // `stop` answered, so the join came last; what the probe wrote down is
     // everything that happened before it.
@@ -192,7 +195,7 @@ async fn recorder_resumes_own() {
     for sample in 1..=5 {
         runtime.streams.publish(pulse(sample));
     }
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     assert_eq!(kept.cursor.load(Ordering::Acquire), 5, "the first supervisor made every published row durable");
     assert_eq!(*kept.samples.lock().expect("the tape is never poisoned"), vec![1, 2, 3, 4, 5]);
@@ -202,7 +205,7 @@ async fn recorder_resumes_own() {
     for sample in 6..=9 {
         runtime.streams.publish(pulse(sample));
     }
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     assert_eq!(kept.cursor.load(Ordering::Acquire), 9, "new rows continue after the durable cursor instead of reusing it");
     assert_eq!(
@@ -223,7 +226,7 @@ async fn gap_reports_window() {
     for sample in 1..=12 {
         runtime.streams.publish(pulse(sample));
     }
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     assert_eq!(
         *kept.gaps.lock().expect("the tape is never poisoned"),
@@ -240,28 +243,34 @@ async fn gap_reports_window() {
 #[tokio::test]
 async fn recovery_accepts_source() {
     let (copy, stored) = Copied::new();
-    let live = booted(Ledger::default(), |builder| builder.recover(copy)).await;
+    let live = booted(Ledger::default(), |setup| {
+        setup.settings().recover(copy);
+    })
+    .await;
 
     live.state.commit(deposit(40)).await.expect("accepted");
     live.state.commit(withdraw(15)).await.expect("accepted");
     let expected = ledger(&live).await;
     let frontier = live.state.applied();
-    live.stop().await.unwrap();
+    live.shutdown().await.unwrap();
 
-    let recovered = booted(Ledger::default(), |builder| builder.recover(Networked { inner: Copied::resuming(&stored) })).await;
+    let recovered = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Networked { inner: Copied::resuming(&stored) });
+    })
+    .await;
 
     assert_eq!(ledger(&recovered).await, expected);
     assert_eq!(recovered.state.applied(), frontier);
 }
 
 async fn recording(tape: Tape) -> Runtime<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(streams())
-        .attach_streams(tape)
-        .runtime()
-        .await
-        .expect("the catalog and attachment are honorable")
+    Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(catalog());
+        setup.settings().register(streams());
+        setup.settings().attach_streams(tape);
+    })
+    .await
+    .expect("the catalog and attachment are honorable")
 }
 
 /* === Tests === */

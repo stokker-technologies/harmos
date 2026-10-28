@@ -49,7 +49,7 @@ enum Lanes {
 /* === Private Functions === */
 
 fn main() {
-    let _ = Lanes::catalog();
+    let _ = <Lanes as facade::__harmos::operations::Lane>::catalog();
 }
 
 /* === Tests === */

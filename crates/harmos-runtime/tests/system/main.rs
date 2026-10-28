@@ -37,6 +37,8 @@ mod operations {
 
 /* === Imports === */
 
+extern crate harmos_runtime as harmos;
+
 // Standard Library Imports
 
 // Third Party Imports

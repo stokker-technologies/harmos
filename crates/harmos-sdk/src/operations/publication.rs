@@ -13,9 +13,12 @@
 
 /* === Imports === */
 
-use super::access::AccessError;
-use harmos_domain::model::operations::publication::FollowingRow;
+// Standard Library Imports
 use std::{future::Future, pin::Pin, sync::Arc};
+// Third Party Imports
+use harmos_domain::model::operations::publication::FollowingRow;
+// Local Imports
+use super::access::AccessError;
 
 /* === Constants === */
 

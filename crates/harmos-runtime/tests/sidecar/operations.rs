@@ -41,6 +41,8 @@ use harmos_runtime::plugin::{
 use harmos_runtime::services::ServiceContext;
 use harmos_runtime::sidecar::{Attach, Attached, Notice, Supervised};
 
+use super::SampleProjection;
+
 /* === Constants === */
 
 const CAPACITY: usize = 2;
@@ -160,6 +162,7 @@ struct Host<A: Attach> {
 
 pub(crate) struct Managed<A: Attach> {
     pub(crate) runtime: harmos_runtime::Runtime<Bank>,
+    sample_projection: Option<Arc<SampleProjection>>,
     manager: PluginManager<(), Backend<A>, ()>,
     host: Host<A>,
 }
@@ -266,55 +269,42 @@ impl harmos_operations::lifecycle::Policy for Endpoint {
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(id = "operation_handshake", provides = Operations, requires = ())]
-impl harmos_runtime::Plugin for Endpoint {
+impl harmos_runtime::Lifecycle for Endpoint {
     type Config = usize;
     type Context = harmos_runtime::sidecar::Supervisor;
     type Error = std::io::Error;
-    type Resources = Counts;
-    fn prepare(id: usize) -> Result<Self, Self::Error> {
+
+    async fn prepare(id: usize, setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
         let counts = SEEDS
             .lock()
             .unwrap()
             .remove(&id)
             .and_then(|counts| counts.upgrade())
             .ok_or_else(|| std::io::Error::other("original fixture resources unavailable"))?;
-        Ok(Self { counts })
+        let plugin = Self { counts };
+        setup.resource::<Counts>(plugin.counts.clone());
+        streams::configure(setup.settings()).map_err(std::io::Error::other)?;
+        Ok(plugin)
     }
+
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         self.counts.initialized.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-    fn resources(&self) -> Arc<Counts> {
-        self.counts.clone()
-    }
-    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<ReadDeclaration>(),
-        )?;
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<RefreshDeclaration>(),
-        )?;
-        streams::bind(table, self.resources())?;
-        Ok(())
-    }
+
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.counts.cleaned.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "operation_handshake", requires = ())]
+impl harmos_runtime::Plugin for Endpoint {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[Operations::CATALOG];
 }
 
 impl Drop for Calling {
@@ -358,10 +348,16 @@ impl Managed<Source> {
 
 impl<A: Attach> Managed<A> {
     pub(crate) fn drop_manager(self) -> (harmos_runtime::Runtime<Bank>, harmos_runtime::plugin::PluginCleanup) {
-        let Self { runtime, manager, host } = self;
+        let Self {
+            runtime,
+            manager,
+            host,
+            sample_projection,
+        } = self;
         let cleanup = manager.cleanup();
         drop(manager);
         drop(host);
+        drop(sample_projection);
         (runtime, cleanup)
     }
 
@@ -376,20 +372,35 @@ impl<A: Attach> Managed<A> {
         source: A, definitions: PluginDefinitions, lane: Lanes, capacity: std::num::NonZeroUsize, demand_keys: Vec<String>,
         configure: impl FnOnce(Resident<A>) -> Resident<A>,
     ) -> Self {
-        let runtime = assembly()
-            .operation_settings(harmos_runtime::operations::Settings {
+        let resident = configure(Supervised::new(source, notices as fn(&ServiceContext<Bank>, Notice)).demand_keys(demand_keys));
+        let sample_projection = Arc::new(SampleProjection { streams: std::sync::OnceLock::new() });
+        let runtime = assembly(|setup| {
+            setup.resource::<SampleProjection>(Arc::clone(&sample_projection));
+            setup.settings().operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
                 ..Default::default()
-            })
-            .runtime()
-            .await
-            .unwrap();
-        let resident = configure(Supervised::new(source, notices as fn(&ServiceContext<Bank>, Notice)).demand_keys(demand_keys));
-        Self::from_runtime(runtime, definitions, resident, lane, capacity, harmos_runtime::services::POLICY)
+            });
+        })
+        .await;
+        sample_projection.streams.set(runtime.streams.clone()).expect("the runtime initializes the sample projection once");
+        Self::from_runtime_inner(runtime, definitions, resident, lane, capacity, harmos_runtime::services::POLICY, Some(sample_projection))
     }
     pub(crate) fn from_runtime(
         runtime: harmos_runtime::Runtime<Bank>, definitions: PluginDefinitions, resident: Resident<A>, lane: Lanes,
         capacity: std::num::NonZeroUsize, supervision: harmos_runtime::ServicePolicy,
+    ) -> Self {
+        Self::from_runtime_inner(runtime, definitions, resident, lane, capacity, supervision, None)
+    }
+    pub(crate) fn from_runtime_with_projection(
+        runtime: harmos_runtime::Runtime<Bank>, definitions: PluginDefinitions, resident: Resident<A>, lane: Lanes,
+        capacity: std::num::NonZeroUsize, supervision: harmos_runtime::ServicePolicy, sample_projection: Arc<SampleProjection>,
+    ) -> Self {
+        sample_projection.streams.set(runtime.streams.clone()).expect("the runtime initializes the sample projection once");
+        Self::from_runtime_inner(runtime, definitions, resident, lane, capacity, supervision, Some(sample_projection))
+    }
+    fn from_runtime_inner(
+        runtime: harmos_runtime::Runtime<Bank>, definitions: PluginDefinitions, resident: Resident<A>, lane: Lanes,
+        capacity: std::num::NonZeroUsize, supervision: harmos_runtime::ServicePolicy, sample_projection: Option<Arc<SampleProjection>>,
     ) -> Self {
         let host = Host {
             ready: None,
@@ -402,6 +413,7 @@ impl<A: Attach> Managed<A> {
         };
         Self {
             runtime,
+            sample_projection,
             manager: PluginManager::new(definitions).unwrap(),
             host,
         }
@@ -430,13 +442,7 @@ impl<A: Attach> Managed<A> {
                 reason: "provider differs from the original selected native contract",
             });
         }
-        self.runtime
-            .operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                crate::sidecar::publication_registration(Arc::new(self.host.resident.clone())),
-                self.host.lane,
-            ))
-            .await
+        self.runtime.operations.register::<crate::sidecar::PublicationOperations>(self.host.lane).await
     }
 
     pub(crate) async fn call<O>(&self, request: O::Request) -> harmos_runtime::Result<O::Response>
@@ -549,7 +555,7 @@ impl<A: Attach> PluginLifecycle for Host<A> {
                 id: definition.id.clone(),
                 policy: self.supervision,
             },
-            move |_: Arc<()>| resident.clone(),
+            move |_: Arc<harmos_sdk::ExecutionContext>| resident.clone(),
         )?;
         backend.registered = true;
         backend.lease = Some(self.operations.submit_resident(&definition.id).await?);

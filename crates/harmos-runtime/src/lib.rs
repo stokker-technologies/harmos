@@ -10,7 +10,6 @@
 /* === Modules === */
 
 pub(crate) use harmos_storage::aggregate;
-pub mod builtin;
 pub mod config;
 mod error;
 pub mod filesystem;
@@ -51,14 +50,17 @@ pub mod observers;
 
 mod supervision;
 
+#[doc(hidden)]
 pub mod __private {
     pub use harmos_domain::config::SchemaSettings;
     pub use harmos_domain::plugin::schema_markers as PluginSchemaMarkers;
+    pub use harmos_sdk::__private::RegistrationBatch;
     pub extern crate serde;
     pub extern crate serde_json;
     pub use harmos_domain::__private::CarrierContext;
     pub use harmos_domain::__private::{
-        MessageError, PostcardReader, PostcardValue, decoding_add, decoding_multiply, decoding_vector, postcard_product,
+        MessageError, PostcardReader, PostcardValue, decoding_add, decoding_multiply, decoding_vector, operation_identity, owner_segment,
+        postcard_product, stream_identity,
     };
 
     pub use harmos_domain::inventory as PluginInventory;
@@ -88,12 +90,17 @@ pub mod __private {
     }
 }
 
+pub mod catalog {
+    pub use harmos_domain::catalog::*;
+}
+
 /* === Re-Exports === */
 
+pub use harmos_domain as domain;
 pub use harmos_domain::model;
 pub use harmos_operations as builtins;
 
-pub use application::Application;
+pub use application::{Application, Startup};
 pub use error::{BackendFailure, Error};
 pub use harmos_domain::{DefinitionId, Identified};
 
@@ -105,24 +112,29 @@ pub use harmos_domain::{
     RetryPolicy, ServicePolicy,
 };
 pub use harmos_sdk::operations::{EndpointSet, Response};
-pub use harmos_sdk::{
-    Context, Dependencies, Dependent, Executable, ExecutionContext, Operation, RegistrationBatch, Resource, ResourceError, Service,
-};
+pub use harmos_sdk::{Context, Dependent, Executable, ExecutionContext, Lifecycle, Operation, Resource, ResourceError, Service, Setup};
 pub use operations::refusal::Refusal;
-pub use operations::{Invocation, Lane, Registration, RegistrationExt, Running};
-pub use runtime::{Builder, Handle, Runtime};
+pub use operations::{Catalog, Invocation, Lane, Running};
+pub use runtime::{Handle, Runtime, StartupError};
 pub use services::{ServiceContext, ServiceManager};
 
 pub use harmos_domain::{
     Aggregate, Failure, Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata, RowMetadata, Storable, StreamField,
     StreamSpec, Value, ValueError, btree_map_memory,
 };
+#[cfg(feature = "plugin-sidecar")]
+pub use harmos_macros::plugin as sidecar;
+#[cfg(feature = "plugin-guest")]
+pub use harmos_macros::plugin as guest;
 pub use harmos_sdk::plugin::Plugin;
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
 
 // `message` Names Both The Contract Module And Its Same-Named Attribute.
-pub use harmos_domain::{artifacts, catalog, failure, listeners, message, schema};
-pub use harmos_macros::{lanes, listener, observer, operation, plugin, record, records, stream, streams, transaction, transactions};
+pub use harmos_domain::{artifacts, failure, listeners, message, schema};
+pub use harmos_macros::{
+    lanes, listener, observer, plugin, record, records, runtime_catalog as catalog, runtime_operation as operation, stream, streams,
+    transaction, transactions,
+};
 
 /* === Imports === */
 

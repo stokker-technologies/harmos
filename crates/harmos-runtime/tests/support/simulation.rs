@@ -16,8 +16,8 @@
 /* === Imports === */
 
 use super::support::{Bank, DEPOSIT, Deposit, NOTED, Noted, alice, pulse};
-use harmos_runtime::{Builder, simulation::SimulatedRuntime};
 use harmos_runtime::{DefinitionId, Identified};
+use harmos_runtime::{Setup, simulation::SimulatedRuntime};
 
 // Standard Library Imports
 
@@ -53,8 +53,11 @@ impl Identified for Noted {
 
 /* === Public Functions === */
 
-pub(crate) fn scripted(builder: Builder<Bank>) -> SimulatedRuntime<Bank> {
-    let mut sim = builder.simulated_service("adapter", resident).simulate().expect("the simulation boots");
+pub(crate) fn configure(setup: &mut Setup<Bank>) {
+    setup.settings().simulated_service("adapter", resident);
+}
+
+pub(crate) fn scripted(mut sim: SimulatedRuntime<Bank>) -> SimulatedRuntime<Bank> {
     sim.commit(
         alice(),
         Deposit {
@@ -63,8 +66,10 @@ pub(crate) fn scripted(builder: Builder<Bank>) -> SimulatedRuntime<Bank> {
         },
     )
     .expect("the scripted commit lands");
-    sim.record(alice(), Noted("seeded".to_owned())).expect("the scripted record lands");
-    sim.publish(pulse(4)).expect("the row catalog is frozen");
+    let record = Noted("seeded".to_owned());
+    sim.record(alice(), record).expect("the scripted record lands");
+    let row = pulse(4);
+    sim.publish(row).expect("the row catalog is frozen");
     sim.fault("adapter", "bus reset").expect("the running service receives its exit");
     sim.advance_ms(12);
     sim

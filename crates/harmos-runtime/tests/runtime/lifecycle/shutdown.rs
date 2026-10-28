@@ -121,21 +121,13 @@ impl std::task::Wake for StopNotification {
 
 #[tokio::test]
 async fn services_stop_first() {
-    let runtime = Runtime::<Editor>::builder(Sheet::default(), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let trace = Arc::new(Cancellation::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<PendingContractDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+        setup.resource::<Cancellation>(trace.clone());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<Operations>(Lanes::Open).await.unwrap();
     let operation = runtime.operations.submit::<PendingContractDeclaration>(PendingContractDeclaration {}).unwrap();
     trace.started.notified().await;
     runtime
@@ -145,7 +137,7 @@ async fn services_stop_first() {
                 id: "caller".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |_: Arc<()>| {
+            |_: Arc<harmos_sdk::ExecutionContext>| {
                 |mut context: harmos_runtime::services::ServiceContext<Editor>| async move {
                     context.ready();
                     context.stopping().await;
@@ -169,7 +161,7 @@ async fn services_stop_first() {
     assert!(std::future::Future::poll(changed.as_mut(), &mut context).is_pending());
 
     // Observe The Stop Notification Synchronously, Before Scheduling Cleanup
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert_eq!(cancelled.get(), Some(&false));
     assert!(lease.status().cancellation_requested());
     assert!(matches!(operation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
@@ -181,25 +173,28 @@ async fn services_stop_first() {
 async fn budget_retains_journal() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let release = Arc::new(Notify::new());
-    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
-        .register(catalog())
-        .attach(HeldDrain {
+    let runtime = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+        setup.settings().register(catalog());
+        setup.settings().attach(HeldDrain {
             attempts: attempts.clone(),
             release: release.clone(),
-        })
-        .runtime()
-        .await
-        .unwrap();
-    assert!(matches!(runtime.stop_with_timeout(Duration::ZERO).await, Err(Error::InvalidInput { field: "runtime shutdown timeout", .. })));
+        });
+    })
+    .await
+    .unwrap();
+    assert!(matches!(
+        runtime.shutdown_with_timeout(Duration::ZERO).await,
+        Err(Error::InvalidInput { field: "runtime shutdown timeout", .. })
+    ));
     let accepted = runtime.state.commit(crate::runtime::probe::rename("open")).await.unwrap();
     assert_eq!(accepted.position, Position(1));
     for _ in 0..2 {
-        assert!(matches!(runtime.stop_with_timeout(Duration::from_millis(10)).await, Err(Error::ShutdownTimeout { phase: "journal" })));
+        assert!(matches!(runtime.shutdown_with_timeout(Duration::from_millis(10)).await, Err(Error::ShutdownTimeout { phase: "journal" })));
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
     }
     release.notify_one();
-    assert_eq!(runtime.stop_with_timeout(Duration::from_secs(1)).await.unwrap(), Position(1));
-    assert_eq!(runtime.stop().await.unwrap(), Position(1));
+    assert_eq!(runtime.shutdown_with_timeout(Duration::from_secs(1)).await.unwrap(), Position(1));
+    assert_eq!(runtime.shutdown().await.unwrap(), Position(1));
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
 }
 
@@ -207,17 +202,17 @@ async fn budget_retains_journal() {
 async fn shutdown_budget_shared() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let release = Arc::new(Notify::new());
-    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
-        .attach(HeldDrain {
+    let runtime = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+        setup.settings().attach(HeldDrain {
             attempts: attempts.clone(),
             release: release.clone(),
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await
+    .unwrap();
     let participant = runtime.stop_participant();
     let started = tokio::time::Instant::now();
-    let mut stopping = pin!(runtime.stop_with_timeout(Duration::from_millis(10)));
+    let mut stopping = pin!(runtime.shutdown_with_timeout(Duration::from_millis(10)));
     // The first poll fixes the shared deadline while the participant still holds.
     assert!(futures_util::FutureExt::now_or_never(stopping.as_mut()).is_none(), "the stop waits for its participant");
     tokio::time::advance(Duration::from_millis(6)).await;
@@ -227,5 +222,5 @@ async fn shutdown_budget_shared() {
     assert_eq!(started.elapsed(), Duration::from_millis(10));
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
     release.notify_one();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }

@@ -115,11 +115,41 @@ tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }
 # UI
 
 # Testing
+criterion = { workspace = true }
 
 # === Target Dependencies === #
 
 [target.'cfg(windows)'.dependencies]
+# Local
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
 windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
 
 # === Test Targets === #
 
@@ -128,6 +158,11 @@ name = "integration"
 path = "tests/integration/main.rs"
 
 # === Bench Targets === #
+
+[[bench]]
+name = "integration-query"
+path = "benches/query/main.rs"
+harness = false
 
 # === Example Targets === #
 

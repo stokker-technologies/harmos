@@ -9,6 +9,8 @@
 
 // Serve Benchmark Commands In A Separate Process Until The Parent Closes Stdin.
 
+extern crate harmos_runtime as harmos;
+
 /* === Modules === */
 
 #[path = "benchmark_protocol.rs"]
@@ -53,20 +55,12 @@ fn main() {
             lifecycle_queued: NonZeroUsize::new(16).unwrap(),
             preparation_bytes: Some(preparation_bytes),
         };
-        let runtime = harmos_runtime::Runtime::<protocol::Model>::builder((), ())
-            .register(protocol::Lanes::catalog())
-            .operation_settings(settings)
-            .runtime()
-            .await
-            .unwrap();
-        runtime
-            .operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<protocol::EchoDeclaration>(),
-                protocol::Lanes::Open,
-            ))
-            .await
-            .unwrap();
+        let runtime = harmos_runtime::Runtime::<protocol::Model>::launch_with((), (), |setup| {
+            setup.settings().operation_settings(settings);
+            setup.operations::<protocol::Operations>(protocol::Lanes::Open);
+        })
+        .await
+        .unwrap();
         let attached = runtime.grpc().attach(protocol::settings()).await.unwrap();
         println!("{}", attached.local_addr());
         std::io::stdout().flush().unwrap();
@@ -78,7 +72,7 @@ fn main() {
         .await
         .unwrap();
         drop(attached);
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     });
 }
 

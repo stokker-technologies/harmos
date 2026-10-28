@@ -29,7 +29,7 @@ use harmos_runtime::operations::{Backoff, Declarations, OperationDeclaration, Op
 /* === Macros === */
 
 macro_rules! inert_plugin {
-    ($name:ident, $id:literal, $context:ty, $provided:ty) => {
+    ($name:ident, $id:literal, $context:ty, $catalogs:expr) => {
         impl harmos_operations::lifecycle::Policy for $name {
             const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
                 timeout: Duration::from_secs(2),
@@ -38,39 +38,39 @@ macro_rules! inert_plugin {
             };
             const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
         }
-        #[harmos_runtime::plugin(id = $id, description = "Inert Inventory Fixture", provides = $provided, requires = (), harmos_path = crate::operations::wire::artifact::facade::__harmos)]
-        impl harmos_runtime::Plugin for $name {
+        impl harmos_runtime::Lifecycle for $name {
             type Config = ();
             type Error = std::convert::Infallible;
             type Context = $context;
-            type Resources = ();
-            fn prepare(_: ()) -> Result<Self, Self::Error> { panic!("inert inspection never prepares resources") }
-            fn resources(&self) -> std::sync::Arc<()> { panic!("inert inspection never acquires resources") }
+            async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> { Ok(Self) }
             async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> { panic!("inert inspection never initializes resources") }
-            fn bind_operations(&self, _: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> { panic!("inert inspection never binds resources") }
             async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> { panic!("inert inspection never shuts resources down") }
             async fn cleanup(&mut self) -> Result<(), Self::Error> { panic!("inert inspection never releases resources") }
+        }
+        #[harmos_runtime::plugin(id = $id, description = "Inert Inventory Fixture", requires = (), harmos_path = crate::operations::wire::artifact::facade::__harmos)]
+        impl harmos_runtime::Plugin for $name {
+            const CATALOGS: &'static [harmos_runtime::operations::Catalog] = $catalogs;
         }
     };
 }
 
 #[cfg(feature = "plugin-sidecar")]
-inert_plugin!(Native, "selected-native", harmos_runtime::sidecar::Supervisor, Operations);
+inert_plugin!(Native, "selected_native", harmos_runtime::sidecar::Supervisor, &[Operations::CATALOG]);
 
 #[cfg(feature = "plugin-sidecar")]
-inert_plugin!(EmptyNative, "empty-native", harmos_runtime::sidecar::Supervisor, ());
+inert_plugin!(EmptyNative, "empty_native", harmos_runtime::sidecar::Supervisor, &[]);
 
 #[cfg(feature = "plugin-sidecar")]
-inert_plugin!(ExplicitEmptyNative, "explicit-empty-native", harmos_runtime::sidecar::Supervisor, ());
+inert_plugin!(ExplicitEmptyNative, "explicit_empty_native", harmos_runtime::sidecar::Supervisor, &[]);
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(Guest, "selected-guest", harmos_runtime::guest::kit::Context, Operations);
+inert_plugin!(Guest, "selected_guest", harmos_runtime::guest::kit::Context, &[Operations::CATALOG]);
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(EmptyGuest, "empty-guest", harmos_runtime::guest::kit::Context, ());
+inert_plugin!(EmptyGuest, "empty_guest", harmos_runtime::guest::kit::Context, &[]);
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest::kit::Context, ());
+inert_plugin!(ExplicitEmptyGuest, "explicit_empty_guest", harmos_runtime::guest::kit::Context, &[]);
 
 /* === Type Aliases === */
 
@@ -150,6 +150,14 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::Operation for SelectedDeclaration {
+    type Error = std::convert::Infallible;
+
+    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Response>, Self::Error> {
+        panic!("inert artifact inspection never executes operations")
+    }
+}
 
 /* === Public Functions === */
 

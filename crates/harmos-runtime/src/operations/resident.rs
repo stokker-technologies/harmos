@@ -90,7 +90,7 @@ pub(crate) struct WeakRegistry(Weak<Shared>);
 
 pub(crate) struct Shared {
     identity: Arc<()>,
-    root_resources: Arc<()>,
+    root_resources: Arc<harmos_sdk::ExecutionContext>,
     index: Weak<Instances>,
     root: Arc<Scope>,
     state: Mutex<State>,
@@ -104,7 +104,10 @@ pub(crate) struct Scope {
     address: usize,
     resources: Resources,
     closed: AtomicBool,
+
+    #[cfg(feature = "plugin-sidecar")]
     retirement: Mutex<Option<Outcome>>,
+
     detached: Mutex<Vec<Lease>>,
 }
 
@@ -123,6 +126,7 @@ pub(crate) struct Registration {
 
 // Retains a retired scope's resources and instances until its caller has
 // consumed the outcome, so author Drop code never runs under a registry lock.
+#[cfg(feature = "plugin-sidecar")]
 pub(crate) struct Retirement {
     outcome: Outcome,
     _scope: Arc<Scope>,
@@ -339,7 +343,7 @@ impl Registry {
     }
 
     pub(crate) fn new(index: &Arc<Instances>, reserved: BTreeSet<String>, identity: Arc<()>) -> Self {
-        let root_resources = Arc::new(());
+        let root_resources = Arc::new(harmos_sdk::ExecutionContext::new(index.resources.clone(), super::CallContext::default()));
         let resources: Resources = Arc::clone(&root_resources) as Resources;
         let root = Arc::new(Scope {
             owner: Arc::downgrade(&identity),
@@ -347,6 +351,7 @@ impl Registry {
             address: address(&resources),
             resources,
             closed: AtomicBool::new(false),
+            #[cfg(feature = "plugin-sidecar")]
             retirement: Mutex::new(None),
             detached: Mutex::new(Vec::new()),
         });
@@ -377,7 +382,7 @@ impl Registry {
         Arc::clone(&self.shared.identity)
     }
 
-    pub(crate) fn root_resources(&self) -> Arc<()> {
+    pub(crate) fn root_resources(&self) -> Arc<harmos_sdk::ExecutionContext> {
         Arc::clone(&self.shared.root_resources)
     }
 
@@ -508,6 +513,7 @@ impl Registry {
             address,
             resources,
             closed: AtomicBool::new(false),
+            #[cfg(feature = "plugin-sidecar")]
             retirement: Mutex::new(None),
             detached: Mutex::new(Vec::new()),
         });
@@ -516,6 +522,7 @@ impl Registry {
         Ok(scope)
     }
 
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn scope_of<R: Send + Sync + 'static>(&self, resources: &Arc<R>) -> Option<Arc<Scope>> {
         let address = Arc::as_ptr(resources) as *const () as usize;
         let state = self.state();
@@ -695,6 +702,7 @@ impl Registry {
 
     // Stop every instance over a scope, settle them and forget the scope with
     // the definitions bound to it. The first outcome is retained.
+    #[cfg(feature = "plugin-sidecar")]
     #[tracing::instrument(target = "harmos::operations", name = "operations.retire_scope", level = "debug", skip_all)]
     pub(crate) async fn retire_scope(&self, scope: &Arc<Scope>) -> Result<Retirement> {
         self.check_scope(scope)?;
@@ -1320,6 +1328,7 @@ impl Drop for Staged {
     }
 }
 
+#[cfg(feature = "plugin-sidecar")]
 impl Retirement {
     pub(crate) fn into_outcome(self) -> Outcome {
         self.outcome

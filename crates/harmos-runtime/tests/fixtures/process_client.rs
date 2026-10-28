@@ -20,9 +20,9 @@ use std::sync::Arc;
 // Local Imports
 use super::contract;
 use crate::sidecar::witness::Witness;
-use contract::{POLICY, ProbeDeclaration, Queries, ReadDeclaration, Readings, Step};
+use contract::{POLICY, ProbeDeclaration, ReadDeclaration, Readings, Step};
 use harmos_runtime::operations::Host as _;
-use harmos_runtime::operations::{OperationPolicy, WireTable};
+use harmos_runtime::operations::OperationPolicy;
 use harmos_runtime::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -74,6 +74,11 @@ struct AttemptGuard {
 
 /* === Enums === */
 
+#[harmos_runtime::catalog]
+enum Handlers {
+    Probe(Probing),
+}
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -83,20 +88,20 @@ impl harmos_operations::lifecycle::Policy for Client {
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos_runtime::plugin(id = "process_client", provides = Queries, requires = Readings)]
-impl harmos_runtime::Plugin for Client {
+impl harmos_runtime::Lifecycle for Client {
     type Context = Supervisor;
     type Config = String;
     type Error = Refusal;
-    type Resources = Witness;
 
-    fn prepare(key: String) -> Result<Self, Refusal> {
-        Ok(Self {
+    async fn prepare(key: String, setup: &mut harmos_sdk::Setup<Self>) -> std::result::Result<Self, Refusal> {
+        let plugin = Self {
             resources: Witness::find(&key).ok_or_else(|| Refusal::of("the story witness is gone"))?,
-        })
+        };
+        setup.resource::<Witness>(Arc::clone(&plugin.resources));
+        Ok(plugin)
     }
 
-    async fn initialize(&mut self, context: &Supervisor) -> Result<(), Refusal> {
+    async fn initialize(&mut self, context: &Supervisor) -> std::result::Result<(), Refusal> {
         self.resources.mark("initializing");
         let response = context.call::<contract::ReadDeclaration>(ReadDeclaration { phase: 1 }).await.map_err(Refusal::from)?;
         if response.phase != 1 {
@@ -110,22 +115,7 @@ impl harmos_runtime::Plugin for Client {
         Ok(())
     }
 
-    fn resources(&self) -> Arc<Witness> {
-        Arc::clone(&self.resources)
-    }
-
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<Probing>(),
-        )
-    }
-
-    async fn stop(&mut self, context: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, context: &Supervisor) -> std::result::Result<(), Refusal> {
         let response = context.call::<contract::ReadDeclaration>(ReadDeclaration { phase: 2 }).await.map_err(Refusal::from)?;
         if response.phase != 2 {
             return Err(Refusal::of("shutdown used another provider response"));
@@ -135,10 +125,15 @@ impl harmos_runtime::Plugin for Client {
         Ok(())
     }
 
-    async fn cleanup(&mut self) -> Result<(), Refusal> {
+    async fn cleanup(&mut self) -> std::result::Result<(), Refusal> {
         self.resources.mark("cleaned");
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "process_client", requires = Readings)]
+impl harmos_runtime::Plugin for Client {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[Handlers::CATALOG];
 }
 
 impl harmos_runtime::Operation for Probing {

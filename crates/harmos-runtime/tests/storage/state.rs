@@ -44,6 +44,26 @@ mod snapshots;
 
 /* === Structs === */
 
+#[derive(Clone, Default)]
+struct CleanupCapture(std::sync::Arc<std::sync::OnceLock<harmos_runtime::runtime::BootstrapCleanup>>);
+
+impl CleanupCapture {
+    fn capture<A: harmos_runtime::Application>(&self, setup: &mut harmos_runtime::Setup<A>) {
+        assert!(self.0.set(setup.settings().startup_cleanup()).is_ok());
+    }
+
+    fn get(&self) -> &harmos_runtime::runtime::BootstrapCleanup {
+        self.0.get().expect("startup was polled")
+    }
+}
+
+fn incompatible(error: harmos_runtime::StartupError) -> harmos_runtime::runtime::Incompatible {
+    match error {
+        harmos_runtime::StartupError::Runtime { source } => *source.downcast().expect("physical startup failure"),
+        other => panic!("unexpected startup failure: {other}"),
+    }
+}
+
 /* === Enums === */
 
 /* === Traits === */

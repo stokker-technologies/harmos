@@ -371,7 +371,7 @@ impl Native {
                     scope.owner(),
                     lane.name(),
                     {
-                        let mut dependencies = harmos_sdk::Dependencies::new();
+                        let mut dependencies = harmos_sdk::__private::ResourceSet::new();
                         dependencies.insert(Arc::clone(&handler))?;
                         dependencies
                     },
@@ -893,11 +893,17 @@ impl super::Bindings<'_> {
             });
             let entry = Arc::get_mut(entry).expect("new typed native entry has one owner");
             if entry.contract.as_ref().is_some_and(|contract| contract.input().is_none() && contract.output().is_none()) {
-                let mut dependencies = harmos_sdk::Dependencies::new();
+                let mut dependencies = harmos_sdk::__private::ResourceSet::new();
                 dependencies.insert(Arc::clone(&handler))?;
-                let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).carrier::<Encoded<()>, EncodedOperation>();
+                let mut batch = harmos_sdk::__private::RegistrationBatch::new().carrier::<Encoded<()>, EncodedOperation>();
                 let factory = batch.operations.pop().expect("one encoded implementation");
-                let encoded = super::authored::factory::<Encoded<()>, ()>(self.operations, factory);
+                let resources = harmos_sdk::ExecutionContext::new(dependencies, super::CallContext::default())
+                    .with_resources(self.operations.resources().clone())
+                    .resources()
+                    .clone();
+                let encoded = super::authored::factory_with::<Encoded<()>, ()>(self.operations, move |request, endpoints| {
+                    factory.prepare_native(resources.clone(), Box::new(request), Box::new(endpoints))
+                });
                 entry.native_binding = Some(Arc::new(encoded));
                 entry.wire = Some(dispatch);
             } else {
@@ -1065,7 +1071,7 @@ fn encoded_binding<E: super::StreamEndpoints + Shape>(
         scope.owner(),
         lane,
         {
-            let mut dependencies = harmos_sdk::Dependencies::new();
+            let mut dependencies = harmos_sdk::__private::ResourceSet::new();
             dependencies.insert(Arc::clone(handler))?;
             dependencies
         },
@@ -1082,7 +1088,7 @@ where
     use crate::operations::Direction;
     type In<O> = super::StreamInput<<<O as crate::operations::OperationDeclaration>::Input as Direction>::Item>;
     type Out<O> = super::StreamOutput<<<O as crate::operations::OperationDeclaration>::Output as Direction>::Item>;
-    let mut dependencies = harmos_sdk::Dependencies::new();
+    let mut dependencies = harmos_sdk::__private::ResourceSet::new();
     dependencies.insert(native)?;
     match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {
         (false, false) => bindings.stage_implementation::<O, NativeOperation<O, ()>>(lane, dependencies),

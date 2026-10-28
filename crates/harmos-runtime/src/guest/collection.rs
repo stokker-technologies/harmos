@@ -48,20 +48,41 @@ struct Cleanup {
 
 /* === Implementations === */
 
+impl crate::Lifecycle for Collection {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = crate::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut crate::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl Application for Collection {
     type Lanes = Lanes;
     type State = ();
     type Transaction = Never;
     type Record = ();
     type Streams = ();
-    type Resources = ();
 }
 
 impl Drop for Cleanup {
     fn drop(&mut self) {
         if let Some(runtime) = self.runtime.take() {
             self.executor.spawn(async move {
-                if let Err(error) = runtime.stop().await {
+                if let Err(error) = runtime.shutdown().await {
                     let error = harmos_domain::failure::Report(&error);
                     tracing::error!(%error, "catalog runtime shutdown failed after cancellation");
                 }
@@ -95,7 +116,7 @@ pub fn validate(mut entries: Vec<Registration>) -> Result<Vec<Registration>, Err
 }
 
 pub async fn registrations(bytes: &[u8]) -> Result<Vec<Registration>, Error> {
-    let runtime = Runtime::<Collection>::builder((), ()).runtime().await.map_err(|error| Error::Guest {
+    let runtime = Runtime::<Collection>::launch((), ()).await.map_err(|error| Error::Guest {
         message: format!("catalog runtime could not start: {error}"),
     })?;
     let mut cleanup = Cleanup {
@@ -114,7 +135,7 @@ pub async fn registrations(bytes: &[u8]) -> Result<Vec<Registration>, Error> {
     // so the runtime is moved into it rather than borrowed across the spawn.
     cleanup
         .executor
-        .spawn(async move { runtime.stop().await })
+        .spawn(async move { runtime.shutdown().await })
         .await
         .map_err(|error| invalid(&format!("catalog runtime shutdown task failed: {error}")))?
         .map_err(|error| invalid(&format!("catalog runtime shutdown failed: {error}")))?;

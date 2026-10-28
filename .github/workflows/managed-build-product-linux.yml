@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-product-linux.yml; sha256:1c45e88414128796b213502edd290102b39a94175b0589134e34ec81f02b8e50
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-product-linux.yml; sha256:d592108cdfe501faca12339002b20dc09c8399a2a2a5504bdfa3d60929d81741
 name: Build / Product / Linux
 "on":
   workflow_call:
@@ -109,6 +109,22 @@ jobs:
         if (!(Test-Path -LiteralPath $compressor -PathType Leaf)) { throw 'Pinned zstd executable missing' }
         $compressorRoot = Split-Path -Parent $compressor
         $env:PATH = (Split-Path -Parent $compiler) + [IO.Path]::PathSeparator + $compressorRoot + [IO.Path]::PathSeparator + $env:PATH
+        # Real-Time Scanning Of Every Compiler Output Dominates Windows Build Time; Only Ephemeral Hosted Runners Are Reconfigured.
+        $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+        $elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if ($env:RUNNER_ENVIRONMENT -eq 'github-hosted' -and $elevated -and (Get-Command Add-MpPreference -ErrorAction SilentlyContinue)) {
+            $workspace = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { $PWD.Path }
+            $rustup = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $HOME '.rustup' }
+            $cargo = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $HOME '.cargo' }
+            $exclusions = @($workspace, $env:CARGO_TARGET_DIR, $cargo, $rustup, $env:MISE_DATA_DIR, [IO.Path]::GetTempPath()) | Where-Object { $_ }
+            try {
+                Add-MpPreference -ExclusionPath $exclusions -ErrorAction Stop
+                Add-MpPreference -ExclusionProcess @('cargo.exe', 'rustc.exe', 'clippy-driver.exe', 'link.exe', 'cl.exe') -ErrorAction Stop
+                Write-Output "Defender exclusions: $($exclusions -join ', ')"
+            } catch {
+                Write-Output "Defender exclusions unavailable: $($_.Exception.Message)"
+            }
+        }
         # === Verification === #
         & $compressor --version
         if ($LASTEXITCODE -ne 0) { throw 'Pinned zstd cannot execute' }
@@ -234,6 +250,17 @@ jobs:
           }}-${{ env.STKR_RUNNER_IMAGE }}-${{ env.STKR_JOB_IMAGE }}-${{ env.STKR_MISE_ROOT
           }}-${{ env.STKR_WORKSPACE_ROOT }}-${{ hashFiles('mise.lock') }}
         path: ${{ env.MISE_DATA_DIR }}
+    - id: sccache
+      name: Cache / sccache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        key: >-
+          stkr-v4-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock')
+          }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-build-${{ github.sha }}
+        path: .cache/sccache/
+        restore-keys: >-
+          stkr-v4-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock')
+          }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-build-
     - id: uv
       name: Cache / uv
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -249,28 +276,6 @@ jobs:
         install: true
         cache: false
         mise_dir: ${{ env.MISE_DATA_DIR }}
-    - name: Compiler Cache Storage
-      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
-      with:
-        script: |-
-          for (const key of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL', 'ACTIONS_CACHE_URL']) {
-            const value = process.env[key];
-            if (value) { core.setSecret(value); core.exportVariable(key, value); }
-          }
-          if (process.env.ACTIONS_CACHE_SERVICE_V2) {
-            core.exportVariable('ACTIONS_CACHE_SERVICE_V2', process.env.ACTIONS_CACHE_SERVICE_V2);
-          }
-    - name: Compiler Cache Storage
-      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
-      with:
-        script: |-
-          for (const key of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL', 'ACTIONS_CACHE_URL']) {
-            const value = process.env[key];
-            if (value) { core.setSecret(value); core.exportVariable(key, value); }
-          }
-          if (process.env.ACTIONS_CACHE_SERVICE_V2) {
-            core.exportVariable('ACTIONS_CACHE_SERVICE_V2', process.env.ACTIONS_CACHE_SERVICE_V2);
-          }
     - name: Product Build
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
@@ -314,6 +319,15 @@ jobs:
         success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
         || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
         (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.sccache.outputs.cache-hit != 'true'
+      with:
+        key: ${{ steps.sccache.outputs.cache-primary-key }}
+        path: .cache/sccache/
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
         endsWith(github.ref, '/merge'))) && steps.uv.outputs.cache-hit != 'true'
       with:
         key: ${{ steps.uv.outputs.cache-primary-key }}
@@ -321,14 +335,15 @@ jobs:
     - name: Cache Summary
       if: always()
       env:
-        STKR_CACHE_RESTORES: "{\"Mise\":\"${{ steps.mise.outputs.cache-hit == 'true' && 'Exact Hit' || steps.mise.outputs.cache-hit == 'false' && 'Partial Hit' || steps.mise.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.cargo_downloads.outputs.cache-hit == 'true' && 'Exact Hit' || steps.cargo_downloads.outputs.cache-hit == 'false' && 'Partial Hit' || steps.cargo_downloads.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.uv.outputs.cache-hit == 'true' && 'Exact Hit' || steps.uv.outputs.cache-hit == 'false' && 'Partial Hit' || steps.uv.outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+        STKR_CACHE_RESTORES: "{\"Mise\":\"${{ steps.mise.outputs.cache-hit == 'true' && 'Exact Hit' || steps.mise.outputs.cache-hit == 'false' && 'Partial Hit' || steps.mise.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.cargo_downloads.outputs.cache-hit == 'true' && 'Exact Hit' || steps.cargo_downloads.outputs.cache-hit == 'false' && 'Partial Hit' || steps.cargo_downloads.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.uv.outputs.cache-hit == 'true' && 'Exact Hit' || steps.uv.outputs.cache-hit == 'false' && 'Partial Hit' || steps.uv.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.sccache.outputs.cache-hit == 'true' && 'Exact Hit' || steps.sccache.outputs.cache-hit == 'false' && 'Partial Hit' || steps.sccache.outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.summary
     env:
       MISE_ENABLE_TOOLS: >-
         aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,npm:@fission-ai/openspec,python,rust,sccache,taplo,uv
-      STKR_SCCACHE_BACKEND: gha
+      STKR_SCCACHE_BACKEND: disk
+      STKR_SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       STKR_SCCACHE_MODE: >-
         ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
         github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||

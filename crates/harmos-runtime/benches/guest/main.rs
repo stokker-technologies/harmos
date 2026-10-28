@@ -21,6 +21,8 @@ mod transfers;
 
 /* === Imports === */
 
+extern crate harmos_runtime as harmos;
+
 // Standard Library Imports
 use std::time::Duration;
 

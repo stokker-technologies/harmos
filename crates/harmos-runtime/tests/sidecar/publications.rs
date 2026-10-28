@@ -77,7 +77,7 @@ struct TickingPulse;
 
 struct Ticking {
     resources: Arc<Gate>,
-    attachment: Arc<harmos_sidecar::ObserverAttachment<Gate, harmos_sidecar::Publisher<Ticking>>>,
+    attachment: Arc<harmos_sidecar::ObserverAttachment<harmos_sidecar::Publisher<Ticking>>>,
 }
 
 struct GateSeed {
@@ -94,9 +94,7 @@ struct Left;
 #[harmos_runtime::stream(id = "twins.right", window = 16, row = support::Pulse)]
 struct Right;
 
-struct Twins {
-    resources: Arc<()>,
-}
+struct Twins;
 
 #[harmos_runtime::stream(id = "batches.rows", window = 16, row = support::Pulse)]
 struct BatchedRows;
@@ -113,16 +111,14 @@ struct ClockedRows;
 #[harmos_runtime::stream(id = "batches.stamped", window = 16, row = support::Pulse)]
 struct StampedRows;
 
-struct Batches {
-    resources: Arc<()>,
-}
+struct Batches;
 
 #[harmos_runtime::stream(id = "flood.rows", window = 8, row = support::Pulse)]
 struct FloodRows;
 
 struct Flood {
     resources: Arc<super::witness::Witness>,
-    attachment: Arc<harmos_sidecar::ObserverAttachment<super::witness::Witness, harmos_sidecar::Publisher<Flood>>>,
+    attachment: Arc<harmos_sidecar::ObserverAttachment<harmos_sidecar::Publisher<Flood>>>,
 }
 
 struct Flooding {
@@ -159,7 +155,7 @@ struct ObserverCounts {
 
 struct SampledTwins {
     resources: Arc<ObserverResources>,
-    attachment: Arc<harmos_sidecar::ObserverAttachment<ObserverResources, harmos_sidecar::Publisher<SampledTwins>>>,
+    attachment: Arc<harmos_sidecar::ObserverAttachment<harmos_sidecar::Publisher<SampledTwins>>>,
 }
 
 struct ObserverSeed {
@@ -179,8 +175,7 @@ struct RightObserver(ObserverCounts);
 struct MultiStreamObserver;
 
 struct MultiStream {
-    resources: Arc<()>,
-    attachment: Arc<harmos_sidecar::ObserverAttachment<(), harmos_sidecar::Publisher<MultiStream>>>,
+    attachment: Arc<harmos_sidecar::ObserverAttachment<harmos_sidecar::Publisher<MultiStream>>>,
 }
 
 #[derive(Clone)]
@@ -192,23 +187,23 @@ struct Advertised<S> {
 
 /* === Enums === */
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 enum TickingObservers {
     Producer(Producer),
 }
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 enum TwinObservers {
     Left(LeftObserver),
     Right(RightObserver),
 }
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 enum MultiObservers {
     Producer(MultiStreamObserver),
 }
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 enum FloodObservers {
     Producer(Flooding),
 }
@@ -293,48 +288,52 @@ impl harmos_operations::lifecycle::Policy for Ticking {
     const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(description = "Observer Demand During SDK Initialization.", id = "ticking", provides = (), requires(harmos_operations::streams::Publish),
-    observers = TickingObservers, streams(TickingPulse))]
-impl harmos_runtime::Plugin for Ticking {
+impl harmos_runtime::Lifecycle for Ticking {
     type Config = usize;
     type Context = harmos_sidecar::Supervisor;
-    type Resources = Gate;
     type Error = harmos_sidecar::Refusal;
-    fn prepare(id: usize) -> Result<Self, Self::Error> {
+
+    async fn prepare(id: usize, setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
         let resources = GATE_SEEDS
             .lock()
             .unwrap()
             .remove(&id)
             .and_then(|gate| gate.upgrade())
             .ok_or_else(|| harmos_sidecar::Refusal::of("original fixture gate unavailable"))?;
-        let attachment = harmos_sidecar::ObserverAttachment::from_catalog::<TickingObservers>(resources.clone(), Self::STREAMS)?;
-        Ok(Self { resources, attachment })
+        let attachment = harmos_sidecar::ObserverAttachment::from_catalog::<TickingObservers>(Self::STREAMS)?;
+        let plugin = Self { resources, attachment };
+        setup.resource::<Gate>(plugin.resources.clone());
+        Ok(plugin)
     }
+
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         self.resources.started.notify_one();
         self.resources.release.notified().await;
         Ok(())
     }
-    fn resources(&self) -> Arc<Gate> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        self.attachment.bind(table)
-    }
-    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
-        Some(self.attachment.clone())
-    }
+
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
 }
 
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Observer Demand During SDK Initialization.", id = "ticking", requires(harmos_operations::streams::Publish),
+    observers = TickingObservers, streams(TickingPulse))]
+impl harmos_runtime::Plugin for Ticking {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[];
+
+    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
+        Some(self.attachment.clone())
+    }
+}
+
 #[harmos_runtime::observer(streams(TickingPulse), demand_keys(TICKING_DEMAND), activation = "demand", interval_ms = 1)]
 impl Producer {
-    async fn observe(&mut self, ctx: &ObserverContext<'_, Gate, harmos_sidecar::Publisher<Ticking>>) -> Result<(), Infallible> {
+    async fn observe(&mut self, ctx: &ObserverContext<'_, harmos_sidecar::Publisher<Ticking>>) -> Result<(), Infallible> {
         match ctx.publish_on::<TickingPulse>(&support::pulse(ctx.tick().ordinal())).await {
             // A Retiring Generation May Tick Once After The Host Closes Its Admission.
             Ok(()) | Err(harmos_sidecar::PublishError::Call(harmos_sidecar::CallError::Refused { code: -32_606, .. })) => Ok(()),
@@ -352,16 +351,15 @@ impl harmos_operations::lifecycle::Policy for Twins {
     const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(description = "Two Streams Share One Row Shape.", id = "twins", provides = (), requires(harmos_operations::streams::Publish),  observers = (), streams(Left),
-    stream_entries = &[harmos_sidecar::inventory::publications::Entry::of::<Right>()])]
-impl harmos_runtime::Plugin for Twins {
+impl harmos_runtime::Lifecycle for Twins {
     type Config = ();
     type Context = harmos_sidecar::Supervisor;
-    type Resources = ();
     type Error = harmos_sidecar::Refusal;
-    fn prepare(_: ()) -> Result<Self, Self::Error> {
-        Ok(Self { resources: Arc::new(()) })
+
+    async fn prepare(_: (), _setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
+        Ok(Self)
     }
+
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Self::Error> {
         context
             .publisher::<Self>()
@@ -376,18 +374,20 @@ impl harmos_runtime::Plugin for Twins {
             .map_err(harmos_sidecar::Refusal::from)?;
         Ok(())
     }
-    fn resources(&self) -> Arc<()> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, _: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        Ok(())
-    }
+
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Two Streams Share One Row Shape.", id = "twins", requires(harmos_operations::streams::Publish),  observers = (), streams(Left),
+    stream_entries = &[harmos_sidecar::inventory::publications::Entry::of::<Right>()])]
+impl harmos_runtime::Plugin for Twins {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[];
 }
 
 impl harmos_operations::lifecycle::Policy for Batches {
@@ -395,15 +395,15 @@ impl harmos_operations::lifecycle::Policy for Batches {
     const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(description = "Publishes Ordered Row Batches.", id = "batches", provides = (), requires(harmos_operations::streams::Publish), observers = (), streams(BatchedRows, RawRows, TimedRows, ClockedRows, StampedRows))]
-impl harmos_runtime::Plugin for Batches {
+impl harmos_runtime::Lifecycle for Batches {
     type Config = ();
     type Context = harmos_sidecar::Supervisor;
-    type Resources = ();
     type Error = harmos_sidecar::Refusal;
-    fn prepare(_: ()) -> Result<Self, Self::Error> {
-        Ok(Self { resources: Arc::new(()) })
+
+    async fn prepare(_: (), _setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
+        Ok(Self)
     }
+
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Self::Error> {
         let publisher = context.publisher::<Self>();
         let pulses = |samples: std::ops::RangeInclusive<u64>| {
@@ -486,18 +486,19 @@ impl harmos_runtime::Plugin for Batches {
         publish(raw(stamped_id, 4, Some(TIMED_BASE), Vec::new())).await.map_err(harmos_sidecar::Refusal::from)?;
         Ok(())
     }
-    fn resources(&self) -> Arc<()> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, _: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        Ok(())
-    }
+
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Publishes Ordered Row Batches.", id = "batches", requires(harmos_operations::streams::Publish), observers = (), streams(BatchedRows, RawRows, TimedRows, ClockedRows, StampedRows))]
+impl harmos_runtime::Plugin for Batches {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[];
 }
 
 impl ObserverCounts {
@@ -543,15 +544,12 @@ impl harmos_operations::lifecycle::Policy for SampledTwins {
     const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(description = "Independent Observers Sharing The Original Initialized Resources.", id = "twin_observers", provides = (), requires(harmos_operations::streams::Publish),
-    observers = TwinObservers, streams(Left, Right))]
-impl harmos_runtime::Plugin for SampledTwins {
+impl harmos_runtime::Lifecycle for SampledTwins {
     type Config = usize;
     type Context = harmos_sidecar::Supervisor;
-    type Resources = ObserverResources;
     type Error = harmos_sidecar::Refusal;
 
-    fn prepare(id: usize) -> Result<Self, Self::Error> {
+    async fn prepare(id: usize, setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
         let counts = OBSERVER_SEEDS
             .lock()
             .unwrap()
@@ -559,28 +557,22 @@ impl harmos_runtime::Plugin for SampledTwins {
             .and_then(|counts| counts.upgrade())
             .ok_or_else(|| harmos_sidecar::Refusal::of("original fixture resources unavailable"))?;
         let resources = Arc::new(ObserverResources { counts: (*counts).clone() });
-        let attachment = harmos_sidecar::ObserverAttachment::from_catalog::<TwinObservers>(
-            resources.clone(),
-            <Self as harmos_domain::plugin::Declared>::STREAMS,
-        )?;
-        Ok(Self { resources, attachment })
+        let attachment =
+            harmos_sidecar::ObserverAttachment::from_catalog::<TwinObservers>(<Self as harmos_domain::plugin::Declared>::STREAMS)?;
+        let plugin = Self { resources, attachment };
+        setup.resource::<ObserverResources>(plugin.resources.clone());
+        Ok(plugin)
     }
+
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         self.resources.counts.initialized.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(())
     }
-    fn resources(&self) -> Arc<ObserverResources> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        self.attachment.bind(table)
-    }
-    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
-        Some(self.attachment.clone())
-    }
+
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         for index in 0..2 {
             assert_eq!(
@@ -592,15 +584,25 @@ impl harmos_runtime::Plugin for SampledTwins {
     }
 }
 
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Independent Observers Sharing The Original Initialized Resources.", id = "twin_observers", requires(harmos_operations::streams::Publish),
+    observers = TwinObservers, streams(Left, Right))]
+impl harmos_runtime::Plugin for SampledTwins {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[];
+
+    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
+        Some(self.attachment.clone())
+    }
+}
+
 #[harmos_runtime::observer(streams(Left), activation = "demand", interval_ms = 5)]
 impl LeftObserver {
-    async fn initialize(resources: &ObserverResources) -> Result<Self, Infallible> {
+    async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
+        let resolved = context.resource::<ObserverResources>().unwrap();
+        let resources = resolved.as_ref();
         resources.counts.started[0].fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(Self(resources.counts.clone()))
     }
-    async fn observe(
-        &mut self, ctx: &ObserverContext<'_, ObserverResources, harmos_sidecar::Publisher<SampledTwins>>,
-    ) -> Result<(), Infallible> {
+    async fn observe(&mut self, ctx: &ObserverContext<'_, harmos_sidecar::Publisher<SampledTwins>>) -> Result<(), Infallible> {
         published(ctx.publish_on::<Left>(&support::pulse(101)).await);
         Ok(())
     }
@@ -620,13 +622,13 @@ impl LeftObserver {
 
 #[harmos_runtime::observer(streams(Right), activation = "demand", interval_ms = 5)]
 impl RightObserver {
-    async fn initialize(resources: &ObserverResources) -> Result<Self, Infallible> {
+    async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
+        let resolved = context.resource::<ObserverResources>().unwrap();
+        let resources = resolved.as_ref();
         resources.counts.started[1].fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(Self(resources.counts.clone()))
     }
-    async fn observe(
-        &mut self, ctx: &ObserverContext<'_, ObserverResources, harmos_sidecar::Publisher<SampledTwins>>,
-    ) -> Result<(), Infallible> {
+    async fn observe(&mut self, ctx: &ObserverContext<'_, harmos_sidecar::Publisher<SampledTwins>>) -> Result<(), Infallible> {
         published(ctx.publish_on::<Right>(&support::pulse(201)).await);
         Ok(())
     }
@@ -645,7 +647,7 @@ impl RightObserver {
 #[harmos_runtime::observer(interval_ms = 5, streams(Left, Right), activation = "demand")]
 impl MultiStreamObserver {
     async fn observe(
-        &mut self, ctx: &ObserverContext<'_, (), harmos_sidecar::Publisher<MultiStream>>,
+        &mut self, ctx: &ObserverContext<'_, harmos_sidecar::Publisher<MultiStream>>,
     ) -> Result<(), harmos_sidecar::PublishError> {
         if ctx.tick().ordinal() % 2 == 0 {
             return Ok(());
@@ -662,49 +664,50 @@ impl harmos_operations::lifecycle::Policy for MultiStream {
     const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(description = "One Observer Publishing Two Rows.", id = "multi_stream", provides = (), requires(harmos_operations::streams::Publish),
-    observers = MultiObservers, streams(Left, Right))]
-impl harmos_runtime::Plugin for MultiStream {
+impl harmos_runtime::Lifecycle for MultiStream {
     type Config = ();
     type Context = harmos_sidecar::Supervisor;
-    type Resources = ();
     type Error = harmos_sidecar::Refusal;
-    fn prepare(_: ()) -> Result<Self, Self::Error> {
-        let resources = Arc::new(());
-        let attachment = harmos_sidecar::ObserverAttachment::from_catalog::<MultiObservers>(resources.clone(), Self::STREAMS)?;
-        Ok(Self { resources, attachment })
+
+    async fn prepare(_: (), _setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
+        let attachment = harmos_sidecar::ObserverAttachment::from_catalog::<MultiObservers>(Self::STREAMS)?;
+        Ok(Self { attachment })
     }
+
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn resources(&self) -> Arc<()> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        self.attachment.bind(table)
-    }
-    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
-        Some(self.attachment.clone())
-    }
+
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
 }
 
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "One Observer Publishing Two Rows.", id = "multi_stream", requires(harmos_operations::streams::Publish),
+    observers = MultiObservers, streams(Left, Right))]
+impl harmos_runtime::Plugin for MultiStream {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[];
+
+    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
+        Some(self.attachment.clone())
+    }
+}
+
 #[harmos_runtime::observer(streams(FloodRows), interval_ms = 1)]
 impl Flooding {
-    async fn initialize(resources: &super::witness::Witness) -> Result<Self, harmos_sidecar::PublishError> {
+    async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, harmos_sidecar::PublishError> {
+        let resolved = context.resource::<super::witness::Witness>().unwrap();
+        let resources = resolved.as_ref();
         Ok(Self {
             next: 0,
             witness: super::witness::Witness::find(resources.key()).unwrap(),
         })
     }
-    async fn observe(
-        &mut self, ctx: &ObserverContext<'_, super::witness::Witness, harmos_sidecar::Publisher<Flood>>,
-    ) -> Result<(), harmos_sidecar::PublishError> {
+    async fn observe(&mut self, ctx: &ObserverContext<'_, harmos_sidecar::Publisher<Flood>>) -> Result<(), harmos_sidecar::PublishError> {
         if self.next == FLOOD_ROWS {
             return Ok(());
         }
@@ -726,36 +729,40 @@ impl harmos_operations::lifecycle::Policy for Flood {
     const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(description = "Publishes Faster Than Its Host Ingests.", id = "flood", provides = (), requires(harmos_operations::streams::Publish),
-    observers = FloodObservers, streams(FloodRows))]
-impl harmos_runtime::Plugin for Flood {
+impl harmos_runtime::Lifecycle for Flood {
     type Config = String;
     type Context = harmos_sidecar::Supervisor;
-    type Resources = super::witness::Witness;
     type Error = harmos_sidecar::Refusal;
-    fn prepare(key: String) -> Result<Self, Self::Error> {
+
+    async fn prepare(key: String, setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
         let resources =
             super::witness::Witness::find(&key).ok_or_else(|| harmos_sidecar::Refusal::of("publication witness unavailable"))?;
-        let attachment = harmos_sidecar::ObserverAttachment::from_catalog::<FloodObservers>(resources.clone(), Self::STREAMS)?;
-        Ok(Self { resources, attachment })
+        let attachment = harmos_sidecar::ObserverAttachment::from_catalog::<FloodObservers>(Self::STREAMS)?;
+        let plugin = Self { resources, attachment };
+        setup.resource::<super::witness::Witness>(plugin.resources.clone());
+        Ok(plugin)
     }
+
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn resources(&self) -> Arc<super::witness::Witness> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        self.attachment.bind(table)
-    }
-    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
-        Some(self.attachment.clone())
-    }
+
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         Ok(())
+    }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Publishes Faster Than Its Host Ingests.", id = "flood", requires(harmos_operations::streams::Publish),
+    observers = FloodObservers, streams(FloodRows))]
+impl harmos_runtime::Plugin for Flood {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[];
+
+    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
+        Some(self.attachment.clone())
     }
 }
 

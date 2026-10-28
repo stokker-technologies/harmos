@@ -163,34 +163,14 @@ impl harmos_runtime::operations::Operation for ParentContractDeclaration {
 /* === Private Functions === */
 
 async fn runtime() -> (Runtime<App>, Arc<Counts>) {
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let counts = Arc::new(Counts::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(counts.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ComputeContractDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(())).unwrap();
-                dependencies
-            })
-            .operation::<ParentContractDeclaration>(),
-            Lanes::Serial,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Counts>(counts.clone());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<super::Single<ComputeContractDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<super::Single<ParentContractDeclaration>>(Lanes::Serial).await.unwrap();
     (runtime, counts)
 }
 
@@ -207,7 +187,7 @@ async fn aliases_preserve_values() {
     let Error::OperationFailed { operation, source } = error else { panic!("expected authored failure") };
     assert_eq!(operation, "outcomes.compute");
     assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Instrument)));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -228,7 +208,7 @@ async fn deadlines_remain_distinct() {
     let error = runtime.operation(ParentContractDeclaration { mode: Mode::Wait }).start().await.unwrap().await.unwrap_err();
     let Error::OperationFailed { source, .. } = error else { panic!("expected parent failure") };
     assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Child(Error::OperationRefused(Refusal::TimedOut)))));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -239,26 +219,18 @@ async fn child_retries_settle_each_attempt() {
     assert_eq!((*root, *child), (3, 3));
     assert_eq!(counts.started.load(Ordering::SeqCst), 6);
     assert_eq!(counts.finished.load(Ordering::SeqCst), 6);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn failure_never_emit() {
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(Lanes::catalog())
-        .with_registration(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(Counts::default())).unwrap();
-                dependencies
-            })
-            .operation::<ComputeContractDeclaration>(),
-            Lanes::Open,
-        ))
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(catalog());
+        setup.resource(Counts::default());
+        setup.operations::<super::Single<ComputeContractDeclaration>>(Lanes::Open);
+    })
+    .await
+    .unwrap();
     let error = runtime.operation(ComputeContractDeclaration { mode: Mode::Reject }).start().await.unwrap().await.unwrap_err();
     let Error::OperationFailed { source, .. } = error else { panic!("expected authored failure") };
     assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Instrument)));
@@ -270,5 +242,5 @@ async fn failure_never_emit() {
         .filter(|entry| matches!(entry.value.source, FactSource::Work(_)))
         .collect();
     assert!(facts.is_empty());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }

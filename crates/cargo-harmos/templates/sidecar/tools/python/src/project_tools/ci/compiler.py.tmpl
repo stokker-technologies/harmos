@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/compiler.py; sha256:87b9aa2d136658dee41972e2cf51d8eadff5739bc42ce5b81b20d40fffeee608
+# Rendered by stkr project update from templates/python/ci/compiler.py; sha256:b5b4296fc6ad925cfeaca5ea6dbe096dd23bd783657b4145a8a29063f613311c
 # ***
 #
 # __PRODUCT_NAME__
@@ -72,17 +72,7 @@ def run(
     )
     if mode not in {"READ_ONLY", "READ_WRITE"}:
         raise RuntimeError("sccache: invalid backend access mode")
-    if backend == "gha":
-        if not os.environ.get("ACTIONS_RUNTIME_TOKEN") or not any(
-            os.environ.get(name) for name in ("ACTIONS_RESULTS_URL", "ACTIONS_CACHE_URL")
-        ):
-            raise RuntimeError("sccache: Actions runtime storage credentials are unavailable")
-        environment.update(
-            SCCACHE_GHA_ENABLED="true",
-            SCCACHE_GHA_RW_MODE=mode,
-            SCCACHE_GHA_VERSION="stkr-v5",
-        )
-    elif backend == "s3":
+    if backend == "s3":
         if not os.environ.get("STKR_SCCACHE_BUCKET") or not os.environ.get("STKR_SCCACHE_REGION"):
             raise RuntimeError("sccache: S3 bucket and region are required")
         environment.update(
@@ -93,14 +83,16 @@ def run(
         )
         if endpoint := os.environ.get("STKR_SCCACHE_ENDPOINT"):
             environment["SCCACHE_ENDPOINT"] = endpoint
-    elif backend == "disk" and os.environ.get("STKR_CI_SIMULATE") == "1":
+    elif backend == "disk":
+        if not os.environ.get("STKR_SCCACHE_DIR"):
+            raise RuntimeError("sccache: an explicit disk cache directory is required")
         directory = Path(os.environ["STKR_SCCACHE_DIR"])
         directory.mkdir(parents=True, exist_ok=True)
-        environment["SCCACHE_DIR"] = str(directory.resolve())
+        environment.update(SCCACHE_DIR=str(directory.resolve()), SCCACHE_LOCAL_RW_MODE=mode)
     else:
-        raise RuntimeError("sccache: a supported remote backend is required")
+        raise RuntimeError("sccache: a supported explicit backend is required")
     with tempfile.TemporaryDirectory(prefix="stkr-sccache-") as temporary:
-        # Ignore Persistent Runner Configuration And Never Fall Back To Its Local Store.
+        # Ignore Persistent Runner Configuration And Use Only The Declared Store.
         configuration = Path(temporary) / "config"
         configuration.write_text("", encoding="utf-8")
         environment.update(
@@ -211,7 +203,7 @@ def _execute(
                         timeout=10,
                     )
                     information = json.loads(readiness.stdout)
-                    scheme = "Local disk:" if backend == "disk" else ("ghac," if backend == "gha" else "s3,")
+                    scheme = "Local disk:" if backend == "disk" else "s3,"
                     if not information.get("cache_location", "").startswith(scheme):
                         raise ValueError(f"unexpected cache location scheme; expected {scheme.rstrip(',:')}")
                     if not str(information.get("version", "")).startswith(SERIES):

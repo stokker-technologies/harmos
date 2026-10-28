@@ -66,7 +66,7 @@ pub struct ObserverActivation {
 
 impl<B: ObserverBackend> Runner for Backend<B> {
     fn resources(&self) -> TypeId {
-        TypeId::of::<B::Resources>()
+        TypeId::of::<harmos_sdk::ExecutionContext>()
     }
 
     fn spawn(self: Arc<Self>, start: Start) -> (Task<Outcome>, Arc<dyn Settlement>) {
@@ -96,7 +96,7 @@ impl<B: ObserverBackend> Runner for Backend<B> {
                 if !admitted {
                     return Ok(());
                 }
-                let resources = resources.downcast::<B::Resources>().map_err(|_| Error::InvalidInput {
+                let resources = resources.downcast::<harmos_sdk::ExecutionContext>().map_err(|_| Error::InvalidInput {
                     field: "observer scope",
                     reason: "resource type differs from the registered backend",
                 })?;

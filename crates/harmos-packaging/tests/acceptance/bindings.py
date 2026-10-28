@@ -224,6 +224,42 @@ def dynamic(target: Path, alpha: Path, beta: Path) -> None:
     )
 
 
+def identities(target: Path, alpha: Path, beta: Path) -> None:
+    """Project The Same Identity Cases Parsed By Rust Into Generated Python."""
+    projector = _projector(_imported(alpha, beta)[0])
+    for value, valid in json.load(sys.stdin):
+        contract = _contract()
+        contract["operation"]["id"] = value
+        accepted = valid and len(value.encode("utf-8")) <= 256
+        try:
+            operation = projector(contract)
+        except ValueError:
+            assert not accepted, repr(value)
+        else:
+            assert accepted, repr(value)
+            assert operation.id == value
+
+
+def owners(target: Path, alpha: Path, beta: Path) -> None:
+    """Use The Domain Owner Table In The Exported Validator And Projector."""
+    package = _imported(alpha, beta)[0]
+    operation_module = importlib.import_module(f"{package.__name__}.operation")
+    projector = _projector(package)
+    for owner, valid in json.load(sys.stdin):
+        assert operation_module.owner_segment(owner) == valid, repr(owner)
+        # Dots Separate The Owner From Its Local Name In Qualified Ids.
+        if "." in owner:
+            continue
+        contract = _contract()
+        contract["operation"]["id"] = f"{owner}.storage.read_file"
+        try:
+            projected = projector(contract)
+        except ValueError:
+            assert not valid, repr(owner)
+        else:
+            assert valid and projected.id == contract["operation"]["id"], repr(owner)
+
+
 def refusals(target: Path, alpha: Path, beta: Path) -> None:
     """Malformed Graphs, Exceeded Budgets And Foreign Codecs Are Refused."""
     loader = _projector(_imported(alpha, beta)[0])
@@ -604,6 +640,8 @@ if __name__ == "__main__":
         "typing": typing,
         "install": install,
         "dynamic": dynamic,
+        "identities": identities,
+        "owners": owners,
         "refusals": refusals,
         "aggregate": aggregate,
     }[scene](*arguments)

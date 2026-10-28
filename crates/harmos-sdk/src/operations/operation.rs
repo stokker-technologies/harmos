@@ -199,7 +199,7 @@ impl<I: crate::Portable, T: crate::Portable> Shape for (Stream<I>, Stream<T>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operations::{Dependencies, RegistrationBatch};
+    use crate::operations::{RegistrationBatch, ResourceSet};
 
     #[crate::operation(harmos_path = crate, resources = [u64], id = "test.increment", response = u64,
         policy = crate::OperationPolicy {
@@ -231,16 +231,16 @@ mod tests {
 
     #[test]
     fn declared_resources_and_attempt_clones() {
-        let missing = RegistrationBatch::new(Dependencies::new()).operation::<Increment>();
-        assert!(missing.operations[0].verify_resources(&[]).is_err());
-        assert!(missing.operations[0].verify_resources(&[TypeId::of::<u64>()]).is_ok());
-        let mut dependencies = Dependencies::new();
+        let missing = RegistrationBatch::new().operation::<Increment>();
+        assert!(missing.operations[0].verify_resources(&ResourceSet::new(), &[]).is_err());
+        assert!(missing.operations[0].verify_resources(&ResourceSet::new(), &[TypeId::of::<u64>()]).is_ok());
+        let mut dependencies = ResourceSet::new();
         dependencies.insert(Arc::new(2_u64)).unwrap();
-        let batch = RegistrationBatch::new(dependencies).operation::<Increment>();
+        let batch = RegistrationBatch::new().operation::<Increment>();
         let factory = &batch.operations[0];
-        factory.verify_resources(&[]).unwrap();
-        let mut instance = factory.prepare_native(Box::new(Increment { value: 5 }), Box::new(())).unwrap();
-        let context = ExecutionContext::new(Dependencies::new(), CallContext::default());
+        factory.verify_resources(&dependencies, &[]).unwrap();
+        let mut instance = factory.prepare_native(dependencies, Box::new(Increment { value: 5 }), Box::new(())).unwrap();
+        let context = ExecutionContext::new(ResourceSet::new(), CallContext::default());
         ready(instance.initialize(context.clone())).unwrap();
         for _ in 0..2 {
             let answer = ready(instance.run(context.clone())).unwrap().restore::<u64>().unwrap();

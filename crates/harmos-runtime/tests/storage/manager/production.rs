@@ -15,7 +15,7 @@
 
 // Standard Library Imports
 use std::num::NonZeroUsize;
-use std::sync::{Arc, atomic::Ordering};
+use std::sync::atomic::Ordering;
 
 // Third Party Imports
 
@@ -44,14 +44,7 @@ use harmos_runtime::storage::{FilePhase, MutationId, StagedFile};
 
 async fn fixture() -> Fixture {
     let f = Fixture::new(config()).await;
-    f.runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
-            crate::storage::operations::Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    f.runtime.operations.register::<harmos_operations::Storage>(crate::storage::operations::Lanes::Open).await.unwrap();
     f
 }
 fn key(f: &Fixture, key: &str) -> MutationId {
@@ -274,14 +267,7 @@ async fn finish_reconciles_lost() {
 #[tokio::test]
 async fn retries_never_multiply() {
     let f = Fixture::new(config()).await;
-    f.runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
-            crate::storage::operations::Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    f.runtime.operations.register::<harmos_operations::Storage>(crate::storage::operations::Lanes::Open).await.unwrap();
     let request = harmos_operations::storage::CreateFile {
         mutation: key(&f, "create"),
         metadata: metadata("retry-budget"),

@@ -121,10 +121,7 @@ fn system_identity(id: &DefinitionId) -> Result<Option<(FactSource, String)>, &'
 
     if let Some(namespaced) = id.as_str().strip_prefix("harmos:sidecar/") {
         let (owner, name) = namespaced.split_once('/').ok_or("a sidecar fact id must contain its local fact name")?;
-        if !owner.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
-            || !owner.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
-            || name.is_empty()
-        {
+        if !crate::identity::segment(owner) || name.is_empty() {
             return Err("a sidecar fact must name a portable artifact owner and nonempty fact");
         }
         return Ok(Some((FactSource::Sidecar(owner.to_owned()), name.to_owned())));
@@ -133,3 +130,26 @@ fn system_identity(id: &DefinitionId) -> Result<Option<(FactSource, String)>, &'
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sidecar_owner_parity() {
+        let cases: Vec<(String, bool)> = serde_json::from_str(include_str!("../../tests/fixtures/owner-identities.json")).unwrap();
+        for (owner, valid) in cases {
+            let fact = SystemFact {
+                source: FactSource::Sidecar(owner.clone()),
+                name: "result/sample".to_owned(),
+                version: 1,
+                payload: vec![0, 255, 17],
+            };
+            assert_eq!(crate::state::Prepared::system(&fact).is_ok(), valid, "admission {owner:?}");
+            let payload = serde_json::json!(fact.payload);
+            let restored = SystemFact::restore(&fact.identify().0, 1, &payload);
+            // A Slash Separates The Owner From The Fact Name; Only Exact Round Trips Preserve The Source.
+            assert_eq!(restored.is_ok_and(|value| value == Some(fact)), valid, "restore {owner:?}");
+        }
+    }
+}

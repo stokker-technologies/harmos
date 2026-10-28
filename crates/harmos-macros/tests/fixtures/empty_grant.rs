@@ -10,9 +10,6 @@
 
 /* === Modules === */
 
-#[path = "policy.rs"]
-mod controls;
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -22,7 +19,6 @@ mod controls;
 // Third Party Imports
 
 // Local Imports
-use harmos::operations::OperationPolicy;
 
 /* === Constants === */
 
@@ -38,18 +34,10 @@ struct Program;
 
 /* === Traits === */
 
-trait ProductPlugin {}
-
 /* === Implementations === */
 
-impl harmos::builtins::lifecycle::Policy for Program {
-    const INITIALIZATION_POLICY: OperationPolicy = controls::POLICY;
-    const SHUTDOWN_POLICY: OperationPolicy = controls::POLICY;
-}
-
-#[harmos::plugin(id = "invalid-requirement", provides = (), requires(harmos::builtins::lifecycle::Status: scope("")),
-    context = harmos::sidecar::Supervisor, config = ())]
-impl ProductPlugin for Program {}
+#[harmos::plugin(id = "invalid_requirement", requires(harmos::builtins::lifecycle::Status: scope("")))]
+impl harmos::Plugin for Program {}
 
 /* === Public Functions === */
 

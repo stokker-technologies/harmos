@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 // Local Imports
-use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RetryPolicy, WireTable};
+use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_runtime::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
 use harmos_runtime::sidecar::{Attach, Notice, Refusal, Supervised, Supervisor};
 use harmos_runtime::{Message, Runtime, services::ServiceContext, services::ServiceStatus};
@@ -80,6 +80,11 @@ pub struct Producer;
 /* === Enums === */
 
 #[harmos_runtime::catalog]
+enum HostPublications {
+    Publish(harmos_operations::streams::Publish),
+}
+
+#[harmos_runtime::catalog]
 pub enum Operations {
     PublishDeclaration(PublishDeclaration),
 }
@@ -94,13 +99,31 @@ pub enum Lanes {
 
 /* === Implementations === */
 
+impl harmos_runtime::Lifecycle for Model {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _setup: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
+        Ok(Self)
+    }
+    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl harmos_runtime::Application for Model {
     type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
     type Streams = ();
-    type Resources = ();
 }
 
 impl harmos_operations::lifecycle::Policy for Producer {
@@ -108,30 +131,31 @@ impl harmos_operations::lifecycle::Policy for Producer {
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos_runtime::plugin(description = "Publishes Timed Sample Rows Through Host Publication.", id = "publication_producer", provides = Operations, requires(harmos_operations::streams::Publish), streams(Sample))]
-impl harmos_runtime::Plugin for Producer {
+impl harmos_runtime::Lifecycle for Producer {
     type Config = ();
     type Context = Supervisor;
-    type Resources = ();
     type Error = Refusal;
-    fn prepare(_: ()) -> Result<Self, Refusal> {
+
+    async fn prepare(_: (), _setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Refusal> {
         Ok(Self)
     }
+
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         Ok(())
     }
-    fn resources(&self) -> Arc<()> {
-        Arc::new(())
-    }
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<PublishDeclaration>())
-    }
+
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Refusal> {
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Publishes Timed Sample Rows Through Host Publication.", id = "publication_producer", requires(harmos_operations::streams::Publish), streams(Sample))]
+impl harmos_runtime::Plugin for Producer {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[Operations::CATALOG];
 }
 
 impl harmos_runtime::operations::Operation for PublishDeclaration {
@@ -195,28 +219,15 @@ impl Fixture {
             },
         };
         let resident: Resident = Supervised::new(source, notices as fn(&ServiceContext<Model>, Notice));
-        let runtime = Runtime::<Model>::builder((), ())
-            .register(Lanes::catalog())
-            .operation_settings(harmos_runtime::operations::Settings {
+        let runtime = Runtime::<Model>::launch_with((), (), |setup| {
+            setup.settings().operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(NonZeroUsize::new(32 * 1024 * 1024).unwrap()),
                 ..Default::default()
-            })
-            .runtime()
-            .await
-            .unwrap();
-        runtime
-            .operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(resident.clone())).unwrap();
-                    dependencies
-                })
-                .operation::<harmos_operations::streams::Publish>(),
-                Lanes::Open,
-            ))
-            .await
-            .unwrap();
+            });
+        })
+        .await
+        .unwrap();
+        runtime.operations.register::<HostPublications>(Lanes::Open).await.unwrap();
         runtime
             .operations
             .register_service(
@@ -227,7 +238,7 @@ impl Fixture {
                         ..harmos_runtime::services::POLICY
                     },
                 },
-                move |_: Arc<()>| {
+                move |_: Arc<harmos_sdk::ExecutionContext>| {
                     harmos_runtime::sidecar::Managed::new(
                         resident.clone(),
                         definition.clone(),

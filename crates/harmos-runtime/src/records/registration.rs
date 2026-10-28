@@ -120,7 +120,7 @@ impl Registry {
     }
 
     pub(super) fn reserve(self: &Arc<Self>, owner: &str, schema: SchemaKey, graph: Arc<Schema>) -> Result<Pending> {
-        if !harmos_domain::artifact_subset(owner) || owner.len() > NAME_BYTES || schema.id.as_str().len() > NAME_BYTES {
+        if !harmos_domain::identity::segment(owner) || owner.len() > NAME_BYTES || schema.id.as_str().len() > NAME_BYTES {
             return Err(Error::InvalidInput {
                 field: "record schema",
                 reason: "invalid or oversized identity",

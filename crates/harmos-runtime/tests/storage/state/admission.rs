@@ -76,6 +76,27 @@ pub enum ModelLanes {
     #[default]
     Open,
 }
+impl harmos_runtime::Lifecycle for Model {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 impl Application for Model {
     type Lanes = ModelLanes;
@@ -83,7 +104,6 @@ impl Application for Model {
     type Transaction = Transactions;
     type Record = Records;
     type Streams = ();
-    type Resources = ();
 }
 
 impl harmos_runtime::state::Transaction<u64> for Advance {
@@ -196,25 +216,28 @@ async fn journal_awaits_data() {
         policy.clone(),
     )
     .unwrap();
-    let runtime = Runtime::<Model>::builder(0, ())
-        .register(Transactions::catalog())
-        .register(Records::catalog())
-        .managed_storage(harmos_runtime::config::ManagedStorageSettings {
-            replay: ReadLimits {
-                rows: NonZeroUsize::new(1).unwrap(),
-                bytes: NonZeroUsize::new(64 * 1024).unwrap(),
-            },
-            capture: ReadLimits {
-                rows: NonZeroUsize::new(4).unwrap(),
-                bytes: NonZeroUsize::new(16 * 1024).unwrap(),
-            },
-            snapshots: None,
-            journal_tail: 1024,
-        })
-        .store_records(Projection)
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
+    let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
+        setup
+            .settings()
+            .storage(&storage)
+            .register(Transactions::catalog())
+            .register(Records::catalog())
+            .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                replay: ReadLimits {
+                    rows: NonZeroUsize::new(1).unwrap(),
+                    bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+                },
+                capture: ReadLimits {
+                    rows: NonZeroUsize::new(4).unwrap(),
+                    bytes: NonZeroUsize::new(16 * 1024).unwrap(),
+                },
+                snapshots: None,
+                journal_tail: 1024,
+            })
+            .store_records(Projection);
+    })
+    .await
+    .unwrap();
     storage.write_schema(waveforms::schema(), waveforms::definition()).await.unwrap();
     let before = storage.flush().await.unwrap();
 
@@ -265,5 +288,5 @@ async fn journal_awaits_data() {
     }
     drop(view);
     storage.close().await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }

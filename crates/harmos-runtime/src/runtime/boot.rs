@@ -16,6 +16,7 @@
 // Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -74,6 +75,7 @@ struct Retained {
 }
 
 pub(super) struct Boot<A: Application> {
+    pub(super) application: Option<super::launch::ApplicationCleanup<A>>,
     pub(super) identity: Arc<()>,
     pub(super) storage: Option<StorageManager<crate::storage::ErasedCatalog>>,
     pub(super) runtime: Option<Runtime<A>>,
@@ -100,7 +102,7 @@ pub enum BootstrapStatus {
 
 impl<A: Application> Startup<A> {
     pub(super) fn new(builder: super::Builder<A>, storage: Option<StorageManager<crate::storage::ErasedCatalog>>) -> Self {
-        let cleanup = BootstrapCleanup::new();
+        let cleanup = builder.cleanup.clone();
         let receipt = cleanup.clone();
         let future = Box::pin(async move {
             let outcome = builder.boot(storage.as_ref(), receipt.clone()).await;
@@ -108,10 +110,6 @@ impl<A: Application> Startup<A> {
             outcome
         });
         Self { future: Some(future), cleanup }
-    }
-
-    pub fn cleanup(&self) -> BootstrapCleanup {
-        self.cleanup.clone()
     }
 }
 
@@ -136,7 +134,7 @@ impl<A: Application> Drop for Startup<A> {
 }
 
 impl BootstrapCleanup {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let (status, _) = watch::channel(BootstrapStatus::Starting);
         Self {
             shared: Arc::new(CleanupState {
@@ -216,7 +214,7 @@ impl BootstrapCleanup {
         self.run(owner);
     }
 
-    fn settle_unowned(&self) {
+    pub(super) fn settle_unowned(&self) {
         let retained = self.shared.retained.lock().expect("bootstrap cleanup lock");
         if retained.owner.is_none() && self.status() == BootstrapStatus::Starting {
             self.shared.status.send_replace(BootstrapStatus::Settled);
@@ -278,6 +276,7 @@ impl<A: Application> Boot<A> {
         }
 
         Ok(Self {
+            application: None,
             identity,
             storage: storage.cloned(),
             runtime: None,
@@ -296,6 +295,11 @@ impl<A: Application> Boot<A> {
     }
 
     pub(super) async fn close(&mut self) -> Result<()> {
+        if self.runtime.is_none()
+            && let Some(application) = &self.application
+        {
+            application.settle().await.map_err(|source| crate::Error::TaskFailed { domain: "application cleanup", source })?;
+        }
         if self.runtime.is_none() {
             if let Some(state) = self.state.take() {
                 state.seal();
@@ -306,7 +310,7 @@ impl<A: Application> Boot<A> {
             self.writer.take();
         }
         let result = if let Some(runtime) = &self.runtime {
-            runtime.stop().await.map(|_| ())
+            runtime.shutdown().await.map(|_| ())
         } else if let Some(storage) = &self.storage {
             storage.close().await
         } else {
@@ -321,22 +325,90 @@ impl<A: Application> Boot<A> {
         result
     }
 
-    pub(super) fn retain_cleanup(&mut self) -> Option<Cleanup> {
-        if let Some(runtime) = self.runtime.take() {
-            let runtime = Arc::new(runtime);
-            return Some(Cleanup {
-                receipt: Arc::downgrade(&self.cleanup.shared),
-                close: Arc::new(move || {
-                    let runtime = Arc::clone(&runtime);
-                    Box::pin(async move { runtime.stop().await.map(|_| ()) })
-                }),
-            });
+    pub(super) async fn reject(mut self, source: super::Incompatible) -> super::Incompatible {
+        match self.close().await {
+            Ok(()) => {
+                self.cleanup.shared.status.send_replace(BootstrapStatus::Settled);
+                source
+            }
+            Err(failure) => {
+                let failure = Arc::new(failure);
+                let retained = self.retain_cleanup(true);
+                if retained.is_some() {
+                    self.cleanup.failed(retained.clone(), Arc::clone(&failure));
+                } else {
+                    self.cleanup.shared.status.send_replace(BootstrapStatus::Settled);
+                }
+                super::Incompatible {
+                    cause: super::Cause::Cleanup {
+                        source: Box::new(source),
+                        failure: crate::Error::TaskFailed {
+                            domain: "bootstrap cleanup",
+                            source: failure,
+                        },
+                    },
+                    cleanup: retained,
+                }
+            }
         }
-        self.storage.take().map(|storage| Cleanup {
+    }
+
+    pub(super) fn retain_cleanup(&mut self, failure_reported: bool) -> Option<Cleanup> {
+        let state = self.state.take();
+        let writer = self.writer.take();
+        let runtime = self.runtime.take().filter(|runtime| !failure_reported || !physically_settled(runtime));
+        let application = self.application.take();
+        let storage = self.storage.take().filter(|storage| !storage.status().closed);
+        self.armed = false;
+        if runtime.is_none() && storage.is_none() && writer.is_none() && state.is_none() && application.is_none() {
+            return None;
+        }
+        let writer = Arc::new(tokio::sync::Mutex::new(writer));
+        let runtime = runtime.map(Arc::new);
+        let failure_reported = Arc::new(AtomicBool::new(false));
+        Some(Cleanup {
             receipt: Arc::downgrade(&self.cleanup.shared),
             close: Arc::new(move || {
+                let state = state.clone();
+                let writer = Arc::clone(&writer);
+                let runtime = runtime.clone();
                 let storage = storage.clone();
-                Box::pin(async move { storage.close().await })
+                let application = application.clone();
+                let failure_reported = failure_reported.clone();
+                Box::pin(async move {
+                    if runtime.is_none() {
+                        if let Some(application) = application {
+                            application
+                                .settle()
+                                .await
+                                .map_err(|source| crate::Error::TaskFailed { domain: "application cleanup", source })?;
+                        }
+                        if let Some(state) = state {
+                            state.seal();
+                        }
+                        let mut writer = writer.lock().await;
+                        if let Some(task) = writer.as_mut() {
+                            let _ = task.await;
+                        }
+                        writer.take();
+                    }
+                    if let Some(runtime) = runtime {
+                        match runtime.shutdown().await {
+                            Err(source) if physically_settled(&runtime) => {
+                                if failure_reported.swap(true, Ordering::AcqRel) {
+                                    Ok(())
+                                } else {
+                                    Err(source)
+                                }
+                            }
+                            outcome => outcome.map(|_| ()),
+                        }
+                    } else if let Some(storage) = storage {
+                        storage.close().await
+                    } else {
+                        Ok(())
+                    }
+                })
             }),
         })
     }
@@ -353,50 +425,19 @@ impl<A: Application> Drop for Boot<A> {
         if !self.armed {
             return;
         }
-        let state = self.state.take();
-        let writer = self.writer.take();
-        let runtime = self.runtime.take();
-        let storage = self.storage.take();
-        if runtime.is_none() && storage.is_none() && writer.is_none() {
-            return;
+        if let Some(owner) = self.retain_cleanup(false) {
+            self.cleanup.cancelled(owner);
         }
-        // Retain Partial Writer And StateManager Ownership Alongside The Full Runtime
-        let writer = Arc::new(tokio::sync::Mutex::new(writer));
-        let runtime = runtime.map(Arc::new);
-        let owner = Cleanup {
-            receipt: Arc::downgrade(&self.cleanup.shared),
-            close: Arc::new(move || {
-                let state = state.clone();
-                let writer = Arc::clone(&writer);
-                let runtime = runtime.clone();
-                let storage = storage.clone();
-                Box::pin(async move {
-                    if runtime.is_none() {
-                        if let Some(state) = state {
-                            state.seal();
-                        }
-                        let mut writer = writer.lock().await;
-                        if let Some(task) = writer.as_mut() {
-                            let _ = task.await;
-                        }
-                        writer.take();
-                    }
-                    if let Some(runtime) = runtime {
-                        runtime.stop().await.map(|_| ())
-                    } else if let Some(storage) = storage {
-                        storage.close().await
-                    } else {
-                        Ok(())
-                    }
-                })
-            }),
-        };
-        self.cleanup.cancelled(owner);
     }
 }
 
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn physically_settled<A: Application>(runtime: &Runtime<A>) -> bool {
+    let stopping = runtime.stopping.lock().expect("runtime transition is healthy");
+    matches!(&*stopping, super::Stopping::Closing { outcome, .. } if outcome.get().is_some())
+}
 
 /* === Tests === */

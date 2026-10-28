@@ -79,12 +79,13 @@ impl Resources {
 }
 
 impl<const MODE: u8, const INTERVAL_MS: u64> Observer<()> for Watch<MODE, INTERVAL_MS> {
-    type Resources = Arc<Resources>;
     type Error = std::io::Error;
     const ID: &'static str = "lifecycle";
     const INTERVAL: Duration = Duration::from_millis(INTERVAL_MS);
 
-    async fn initialize(resources: &Arc<Resources>) -> Result<Self, Self::Error> {
+    async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Self::Error> {
+        let resolved = context.resource::<Resources>().unwrap();
+        let resources = &resolved;
         let constructed: Result<Self, Self::Error> = async move { Ok(Self(resources.clone(), false)) }.await;
         let mut observer = constructed?;
         let started: Result<(), Self::Error> = async {
@@ -106,7 +107,7 @@ impl<const MODE: u8, const INTERVAL_MS: u64> Observer<()> for Watch<MODE, INTERV
         Ok(observer)
     }
 
-    async fn observe(&mut self, _: &ObserverContext<'_, Arc<Resources>, ()>) -> Result<(), Self::Error> {
+    async fn observe(&mut self, _: &ObserverContext<'_, ()>) -> Result<(), Self::Error> {
         self.0.ticks.fetch_add(1, Ordering::SeqCst);
         self.0.progress.send_replace(());
         assert_ne!(MODE, 1, "callback panic");
@@ -149,8 +150,8 @@ impl<const MODE: u8, const INTERVAL_MS: u64> Drop for Watch<MODE, INTERVAL_MS> {
 
 /* === Private Functions === */
 
-fn activity<S: Observer<(), Resources = Arc<Resources>>>(resources: &Arc<Resources>) -> Activity {
-    Instance::<Arc<Resources>, ()>::of::<S>().activate(Arc::new(resources.clone()), ()).unwrap()
+fn activity<S: Observer<()>>(resources: &Arc<Resources>) -> Activity {
+    Instance::<()>::of::<S>().activate(super::observer_context(resources.clone()), ()).unwrap()
 }
 
 async fn count(resources: &Resources, value: fn(&Resources) -> &AtomicUsize, minimum: usize) {
@@ -214,9 +215,9 @@ async fn cancelled_initialization_unready() {
 #[tokio::test]
 async fn binding_panic_cause() {
     let resources = Resources::new();
-    let refused = Instance::<Arc<Resources>, ()>::of::<Watch<0>>()
+    let refused = Instance::<()>::of::<Watch<0>>()
         .with_context::<()>(|_| panic!("binding refused"))
-        .activate(Arc::new(resources.clone()), ());
+        .activate(super::observer_context(resources.clone()), ());
     assert!(matches!(refused, Err(ObserverError::BindingPanicked)));
     assert_eq!(resources.attempts.load(Ordering::SeqCst), 0);
 }
@@ -361,12 +362,12 @@ async fn slow_stop_retained() {
 async fn dropped_lease_cleans() {
     // Dropping a bare activity skips stop and cleanup; the host owns
     // them, so a dropped lease still stops and cleans up the observer.
-    let runtime = super::runtime().await;
-    let manager = &runtime.operations;
-    manager.register_native_observer(Instance::<Arc<Resources>, ()>::of::<Watch<0>>(), |_| ()).unwrap();
     let resources = Resources::new();
+    let runtime = super::runtime_with(resources.clone()).await;
+    let manager = &runtime.operations;
+    manager.register_native_observer(Instance::<()>::of::<Watch<0>>(), |_| ()).unwrap();
     resources.initialization.add_permits(1);
-    let lease = manager.submit_with_resources_at("lifecycle", Arc::new(resources.clone())).await.unwrap();
+    let lease = manager.submit_resident("lifecycle").await.unwrap();
     let key = super::key(manager, &lease);
     phase(manager, &key, RUNNING).await;
     drop(lease);
@@ -381,7 +382,7 @@ async fn dropped_lease_cleans() {
     assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
     assert_eq!(resources.finalizations.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]

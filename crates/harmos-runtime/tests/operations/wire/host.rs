@@ -21,6 +21,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 // Third Party Imports
 
 // Local Imports
+use super::Lanes;
 use super::cases::Text;
 use harmos_domain::inventory::contracts::Required;
 use harmos_domain::plugin::Grant;
@@ -190,17 +191,10 @@ impl PluginLifecycle for Host {
         if definition.id == "provider" {
             let scope = endpoint.scope().unwrap();
             self.scope = Some(scope.clone());
-            resources.registration = Some(self.operations.stage_plugin(scope, |bindings| {
-                bindings.register(harmos_runtime::RegistrationExt::lane(
-                    harmos_runtime::RegistrationBatch::new({
-                        let mut dependencies = harmos_runtime::Dependencies::new();
-                        dependencies.insert(self.owner.clone()).unwrap();
-                        dependencies
-                    })
-                    .operation::<ControlDeclaration>(),
-                    super::Lanes::Open,
-                ))
-            })?);
+            resources.registration = Some(
+                self.operations
+                    .stage_plugin(scope, |bindings| bindings.operations::<crate::operations::Single<ControlDeclaration>>(Lanes::Open))?,
+            );
             assert!(matches!(
                 self.operations.submit::<ControlDeclaration>(ControlDeclaration::from("staged")),
                 Err(Error::NotReady { .. })
@@ -267,29 +261,34 @@ fn requiring(required: Vec<Required>) -> PluginDefinitions {
     PluginDefinitions::new(declared, []).unwrap()
 }
 
+async fn runtime_with_resources(
+    preparation_bytes: NonZeroUsize, owner: Arc<Owner>, core_owner: Option<Arc<CoreOwner>>,
+) -> harmos_runtime::Runtime<super::Bank> {
+    crate::operations::fixture::runtime_with(|setup| {
+        setup.resource::<Owner>(owner);
+        if let Some(core_owner) = core_owner {
+            setup.resource::<CoreOwner>(core_owner);
+        }
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(preparation_bytes),
+            ..Default::default()
+        });
+    })
+    .await
+}
+
 /* === Tests === */
 
 #[tokio::test]
 async fn host_requirements_route() {
     use harmos_operations::streams::Publish;
-    let runtime = super::runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
     let owner = Arc::new(CoreOwner::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(owner.clone()).unwrap();
-                dependencies
-            })
-            .operation::<CorePublication>(),
-            super::Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let host_owner = Arc::new(Owner::default());
+    let runtime = runtime_with_resources(NonZeroUsize::new(4096).unwrap(), host_owner.clone(), Some(owner.clone())).await;
+    runtime.operations.register::<crate::operations::Single<CorePublication>>(Lanes::Open).await.unwrap();
     let mut host = Host {
         operations: runtime.operations.clone(),
-        owner: Arc::new(Owner::default()),
+        owner: host_owner,
         scope: None,
         callers: BTreeMap::new(),
     };
@@ -320,32 +319,22 @@ async fn host_requirements_route() {
 
     // Root registration cannot manufacture another host owner.
     assert!(matches!(
-        runtime
-            .operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(owner.clone()).unwrap();
-                    dependencies
-                })
-                .operation::<CorePublication>(),
-                super::Lanes::Open
-            ))
-            .await,
+        runtime.operations.register::<crate::operations::Single<CorePublication>>(Lanes::Open).await,
         Err(Error::AlreadyRegistered { .. })
     ));
     runtime.operations.validate_requirements(&chosen).unwrap();
     manager.shutdown(&mut host).await.unwrap();
     assert!(matches!(caller.submit::<Publish>(harmos_operations::streams::Publish::default()), Err(Error::OperationCaller { .. })));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn host_visibility_enforced() {
-    let runtime = super::runtime_with_preparation(NonZeroUsize::new(128).unwrap()).await;
+    let host_owner = Arc::new(Owner::default());
+    let runtime = runtime_with_resources(NonZeroUsize::new(128).unwrap(), host_owner.clone(), None).await;
     let mut host = Host {
         operations: runtime.operations.clone(),
-        owner: Arc::new(Owner::default()),
+        owner: host_owner,
         scope: None,
         callers: BTreeMap::new(),
     };
@@ -402,5 +391,5 @@ async fn host_visibility_enforced() {
     assert_eq!(*runtime.operation(ControlDeclaration::from("replacement")).run().await.unwrap(), "replacement");
     manager.shutdown(&mut host).await.unwrap();
     assert!(runtime.operation(ControlDeclaration::from("closed")).start().await.is_err());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }

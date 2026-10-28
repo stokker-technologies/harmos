@@ -19,7 +19,7 @@
 
 // Local Imports
 use super::{Bank, Ledger, catalog, streams};
-use harmos_runtime::{Builder, Runtime};
+use harmos_runtime::{Runtime, Setup};
 
 /* === Constants === */
 
@@ -38,24 +38,29 @@ use harmos_runtime::{Builder, Runtime};
 /* === Public Functions === */
 
 pub async fn runtime() -> Runtime<Bank> {
-    booted(Ledger::default(), |builder| builder).await
+    booted(Ledger::default(), |_| {}).await
 }
 
 pub async fn streaming() -> Runtime<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(streams())
-        .runtime()
-        .await
-        .expect("a memory-only boot recovers nothing")
+    Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(catalog());
+        setup.settings().register(streams());
+    })
+    .await
+    .expect("a memory-only boot recovers nothing")
 }
 
 pub async fn runtime_from(origin: Ledger) -> Runtime<Bank> {
-    booted(origin, |builder| builder).await
+    booted(origin, |_| {}).await
 }
 
-pub async fn booted(origin: Ledger, attach: impl FnOnce(Builder<Bank>) -> Builder<Bank>) -> Runtime<Bank> {
-    attach(Runtime::<Bank>::builder(origin, ()).register(catalog())).runtime().await.expect("a memory-only boot recovers nothing")
+pub async fn booted(origin: Ledger, attach: impl FnOnce(&mut Setup<Bank>)) -> Runtime<Bank> {
+    Runtime::<Bank>::launch_with(origin, (), |setup| {
+        setup.settings().register(catalog());
+        attach(setup);
+    })
+    .await
+    .expect("a memory-only boot recovers nothing")
 }
 
 /* === Private Functions === */

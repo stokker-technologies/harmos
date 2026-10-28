@@ -68,16 +68,15 @@ fn corner() -> [Point; 3] {
 async fn guest_composition_walks() {
     let _report = crate::report::system();
     // Scene 1: The Host Boots Without Any Guest Operation
-    let runtime = Runtime::builder(support::Ledger::default(), ())
-        .register(Lanes::catalog())
-        .register(support::catalog())
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = Runtime::<support::Bank>::launch_with(support::Ledger::default(), (), |setup| {
+        setup.settings().register(support::catalog());
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .expect("an empty ledger has nothing to recover");
+        });
+    })
+    .await
+    .expect("an empty ledger has nothing to recover");
     assert!(runtime.plugin.status(PLUGIN).is_none());
 
     // Scene 2: The Stamped Schematic Guest Declares Itself Before Instantiation
@@ -148,7 +147,7 @@ async fn guest_composition_walks() {
     assert!(runtime.operation(route()).run().await.is_err());
 
     // Scene 9: The Host Stops Cleanly
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */

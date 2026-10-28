@@ -424,7 +424,7 @@ pub const fn encode_identity<const N: usize>(facility: &str, id: &str, version: 
 }
 
 pub(crate) const fn valid_identity(facility: &str, owner: &str) -> bool {
-    matches!(facility.as_bytes(), b"guest" | b"sidecar") && crate::artifact_subset(owner)
+    matches!(facility.as_bytes(), b"guest" | b"sidecar") && crate::identity::segment(owner)
 }
 
 pub(crate) const fn wire<const N: usize>(out: &mut Encoder<N>, entry: &WireDeclaration) {

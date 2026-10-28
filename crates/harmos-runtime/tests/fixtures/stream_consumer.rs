@@ -7,6 +7,8 @@
  * ***
  */
 
+extern crate harmos_runtime as harmos;
+
 /* === Modules === */
 
 #[path = "../support/native_streams/plugin.rs"]

@@ -45,6 +45,27 @@ pub enum PlainLanes {
     #[default]
     Open,
 }
+impl harmos_runtime::Lifecycle for Plain {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 impl Application for Plain {
     type Lanes = PlainLanes;
@@ -52,7 +73,6 @@ impl Application for Plain {
     type Transaction = Never;
     type Record = ();
     type Streams = ();
-    type Resources = ();
 }
 
 /* === Public Functions === */
@@ -81,7 +101,7 @@ async fn cloned_read_handles() {
     let value = cloned.read(|state| state.balance(HOUSE)).await.unwrap();
     assert_eq!(value.value, 40);
     assert_eq!(value.position, redone.frontier);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -90,7 +110,7 @@ async fn state_survives_stop() {
     let manager = runtime.state.clone();
     let state = manager.state();
     manager.commit(deposit(7)).await.unwrap();
-    let through = runtime.stop().await.unwrap();
+    let through = runtime.shutdown().await.unwrap();
     assert_eq!(through, Position(1));
     assert!(manager.commit(deposit(1)).await.is_err());
     drop((manager, runtime));
@@ -101,11 +121,11 @@ async fn state_survives_stop() {
 
 #[tokio::test]
 async fn handles_share_nonclone() {
-    let runtime = Runtime::<Plain>::builder(State { value: 19 }, ()).runtime().await.unwrap();
+    let runtime = Runtime::<Plain>::launch(State { value: 19 }, ()).await.unwrap();
     let manager = runtime.state.clone();
     let state = manager.state().clone();
     let value = state.read(|state| state.value).await.unwrap();
     assert_eq!(value.value, 19);
     assert_eq!(value.position, Position::ORIGIN);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }

@@ -76,7 +76,7 @@ struct Third {
 
 /* === Enums === */
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 enum Objects {
     First(First),
     Second(Second),
@@ -115,15 +115,7 @@ async fn query_operation_batches() {
     let mut settings = config();
     settings.response.batch_rows = NonZeroUsize::new(2).unwrap();
     let fixture = Fixture::new(settings).await;
-    fixture
-        .runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     let schema = SchemaKey {
         id: Identifier::new("query-reading").unwrap(),
         version: NonZeroU32::new(1).unwrap(),
@@ -266,12 +258,11 @@ async fn query_heterogeneous_projection() {
         config(),
     )
     .unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(Lanes::catalog())
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().storage(&storage).register(catalog());
+    })
+    .await
+    .unwrap();
     storage.write_object(&First { id: "shared".into(), value: 1 }).await.unwrap();
     storage
         .write_object(&Second {
@@ -364,7 +355,7 @@ async fn query_heterogeneous_projection() {
     assert!(incompatible.next().await.is_err());
     drop(incompatible);
     storage.close().await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */

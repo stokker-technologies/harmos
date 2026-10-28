@@ -130,12 +130,40 @@ pub enum Operations {
     Desktop(desktop::Inspect),
 }
 
-let mut dependencies = harmos::Dependencies::new();
-dependencies.insert(device)?;
-use harmos::RegistrationExt;
-runtime.register(Operations::registration(dependencies).lane(Lane::Interactive)).await?;
+impl harmos::Lifecycle for Product {
+    type Config = ProductSettings;
+    type Error = DeviceError;
+    type Context = harmos::Startup<Self>;
+
+    async fn prepare(config: Self::Config, setup: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {
+        // Resources
+        let device = std::sync::Arc::new(Device::open(config.device).await?);
+        setup.resource::<Device>(device.clone());
+
+        // Lanes
+        setup.lane(Lane::Interactive, harmos::operations::LaneSettings { capacity: config.capacity });
+
+        // Operations
+        setup.operations::<Operations>(Lane::Interactive);
+        Ok(Self { device })
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> { Ok(()) }
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> { self.device.close().await }
+    async fn cleanup(&mut self) -> Result<(), Self::Error> { Ok(()) }
+}
+
+let runtime = harmos::Runtime::<Product>::launch(origin, settings).await?;
 let reading = runtime.operation(Read { channel: 3 }).retry(retry).lane(Lane::Interactive).run().await?;
+runtime.shutdown().await?;
 ```
+
+`setup.resource::<T>(value)` accepts owned or shared values and retains one
+allocation per concrete type. Independent resources with the same Rust type need
+newtypes. Launch collects duplicate resource/catalog, missing-resource and
+unknown-lane errors before initialize runs. Tests override prepared allocations
+through `Runtime::launch_with(origin, config, |setup| ...)` and use the same
+catalog composition. Owner stop/cleanup closes resources after supervised drain.
 
 `ctx.call()` exposes portable call metadata. `ctx.resource::<T>()` returns `Arc<T>` infallibly for a type listed in `resources`.
 `operations = [other::Read]` permits `ctx.operation(other::Read { channel: 3 }).await`; catalogs aggregate these callees into
@@ -150,7 +178,9 @@ plugin requirements. Explicit grants still belong to the plugin. There are three
 or their pair. Borrow endpoints with `ctx.streams() -> &Self::StreamEndpoints`; input receives serialize through an asynchronous mutex.
 Invocation builders accept `.endpoints(...)` and remain inert until `.start()` or `.run()`.
 
-IDs use dotted segments `segment(.segment)*`, each `[a-z][a-z0-9_]*`. The runtime prepends the owner once:
+Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
+Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.
+Local operation IDs use dotted segments `segment(.segment)*`, each with that same grammar. The runtime prepends the owner once:
 `temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `host.operations.cancel`, `harmos.initialize`
 and `storage.append_file`. `codec = manual` preserves an explicitly authored message codec.
 

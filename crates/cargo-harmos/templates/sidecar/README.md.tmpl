@@ -18,3 +18,10 @@ mise run test:rust:unit
 The scaffold uses the explicitly selected Harmos source revision or local checkout.
 Install `cargo-harmos` to run `mise run dev`; it is the development tool used to create this project.
 Keep generated tooling current with `stkr project update` when adopting company tooling changes.
+
+## Plugin Lifecycle
+
+`Lifecycle::prepare(config, setup)` constructs the plugin and registers shared resources
+with `setup.resource(value)`. `Plugin::CATALOGS` declares its operation catalogs.
+The owner validates setup before `initialize`, then drains work before `stop` and
+`cleanup` during shutdown. Use the `harmos` facade for contracts, execution and carrier APIs.
