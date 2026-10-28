@@ -19,11 +19,11 @@
 - [x] 3.2 Align architecture/authoring skills, generated copies and product guide with plugin placement, operation directories, declaration-only gates, the orphan rule and #58 API names; review README impact.
 - [x] 3.3 Move schematic sidecar benchmark registration into a declaration-gated module; remove item-level benchmark gates.
 - [x] 3.4 Share retained/write_all capacity admission, refresh accounting, retain exact failed writes and prove cross-file capacity release and retry behavior in storage integration tests.
-- [ ] 3.5 Verify arbitrary macro paths retain Requires/Dependent implementations; add targeted regression proof and repair only if needed.
+- [x] 3.5 Verify arbitrary macro paths retain Requires/Dependent implementations; add targeted regression proof and repair only if needed.
 - [ ] 3.6 Replace schematic story readiness guesses with a deterministic readiness signal bounded by configured policy; run at most one schematic story.
 - [ ] 3.7 Reproduce the SDK grpc hashed-field span test and fix its root cause if it fails.
-- [ ] 3.8 Exact-pin published sibling dependencies to the workspace version and check release synchronization/validation tooling.
-- [ ] 3.9 Ensure release assets include git-cliff's generated CHANGELOG.
+- [ ] 3.8 Exact-pin published sibling dependencies to the workspace version and audit release tooling; report the Hub-owned exact-pin synchronization defect under the no-sidequest limit.
+- [x] 3.9 Audit release CHANGELOG packaging: skipped implementation because Hub-owned asset staging omits the generated notes file; report this shared-tooling defect under the no-sidequest limit.
 - [ ] 3.10 Last: audit unused dependencies, refresh all workspace dependencies including breaking releases, repair local fallout and record design-changing skips; commit dependencies separately.
 - [ ] 3.11 Last: refresh every mise tool and lock; commit tools separately.
 
@@ -32,3 +32,8 @@
 - [ ] 4.1 Record targeted command outcomes and remaining defects; no full lanes, coverage, benchmarks or push.
 - [ ] 4.2 Retire transaction-invertible with stkr specification finish and commit the retirement.
 - [ ] 4.3 Write the requested report to the supplied output path, at most 25 lines.
+
+## Workflow Follow-Up
+
+- Hub release preparation matches only bare previous versions and leaves exact sibling pins stale at the next version bump. Harmos manifests now use exact pins; the shared owner still needs repair before release.
+- Hub asset staging publishes git-cliff notes as the provider release body but does not stage CHANGELOG.md as a checksummed download. No Hub changes are made during HF1 while its separate Dokime timing work is active.
