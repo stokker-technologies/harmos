@@ -14,7 +14,7 @@ The attribute still owns the undo answer. It emits a hidden S-free `Paired { typ
 
 ## Irreversible Changes
 
-`Invertible<S>` no longer requires the attribute's declaration, so an `irreversible` change that also implements it compiles; the body is dead code because dispatch never asks an irreversible change for an inverse. A coherence guard (`impl<S> Guard<S> for X` beside a blanket over `Invertible<S>`) was tried and rejected: the generic state parameter lets downstream crates implement `Invertible<_>`, so every irreversible change conflicted. The `irreversible_body` compile fixture is removed.
+Catalog dispatch detects `Invertible<S>` against its concrete state using method resolution: a probe implements inverse construction when the trait exists and otherwise borrows a fallback returning no inverse. An implementation without `inverse = …` metadata is reversible. The optional pair declaration still checks mutuality, body equality and catalog membership. The explicit `irreversible` attribute and the unanswered-undo refusal fixture are removed.
 
 ## Alternatives
 

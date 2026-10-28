@@ -65,7 +65,7 @@ struct State {
     count: u64,
 }
 
-#[harmos_runtime::transaction(id = "bench.advance", irreversible)]
+#[harmos_runtime::transaction(id = "bench.advance")]
 #[derive(Clone, Serialize, Deserialize)]
 struct Advance {
     payload: String,

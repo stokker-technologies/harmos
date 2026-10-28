@@ -77,10 +77,10 @@ assembles managed state, transaction execution, storage and replay using those
 definitions. Harmos's state manager owns live state and managed history; the
 configured storage backend supplies journal and snapshot persistence.
 
-Every transaction answers the undo question in its attribute: `inverse = Self`
-(the common case), `inverse = Other` for a paired change, or `irreversible`.
-A declared inverse is described by `Invertible`, whose `type Inverse` repeats
-the declared type:
+A transaction is reversible exactly when it implements `Invertible<S>`. Without
+that implementation the catalog treats it as an undo barrier. The optional
+`inverse = Self` or `inverse = Other` attribute checks the declared pair;
+`Invertible<S>::Inverse` must match that declaration:
 
 ```rust
 #[harmos::transaction(id = "ledger.deposit", inverse = Withdraw)]

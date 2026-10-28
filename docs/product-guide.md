@@ -929,3 +929,12 @@ authorization, generation fencing and resource lifecycle ownership.
 Protocol, artifact, envelope, journal and schema formats are v1. Only current
 shapes are supported; there are no old-peer checks, historical shape converters,
 legacy decoders or journal upgrades.
+
+## Transaction Reversibility
+
+Implement `harmos::state::Invertible<S>` with `type Inverse` and
+`fn inverse(&self, before: &S) -> Self::Inverse` for a reversible transaction.
+The catalog infers an undo barrier when that implementation is absent.
+`#[harmos::transaction(id = "ledger.deposit", inverse = Withdraw)]` optionally
+checks that the inverse declaration matches the implementation and its mutual pair.
+There is no explicit irreversibility marker.

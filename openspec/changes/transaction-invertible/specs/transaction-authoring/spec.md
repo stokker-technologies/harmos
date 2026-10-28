@@ -4,7 +4,7 @@
 
 ### Requirement: Invertible Transactions
 
-A transaction SHALL declare its undo answer in its attribute (`inverse = Self`, `inverse = Other` or `irreversible`), and a declared inverse SHALL be described by `Invertible<S>`, whose `type Inverse` names the declared change.
+A transaction SHALL be reversible exactly when it implements `Invertible<S>`. The catalog SHALL infer an undo barrier from absence of that implementation. An optional `inverse = Self` or `inverse = Other` declaration SHALL agree with `Invertible<S>::Inverse` and its mutual pair.
 
 #### Scenario: Paired Inverse
 
@@ -15,3 +15,13 @@ A transaction SHALL declare its undo answer in its attribute (`inverse = Self`, 
 
 - **WHEN** a transaction declares `inverse = Withdraw` but its `Invertible` body names another `type Inverse`
 - **THEN** catalog dispatch does not compile
+
+#### Scenario: Inferred Reversibility
+
+- **WHEN** a transaction implements `Invertible<Ledger>` without inverse metadata
+- **THEN** catalog dispatch constructs its inverse
+
+#### Scenario: Inferred Barrier
+
+- **WHEN** a transaction does not implement `Invertible<Ledger>`
+- **THEN** its committed entry blocks undo without an explicit marker

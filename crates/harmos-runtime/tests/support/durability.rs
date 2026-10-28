@@ -60,20 +60,20 @@ pub struct Withdraw {
     pub amount: i64,
 }
 
-#[harmos_runtime::transaction(id = "ledger.pay", irreversible)]
+#[harmos_runtime::transaction(id = "ledger.pay")]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Pay {
     pub effect: u64,
     pub amount: i64,
 }
 
-#[harmos_runtime::transaction(id = "ledger.bonus", irreversible)]
+#[harmos_runtime::transaction(id = "ledger.bonus")]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Bonus {
     pub amount: i64,
 }
 
-#[harmos_runtime::transaction(id = "ledger.explode", irreversible)]
+#[harmos_runtime::transaction(id = "ledger.explode")]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Explode;
 

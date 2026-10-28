@@ -41,7 +41,7 @@ type Refusal = std::convert::Infallible;
 
 struct Model;
 
-#[harmos_runtime::transaction(id = "admission.advance", irreversible)]
+#[harmos_runtime::transaction(id = "admission.advance")]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Advance {}
 

@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/runtime.md; sha256:de4df24a4608d38472d3a008d7df3acf69462726482161cc5b6590c43e3e5f0b -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/runtime.md; sha256:9482d1a7b644a2784a591471eba7936513e85b7d635640b2d4f719e4eab5ba7e -->
 
 # Runtime Composition
 
@@ -79,10 +79,10 @@ assembles managed state, transaction execution, storage and replay using those
 definitions. Harmos's state manager owns live state and managed history; the
 configured storage backend supplies journal and snapshot persistence.
 
-Every transaction answers the undo question in its attribute: `inverse = Self`
-(the common case), `inverse = Other` for a paired change, or `irreversible`.
-A declared inverse is described by `Invertible`, whose `type Inverse` repeats
-the declared type:
+A transaction is reversible exactly when it implements `Invertible<S>`. Without
+that implementation the catalog treats it as an undo barrier. The optional
+`inverse = Self` or `inverse = Other` attribute checks the declared pair;
+`Invertible<S>::Inverse` must match that declaration:
 
 ```rust
 #[harmos::transaction(id = "ledger.deposit", inverse = Withdraw)]

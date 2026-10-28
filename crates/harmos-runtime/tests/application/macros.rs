@@ -23,7 +23,7 @@ mod sheet {
     #[error("the title must not be empty")]
     pub struct Untitled;
 
-    #[harmos_runtime::transaction(id = "sheet.rename",  inverse = Self,)]
+    #[harmos_runtime::transaction(id = "sheet.rename")]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Rename {
         pub to: String,
@@ -50,7 +50,7 @@ mod sheet {
         }
     }
 
-    #[harmos_runtime::transaction(id = "sheet.erase", irreversible)]
+    #[harmos_runtime::transaction(id = "sheet.erase")]
     #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Erase;
 
@@ -857,16 +857,14 @@ async fn product_commits_refuses() {
     assert!(matches!(refused, Err(Error::Rejected(Untitled))));
     assert_eq!(runtime.state.applied(), first.position);
 
-    // The table the registration carries makes the change that declared an
-    // inverse undoable and the one that declared itself irreversible a
-    // barrier, exactly as the hand-written function does.
+    // The Catalog Infers Reversibility From The Invertible Implementation.
     handle.undo(support::alice(), Focus::all()).await.expect("a rename comes back");
     assert_eq!(title(&runtime).await, "origin");
 
     handle.commit(Erase).await.expect("accepted");
     assert!(
         matches!(handle.undo(support::alice(), Focus::all()).await, Err(Error::NothingToUndo)),
-        "an erase declared itself irreversible, so it is a barrier"
+        "an erase has no Invertible implementation, so it is a barrier"
     );
 }
 

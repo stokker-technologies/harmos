@@ -87,8 +87,7 @@ pub trait Invertible<S>: Transaction<S> {
 #[diagnostic::on_unimplemented(
     message = "`{Self}` declares no inverse",
     note = "a change answers the undo question where it is defined: `inverse = …` names the \
-            change that takes it back, `inverse = Self` says it is its own, and `irreversible` \
-            says it cannot be taken back"
+            change that takes it back, and `inverse = Self` says it is its own"
 )]
 pub trait Paired {
     type Inverse;
