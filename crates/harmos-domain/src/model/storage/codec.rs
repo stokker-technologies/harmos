@@ -579,7 +579,6 @@ impl<A: Value> Value for Many<A> {
     }
 }
 
-// One Message Holding A Pair At Tags 1 And 2.
 /* === Public Functions === */
 
 /* === Private Functions === */

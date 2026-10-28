@@ -30,7 +30,6 @@ use crate::schema::{Cardinality, Described};
 
 /* === Constants === */
 
-// The observe control runs until the host cancels it.
 pub const POLICY: OperationPolicy = OperationPolicy {
     timeout: UNBOUNDED,
     attempt_timeout: UNBOUNDED,

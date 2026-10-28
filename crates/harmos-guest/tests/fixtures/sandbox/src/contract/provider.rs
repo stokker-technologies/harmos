@@ -7,8 +7,6 @@
  * ***
  */
 
-// Provider Operation Contract And Execution.
-
 /* === --- === Definition Module === --- === */
 
 /* === Modules === */

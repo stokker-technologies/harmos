@@ -96,7 +96,6 @@ impl harmos::Lifecycle for Sandbox {
     async fn initialize(&mut self, context: &Context) -> Result<(), Self::Error> {
         *self.owner.initialized_context.lock().map_err(|error| std::io::Error::other(error.to_string()))? = Some(context.clone());
 
-        // Publication Modes
         if self.config == "publications" || self.config == "failed-publications" {
             progress(context, "initialize").await.map_err(std::io::Error::other)?;
             if self.config == "failed-publications" {
@@ -105,12 +104,10 @@ impl harmos::Lifecycle for Sandbox {
             self.check_publication_revocation = true;
         }
 
-        // Submitted Children Through The Provider Dependency
         if self.config == "submit" {
             return submitted(context).await;
         }
 
-        // Dependency Mode
         if self.config == "dependencies" {
             context
                 .call::<contract::ProviderEchoOperation>(ProviderEchoOperation { say: "initialize".into() })

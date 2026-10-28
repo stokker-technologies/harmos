@@ -7,8 +7,6 @@
  * ***
  */
 
-// Compose The Cargo Harmos Command Tree.
-
 /* === Modules === */
 
 mod bindings;

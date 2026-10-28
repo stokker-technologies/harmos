@@ -77,9 +77,8 @@ pub struct WireDeclaration {
     pub grpc: Option<super::Grpc>,
 }
 
-pub struct Contracts;
-
 // Wire Contracts Projected From Resource-Bound Operation Handlers.
+pub struct Contracts;
 
 /* === Enums === */
 
