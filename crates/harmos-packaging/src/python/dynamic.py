@@ -336,7 +336,8 @@ def from_contract(
     if (
         not isinstance(operation, Mapping)
         or not isinstance(operation.get("id"), str)
-        or re.fullmatch(r"[a-z][a-z0-9_]*", operation["id"]) is None
+        or re.fullmatch(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*", operation["id"])
+        is None
         or len(operation["id"].encode("utf-8")) > 256
         or not isinstance(fingerprint, str)
         or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None
