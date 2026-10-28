@@ -35,7 +35,7 @@ use harmos_domain::schema::{
     Cardinality, Described,
     graph::{Field, Kind, Schema},
 };
-use harmos_domain::{Aggregate, Identifier};
+use harmos_domain::{Aggregate, Identifier, QualifiedId};
 use harmos_packaging::{
     proto::Artifacts,
     python::{self, Settings},
@@ -467,6 +467,56 @@ fn dynamic_projects_contracts() {
     let exported = export();
 
     both("dynamic", &exported, &[]);
+}
+
+#[test]
+fn identity_parity() {
+    // identity::dotted Defines Operation Segments; QualifiedId Requires An Owner.
+    // Rust Has No Length Ceiling; Python Retains Its Existing 256-Byte Bound.
+    let cases = [
+        ("a".to_owned(), true),
+        ("read_2".to_owned(), true),
+        ("a0.b_2".to_owned(), true),
+        ("dokime.appearance.get_appearance".to_owned(), true),
+        ("host.storage.read_file".to_owned(), true),
+        ("a".repeat(255), true),
+        ("a".repeat(256), true),
+        ("a".repeat(257), true),
+        (format!("host.{}", "a".repeat(251)), true),
+        (format!("host.{}", "a".repeat(252)), true),
+        ("".to_owned(), false),
+        (".read".to_owned(), false),
+        ("host.".to_owned(), false),
+        ("host..read".to_owned(), false),
+        ("Host.read".to_owned(), false),
+        ("host.Read".to_owned(), false),
+        ("2host.read".to_owned(), false),
+        ("host.2read".to_owned(), false),
+        ("host.read.2file".to_owned(), false),
+        ("_host.read".to_owned(), false),
+        ("host._read".to_owned(), false),
+        ("host-name.read".to_owned(), false),
+        ("host.read-file".to_owned(), false),
+        ("host/read".to_owned(), false),
+        ("host read".to_owned(), false),
+        ("host.é".to_owned(), false),
+        ("höst.read".to_owned(), false),
+        ("host.read\n".to_owned(), false),
+        ("host.read\0".to_owned(), false),
+    ];
+    let template = Contracts::of::<Routes>().unwrap()[0].operation().clone();
+    for (value, valid) in &cases {
+        let parsed = Identifier::new(value.clone()).is_ok_and(|id| {
+            let mut operation = template.clone();
+            operation.id = id;
+            operation.validate().is_ok()
+        });
+        assert_eq!(parsed, *valid, "operation {value:?}");
+        assert_eq!(QualifiedId::parse(value).is_ok(), *valid && value.contains('.'), "qualified {value:?}");
+    }
+
+    let exported = export();
+    both("identities", &exported, &serde_json::to_vec(&cases).unwrap());
 }
 
 #[test]
