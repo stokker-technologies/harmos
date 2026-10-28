@@ -21,7 +21,7 @@
 - [x] 3.4 Share retained/write_all capacity admission, refresh accounting, retain exact failed writes and prove cross-file capacity release and retry behavior in storage integration tests.
 - [x] 3.5 Verify arbitrary macro paths retain Requires/Dependent implementations; add targeted regression proof and repair only if needed.
 - [ ] 3.6 Replace schematic story readiness guesses with a deterministic readiness signal bounded by configured policy; run at most one schematic story.
-- [ ] 3.7 Reproduce the SDK grpc hashed-field span test and fix its root cause if it fails.
+- [x] 3.7 Reproduce the SDK grpc hashed-field span test and fix its root cause if it fails.
 - [ ] 3.8 Exact-pin published sibling dependencies to the workspace version and audit release tooling; report the Hub-owned exact-pin synchronization defect under the no-sidequest limit.
 - [x] 3.9 Audit release CHANGELOG packaging: skipped implementation because Hub-owned asset staging omits the generated notes file; report this shared-tooling defect under the no-sidequest limit.
 - [ ] 3.10 Last: audit unused dependencies, refresh all workspace dependencies including breaking releases, repair local fallout and record design-changing skips; commit dependencies separately.
