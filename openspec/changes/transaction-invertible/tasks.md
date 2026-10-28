@@ -18,7 +18,7 @@
 - [x] 3.1 Infer irreversibility from absence of Invertible; migrate macro dispatch, consumers, fixtures, example, docs and skills; remove superseded refusal fixtures.
 - [x] 3.2 Align architecture/authoring skills, generated copies and product guide with plugin placement, operation directories, declaration-only gates, the orphan rule and #58 API names; review README impact.
 - [x] 3.3 Move schematic sidecar benchmark registration into a declaration-gated module; remove item-level benchmark gates.
-- [ ] 3.4 Share retained/write_all capacity admission, refresh accounting, retain exact failed writes and prove cross-file capacity release and retry behavior in storage integration tests.
+- [x] 3.4 Share retained/write_all capacity admission, refresh accounting, retain exact failed writes and prove cross-file capacity release and retry behavior in storage integration tests.
 - [ ] 3.5 Verify arbitrary macro paths retain Requires/Dependent implementations; add targeted regression proof and repair only if needed.
 - [ ] 3.6 Replace schematic story readiness guesses with a deterministic readiness signal bounded by configured policy; run at most one schematic story.
 - [ ] 3.7 Reproduce the SDK grpc hashed-field span test and fix its root cause if it fails.

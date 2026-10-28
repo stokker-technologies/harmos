@@ -352,7 +352,11 @@ range, consistency)` synchronously returns an `OpenedCapture` that owns the
 original handle and `StorageFile`. Its asynchronous `finish` retains setup,
 copy progress and exact pending bytes across errors and caller cancellation.
 Existing producer prefixes are compared before a suffix is appended;
-`acknowledged()` reports completed copy progress. Stable capture detects source
+`acknowledged()` reports completed copy progress. `StorageFile::write_retained_at`
+refreshes pending-write accounting and awaits capacity using the same admission
+path as `write_all`. It retains the original chunk across failures and caller
+cancellation; `retry_append` resends its original offset and bytes without
+cancelling production. Stable capture detects source
 changes but does not freeze concurrent writers into an atomic snapshot.
 
 `FollowFile` starts at `Beginning`, `End` or `At(offset)` and streams data with
