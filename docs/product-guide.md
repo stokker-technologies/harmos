@@ -275,6 +275,11 @@ with `builder.store_records(projection)`. Managed state requires Serde encoding
 and decoding. Backend journal-entry and checkpoint bounds remain physical storage
 limits, separate from runtime snapshot cadence and payload limits.
 
+`SnapshotPolicy.max_bytes` limits logical snapshot payload bytes at both capture
+and recovery. Harmos derives the backend read bound with the same JSON/base64
+size calculation used for write reservations; encoded queue and physical backend
+limits still apply independently.
+
 For filesystem persistence, use the shipped JSON backend:
 
 ```rust
