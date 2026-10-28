@@ -190,6 +190,58 @@ async fn snapshot_restores_state() {
 }
 
 #[tokio::test]
+async fn snapshot_restores_at_payload_limit() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = builder(policy(100)).runtime_with_storage(&storage).await.unwrap();
+    runtime.state.commit(deposit(4)).await.unwrap();
+    runtime.stop().await.unwrap();
+
+    let mut exact = policy(100);
+    exact.max_bytes = NonZeroUsize::new(store.snapshot().payload.len()).unwrap();
+    store.recovery.snapshot.lock().unwrap().take();
+    let storage = store.manager(config());
+    let runtime = builder(exact.clone()).runtime_with_storage(&storage).await.unwrap();
+    runtime.stop().await.unwrap();
+    let snapshot = store.snapshot();
+    assert_eq!(snapshot.payload.len(), exact.max_bytes.get());
+    assert!(serde_json::to_vec(&snapshot).unwrap().len() > exact.max_bytes.get());
+    store.recovery.entries.lock().unwrap().clear();
+
+    let storage = store.manager(config());
+    let runtime = builder(exact).runtime_with_storage(&storage).await.unwrap();
+    assert_eq!(balance(&runtime).await, 4);
+    assert_eq!(runtime.state.applied(), Position(1));
+    assert_eq!(runtime.state.stored(), Position(1));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn snapshot_over_payload_limit_retains_journal() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = builder(policy(100)).runtime_with_storage(&storage).await.unwrap();
+    runtime.state.commit(deposit(4)).await.unwrap();
+    runtime.stop().await.unwrap();
+
+    let mut small = policy(100);
+    small.max_bytes = NonZeroUsize::new(store.snapshot().payload.len() - 1).unwrap();
+    store.recovery.snapshot.lock().unwrap().take();
+    let storage = store.manager(config());
+    let runtime = builder(small.clone()).runtime_with_storage(&storage).await.unwrap();
+    runtime.stop().await.unwrap();
+    assert!(store.recovery.snapshot.lock().unwrap().is_none());
+    assert_eq!(storage.status().pending_bytes, 0);
+
+    let storage = store.manager(config());
+    let runtime = builder(small).runtime_with_storage(&storage).await.unwrap();
+    assert_eq!(balance(&runtime).await, 4);
+    assert_eq!(runtime.state.applied(), Position(1));
+    runtime.stop().await.unwrap();
+    assert!(store.recovery.snapshot.lock().unwrap().is_none());
+}
+
+#[tokio::test]
 async fn snapshot_resumes_durable() {
     let store = Store::new();
     let storage = store.manager(config());

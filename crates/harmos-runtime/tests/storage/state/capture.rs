@@ -17,7 +17,7 @@
 use std::num::NonZeroUsize;
 use std::sync::{
     Arc,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 // Third Party Imports
 
@@ -58,6 +58,7 @@ struct Projection {
 struct IncrementalProjection {
     calls: Arc<AtomicUsize>,
     data: Arc<Data>,
+    cancelled: Arc<AtomicBool>,
     cancel: bool,
 }
 
@@ -138,16 +139,19 @@ impl RecordProjection for IncrementalProjection {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = harmos_runtime::Result<()>> + Send + 'a>> {
         Box::pin(async move {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            let payload = vec![0; 100 * 1024];
+            // Two JSON-Encoded Records Fit Before The Partial Group Must Refuse.
+            let payload = vec![0; 50 * 1024];
             for index in 0..4 {
                 let item = Identifier::new(format!("projected-{index}")).unwrap();
                 let key = schema();
                 let input = record(&key, &item, &payload);
                 if self.cancel && index == 1 {
                     tokio::select! {
+                        biased;
                         result = output.push(input) => panic!("capacity must wait: {result:?}"),
                         _ = self.data.control.write_entered.notified() => {}
                     }
+                    self.cancelled.store(true, Ordering::SeqCst);
                     // Abandon the pending push and ignore it: the sink must
                     // still refuse the complete transaction, including record 0.
                     return Ok(());
@@ -540,6 +544,7 @@ async fn capture_reserves_actual() {
 async fn partial_projection_refused() {
     for cancel in [false, true] {
         let store = Store::new();
+        let cancelled = Arc::new(AtomicBool::new(false));
         let mut policy = config();
         policy.request.max_pending_write_bytes = NonZeroUsize::new(256 * 1024).unwrap();
         let storage = store.manager(policy);
@@ -555,6 +560,7 @@ async fn partial_projection_refused() {
             .store_records(IncrementalProjection {
                 calls: store.calls.clone(),
                 data: store.data.clone(),
+                cancelled: cancelled.clone(),
                 cancel,
             })
             .runtime_with_storage(&storage)
@@ -564,11 +570,12 @@ async fn partial_projection_refused() {
         if cancel {
             store.data.control.block_write.store(true, Ordering::SeqCst);
             let item = Identifier::new("already-accepted").unwrap();
-            storage.write_records(vec![record(&schema(), &item, &vec![0; 100 * 1024])]).await.unwrap();
+            storage.write_records(vec![record(&schema(), &item, &vec![0; 50 * 1024])]).await.unwrap();
         }
         let accepted = storage.cursor_accepted();
         assert!(runtime.state.commit(Advance { panic: false }).await.is_err());
         assert_eq!(store.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(cancelled.load(Ordering::SeqCst), cancel);
         assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 0);
         assert_eq!(storage.cursor_accepted(), accepted);
         assert_eq!(storage.status().recovery_accepted.sequence, 0);
