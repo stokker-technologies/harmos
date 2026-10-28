@@ -7,7 +7,7 @@
  * ***
  */
 
-// Disk-Backed Exact Order Statistics With Independent Clone Prefixes
+// Budgeted Exact Order Statistics With Independent Clone Prefixes
 
 /* === Modules === */
 
@@ -26,10 +26,12 @@ use std::sync::{Arc, Mutex};
 use tempfile::NamedTempFile;
 
 // Local Imports
+use super::accumulate::sort_values;
 use super::scalar::{ExactNumber, ScalarValue};
 use super::spill::io;
 use super::transform::invalid;
 use crate::Result;
+use crate::config::StorageAccumulatorSettings;
 
 /* === Constants === */
 
@@ -42,9 +44,11 @@ const BUFFER: usize = 1024 * 1024;
 
 /* === Structs === */
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub(super) struct Values {
     file: Option<Arc<Mutex<File>>>,
+    memory: Vec<[u8; SLOT]>,
+    capacity: usize,
     pub length: usize,
 }
 
@@ -55,8 +59,27 @@ pub(super) struct Values {
 /* === Implementations === */
 
 impl Values {
+    pub fn new(settings: StorageAccumulatorSettings) -> Self {
+        Self {
+            file: None,
+            memory: Vec::new(),
+            capacity: settings.memory_bytes / SLOT,
+            length: 0,
+        }
+    }
+
     pub fn push(&mut self, value: &ScalarValue) -> Result<()> {
         let slot = encode(value)?;
+        let length = self.length.checked_add(1).ok_or_else(|| invalid("order statistic count overflow"))?;
+        if self.file.is_none() && self.length < self.capacity {
+            if self.memory.len() == self.memory.capacity() {
+                let capacity = self.memory.capacity().saturating_mul(2).max(1).min(self.capacity);
+                self.memory.reserve_exact(capacity - self.memory.len());
+            }
+            self.memory.push(slot);
+            self.length = length;
+            return Ok(());
+        }
         if self.file.as_ref().is_some_and(|file| Arc::strong_count(file) > 1) {
             let mut replacement = tempfile::tempfile().map_err(io)?;
             let mut source = self.file.as_ref().unwrap().lock().map_err(|_| invalid("order statistic file poisoned"))?;
@@ -73,19 +96,36 @@ impl Values {
             self.file = Some(Arc::new(Mutex::new(replacement)));
         }
         if self.file.is_none() {
-            self.file = Some(Arc::new(Mutex::new(tempfile::tempfile().map_err(io)?)));
+            let mut file = BufWriter::with_capacity(BUFFER, tempfile::tempfile().map_err(io)?);
+            for slot in &self.memory {
+                file.write_all(slot).map_err(io)?;
+            }
+            let file = file.into_inner().map_err(|error| io(error.into_error()))?;
+            self.file = Some(Arc::new(Mutex::new(file)));
+            self.memory = Vec::new();
         }
         let mut file = self.file.as_ref().unwrap().lock().map_err(|_| invalid("order statistic file poisoned"))?;
         file.seek(SeekFrom::End(0)).map_err(io)?;
         file.write_all(&slot).map_err(io)?;
-        self.length = self.length.checked_add(1).ok_or_else(|| invalid("order statistic count overflow"))?;
+        self.length = length;
         Ok(())
     }
 
     pub fn ranks(
-        &self, lower: usize, upper: usize, mut compare: impl FnMut(&ScalarValue, &ScalarValue) -> Result<Ordering>,
+        &mut self, lower: usize, upper: usize, mut compare: impl FnMut(&ScalarValue, &ScalarValue) -> Result<Ordering>,
         check: &mut impl FnMut() -> Result<()>,
     ) -> Result<(ScalarValue, ScalarValue)> {
+        check()?;
+        if lower > upper || upper >= self.length {
+            return Err(invalid("invalid order statistic ranks"));
+        }
+        if self.file.is_none() {
+            sort_values(&mut self.memory, |left, right| {
+                check()?;
+                compare(&decode(&left)?, &decode(&right)?)
+            })?;
+            return Ok((decode(&self.memory[lower])?, decode(&self.memory[upper])?));
+        }
         let mut source = NamedTempFile::new().map_err(io)?;
         let mut original = self
             .file
@@ -210,3 +250,33 @@ fn decode(bytes: &[u8; SLOT]) -> Result<ScalarValue> {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn budget_transition() {
+        let settings = StorageAccumulatorSettings { memory_bytes: 100 * SLOT };
+        let mut values = Values::new(settings);
+        for value in (0..100).rev() {
+            values.push(&ScalarValue::Unsigned(value)).unwrap();
+            assert!(values.file.is_none());
+            assert!(values.memory.capacity() * SLOT <= settings.memory_bytes);
+        }
+        let mut memory = values.clone();
+        let expected = memory.ranks(49, 50, |a, b| Ok(a.compare(b)?), &mut || Ok(())).unwrap();
+        values.push(&ScalarValue::Unsigned(100)).unwrap();
+        assert!(values.file.is_some());
+        assert_eq!(values.memory.capacity(), 0);
+        assert_eq!(values.ranks(49, 50, |a, b| Ok(a.compare(b)?), &mut || Ok(())).unwrap(), expected);
+        // Independent Prefixes Survive Both The Transition And Disk Copy-On-Write.
+        let mut branch = values.clone();
+        values.push(&ScalarValue::Unsigned(101)).unwrap();
+        branch.push(&ScalarValue::Unsigned(102)).unwrap();
+        assert_eq!(values.ranks(101, 101, |a, b| Ok(a.compare(b)?), &mut || Ok(())).unwrap().0, ScalarValue::Unsigned(101));
+        assert_eq!(branch.ranks(101, 101, |a, b| Ok(a.compare(b)?), &mut || Ok(())).unwrap().0, ScalarValue::Unsigned(102));
+        assert_eq!(memory.length, 100);
+        assert!(memory.file.is_none());
+    }
+}

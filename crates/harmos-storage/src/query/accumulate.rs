@@ -22,6 +22,7 @@ use std::{cmp::Ordering, num::NonZeroU128};
 use super::order_stats::Values;
 use super::scalar::{self, Agg, ExactNumber, ScalarKind, ScalarValue};
 use crate::aggregate;
+use crate::config::StorageAccumulatorSettings;
 use crate::signal::Summary;
 use crate::{Aggregate, Error, Result};
 
@@ -53,6 +54,10 @@ pub struct Accumulator {
 
 impl Accumulator {
     pub fn new(agg: Agg) -> Self {
+        Self::with_settings(agg, StorageAccumulatorSettings::default())
+    }
+
+    pub fn with_settings(agg: Agg, settings: StorageAccumulatorSettings) -> Self {
         Self {
             agg,
             rows: 0,
@@ -61,7 +66,7 @@ impl Accumulator {
             selected: None,
             total: ExactNumber::new(false, 0, NonZeroU128::MIN),
             running: Summary::new(),
-            scratch: Values::default(),
+            scratch: Values::new(settings),
         }
     }
 
@@ -131,7 +136,7 @@ impl Accumulator {
         Ok(())
     }
 
-    // Exact Disk Merge Passes Poll Cancellation Without Retaining The History.
+    // Both In-Memory Sorting And Disk Merge Passes Poll Cancellation.
     fn ordered(&mut self, statistic: Aggregate, check: &mut impl FnMut() -> Result<()>) -> Result<ScalarValue> {
         let rank = match statistic {
             Aggregate::Percentile(rank) => f64::from(rank),
@@ -311,7 +316,8 @@ mod tests {
     }
     #[test]
     fn spilled_statistics_preserve_exact_values_percentiles_and_clone_branches() {
-        let mut median = Accumulator::new(Agg::Of(Aggregate::Median));
+        let settings = StorageAccumulatorSettings { memory_bytes: 0 };
+        let mut median = Accumulator::with_settings(Agg::Of(Aggregate::Median), settings);
         median.push(0, &ScalarValue::Unsigned(9_007_199_254_740_993)).unwrap();
         median.push(1, &ScalarValue::Unsigned(9_007_199_254_740_995)).unwrap();
         let mut branch = median.clone();
@@ -322,7 +328,7 @@ mod tests {
         let values = (0..7 * 24 * 60).map(|i| ((i * 19 % 101) as f64 - 50.0).sin()).collect::<Vec<_>>();
         let series = crate::signal::Series::new(&values);
         for rank in [0, 13, 50, 77, 100] {
-            let mut accumulator = Accumulator::new(Agg::Of(Aggregate::Percentile(rank)));
+            let mut accumulator = Accumulator::with_settings(Agg::Of(Aggregate::Percentile(rank)), settings);
             for (index, value) in values.iter().enumerate() {
                 accumulator.push(index as u64, &ScalarValue::Float(*value)).unwrap();
             }

@@ -91,11 +91,24 @@ pub struct StorageResponseSettings {
     pub batch_bytes: NonZeroUsize,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StorageAccumulatorSettings {
+    // Maximum Retained Numeric Slot Bytes Per Accumulator; Zero Spills Immediately.
+    pub memory_bytes: usize,
+}
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Default for StorageAccumulatorSettings {
+    fn default() -> Self {
+        Self { memory_bytes: 64 * 1024 }
+    }
+}
 
 impl StorageSettings {
     pub fn validate(&self) -> crate::Result<()> {
