@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Resource Store Specification
+
+## Purpose
+
+Define shared lifecycle setup, frozen resource ownership and constant catalog inventory for Harmos applications and plugins.
+
+## Requirements
 
 ### Requirement: Shared Lifecycle
 
