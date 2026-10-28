@@ -16,8 +16,6 @@ mod inverses;
 mod oracle;
 #[path = "../support/mod.rs"]
 mod support;
-#[path = "../support/vault.rs"]
-mod vault;
 mod atomic_records {
     use super::*;
     use serde::{Deserialize, Serialize};
@@ -132,8 +130,8 @@ use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::sidecar::{Notice, Supervised};
 use harmos_runtime::simulation::entropy;
 use harmos_runtime::{
-    Application, DefinitionId, Identified, Runtime, Setup, evidence::EvidenceKind, runtime::Catalog, runtime::Registration,
-    simulation::SimulatedRuntime, state::Focus, state::Kind, state::Transaction,
+    Application, DefinitionId, Identified, Runtime, Setup, runtime::Catalog, runtime::Registration, simulation::SimulatedRuntime,
+    state::Focus, state::Kind, state::Transaction,
 };
 use harmos_sidecar::{Attach, PluginNative, Supervisor};
 use support::{Bank, Deposit, Ledger, Noted, alice, catalog, pulse, streams};
@@ -212,11 +210,6 @@ struct DivergentCatalog;
 struct TimingItsOwnWaitDeclaration {
     wait_ms: u64,
 }
-
-struct Capture;
-
-#[derive(Clone)]
-struct Capturing;
 
 struct Idle;
 
@@ -365,56 +358,6 @@ impl harmos_runtime::operations::Operation for TimingItsOwnWaitDeclaration {
         }
         .await;
         result.map(::core::convert::Into::into)
-    }
-}
-
-impl Identified for Capture {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new("capture"), 1)
-    }
-}
-
-impl EvidenceKind for Capture {
-    type Details = ();
-}
-
-impl harmos_runtime::services::Resident<Bank> for Capturing {
-    type Error = std::io::Error;
-
-    async fn run(&mut self, mut context: harmos_runtime::services::ServiceContext<Bank>) -> Result<(), std::io::Error> {
-        let evidence = context.evidence().clone();
-        let inherited = evidence.list("run").len() as i64;
-        context
-            .state()
-            .commit(Deposit {
-                account: support::HOUSE,
-                amount: inherited.max(0),
-            })
-            .await
-            .ok();
-
-        let key = format!("boot-{inherited}.log");
-        let draft = evidence.open::<Capture>("run", key, ()).await.map_err(std::io::Error::other)?;
-        draft.write(b"one boot's worth").await.map_err(std::io::Error::other)?;
-        evidence.finalize(&draft).await.map_err(std::io::Error::other)?;
-
-        // A second draft is deliberately left open: no fact names it, so the
-        // next boot must not see it.
-        evidence
-            .open::<Capture>("run", "unfinished.log", ())
-            .await
-            .map_err(std::io::Error::other)?
-            .write(b"half")
-            .await
-            .map_err(std::io::Error::other)?;
-
-        context.ready();
-        context.stopping().await;
-
-        Ok(())
-    }
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        Ok(())
     }
 }
 
@@ -579,23 +522,6 @@ fn entropy_run(seed: u64) -> (SimulatedRuntime<Bank>, Vec<u64>) {
     (sim, values)
 }
 
-fn vault(name: &str) -> vault::Directory {
-    let prefix = format!("harmos-sim-evidence-{name}-");
-    let directory = tempfile::Builder::new().prefix(&prefix).tempdir().expect("the temporary directory is writable");
-    vault::Directory::at(&Arc::new(directory))
-}
-
-fn capturing(seed: u64, name: &str) -> SimulatedRuntime<Bank> {
-    let directory = vault(name);
-    let mut sim = bank(seed, move |setup| {
-        setup.settings().simulated_evidence(directory.clone(), [Capture::definition()]).simulated_service("recorder", Capturing);
-    });
-    sim.advance_ms(1);
-    sim.reboot().expect("the recorded facts replay");
-    sim.advance_ms(1);
-    sim
-}
-
 /* === Tests === */
 
 #[test]
@@ -758,27 +684,6 @@ fn sidecar_fault_scripted() {
         "the scripted regime is the one the trace records"
     );
     first.assert_same(&second);
-}
-
-#[test]
-fn finalized_evidence_inherited() {
-    let sim = capturing(11, "lifecycle");
-
-    assert_eq!(
-        sim.state().expect("the runtime is running").value.balance(support::HOUSE),
-        1,
-        "the first boot inherited nothing and the second inherited exactly the \
-         one evidence a fact finalized — never the draft no fact names"
-    );
-}
-
-#[test]
-fn evidence_script_deterministic() {
-    let first = capturing(11, "determinism-one");
-    let second = capturing(11, "determinism-two");
-
-    first.assert_same(&second);
-    assert_eq!(first.trace(), second.trace());
 }
 
 // The Feature Only Adds: A Spawned Start Stays Send Under Simulation.

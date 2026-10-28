@@ -182,18 +182,16 @@ async fn admission_rejects_reserved() {
     })
     .await
     .unwrap();
-    for name in ["", "artifact"] {
-        assert!(matches!(
-            runtime.operations.register_service(
-                harmos_runtime::services::ServiceDefinition {
-                    id: name.into(),
-                    policy: harmos_runtime::services::POLICY
-                },
-                |_: Arc<harmos_sdk::ExecutionContext>| resident
-            ),
-            Err(Error::InvalidInput { field: "service name", .. })
-        ));
-    }
+    assert!(matches!(
+        runtime.operations.register_service(
+            harmos_runtime::services::ServiceDefinition {
+                id: String::new(),
+                policy: harmos_runtime::services::POLICY
+            },
+            |_: Arc<harmos_sdk::ExecutionContext>| resident
+        ),
+        Err(Error::InvalidInput { field: "service name", .. })
+    ));
     assert!(runtime.operations.residents().is_empty());
     runtime.shutdown().await.unwrap();
 }
