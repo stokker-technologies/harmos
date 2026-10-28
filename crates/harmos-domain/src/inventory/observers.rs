@@ -163,6 +163,9 @@ pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str, grants: &[S
 }
 
 pub fn select_manifest(manifests: Vec<Manifest>, facility: &str, owner: &str, grants: &[StreamDeclaration]) -> Result<Manifest, Error> {
+    if !contracts::valid_identity(facility, owner) {
+        return Err(contracts::Error::Identity.into());
+    }
     let mut matching = manifests.into_iter().filter(|manifest| manifest.facility == facility && manifest.owner == owner);
     let manifest = matching.next().ok_or_else(|| Error::Missing {
         facility: facility.into(),
@@ -230,6 +233,7 @@ pub const fn encode_tree<const N: usize>(facility: &str, owner: &str, entries: &
 /* === Private Functions === */
 
 const fn encoded<const N: usize>(facility: &str, owner: &str, entries: &[Entry]) -> Encoder<N> {
+    assert!(contracts::valid_identity(facility, owner), "invalid observer inventory identity");
     let mut out = Encoder { bytes: [0; N], cursor: 0 };
     out.raw(b"\0HARMOS:ARTIFACT:V1:{\"kind\":\"observers\",\"facility\":");
     out.quoted(facility);
@@ -284,6 +288,7 @@ const fn entry<const N: usize>(out: &mut Encoder<N>, entry: Entry) {
 }
 
 const fn encoded_tree<const N: usize>(facility: &str, owner: &str, entries: &[Node<Entry>]) -> Encoder<N> {
+    assert!(contracts::valid_identity(facility, owner), "invalid observer inventory identity");
     let mut out = Encoder { bytes: [0; N], cursor: 0 };
     out.raw(b"\0HARMOS:ARTIFACT:V1:{\"kind\":\"observers\",\"facility\":");
     out.quoted(facility);

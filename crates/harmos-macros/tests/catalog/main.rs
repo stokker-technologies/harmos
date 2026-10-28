@@ -41,6 +41,59 @@ use crate::fixtures;
 /* === Tests === */
 
 #[test]
+fn owner_ids_compile() {
+    let sidecar = fixtures::library("harmos_sidecar");
+    let dependencies = fixtures::dependencies();
+    let output = std::env::temp_dir().join(format!("harmos-owner-ui-{}", std::process::id()));
+    fs::create_dir_all(&output).unwrap();
+    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    let cases: Vec<(String, bool)> =
+        serde_json::from_str(include_str!("../../../harmos-domain/tests/fixtures/owner-identities.json")).unwrap();
+    for (index, (owner, valid)) in cases.into_iter().enumerate() {
+        let source = output.join(format!("owner_{index}.rs"));
+        let literal = format!("{owner:?}");
+        let authored = format!(
+            r#"
+use harmos_sidecar as sidecar;
+struct Example;
+trait Projection {{}}
+impl sidecar::model::operations::lifecycle::Policy for Example {{
+    const INITIALIZATION_POLICY: sidecar::OperationPolicy = sidecar::OperationPolicy {{
+        timeout: std::time::Duration::from_secs(10),
+        attempt_timeout: std::time::Duration::from_secs(10),
+        retries: sidecar::RetryPolicy::Never,
+    }};
+    const SHUTDOWN_POLICY: sidecar::OperationPolicy = Self::INITIALIZATION_POLICY;
+}}
+#[sidecar::plugin(id = {literal}, context = sidecar::Supervisor, config = (),
+    provides = (), requires = (), harmos_path = sidecar)]
+impl Projection for Example {{}}
+fn main() {{}}
+"#
+        );
+        fs::write(&source, authored).unwrap();
+        let compiled = fixtures::command(&rustc)
+            .args(["--edition=2024", "--crate-type=bin", "--emit=metadata"])
+            .env("CARGO_PKG_VERSION", env!("CARGO_PKG_VERSION"))
+            .arg(&source)
+            .arg("--extern")
+            .arg(format!("harmos_sidecar={}", sidecar.display()))
+            .arg("-L")
+            .arg(format!("dependency={}", dependencies.display()))
+            .arg("--out-dir")
+            .arg(&output)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&compiled.stderr);
+        assert_eq!(compiled.status.success(), valid, "plugin {owner:?}:\n{stderr}");
+        if !valid {
+            assert!(stderr.contains("plugin id must match"), "plugin {owner:?}:\n{stderr}");
+        }
+    }
+    fs::remove_dir_all(output).unwrap();
+}
+
+#[test]
 fn authoring_refusals_compile() {
     let harmos = fixtures::library("harmos");
     let harmos_sidecar = fixtures::library("harmos_sidecar");

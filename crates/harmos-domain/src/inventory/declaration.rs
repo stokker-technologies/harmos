@@ -22,7 +22,7 @@ use serde::Deserialize;
 use super::contributions::{self, Section};
 use super::{contracts, listeners, observers, publications};
 use crate::operations::{Contract, OperationDefinition};
-use crate::{FRAGMENT_LIMIT, ScanError, StreamDeclaration, artifact_subset};
+use crate::{FRAGMENT_LIMIT, ScanError, StreamDeclaration};
 
 /* === Constants === */
 
@@ -187,7 +187,7 @@ impl Declaration {
                     if identity.is_some() {
                         return Err(DeclarationError::DuplicateIdentity { facility: name });
                     }
-                    if !artifact_subset(&common.id) {
+                    if !crate::identity::segment(&common.id) {
                         return Err(DeclarationError::InvalidId { id: common.id });
                     }
                     let version = Version::parse(&common.version).map_err(|source| DeclarationError::Version { source })?;

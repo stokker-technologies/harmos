@@ -104,7 +104,7 @@ impl facade::__harmos::builtins::lifecycle::Policy for Publisher {
     const SHUTDOWN_POLICY: facade::__harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[facade::plugin(id = "facade-publisher", context = facade::__harmos::sidecar::Supervisor, config = (),
+#[facade::plugin(id = "facade_publisher", context = facade::__harmos::sidecar::Supervisor, config = (),
     provides = (), requires(facade::__harmos::builtins::streams::Publish), streams(Portable), harmos_path = ::facade::__harmos)]
 impl ProductPlugin for Publisher {}
 

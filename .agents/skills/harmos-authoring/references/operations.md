@@ -150,7 +150,9 @@ plugin requirements. Explicit grants still belong to the plugin. There are three
 or their pair. Borrow endpoints with `ctx.streams() -> &Self::StreamEndpoints`; input receives serialize through an asynchronous mutex.
 Invocation builders accept `.endpoints(...)` and remain inert until `.start()` or `.run()`.
 
-IDs use dotted segments `segment(.segment)*`, each `[a-z][a-z0-9_]*`. The runtime prepends the owner once:
+Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
+Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.
+Local operation IDs use dotted segments `segment(.segment)*`, each with that same grammar. The runtime prepends the owner once:
 `temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `host.operations.cancel`, `harmos.initialize`
 and `storage.append_file`. `codec = manual` preserves an explicitly authored message codec.
 

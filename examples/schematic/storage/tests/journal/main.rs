@@ -60,7 +60,7 @@ struct Observed {
 #[derive(Serialize, Deserialize)]
 struct Foreign;
 
-#[harmos::record(id = "harmos:sidecar/my.sidecar-2/result")]
+#[harmos::record(id = "harmos:sidecar/my_sidecar_2/result")]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Reserved;
 
@@ -149,7 +149,7 @@ impl Transaction<State> for Add {
                 11 => "Bad",
                 12 => "a/b",
                 13 => "",
-                _ => "my.sidecar-2",
+                _ => "my_sidecar_2",
             };
             let _ = out.push_system(harmos::state::SystemFact {
                 source: harmos::state::FactSource::Sidecar(owner.to_owned()),

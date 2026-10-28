@@ -60,7 +60,7 @@ impl Watch {
     async fn observe(&mut self, _: &harmos::sidecar::ObserverContext<'_, ()>) -> Result<(), harmos::sidecar::Refusal> { Ok(()) }
 }
 
-#[harmos::plugin(id = "missing-output", context = harmos::sidecar::Supervisor, config = (),
+#[harmos::plugin(id = "missing_output", context = harmos::sidecar::Supervisor, config = (),
     provides = (), requires = (), observers = Observers, restart = "never")]
 impl ProductPlugin for Bridge {}
 

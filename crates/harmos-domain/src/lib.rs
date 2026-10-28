@@ -36,6 +36,7 @@ mod value;
 
 pub mod __private {
     pub use crate::config::SchemaSettings;
+    pub use crate::identity::{dotted as operation_identity, segment as owner_segment, stream_subset as stream_identity};
     pub use crate::plugin::schema_markers as PluginSchemaMarkers;
     pub use crate::postcard_product;
     pub extern crate serde;

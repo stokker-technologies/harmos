@@ -269,7 +269,7 @@ impl Plugin for TransportPlugin {
 }
 
 impl Declared for TransportPlugin {
-    const ID: &'static str = "throughput-fixture";
+    const ID: &'static str = "throughput_fixture";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
     const DESCRIPTION: &'static str = "Measures the native stdio transport.";
     const PROVIDES: &'static [Node<WireDeclaration>] =

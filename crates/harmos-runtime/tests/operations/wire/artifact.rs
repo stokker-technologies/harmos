@@ -55,22 +55,22 @@ macro_rules! inert_plugin {
 }
 
 #[cfg(feature = "plugin-sidecar")]
-inert_plugin!(Native, "selected-native", harmos_runtime::sidecar::Supervisor, Operations);
+inert_plugin!(Native, "selected_native", harmos_runtime::sidecar::Supervisor, Operations);
 
 #[cfg(feature = "plugin-sidecar")]
-inert_plugin!(EmptyNative, "empty-native", harmos_runtime::sidecar::Supervisor, ());
+inert_plugin!(EmptyNative, "empty_native", harmos_runtime::sidecar::Supervisor, ());
 
 #[cfg(feature = "plugin-sidecar")]
-inert_plugin!(ExplicitEmptyNative, "explicit-empty-native", harmos_runtime::sidecar::Supervisor, ());
+inert_plugin!(ExplicitEmptyNative, "explicit_empty_native", harmos_runtime::sidecar::Supervisor, ());
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(Guest, "selected-guest", harmos_runtime::guest::kit::Context, Operations);
+inert_plugin!(Guest, "selected_guest", harmos_runtime::guest::kit::Context, Operations);
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(EmptyGuest, "empty-guest", harmos_runtime::guest::kit::Context, ());
+inert_plugin!(EmptyGuest, "empty_guest", harmos_runtime::guest::kit::Context, ());
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest::kit::Context, ());
+inert_plugin!(ExplicitEmptyGuest, "explicit_empty_guest", harmos_runtime::guest::kit::Context, ());
 
 /* === Type Aliases === */
 

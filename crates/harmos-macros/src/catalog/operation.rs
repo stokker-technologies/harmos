@@ -109,17 +109,6 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
     let gates = crate::operation::configuration(&item.attrs)?;
     let derived = name.to_string().trim_start_matches("r#").to_snake_case();
     let id = id.unwrap_or_else(|| syn::parse_quote!(#derived));
-    if let Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(value), .. }) = &id {
-        let text = value.value();
-        let valid = text.split('.').all(|segment| {
-            let mut bytes = segment.bytes();
-            bytes.next().is_some_and(|byte| byte.is_ascii_lowercase())
-                && bytes.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
-        });
-        if !valid {
-            return Err(Error::new_spanned(value, "operation id must contain dotted [a-z][a-z0-9_]* segments"));
-        }
-    }
 
     let direction =
         |item: Option<Type>| item.map_or_else(|| quote!(#sdk::operations::NoStream), |item| quote!(#sdk::operations::Stream<#item>));
@@ -177,6 +166,12 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
     });
     Ok(quote! {
         #message
+
+        #(#gates)*
+        const _: () = assert!(
+            #sdk::__private::operation_identity(#id),
+            "operation id must contain dotted [a-z][a-z0-9_]* segments"
+        );
 
         #(#gates)*
         impl #sdk::OperationDeclaration for #name {

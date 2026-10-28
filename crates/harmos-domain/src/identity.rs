@@ -25,6 +25,10 @@ use serde::{Deserialize, Serialize};
 
 /* === Constants === */
 
+// The Shared Owner And Local Operation Segment Alphabet.
+pub const SEGMENT_INITIAL: &str = "abcdefghijklmnopqrstuvwxyz";
+pub const SEGMENT_EXTRA: &str = "0123456789_";
+
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -128,17 +132,7 @@ impl fmt::Display for DefinitionId {
 
 pub const fn segment(value: &str) -> bool {
     let bytes = value.as_bytes();
-    if bytes.is_empty() || !bytes[0].is_ascii_lowercase() {
-        return false;
-    }
-    let mut index = 1;
-    while index < bytes.len() {
-        if !(bytes[index].is_ascii_lowercase() || bytes[index].is_ascii_digit() || bytes[index] == b'_') {
-            return false;
-        }
-        index += 1;
-    }
-    true
+    segment_bytes(bytes, 0, bytes.len())
 }
 
 // One Or More Portable Segments Joined By Single Dots.
@@ -148,16 +142,8 @@ pub const fn dotted(value: &str) -> bool {
     let mut index = 0;
     while index <= bytes.len() {
         if index == bytes.len() || bytes[index] == b'.' {
-            let length = index - start;
-            if length == 0 || !bytes[start].is_ascii_lowercase() {
+            if !segment_bytes(bytes, start, index) {
                 return false;
-            }
-            let mut cursor = start + 1;
-            while cursor < index {
-                if !(bytes[cursor].is_ascii_lowercase() || bytes[cursor].is_ascii_digit() || bytes[cursor] == b'_') {
-                    return false;
-                }
-                cursor += 1;
             }
             start = index + 1;
         }
@@ -168,14 +154,14 @@ pub const fn dotted(value: &str) -> bool {
 
 pub const fn artifact_subset(id: &str) -> bool {
     let bytes = id.as_bytes();
-    if bytes.is_empty() || !bytes[0].is_ascii_lowercase() {
+    if bytes.is_empty() || !contains(SEGMENT_INITIAL, bytes[0]) {
         return false;
     }
 
     let mut index = 0;
     while index < bytes.len() {
         let byte = bytes[index];
-        if !(byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'.' | b'_')) {
+        if !(contains(SEGMENT_INITIAL, byte) || contains(SEGMENT_EXTRA, byte) || matches!(byte, b'-' | b'.')) {
             return false;
         }
         index += 1;
@@ -219,21 +205,105 @@ pub const fn qualified(bytes: &'static [u8]) -> &'static str {
     }
 }
 
-pub fn stream_subset(name: &str) -> bool {
-    name.split('.').all(|segment| {
-        let mut characters = segment.chars();
-        characters.next().is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
-            && characters.all(|character| character == '_' || character == '-' || character.is_ascii_alphanumeric())
-    })
+pub const fn stream_subset(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    let mut start = 0;
+    let mut index = 0;
+    while index <= bytes.len() {
+        if index == bytes.len() || bytes[index] == b'.' {
+            let valid = if start == 0 { segment_bytes(bytes, start, index) } else { stream_local_bytes(bytes, start, index) };
+            if !valid {
+                return false;
+            }
+            start = index + 1;
+        }
+        index += 1;
+    }
+    true
 }
 
 /* === Private Functions === */
+
+const fn contains(alphabet: &str, byte: u8) -> bool {
+    let bytes = alphabet.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == byte {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
+const fn segment_bytes(bytes: &[u8], start: usize, end: usize) -> bool {
+    if start == end || !contains(SEGMENT_INITIAL, bytes[start]) {
+        return false;
+    }
+    let mut index = start + 1;
+    while index < end {
+        if !contains(SEGMENT_INITIAL, bytes[index]) && !contains(SEGMENT_EXTRA, bytes[index]) {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+const fn stream_local_bytes(bytes: &[u8], start: usize, end: usize) -> bool {
+    if start == end || !(bytes[start] == b'_' || bytes[start].is_ascii_alphabetic()) {
+        return false;
+    }
+    let mut index = start + 1;
+    while index < end {
+        if !(matches!(bytes[index], b'_' | b'-') || bytes[index].is_ascii_alphanumeric()) {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
 
 /* === Tests === */
 
 #[cfg(test)]
 mod tests {
     use super::QualifiedId;
+
+    #[test]
+    fn owner_parity() {
+        let cases: Vec<(String, bool)> = serde_json::from_str(include_str!("../tests/fixtures/owner-identities.json")).unwrap();
+        for (owner, valid) in cases {
+            assert_eq!(super::segment(&owner), valid, "owner {owner:?}");
+            assert_eq!(QualifiedId::qualify(&owner, "storage.read_file").is_ok(), valid, "qualified {owner:?}");
+            for facility in ["guest", "sidecar"] {
+                assert_eq!(crate::inventory::contracts::valid_identity(facility, &owner), valid, "{facility} {owner:?}");
+                let publications = crate::inventory::publications::Manifest {
+                    facility: facility.to_owned(),
+                    owner: owner.clone(),
+                    streams: Vec::new(),
+                };
+                assert_eq!(
+                    crate::inventory::publications::select(vec![publications], facility, &owner).is_ok(),
+                    valid,
+                    "publications {owner:?}"
+                );
+                let observers = crate::inventory::observers::Manifest {
+                    facility: facility.to_owned(),
+                    owner: owner.clone(),
+                    observers: Vec::new(),
+                };
+                assert_eq!(
+                    crate::inventory::observers::select_manifest(vec![observers], facility, &owner, &[]).is_ok(),
+                    valid,
+                    "observers {owner:?}"
+                );
+            }
+            if !owner.contains('.') {
+                assert_eq!(super::stream_subset(&format!("{owner}.sample")), valid, "stream {owner:?}");
+            }
+        }
+    }
 
     #[test]
     fn qualified_segments() {

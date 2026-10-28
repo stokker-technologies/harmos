@@ -25,8 +25,8 @@ use tokio::sync::watch;
 use super::definition::Windows;
 use super::{Demand, Holding, Item, Query, StreamManager, Tier, Wired, window};
 use crate::{Application, state::Position, streams::Definition};
+use harmos_domain::StreamDeclaration;
 use harmos_domain::inventory::publications;
-use harmos_domain::{StreamDeclaration, artifact_subset};
 
 /* === Constants === */
 
@@ -554,7 +554,7 @@ impl Wired {
 pub(super) fn publication_definitions(
     owner: &str, declarations: impl IntoIterator<Item = StreamDeclaration>,
 ) -> Result<Vec<Definition>, StreamAdmissionError> {
-    if !artifact_subset(owner) {
+    if !harmos_domain::identity::segment(owner) {
         return Err(StreamAdmissionError::Owner(owner.into()));
     }
     let mut ids = BTreeSet::new();
