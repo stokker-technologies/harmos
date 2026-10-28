@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Stdio};
 
 // Third Party Imports
@@ -101,26 +102,47 @@ fn cli_streams_settle() {
     for (backend, artifact) in [("--sidecar", "schematic-sidecar"), ("--guest", "schematic-guest")] {
         let plugin = fixtures::artifact(artifact);
 
-        // Advanced Analysis And Cancellation Use The Same Caller Directory.
-        let child = fixtures::command(&cli)
+        // Start The Next Backend Only After This CLI Has Initialized Its Plugin.
+        let mut child = fixtures::command(&cli)
             .current_dir(directory.path())
             .arg(backend)
             .arg(&plugin)
             .arg("--advanced")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .spawn();
-        children.push((backend, child));
+            .spawn()
+            .unwrap_or_else(|error| panic!("{backend}: {error}"));
+        let stdout = child.stdout.take().expect("the CLI output is piped");
+        let (started, ready) = std::sync::mpsc::sync_channel(1);
+        let reader = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
+            let mut stdout = BufReader::new(stdout);
+            let mut bytes = Vec::new();
+            // The Walkthrough Emits Its First Line Only After Plugin::initialize.
+            let _ = started.send(stdout.read_until(b'\n', &mut bytes));
+            stdout.read_to_end(&mut bytes)?;
+            Ok(bytes)
+        });
+        let readiness = ready.recv_timeout(schematic_operations::POLICY.timeout);
+        if !matches!(readiness, Ok(Ok(count)) if count != 0) {
+            let _ = child.kill();
+            let output = child.wait_with_output().expect("the failed CLI is reaped");
+            let printed = reader.join().expect("the output reader settles").map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
+            panic!(
+                "{backend} did not announce readiness within operation policy: {readiness:?}\n{printed:?}\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        children.push((backend, child, reader));
     }
 
     let mut outputs = Vec::new();
-    for (backend, child) in children {
-        let output = child.and_then(Child::wait_with_output);
+    for (backend, child, reader) in children {
+        let mut output = child.wait_with_output().unwrap_or_else(|error| panic!("{backend}: {error}"));
+        output.stdout = reader.join().expect("the output reader settles").expect("the CLI output is readable");
         outputs.push((backend, output));
     }
     let mut advanced_outputs = Vec::new();
     for (backend, output) in outputs {
-        let output = output.unwrap_or_else(|error| panic!("{backend}: {error}"));
         assert!(
             output.status.success(),
             "{backend}: {}\n{}",

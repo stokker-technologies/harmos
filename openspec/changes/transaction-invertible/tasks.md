@@ -20,7 +20,7 @@
 - [x] 3.3 Move schematic sidecar benchmark registration into a declaration-gated module; remove item-level benchmark gates.
 - [x] 3.4 Share retained/write_all capacity admission, refresh accounting, retain exact failed writes and prove cross-file capacity release and retry behavior in storage integration tests.
 - [x] 3.5 Verify arbitrary macro paths retain Requires/Dependent implementations; add targeted regression proof and repair only if needed.
-- [ ] 3.6 Replace schematic story readiness guesses with a deterministic readiness signal bounded by configured policy; run at most one schematic story.
+- [x] 3.6 Replace schematic story readiness guesses with a deterministic readiness signal bounded by configured policy; run at most one schematic story.
 - [x] 3.7 Reproduce the SDK grpc hashed-field span test and fix its root cause if it fails.
 - [x] 3.8 Exact-pin published sibling dependencies to the workspace version and audit release tooling; report the Hub-owned exact-pin synchronization defect under the no-sidequest limit.
 - [x] 3.9 Audit release CHANGELOG packaging: skipped implementation because Hub-owned asset staging omits the generated notes file; report this shared-tooling defect under the no-sidequest limit.
@@ -37,3 +37,5 @@
 
 - Hub release preparation matches only bare previous versions and leaves exact sibling pins stale at the next version bump. Harmos manifests now use exact pins; the shared owner still needs repair before release.
 - Hub asset staging publishes git-cliff notes as the provider release body but does not stage CHANGELOG.md as a checksummed download. No Hub changes are made during HF1 while its separate Dokime timing work is active.
+- README review found pre-existing feature labels `plugin-guest` / `plugin-sidecar` where the facade exposes `guest` / `sidecar`, plus a schematic README table claiming separate request types. Report these unrelated documentation defects without expanding HF1.
+- The initial shell inherited Dokime's UV_PROJECT_ENVIRONMENT and TMPDIR. The first prepare task touched that other environment before the overrides were cleared for all later compilation; its environment is not repaired while separate Dokime work is active.

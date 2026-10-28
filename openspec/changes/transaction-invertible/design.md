@@ -10,7 +10,7 @@ pub trait Invertible<S>: Transaction<S> {
 }
 ```
 
-The attribute still owns the undo answer. It emits a hidden S-free `Paired { type Inverse }` declaration so the mutual pair check (`inverse = X` names this change back) runs where the change is declared. The generated `__harmos_inverse` is bounded on `Self: Invertible<S, Inverse = Declared>`, so a body returning another change does not compile at the catalog.
+An optional `inverse = …` attribute emits the hidden S-free `Paired { type Inverse }` declaration, checking mutuality where the transaction is declared. The generated `__harmos_check_inverse` is bounded on `Self: Invertible<S, Inverse = Declared>` and catalog membership, so a mismatched body does not compile at the catalog. Catalog dispatch infers reversibility from the implementation itself.
 
 ## Irreversible Changes
 
