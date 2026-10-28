@@ -520,6 +520,17 @@ fn identity_parity() {
 }
 
 #[test]
+fn owner_parity() {
+    let cases: Vec<(String, bool)> =
+        serde_json::from_str(include_str!("../../../harmos-domain/tests/fixtures/owner-identities.json")).unwrap();
+    for (owner, valid) in &cases {
+        assert_eq!(harmos_domain::identity::segment(owner), *valid, "{owner:?}");
+    }
+    let exported = export();
+    both("owners", &exported, &serde_json::to_vec(&cases).unwrap());
+}
+
+#[test]
 fn dynamic_refuses_graphs() {
     let exported = export();
     let arguments = [exported.target.path(), &exported.alpha, &exported.beta];
