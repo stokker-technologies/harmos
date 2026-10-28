@@ -7,17 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
-// Third Party Imports
+
 use serde::Deserialize;
-// Local Imports
+
 use super::contracts::{self, Encoder};
 use crate::catalog::Node;
 use crate::config::SchemaSettings;
@@ -26,15 +19,7 @@ use crate::operations::Contract;
 use crate::schema::declaration::Named;
 use crate::schema::graph::Schema;
 
-/* === Constants === */
-
 const LIMIT: usize = 4096;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -67,8 +52,6 @@ pub struct NamedManifest {
     pub listeners: Vec<NamedListener>,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
@@ -92,10 +75,6 @@ pub enum Error {
     #[error("listener callback `{id}` is absent or differs from its provided contract")]
     Callback { id: String },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl NamedManifest {
     pub fn resolve(self, declarations: &[Named], settings: &mut SchemaSettings) -> Result<Manifest, Error> {
@@ -129,8 +108,6 @@ impl NamedManifest {
         })
     }
 }
-
-/* === Public Functions === */
 
 pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str, provides: &[Contract]) -> Result<Option<Vec<Definition>>, Error> {
     let mut selected = None;
@@ -180,8 +157,6 @@ pub const fn encode<const N: usize>(facility: &str, owner: &str, entries: &[Node
     assert!(out.cursor == N, "listener inventory length disagrees with encoder");
     out.bytes
 }
-
-/* === Private Functions === */
 
 const fn encoded<const N: usize>(facility: &str, owner: &str, entries: &[Node<Entry>]) -> Encoder<N> {
     assert!(contracts::valid_identity(facility, owner), "invalid listener inventory identity");
@@ -234,5 +209,3 @@ const fn tree<const N: usize>(out: &mut Encoder<N>, entries: &[Node<Entry>], fir
         index += 1;
     }
 }
-
-/* === Tests === */

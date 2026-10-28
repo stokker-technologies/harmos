@@ -7,37 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, Parser};
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Error, Meta, Token, Type};
-// Local Imports
+
 use crate::path::{self, HarmosPath};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream {
     expand(attribute, item, false, false).unwrap_or_else(Error::into_compile_error)
@@ -50,8 +26,6 @@ pub(crate) fn declare_runtime(attribute: TokenStream, item: TokenStream) -> Toke
 pub(crate) fn declare_domain(attribute: TokenStream, item: TokenStream) -> TokenStream {
     expand(attribute, item, false, true).unwrap_or_else(Error::into_compile_error)
 }
-
-/* === Private Functions === */
 
 fn arguments(input: syn::parse::ParseStream<'_>) -> Result<Punctuated<Meta, Token![,]>, Error> {
     input.parse_terminated(argument, Token![,])
@@ -131,8 +105,6 @@ pub(crate) fn configuration(attributes: &[Attribute]) -> Result<Vec<Attribute>, 
         .filter_map(|attribute| select(&attribute.meta).transpose().map(|meta| meta.map(|meta| syn::parse_quote!(#[#meta]))))
         .collect()
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

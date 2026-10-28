@@ -11,19 +11,12 @@
 // the instance's owned attempt, and the physical children a remote backend
 // submits settle before the instance stops.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::TypeId;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::ObserverBackend;
 use crate::Error;
 #[cfg(feature = "plugin-sidecar")]
@@ -31,14 +24,6 @@ use crate::Result;
 use crate::operations::resident::{self, Completion, Outcome, Report, Runner, Settlement, Start};
 use crate::operations::{OperationInstanceId, OperationPhase};
 use crate::supervision::{self, Task, instance::Instance};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(crate) struct Backend<B>(pub(crate) B);
 
@@ -57,12 +42,6 @@ pub struct ObserverActivation {
     #[cfg(feature = "plugin-sidecar")]
     children: Arc<ChildSettlement>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<B: ObserverBackend> Runner for Backend<B> {
     fn resources(&self) -> TypeId {
@@ -271,9 +250,3 @@ impl ObserverActivation {
         Arc::clone(&self.children)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

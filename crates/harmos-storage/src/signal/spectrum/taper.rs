@@ -7,27 +7,7 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::f64::consts::PI;
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Taper {
@@ -44,10 +24,6 @@ pub enum Band {
     Kaiser { start: f64, end: f64, beta: f64 },
     Gaussian { start: f64, end: f64, sigma: f64 },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Taper {
     #[must_use]
@@ -111,10 +87,6 @@ impl Band {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn bessel_i0(argument: f64) -> f64 {
     let magnitude = argument.abs();
 
@@ -140,5 +112,3 @@ fn bessel_i0(argument: f64) -> f64 {
                                                         + ratio * (0.026_355_37 + ratio * (-0.016_476_33 + ratio * 0.003_923_77))))))))
     }
 }
-
-/* === Tests === */

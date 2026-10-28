@@ -9,33 +9,14 @@
 
 // Storage Arrow Query Contract
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use crate::model::storage::codec::{Nested, Repeated, Text, product};
 
 use super::FieldPath;
 use super::project::Projection;
 use crate::MemorySize;
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(Aggregate { groups: Repeated<Projection> => 1, measures: Repeated<Measure> => 2 });
 product!(Measure { field: Nested<FieldPath> => 1, statistic: Nested<crate::Aggregate> => 2, name: Text => 3 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct Aggregate {
@@ -49,12 +30,6 @@ pub struct Measure {
     pub name: String,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl MemorySize for Aggregate {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
@@ -67,9 +42,3 @@ impl MemorySize for Measure {
         std::mem::size_of::<Self>() + self.field.memory_size().saturating_sub(std::mem::size_of_val(&self.field)) + self.name.capacity()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

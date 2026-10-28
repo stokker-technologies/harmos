@@ -7,33 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
 
-// Third Party Imports
-
-// Local Imports
 use super::{CallContext, OperationGeneration, OperationInstanceId, OperationOutcome};
 use crate::operations::OperationDefinition;
 use crate::{Error, Result};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type Enter<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
-
-/* === Structs === */
 
 pub struct Invocation {
     operation: OperationDefinition,
@@ -70,17 +52,11 @@ pub(super) struct Session {
     context: Arc<OnceLock<CallContext>>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub trait Middleware: Send + Sync + 'static {
     fn enter<'a>(&'a self, call: &'a mut Invocation) -> Enter<'a>;
 
     fn observe(&self, _call: &Invocation, _observation: Observation) {}
 }
-
-/* === Implementations === */
 
 impl Invocation {
     pub fn is_host_call(&self) -> bool {
@@ -219,10 +195,6 @@ impl Drop for Session {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn guarded(mut future: Enter<'_>) -> Result<()> {
     std::future::poll_fn(|context| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| future.as_mut().poll(context))) {
         Ok(result) => result,
@@ -233,5 +205,3 @@ async fn guarded(mut future: Enter<'_>) -> Result<()> {
     })
     .await
 }
-
-/* === Tests === */

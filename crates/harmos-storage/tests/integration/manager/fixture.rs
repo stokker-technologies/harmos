@@ -9,33 +9,16 @@
 
 // Own The Storage Engine Worker In Tests
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 pub(crate) use std::num::{NonZeroU32, NonZeroUsize};
 pub(crate) use std::sync::Arc;
 pub(crate) use std::sync::atomic::Ordering;
 pub(crate) use std::time::Duration;
 
-// Third Party Imports
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
-// Local Imports
 pub(crate) use super::backend::{Data, Recovery, history, storage_settings};
 pub(crate) use harmos_storage::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(crate) struct Fixture {
     pub(crate) storage: StorageManager,
@@ -44,12 +27,6 @@ pub(crate) struct Fixture {
 }
 
 struct Task(Mutex<Option<JoinHandle<Result<()>>>>);
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl WorkerOwner for Task {
     fn stop(&self) -> StorageFuture<'_, ()> {
@@ -88,8 +65,6 @@ impl Fixture {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) async fn start<C>(storage: &StorageManager<C>) {
     storage
         .start_with(Arc::new(()), |mut worker| {
@@ -109,8 +84,6 @@ pub(crate) fn state_settings() -> harmos_storage::state::StorageStateSettings {
         max_checkpoint_bytes: std::num::NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
     }
 }
-
-/* === Private Functions === */
 
 pub(crate) fn config() -> StorageSettings {
     storage_settings()
@@ -142,5 +115,3 @@ pub(crate) async fn pending<F: std::future::Future + ?Sized>(mut future: std::pi
 pub(crate) async fn write<C>(storage: &StorageManager<C>, id: &str) -> StorageCursor {
     storage.write_records(vec![record(&schema(), &Identifier::new(id).unwrap(), &[1, 2, 3])]).await.unwrap()
 }
-
-/* === Tests === */

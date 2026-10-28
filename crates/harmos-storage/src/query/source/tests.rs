@@ -9,27 +9,12 @@
 
 // Verify Column Decoding Against The Previous Row Tree
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
 use crate::schema::{Event, PathElement, Scalar};
 use crate::{Identifier, Message, PayloadEncoding, SchemaKey, StoreHistory};
 use arrow_array::{BooleanArray, Float32Array, Float64Array, Int32Array, Int64Array, ListArray};
 use arrow_buffer::{NullBuffer, OffsetBuffer, ScalarBuffer};
 use std::num::NonZeroU32;
-
-/* === Constants === */
-
-/* === Macros === */
 
 macro_rules! scalar_array {
     ($values:expr, $variant:ident, $array:ty) => {{
@@ -45,26 +30,12 @@ macro_rules! scalar_array {
     }};
 }
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
 enum Node<'a> {
     Null,
     Scalar(Scalar<'a>),
     Message(Vec<(String, Node<'a>)>),
     List(Vec<Node<'a>>),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn reference_payload(schema: &StorageSchema, payloads: &[&[u8]]) -> Result<ArrayRef> {
     let settings = harmos_domain::config::SchemaSettings::default();
@@ -202,8 +173,6 @@ fn array(kind: &DataType, values: &[Option<&Node<'_>>]) -> Result<ArrayRef> {
         _ => return Err(invalid("unsupported payload type")),
     })
 }
-
-/* === Tests === */
 
 #[harmos_domain::message]
 struct Sample {

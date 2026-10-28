@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod format;
 mod sidecar;
 mod source_scenarios;
@@ -16,31 +14,18 @@ mod source_scenarios;
 #[path = "../support/mod.rs"]
 mod support;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use harmos::{Application, Runtime, state::Position, state::Recorded, state::Records, state::Transaction};
 use schematic_storage::{Jsonl, Wire};
 use support::scratch;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Refusal = &'static str;
-
-/* === Structs === */
 
 #[derive(Default)]
 struct State {
@@ -85,8 +70,6 @@ struct Model;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Large(String);
 
-/* === Enums === */
-
 #[harmos::lanes]
 pub enum TestLanes {
     #[default]
@@ -106,10 +89,6 @@ enum Facts {
     Large(Large),
     Reserved(Reserved),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Serialize for Broken {
     fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
@@ -256,10 +235,6 @@ impl Wire for Model {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn add(amount: i64, count: usize, mode: u8) -> Add {
     Add {
         amount,
@@ -336,5 +311,3 @@ fn contract_scenario() {
         }
     }
 }
-
-/* === Tests === */

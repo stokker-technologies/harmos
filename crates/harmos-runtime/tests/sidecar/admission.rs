@@ -9,23 +9,11 @@
 
 // Registration Catalogs And Initialization Gate Admission Of One Sidecar Generation
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Mutex;
 
-// Third Party Imports
-
-// Local Imports
 use super::*;
 use crate::sidecar::witness::Witness;
 use harmos_runtime::sidecar::{Registrar, Registration, RegistrationError};
-
-/* === Constants === */
 
 const NAME: &str = "admission_fixture";
 
@@ -41,24 +29,12 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     retries: RetryPolicy::Never,
 };
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Source = harmos_sidecar::PluginNative<Program>;
-
-/* === Structs === */
 
 // Witnesses Registration And Initialization Separately.
 struct Program {
     marks: Arc<Witness>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_operations::lifecycle::Policy for Program {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
@@ -114,8 +90,6 @@ impl harmos_runtime::Plugin for Program {
         Ok(())
     }
 } /* === Public Functions === */
-
-/* === Private Functions === */
 
 fn current() -> Arc<Witness> {
     CURRENT.lock().expect("the current witness is never poisoned").clone().expect("an admission story installs its witness")
@@ -312,5 +286,3 @@ async fn restart_closes_admission() {
     assert_eq!(marks.count("registered"), 2, "{status:?}");
     assert!(matches!(runtime.shutdown().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 }
-
-/* === Tests === */

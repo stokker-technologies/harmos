@@ -9,45 +9,23 @@
 
 // Charged Directory Discovery And Native Change Subscription
 
-/* === Modules === */
-
 mod scan;
 mod selection;
 mod watch;
 
-/* === Re-Exports === */
-
 pub use scan::DirectoryReader;
 pub use watch::DirectoryWatcher;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::path::Path;
 use std::sync::Arc;
-// Third Party Imports
-// Local Imports
+
 use crate::manager::Inner;
 use crate::{Error, Message, ReadBatch, Result, StorageManager};
 use harmos_domain::model::storage::{DirectoryCompletion, DirectoryEntry, DirectoryEvent, DirectorySelection};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 struct Selection {
     value: DirectorySelection,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     pub async fn list_directory(&self, selection: DirectorySelection) -> Result<DirectoryReader> {
@@ -62,10 +40,6 @@ impl<C> StorageManager<C> {
         context.result(span, async { DirectoryWatcher::new(Arc::clone(&self.inner), selection, include_existing).await }).await
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn item<T: Message>(inner: &Arc<Inner>, value: T) -> Result<ReadBatch<T>> {
     if value.encoded_size() > inner.settings.response.batch_bytes.get() {
@@ -106,5 +80,3 @@ fn relative(root: &Path, path: &Path, recursive: bool) -> Result<Option<String>>
 fn join_error(error: tokio::task::JoinError) -> Error {
     Error::backend("directory task", crate::BackendFailure::Permanent, error)
 }
-
-/* === Tests === */

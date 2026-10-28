@@ -7,32 +7,7 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.manager.admission.admit", level = "debug", skip_all)]
@@ -255,9 +230,3 @@ impl<C> StorageManager<C> {
         result
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

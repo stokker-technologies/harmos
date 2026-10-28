@@ -9,30 +9,18 @@
 
 // Nested Calls Between Host And Sidecar Over The In-Memory Transport
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-// Third Party Imports
-
-// Local Imports
 use super::{HostLanes, assembly, operations, service_status};
 use crate::sidecar::support::Bank;
 use crate::sidecar::witness::Witness;
 use harmos_runtime::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos_runtime::sidecar::{Notice, Refusal, Supervised, Supervisor};
 use harmos_runtime::{Runtime, services::ServiceContext, services::ServiceStatus};
-
-/* === Constants === */
 
 const CAPACITY: usize = 2;
 const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
@@ -46,8 +34,6 @@ const PENDING: u64 = 0;
 
 // The Echo Request That Abandons The Generation Mid-Call.
 const ABANDON: u64 = u64::MAX;
-
-/* === Macros === */
 
 macro_rules! operation {
     ($name:ident, $id:literal, $visibility:ident) => {
@@ -70,12 +56,8 @@ operation!(Echo, "process.echo", Private);
 
 operation!(Nested, "process.nested", Host);
 
-/* === Type Aliases === */
-
 type Source = harmos_sidecar::PluginNative<Process>;
 type Resident = Supervised<Bank, Source, fn(&ServiceContext<Bank>, Notice)>;
-
-/* === Structs === */
 
 #[harmos_runtime::stream(id = "process.receipt", window = 8)]
 #[harmos_runtime::message]
@@ -153,8 +135,6 @@ struct Finished {
     kind: &'static str,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 enum CallbackOperations {
     Publish(CallbackPublication),
@@ -165,10 +145,6 @@ pub enum Operations {
     Echo(Echo),
     Nested(Nested),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Drop for Finished {
     fn drop(&mut self) {
@@ -372,10 +348,6 @@ impl Fixture {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn notices(_: &ServiceContext<Bank>, _: Notice) {}
 
 fn blob(id: u64, bytes: usize) -> Blob {
@@ -540,5 +512,3 @@ async fn shutdown_sdk_publication() {
     assert!(background.publish(harmos_runtime::Message::encode(&late), 0).is_err());
     assert_eq!(delivered.load(Ordering::SeqCst), 1);
 }
-
-/* === Tests === */

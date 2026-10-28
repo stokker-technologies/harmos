@@ -9,21 +9,11 @@
 
 // Storage Backend Contract
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use super::query::{FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection};
 use super::{
     FileCheckpoint, FileChunk, FileMetadata, FileProgress, FileReference, MutationReceipt, ObjectEntry, ObjectKey, ObjectPoint,
@@ -32,15 +22,7 @@ use super::{
 use crate::{Error, Result};
 use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type StorageFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
-
-/* === Structs === */
 
 pub struct StorageBackends {
     pub primary: Arc<dyn StorageBackend>,
@@ -65,10 +47,6 @@ pub struct ReadLimits {
     pub rows: NonZeroUsize,
     pub bytes: NonZeroUsize,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait StorageBackend: Send + Sync + 'static {
     // Lifecycle
@@ -177,8 +155,6 @@ pub trait StorageBackend: Send + Sync + 'static {
     }
 }
 
-/* === Implementations === */
-
 impl ReadLimits {
     pub fn check(&self, rows: usize, bytes: usize) -> Result<()> {
         if rows > self.rows.get() || bytes > self.bytes.get() {
@@ -191,10 +167,6 @@ impl ReadLimits {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn unsupported<'a, T>(field: &'static str) -> StorageFuture<'a, T> {
     Box::pin(async move {
         Err(Error::InvalidInput {
@@ -203,5 +175,3 @@ fn unsupported<'a, T>(field: &'static str) -> StorageFuture<'a, T> {
         })
     })
 }
-
-/* === Tests === */

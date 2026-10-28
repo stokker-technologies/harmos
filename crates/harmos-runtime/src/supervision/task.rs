@@ -7,45 +7,24 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::sync::Arc;
-// Third Party Imports
+
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::{Mutex, watch};
 use tokio::task::{JoinError, JoinHandle};
-// Local Imports
+
 use super::executor;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(crate) struct Task<T> {
     stopping: watch::Sender<bool>,
     join: Mutex<Join<T>>,
 }
 
-/* === Enums === */
-
 enum Join<T> {
     Running(JoinHandle<T>),
     Settled(Result<Arc<T>, Arc<JoinError>>),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<T: Send + Sync + 'static> Task<T> {
     pub(crate) fn spawn<F, W>(work: W) -> Self
@@ -101,8 +80,6 @@ impl<T> Drop for Task<T> {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) async fn settle_all<E, F>(tasks: impl IntoIterator<Item = F>) -> Result<(), E>
 where
     F: Future<Output = Result<(), E>>,
@@ -118,7 +95,3 @@ where
     }
     failure.map_or(Ok(()), |(_, error)| Err(error))
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -14,22 +14,15 @@
 // observers tick at their declared interval, services run until stopped under
 // their restart policy.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::{Any, TypeId};
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::caller::Identity;
 use super::instances::Instances;
 use super::{OperationGeneration, OperationInstanceId, OperationStatus};
@@ -38,21 +31,13 @@ use crate::services::{ServiceDefinition, ServiceStatus};
 use crate::supervision::{self, Task, instance::Instance, instance::Phase};
 use crate::{Error, Result};
 
-/* === Constants === */
-
 static NEXT_SCOPE: AtomicU64 = AtomicU64::new(1);
 
 const ROOT: ScopeId = ScopeId(0);
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub(crate) type Outcome = std::result::Result<(), Arc<Error>>;
 pub(crate) type Completion = Pin<Box<dyn Future<Output = Outcome> + Send>>;
 pub(crate) type Resources = Arc<dyn Any + Send + Sync>;
-
-/* === Structs === */
 
 // The declaration a resident handle names when its definition is selected by
 // identity at runtime. It is never registered by its own identity.
@@ -197,8 +182,6 @@ struct Entry {
     stopping: bool,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Observer,
@@ -215,8 +198,6 @@ enum Acquisition {
     Lease(Lease),
     Wait(OperationInstanceId, Running),
 }
-
-/* === Traits === */
 
 // A kind's driver. It spawns one instance over its resources and reports the
 // instance's progress; the registry owns everything else.
@@ -242,8 +223,6 @@ pub(crate) trait Settlement: Send + Sync + 'static {
     // Retry a cleanup that failed after the task returned; `None` once settled.
     fn retry(self: Arc<Self>, report: Report) -> Option<Completion>;
 }
-
-/* === Implementations === */
 
 // The Resident Activation Of A ServiceContext; It Is Never Declared By Its Identity.
 impl super::OperationDeclaration for Activation {
@@ -1342,10 +1321,6 @@ impl Drop for Shared {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 #[tracing::instrument(target = "harmos::operations", name = "operations.settle", level = "debug", skip_all)]
 pub(crate) async fn settle(running: Vec<Running>) -> Result<()> {
     let pending = running.into_iter().map(|running| async move {
@@ -1374,5 +1349,3 @@ fn validate(definition: &Definition) -> Result<()> {
         Definition::Service(definition) => crate::services::validate(definition),
     }
 }
-
-/* === Tests === */

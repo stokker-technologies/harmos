@@ -7,32 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::pin::pin;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::{Semaphore, watch};
-// Local Imports
+
 use super::{Observing, RUNNING, STOPPED, STOPPING, pending, phase};
 use harmos_runtime::sidecar::{Activity, Instance, Observer, ObserverContext, ObserverError};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Resources {
     initialization: Semaphore,
@@ -50,16 +35,10 @@ struct Resources {
 
 struct Watch<const MODE: u8, const INTERVAL_MS: u64 = 5>(Arc<Resources>, bool);
 
-/* === Enums === */
-
 enum Fault {
     Panic,
     Refusal,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Resources {
     fn new() -> Arc<Self> {
@@ -146,10 +125,6 @@ impl<const MODE: u8, const INTERVAL_MS: u64> Drop for Watch<MODE, INTERVAL_MS> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn activity<S: Observer<()>>(resources: &Arc<Resources>) -> Activity {
     Instance::<()>::of::<S>().activate(super::observer_context(resources.clone()), ()).unwrap()
 }
@@ -162,8 +137,6 @@ async fn count(resources: &Resources, value: fn(&Resources) -> &AtomicUsize, min
         .await
         .expect("resources outlive the observer");
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn readiness_follows_lifecycle() {

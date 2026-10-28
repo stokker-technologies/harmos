@@ -7,38 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde_json::json;
-// Local Imports
+
 use harmos_domain::Registrar;
 use harmos_domain::inventory::{Declaration, Facility as Inspected};
 use harmos_packaging::bundle::{Bundle, Executable, Facility, Identity, Limits, Source};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn identity() -> Identity {
     Identity {
@@ -142,8 +115,6 @@ fn archive(manifest: &[u8], entries: &[(&str, &[u8], tar::EntryType)]) -> Vec<u8
     }
     builder.into_inner().unwrap()
 }
-
-/* === Tests === */
 
 #[test]
 fn independent_files_roundtrip() {

@@ -7,39 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 
-// Third Party Imports
-
-// Local Imports
 use crate::Result;
 use harmos::operations::StreamSettings;
 use schematic_app::app::Runtime;
 use schematic_app::domain::model::Snapshot;
 use schematic_app::operations::{AnalyzeSchematic, ListDirectories};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result<()> {
     // Drain A Bounded Streaming Analysis
@@ -68,7 +42,3 @@ pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result
     }
     Ok(())
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

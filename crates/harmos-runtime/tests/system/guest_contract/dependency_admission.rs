@@ -9,38 +9,7 @@
 
 // Exercise Guest Dependency Admission Against The Original Provider.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[tokio::test]
 async fn dependencies_share_admission() {
@@ -139,5 +108,3 @@ async fn shutdown_fences_callers() {
     drop((manager, lifecycle, stale));
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

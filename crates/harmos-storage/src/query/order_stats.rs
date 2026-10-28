@@ -9,23 +9,14 @@
 
 // Budgeted Exact Order Statistics With Independent Clone Prefixes
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::num::NonZeroU128;
 use std::sync::{Arc, Mutex};
 
-// Third Party Imports
 use tempfile::NamedTempFile;
 
-// Local Imports
 use super::accumulate::sort_values;
 use super::scalar::{ExactNumber, ScalarValue};
 use super::spill::io;
@@ -33,16 +24,8 @@ use super::transform::invalid;
 use crate::Result;
 use crate::config::StorageAccumulatorSettings;
 
-/* === Constants === */
-
 const SLOT: usize = 40;
 const BUFFER: usize = 1024 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub(super) struct Values {
@@ -51,12 +34,6 @@ pub(super) struct Values {
     capacity: usize,
     pub length: usize,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Values {
     pub fn new(settings: StorageAccumulatorSettings) -> Self {
@@ -194,10 +171,6 @@ impl Values {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn position(index: usize) -> Result<u64> {
     (index as u64).checked_mul(SLOT as u64).ok_or_else(|| invalid("order statistic offset overflow"))
 }
@@ -248,8 +221,6 @@ fn decode(bytes: &[u8; SLOT]) -> Result<ScalarValue> {
         _ => return Err(invalid("invalid spilled numeric scalar")),
     })
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -21,14 +14,12 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::Poll;
 
-// Third Party Imports
 use futures_core::Stream;
 use futures_util::stream::FuturesUnordered;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot, watch};
 use tokio::task::JoinError;
 use tracing::Instrument;
 
-// Local Imports
 use super::execution::{self, Execution, Prepared};
 use super::lane::{Admission, Lanes};
 use super::{OperationInstanceId, OperationStatus, Settings};
@@ -36,16 +27,8 @@ use crate::supervision::executor::InContext;
 use crate::supervision::{Task, executor, instance::Instance};
 use crate::{Error, Result};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Driver = Pin<Box<dyn Future<Output = ()> + Send>>;
 type Completion = Pin<Box<dyn Future<Output = (Arc<Instance>, std::result::Result<(), JoinError>)> + Send>>;
-
-/* === Structs === */
 
 pub(crate) struct Instances {
     lanes: Lanes,
@@ -93,18 +76,12 @@ struct Submission {
 #[derive(Clone)]
 pub(crate) struct QueuePermit(Arc<Mutex<Option<OwnedSemaphorePermit>>>);
 
-/* === Enums === */
-
 enum Event {
     Closing,
     Submit(Submission),
     Completed(Arc<Instance>, std::result::Result<(), JoinError>),
     Drained,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Instances {
     pub(crate) fn start(
@@ -322,10 +299,6 @@ impl QueuePermit {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn dispatch(mut receiving: Receiving, mut stopping: watch::Receiver<bool>) {
     let mut running: FuturesUnordered<Completion> = FuturesUnordered::new();
     let mut closing = false;
@@ -380,5 +353,3 @@ async fn next_event(
     })
     .await
 }
-
-/* === Tests === */

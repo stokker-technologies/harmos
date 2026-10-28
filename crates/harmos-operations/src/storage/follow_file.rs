@@ -7,17 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::IO_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
@@ -27,18 +16,10 @@ use harmos_sdk::operations::access::GrantAccess;
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(FollowFile {
     source: Nested<FileSource> => 1,
     start: Nested<FollowStart> => 2,
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::operation(
     harmos_path = crate,
@@ -58,12 +39,6 @@ pub struct FollowFile {
     pub start: FollowStart,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl FollowFile {
     fn grant_for(request: &FollowFile) -> Option<harmos_domain::plugin::Grant> {
         request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, scope))
@@ -81,12 +56,6 @@ impl MemorySize for FollowFile {
 #[cfg(feature = "runtime")]
 mod execution {
     use super::*;
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
 
     use harmos_domain::model::storage::files::FileCompletion;
     use harmos_sdk::operations::{Operation, OperationDeclaration};
@@ -130,9 +99,3 @@ mod execution {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

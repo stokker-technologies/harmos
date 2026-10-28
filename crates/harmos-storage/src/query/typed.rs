@@ -9,21 +9,12 @@
 
 // Typed Historical Reads Decoded From Stored Bytes
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-// Third Party Imports
 use tokio::sync::OwnedSemaphorePermit;
 
-// Local Imports
 use super::reader::query_slot;
 use super::{ObjectSelection, ObjectVersions, RecordSelection, StreamSelection};
 use crate::storage::backend::ScanPage;
@@ -37,14 +28,6 @@ use crate::{BackendFailure, Error, MemorySize, Message, ReadBatch, Result};
 use harmos_domain::catalog::Contains;
 use harmos_domain::model::storage::catalog::{decode_admitted, object_schema};
 use harmos_domain::model::storage::object_key;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct ObjectRead<'a, T: StoredObject> {
     pub at: StorageCursor,
@@ -91,12 +74,6 @@ struct Pages<E: Entry> {
     failed: bool,
     inflight: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C: ObjectCatalog> StorageManager<C> {
     #[tracing::instrument(name = "storage.manager.read_objects", level = "trace", skip_all)]
@@ -290,9 +267,3 @@ impl<E: Entry> Pages<E> {
         self.active = None;
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

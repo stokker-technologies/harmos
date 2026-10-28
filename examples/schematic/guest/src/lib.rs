@@ -7,22 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use std::io::Error;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 #[cfg(feature = "benchmark")]
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use harmos::guest::kit::Context;
 use harmos::operations::{OperationPolicy, StreamSettings, WireStreamLimits};
 #[cfg(not(feature = "benchmark"))]
@@ -30,26 +20,12 @@ use schematic_operations::Operations;
 #[cfg(feature = "benchmark")]
 use schematic_operations::transfer::Guest as Operations;
 
-/* === Constants === */
-
-/* === Macros === */
-
 harmos::guest::export_plugin!(Plugin, capacity = 8);
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Plugin {
     #[cfg(feature = "benchmark")]
     transfer: Arc<schematic_operations::transfer::Store>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos::builtins::lifecycle::Policy for Plugin {
     const INITIALIZATION_POLICY: OperationPolicy = schematic_operations::POLICY;
@@ -93,9 +69,3 @@ impl harmos::Lifecycle for Plugin {
 impl harmos::Plugin for Plugin {
     const CATALOGS: &'static [harmos::Catalog] = &[Operations::CATALOG];
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

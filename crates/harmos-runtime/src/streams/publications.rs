@@ -7,37 +7,22 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::definition::Windows;
 use super::{Demand, Holding, Item, Query, StreamManager, Tier, Wired, window};
 use crate::{Application, state::Position, streams::Definition};
 use harmos_domain::StreamDeclaration;
 use harmos_domain::inventory::publications;
 
-/* === Constants === */
-
 const MAX_PUBLICATION_BYTES: usize = 1024 * 1024;
 const MAX_WINDOW_ROWS: usize = 65_536;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PublicationRow {
@@ -63,8 +48,6 @@ pub struct PublicationLease {
     pub(super) applied: watch::Receiver<Position>,
     pub(super) sequence: AtomicU64,
 }
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum StreamAdmissionError {
@@ -122,10 +105,6 @@ pub enum StreamPublicationError {
     #[error(transparent)]
     Payload(#[from] crate::schema::PayloadError),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> StreamManager<A> {
     pub async fn admit(&self, owner: &str, declaration: StreamDeclaration) -> Result<PublicationLease, StreamAdmissionError> {
@@ -549,8 +528,6 @@ impl Wired {
     }
 }
 
-/* === Public Functions === */
-
 pub(super) fn publication_definitions(
     owner: &str, declarations: impl IntoIterator<Item = StreamDeclaration>,
 ) -> Result<Vec<Definition>, StreamAdmissionError> {
@@ -614,7 +591,3 @@ pub(super) fn validate_existing(
     }
     Ok(())
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

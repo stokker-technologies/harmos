@@ -7,19 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use super::super::{Bank, Data, Ledger, Recovery, catalog, config, history};
 use super::Lanes;
 use arrow_array::{StringArray, StructArray};
@@ -31,14 +21,6 @@ use harmos_runtime::storage::{
 };
 use harmos_runtime::{DefinitionId, Identified, Identifier, Runtime};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[harmos_runtime::message]
 #[derive(Clone, PartialEq)]
 struct Document {
@@ -46,16 +28,10 @@ struct Document {
     text: String,
 }
 
-/* === Enums === */
-
 #[harmos_domain::catalog]
 enum Objects {
     Document(Document),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Identified for Document {
     fn definition() -> (DefinitionId, u32) {
@@ -70,15 +46,9 @@ impl StoredObject for Document {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn value(key: &str, text: &str) -> ObjectValue {
     Objects::encode(&Document { id: key.into(), text: text.into() }, NonZeroUsize::new(4096).unwrap()).unwrap()
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn object_exchange_saves() {

@@ -7,40 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "../support/native_streams.rs"]
 #[allow(dead_code, reason = "the stream bench drives the executable carrier")]
 mod native_streams;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use native_streams::{Fixture, Payload};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn native_consumption_settles() {
@@ -61,5 +32,3 @@ async fn native_consumption_settles() {
     }
     fixture.runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

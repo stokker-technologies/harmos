@@ -7,22 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
 mod delivery;
-
-/* === Re-Exports === */
 
 pub use delivery::{Callback, Context, ContextError, Delivery, EncodingError, Listener, encode_borrowed, encoding_memory_bytes};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeSet;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use crate::catalog::{Catalog, Projection, Visitor};
 use crate::config::SchemaSettings;
 use crate::operations::{Contract, ContractError, ReplaySafety, RetryPolicy, Visibility, WireDeclaration};
@@ -31,15 +24,7 @@ use crate::schema::graph::Schema;
 use crate::schema::{self};
 use crate::{Identifier, IdentifierError};
 
-/* === Constants === */
-
 const MAX_LISTENERS: usize = 4096;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Entry {
     pub id: &'static str,
@@ -64,8 +49,6 @@ struct DecodedDefinition {
 }
 
 pub struct Declarations;
-
-/* === Enums === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -105,10 +88,6 @@ pub enum Error {
     #[error("listener projection count differs from its declared leaf count")]
     Count,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Source {
     pub fn id(&self) -> &str {
@@ -240,10 +219,6 @@ impl Declarations {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn collect(
     expected: usize, project: impl FnOnce(&mut dyn FnMut(&Entry) -> Result<(), Error>) -> Result<(), Error>,
 ) -> Result<Vec<Definition>, Error> {
@@ -279,5 +254,3 @@ fn collect(
     }
     Ok(definitions)
 }
-
-/* === Tests === */

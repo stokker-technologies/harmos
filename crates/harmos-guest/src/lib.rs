@@ -7,14 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
 mod error;
 
 #[cfg(feature = "kit")]
 pub mod kit;
-
-/* === Re-Exports === */
 
 pub use harmos_domain::model;
 pub use harmos_operations as builtins;
@@ -52,35 +48,7 @@ pub use harmos_domain::{listener, message, stream};
 pub use harmos_macros::{guest_catalog as catalog, guest_operation as operation};
 pub use harmos_sdk::plugin;
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 #[cfg(feature = "kit")]
 impl harmos_domain::__private::CarrierContext for kit::Context {
     const FACILITY: &'static str = "guest";
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

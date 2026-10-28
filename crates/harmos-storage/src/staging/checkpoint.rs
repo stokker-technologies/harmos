@@ -7,25 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
-// Third Party Imports
-// Local Imports
+
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct FileSave {
     snapshot: FileSnapshot,
@@ -43,12 +27,6 @@ struct CheckpointSource {
     context: crate::execution::Context,
     queued: std::sync::Mutex<Option<tracing::Span>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Drop for CheckpointSource {
     fn drop(&mut self) {
@@ -267,9 +245,3 @@ impl FileSnapshot {
         context.scope(tracing::Instrument::instrument(future, span)).await
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

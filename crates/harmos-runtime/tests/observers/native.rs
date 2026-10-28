@@ -7,33 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io::Error;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::{Semaphore, watch};
-// Local Imports
+
 use super::{RUNNING, STOPPING, key, pending, phase};
 use harmos_runtime::operations::OperationPhase;
 use harmos_runtime::sidecar::{Instance, Observer, ObserverContext, ObserverError};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Counts {
     initialized: AtomicUsize,
@@ -58,12 +43,6 @@ struct ConfiguredRow {
 }
 
 struct ConfiguredWatch;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::sidecar::StreamSpec for ConfiguredRow {
     type Row = Self;
@@ -147,10 +126,6 @@ impl<const PANIC: bool> Drop for Watch<PANIC> {
         self.0.dropped.fetch_add(1, Ordering::SeqCst);
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn watch<const PANIC: bool>() -> Instance<()> {
     Instance::<()>::of::<Watch<PANIC>>()
@@ -344,5 +319,3 @@ async fn cleanup_recovery(finalizing: bool) {
     assert!(lease.release().await.is_err());
     assert!(runtime.shutdown().await.is_err());
 }
-
-/* === Tests === */

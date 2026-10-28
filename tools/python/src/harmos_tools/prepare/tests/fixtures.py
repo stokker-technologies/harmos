@@ -9,35 +9,17 @@
 
 """Join Product And Tests Fixture Manifests Without Compilation"""
 
-# === Imports === #
-
-# Standard Library Imports
 import argparse
 import json
 import os
 from pathlib import Path
 from typing import Any
 
-# Third Party Imports
 
-# Local Imports
 from ...build import fixtures as staging
 from ...build import paths
 from ...build.fixtures import ROOT
 from ...test import archive
-
-# Type Checking Imports
-
-
-# === Public Exports === #
-
-# === Constants === #
-
-# === Types === #
-
-# === Classes === #
-
-# === Public Functions === #
 
 
 def main() -> None:
@@ -229,10 +211,6 @@ def prepare(profile: str) -> None:
         metadata["inspections"][name] = destination.relative_to(fixtures).as_posix()
     archive.stamp(ROOT, profile, sorted(files), metadata)
 
-
-# === Private Functions === #
-
-# === Entry Point === #
 
 if __name__ == "__main__":
     main()

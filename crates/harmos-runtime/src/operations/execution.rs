@@ -7,23 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-// Third Party Imports
 use tokio::sync::{OwnedSemaphorePermit, watch};
 use tracing::Instrument;
 
-// Local Imports
 use super::OperationInstanceId;
 use super::finalization::{Finalize, Finalizer, Retained};
 use super::instances::{Instances, QueuePermit};
@@ -34,16 +25,8 @@ use crate::supervision::instance::{Instance, Outcome, Phase};
 use crate::supervision::{executor, interruptible};
 use crate::{Error, Refusal, Result, state::Position};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub(super) type Attempt<'a, O> = Pin<Box<dyn Future<Output = Result<O>> + Send + 'a>>;
 type Completed<O> = Box<dyn Fn(&O) + Send>;
-
-/* === Structs === */
 
 pub(crate) struct Prepared<O> {
     pub(super) body: Box<dyn Body<O>>,
@@ -68,15 +51,11 @@ struct Budget {
     timeout: Duration,
 }
 
-/* === Enums === */
-
 enum Stage<O> {
     Completed(Result<O>),
     Cancelled,
     Expired,
 }
-
-/* === Traits === */
 
 pub(super) trait Body<O>: Send {
     fn transferred(&self) -> bool {
@@ -103,8 +82,6 @@ pub(super) trait Body<O>: Send {
     fn retain(self: Box<Self>, outcome: Option<Error>, cause: Arc<Error>) -> (Box<dyn Finalizer>, Option<Error>, Arc<Error>);
 }
 
-/* === Implementations === */
-
 impl Budget {
     fn remaining(&self) -> Duration {
         self.timeout.saturating_sub(executor::now().saturating_duration_since(self.submitted))
@@ -127,8 +104,6 @@ impl<O> Prepared<O> {
         );
     }
 }
-
-/* === Public Functions === */
 
 #[tracing::instrument(target = "harmos::operations", name = "operations.execute", level = "debug", skip_all)]
 pub(super) async fn execute<O: Send + 'static>(
@@ -225,8 +200,6 @@ pub(super) async fn execute<O: Send + 'static>(
     }
     answer
 }
-
-/* === Private Functions === */
 
 #[tracing::instrument(target = "harmos::operations", name = "operations.acquire", level = "debug", skip_all)]
 async fn acquire(admission: &Admission, budget: &Budget, cancelled: &mut watch::Receiver<bool>) -> Result<OwnedSemaphorePermit> {
@@ -364,5 +337,3 @@ fn failure_outcome(error: &Error) -> Outcome {
         _ => Outcome::Failed,
     }
 }
-
-/* === Tests === */

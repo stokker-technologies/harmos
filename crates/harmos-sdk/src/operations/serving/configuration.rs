@@ -9,33 +9,9 @@
 
 // Prepared Carrier Configuration And Publication
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use super::{ExecutionContext, ServingError, StartupError, WireTable};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl WireTable {
     pub(crate) fn resource<T: Send + Sync + 'static>(&mut self, value: impl Into<Arc<T>>) -> &mut Self {
@@ -175,9 +151,3 @@ impl crate::setup::SetupConfiguration for WireTable {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

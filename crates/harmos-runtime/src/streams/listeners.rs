@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::TypeId;
 use std::fmt;
 use std::future::Future;
@@ -21,9 +14,9 @@ use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::Poll;
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::window::{ListenerCandidate, Row};
 use super::{Holding, ManagedPublication, Stream, StreamManager, Table, Wired};
 use crate::operations::{EncodedInvocation, Manager, PluginCallback};
@@ -33,20 +26,12 @@ use crate::supervision::{Listener, ListenerDelivery};
 use crate::{Application, Error, Message, MessageError, Result};
 use harmos_domain::listeners::{Context, Source};
 
-/* === Constants === */
-
 const PAGE_ROWS: usize = 512;
 const PAGE_BYTES: usize = 8 * 1024 * 1024;
 const SOURCES: usize = 64;
 const REGISTRATIONS: usize = 64;
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Submit = fn(&Row, Context, &PluginCallback) -> Result<EncodedInvocation>;
-
-/* === Structs === */
 
 pub struct PluginListenerBindings<'a, A: Application> {
     streams: &'a StreamManager<A>,
@@ -88,12 +73,6 @@ struct Chunk {
 
 // Borrowed, Already Validated Protobuf Bytes; Never A Schema Or Authority Facade
 struct Payload<'a>(&'a [u8]);
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> StreamManager<A> {
     pub fn stage_listeners(
@@ -409,10 +388,6 @@ impl Message for Payload<'_> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn submit_native<S: Message + 'static>(row: &Row, context: Context, callback: &PluginCallback) -> Result<EncodedInvocation> {
     let row = row.downcast_ref::<S>().ok_or(Error::InvalidInput {
         field: "listener native row",
@@ -548,5 +523,3 @@ async fn deliver<A: Application>(
         }
     }
 }
-
-/* === Tests === */

@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod carrier;
 mod catalog;
 mod connection;
@@ -30,8 +28,6 @@ pub mod __private {
     pub use harmos_sdk::__private::*;
 }
 
-/* === Re-Exports === */
-
 pub use harmos_sdk::{ExecutionContext, Operation, Service};
 
 pub use catalog::{CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT};
@@ -43,28 +39,19 @@ pub use observer_host::{ObserverCaller, ObserverHost, ObserverPublisher, Observe
 pub use plugin::{PluginNative, run_plugin, serve_plugin_channels};
 pub use publisher::{Batch, PublishError, Publisher};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use tokio::sync::{mpsc, oneshot};
-// Local Imports
+
 use crate::Frame;
 use carrier::{Failure, Input, Sender};
 use harmos_domain::{Refusal, UNKNOWN, UNREADABLE, reserved};
 use host::Outgoing;
 
-/* === Constants === */
-
 const INCOMING_REQUESTS: usize = 128;
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 type Prepare = Box<dyn Fn(&str) -> Result<Serving, Refusal> + Send + Sync>;
 
@@ -72,8 +59,6 @@ type Cancellations = Arc<Mutex<BTreeMap<u64, Option<oneshot::Sender<()>>>>>;
 type Table = Arc<Mutex<harmos_sdk::__private::WireTable>>;
 type SharedOpening = Arc<tokio::sync::Mutex<Opening>>;
 type Retirement = Box<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), Refusal>> + Send>> + Send + Sync>;
-
-/* === Structs === */
 
 struct Incoming {
     frame: Frame,
@@ -98,17 +83,11 @@ struct Serving {
     quiescence: Retirement,
 }
 
-/* === Enums === */
-
 enum Answered {
     Nothing,
     Frame(Frame),
     Deferred(Pin<Box<dyn Future<Output = Frame> + Send>>),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Drop for ConnectionGuard {
     fn drop(&mut self) {
@@ -135,10 +114,6 @@ impl Opening {
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn exchange(
     opening: SharedOpening, inbound: &mut Input, outgoing: &Sender, completed: oneshot::Sender<()>,
@@ -621,5 +596,3 @@ async fn send(outgoing: &Sender, frame: Frame) -> std::io::Result<()> {
     };
     outgoing.send(frame).await
 }
-
-/* === Tests === */

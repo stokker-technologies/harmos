@@ -7,31 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-// Third Party Imports
 
-// Local Imports
 use super::contract;
 use crate::sidecar::witness::Witness;
 use contract::{POLICY, ReadDeclaration, Step};
 use harmos_runtime::operations::OperationPolicy;
 use harmos_runtime::sidecar::{Refusal, Supervisor};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(crate) struct Provider {
     resources: Arc<Resources>,
@@ -78,16 +61,10 @@ struct AttemptGuard {
     phase: u64,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 enum Handlers {
     Read(Reading),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_operations::lifecycle::Policy for Provider {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
@@ -164,9 +141,3 @@ impl Drop for AttemptGuard {
         self.resources.marks.mark(&format!("read-finalized-{}", self.phase));
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

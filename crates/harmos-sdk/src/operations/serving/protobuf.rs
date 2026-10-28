@@ -7,36 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::Any;
-// Third Party Imports
 
-// Local Imports
 use crate::grpc::{self, DecodeInput};
 #[cfg(feature = "streaming")]
 use crate::operations::Direction;
 use crate::operations::OperationDeclaration;
 use crate::{MessageError, Portable};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Decode = fn(&[u8], &mut dyn Any) -> Result<(), MessageError>;
 type Encode = fn(&dyn Any) -> Result<Vec<u8>, MessageError>;
 
 #[cfg(feature = "streaming")]
 type Prepare = fn(&[u8]) -> Result<(Vec<u8>, usize), MessageError>;
-
-/* === Structs === */
 
 #[derive(Clone, Copy)]
 pub(crate) struct Codec {
@@ -59,12 +42,6 @@ pub(super) struct ItemCodec {
     pub(super) encode: Encode,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl Codec {
     // The One Protobuf Projection Of A Declaration: Request, Response And The
     // Item Codec Of Each Direction It Streams.
@@ -79,10 +56,6 @@ impl Codec {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[cfg(feature = "streaming")]
 fn direction<D: Direction>() -> Option<ItemCodec> {
@@ -125,5 +98,3 @@ fn encode<T: Portable>(value: &dyn Any) -> Result<Vec<u8>, MessageError> {
     grpc::encode_bounded(value, &mut bytes, super::codec::LIMIT)?;
     Ok(bytes)
 }
-
-/* === Tests === */

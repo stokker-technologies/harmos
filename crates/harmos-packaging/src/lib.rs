@@ -9,8 +9,6 @@
 
 // Reusable Cargo Build, Inert Inspection And Guest Componentization.
 
-/* === Modules === */
-
 mod build;
 pub mod bundle;
 #[cfg(feature = "guest")]
@@ -25,8 +23,6 @@ pub mod proto;
 #[cfg(feature = "generate-python")]
 pub mod python;
 
-/* === Re-Exports === */
-
 pub use build::{Artifact, Build, PackageOutput, Schema, build, build_with_cancellation, package, package_with_cancellation};
 #[cfg(feature = "guest")]
 pub use component::componentize;
@@ -35,23 +31,9 @@ pub use error::Error;
 pub use harmos_domain::inventory::{Declaration, DeclarationError, Facility};
 pub use process::BuildCancellation;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::path::Path;
 
-// Third Party Imports
 use sha2::{Digest, Sha256};
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Debug, serde::Serialize)]
 pub struct Inspection {
@@ -63,14 +45,6 @@ pub struct Inspection {
     pub sha256: String,
     pub facility: &'static str,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn inspect(path: &Path) -> Result<Inspection, Error> {
     let bytes = std::fs::read(path)?;
@@ -106,7 +80,3 @@ pub fn digest(bytes: &[u8]) -> String {
     }
     encoded
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -9,50 +9,26 @@
 
 // Measure Real Socket Commands Against An Independently Running Server Process.
 
-/* === Modules === */
-
 #[allow(dead_code, reason = "The Shared Protocol Also Defines The Separate Server Implementation")]
 #[path = "../../tests/fixtures/benchmark_protocol.rs"]
 mod protocol;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
 extern crate harmos_runtime as harmos;
 
-// Standard Library Imports
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-// Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
 use harmos_runtime::Message;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
 criterion::criterion_group!(benches, benchmarks);
 criterion::criterion_main!(benches);
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Fixture {
     child: tokio::process::Child,
     client: tonic::client::Grpc<tonic::transport::Channel>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Fixture {
     async fn start() -> Self {
@@ -108,10 +84,6 @@ impl Fixture {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn benchmarks(criterion: &mut Criterion) {
     codecs(criterion);
@@ -194,5 +166,3 @@ fn codecs(criterion: &mut Criterion) {
     }
     group.finish();
 }
-
-/* === Tests === */

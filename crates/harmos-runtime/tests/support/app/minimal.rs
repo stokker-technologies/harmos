@@ -7,34 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use harmos_runtime::{Application, state::Never};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 pub struct App;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::Lifecycle for App {
     type Config = ();
@@ -65,9 +40,3 @@ impl Application for App {
     type Record = ();
     type Streams = ();
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,34 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
-// Third Party Imports
 use tokio::sync::Notify;
 
-// Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Error, Refusal, Runtime};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Default)]
 struct Trace {
@@ -45,8 +28,6 @@ struct Trace {
 }
 
 struct AttemptGuard(Arc<Trace>);
-
-/* === Enums === */
 
 #[harmos_runtime::message]
 enum Mode {
@@ -71,10 +52,6 @@ struct WaitContractDeclaration {
 enum Operations {
     WaitContractDeclaration(WaitContractDeclaration),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::Operation for WaitContractDeclaration {
     type Error = std::convert::Infallible;
@@ -103,10 +80,6 @@ impl Drop for AttemptGuard {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace::default());
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
@@ -117,8 +90,6 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     runtime.operations.register::<Operations>(Lanes::Serial).await.unwrap();
     (runtime, trace)
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn cancellation_observable_queued() {

@@ -7,48 +7,20 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "../../tests/support/native_publications.rs"]
 mod native;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
 extern crate harmos_runtime as harmos;
 
-// Standard Library Imports
 use std::time::Duration;
 
-// Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
 
-// Local Imports
-
-/* === Constants === */
-
 const PROFILE_CALLS: u32 = 2_000;
-
-/* === Macros === */
 
 criterion::criterion_group!(benches, benchmarks);
 
 criterion::criterion_main!(benches);
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 // One sidecar `host.publish` child call end to end: kit encode, transport
 // frame, host admission, managed operation dispatch, staging and the answer.
@@ -105,5 +77,3 @@ fn profile(runtime: &tokio::runtime::Runtime, fixture: &native::Fixture) {
 fn percentile(samples: &[Duration], percentile: usize) -> Duration {
     samples[(samples.len() * percentile).div_ceil(100).saturating_sub(1)]
 }
-
-/* === Tests === */

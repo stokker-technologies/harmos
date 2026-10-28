@@ -7,26 +7,7 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], harmos_path = harmos_runtime,
     id = "fixture.run",
@@ -38,12 +19,6 @@ use super::*;
 struct WireCallDeclaration {
     value: String,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::operations::Operation for WireCallDeclaration {
     type Error = Error;
@@ -59,12 +34,6 @@ impl harmos_runtime::operations::Operation for WireCallDeclaration {
         result.map(::core::convert::Into::into)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[tokio::test]
 async fn embedded_wire_contracts() {

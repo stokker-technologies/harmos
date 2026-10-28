@@ -9,27 +9,12 @@
 
 // Schema, Object And Payload Keys Shared By Storage Requests And Records.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fmt;
 use std::num::{NonZeroU32, NonZeroUsize};
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use crate::{Error, Identifier, MemorySize, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,8 +42,6 @@ struct KeyWriter {
     limit: usize,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PayloadEncoding {
@@ -73,10 +56,6 @@ pub enum ObjectRetention {
     Latest,
     Versions(NonZeroUsize),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl MemorySize for SchemaKey {
     fn memory_size(&self) -> usize {
@@ -152,8 +131,6 @@ impl ObjectRetention {
     }
 }
 
-/* === Public Functions === */
-
 pub fn object_key<K: fmt::Display + ?Sized>(key: &K, limit: NonZeroUsize) -> Result<ObjectKey> {
     let mut writer = KeyWriter { value: String::new(), limit: limit.get() };
     fmt::write(&mut writer, format_args!("{key}")).map_err(|_| invalid("invalid or oversized object key"))?;
@@ -170,7 +147,3 @@ pub fn check_length(length: usize, max_payload_bytes: NonZeroUsize) -> Result<()
 pub fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "object catalog", reason }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

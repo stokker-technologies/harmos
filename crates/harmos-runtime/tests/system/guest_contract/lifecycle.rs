@@ -7,20 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use super::{Bank, sandbox as wire};
 use harmos_runtime::Runtime;
 use harmos_runtime::guest::Host;
@@ -32,16 +23,8 @@ use harmos_runtime::plugin::{
     PluginManager, PluginScope, PluginTransition, Router,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Backends = PluginBackend<Resources, (), Resources>;
 pub(super) type Manager = PluginManager<Resources, (), Resources>;
-
-/* === Structs === */
 
 #[harmos_runtime::operation(codec = manual, id = <wire::ProviderEchoOperation as OperationDeclaration>::ID, response = wire::Echoed,
     policy = <wire::ProviderEchoOperation as OperationDeclaration>::POLICY, visibility = Shared)]
@@ -129,8 +112,6 @@ pub(super) struct Lifecycle<C = GuestOperations> {
     catalog: PhantomData<fn() -> C>,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 enum EchoOperations {
     Echo(Echo),
@@ -156,10 +137,6 @@ pub(super) enum GuestOperations {
 enum ProviderOperations {
     Echo(wire::ProviderEchoOperation),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::Operation for Echo {
     type Error = harmos_runtime::Error;
@@ -426,10 +403,6 @@ impl<C> Lifecycle<C> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 // Serves The Sandbox's Requirements From The Host When No Plugin Provides Them
 pub(super) async fn serve_host(runtime: &Runtime<Bank>, lane: super::GuestLanes) {
     runtime.operations.register::<PublicationOperations>(lane).await.unwrap();
@@ -449,5 +422,3 @@ fn guest_scope<'a>(context: &'a Context<'_>) -> harmos_runtime::Result<&'a Plugi
         reason: "the original guest scope is required",
     })
 }
-
-/* === Tests === */

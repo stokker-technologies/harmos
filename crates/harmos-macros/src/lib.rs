@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod artifact;
 mod catalog;
 mod identity;
@@ -17,32 +15,9 @@ mod operation;
 mod path;
 mod presentation;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro::TokenStream;
-// Local Imports
+
 use identity::Sort;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 #[proc_macro_attribute]
 pub fn catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
@@ -148,7 +123,3 @@ pub fn listener(attribute: TokenStream, item: TokenStream) -> TokenStream {
 pub fn message(attribute: TokenStream, item: TokenStream) -> TokenStream {
     message::declare(attribute.into(), item.into()).into()
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

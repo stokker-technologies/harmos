@@ -13,22 +13,11 @@
 // runs, and cancelling the invocation stops and cleans it up through the
 // ordinary operation lifecycle.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
-// Third Party Imports
 
-// Local Imports
 use crate::operations::{Contract, ContractError, OperationPolicy, ReplaySafety, RetryPolicy, UNBOUNDED, Visibility};
 use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
-
-/* === Constants === */
 
 // The observe control runs until the host cancels it.
 pub const POLICY: OperationPolicy = OperationPolicy {
@@ -36,8 +25,6 @@ pub const POLICY: OperationPolicy = OperationPolicy {
     attempt_timeout: UNBOUNDED,
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
 
 pub struct Control;
 
@@ -52,21 +39,11 @@ impl crate::operations::OperationDeclaration for Control {
     const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
 }
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct ControlRequest {
     pub observer: String,
     pub generation: u64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 crate::message::postcard_product!(ControlRequest { observer: String, generation: u64 });
 
@@ -97,13 +74,7 @@ impl Described for ControlRequest {
     >(Self::NAME, Self::FIELDS);
 }
 
-/* === Public Functions === */
-
 // The Contract Every Observer-Declaring Sidecar Serves.
 pub fn contract() -> Result<Contract, ContractError> {
     Contract::reserved::<Control>(POLICY)
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

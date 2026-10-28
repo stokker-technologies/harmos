@@ -9,34 +9,7 @@
 
 // Checked Decoding Memory Arithmetic And Exact-Capacity Containers
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::MessageError;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn add(left: usize, right: usize) -> Result<usize, MessageError> {
     left.checked_add(right).ok_or_else(|| MessageError::borrowed("decoding memory bound overflow"))
@@ -56,7 +29,3 @@ pub fn vector<T>(capacity: usize) -> Result<Vec<T>, MessageError> {
     // allocation ownership, including the aligned dangling zero-sized case.
     Ok(unsafe { Vec::from_raw_parts(pointer, 0, capacity) })
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -8,9 +8,6 @@
 
 """Capture And Stage Exact Cargo And Offline Fixture Inputs"""
 
-# === Imports === #
-
-# Standard Library Imports
 import hashlib
 import importlib.resources
 import json
@@ -21,17 +18,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Third Party Imports
 
-# Local Imports
 from .. import temporary
 from . import cargo
 
-# Type Checking Imports
-
-# === Public Exports === #
-
-# === Constants === #
 
 ROOT = Path(__file__).resolve().parents[5]
 TARGET = ROOT / "target"
@@ -39,15 +29,6 @@ GENERATED = TARGET / "generated"
 SCHEMATIC = ROOT / "examples/schematic/Cargo.toml"
 GUESTS = {"schematic-guest": SCHEMATIC, "harmos-sandbox-guest": ROOT / "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"}
 LIBRARIES = ("harmos", "harmos_sidecar", "harmos_macros", "serde")
-
-# === Types === #
-
-# === Classes === #
-
-# === Public Functions === #
-
-
-# === Private Functions === #
 
 
 def capture(name: str, directory: Path, profile: str, extra: list[str], scratch: Path) -> dict:
@@ -427,6 +408,3 @@ def _widest(builds: dict[str, tuple[set[str], dict]], profile: dict | None = Non
     if len(widest) > 1 and profile is not None:
         widest = [path for path in widest if builds[path][1] == profile]
     return widest[0] if len(widest) == 1 else None
-
-
-# === Entry Point === #

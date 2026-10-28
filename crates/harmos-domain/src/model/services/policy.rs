@@ -9,26 +9,11 @@
 
 // Resident Service Stop Deadlines And Restart Credit
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::Duration;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use crate::model::operations::policy::{Backoff, PolicyError};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -37,8 +22,6 @@ pub struct ServicePolicy {
     pub restart: RestartPolicy,
 }
 
-/* === Enums === */
-
 // Failed Residents Spend Restart Credit; Sustained Health Replenishes It.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
@@ -46,10 +29,6 @@ pub enum RestartPolicy {
     Never,
     OnFailure { credit: usize, sustained_health: Duration, backoff: Backoff },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl ServicePolicy {
     pub fn validate(self) -> Result<(), PolicyError> {
@@ -81,12 +60,6 @@ impl RestartPolicy {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

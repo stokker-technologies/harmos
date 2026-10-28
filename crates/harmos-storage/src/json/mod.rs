@@ -9,8 +9,6 @@
 
 // Bounded JSON Collection Storage And Native File Publication.
 
-/* === Modules === */
-
 mod config;
 mod files;
 mod format;
@@ -18,22 +16,15 @@ mod log;
 mod reads;
 mod sessions;
 
-/* === Re-Exports === */
-
 pub use config::JsonStorageSettings;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     num::NonZeroUsize,
     sync::{Arc, atomic::Ordering},
 };
 
-// Third Party Imports
 use tokio::sync::Mutex;
 
-// Local Imports
 use crate::{
     query::{FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection},
     *,
@@ -41,26 +32,12 @@ use crate::{
 use files::Files;
 use log::{Log, Row};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 pub struct JsonStorage {
     settings: JsonStorageSettings,
     history: StoreHistory,
     owner: Arc<Mutex<Option<Log>>>,
     files: Arc<Files>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl JsonStorage {
     pub fn new(settings: JsonStorageSettings, history: StoreHistory) -> Self {
@@ -650,12 +627,6 @@ impl StorageBackend for JsonStorage {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn task(error: tokio::task::JoinError) -> Error {
     Error::backend("JSON storage task", BackendFailure::Permanent, error)
 }
-
-/* === Tests === */

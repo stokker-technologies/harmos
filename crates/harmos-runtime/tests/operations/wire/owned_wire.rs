@@ -7,30 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-// Third Party Imports
-
-// Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationDeclaration, OperationInstanceId, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Message, Runtime};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Default)]
 struct Resources {
@@ -45,8 +27,6 @@ struct AttemptGuard(Arc<Resources>);
 struct Text {
     value: String,
 }
-
-/* === Enums === */
 
 #[harmos_runtime::operation(resources = [Resources, harmos_runtime::operations::HostContext], response = Text,
         id = "owned.read",
@@ -67,10 +47,6 @@ struct ReadContractDeclaration {
 enum Operations {
     ReadContractDeclaration(ReadContractDeclaration),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::Operation for ReadContractDeclaration {
     type Error = std::io::Error;
@@ -95,10 +71,6 @@ impl Drop for AttemptGuard {
         self.0.events.lock().unwrap().push("drop");
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn runtime() -> (Runtime<App>, Arc<Resources>) {
     let resources = Arc::new(Resources::default());
@@ -209,8 +181,6 @@ async fn owner_assignments_isolate_instances() {
 fn payload(value: &str) -> Vec<u8> {
     Text { value: value.to_owned() }.encode()
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn wire_registration_uses_supplied_schema_snapshot() {

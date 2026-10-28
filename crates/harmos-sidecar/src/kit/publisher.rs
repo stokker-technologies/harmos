@@ -7,28 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::marker::PhantomData;
 use std::sync::Arc;
-// Third Party Imports
 
-// Local Imports
 use super::{CallError, ObserverContext, ObserverHost, ObserverPublisher, ObserverStreamPublisher, PublicationError, Supervisor};
 use harmos_domain::{Message, StreamSpec, plugin::Declared};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Publisher<P> {
     supervisor: Supervisor,
@@ -47,8 +30,6 @@ pub struct Batch<S: StreamSpec> {
     stream: PhantomData<fn(S)>,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum PublishError {
     #[error(transparent)]
@@ -57,10 +38,6 @@ pub enum PublishError {
     #[error(transparent)]
     Call(#[from] CallError),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl From<PublishError> for harmos_domain::Refusal {
     fn from(error: PublishError) -> Self {
@@ -217,12 +194,6 @@ where
         Publisher::publish_on::<S>(self, row).await
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

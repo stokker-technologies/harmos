@@ -13,23 +13,16 @@
 // outcome and, during settlement, the instance's cleanup inline with its own
 // lifecycle steps.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::task::{Context, Poll, Wake, Waker};
-// Third Party Imports
+
 use futures_util::FutureExt;
 use tokio::sync::watch;
-// Local Imports
+
 use super::{Notice, Supervised};
 use crate::operations::resident::Lease;
 use crate::operations::{Manager, RestartPolicy};
@@ -37,20 +30,12 @@ use crate::services::{Once, Resident, ServiceContext, ServiceDefinition};
 use crate::{Application, Result};
 use harmos_sidecar::Attach;
 
-/* === Constants === */
-
 static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 type Outcome = std::result::Result<(), String>;
 type Running = Pin<Box<dyn Future<Output = Outcome> + Send>>;
 type Ending = Pin<Box<dyn Future<Output = std::result::Result<(), String>> + Send>>;
 type Owner<A, S, H> = std::marker::PhantomData<fn() -> (A, S, H)>;
-
-/* === Structs === */
 
 pub(super) struct Physical<A: Application, S, H> {
     original: Arc<Mutex<Original>>,
@@ -91,12 +76,6 @@ struct Connection<A: Application, S, H> {
     // dependent observer, which retires only in this connection's cleanup.
     end: watch::Receiver<bool>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Signals {
     fn register(&self, waker: &Waker) {
@@ -419,9 +398,3 @@ where
         self.original.ptr_eq(&Arc::downgrade(&physical.original))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

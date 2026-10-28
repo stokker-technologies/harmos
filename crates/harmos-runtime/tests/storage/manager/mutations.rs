@@ -7,39 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::Ordering;
 
-// Third Party Imports
-
-// Local Imports
 use super::{Fixture, config, metadata};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::{MutationId, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn identity(storage: &StorageManager, key: &str) -> MutationId {
     MutationId {
@@ -47,8 +19,6 @@ fn identity(storage: &StorageManager, key: &str) -> MutationId {
         key: Identifier::new(key).unwrap(),
     }
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn resume_receipt_replays() {

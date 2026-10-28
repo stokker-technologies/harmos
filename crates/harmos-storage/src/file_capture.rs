@@ -9,28 +9,9 @@
 
 // Capture A File Range Into Independent Immutable Durable Storage.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use crate::FileRead;
 use crate::{FileReference, Result, StorageManager};
 use harmos_domain::model::storage::files::CaptureConsistency;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct FileCapture {
@@ -39,12 +20,6 @@ pub struct FileCapture {
     pub metadata: crate::FileMetadata,
     pub consistency: CaptureConsistency,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     pub async fn capture_file(&self, request: FileCapture) -> Result<FileReference> {
@@ -75,9 +50,3 @@ impl<C> StorageManager<C> {
             .await
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

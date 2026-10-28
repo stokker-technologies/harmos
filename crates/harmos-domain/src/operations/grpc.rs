@@ -7,27 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -36,12 +18,6 @@ pub struct Grpc {
     pub service: Cow<'static, str>,
     pub method: Cow<'static, str>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Grpc {
     pub const fn new(package: &'static str, service: &'static str, method: &'static str) -> Self {
@@ -70,15 +46,9 @@ impl Grpc {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn identifier(value: &str) -> bool {
     let mut bytes = value.bytes();
     value.len() <= 255
         && bytes.next().is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
-
-/* === Tests === */

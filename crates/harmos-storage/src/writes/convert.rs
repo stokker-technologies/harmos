@@ -7,21 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::time::{Duration, UNIX_EPOCH};
-// Third Party Imports
+
 use arrow_array::{
     Array, BinaryArray, BooleanArray, Float32Array, Float64Array, Int32Array, Int64Array, ListArray, StringArray, StructArray,
     TimestampNanosecondArray, UInt32Array, UInt64Array,
 };
-// Local Imports
+
 use super::DecodedBatch;
 use crate::schema::{
     Cardinality,
@@ -30,23 +23,7 @@ use crate::schema::{
 use crate::storage::{ObjectKey, ObjectValue, RecordInput, StreamInput};
 use crate::{Error, Identifier, Result};
 
-/* === Constants === */
-
 const MAX_DEPTH: usize = 64;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 #[tracing::instrument(name = "storage.arrow.encode_payloads", level = "trace", skip_all, fields(rows = payload.len(), max_bytes = max_bytes.get(), outcome = "cancelled"))]
 pub fn encode_payloads(schema: &Schema, payload: &StructArray, max_bytes: NonZeroUsize) -> Result<Vec<Vec<u8>>> {
@@ -150,8 +127,6 @@ pub fn objects(batch: &DecodedBatch, schema: &Schema, max_key_bytes: NonZeroUsiz
         })
         .collect()
 }
-
-/* === Private Functions === */
 
 trait Sink {
     fn append(&mut self, value: &[u8]) -> Result<()>;
@@ -295,8 +270,6 @@ fn invalid() -> Error {
         reason: "batch metadata or typed payload does not match its schema",
     }
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

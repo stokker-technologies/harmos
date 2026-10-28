@@ -7,26 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::codec::{Encode, Transcoded, Wire};
 use crate::{MemorySize, MessageError};
 use harmos_domain::__private::decoding_add;
 use harmos_domain::Portable;
 use harmos_sdk::grpc::{DecodeInput, prost};
-
-/* === Constants === */
-
-/* === Macros === */
 
 macro_rules! envelope {
     ($name:ident, $first:ident, $second:ident) => {
@@ -103,16 +88,10 @@ envelope!(InputEnvelope, Request, Item);
 
 envelope!(OutputEnvelope, Item, Response);
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 /// An Already Encoded Complete gRPC Message, Retaining Its Actual Byte Owner.
 pub struct PreparedFrame {
     bytes: crate::operations::Response<Vec<u8>>,
 }
-
-/* === Enums === */
 
 #[derive(Debug, PartialEq)]
 pub enum InputEnvelope<R, I> {
@@ -125,10 +104,6 @@ pub enum OutputEnvelope<I, R> {
     Item(I),
     Response(R),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl PreparedFrame {
     pub fn from_owner(bytes: crate::operations::Response<Vec<u8>>) -> Self {
@@ -156,8 +131,6 @@ impl Encode<Transcoded> for PreparedFrame {
         super::codec::encode_bytes(&self.bytes, bytes, limit, admit)
     }
 }
-
-/* === Public Functions === */
 
 /// Prepares The Complete Opening Frame Of A Typed Input Stream Once.
 pub fn prepare_input_request<O: crate::operations::OperationDeclaration>(
@@ -248,8 +221,6 @@ pub(super) fn delimited_admitted(
     Ok(())
 }
 
-/* === Private Functions === */
-
 fn prepare<T: Portable>(tag: u32, value: &T, limit: usize) -> Result<PreparedFrame, tonic::Status> {
     let mut bytes = Vec::new();
     delimited_admitted(tag, &mut bytes, limit, &mut |_| Ok(()), |bytes, admit| {
@@ -290,8 +261,6 @@ fn insert(bytes: &mut Vec<u8>, start: usize, header: &[u8]) {
     bytes.copy_within(start..end, start + header.len());
     bytes[start..start + header.len()].copy_from_slice(header);
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

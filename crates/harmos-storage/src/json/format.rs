@@ -9,38 +9,21 @@
 
 // Bounded Checksummed JSON Framing And Durable Metadata Replacement.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     fs::{self, File},
     io::{BufRead, BufReader, BufWriter, Write},
     path::Path,
 };
 
-// Third Party Imports
 use serde::{Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 
-// Local Imports
 use crate::{BackendFailure, Error, Result};
-
-/* === Constants === */
 
 const PREFIX: &[u8] = b"{\"value\":";
 const TRAILER: &[u8] = b",\"sha256\":\"";
 const END: &[u8] = b"\"}\n";
 const HEX: &[u8; 16] = b"0123456789abcdef";
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(super) struct Line {
     bytes: Vec<u8>,
@@ -52,12 +35,6 @@ struct Sink<'a, W> {
     digest: Sha256,
     remaining: usize,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl std::ops::Deref for Line {
     type Target = [u8];
@@ -81,8 +58,6 @@ impl<W: Write> Write for Sink<'_, W> {
         self.writer.flush()
     }
 }
-
-/* === Public Functions === */
 
 pub(super) fn write<W: Write>(writer: &mut W, maximum: usize, encode: impl FnOnce(&mut dyn Write) -> Result<()>) -> Result<()> {
     let overhead = PREFIX.len() + TRAILER.len() + 64 + END.len();
@@ -209,8 +184,6 @@ pub(super) fn hex(bytes: &[u8]) -> String {
     output
 }
 
-/* === Private Functions === */
-
 fn checksum(bytes: [u8; 32]) -> [u8; 64] {
     let mut output = [0; 64];
     for (byte, pair) in bytes.into_iter().zip(output.as_chunks_mut::<2>().0.iter_mut()) {
@@ -219,8 +192,6 @@ fn checksum(bytes: [u8; 32]) -> [u8; 64] {
     }
     output
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

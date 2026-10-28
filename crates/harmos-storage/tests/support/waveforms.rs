@@ -7,32 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::f64::consts::TAU;
 use std::num::NonZeroU32;
 use std::time::{Duration, UNIX_EPOCH};
 
-// Third Party Imports
 use harmos_domain::{DefinitionId, Identified, Identifier, Message};
 use harmos_storage::*;
 
-// Local Imports
-
-/* === Constants === */
-
 pub const AMPLITUDE: f64 = 12.0;
 pub const SAMPLES_PER_PERIOD: usize = 64;
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_domain::message]
 #[derive(Clone, Debug, PartialEq)]
@@ -49,15 +32,10 @@ pub struct Experiment {
     pub label: String,
 }
 
-/* === Enums === */
-
 #[harmos_domain::catalog]
 pub enum Objects {
     Experiment(Experiment),
 }
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Identified for Experiment {
     fn definition() -> (DefinitionId, u32) {
@@ -71,7 +49,6 @@ impl StoredObject for Experiment {
         &self.id
     }
 }
-/* === Public Functions === */
 
 pub fn schema() -> SchemaKey {
     SchemaKey {
@@ -146,6 +123,3 @@ pub fn inputs(samples: &[Sample]) -> Vec<StreamInput> {
 pub fn binary(length: usize) -> Vec<u8> {
     (0..length).map(|index| ((index * 37 + 11) % 251) as u8).collect()
 }
-/* === Private Functions === */
-
-/* === Tests === */

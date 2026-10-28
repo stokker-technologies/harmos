@@ -9,9 +9,6 @@
 
 """Assemble Declared Native Distributions And Typed Plugin Packages"""
 
-# === Imports === #
-
-# Standard Library Imports
 import argparse
 import hashlib
 import json
@@ -22,26 +19,11 @@ import zipfile
 from pathlib import Path
 from collections.abc import Iterable
 
-# Third Party Imports
 
-# Local Imports
 from ..build.fixtures import ROOT
 from ..build import paths
 from .. import temporary
 from . import run
-
-# Type Checking Imports
-
-
-# === Public Exports === #
-
-# === Constants === #
-
-# === Types === #
-
-# === Classes === #
-
-# === Public Functions === #
 
 
 def main() -> None:
@@ -101,9 +83,6 @@ def main() -> None:
         assets.update(records)
     catalog = {"profile": profile, "assets": assets}
     (destination / "catalog.json").write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
-
-
-# === Private Functions === #
 
 
 def _verify_schematic(bundle: Path, export: Path, selectors: dict) -> None:
@@ -181,8 +160,6 @@ def _asset(path: Path, expected: str) -> dict:
         raise RuntimeError(f"distribution bytes differ from the tested fixture: {path}")
     return {"sha256": expected, "bytes": path.stat().st_size}
 
-
-# === Entry Point === #
 
 if __name__ == "__main__":
     main()

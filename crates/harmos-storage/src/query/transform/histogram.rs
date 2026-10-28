@@ -9,43 +9,25 @@
 
 // Storage Arrow Query Contract
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_domain::model::storage::query::transform::histogram::Histogram;
 
-/* === Imports === */
-
 use crate::storage::query::transform::FieldPathExecution;
-// Standard Library Imports
+
 use std::sync::Arc;
-// Third Party Imports
+
 use arrow_array::{Float64Array, RecordBatch, UInt64Array};
 use arrow_schema::{DataType, Field, Schema};
-// Local Imports
+
 use super::downsample::number;
 use super::{invalid, numeric_type};
 use crate::Result;
 use harmos_domain::model::storage::query::scalar::ScalarValue;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Bins {
     plan: Histogram,
     schema: Arc<Schema>,
     counts: Vec<u64>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait HistogramExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
@@ -54,8 +36,6 @@ pub trait HistogramExecution {
 
     fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 }
-
-/* === Implementations === */
 
 impl HistogramExecution for Histogram {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
@@ -130,9 +110,3 @@ impl Bins {
         .map_err(|_| invalid("histogram output batch is invalid"))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

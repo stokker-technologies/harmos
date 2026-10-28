@@ -7,30 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "publication_delivery.rs"]
 mod publication_delivery;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::convert::Infallible;
 use std::pin::Pin;
 
-// Third Party Imports
 use tokio::sync::Notify;
 
-// Local Imports
 use super::operations::{Lanes, Managed};
 use super::*;
 use harmos_domain::plugin::Declared;
 use harmos_runtime::{storage::Batch, storage::Cursor, storage::StreamConsumer};
 use harmos_sidecar::{Attach, ObserverContext};
-
-/* === Constants === */
 
 // 2025-10-09 Around 08:53 UTC In Microseconds
 const TIMED_BASE: i64 = 1_760_000_000_000_000;
@@ -50,13 +39,7 @@ const LIFECYCLE: harmos_runtime::operations::OperationPolicy = harmos_runtime::O
     retries: harmos_runtime::operations::RetryPolicy::Never,
 };
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type CapturedRows = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
-
-/* === Structs === */
 
 struct Recorder {
     cursor: Cursor,
@@ -185,8 +168,6 @@ struct Advertised<S> {
     attached: Arc<std::sync::atomic::AtomicUsize>,
 }
 
-/* === Enums === */
-
 #[harmos_domain::catalog]
 enum TickingObservers {
     Producer(Producer),
@@ -207,10 +188,6 @@ enum MultiObservers {
 enum FloodObservers {
     Producer(Flooding),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<S: harmos_sidecar::Attach> harmos_sidecar::Attach for Advertised<S> {
     type Error = S::Error;
@@ -766,13 +743,9 @@ impl harmos_runtime::Plugin for Flood {
     }
 }
 
-/* === Public Functions === */
-
 pub(super) async fn ready(mut ready: tokio::sync::watch::Receiver<bool>) {
     (ready.wait_for(|value| *value)).await.unwrap();
 }
-
-/* === Private Functions === */
 
 // A Pass Racing Shutdown Meets The Closed Carrier, Or Its Already Retired Attempt Scope; Any Other Refusal Fails The Story
 fn published<E: std::fmt::Debug>(result: Result<(), E>) {
@@ -819,5 +792,3 @@ async fn row(
     })
     .await;
 }
-
-/* === Tests === */

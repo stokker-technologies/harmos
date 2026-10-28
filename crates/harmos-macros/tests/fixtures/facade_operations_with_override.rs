@@ -7,7 +7,6 @@
  * ***
  */
 
-/* === Modules === */
 
 mod relative {
     #[facade::message(harmos_path = ::facade::__harmos)]
@@ -17,25 +16,11 @@ mod relative {
     pub type Reply = WireReply;
 }
 
-/* === Re-Exports === */
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::Duration;
 
-// Third Party Imports
 use facade::__harmos::operations::{OperationPolicy, RetryPolicy};
 
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[facade::operation(
     harmos_path = ::facade::__harmos,
@@ -51,21 +36,11 @@ pub struct Echo {
     pub value: String,
 }
 
-/* === Enums === */
 
 #[facade::catalog(harmos_path = ::facade::__harmos)]
 pub enum Operations {
     Echo(Echo),
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn main() {}
-
-/* === Tests === */

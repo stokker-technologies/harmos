@@ -9,33 +9,13 @@
 
 // Inert Protocol Generation Fixtures
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
 use harmos_domain::operations::{OperationPolicy, RetryPolicy};
-
-/* === Constants === */
 
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: std::time::Duration::from_secs(1),
     attempt_timeout: std::time::Duration::from_secs(1),
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
 pub(crate) struct Payload {
@@ -129,8 +109,6 @@ pub(crate) struct EnvelopeOperation {
     pub(crate) sequence: u64,
 }
 
-/* === Enums === */
-
 #[harmos_domain::catalog(harmos_path = ::harmos_domain)]
 pub(crate) enum Routes {
     Read(ReadOperation),
@@ -156,12 +134,6 @@ pub(crate) enum Boxed {
     Wrap(EnvelopeOperation),
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 pub(crate) fn annotated() -> AnnotatedOperation {
     use harmos_domain::{Identifier, Metadata, Value};
     let mut metadata = Metadata::definition(Identifier::new("device.reading").unwrap(), "Reading", None, ["lab"]);
@@ -174,7 +146,3 @@ pub(crate) fn annotated() -> AnnotatedOperation {
         values: vec![Value::Bool(true), Value::Integer(-1)],
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

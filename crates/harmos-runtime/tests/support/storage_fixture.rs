@@ -8,20 +8,12 @@
  */
 
 #![allow(dead_code, unused_imports)]
-/* === Modules === */
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 pub(crate) use std::num::{NonZeroU32, NonZeroUsize};
 pub(crate) use std::sync::Arc;
 pub(crate) use std::sync::atomic::Ordering;
 pub(crate) use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use super::{backend, operations, support};
 pub(crate) use backend::{Data, Recovery, history, storage_settings};
 pub(crate) use harmos_runtime::storage::state::RecoverySnapshot;
@@ -29,26 +21,12 @@ pub(crate) use harmos_runtime::storage::*;
 pub(crate) use harmos_runtime::{BackendFailure, Error, Identifier, Runtime};
 pub(crate) use support::{Bank, Ledger, catalog};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 pub(crate) struct Fixture {
     pub(crate) runtime: Runtime<Bank>,
     pub(crate) storage: StorageManager,
     pub(crate) data: Arc<Data>,
     pub(crate) recovery: Arc<Recovery>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Fixture {
     pub(crate) async fn new(config: StorageSettings) -> Self {
@@ -79,16 +57,12 @@ impl Fixture {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn state_settings() -> harmos_runtime::storage::state::StorageStateSettings {
     harmos_runtime::storage::state::StorageStateSettings {
         max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
         max_checkpoint_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
     }
 }
-
-/* === Private Functions === */
 
 pub(crate) fn config() -> StorageSettings {
     storage_settings()
@@ -153,5 +127,3 @@ pub(crate) async fn pending<F: std::future::Future + ?Sized>(mut future: std::pi
 pub(crate) async fn write<C>(storage: &StorageManager<C>, id: &str) -> StorageCursor {
     storage.write_records(vec![record(&schema(), &Identifier::new(id).unwrap(), &[1, 2, 3])]).await.unwrap()
 }
-
-/* === Tests === */

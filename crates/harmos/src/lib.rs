@@ -9,10 +9,6 @@
 
 // Portable Contracts Are Available Without The Execution Runtime.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_operations as builtins;
 
 pub use harmos_domain as domain;
@@ -71,31 +67,3 @@ pub mod prelude {
     #[cfg(feature = "runtime")]
     pub use harmos_sdk::{Context, ExecutionContext, Operation, Response, Service};
 }
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

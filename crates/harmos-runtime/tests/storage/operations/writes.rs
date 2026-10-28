@@ -6,17 +6,10 @@
  *
  * ***
  */
-/* === Modules === */
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-// Third Party Imports
 use arrow_array::{Array, ArrayRef, RecordBatch, StringArray, StructArray, UInt64Array};
 use arrow_schema::{DataType, Field, Fields, Schema};
 use harmos_operations::storage::{WriteRecords, WriteStreams};
@@ -25,24 +18,7 @@ use harmos_runtime::storage::arrow::ArrowBatch;
 use harmos_runtime::storage::writes::{DataBatch, WriteReceipt};
 use harmos_runtime::{Identifier, MemorySize, Message};
 
-// Local Imports
 use super::{Fixture, Lanes, config};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(super) fn settings() -> StreamSettings {
     StreamSettings {
@@ -163,7 +139,3 @@ fn batch_descriptor_roundtrips() {
     assert_eq!(decoded.destination, original.destination);
     assert_eq!(decoded.data, original.data);
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

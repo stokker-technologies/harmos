@@ -7,32 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
 pub(crate) mod allocation;
 mod identity;
 pub mod postcard;
 
 pub use identity::{Digest, Fingerprint};
 
-/* === Re-Exports === */
-
 // Codec Internals For This Crate; Generated Code Reaches Them Through `__private`.
 pub(crate) use allocation::{add as decoding_add, multiply as decoding_multiply, vector as decoding_vector};
 pub(crate) use postcard::{Reader as PostcardReader, Value as PostcardValue};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
 
 macro_rules! inline_memory {
     ($($ty:ty),* $(,)?) => {$ (
@@ -79,17 +65,9 @@ macro_rules! postcard_product {
 }
 pub(crate) use postcard_product;
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("invalid message: {0}")]
 pub struct MessageError(Cow<'static, str>);
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait Message: Sized + Send + Sync {
     const CODEC: &'static str;
@@ -118,8 +96,6 @@ pub trait Portable: Message + MemorySize + crate::schema::Described + Send + Syn
 }
 
 pub trait Storable: Message + MemorySize {}
-
-/* === Implementations === */
 
 impl<T> Portable for T
 where
@@ -251,8 +227,6 @@ impl MessageError {
     }
 }
 
-/* === Public Functions === */
-
 pub fn btree_map_memory<K, V>(entries: usize) -> usize {
     let alignment = std::mem::align_of::<K>().max(std::mem::align_of::<V>()).max(std::mem::align_of::<usize>());
     let node = std::mem::size_of::<K>()
@@ -263,10 +237,6 @@ pub fn btree_map_memory<K, V>(entries: usize) -> usize {
         .saturating_add(5usize.saturating_mul(alignment));
     std::mem::size_of::<BTreeMap<K, V>>().saturating_add(entries.saturating_add(1).saturating_mul(node))
 }
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

@@ -9,23 +9,16 @@
 
 // Own Runtime Plugin Registration, Activation And Retained Cleanup.
 
-/* === Modules === */
-
 #[cfg(feature = "plugin-guest")]
 mod guest;
 mod progress;
 #[cfg(feature = "plugin-sidecar")]
 mod sidecar;
 
-/* === Re-Exports === */
-
 pub(crate) use progress::Driving;
 #[cfg(feature = "plugin-sidecar")]
 pub(crate) use progress::Lease;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::marker::PhantomData;
@@ -34,10 +27,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll};
 
-// Third Party Imports
 use tokio::sync::{mpsc, oneshot};
 
-// Local Imports
 use super::{
     PluginArtifact, PluginBackend, PluginCleanup, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginLifecycleAuthority,
     PluginManager, PluginStatus, PluginTransition, Router,
@@ -46,13 +37,7 @@ use crate::operations::{Bindings, Contract, Lane, Manager, OperationDefinition, 
 use crate::supervision::Task;
 use crate::{Application, Error, Result};
 
-/* === Constants === */
-
 const COMMANDS: usize = 64;
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 pub(super) type LifecycleFuture<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
 pub(super) type Driver = Box<dyn Execution>;
@@ -61,8 +46,6 @@ type Backends = PluginBackend<Driver, Driver, Driver>;
 type Registry = PluginManager<Driver, Driver, Driver>;
 type Bind = Arc<dyn Fn(&mut Bindings<'_>) -> Result<()> + Send + Sync>;
 type Snapshots = Arc<RwLock<BTreeMap<String, PluginStatus>>>;
-
-/* === Structs === */
 
 // The Runtime's Shared Plugin Registration And Lifecycle Owner.
 pub struct PluginHost<A: Application> {
@@ -111,8 +94,6 @@ struct Embedded {
     endpoint: Option<super::PluginEndpoint>,
 }
 
-/* === Enums === */
-
 enum Command {
     Reload {
         id: String,
@@ -152,8 +133,6 @@ enum Initialization {
     Closing,
 }
 
-/* === Traits === */
-
 pub(super) trait Execution: Send + 'static {
     fn start<'a>(
         &'a mut self, definition: &'a PluginDefinition, router: &'a Router, authority: &'a PluginLifecycleAuthority<'a>,
@@ -163,8 +142,6 @@ pub(super) trait Execution: Send + 'static {
         Poll::Pending
     }
 }
-
-/* === Implementations === */
 
 impl<A: Application> Clone for PluginHost<A> {
     fn clone(&self) -> Self {
@@ -498,10 +475,6 @@ impl Execution for Embedded {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn affected_dependents(registry: &Registry, id: &str) -> Result<BTreeSet<String>> {
     let mut selected = BTreeSet::from([id.to_owned()]);
     let mut pending = vec![id.to_owned()];
@@ -819,5 +792,3 @@ fn driver(backend: &mut Backends) -> &mut Driver {
 fn closing() -> Error {
     Error::Closing { domain: "plugin owner" }
 }
-
-/* === Tests === */

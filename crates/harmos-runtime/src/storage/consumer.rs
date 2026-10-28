@@ -7,31 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::Any;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::ops::Bound;
 use std::pin::Pin;
 use std::sync::Arc;
-// Third Party Imports
 
-// Local Imports
 use crate::{Application, state::At, state::Entry, state::Position, state::Recorded};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Cursor(pub u64);
@@ -42,10 +25,6 @@ pub struct Batch<A: Application> {
     pub(crate) incomplete: Vec<crate::streams::Definition>,
     pub(crate) application: PhantomData<fn() -> A>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait JournalConsumer<A: Application>: Send + 'static {
     fn resume(&self) -> Position;
@@ -149,8 +128,6 @@ pub(crate) trait Serving<A: Application>: Recording<A> {
         &'read mut self, stream: crate::streams::Definition, track: &'read [String],
     ) -> Pin<Box<dyn Future<Output = Position> + Send + 'read>>;
 }
-
-/* === Implementations === */
 
 impl<A: Application, C: JournalConsumer<A>> Attached<A> for C {
     fn resume(&self) -> Position {
@@ -263,9 +240,3 @@ impl<A: Application, C: StreamConsumer<A>> Recording<A> for C {
         Box::pin(StreamConsumer::flush(self))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

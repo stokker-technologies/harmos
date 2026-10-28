@@ -7,35 +7,8 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::{Bank, Ledger, catalog, streams};
 use harmos_runtime::{Runtime, Setup};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub async fn runtime() -> Runtime<Bank> {
     booted(Ledger::default(), |_| {}).await
@@ -62,7 +35,3 @@ pub async fn booted(origin: Ledger, attach: impl FnOnce(&mut Setup<Bank>)) -> Ru
     .await
     .expect("a memory-only boot recovers nothing")
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

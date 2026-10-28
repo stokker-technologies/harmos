@@ -9,38 +9,11 @@
 
 // Ordered Slash-Relative Directory Selection
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-// Third Party Imports
-// Local Imports
 use harmos_domain::model::storage::DirectoryRule;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(super) fn selected(path: &str, rules: &[DirectoryRule]) -> bool {
     rules.iter().fold(false, |included, rule| if matches(&rule.pattern, path) { rule.include } else { included })
 }
-
-/* === Private Functions === */
 
 fn matches(pattern: &str, path: &str) -> bool {
     let pattern = pattern.as_bytes();
@@ -78,8 +51,6 @@ fn matches(pattern: &str, path: &str) -> bool {
     }
     current[path.len()]
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

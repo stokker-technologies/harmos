@@ -7,34 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
-// Third Party Imports
+
 use tokio::sync::{oneshot, watch};
-// Local Imports
+
 use super::carrier::{Input, Sender};
 use super::{SharedOpening, exchange};
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(super) async fn run_binary(
     opening: SharedOpening, data: crate::transport::Io, control: crate::transport::Io, stop: impl Future<Output = ()>,
@@ -80,7 +58,3 @@ pub(super) async fn run_binary_with_clock(
         }
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,39 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::lifecycle::{Lifecycle, Manager};
 use super::sandbox::{DeclineOperation, EchoOperation, FailOperation, SpinOperation, WaitOperation};
 use super::{component_error, execution_error, retire_failed_guest, runtime, schematic};
 use harmos_runtime::guest::{Error, Host};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn host_resource_settings() {
@@ -147,5 +118,3 @@ async fn refusal_keeps_classification() {
     drop((manager, lifecycle));
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

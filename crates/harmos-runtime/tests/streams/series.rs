@@ -7,31 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::Any;
 use std::ops::Bound;
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use support::{Bank, Capture, Ledger, capture, catalog, deposit, streams};
-// Local Imports
+
 use crate::streams::support;
 use harmos_runtime::{
     Aggregate, Runtime, state::At, state::Position, storage::Batch, storage::Cursor, storage::Series, storage::StreamConsumer,
     streams::Aggregated, streams::Axial, streams::BeneathWindow, streams::Bucket, streams::Definition, streams::Point, streams::Prefix,
     streams::Stream, streams::Tracked,
 };
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 type Kept = Arc<Mutex<Vec<At<Arc<Capture>>>>>;
 
@@ -41,8 +28,6 @@ type Budgets = Arc<Mutex<Vec<usize>>>;
 
 type Watched = (Kept, Asked, Budgets);
 
-/* === Structs === */
-
 struct Tape {
     rows: Kept,
     asked: Asked,
@@ -51,12 +36,6 @@ struct Tape {
     budgets: Budgets,
     sealed: Position,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Tape {
     fn new() -> (Self, Watched) {
@@ -197,10 +176,6 @@ impl Series<Bank> for Tape {
         self.sealed
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn narrowed(track: &[String], row: &Capture) -> bool {
     Prefix::<<Capture as Tracked>::Track>::labels(&row.track()).starts_with(track)
@@ -517,5 +492,3 @@ async fn absent_adapter_refuses() {
 
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

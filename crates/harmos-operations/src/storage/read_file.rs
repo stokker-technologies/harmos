@@ -7,17 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::IO_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
@@ -29,18 +18,10 @@ use harmos_sdk::operations::access::GrantAccess;
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(ReadFile {
     source: Nested<FileSource> => 1,
     range: Nested<ByteRange> => 2,
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // Read A Bounded Byte Range Of A Stored Or Local File.
 #[harmos::operation(
@@ -62,12 +43,6 @@ pub struct ReadFile {
     pub range: ByteRange,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl ReadFile {
     fn grant_for(request: &ReadFile) -> Option<harmos_domain::plugin::Grant> {
         request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, scope))
@@ -86,9 +61,6 @@ impl MemorySize for ReadFile {
 mod execution {
     use super::*;
 
-    // Standard Library Imports
-    // Third Party Imports
-    // Local Imports
     use crate::storage::IO_TIMEOUT;
     use crate::{Error, Result};
     use harmos_domain::model::storage::files::FileCompletion;
@@ -130,9 +102,3 @@ mod execution {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

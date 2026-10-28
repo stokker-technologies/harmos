@@ -7,22 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::io::Read;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::task::Poll;
-// Third Party Imports
+
 use sha2::{Digest, Sha256};
-// Local Imports
+
 use super::{
     Notice, Supervised,
     physical::{Physical, Polling},
@@ -36,19 +29,11 @@ use crate::services::Resident;
 use crate::{Application, Error, Result, operations::Lane, operations::Manager, services::ServiceContext};
 use harmos_sidecar::{Attach, Executable};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type NativeCatalog<L> = fn(&mut crate::operations::Bindings<'_>, L, std::sync::Arc<crate::operations::Native>, NonZeroUsize) -> Result<()>;
 
 type Diagnostics<A> = fn(&ServiceContext<A>, Notice);
 
 type StreamListeners<A> = fn(&PluginDefinition, &mut crate::streams::PluginListenerBindings<'_, A>) -> Result<()>;
-
-/* === Structs === */
 
 pub(crate) struct RuntimeDriver<A: Application, L> {
     host: Host<A, Executable, Diagnostics<A>, L>,
@@ -99,8 +84,6 @@ struct Host<A: Application, S, H, L> {
     exit: Option<std::result::Result<(), String>>,
 }
 
-/* === Enums === */
-
 enum Progress {
     Admission,
     Settlement,
@@ -114,10 +97,6 @@ pub enum ManagedError {
     #[error(transparent)]
     Lifecycle(#[from] Error),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A, L> RuntimeDriver<A, L>
 where
@@ -559,10 +538,6 @@ where
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn verify_local_artifact<S>(_: &S, definition: &PluginDefinition) -> Result<()> {
     if matches!(&definition.artifact, PluginArtifact::LocalSidecar { .. }) {
         return Ok(());
@@ -699,5 +674,3 @@ where
     })
     .await
 }
-
-/* === Tests === */

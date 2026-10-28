@@ -7,37 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-// Third Party Imports
-
-// Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::middleware::{Enter, Invocation, Middleware, Observation};
 use harmos_runtime::operations::{CallContext, OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Runtime};
-
-/* === Constants === */
 
 const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Principal(&'static str);
 #[harmos_runtime::message]
@@ -69,12 +51,6 @@ struct Policy {
     events: Arc<Mutex<Vec<String>>>,
     reject: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::operations::ContextValue for Stage {
     const KEY: &'static str = "test.stage";
@@ -151,10 +127,6 @@ impl Middleware for Policy {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn keyed<O>(_: &O) -> Option<harmos_runtime::operations::CacheKey> {
     Some(harmos_runtime::operations::CacheKey::new(vec![1]).unwrap())
 }
@@ -171,8 +143,6 @@ fn context(actor: &'static str) -> CallContext {
     context.insert(Principal(actor)).unwrap();
     context
 }
-
-/* === Tests === */
 
 #[test]
 fn portable_preserves_local() {

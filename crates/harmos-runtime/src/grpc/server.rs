@@ -7,48 +7,29 @@
  * ***
  */
 
-/* === Modules === */
-
 mod concurrency;
-
-/* === Re-Exports === */
 
 pub use crate::config::GrpcServerSettings as Settings;
 pub use concurrency::Calls;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::{future::Future, marker::PhantomData, pin::Pin, sync::Arc};
 
-// Third Party Imports
 use futures_core::Stream;
 use futures_util::StreamExt;
 use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 
-// Local Imports
 use super::{Codec, Event, InputEnvelope, InputError, Wire};
 use crate::operations::{OperationDeclaration, Running, StreamItem};
 use crate::{Error, Refusal, operations::Manager};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type HttpFuture = Pin<Box<dyn Future<Output = http::Response<Body>> + Send>>;
 type Items<I, R> = Pin<Box<dyn Stream<Item = Result<Event<StreamItem<I>, crate::operations::Response<R>>, Status>> + Send>>;
-
-/* === Structs === */
 
 struct Endpoint<O> {
     authority: Authority,
     settings: Settings,
     operation: PhantomData<fn() -> O>,
 }
-
-/* === Enums === */
 
 #[derive(Clone)]
 pub enum Authority {
@@ -59,10 +40,6 @@ pub enum Authority {
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     Plugin(crate::operations::Caller),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Authority {
     pub fn trusted_host<L: crate::operations::Lane>(operations: &crate::operations::OperationManager<L>) -> Self {
@@ -196,8 +173,6 @@ where
     }
 }
 
-/* === Public Functions === */
-
 pub fn unary<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
     O: OperationDeclaration,
@@ -300,8 +275,6 @@ where
         codec.server().streaming(call, request).await
     })
 }
-
-/* === Private Functions === */
 
 fn code(error: &Error) -> tonic::Code {
     // Preserve Known Runtime Denials Through Authored Child Failures. Bound Wrapping.
@@ -462,5 +435,3 @@ fn input_status(error: InputError) -> Status {
     status.set_source(Arc::new(error));
     status
 }
-
-/* === Tests === */

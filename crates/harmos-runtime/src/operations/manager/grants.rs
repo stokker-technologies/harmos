@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[cfg(all(test, any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
 mod tests {
     use super::*;
@@ -46,30 +44,7 @@ mod tests {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl GrantAuthority {
     // Refuse a request whose grant the caller does not hold. A request resolves
@@ -98,9 +73,3 @@ impl GrantAuthority {
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

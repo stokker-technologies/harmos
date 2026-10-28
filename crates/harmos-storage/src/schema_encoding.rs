@@ -7,30 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::de::{DeserializeSeed, Error as _, IntoDeserializer, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-// Local Imports
+
 use super::manager::encoded_size;
 use super::{SchemaKey, StorageCursor, StorageSchema};
 use crate::{Error, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Input<A> {
     map: A,
@@ -41,17 +24,11 @@ struct Input<A> {
 
 struct StorageVisitor;
 
-/* === Enums === */
-
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum Encoding {
     GraphV1,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl StorageSchema {
     pub(super) fn encoded_bytes(&self) -> Result<usize> {
@@ -140,15 +117,9 @@ impl<'de, A: MapAccess<'de>> MapAccess<'de> for Input<A> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn invalid() -> Error {
     Error::InvalidInput {
         field: "storage schema",
         reason: "invalid shared schema preparation",
     }
 }
-
-/* === Tests === */

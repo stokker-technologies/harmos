@@ -7,33 +7,7 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::ops::Range;
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 #[must_use]
 pub fn band_energy(frequency: &[f64], magnitude: &[f64], low: f64, high: f64) -> f64 {
@@ -154,8 +128,6 @@ pub fn occupied_bandwidth(frequency: &[f64], magnitude: &[f64], low: f64, high: 
     Some((lower, upper, upper - lower + step))
 }
 
-/* === Private Functions === */
-
 fn band(frequency: &[f64], low: f64, high: f64) -> Range<usize> {
     let start = frequency.partition_point(|at| *at < low);
     let end = frequency.partition_point(|at| *at <= high);
@@ -174,5 +146,3 @@ fn step_of(frequency: &[f64], band: &Range<usize>) -> f64 {
         length => (frequency[band.end - 1] - frequency[band.start]) / (length - 1) as f64,
     }
 }
-
-/* === Tests === */

@@ -7,31 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::fmt;
 use std::path::PathBuf;
-// Third Party Imports
+
 use semver::Version;
-// Local Imports
+
 use super::Requirement;
 use harmos_domain::inventory::{StreamDeclaration, operations, publications};
 use harmos_domain::{ConfigError, Registration, RegistrationError, artifact_subset};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct PluginDefinition {
@@ -55,8 +40,6 @@ pub struct PluginContributions {
     pub registrations: Vec<Registration>,
     pub sections: Vec<harmos_domain::inventory::Section>,
 }
-
-/* === Enums === */
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum PluginArtifact {
@@ -113,10 +96,6 @@ pub enum PluginDefinitionError {
         source: ConfigError,
     },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl fmt::Debug for PluginDefinition {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -362,12 +341,6 @@ impl PluginDefinition {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn invalid(field: &'static str, reason: &'static str) -> PluginDefinitionError {
     PluginDefinitionError::Invalid { field, reason }
 }
-
-/* === Tests === */

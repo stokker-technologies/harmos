@@ -9,30 +9,10 @@
 
 // Plugin Lifecycle Errors
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use crate::operations::ServingError;
 use crate::plugin::Plugin;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(thiserror::Error)]
 pub enum Error<P: Plugin> {
@@ -63,10 +43,6 @@ pub enum Error<P: Plugin> {
     #[error("plugin lifecycle state lock is poisoned")]
     Poisoned,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<P: Plugin> std::fmt::Debug for Error<P> {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -99,9 +75,3 @@ impl<P: Plugin> Clone for Error<P> {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

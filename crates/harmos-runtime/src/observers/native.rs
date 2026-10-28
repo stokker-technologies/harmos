@@ -11,28 +11,11 @@
 // it through its `Activity`, and stopping the activation stops and cleans it
 // up. A failed cleanup stays owned by the activation for a later retry.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
-// Third Party Imports
 
-// Local Imports
 use super::{ObserverActivation, ObserverBackend, ObserverDefinition};
 use crate::{Error, Result};
 use harmos_sidecar::{Activity, Instance};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(crate) struct Native<H, F> {
     pub(crate) schema_settings: Arc<crate::config::SchemaSettings>,
@@ -41,12 +24,6 @@ pub(crate) struct Native<H, F> {
 }
 
 struct Retained(Activity);
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl crate::supervision::cleanup::Resource for Retained {
     fn finalize(&mut self) -> crate::supervision::cleanup::Finalize<'_> {
@@ -121,15 +98,9 @@ where
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn failed(source: impl std::error::Error + Send + Sync + 'static) -> Error {
     Error::TaskFailed {
         domain: "native observer",
         source: Arc::new(source),
     }
 }
-
-/* === Tests === */

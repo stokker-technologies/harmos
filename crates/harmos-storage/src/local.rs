@@ -9,32 +9,14 @@
 
 // Local Paths Are Accessible To The Host Without Traversing Symbolic Links.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fs::{self, Metadata};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 
-// Third Party Imports
-
-// Local Imports
 use crate::manager::Inner;
 use crate::{BackendFailure, Error, Result};
 use crate::{ByteRange, FileBatch, FileCompletion};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(crate) struct LocalReader {
     context: crate::execution::Context,
@@ -56,12 +38,6 @@ struct Stamp {
     modified: SystemTime,
     created: Option<SystemTime>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl LocalReader {
     pub(crate) async fn open(inner: &Arc<Inner>, path: PathBuf, range: ByteRange) -> Result<Self> {
@@ -323,8 +299,6 @@ impl Stamp {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn validate_local_path(path: &Path) -> Result<PathBuf> {
     let absolute = std::path::absolute(path).map_err(io_error)?;
     let mut checked = PathBuf::new();
@@ -350,8 +324,6 @@ pub(crate) fn validate_local_path(path: &Path) -> Result<PathBuf> {
     }
     Ok(checked)
 }
-
-/* === Private Functions === */
 
 pub(crate) fn linked(metadata: &Metadata) -> bool {
     #[cfg(windows)]
@@ -435,5 +407,3 @@ fn independent_file(file: fs::File) -> Result<fs::File> {
 fn task_error(error: tokio::task::JoinError) -> Error {
     Error::backend("local filesystem task", BackendFailure::Permanent, error)
 }
-
-/* === Tests === */

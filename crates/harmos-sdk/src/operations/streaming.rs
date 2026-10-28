@@ -7,15 +7,8 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_domain::config::StreamSettings;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     ops::Deref,
     sync::{
@@ -24,22 +17,12 @@ use std::{
     },
 };
 
-// Third Party Imports
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 
-// Local Imports
 use super::RequestClaims;
 use crate::{MemorySize, Message};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type Result<T, E = Error> = std::result::Result<T, E>;
-
-/* === Structs === */
 
 pub struct StreamOutput<T, E = Error> {
     error: std::marker::PhantomData<fn() -> E>,
@@ -66,8 +49,6 @@ pub struct StreamPermit<'a, T, E = Error> {
     claim: OwnedSemaphorePermit,
 }
 
-/* === Enums === */
-
 enum Payload<T> {
     Plain(T),
     Owned { response: super::response::ErasedResponse, project: fn(&super::response::ErasedResponse) -> &T },
@@ -93,10 +74,6 @@ pub enum Error {
     #[error("operation stream decode failed: {0}")]
     Codec(#[source] crate::MessageError),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<T: Message + MemorySize + Send + 'static> super::EndpointSet for StreamInput<T> {
     fn bind_wire(limits: super::WireStreamLimits) -> Result<(Self, super::WireStreams), super::ServingError> {
@@ -391,8 +368,6 @@ impl<T: Message + MemorySize, E: From<Error>> StreamOutput<T, E> {
     }
 }
 
-/* === Public Functions === */
-
 pub fn validate(settings: &StreamSettings) -> Result<()> {
     if settings.bytes.get() > Semaphore::MAX_PERMITS
         || settings.bytes.get() > u32::MAX as usize
@@ -427,8 +402,6 @@ pub fn channel<T, E: From<Error>>(settings: StreamSettings) -> Result<(StreamOut
     ))
 }
 
-/* === Private Functions === */
-
 fn owned<T: Send + Sync + 'static>(response: &super::response::ErasedResponse) -> &T {
     response.value::<T>().expect("owned stream payload retains its declared type")
 }
@@ -439,8 +412,6 @@ fn closed() -> Error {
 fn decoding(source: crate::MessageError) -> Error {
     Error::Codec(source)
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

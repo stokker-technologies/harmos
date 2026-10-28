@@ -7,33 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Decibel {
     pub reference: f64,
     pub factor: f64,
 }
-
-/* === Enums === */
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Scale {
@@ -45,10 +23,6 @@ pub enum Scale {
         factor: f64,
     },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Decibel {
     #[must_use]
@@ -181,9 +155,3 @@ impl Scale {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

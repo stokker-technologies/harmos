@@ -7,38 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use super::{At, Error, Origin, Position, TrackedState};
 use crate::Application;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct ManagedState<A: Application> {
     tracked: Arc<TrackedState<A>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> ManagedState<A> {
     pub(super) fn new(tracked: Arc<TrackedState<A>>) -> Self {
@@ -83,9 +59,3 @@ impl<A: Application> Clone for ManagedState<A> {
         Self::new(Arc::clone(&self.tracked))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

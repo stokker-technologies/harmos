@@ -7,28 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
-// Third Party Imports
 
-// Local Imports
 use super::{Direction, OperationDeclaration, OperationDefinition, OperationPolicy, ReplaySafety, Visibility};
 use crate::catalog::{self, Catalog, Member, Node, Projection, Visitor};
 use crate::{Error, Identifier, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug)]
 pub struct Entry {
@@ -43,12 +26,6 @@ pub struct Entry {
 pub struct Declarations;
 
 pub struct Callees;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl PartialEq for Entry {
     fn eq(&self, other: &Self) -> bool {
@@ -140,10 +117,6 @@ impl<M: OperationDeclaration> Member<M> for Callees {
     const ENTRY: Self::Entry = M::OPERATIONS;
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn payload<T: crate::Portable>() -> Result<crate::Fingerprint> {
     let schema = crate::schema::graph::Schema::from_declaration(T::DEFINITION, &crate::config::SchemaSettings::default())
         .map_err(|error| crate::MessageError::new(error.to_string()))?;
@@ -165,5 +138,3 @@ fn append(declaration: &Entry, names: &mut BTreeSet<Identifier>, definitions: &m
     definitions.push(definition);
     Ok(())
 }
-
-/* === Tests === */

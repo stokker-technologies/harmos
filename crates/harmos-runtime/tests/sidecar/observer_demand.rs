@@ -7,22 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::convert::Infallible;
 use std::sync::{
     Arc, Mutex, Weak,
     atomic::{AtomicUsize, Ordering::SeqCst},
 };
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use super::operations::{Lanes, Managed};
 use harmos_runtime::operations::OperationPhase;
 use harmos_runtime::operations::resident::{Key, Kind, Snapshot};
@@ -31,18 +22,10 @@ use harmos_runtime::sidecar::{
     Attach, DemandKey, ObserverAttachment, ObserverContext, PublicationError, PublishError, Publisher, Supervisor,
 };
 
-/* === Constants === */
-
 const RECORD: DemandKey = DemandKey::new("fixture.record", "sample");
 const AUXILIARY: DemandKey = DemandKey::new("fixture", "auxiliary");
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
 static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Counts>>> = Mutex::new(std::collections::BTreeMap::new());
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Default)]
 struct Counts {
@@ -81,17 +64,11 @@ struct RecordOnly(Arc<Counts>);
 
 struct Mixed(Arc<Counts>);
 
-/* === Enums === */
-
 #[harmos_domain::catalog]
 enum Observers {
     RecordOnly(RecordOnly),
     Mixed(Mixed),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Seed {
     fn new(counts: &Arc<Counts>) -> Self {
@@ -226,10 +203,6 @@ impl Mixed {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn observers(runtime: &harmos_runtime::Runtime<crate::sidecar::support::Bank>) -> std::collections::BTreeMap<Key, Snapshot> {
     runtime.operations.residents().into_iter().filter(|(_, status)| status.kind == Kind::Observer).collect()
 }
@@ -339,5 +312,3 @@ fn catalog_keys_isolated() {
     assert_eq!(mixed.streams, ["demand.row"]);
     assert_eq!(mixed.demand_keys, [RECORD.name(), AUXILIARY.name()]);
 }
-
-/* === Tests === */

@@ -7,28 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
-// Third Party Imports
 
-// Local Imports
 use crate::operations::OperationDefinition;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -41,12 +22,6 @@ pub enum Error {
         source: crate::Error,
     },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn validate(operations: &[OperationDefinition]) -> Result<(), Error> {
     let mut ids = BTreeSet::new();
@@ -70,7 +45,3 @@ pub fn validate_match(expected: &[OperationDefinition], actual: &[OperationDefin
     }
     Ok(())
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

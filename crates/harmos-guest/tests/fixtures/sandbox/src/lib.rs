@@ -10,30 +10,22 @@
 // One Guest For Every Sandbox Behaviour The Host Stories Drive: The Configuration
 // String Selects A Lifecycle Mode And Request Fields Select Handler Behaviour
 
-/* === Modules === */
 
 pub mod contract;
 
-/* === Re-Exports === */
-
-/* === Imports === */
 
 use harmos::guest::builtins::{lifecycle, streams};
 
-// Standard Library Imports
 use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use contract::{Echoed, ProviderEchoOperation};
 use harmos::guest::kit::Context;
 use harmos::operations::{OperationPolicy, RetryPolicy};
 
 use harmos::guest::{Host, PublishError};
 
-/* === Constants === */
 
 const LIFECYCLE: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
@@ -41,13 +33,9 @@ const LIFECYCLE: OperationPolicy = OperationPolicy {
     retries: RetryPolicy::Never,
 };
 
-/* === Macros === */
 
 harmos::guest::export_plugin!(Sandbox, capacity = 2);
 
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Sandbox {
     config: String,
@@ -64,11 +52,6 @@ pub struct Owner {
     ran: AtomicUsize,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl lifecycle::Policy for Sandbox {
     const INITIALIZATION_POLICY: OperationPolicy = LIFECYCLE;
@@ -168,9 +151,6 @@ impl harmos::Plugin for Sandbox {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn progress(context: &Context, value: &str) -> Result<(), PublishError> {
     context.publisher::<Sandbox>().publish_on::<Echoed>(&Echoed { said: value.into() }).await
@@ -204,5 +184,3 @@ async fn submitted(context: &Context) -> Result<(), std::io::Error> {
     Instance::detach(detached);
     Ok(())
 }
-
-/* === Tests === */

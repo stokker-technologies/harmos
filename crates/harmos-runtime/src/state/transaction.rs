@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 pub(crate) mod dispatch {
     use std::collections::BTreeMap;
 
@@ -99,38 +97,9 @@ pub(crate) mod dispatch {
     }
 }
 
-/* === Re-Exports === */
-
 pub use harmos_domain::state::{Catalogued, DecodeError, Invertible, Mutual, Never, Paired, Transaction, TransactionCatalog};
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use crate::Application;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 pub(crate) type Inverting<A> = fn(&<A as Application>::Transaction, &<A as Application>::State) -> Option<<A as Application>::Transaction>;
 pub(crate) type TransactionError<A> = <<A as Application>::Transaction as Transaction<<A as Application>::State>>::Error;
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

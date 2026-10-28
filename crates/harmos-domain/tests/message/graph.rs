@@ -9,19 +9,9 @@
 
 // Shared Schema Preparation And Recursive Contracts
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::num::NonZeroUsize;
 
-// Third Party Imports
-
-// Local Imports
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::Cardinality;
 use harmos_domain::schema::Described;
@@ -29,25 +19,11 @@ use harmos_domain::schema::declaration::{self, Definition};
 use harmos_domain::schema::graph::{Error, Field, Kind, Schema};
 use harmos_sdk::grpc::{self, DecodeInput};
 
-/* === Constants === */
-
 // Complete Dokime CheckpointDocument Declaration, Source SHA-256:
 // 1395b816ab4edc53a07aac298fd73c81fdccebd56325a3095d0c2b20a029017a
 const CHECKPOINT: &str = include_str!("../fixtures/checkpoint-schema.json");
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 struct RecursiveDeclaration;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_domain::schema::Described for RecursiveDeclaration {
     const NAME: &'static str = "recursive.test";
@@ -63,8 +39,6 @@ impl harmos_domain::schema::Described for RecursiveDeclaration {
         &MARKER
     };
 }
-
-/* === Public Functions === */
 
 #[test]
 fn typed_recursive_declaration() {
@@ -342,8 +316,6 @@ fn recursive_schema_validation() {
     assert!(matches!(schema.prepare(&SchemaSettings::default()), Err(Error::Field { reason: "duplicate protobuf tag", .. })));
 }
 
-/* === Private Functions === */
-
 fn wire_round_trip(schema: &Schema) {
     let postcard = harmos_domain::Message::encode(schema);
     assert_eq!(postcard.len(), harmos_domain::Message::encoded_size(schema));
@@ -355,5 +327,3 @@ fn wire_round_trip(schema: &Schema) {
     );
     assert_eq!(&grpc::decode::<Schema>(DecodeInput::new(&protobuf)).unwrap(), schema);
 }
-
-/* === Tests === */

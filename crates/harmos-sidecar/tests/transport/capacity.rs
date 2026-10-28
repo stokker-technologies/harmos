@@ -7,29 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use super::protocol::StartOperation;
-
-/* === Constants === */
 
 pub const MIB: usize = 1024 * 1024;
 pub const WARMUP_MIB: u64 = 64;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy)]
 pub struct Case {
@@ -56,12 +39,6 @@ pub struct Observation {
     pub elapsed_s: f64,
     pub rejected: u64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Settings {
     pub fn load() -> Result<Self, String> {
@@ -152,8 +129,6 @@ impl Observation {
     }
 }
 
-/* === Public Functions === */
-
 pub fn range(values: impl Iterator<Item = f64>) -> String {
     let mut values: Vec<_> = values.collect();
     values.sort_by(f64::total_cmp);
@@ -170,8 +145,6 @@ pub fn highest_met(cases: &[(u64, Vec<Observation>)]) -> Option<u64> {
         .max()
 }
 
-/* === Private Functions === */
-
 fn number(name: &str, value: &str, max: u64) -> Result<u64, String> {
     if value.is_empty() || value.len() > 20 || !value.bytes().all(|byte| byte.is_ascii_digit()) {
         return Err(format!("{name}: expected a positive integer of at most 20 decimal digits"));
@@ -182,5 +155,3 @@ fn number(name: &str, value: &str, max: u64) -> Result<u64, String> {
     }
     Ok(number)
 }
-
-/* === Tests === */

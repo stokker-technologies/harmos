@@ -7,29 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::{Answer, Finalization, Finished, Prepare, Prepared, Route, ServingError, WireTable, guarded};
 use crate::Message;
 use crate::QualifiedId;
 use crate::operations::{Carrier, EndpointSet, ExecutionContext, OperationDeclaration, ResourceSet};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct State<T: Carrier> {
     physical: Option<Physical<T>>,
@@ -63,17 +44,11 @@ struct StreamEndpoints<E> {
     streams: Option<super::WireStreams>,
 }
 
-/* === Enums === */
-
 enum Initialization {
     Pending,
     Started,
     Ready,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl WireTable {
     pub(crate) fn install<D, T>(&mut self, dependencies: ResourceSet, contract: crate::operations::Contract) -> Result<(), ServingError>
@@ -344,15 +319,9 @@ impl<T: Carrier> Prepared for State<T> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 // The handler's error becomes the failure's cause here, in the plugin process
 // where it originated; every later carrier forwards the same value.
 fn operation_error<T: Carrier>(error: T::Error) -> ServingError {
     let failure = crate::Failure::originate(T::classify(&error), &error, crate::failure::Origin::Plugin);
     ServingError::Handler(failure)
 }
-
-/* === Tests === */

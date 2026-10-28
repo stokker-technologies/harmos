@@ -7,22 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fmt;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
 
-// Local Imports
 use crate::failure::{Failure, Origin};
 use crate::operations;
-
-/* === Constants === */
 
 pub const RESERVED: &str = "harmos.";
 
@@ -32,12 +22,6 @@ pub const UNKNOWN: i64 = -32_601;
 
 pub const UNREADABLE: i64 = -32_602;
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 // A host or carrier refusal: the JSON-RPC code beside the failure it carries.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -45,12 +29,6 @@ pub struct Refusal {
     code: i64,
     failure: Failure,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Refusal {
     pub fn new(code: i64, message: impl fmt::Display) -> Self {
@@ -102,8 +80,6 @@ impl fmt::Display for Refusal {
 
 impl std::error::Error for Refusal {}
 
-/* === Public Functions === */
-
 pub const fn reserved(method: &str) -> bool {
     let bytes = method.as_bytes();
     bytes.len() >= 7
@@ -115,7 +91,3 @@ pub const fn reserved(method: &str) -> bool {
         && bytes[5] == b's'
         && (bytes[6] == b'.' || bytes[6] == b'_')
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

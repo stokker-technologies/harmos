@@ -7,35 +7,20 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use super::support::journal::{Journal, Snapshot, Store, Wire};
 use harmos_runtime::{
     Application, Error, Runtime, state::Focus, state::Origin, state::Position, state::PrincipalId, state::Recorded, state::Records,
     state::RequestKey, state::Transaction,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Refusal = &'static str;
-
-/* === Structs === */
 
 #[derive(Default)]
 struct State {
@@ -80,8 +65,6 @@ struct Model;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Large(String);
 
-/* === Enums === */
-
 #[harmos_runtime::transactions(state = State, error = Refusal)]
 #[derive(Clone, Debug)]
 enum Changes {
@@ -95,10 +78,6 @@ enum Facts {
     Large(Large),
     Reserved(Reserved),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Serialize for Broken {
     fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
@@ -254,10 +233,6 @@ impl Wire for Model {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn add(amount: i64, count: usize, mode: u8) -> Add {
     Add {
@@ -464,5 +439,3 @@ async fn contract_refuses_apply() {
     runtime.shutdown().await.unwrap();
     assert_eq!(captures.load(Ordering::SeqCst), 0);
 }
-
-/* === Tests === */

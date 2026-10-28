@@ -7,30 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use quote::ToTokens;
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Error, LitInt, Meta, Token};
-// Local Imports
+
 use super::set_once;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy)]
 pub(super) struct Policy {
@@ -40,12 +23,6 @@ pub(super) struct Policy {
     pub(super) backoff_cap_ms: u64,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl Policy {
     pub(super) const NEVER: Self = Self {
         credit: 0,
@@ -54,8 +31,6 @@ impl Policy {
         backoff_cap_ms: 10_000,
     };
 }
-
-/* === Public Functions === */
 
 pub(super) fn parse(listed: &syn::MetaList) -> Result<Policy, Error> {
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(listed.tokens.clone())?;
@@ -99,7 +74,3 @@ pub(super) fn parse(listed: &syn::MetaList) -> Result<Policy, Error> {
         backoff_cap_ms,
     })
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

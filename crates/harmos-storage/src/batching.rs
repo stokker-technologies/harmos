@@ -7,28 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-// Third Party Imports
-// Local Imports
 use super::manager::{Domain, Inner, Operation, Pending, State, Target};
 use super::{StorageBatch, StorageCursor};
 use crate::selection::Entry;
 use crate::{Error, Result};
 use std::sync::Arc;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(super) struct Batch {
     pub(super) operation: Operation,
@@ -36,18 +19,12 @@ pub(super) struct Batch {
     pub(super) target: Target,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Records,
     Stream,
     Recovery,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Batch {
     #[tracing::instrument(name = "storage.batching.write", parent = None, level = "trace", skip_all, fields(entries = self.entries.len(), store = %inner.primary.history().store, epoch = %inner.primary.history().epoch, domain = if self.entries[0].operation.domain() == Domain::Data { "data" } else { "recovery" }, first_index = self.entries[0].index, last_index = self.entries[self.entries.len() - 1].index, through = self.target.sequence, outcome = "cancelled"))]
@@ -153,8 +130,6 @@ impl Batch {
     }
 }
 
-/* === Public Functions === */
-
 #[tracing::instrument(name = "storage.batching.write_data", level = "trace", skip_all, fields(through = tracing::field::Empty, saved = tracing::field::Empty))]
 pub(super) async fn write_data(inner: &Arc<Inner>, operation: &Operation) -> Result<StorageCursor> {
     match operation {
@@ -172,8 +147,6 @@ pub(super) async fn write_data(inner: &Arc<Inner>, operation: &Operation) -> Res
         Operation::Recovery(_) | Operation::Snapshot(_) => unreachable!("primary persistence requires primary data"),
     }
 }
-
-/* === Private Functions === */
 
 fn kind(operation: &Operation) -> Option<Kind> {
     match operation {
@@ -236,5 +209,3 @@ async fn persist<'a, T: Entry>(
 fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "data write receipt", reason }
 }
-
-/* === Tests === */

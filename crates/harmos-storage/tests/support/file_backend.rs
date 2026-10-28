@@ -9,38 +9,14 @@
 
 // Serve Staged File And Mutation Persistence.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use sha2::{Digest, Sha256};
 
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Chunk<'a> {
     control: &'a Control,
     id: String,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Drop for Chunk<'_> {
     fn drop(&mut self) {
@@ -493,9 +469,3 @@ impl<C: ObjectCatalog> Data<C> {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

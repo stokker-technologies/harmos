@@ -8,7 +8,6 @@
  */
 
 #![cfg(feature = "simulation")]
-/* === Modules === */
 
 #[path = "../simulation/inverses.rs"]
 mod inverses;
@@ -117,19 +116,12 @@ mod atomic_records {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::convert::Infallible;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::sidecar::{Notice, Supervised};
 use harmos_runtime::simulation::entropy;
@@ -140,18 +132,10 @@ use harmos_runtime::{
 use harmos_sidecar::{Attach, PluginNative, Supervisor};
 use support::{Bank, Deposit, Ledger, Noted, alice, catalog, pulse, streams};
 
-/* === Constants === */
-
 static DIVERGENCE: AtomicUsize = AtomicUsize::new(0);
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 type IdleManaged =
     harmos_runtime::sidecar::Managed<Bank, PluginNative<Idle>, fn(&harmos_runtime::services::ServiceContext<Bank>, Notice), Lanes>;
-
-/* === Structs === */
 
 #[harmos_runtime::operation(id = "sim.pending",
     response = (),
@@ -226,13 +210,7 @@ struct IdleResident {
     managed: IdleManaged,
 }
 
-/* === Enums === */
-
 use support::Lanes;
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::Operation for PendingDeclaration {
     type Error = Infallible;
@@ -520,10 +498,6 @@ impl harmos_runtime::services::Resident<Bank> for IdleResident {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 #[harmos_runtime::catalog]
 enum SimOperations {
     Pending(PendingDeclaration),
@@ -597,8 +571,6 @@ fn capturing(seed: u64, name: &str) -> SimulatedRuntime<Bank> {
     sim.advance_ms(1);
     sim
 }
-
-/* === Tests === */
 
 #[test]
 fn attached_fold_refused() {

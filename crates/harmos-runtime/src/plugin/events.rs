@@ -7,32 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use tokio::sync::broadcast;
-// Local Imports
+
 use super::{PluginGeneration, PluginState};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct PluginEvents {
     pub(super) receiver: broadcast::Receiver<PluginEvent>,
 }
-
-/* === Enums === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PluginEventKind {
@@ -51,10 +32,6 @@ pub enum PluginEvent {
     Lagged { missed: u64 },
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl PluginEvents {
     pub async fn next(&mut self) -> Option<PluginEvent> {
         match self.receiver.recv().await {
@@ -64,9 +41,3 @@ impl PluginEvents {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

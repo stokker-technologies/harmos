@@ -7,27 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 
-// Third Party Imports
-
-// Local Imports
 use super::Summary;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // A finished run of values answered exactly: everything `Summary` answers,
 // plus the order statistics that need every value at once. Non-finite values
@@ -38,12 +20,6 @@ pub struct Series<'a> {
     values: Cow<'a, [f64]>,
     sorted: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<'a> Series<'a> {
     #[must_use]
@@ -189,10 +165,6 @@ impl FromIterator<f64> for Series<'static> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn finite(values: impl IntoIterator<Item = f64>) -> Vec<f64> {
     values.into_iter().filter(|value| value.is_finite()).collect()
 }
@@ -208,8 +180,6 @@ fn between(low: f64, high: f64, fraction: f64) -> f64 {
         low * (1.0 - fraction) + high * fraction
     }
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

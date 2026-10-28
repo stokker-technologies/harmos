@@ -9,38 +9,12 @@
 
 // Directory Selection, Retained Read Ownership And Native Subscription Stories
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Borrow;
 use std::time::Duration;
-// Third Party Imports
-// Local Imports
+
 use super::manager::fixture::{Fixture, config};
 use harmos_domain::model::storage::{DirectoryEntry, DirectoryEvent, DirectoryRule, DirectorySelection};
 use harmos_storage::{DirectoryWatcher, ReadBatch};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn selection(root: &std::path::Path) -> DirectorySelection {
     DirectorySelection {
@@ -62,8 +36,6 @@ async fn matching(watcher: &mut DirectoryWatcher, predicate: impl Fn(&DirectoryE
     .await
     .expect("native event arrives")
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn selection_retains_charges() {

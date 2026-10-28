@@ -7,23 +7,8 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::{ArrowIpc, SchemaKey, StorageCursor};
 use crate::{Identifier, MemorySize};
-
-/* === Constants === */
-
-/* === Macros === */
 
 crate::model::storage::codec::product!(DataBatch {
     sequence: crate::model::storage::codec::Unsigned => 1,
@@ -48,10 +33,6 @@ crate::model::storage::codec::variants!(WriteReceipt {
     } => Self::Durable(receipt);
 });
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(Clone, Debug)]
 pub struct DataBatch {
     pub sequence: u64,
@@ -72,17 +53,11 @@ pub struct WriteCompletion {
     pub cursor: StorageCursor,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WriteReceipt {
     Accepted(BatchReceipt),
     Durable(BatchReceipt),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl MemorySize for DataBatch {
     fn memory_size(&self) -> usize {
@@ -113,9 +88,3 @@ impl MemorySize for WriteCompletion {
         std::mem::size_of::<Self>().saturating_add(self.cursor.memory_size().saturating_sub(std::mem::size_of_val(&self.cursor)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

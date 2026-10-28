@@ -8,22 +8,16 @@
  */
 
 #![allow(dead_code)]
-/* === Modules === */
 
 #[path = "journal.rs"]
 pub mod journal;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-// Third Party Imports
+
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-// Local Imports
+
 use harmos_runtime::{
     Application, DefinitionId, Runtime, Setup, StartupError, runtime::Catalog, runtime::Registration, state::DecodeError, state::Entry,
     state::Invertible, state::Kind, state::Position, state::PrincipalId, state::Recorded, state::Transaction, storage::JournalConsumer,
@@ -31,15 +25,7 @@ use harmos_runtime::{
 };
 use journal::Wire;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type Dispatched = (Arc<AtomicU64>, Arc<std::sync::Mutex<Vec<u64>>>);
-
-/* === Structs === */
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Ledger {
@@ -93,8 +79,6 @@ pub struct Payouts {
     holding: Option<u64>,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::lanes]
 pub enum Lanes {
     #[default]
@@ -131,10 +115,6 @@ pub enum Change {
 pub enum Fact {
     Noted(Noted),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl fmt::Display for Refusal {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -363,8 +343,6 @@ impl JournalConsumer<Bank> for Payouts {
     }
 }
 
-/* === Public Functions === */
-
 pub fn catalog() -> impl Registration<Bank> {
     Definitions(definitions_of::<Bank>(Change::catalog()).into_iter().chain(definitions_of::<Bank>(Fact::catalog())).collect())
 }
@@ -401,8 +379,6 @@ pub fn alice() -> PrincipalId {
     PrincipalId::new("alice")
 }
 
-/* === Private Functions === */
-
 fn definitions_of<A: Application>(catalog: impl Registration<A>) -> Vec<(Kind, DefinitionId, u32)> {
     match catalog.register() {
         Catalog::Transactions { definitions, .. } => definitions,
@@ -411,5 +387,3 @@ fn definitions_of<A: Application>(catalog: impl Registration<A>) -> Vec<(Kind, D
         }
     }
 }
-
-/* === Tests === */

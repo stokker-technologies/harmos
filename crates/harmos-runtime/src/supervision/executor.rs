@@ -7,28 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::task::JoinHandle;
 use tokio::time::error::Elapsed;
 use tracing::Instrument;
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(crate) struct SpanContext {
     pub(crate) span: tracing::Span,
@@ -41,10 +25,6 @@ pub(crate) struct Contextual<F: std::future::Future> {
     dispatcher: tracing::Dispatch,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub(crate) trait InContext: std::future::Future + Sized {
     fn in_context(self, dispatcher: tracing::Dispatch) -> Contextual<Self> {
         Contextual { future: Some(Box::pin(self)), dispatcher }
@@ -54,8 +34,6 @@ pub(crate) trait InContext: std::future::Future + Sized {
         self.in_context(tracing::dispatcher::get_default(Clone::clone))
     }
 }
-
-/* === Implementations === */
 
 impl SpanContext {
     pub(crate) fn new(span: tracing::Span, queued: tracing::Span) -> Self {
@@ -100,8 +78,6 @@ impl<F: std::future::Future> Drop for Contextual<F> {
         tracing::dispatcher::with_default(&self.dispatcher, || drop(self.future.take()));
     }
 }
-
-/* === Public Functions === */
 
 pub(crate) fn task<F>(future: F) -> JoinHandle<F::Output>
 where
@@ -158,7 +134,3 @@ where
         tokio::time::timeout(duration, future).await
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

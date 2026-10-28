@@ -9,26 +9,7 @@
 
 // Build And Development Process Settings.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::Duration;
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct BuildSettings {
@@ -55,8 +36,6 @@ pub enum BuildBackend {
     Guest,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BuildProfile {
@@ -65,10 +44,6 @@ pub enum BuildProfile {
     Release,
     Bench,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl BuildProfile {
     pub const fn name(self) -> &'static str {
@@ -115,9 +90,3 @@ impl Default for DevSettings {
         Self { debounce: Duration::from_millis(100) }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

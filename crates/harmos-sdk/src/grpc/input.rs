@@ -7,29 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use harmos_domain::__private::decoding_add as add;
 use harmos_domain::MessageError;
 
-/* === Constants === */
-
 const DEPTH: usize = 32;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy)]
 pub struct DecodeInput<'a> {
@@ -42,8 +23,6 @@ pub struct DecodeField<'a> {
     pub tag: u32,
     pub value: DecodeValue<'a>,
 }
-
-/* === Enums === */
 
 #[derive(Clone, Copy)]
 enum Source<'a> {
@@ -66,10 +45,6 @@ pub enum DecodeScalar {
     Bits32,
     Bits64,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<'a> DecodeInput<'a> {
     pub const fn new(bytes: &'a [u8]) -> Self {
@@ -207,10 +182,6 @@ impl<'a> DecodeField<'a> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn varint(bytes: &mut &[u8]) -> Result<u64, MessageError> {
     let mut value = 0u64;
     for shift in (0..70).step_by(7) {
@@ -278,5 +249,3 @@ fn value<'a>(tag: u32, wire: u8, bytes: &mut &'a [u8], depth: usize) -> Result<D
         _ => return Err(MessageError::borrowed("invalid protobuf wire type")),
     })
 }
-
-/* === Tests === */

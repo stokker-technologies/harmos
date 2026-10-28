@@ -7,29 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::EvidenceError;
 use super::vault::Keeping;
 use crate::DefinitionId;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub struct Draft {
@@ -66,12 +51,6 @@ pub(crate) struct Staged {
     pub(crate) external: Option<PathBuf>,
     pub(crate) length: u64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Draft {
     pub fn kind(&self) -> &DefinitionId {
@@ -233,9 +212,3 @@ impl Open {
         self.growth.lock().expect("the draft lock is healthy")
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

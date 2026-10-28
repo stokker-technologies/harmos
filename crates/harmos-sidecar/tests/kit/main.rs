@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 // Exercise The Original Helper Without Selecting The Authoring Kit.
 #[path = "../../src/kit/task.rs"]
 mod observer;
@@ -17,36 +15,12 @@ mod prepared_fixtures;
 #[path = "../kit/task.rs"]
 mod task;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[harmos_sdk::operation(harmos_path = ::harmos_sdk, id = "storage.read_file", policy = harmos_sdk::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     retries: harmos_sdk::RetryPolicy::Never,
 })]
 struct OwnerRead;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_sdk::Operation for OwnerRead {
     type Error = std::convert::Infallible;
@@ -56,18 +30,12 @@ impl harmos_sdk::Operation for OwnerRead {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn validate_table(mut table: harmos_sdk::__private::WireTable) {
     let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<OwnerRead>();
     table.register(batch).unwrap();
     table.validate_binding().unwrap();
     table.validate(&[<OwnerRead as harmos_sidecar::OperationDeclaration>::definition()]).unwrap();
 }
-
-/* === Tests === */
 
 #[test]
 fn owner_registration_records() {

@@ -9,35 +9,18 @@
 
 // Application Preparation And Retained Lifecycle Ownership.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex};
 
-// Third Party Imports
 use futures_util::FutureExt;
 
-// Local Imports
 use super::{Builder, Runtime, StartupError};
 use crate::operations::{Lane, LaneSettings};
 use crate::supervision::cleanup::{Cleanup, Finalize, Resource};
 use crate::{Application, Error, Setup, Startup};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Cause = Box<dyn std::error::Error + Send + Sync>;
-
-/* === Structs === */
 
 pub(super) struct ApplicationCleanup<A: Application> {
     owner: Arc<Cleanup<Owner<A>>>,
@@ -57,8 +40,6 @@ struct Owner<A: Application> {
     failure: Arc<Mutex<Option<Arc<Error>>>>,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 enum LifecycleFailure {
     #[error("application {phase} failed: {source}")]
@@ -72,10 +53,6 @@ enum LifecycleFailure {
     #[error("application {phase} panicked")]
     Panicked { phase: &'static str },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Drop for Preparation {
     fn drop(&mut self) {
@@ -235,10 +212,6 @@ impl<A: Application> Resource for Owner<A> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn guarded<T, E: std::error::Error + Send + Sync + 'static>(
     phase: &'static str, future: impl Future<Output = Result<T, E>>,
 ) -> Result<T, Cause> {
@@ -248,5 +221,3 @@ async fn guarded<T, E: std::error::Error + Send + Sync + 'static>(
         Err(_) => Err(Box::new(LifecycleFailure::Panicked { phase })),
     }
 }
-
-/* === Tests === */

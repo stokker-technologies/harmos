@@ -7,27 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use rustfft::FftPlanner;
 use rustfft::num_complex::Complex;
-// Local Imports
+
 use super::{Band, Spectrum, Taper};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Welch {
@@ -41,12 +24,6 @@ pub struct Estimate {
     pub step: f64,
     pub magnitude: Vec<f64>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Default for Welch {
     fn default() -> Self {
@@ -121,8 +98,6 @@ impl Welch {
     }
 }
 
-/* === Public Functions === */
-
 #[must_use]
 #[tracing::instrument(level = "trace", skip_all, fields(samples = samples.len(), rate))]
 pub fn transform(samples: &[f64], rate: f64, taper: Taper) -> Spectrum {
@@ -192,7 +167,3 @@ pub fn reconstruct(spectrum: &Spectrum, band: Option<Band>) -> Vec<f64> {
 
     buffer.iter().map(|sample| sample.re / length as f64).collect()
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,34 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-// Third Party Imports
 
-// Local Imports
 use crate::storage::{Data, Recovery, config, history, record, schema};
 use harmos_runtime::storage::*;
 use harmos_runtime::{Identifier, Runtime, state::Envelope, state::Position};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Refusal = std::convert::Infallible;
-
-/* === Structs === */
 
 struct Model;
 
@@ -68,8 +51,6 @@ struct Store {
     calls: Arc<AtomicUsize>,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::transactions(state = u64, error = Refusal)]
 #[derive(Clone)]
 enum Transactions {
@@ -81,10 +62,6 @@ enum Transactions {
 enum Records {
     Observed(Observed),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[harmos_runtime::lanes]
 pub enum ModelLanes {
@@ -224,10 +201,6 @@ impl Store {
         storage.flush().await.unwrap();
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn limits(rows: usize, bytes: usize) -> ReadLimits {
     ReadLimits {
@@ -687,5 +660,3 @@ async fn registration_stores_schema() {
     drop(reader);
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

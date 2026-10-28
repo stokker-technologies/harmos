@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 pub(crate) use harmos_storage::aggregate;
 pub mod config;
 mod error;
@@ -94,8 +92,6 @@ pub mod catalog {
     pub use harmos_domain::catalog::*;
 }
 
-/* === Re-Exports === */
-
 pub use harmos_domain as domain;
 pub use harmos_domain::model;
 pub use harmos_operations as builtins;
@@ -136,33 +132,7 @@ pub use harmos_macros::{
     transaction, transactions,
 };
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 extern crate self as harmos;
 extern crate self as harmos_runtime;
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 pub type Result<T, E = std::convert::Infallible> = std::result::Result<T, Error<E>>;
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

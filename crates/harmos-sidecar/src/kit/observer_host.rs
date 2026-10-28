@@ -7,32 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::sync::Arc;
-// Third Party Imports
 
-// Local Imports
 use super::{CallError, ObserverContext, PublicationError, Supervisor};
 use harmos_domain::{Message, StreamSpec, inventory::publications};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait ObserverHost: Send + Sync + Sized + 'static {
     fn bind(resources: Arc<harmos_sdk::ExecutionContext>, supervisor: Supervisor) -> Self;
@@ -64,8 +43,6 @@ pub trait ObserverCaller<C>: Send + Sync + Sized {
     ) -> impl Future<Output = Result<Self::Response, Self::Error>> + Send;
 }
 
-/* === Implementations === */
-
 impl ObserverHost for Supervisor {
     fn bind(_: Arc<harmos_sdk::ExecutionContext>, supervisor: Supervisor) -> Self {
         supervisor
@@ -88,9 +65,3 @@ where
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

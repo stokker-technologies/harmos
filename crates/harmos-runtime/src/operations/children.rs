@@ -7,34 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
-// Third Party Imports
+
 use tokio::sync::{mpsc, oneshot};
-// Local Imports
+
 use crate::Error;
 use crate::operations::{EncodedInvocation, WireChildAction, WireChildCall, WireChildControl};
 use harmos_domain::{Message, Refusal};
 
-/* === Constants === */
-
 pub(crate) const CHILD_REQUESTS: usize = 64;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub(crate) struct Children {
@@ -57,12 +42,6 @@ pub(crate) struct ChildRequest {
 pub(crate) struct Child {
     invocation: Option<EncodedInvocation>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Children {
     #[tracing::instrument(target = "harmos::operations", name = "operations.call", level = "trace", skip_all)]
@@ -148,8 +127,6 @@ impl Drop for Child {
     }
 }
 
-/* === Public Functions === */
-
 #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
 #[tracing::instrument(target = "harmos::operations", name = "operations.lifecycle", level = "trace", skip_all)]
 pub(crate) async fn lifecycle(invocation: EncodedInvocation, mut cancelled: oneshot::Receiver<()>) -> crate::Result<Vec<u8>> {
@@ -196,8 +173,6 @@ pub(crate) fn refused(error: Error) -> Refusal {
     }
 }
 
-/* === Private Functions === */
-
 // Await one child; cancellation requests interruption and the same child still
 // drains before its outcome is reported.
 #[tracing::instrument(target = "harmos::operations", name = "operations.drained", level = "trace", skip_all)]
@@ -215,5 +190,3 @@ async fn drained(mut invocation: Child, mut cancelled: oneshot::Receiver<()>) ->
 fn unknown(instance: u64) -> Refusal {
     Refusal::new(harmos_domain::UNKNOWN, format!("operation instance {instance} is not a child this attempt owns"))
 }
-
-/* === Tests === */

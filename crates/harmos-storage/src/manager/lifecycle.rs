@@ -7,32 +7,7 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     // Acquire Backends Before Giving One Worker To The Host's Supervisor.
@@ -171,9 +146,3 @@ impl<C> StorageManager<C> {
         state.status.clone()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

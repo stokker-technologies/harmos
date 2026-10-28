@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 pub(crate) mod codec;
 pub(crate) mod optional_datetime {
     use super::*;
@@ -27,27 +25,14 @@ pub(crate) mod optional_datetime {
     }
 }
 
-/* === Re-Exports === */
-
 pub use codec::VALUE_DEPTH;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::{collections::BTreeMap, fmt};
-// Third Party Imports
+
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 use time::{OffsetDateTime, UtcOffset, format_description::well_known::Rfc3339};
-// Local Imports
+
 use crate::MemorySize;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct DisplayText<'a, T>(&'a T);
 
@@ -57,8 +42,6 @@ struct DatetimeText {
     bytes: [u8; 30],
     length: usize,
 }
-
-/* === Enums === */
 
 #[derive(Clone, Debug)]
 pub enum Value {
@@ -112,10 +95,6 @@ enum BorrowedRepresentation<'a> {
     Array(&'a [Value]),
     Object(&'a BTreeMap<String, Value>),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl MemorySize for Value {
     fn memory_size(&self) -> usize {
@@ -353,10 +332,6 @@ impl<T: Into<Value>> From<Vec<T>> for Value {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn datetime_text(value: OffsetDateTime) -> Result<DatetimeText, time::error::Format> {
     // UTC RFC3339 Uses At Most 30 Bytes, Including All Nine Fractional Digits.
     let mut text = DatetimeText { bytes: [0; 30], length: 0 };
@@ -367,5 +342,3 @@ fn datetime_text(value: OffsetDateTime) -> Result<DatetimeText, time::error::For
 fn format_datetime(value: OffsetDateTime) -> Result<String, time::error::Format> {
     value.to_offset(UtcOffset::UTC).format(&Rfc3339)
 }
-
-/* === Tests === */

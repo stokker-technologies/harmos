@@ -7,41 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::{Arc, atomic::Ordering};
 
-// Third Party Imports
 use harmos_domain::Identifier;
 use harmos_storage::*;
 
-// Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};
 use super::waveforms;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 // Start Controlled Storage With One Active Query And One Pending Write Batch.
 async fn start() -> (Arc<Data>, StorageManager) {
@@ -60,8 +33,6 @@ async fn start() -> (Arc<Data>, StorageManager) {
     super::fixture::start(&storage).await;
     (data, storage)
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn dropped_write_retained() {

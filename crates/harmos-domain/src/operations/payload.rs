@@ -10,28 +10,12 @@
 // Hand-Declared Payloads For Built-In Operations, Whose Fixed Tags Stay
 // Independent Of The Authored Field-Name Tags.
 
-/* === Modules === */
-
 pub mod prelude {
     pub use crate::MemorySize;
     pub use crate::schema::declaration::{Field, Kind};
     pub use crate::schema::{Cardinality, Described};
     pub use std::borrow::Cow;
 }
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
 
 #[doc(hidden)]
 #[macro_export]
@@ -69,20 +53,4 @@ pub use builtin_payload as payload;
 
 // Keep Fixed Host Tags Independent Of Authored Field-Name Tags
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
 // Field Memory Excludes Inline Storage Already Charged By The Payload
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

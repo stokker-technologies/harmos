@@ -7,20 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-// Third Party Imports
+
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
-// Local Imports
+
 use harmos_domain::catalog::Node;
 use harmos_domain::inventory::{contracts, listeners, observers, publications};
 use harmos_operations::lifecycle;
@@ -28,8 +21,6 @@ use harmos_sdk::operations::WireDeclaration;
 use harmos_sdk::plugin::{Declared, Plugin};
 use harmos_sidecar::operations::{OperationPolicy, RetryPolicy};
 use harmos_sidecar::{StreamSpec, Supervisor};
-
-/* === Constants === */
 
 const MAX_CASES: usize = 256;
 const SDK_POLICY: OperationPolicy = OperationPolicy {
@@ -68,12 +59,6 @@ static LISTENERS: [u8; listeners::encoded_len("sidecar", TransportPlugin::ID, &[
 #[used]
 static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", TransportPlugin::ID, &[])] =
     observers::encode_tree("sidecar", TransportPlugin::ID, &[]);
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_sdk::operation(
     harmos_path = ::harmos_sdk,
@@ -141,17 +126,11 @@ pub struct Handler {
     host: Mutex<Option<Supervisor>>,
 }
 
-/* === Enums === */
-
 #[harmos_macros::sidecar_catalog(harmos_path = ::harmos_sidecar)]
 enum Operations {
     Echo(EchoOperation),
     Start(StartOperation),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl StreamSpec for Done {
     type Row = Self;
@@ -280,10 +259,6 @@ impl Declared for TransportPlugin {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn publish(host: Supervisor, start: StartOperation, mut closing: watch::Receiver<bool>) -> Result<(), harmos_sidecar::Refusal> {
     start.validate()?;
     let sample = Sample {
@@ -337,5 +312,3 @@ async fn pace(start: &StartOperation, accepted: u64, began: Instant) {
         tokio::time::sleep(remaining).await;
     }
 }
-
-/* === Tests === */

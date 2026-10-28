@@ -7,25 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
 mod application;
 mod partial;
 mod shutdown;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::pin::pin;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-// Third Party Imports
 use tokio::sync::{Notify, Semaphore};
 
-// Local Imports
 use crate::runtime::boot::catalog;
 use crate::runtime::mirror::Mirror;
 use crate::runtime::probe::{Change, Editor, Sheet, rename};
@@ -33,26 +24,12 @@ use harmos_runtime::state::{Entry, Position, Recorded};
 use harmos_runtime::storage::JournalConsumer;
 use harmos_runtime::{Error, Runtime};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 // A flush held open until the story releases it, announcing when it is entered.
 #[derive(Clone)]
 struct Held {
     entered: Arc<Notify>,
     release: Arc<Semaphore>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Default for Held {
     fn default() -> Self {
@@ -84,12 +61,6 @@ impl JournalConsumer<Editor> for Held {
         let _ = self.release.acquire().await;
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[tokio::test]
 async fn shutdown_drains_attached() {

@@ -7,34 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 #[must_use]
 pub fn peaks(magnitude: &[f64]) -> Vec<usize> {
     let mut found: Vec<usize> = Vec::new();
@@ -97,13 +69,9 @@ pub fn thd(frequency: &[f64], magnitude: &[f64]) -> Option<f64> {
     Some(distortion.sqrt() / strongest * 100.0)
 }
 
-/* === Private Functions === */
-
 fn step_of(frequency: &[f64]) -> f64 {
     match frequency {
         [first, second, ..] => second - first,
         _ => 1.0,
     }
 }
-
-/* === Tests === */

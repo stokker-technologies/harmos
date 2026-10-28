@@ -7,53 +7,28 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     borrow::Borrow,
     sync::{Arc, Weak},
     task::Poll,
 };
-// Third Party Imports
+
 use futures_core::Stream;
 use futures_util::StreamExt;
 use support::{Change, Deposit, deposit, runtime};
-// Local Imports
+
 use crate::state::support;
 use harmos_runtime::{state::Entry, state::Position};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct OwnedChange {
     transaction: Change,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Borrow<Change> for OwnedChange {
     fn borrow(&self) -> &Change {
         &self.transaction
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn owned(change: Change) -> (harmos_runtime::operations::Response<Change>, Weak<OwnedChange>) {
     let owner = Arc::new(OwnedChange { transaction: change });
@@ -205,5 +180,3 @@ async fn amounts(runtime: &harmos_runtime::Runtime<support::Bank>) -> Vec<(Posit
         })
         .collect()
 }
-
-/* === Tests === */

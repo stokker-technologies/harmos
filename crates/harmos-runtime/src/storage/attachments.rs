@@ -7,19 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use crate::state::dispatch::{Decode, Dispatch, Restored};
 use crate::state::{Feed, ReplayPayload};
 use crate::storage::consumer::{Attached, JournalConsumer, Recording, Series, Serving, StreamConsumer};
@@ -27,14 +20,6 @@ use crate::{
     Application, DefinitionId, Error, runtime::Incompatible, state::DecodeError, state::Entry, state::Envelope, state::Kind,
     state::Position, state::Recorded, state::Transaction,
 };
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Payload<A: Application> {
     pub prepared: Option<crate::state::Prepared>,
@@ -77,14 +62,10 @@ pub(crate) struct Consumers<A: Application> {
     pruned: Position,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Horizon {
     BeneathSnapshot,
 }
-
-/* === Traits === */
 
 pub trait Source<A: Application>: JournalConsumer<A> {
     fn load(&mut self) -> impl Future<Output = Result<Recovery<A>, Incompatible>> + Send;
@@ -105,8 +86,6 @@ pub(crate) trait Recovering<A: Application>: Attached<A> {
 
     fn prune(&mut self, beneath: Position) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 }
-
-/* === Implementations === */
 
 impl<A: Application> Default for Recovery<A> {
     fn default() -> Self {
@@ -480,8 +459,6 @@ impl<A: Application> Consumers<A> {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn declare<A: Application>(
     catalog: &mut Dispatch<A, Payload<A>>, kind: Kind, id: DefinitionId, version: u32, decode: Decode<A>,
 ) {
@@ -490,8 +467,6 @@ pub(crate) fn declare<A: Application>(
         Kind::Record => catalog.set_record(id, version, retain),
     }
 }
-
-/* === Private Functions === */
 
 fn apply<A: Application>(payload: Payload<A>, state: &mut A::State) -> Result<(), DecodeError> {
     let Payload { prepared, id, version, value } = payload;
@@ -539,5 +514,3 @@ async fn fold<A: Application>(
 
     consumer.drain(entries, applied).await
 }
-
-/* === Tests === */

@@ -7,27 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::path::Path;
 
-// Third Party Imports
 use serde::Deserialize;
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Columns {
@@ -40,14 +22,6 @@ struct Witnessed {
     position: u64,
     gap_missed: Option<u64>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn read(directory: &Path) -> Columns {
     let rows: Vec<Witnessed> =
@@ -64,7 +38,3 @@ pub fn read(directory: &Path) -> Columns {
 
     columns
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

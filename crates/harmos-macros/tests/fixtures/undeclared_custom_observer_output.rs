@@ -8,28 +8,9 @@
  */
 
 
-/* === Modules === */
-
 #[path = "policy.rs"]
 mod controls;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Bridge;
 
@@ -41,14 +22,10 @@ struct Watch;
 #[harmos::stream(id = "undeclared.output", window = 4)]
 struct Output { value: u64 }
 
-/* === Enums === */
 
 #[harmos::catalog]
 enum Observers { Watch(Watch) }
 
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos::sidecar::ObserverHost for Host {
     fn bind(_: std::sync::Arc<harmos::ExecutionContext>, _: harmos::sidecar::Supervisor) -> Self { Self }
@@ -80,10 +57,5 @@ impl harmos::Plugin for Bridge {
     const CATALOGS: &'static [harmos::operations::Catalog] = &[];
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn main() {}
-
-/* === Tests === */

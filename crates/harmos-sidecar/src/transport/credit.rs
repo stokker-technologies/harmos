@@ -7,31 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io;
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-// Local Imports
+
 use super::{Packet, Role, invalid};
 use crate::Frame;
 
-/* === Constants === */
-
 pub(super) const WINDOW: usize = 2 * (Frame::LIMIT + 4);
 pub(super) const MINIMUM: usize = 4096;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Credit {
     permits: Arc<Semaphore>,
@@ -50,12 +35,6 @@ pub struct Reservation {
     permit: OwnedSemaphorePermit,
     charge: usize,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Credit {
     pub fn new() -> Arc<Self> {
@@ -117,9 +96,3 @@ impl Reservation {
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

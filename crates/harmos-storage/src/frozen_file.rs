@@ -9,33 +9,16 @@
 
 // Freeze An Opened Source Into One Private Immutable File.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     fs::File,
     io::Write,
     sync::{Arc, Mutex},
 };
 
-// Third Party Imports
 use sha2::{Digest, Sha256};
 
-// Local Imports
 use crate::local::io_error;
 use crate::{ByteRange, Result, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 /// A private immutable copy of an opened file range, retained independently of its source.
 #[derive(Clone)]
@@ -49,12 +32,6 @@ pub struct FrozenFile {
 struct Backing {
     file: Mutex<File>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl FrozenFile {
     pub fn length(&self) -> u64 {
@@ -115,12 +92,6 @@ impl<C> StorageManager<C> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn task_error(error: tokio::task::JoinError) -> crate::Error {
     crate::Error::backend("freeze opened file", crate::BackendFailure::Permanent, error)
 }
-
-/* === Tests === */

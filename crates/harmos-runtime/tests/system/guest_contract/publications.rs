@@ -7,38 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::pin::Pin;
-// Third Party Imports
+
 use futures_core::Stream;
-// Local Imports
+
 use super::lifecycle::{Lifecycle, Manager};
 use super::{runtime, sandbox as wire};
 use harmos_runtime::Message;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn values(stream: &harmos_runtime::streams::PluginStream) -> Vec<String> {
     stream.query(..).await.unwrap().map(|row| wire::Echoed::decode(row.value.payload.as_slice()).unwrap().said).collect()
@@ -150,5 +125,3 @@ async fn saved_context_generation() {
     drop((manager, lifecycle));
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

@@ -9,22 +9,12 @@
 
 // Drive Guest SDK Lifecycle And Cleanup Behind The Runtime Plugin Owner.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-// Third Party Imports
-
-// Local Imports
 use super::{Execution, Factory, LifecycleFuture, PluginHost};
 use crate::catalog::Catalog;
 use crate::config::PluginSettings;
@@ -32,14 +22,6 @@ use crate::guest::{Loaded, Serving};
 use crate::operations::{ComponentBindings, Declarations, EncodedInvocation, Lane, Manager, PluginRegistration, PluginSdkRegistration};
 use crate::plugin::{PluginDefinition, PluginLifecycleAuthority, Router};
 use crate::{Application, Error, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Guest<A: Application, C, L> {
     loaded: Option<Loaded<A>>,
@@ -58,12 +40,6 @@ struct Guest<A: Application, C, L> {
     lane: L,
     catalog: PhantomData<fn() -> C>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> PluginHost<A> {
     pub async fn register_guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: impl Lane) -> Result<()>
@@ -216,15 +192,9 @@ where
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn failed(id: &str, source: impl std::error::Error + Send + Sync + 'static) -> Error {
     Error::OperationFailed {
         operation: id.to_owned(),
         source: Arc::new(source),
     }
 }
-
-/* === Tests === */

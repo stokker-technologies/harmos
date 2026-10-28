@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "operations/deletion.rs"]
 mod deletion;
 #[path = "operations/files.rs"]
@@ -25,39 +23,13 @@ mod schemas;
 #[path = "operations/writes.rs"]
 mod writes;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 
-// Third Party Imports
-
-// Local Imports
 use super::{Fixture, config, write};
 use harmos_operations::storage::Storage;
 use harmos_runtime::operations::Contracts;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
 pub(crate) use super::support::Lanes;
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn followed(item: harmos_runtime::operations::StreamItem<harmos_operations::storage::Followed>) -> harmos_runtime::storage::StoredRecord {
     match &*item {
@@ -77,8 +49,6 @@ fn records() -> harmos_runtime::storage::query::RecordSelection {
         source_end: None,
     }
 }
-
-/* === Tests === */
 
 #[test]
 fn catalog_serves_operations() {

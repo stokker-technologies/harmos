@@ -9,16 +9,10 @@
 
 // Measure The Deterministic Double Run Oracle
 
-/* === Modules === */
-
 #[path = "../../tests/support/simulation.rs"]
 mod oracle;
 #[path = "../../tests/support/mod.rs"]
 mod support;
-
-/* === Re-Exports === */
-
-/* === Imports === */
 
 extern crate harmos_runtime as harmos;
 
@@ -27,32 +21,8 @@ use harmos_runtime::Runtime;
 use std::hint::black_box;
 use support::{Bank, Ledger};
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
 criterion::criterion_group!(benches, benchmarks);
 criterion::criterion_main!(benches);
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn benchmarks(criterion: &mut Criterion) {
     criterion.bench_function("simulation/double_run_identity", |bench| {
@@ -73,5 +43,3 @@ fn benchmarks(criterion: &mut Criterion) {
         });
     });
 }
-
-/* === Tests === */

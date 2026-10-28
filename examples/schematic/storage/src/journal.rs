@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod wire {
     use std::fs::File;
     use std::io::{self, BufRead, BufReader, Write};
@@ -174,36 +172,23 @@ mod wire {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Write};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
-// Third Party Imports
+
 use serde::{Deserialize, Deserializer, Serializer};
-// Local Imports
+
 use harmos::{
     Application, DefinitionId, Error, runtime::Incompatible, state::Entry, state::Envelope, state::Kind, state::Position, state::Recorded,
     state::SystemFact, storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source,
 };
 
-/* === Constants === */
-
 const SCHEMA: u32 = 1;
 const MAX_HEADER_BYTES: usize = 4096;
 const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Jsonl<A: Wire> {
     log: Arc<Mutex<Log>>,
@@ -248,10 +233,6 @@ struct Log {
     checkpoint: Position,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub trait Wire: Application + Sized {
     fn identify(value: &Recorded<Self>) -> (DefinitionId, u32);
 
@@ -261,8 +242,6 @@ pub trait Wire: Application + Sized {
         kind: Kind, id: &DefinitionId, version: u32, payload: D,
     ) -> Result<Option<Payload<Self>>, D::Error>;
 }
-
-/* === Implementations === */
 
 impl<A: Wire> Jsonl<A> {
     #[tracing::instrument(level = "debug", skip_all)]
@@ -814,10 +793,6 @@ impl Log {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn is_group(line: &str) -> bool {
     #[derive(Deserialize)]
     struct FrameKind {
@@ -944,5 +919,3 @@ fn decoded<A: Wire>(envelope: Envelope<serde_json::Value>) -> Result<Option<Enve
         payload,
     }))
 }
-
-/* === Tests === */

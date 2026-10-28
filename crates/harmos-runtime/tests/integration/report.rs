@@ -9,21 +9,13 @@
 
 // Qualify Native Span Lifetimes, Parent Tracks And Causal Flows
 
-/* === Modules === */
-
 #[path = "../support/report.rs"]
 #[allow(dead_code, reason = "qualification uses isolated collectors instead of the system runner environment")]
 mod capture;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 
-// Third Party Imports
 use prost::Message;
 use tracing::Instrument;
 use tracing::instrument::WithSubscriber;
@@ -31,16 +23,6 @@ use tracing_perfetto_file::PerfettoLayer;
 use tracing_subscriber::Layer;
 use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::layer::SubscriberExt;
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Default)]
 struct Output(Arc<Mutex<Vec<u8>>>);
@@ -117,12 +99,6 @@ struct Annotation {
     unsigned: Option<u64>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl Write for Output {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         self.0.lock().unwrap().extend_from_slice(bytes);
@@ -143,12 +119,6 @@ impl Write for Unwritable {
         Err(io::Error::other("controlled trace output failure"))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "grpc")]
 #[test]

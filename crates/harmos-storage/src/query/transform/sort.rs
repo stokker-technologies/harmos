@@ -9,45 +9,25 @@
 
 // Storage Arrow Query Contract
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_domain::model::storage::query::transform::sort::{Sort, SortKey};
 
-/* === Imports === */
-
 use crate::storage::query::transform::FieldPathExecution;
-// Standard Library Imports
+
 use std::cmp::Ordering;
-// Third Party Imports
+
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
-// Local Imports
+
 use super::{invalid, scalar_type, take};
 use crate::Result;
 use crate::storage::query::accumulate::sort_values;
 use harmos_domain::model::storage::query::scalar::ScalarValue;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait SortExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
     fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 }
-
-/* === Implementations === */
 
 impl SortExecution for Sort {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
@@ -104,12 +84,6 @@ impl SortExecution for Sort {
         take(input, indices)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

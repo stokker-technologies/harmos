@@ -7,22 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-// Third Party Imports
+
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
-// Local Imports
+
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
 use super::{Context, Manager};
 use crate::catalog::{Catalog, Member, Visitor};
@@ -31,18 +24,10 @@ use crate::services::{NativeEndpoint, SidecarError};
 use crate::{Error, Identifier, Message, Result, operations::Lane};
 use harmos_sdk::operations::Carrier;
 
-/* === Constants === */
-
 const ENCODED: &str = "harmos::encoded";
 const ENCODED_MARKER: &[u8] =
     &crate::schema::declaration::encode::<{ crate::schema::declaration::encoded_len(ENCODED, &[]) }>(ENCODED, &[]);
 const MAX_NATIVE_OPERATIONS: usize = 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Native {
     endpoint: Arc<NativeEndpoint>,
@@ -99,8 +84,6 @@ pub(super) struct Binding {
     selection: Selection,
     capacity: Arc<Semaphore>,
 }
-
-/* === Enums === */
 
 enum Phase {
     Initialize,
@@ -159,15 +142,11 @@ pub enum NativeError {
     Remote(harmos_domain::Failure),
 }
 
-/* === Traits === */
-
 // The Stream Directions Of One Endpoint Set.
 pub(crate) trait Shape {
     type Input: crate::operations::Direction;
     type Output: crate::operations::Direction;
 }
-
-/* === Implementations === */
 
 impl NativeError {
     pub(crate) fn classification(&self) -> FailureKind {
@@ -934,8 +913,6 @@ impl super::Bindings<'_> {
     }
 }
 
-/* === Public Functions === */
-
 pub(super) fn bindings(
     operations: &super::Manager, lane: &'static str, native: Arc<Native>, capacity: NonZeroUsize, scope: &crate::plugin::PluginScope,
 ) -> Result<Vec<Arc<super::manager::Entry>>> {
@@ -1062,8 +1039,6 @@ pub(super) fn dispatch(
     Ok(super::EncodedInvocation { id, generation, outcome, control })
 }
 
-/* === Private Functions === */
-
 fn encoded_binding<E: super::StreamEndpoints + Shape>(
     operations: &Manager, lane: &'static str, handler: &Arc<Binding>, definition: &OperationDefinition, scope: &crate::plugin::PluginScope,
 ) -> Result<Arc<super::manager::Entry>> {
@@ -1167,5 +1142,3 @@ fn acknowledged(answer: WireAnswer) -> std::result::Result<(), NativeError> {
     }
     Ok(())
 }
-
-/* === Tests === */

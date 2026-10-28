@@ -9,38 +9,15 @@
 
 // Exercise Resumable Native Files And Durable Mutation Replay In JSON Storage.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{num::NonZeroUsize, path::Path, sync::Arc};
 
-// Third Party Imports
 use sha2::{Digest, Sha256};
 use tokio::{sync::Mutex, task::JoinHandle};
 
-// Local Imports
 use harmos_domain::model::storage::files::{CaptureConsistency, FileEvent, FileSource, FollowStart};
 use harmos_storage::*;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 struct Task(Mutex<Option<JoinHandle<Result<()>>>>);
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl WorkerOwner for Task {
     fn stop(&self) -> StorageFuture<'_, ()> {
@@ -55,10 +32,6 @@ impl WorkerOwner for Task {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn storage(root: &Path) -> StorageManager {
     let memory = NonZeroUsize::new(2 * 1024 * 1024).unwrap();
@@ -119,8 +92,6 @@ fn mutation(storage: &StorageManager, key: &str) -> MutationId {
         key: Identifier::new(key).unwrap(),
     }
 }
-
-/* === Tests === */
 
 fn metadata(id: &str) -> FileMetadata {
     FileMetadata {

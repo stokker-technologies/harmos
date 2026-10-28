@@ -7,25 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use harmos_domain::inventory::{contracts, listeners, observers, publications};
 use harmos_operations::lifecycle;
 use harmos_operations::lifecycle::Policy;
 use harmos_sdk::operations::{OperationPolicy, RetryPolicy};
 use harmos_sdk::plugin::{Declared, Plugin};
 use harmos_sidecar::{Refusal, Registrar, RegistrationError, Supervisor};
-
-/* === Constants === */
 
 const SDK: [harmos_domain::operations::OperationPolicy; 2] = [Catalog::INITIALIZATION_POLICY, Catalog::SHUTDOWN_POLICY];
 
@@ -46,12 +33,6 @@ static LISTENERS: [u8; listeners::encoded_len("sidecar", Catalog::ID, &[])] = li
 #[used]
 static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", Catalog::ID, &[])] = observers::encode_tree("sidecar", Catalog::ID, &[]);
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 struct Catalog;
 
 #[harmos_sidecar::operation(
@@ -64,16 +45,10 @@ struct Catalog;
 #[derive(Clone, PartialEq)]
 struct ReadOperation {}
 
-/* === Enums === */
-
 #[harmos_macros::sidecar_catalog(harmos_path = ::harmos_sidecar)]
 enum Readings {
     Read(ReadOperation),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_sdk::Operation for ReadOperation {
     type Error = Refusal;
@@ -139,13 +114,7 @@ impl Declared for Catalog {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> std::io::Result<()> {
     harmos_sidecar::run_plugin::<Catalog>(std::num::NonZeroUsize::new(1).unwrap()).await
 }
-
-/* === Tests === */

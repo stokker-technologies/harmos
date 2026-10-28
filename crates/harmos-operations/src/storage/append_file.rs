@@ -7,17 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Bytes, Nested, Unsigned, product};
@@ -26,20 +15,12 @@ use harmos_domain::operations::ReplaySafety;
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(AppendFile {
     mutation: Nested<MutationId> => 1,
     session: Nested<FileSession> => 2,
     offset: Unsigned => 3,
     bytes: Bytes => 4,
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // Append Bytes At An Offset Of A Producing File Session.
 #[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
@@ -56,12 +37,6 @@ pub struct AppendFile {
     pub bytes: Vec<u8>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl MemorySize for AppendFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
@@ -74,12 +49,6 @@ impl MemorySize for AppendFile {
 
 #[cfg(feature = "runtime")]
 mod execution {
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
 
     use harmos_sdk::operations::Operation;
     use harmos_storage::{FileChunk, FileProducer};
@@ -105,9 +74,3 @@ mod execution {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

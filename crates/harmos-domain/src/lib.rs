@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod aggregate;
 mod answer;
 pub mod artifacts;
@@ -67,8 +65,6 @@ pub mod __private {
     pub use crate::state::{Catalogued, Mutual, Paired};
 }
 
-/* === Re-Exports === */
-
 pub use aggregate::Aggregate;
 pub use artifacts::{FRAGMENT_LIMIT, KINDS, PREFIX, ScanError, fragments};
 pub use config::{ConfigError, decode_config, encode_config, validate_config};
@@ -95,31 +91,3 @@ pub use model::services::policy::{RestartPolicy, ServicePolicy};
 pub use operations::{Invokes, OperationDeclaration, OperationDefinition, Requires};
 pub use presentation::{RowMetadata, StreamField};
 pub use streams::{Axial, Batched, Definition, Prefix, Track, Tracked};
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

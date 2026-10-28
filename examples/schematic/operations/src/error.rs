@@ -7,28 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("invalid analysis input")]
@@ -58,13 +36,3 @@ pub enum Error {
     #[error(transparent)]
     Host(Box<dyn std::error::Error + Send + Sync>),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

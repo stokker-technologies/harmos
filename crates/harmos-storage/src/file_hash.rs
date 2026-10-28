@@ -9,35 +9,11 @@
 
 // Hash A Bounded File Range Without Retaining The Complete Payload.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use sha2::{Digest, Sha256};
 
-// Local Imports
 use crate::FileRead;
 use crate::{Result, StorageManager};
 use harmos_domain::model::storage::files::FileHash;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     pub async fn hash_file(&self, request: FileRead) -> Result<FileHash> {
@@ -67,9 +43,3 @@ impl<C> StorageManager<C> {
             .await
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

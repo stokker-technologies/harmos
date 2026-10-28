@@ -9,10 +9,6 @@
 
 // Common Authoring Traits And Framework Entry Points.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use crate::state::{Invertible, Transaction};
 pub use crate::{Application, Error, Identifier, Lifecycle, Message, Result, Runtime, Setup, Startup};
 pub use crate::{
@@ -20,31 +16,3 @@ pub use crate::{
     OperationPolicy, Portable, QualifiedId, Response, RestartPolicy, RetryPolicy, Running, Service, ServiceContext, ServicePolicy,
 };
 pub use crate::{catalog, message, operation, record, stream, transaction};
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

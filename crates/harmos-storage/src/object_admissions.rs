@@ -7,38 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 
-// Third Party Imports
 use sha2::{Digest, Sha256};
 
-// Local Imports
 use super::admissions::Mutation;
 use super::objects::invalid;
 use super::{ObjectReceipt, ObjectValue, StorageManager};
 use crate::Result;
 use crate::storage::MutationId;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.object_admissions.write_objects_once", level = "debug", skip_all)]
@@ -71,13 +48,7 @@ impl<C> StorageManager<C> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn part(hash: &mut Sha256, bytes: &[u8]) {
     hash.update((bytes.len() as u64).to_le_bytes());
     hash.update(bytes);
 }
-
-/* === Tests === */

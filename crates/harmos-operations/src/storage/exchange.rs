@@ -7,30 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::VecDeque;
-// Third Party Imports
-// Local Imports
+
 use crate::{Error, MemorySize, Result};
 use harmos_sdk::operations::{StreamInput, StreamOutput};
 use harmos_storage::StorageManager;
 use harmos_storage::writes::{BatchReceipt, DataBatch, DecodedBatch, WriteCompletion, WriteReceipt};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Clone, Copy)]
 pub(crate) enum WriteKind {
@@ -38,14 +20,6 @@ pub(crate) enum WriteKind {
     Records,
     Objects,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tracing::instrument(target = "harmos::storage", name = "storage.exchange", level = "debug", skip_all)]
 pub(crate) async fn exchange<C>(
@@ -114,5 +88,3 @@ pub(crate) async fn exchange<C>(
         }
     }
 }
-
-/* === Tests === */

@@ -7,31 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::{CallContext, Manager, Running, StreamItem};
 use crate::Result;
 use crate::operations::OperationDeclaration;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub struct GrpcBinding {
@@ -45,12 +27,6 @@ pub struct GrpcMethod {
     pub generation: super::OperationGeneration,
     pub contract: crate::operations::Contract,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl GrpcBinding {
     pub(crate) fn with_context(&self, context: CallContext) -> Self {
@@ -125,9 +101,3 @@ impl GrpcBinding {
         )
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

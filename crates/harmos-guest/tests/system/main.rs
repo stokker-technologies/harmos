@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod plugin;
 #[path = "../../../harmos-runtime/tests/support/report.rs"]
 mod report;
@@ -19,17 +17,12 @@ mod sandbox;
 #[path = "../support/mod.rs"]
 mod support;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::VecDeque;
 use std::sync::OnceLock;
-// Third Party Imports
+
 use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Config, Engine, Store};
-// Local Imports
+
 use harmos::guest::capabilities::Refusal as BridgeRefusal;
 use harmos_domain::inventory::{Declaration, Facility};
 use harmos_domain::{Message, Refusal};
@@ -38,19 +31,11 @@ use harmos_operations::lifecycle::InstanceState;
 use harmos_sdk::operations::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
 use sandbox::{EchoOperation, Echoed};
 
-/* === Constants === */
-
-/* === Macros === */
-
 wasmtime::component::bindgen!({
     path: "wit",
     world: "plugin",
     exports: { default: async },
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // Records Every Host Call A Guest Makes And Answers The Provider From A Script
 #[derive(Default)]
@@ -66,8 +51,6 @@ struct Session {
     bindings: Plugin,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Debug, PartialEq)]
 enum Call {
     Provider { say: String },
@@ -76,10 +59,6 @@ enum Call {
     Submit { say: String, instance: u64 },
     Control { instance: u64, action: WireChildAction },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos::guest::capabilities::Host for Stub {}
 
@@ -247,10 +226,6 @@ impl Session {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn initialize(guest: &[u8], stub: Stub, config: &str) -> (Stub, Result<(), String>) {
     let mut session = instantiate(guest, stub).await;
     let answered = session.initialize(config).await;
@@ -276,8 +251,6 @@ fn engine() -> &'static Engine {
         Engine::new(&config).expect("the component engine starts")
     })
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn publication_crosses_row() {

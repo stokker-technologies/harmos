@@ -7,22 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-// Third Party Imports
 use tracing::{Instrument, Subscriber, instrument::WithSubscriber};
 use tracing_subscriber::{Layer, layer::Context as TraceContext, prelude::*, registry::LookupSpan};
 
-// Local Imports
 use super::{
     Lanes,
     support::{self, Bank, Fact, Noted},
@@ -30,19 +21,11 @@ use super::{
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Runtime, state::CausationId, state::Position};
 
-/* === Constants === */
-
 const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Default)]
 struct TraceCapture(Arc<Mutex<Vec<TraceRecord>>>);
@@ -57,8 +40,6 @@ struct TraceRecord {
 }
 
 struct TraceFields(BTreeMap<String, String>);
-
-/* === Enums === */
 
 #[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], response = (), id = "causation.note",  policy = POLICY)]
 struct NoteContractDeclaration {
@@ -81,10 +62,6 @@ enum Operations {
     DescendContractDeclaration(DescendContractDeclaration),
     FamilyContractDeclaration(FamilyContractDeclaration),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl tracing::field::Visit for TraceFields {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
@@ -185,10 +162,6 @@ impl harmos_runtime::operations::Operation for FamilyContractDeclaration {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn runtime() -> Runtime<Bank> {
     let runtime = super::runtime_with(|_| {}).await;
     runtime.operations.register::<super::Single<FamilyContractDeclaration>>(Lanes::Serial).await.unwrap();
@@ -196,8 +169,6 @@ async fn runtime() -> Runtime<Bank> {
     runtime.operations.register::<super::Single<NoteContractDeclaration>>(Lanes::Open).await.unwrap();
     runtime
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn scoped_trace_handoffs() {

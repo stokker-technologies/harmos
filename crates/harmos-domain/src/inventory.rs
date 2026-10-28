@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod contracts;
 pub mod contributions;
 mod declaration;
@@ -17,26 +15,10 @@ pub mod observers;
 pub mod operations;
 pub mod publications;
 
-/* === Re-Exports === */
-
 pub use contributions::Section;
 pub use declaration::{CarrierSection, Declaration, DeclarationError, Facility, RestartPolicy};
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::Deserialize;
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -51,14 +33,6 @@ pub struct StreamDeclaration {
     pub window: usize,
     pub row: crate::schema::graph::Schema,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(crate) const fn number<const N: usize>(output: &mut [u8; N], cursor: &mut usize, value: u64) {
     let width = digits(value);
@@ -132,8 +106,6 @@ pub(crate) const fn write<const N: usize>(output: &mut [u8; N], cursor: &mut usi
     }
 }
 
-/* === Private Functions === */
-
 fn retain_schema(
     schema: crate::schema::graph::Schema, settings: &mut crate::config::SchemaSettings,
 ) -> Result<crate::schema::graph::Schema, crate::schema::graph::Error> {
@@ -152,5 +124,3 @@ fn retain_schema(
         .ok_or(Error::Budget)?;
     Ok(schema)
 }
-
-/* === Tests === */

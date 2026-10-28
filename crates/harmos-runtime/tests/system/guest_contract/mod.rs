@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "../../../../harmos-guest/tests/fixtures/sandbox/src/contract.rs"]
 mod sandbox;
 
@@ -19,15 +17,8 @@ mod operations;
 mod publications;
 use schematic_domain as schematic;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::OnceLock;
-// Third Party Imports
 
-// Local Imports
 use super::support;
 use harmos_runtime::Runtime;
 use harmos_runtime::guest::Error;
@@ -36,25 +27,7 @@ use schematic_operations::schematic::propose;
 use support::Bank;
 use support::fixtures::component as load;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
 use support::Lanes as GuestLanes;
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn runtime() -> Runtime<Bank> {
     Runtime::<Bank>::launch_with(support::Ledger::default(), (), |setup| {
@@ -124,5 +97,3 @@ async fn retire_failed_guest<L: harmos_runtime::plugin::PluginLifecycle>(
     assert!(matches!(component_error(original), harmos_runtime::operations::ComponentError::Unavailable));
     manager.shutdown(lifecycle).await.unwrap();
 }
-
-/* === Tests === */

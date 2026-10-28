@@ -8,31 +8,14 @@
 
 """Build Packageable Products Without Test Harnesses Or Fixtures"""
 
-# === Imports === #
-
-# Standard Library Imports
 import argparse
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-# Third Party Imports
-# Local Imports
 from ... import temporary
 from .. import cargo, paths
-
-# Type Checking Imports
-
-# === Public Exports === #
-
-# === Constants === #
-
-# === Types === #
-
-# === Classes === #
-
-# === Public Functions === #
 
 
 def build(directory: Path, profile: str, native: str | None = None) -> None:
@@ -86,10 +69,6 @@ def main() -> None:
     options = parser.parse_args()
     build(Path.cwd(), options.profile, options.target)
 
-
-# === Private Functions === #
-
-# === Entry Point === #
 
 if __name__ == "__main__":
     main()

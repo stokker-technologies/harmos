@@ -7,37 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Fields, Item};
 
-// Local Imports
 use crate::path::HarmosPath;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(super) fn declare(item: &Item, sdk: &HarmosPath) -> TokenStream {
     if let Item::Struct(item) = item {
@@ -106,7 +80,3 @@ pub(super) fn declare(item: &Item, sdk: &HarmosPath) -> TokenStream {
         }
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

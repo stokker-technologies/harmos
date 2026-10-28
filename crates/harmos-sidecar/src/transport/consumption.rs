@@ -7,29 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io;
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::credit::{MINIMUM, WINDOW};
 use super::invalid;
 use crate::Frame;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct ReceiveCredit {
     ledger: Mutex<Ledger>,
@@ -50,12 +35,6 @@ pub struct Consumption {
     charge: u64,
     acknowledged: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl ReceiveCredit {
     pub fn new() -> Arc<Self> {
@@ -128,9 +107,3 @@ impl Drop for Consumption {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

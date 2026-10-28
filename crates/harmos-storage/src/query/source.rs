@@ -9,49 +9,26 @@
 
 // Native storage rows mapped to Arrow batches
 
-/* === Modules === */
-
 mod columns;
 
 #[cfg(test)]
 mod tests;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     collections::HashMap,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-// Third Party Imports
+
 use arrow_array::{ArrayRef, BinaryArray, RecordBatch, StringArray, StructArray, TimestampNanosecondArray, UInt32Array, UInt64Array};
 use arrow_schema::{DataType, Field, Fields, Schema, TimeUnit};
-// Local Imports
+
 use super::transform::project::Project;
 use crate::schema::{self, Cardinality, Event, PathElement, Scalar, graph};
 use crate::storage::{FileReference, ObjectEntry, StorageCursor, StorageSchema, StoredRecord, StoredRow};
 use crate::{Error, Result};
 
-/* === Constants === */
-
 const MAX_DEPTH: usize = 32;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(super) fn payload_fields(schema: &graph::Schema) -> Result<Fields> {
     fields(schema, schema.root, 0, &mut 0)
@@ -186,8 +163,6 @@ pub(super) fn schemas(rows: &[StorageSchema]) -> Result<RecordBatch> {
     ]);
     flat(columns)
 }
-
-/* === Private Functions === */
 
 fn path_matches(path: &[PathElement<'_>], prefix: &[String]) -> bool {
     path.len() >= prefix.len()
@@ -328,5 +303,3 @@ fn invalid(reason: &'static str) -> Error {
 fn exhausted() -> Error {
     Error::ResourceExhausted { resource: "storage Arrow construction" }
 }
-
-/* === Tests === */

@@ -7,36 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::num::NonZeroUsize;
-// Third Party Imports
 
-// Local Imports
 use super::{StorageCursor, StoreHistory};
 use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
 use crate::{Error, Identifier, MemorySize, Message, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl StoreHistory {
     pub fn encode_bounded(&self, max_bytes: NonZeroUsize) -> Result<Vec<u8>> {
@@ -105,8 +82,6 @@ impl Described for StorageCursor {
     >(Self::NAME, Self::FIELDS);
 }
 
-/* === Public Functions === */
-
 pub fn encode_bounded<T: Message>(value: &T, max_bytes: NonZeroUsize) -> Result<Vec<u8>> {
     if value.encoded_size() > max_bytes.get() {
         return Err(bound_error());
@@ -132,13 +107,9 @@ pub fn decode_bounded<T: Message + MemorySize>(bytes: &[u8], max_bytes: NonZeroU
     Ok(value)
 }
 
-/* === Private Functions === */
-
 fn bound_error() -> Error {
     Error::InvalidInput {
         field: "storage native codec",
         reason: "value exceeds allowance",
     }
 }
-
-/* === Tests === */

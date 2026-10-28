@@ -7,26 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::Serialize;
-// Local Imports
+
 use crate::identity::artifact_subset;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct Registration {
@@ -39,8 +22,6 @@ pub struct Registration {
 pub struct Registrar {
     registrations: Vec<Registration>,
 }
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum RegistrationError {
@@ -61,10 +42,6 @@ pub enum RegistrationError {
         source: serde_json::Error,
     },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Registrar {
     pub fn new() -> Self {
@@ -92,9 +69,3 @@ impl Registrar {
         self.registrations
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

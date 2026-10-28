@@ -7,40 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
 
-// Third Party Imports
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::parse::Parse;
 use syn::{Attribute, Error, Expr, ItemStruct, Type};
 
-// Local Imports
 use crate::path::HarmosPath;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &HarmosPath, executable: bool) -> Result<TokenStream, Error> {
     if !item.generics.params.is_empty() {
@@ -212,8 +187,6 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
     })
 }
 
-/* === Private Functions === */
-
 fn grpc_binding(meta: syn::meta::ParseNestedMeta<'_>) -> Result<(syn::LitStr, syn::LitStr, syn::LitStr), Error> {
     let mut values = std::collections::BTreeMap::new();
     meta.parse_nested_meta(|field| {
@@ -247,5 +220,3 @@ fn grpc_binding(meta: syn::meta::ParseNestedMeta<'_>) -> Result<(syn::LitStr, sy
     }
     Ok((package, service, method))
 }
-
-/* === Tests === */

@@ -7,27 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, Weak};
-// Third Party Imports
 
-// Local Imports
 use crate::{Error, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Default)]
 pub(super) struct Lanes {
@@ -44,12 +27,6 @@ struct Claim {
     lanes: Weak<Lanes>,
     edges: Vec<(&'static str, &'static str)>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Lanes {
     pub(super) fn admit(self: &Arc<Self>, ancestors: &[&'static str], lane: &'static str, bounded: bool) -> Result<Admission> {
@@ -104,10 +81,6 @@ impl Drop for Claim {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn reaches(edges: &BTreeMap<(&'static str, &'static str), usize>, from: &'static str, to: &'static str) -> bool {
     let mut pending = vec![from];
     let mut visited = BTreeSet::new();
@@ -121,5 +94,3 @@ fn reaches(edges: &BTreeMap<(&'static str, &'static str), usize>, from: &'static
     }
     false
 }
-
-/* === Tests === */

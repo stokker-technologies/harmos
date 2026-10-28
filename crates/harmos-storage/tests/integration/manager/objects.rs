@@ -7,31 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
 use super::backend::storage_settings;
-// Standard Library Imports
+
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-// Third Party Imports
 
-// Local Imports
 use super::backend::{Data, Recovery, history};
 use harmos_domain::{DefinitionId, Identified, Identifier, Message};
 use harmos_storage::{ObjectCatalog, ObjectRetention, StorageBackends, StorageManager, StoredObject};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_domain::message]
 #[derive(Clone, PartialEq)]
@@ -64,8 +48,6 @@ struct Counter {
     value: u64,
 }
 
-/* === Enums === */
-
 #[harmos_domain::catalog]
 enum NumericObjects {
     Counter(Counter),
@@ -93,10 +75,6 @@ enum Ambiguous {
 enum Invalid {
     Zero(ZeroVersion),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Identified for Document {
     fn definition() -> (DefinitionId, u32) {
@@ -172,10 +150,6 @@ impl StoredObject for Counter {
         &self.id
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn limit() -> NonZeroUsize {
     NonZeroUsize::new(4096).unwrap()
@@ -303,5 +277,3 @@ fn ambiguous_catalog_refused() {
     assert!(!primary.control.open.load(Ordering::SeqCst));
     assert!(!recovery.control.open.load(Ordering::SeqCst));
 }
-
-/* === Tests === */

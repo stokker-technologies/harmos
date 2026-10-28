@@ -7,26 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Config, Engine, Store};
-// Local Imports
+
 use super::{Stub, support};
 use harmos_guest::Message;
 use harmos_guest::operations::{WireAnswer, WireCommand};
 use harmos_operations::lifecycle::Initialize;
-
-/* === Constants === */
-
-/* === Macros === */
 
 wasmtime::component::bindgen!({
     path: "wit",
@@ -37,10 +24,6 @@ wasmtime::component::bindgen!({
         "harmos:guest/capabilities": crate::harmos::guest::capabilities,
     },
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // Mirrors The Schematic Contract's Route Messages; Field Names Fix The Wire Tags
 #[harmos_guest::message(harmos_path = ::harmos_guest)]
@@ -67,12 +50,6 @@ struct Session {
     store: Store<Stub>,
     bindings: Plugin,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Session {
     async fn phase(&mut self, command: WireCommand) -> WireAnswer {
@@ -116,10 +93,6 @@ impl Session {
         payload
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn sdk_lifecycle_retained() {
@@ -256,5 +229,3 @@ async fn sdk_lifecycle_retained() {
         "SDK shutdown is idempotent on the same closed owner"
     );
 }
-
-/* === Tests === */

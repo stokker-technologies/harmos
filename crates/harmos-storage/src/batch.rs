@@ -7,39 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::ops::Range;
 use std::sync::Arc;
-// Third Party Imports
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 pub type FileChunk = StorageBatch<u8>;
-
-/* === Structs === */
 
 #[derive(Debug)]
 pub struct StorageBatch<T> {
     values: Arc<Vec<T>>,
     range: Range<usize>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<T> StorageBatch<T> {
     pub fn new(values: Vec<T>) -> Self {
@@ -121,12 +98,6 @@ impl<T> Clone for StorageBatch<T> {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

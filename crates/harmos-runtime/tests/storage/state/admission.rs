@@ -9,35 +9,17 @@
 
 // State Journal Admission Story
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::{Future, poll_fn};
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::task::Poll;
 
-// Third Party Imports
-
-// Local Imports
 use crate::storage::fixture::*;
 use crate::storage::waveforms;
 use harmos_runtime::Application;
 use harmos_runtime::state::Envelope;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Refusal = std::convert::Infallible;
-
-/* === Structs === */
 
 struct Model;
 
@@ -53,8 +35,6 @@ struct Observed {
 
 struct Projection;
 
-/* === Enums === */
-
 #[harmos_runtime::transactions(state = u64, error = Refusal)]
 #[derive(Clone)]
 enum Transactions {
@@ -66,10 +46,6 @@ enum Transactions {
 enum Records {
     Observed(Observed),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[harmos_runtime::lanes]
 pub enum ModelLanes {
@@ -136,10 +112,6 @@ impl RecordProjection for Projection {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 // A Query Pins A Snapshot Through The Worker, Holding It At The Backend View Gate.
 fn gate(at: StorageCursor) -> harmos_runtime::storage::Query {
     harmos_runtime::storage::Query {
@@ -149,8 +121,6 @@ fn gate(at: StorageCursor) -> harmos_runtime::storage::Query {
         slice: harmos_runtime::storage::query::RowSlice::default(),
     }
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn unrelated_backlog_skipped() {

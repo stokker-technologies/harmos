@@ -7,26 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
 mod facade {
     pub use harmos_runtime as __harmos;
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use harmos_runtime::operations::{Backoff, Declarations, OperationDeclaration, OperationPolicy, ReplaySafety, RetryPolicy};
-
-/* === Constants === */
-
-/* === Macros === */
 
 macro_rules! inert_plugin {
     ($name:ident, $id:literal, $context:ty, $catalogs:expr) => {
@@ -71,10 +58,6 @@ inert_plugin!(EmptyGuest, "empty_guest", harmos_runtime::guest::kit::Context, &[
 
 #[cfg(feature = "plugin-guest")]
 inert_plugin!(ExplicitEmptyGuest, "explicit_empty_guest", harmos_runtime::guest::kit::Context, &[]);
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_runtime::operation(id = "fixture.selected",
     response = Response,
@@ -125,8 +108,6 @@ struct EmptyNative;
 #[cfg(feature = "plugin-sidecar")]
 struct ExplicitEmptyNative;
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 enum Leaves {
     SelectedDeclaration(SelectedDeclaration),
@@ -147,10 +128,6 @@ enum Operations {
     Nested(Nested),
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl harmos_runtime::Operation for SelectedDeclaration {
     type Error = std::convert::Infallible;
 
@@ -158,12 +135,6 @@ impl harmos_runtime::Operation for SelectedDeclaration {
         panic!("inert artifact inspection never executes operations")
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "plugin-sidecar")]
 #[test]

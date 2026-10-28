@@ -9,36 +9,11 @@
 
 // Canonical Schema Traversal And Structural Identity
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use sha2::{Digest as _, Sha256};
-// Local Imports
+
 use super::Cardinality;
 use super::graph::{Error, Kind, View};
 use crate::Fingerprint;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn fingerprint(root: View<'_>, codec: &str) -> Result<Fingerprint, Error> {
     let canonical = canonical(root)?;
@@ -144,10 +119,6 @@ pub fn canonical(root: View<'_>) -> Result<Vec<u8>, Error> {
     }
     Ok(bytes)
 }
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

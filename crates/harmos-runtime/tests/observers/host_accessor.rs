@@ -7,20 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-// Third Party Imports
+
 use tokio::sync::{mpsc, oneshot};
-// Local Imports
+
 use super::support::Pulse;
 use harmos_runtime::sidecar::inventory::publications;
 use harmos_runtime::sidecar::{
@@ -28,16 +21,8 @@ use harmos_runtime::sidecar::{
     StreamSpec,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Context<'a> = ObserverContext<'a, Host>;
 type Identity = (&'static str, ActivationId, u64);
-
-/* === Structs === */
 
 struct Host {
     events: mpsc::Sender<Event>,
@@ -68,8 +53,6 @@ struct Observing {
     task: tokio::task::JoinHandle<Activity>,
 }
 
-/* === Enums === */
-
 #[derive(Debug, PartialEq, Eq)]
 enum Event {
     Call(Identity, u64),
@@ -86,10 +69,6 @@ enum Failure {
     #[error("first tick refused")]
     Refused,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl StreamSpec for WrongVersion {
     type Row = Pulse;
@@ -204,10 +183,6 @@ impl Drop for Dropped {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn identity(ctx: &Context<'_>) -> Identity {
     (ctx.observer_id(), ctx.activation_id(), ctx.tick().ordinal())
 }
@@ -253,5 +228,3 @@ async fn stop_drops_call() {
     assert!(dropped.load(Ordering::SeqCst));
     assert_eq!(events.recv().await, None);
 }
-
-/* === Tests === */

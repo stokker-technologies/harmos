@@ -7,35 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::marker::PhantomData;
-// Third Party Imports
 
-// Local Imports
 use super::Context;
 use harmos_domain::{Message, StreamSpec, plugin::Declared};
 use harmos_sdk::operations::Host;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Publisher<P> {
     context: Context,
     _plugin: PhantomData<fn() -> P>,
 }
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum PublishError {
@@ -45,10 +26,6 @@ pub enum PublishError {
     #[error(transparent)]
     Call(#[from] harmos_domain::Refusal),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 // A refused publication forwards the host's failure unchanged.
 impl From<PublishError> for harmos_domain::Refusal {
@@ -101,9 +78,3 @@ impl<P: Declared> Publisher<P> {
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

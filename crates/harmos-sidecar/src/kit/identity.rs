@@ -7,25 +7,7 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{fmt, io};
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ActivationId([u8; 16]);
@@ -35,12 +17,6 @@ pub(super) struct Identity {
     pub(super) observer: &'static str,
     pub(super) activation: ActivationId,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Identity {
     pub(super) fn new(observer: &'static str) -> io::Result<Self> {
@@ -61,9 +37,3 @@ impl fmt::Display for ActivationId {
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -9,20 +9,11 @@
 
 // Historical Object Selection, Identity Paging And Lifecycle Retention.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-// Local Imports
 use super::{
     format,
     log::{Log, add, reserve},
@@ -31,14 +22,6 @@ use crate::query::{ObjectSelection, ObjectVersions};
 use crate::{
     BackendSnapshot, ObjectEntry, ObjectKey, ObjectPoint, ObjectRetention, ObjectVersion, Result, ScanPage, SchemaKey, StorageCursor,
 };
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Serialize, Deserialize)]
 struct Release {
@@ -52,12 +35,6 @@ pub(super) struct Pruning {
     pub through: u64,
     pub positions: std::collections::BTreeMap<u64, u64>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Log {
     pub fn catalog(
@@ -230,9 +207,3 @@ impl Log {
         Ok(complete)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

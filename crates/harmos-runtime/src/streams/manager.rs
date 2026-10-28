@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::TypeId;
 use std::fmt;
 use std::future::{Future, IntoFuture};
@@ -22,24 +15,16 @@ use std::ops::{Bound, RangeBounds};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-// Third Party Imports
+
 use harmos_domain::Aggregate;
 use tokio::sync::watch;
-// Local Imports
+
 use super::window::Window;
 use super::{
     Aggregated, Axial, Batched, Batches, BeneathWindow, Bucket, Definition, Demand, Holding, Item, Prefix, Stream, Table, Tier, Tracked,
     Wired, demand, window,
 };
 use crate::{Application, state::At, state::Position, storage::Batch, storage::Cursor};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct StreamManager<A: Application> {
     pub(super) schema_settings: Arc<crate::config::SchemaSettings>,
@@ -91,12 +76,6 @@ pub struct Seal<S> {
     pub(super) track: Vec<String>,
     pub(super) marker: PhantomData<fn() -> S>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> StreamFeed<A> {
     pub async fn next(&mut self) -> Option<Batch<A>> {
@@ -366,10 +345,6 @@ impl<S> IntoFuture for Seal<S> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn checked(kind: Aggregate) -> Aggregate {
     assert!(kind.answerable(), "a percentile rank is a percentage, and {kind:?} names none");
     kind
@@ -392,5 +367,3 @@ fn beneath_of(end: Bound<Position>, as_of: Option<Position>) -> Bound<Position> 
         None => end,
     }
 }
-
-/* === Tests === */

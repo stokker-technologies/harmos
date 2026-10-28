@@ -9,26 +9,6 @@
 
 // Render Inert Artifact Inspection In Human Or JSON Form.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(clap::Args)]
 pub struct Arguments {
     artifact: std::path::PathBuf,
@@ -36,14 +16,6 @@ pub struct Arguments {
     #[arg(long)]
     json: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn run(arguments: Arguments) -> Result<(), harmos_packaging::Error> {
     let inspected = harmos_packaging::inspect(&arguments.artifact)?;
@@ -54,7 +26,3 @@ pub fn run(arguments: Arguments) -> Result<(), harmos_packaging::Error> {
     }
     Ok(())
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

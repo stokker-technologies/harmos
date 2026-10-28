@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod hygiene {
     mod harmos {}
 
@@ -22,32 +20,17 @@ mod hygiene {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
-// Third Party Imports
 use tokio::sync::{Semaphore, mpsc};
 
-// Local Imports
 use super::app::App;
 use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Runtime, operations::Capacity, operations::Lane};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Gauge {
     active: AtomicUsize,
@@ -56,8 +39,6 @@ struct Gauge {
     entered: mpsc::Sender<()>,
     release: Semaphore,
 }
-
-/* === Enums === */
 
 use super::support::Lanes;
 
@@ -75,10 +56,6 @@ struct MeasureContractDeclaration {}
 enum Operations {
     MeasureContractDeclaration(MeasureContractDeclaration),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::Operation for MeasureContractDeclaration {
     type Error = std::io::Error;
@@ -100,10 +77,6 @@ impl harmos_runtime::Operation for MeasureContractDeclaration {
         result.map(::core::convert::Into::into)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
     let (entered, mut receiver) = mpsc::channel(count);
@@ -138,8 +111,6 @@ async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
     assert_eq!(gauge.active.load(Ordering::SeqCst), 0);
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn capacity_bounds_admission() {

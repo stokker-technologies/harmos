@@ -7,21 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-// Third Party Imports
+
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
-// Local Imports
 use super::protocol::{Done, Sample, StartOperation, TransportPlugin};
 use harmos_operations::lifecycle::{Initialize, Shutdown};
 use harmos_sdk::operations::{CHILD_METHOD, WireChildCall};
@@ -29,17 +21,9 @@ use harmos_sidecar::operations::{OperationDeclaration, WIRE_METHOD, WireAnswer, 
 use harmos_sidecar::transport::{self, Connection, Packet, Receiver, Role, Sender};
 use harmos_sidecar::{Attach, Frame, Message, PluginNative, StreamSpec};
 
-/* === Constants === */
-
 const GENERATION: [u8; 32] = [2; 32];
 const CONCURRENT_CALLS: usize = 8;
 const CONTROL_BUFFER: usize = 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // One `host.publish` Call As The Host Saw It.
 #[derive(Debug, PartialEq)]
@@ -47,16 +31,6 @@ struct Call {
     first: u64,
     rows: usize,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 // Release The Whole Cancellation Burst Together, Independently Of Task Scheduling.
 async fn batch_cancellations(
@@ -263,8 +237,6 @@ async fn batches_split_contiguously() {
     drop(incoming);
     let _ = driving.await;
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn cancellation_burst_settles() {

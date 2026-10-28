@@ -9,26 +9,6 @@
 
 // Adapt Shared Cargo Flags Into Library-Owned Build Settings.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(clap::Args)]
 pub struct BuildArguments {
     #[arg(long, default_value = "Cargo.toml")]
@@ -71,12 +51,6 @@ pub struct CollectionArguments {
     archive_json: Option<std::path::PathBuf>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl BuildArguments {
     pub fn settings(self, backend: harmos_packaging::config::BuildBackend) -> harmos_packaging::config::BuildSettings {
         harmos_packaging::config::BuildSettings {
@@ -116,9 +90,3 @@ impl CollectionArguments {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

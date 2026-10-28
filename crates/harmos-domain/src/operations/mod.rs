@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod catalog;
 mod context;
 mod contract;
@@ -18,8 +16,6 @@ pub mod instance;
 mod key;
 #[doc(hidden)]
 pub mod payload;
-
-/* === Re-Exports === */
 
 pub use crate::model::operations::policy::{Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RetryPolicy};
 pub use crate::model::services::policy::{RestartPolicy, ServicePolicy};
@@ -31,25 +27,12 @@ pub use direction::{Direction, NoStream, Stream, item_types};
 pub use grpc::Grpc;
 pub use key::{CacheKey, CacheKeyError, MAX_CACHE_KEY_BYTES};
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::{Deserialize, Serialize};
-// Local Imports
-use crate::Identifier;
 
-/* === Constants === */
+use crate::Identifier;
 
 // A deadline no caller reaches: resident and watch policies run until stopped.
 pub const UNBOUNDED: std::time::Duration = std::time::Duration::from_secs(1 << 32);
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct OperationDefinition {
@@ -74,8 +57,6 @@ struct DecodedOperationDefinition {
     fingerprint: crate::Fingerprint,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Visibility {
@@ -83,8 +64,6 @@ pub enum Visibility {
     Shared,
     Host,
 }
-
-/* === Traits === */
 
 pub trait OperationDeclaration: 'static {
     type Request: crate::Portable;
@@ -121,8 +100,6 @@ pub trait Requires<T: ?Sized> {}
 // The Operations An Operation Declares With `operations = [..]`.
 pub trait Invokes<T: OperationDeclaration> {}
 
-/* === Implementations === */
-
 impl<'de> Deserialize<'de> for OperationDefinition {
     fn deserialize<D: serde::Deserializer<'de>>(decoder: D) -> Result<Self, D::Error> {
         let definition = DecodedOperationDefinition::deserialize(decoder)?;
@@ -147,9 +124,3 @@ impl OperationDefinition {
         Entry::of::<O>().definition()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

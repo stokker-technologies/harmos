@@ -7,28 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::window::Window;
 use crate::Error;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct Demand {
@@ -38,12 +23,6 @@ pub struct Demand {
 pub(crate) struct Holding {
     window: Arc<Window>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Demand {
     pub(crate) fn of(window: &Window) -> Self {
@@ -85,9 +64,3 @@ impl Drop for Holding {
         self.window.released();
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

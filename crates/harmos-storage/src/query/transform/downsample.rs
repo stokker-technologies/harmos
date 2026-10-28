@@ -9,45 +9,21 @@
 
 // Storage Arrow Query Contract
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_domain::model::storage::query::transform::downsample::{Algorithm, Downsample};
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Schema, TimeUnit};
 use harmos_domain::model::storage::query::scalar::ScalarValue;
 
-// Local Imports
 use super::{invalid, numeric_type};
 use crate::Result;
 use crate::storage::query::transform::FieldPathExecution;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait DownsampleExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
     fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 }
-
-/* === Implementations === */
 
 impl DownsampleExecution for Downsample {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
@@ -97,10 +73,6 @@ impl DownsampleExecution for Downsample {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 pub(in crate::query) fn number(value: &ScalarValue) -> Result<f64> {
     match value {
         ScalarValue::Float(value) => Ok(*value),
@@ -112,5 +84,3 @@ pub(in crate::query) fn number(value: &ScalarValue) -> Result<f64> {
         }
     }
 }
-
-/* === Tests === */

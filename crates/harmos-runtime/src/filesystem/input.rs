@@ -9,37 +9,10 @@
 
 // Bounded reads of regular input files
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     io::{self, Read},
     path::Path,
 };
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn read(path: &Path, limit: usize) -> io::Result<Vec<u8>> {
     let maximum = u64::try_from(limit)
@@ -60,7 +33,3 @@ pub fn read(path: &Path, limit: usize) -> io::Result<Vec<u8>> {
     }
     Ok(bytes)
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

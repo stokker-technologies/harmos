@@ -7,39 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::time::{Duration, Instant};
-// Third Party Imports
+
 use criterion::{BenchmarkId, Criterion, Throughput};
 use harmos_domain::model::storage::{DirectoryEvent, DirectoryRule, DirectorySelection};
-// Local Imports
+
 use super::fixture::Fixture;
 
-/* === Constants === */
-
 const ENTRIES: usize = 1000;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
     let directory = tempfile::tempdir().unwrap();
@@ -122,8 +99,6 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
     group.finish();
 }
 
-/* === Private Functions === */
-
 fn selection(root: &Path) -> DirectorySelection {
     DirectorySelection {
         root: root.to_owned(),
@@ -134,5 +109,3 @@ fn selection(root: &Path) -> DirectorySelection {
         }],
     }
 }
-
-/* === Tests === */

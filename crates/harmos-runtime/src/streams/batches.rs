@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::Any;
 use std::collections::VecDeque;
 use std::future::Future;
@@ -21,24 +14,16 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
-// Third Party Imports
+
 use harmos_domain::Aggregate;
 use harmos_storage::signal::Summary as Running;
 use tokio::sync::watch;
-// Local Imports
+
 use super::demand::Holding;
 use crate::aggregate;
 use crate::streams::BatchDefinition;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Next = Pin<Box<dyn Future<Output = (Cursor, Option<BatchItem>)> + Send>>;
-
-/* === Structs === */
 
 // One measured field of a batch. `statistics` is the field's running
 // summary, absent when no finite value arrived or a statistic overflowed.
@@ -97,17 +82,11 @@ struct Accumulator {
     invalid: u64,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum BatchItem {
     Summary(Arc<Summary>),
     Gap { missed: u64 },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Summary {
     pub fn complete(&self) -> bool {
@@ -297,9 +276,3 @@ impl Accumulator {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

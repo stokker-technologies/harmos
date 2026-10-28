@@ -8,29 +8,12 @@
 
 """Build Packageable Products Without Test Harnesses Or Fixtures"""
 
-# === Imports === #
-
-# Standard Library Imports
 import argparse
 import subprocess
 import sys
 from pathlib import Path
 
-# Third Party Imports
-# Local Imports
 from . import paths
-
-# Type Checking Imports
-
-# === Public Exports === #
-
-# === Constants === #
-
-# === Types === #
-
-# === Classes === #
-
-# === Public Functions === #
 
 
 def main() -> None:
@@ -64,10 +47,6 @@ def main() -> None:
     if options.target == "any" and any(not wheel.name.endswith("-none-any.whl") for wheel in (destination / "python").glob("*.whl")):
         raise ValueError("the any Product producer requires platform-independent Python wheels")
 
-
-# === Private Functions === #
-
-# === Entry Point === #
 
 if __name__ == "__main__":
     main()

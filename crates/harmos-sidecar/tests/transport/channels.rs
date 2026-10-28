@@ -7,38 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use tokio::io::{AsyncReadExt, DuplexStream};
-// Local Imports
+
 use harmos_domain::Message;
 use harmos_sidecar::Frame;
 use harmos_sidecar::transport::{self, Connection, Io, Packet, Role};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn io(stream: DuplexStream) -> Io {
     let (read, write) = tokio::io::split(stream);
@@ -406,5 +379,3 @@ async fn binary_invoke<D: harmos_domain::operations::OperationDeclaration>(
     assert!(matches!(binary_phase(sender, receiver, WireCommand::Finalize { invocation }).await, WireAnswer::Ready { .. }));
     payload
 }
-
-/* === Tests === */

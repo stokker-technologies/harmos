@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_macros::{plugin, sidecar_catalog as catalog, sidecar_operation as operation};
 
 pub use harmos_sidecar::operations;
@@ -29,31 +25,3 @@ pub use harmos_sidecar::{
 pub use harmos_sidecar::__private;
 
 pub use crate::services::{DemandLease, DemandSource, Managed, ManagedError, Notice, SidecarError, Supervised};
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

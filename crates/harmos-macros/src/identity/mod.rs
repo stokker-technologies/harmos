@@ -7,34 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
 pub(crate) mod batch;
 pub(crate) mod stream;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Error, Ident, Item, LitInt, LitStr, Meta, Path, Token};
-// Local Imports
+
 use crate::path::{self, HarmosPath};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Declaration {
     id: Option<LitStr>,
@@ -43,17 +26,11 @@ struct Declaration {
     harmos: HarmosPath,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Sort {
     Transaction,
     Record,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Sort {
     pub(crate) fn kind(self, harmos: &HarmosPath) -> TokenStream {
@@ -71,8 +48,6 @@ impl Sort {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn stamp(attribute: TokenStream, item: TokenStream, sort: Sort) -> TokenStream {
     match expand(attribute, &item, sort) {
         Ok(stamped) => stamped,
@@ -83,8 +58,6 @@ pub(crate) fn stamp(attribute: TokenStream, item: TokenStream, sort: Sort) -> To
         }
     }
 }
-
-/* === Private Functions === */
 
 fn undoing(name: &Ident, inverse: &Path, harmos: &HarmosPath) -> TokenStream {
     quote! {
@@ -266,5 +239,3 @@ fn named(item: &Item) -> Result<&Ident, Error> {
         other => Err(Error::new(other.span(), "an authoring attribute belongs on the struct or enum the definition is")),
     }
 }
-
-/* === Tests === */

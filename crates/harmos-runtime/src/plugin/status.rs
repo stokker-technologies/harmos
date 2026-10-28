@@ -7,29 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::{AtomicU64, Ordering};
-// Third Party Imports
 
-// Local Imports
 use super::PluginDefinition;
 use crate::{Error, Result};
 
-/* === Constants === */
-
 static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PluginGeneration(u64);
@@ -52,8 +35,6 @@ pub struct PluginStatus {
     pub next_retry: Option<tokio::time::Instant>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PluginFailureClass {
     Recoverable,
@@ -70,10 +51,6 @@ pub enum PluginState {
     Failed,
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl PluginGeneration {
     pub fn get(self) -> u64 {
         self.0
@@ -86,9 +63,3 @@ impl PluginGeneration {
             .map_err(|_| Error::ResourceExhausted { resource: "plugin generations" })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

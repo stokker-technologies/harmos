@@ -7,14 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
 mod aggregates;
 mod error;
 mod spectrum;
 mod waveform;
-
-/* === Re-Exports === */
 
 pub use aggregates::Aggregates;
 pub use error::{Error, Result};
@@ -28,31 +24,3 @@ pub use waveform::{
     Edge, Series, Summary, above_floor, crossing, decimate, decimate_indices, derivative, edges, extrema, integral, lttb, lttb_log,
     nearest, resample, resample_count, resample_uniform, value_at,
 };
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

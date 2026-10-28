@@ -12,24 +12,14 @@
 // directory still holds what a stop or crash left behind.
 
 #![allow(dead_code)]
-/* === Modules === */
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use harmos_runtime::{evidence::EvidenceError, evidence::Vault};
-
-/* === Constants === */
 
 const CEILING: usize = 1024 * 1024;
 
@@ -46,24 +36,12 @@ const KEPT: &str = "kept";
 
 const QUARANTINE: &str = "quarantine";
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(Clone)]
 pub struct Directory {
     root: Arc<tempfile::TempDir>,
     ceiling: usize,
     cadence: Duration,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Directory {
     pub fn at(root: &Arc<tempfile::TempDir>) -> Self {
@@ -187,10 +165,6 @@ impl Vault for Directory {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn length(file: &File) -> Result<u64, EvidenceError> {
     file.metadata().map(|held| held.len()).map_err(EvidenceError::unreadable)
 }
@@ -208,5 +182,3 @@ fn window(path: &Path, offset: u64, limit: usize) -> Result<(Vec<u8>, u64), Evid
 
     Ok((bytes, length))
 }
-
-/* === Tests === */

@@ -7,38 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::{Error, Fields, ItemEnum, Meta, Token};
-// Local Imports
+
 use crate::path::{self, HarmosPath};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream {
     match expand(attribute, item, true, false, false, true) {
@@ -60,8 +35,6 @@ pub(crate) fn declare_domain(attribute: TokenStream, item: TokenStream) -> Token
         Err(error) => error.to_compile_error(),
     }
 }
-
-/* === Private Functions === */
 
 pub(super) fn projection(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
     expand(attribute, item, false, false, false, true)
@@ -372,8 +345,6 @@ fn conditions(attributes: &[syn::Attribute]) -> Result<TokenStream, Error> {
         predicates => Ok(quote!(all(#(#predicates),*))),
     }
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

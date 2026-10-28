@@ -9,18 +9,8 @@
 
 // The Host Alone: Boot, Serve Its Catalog, Persist Records, Shut Down
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use arrow_array::{Array, Int64Array, StringArray, StructArray};
 
-// Local Imports
 use super::fixture::{
     Bank, Identifier, Ledger, Runtime, SchemaKey, StorageManager, catalog, config, history, record, schema, state_settings,
 };
@@ -32,28 +22,10 @@ use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Sour
 use harmos_runtime::storage::{JsonStorage, JsonStorageSettings};
 use std::num::NonZeroUsize;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[harmos_runtime::message]
 struct Reading {
     value: i64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 // Every Saved Record Of One Schema As (Item, Value), Through The Query Path
 async fn saved(storage: &StorageManager, schema: &SchemaKey) -> Vec<(String, i64)> {
@@ -96,8 +68,6 @@ async fn saved(storage: &StorageManager, schema: &SchemaKey) -> Vec<(String, i64
 fn served(runtime: &Runtime<Bank>) -> Vec<String> {
     runtime.operations.definitions().into_iter().map(|definition| definition.id.to_string()).collect()
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn runtime_baseline_walks() {

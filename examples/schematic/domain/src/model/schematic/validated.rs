@@ -9,42 +9,16 @@
 
 // A Stored Schematic That Enforces Its Domain Invariants.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[harmos_domain::message]
 pub struct ValidatedSchematic {
     pub id: String,
     pub schematic: super::Snapshot,
 }
 
-/* === Enums === */
-
 #[harmos_domain::catalog]
 pub enum Objects {
     Schematic(ValidatedSchematic),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_domain::Identified for ValidatedSchematic {
     fn definition() -> (harmos_domain::DefinitionId, u32) {
@@ -68,9 +42,3 @@ impl harmos_domain::model::storage::catalog::StoredObject for ValidatedSchematic
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

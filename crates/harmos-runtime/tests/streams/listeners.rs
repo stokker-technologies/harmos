@@ -7,21 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
-// Local Imports
+
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
 use harmos_runtime::operations::{OperationPolicy, PluginRegistration, RetryPolicy, WireDeclaration};
 use harmos_runtime::plugin::{
@@ -32,16 +25,8 @@ use harmos_runtime::schema::{Described, Field};
 use harmos_runtime::streams::PluginListenerRegistration;
 use harmos_runtime::{Error, Message, MessageError, Result, Runtime};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Backends = PluginBackend<Resources, Resources, Resources>;
 type Seen = Vec<(bool, u32, DeliveryContext)>;
-
-/* === Structs === */
 
 // Clone Panics To Prove The Listener Borrows The Original Native Stream Row.
 #[derive(Serialize, Deserialize)]
@@ -100,8 +85,6 @@ struct Host {
     view: Option<Arc<tokio::sync::Mutex<PluginListenerRegistration>>>,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 enum HandlerOperations {
     First(HearingFirst),
@@ -133,10 +116,6 @@ enum Failed {
     #[error(transparent)]
     Runtime(#[from] Error),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Fact {
     const DEFINITION: (&'static str, u32, usize) = ("listener.samples", 1, 512);
@@ -435,10 +414,6 @@ impl PluginLifecycle for Host {
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn fact(value: u32) -> Fact {
     Fact {
@@ -792,8 +767,6 @@ async fn source_preserves_staged() {
     assert!(lease.admit_row(publication_row(6), 6, 0).is_err());
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn shutdown_releases_callback_before_source() {

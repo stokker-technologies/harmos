@@ -7,24 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-// Third Party Imports
+
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
-// Local Imports
-use harmos::{Application, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::Definition, streams::Stream};
 
-/* === Constants === */
+use harmos::{Application, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::Definition, streams::Stream};
 
 const CHECKPOINT: &str = ".harmos-jsonl.cursor";
 
@@ -38,13 +29,7 @@ const SUFFIX: &str = ".jsonl";
 
 const WINDOW: usize = 64 * 1024;
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Encode<A> = fn(&Batch<A>) -> io::Result<Vec<Map<String, Value>>>;
-
-/* === Structs === */
 
 pub struct JsonlStreams<A: Application> {
     directory: PathBuf,
@@ -60,12 +45,6 @@ struct Selection<A: Application> {
     pending_gap: u64,
     application: PhantomData<fn() -> A>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> JsonlStreams<A> {
     pub fn open(directory: impl AsRef<Path>) -> io::Result<Self> {
@@ -192,8 +171,6 @@ impl<A: Application> Selection<A> {
     }
 }
 
-/* === Public Functions === */
-
 pub fn read_rows<S: DeserializeOwned>(path: impl AsRef<Path>) -> io::Result<Vec<S>> {
     let mut rows = Vec::new();
     for line in BufReader::new(File::open(path)?).lines() {
@@ -206,8 +183,6 @@ pub fn read_rows<S: DeserializeOwned>(path: impl AsRef<Path>) -> io::Result<Vec<
 
     Ok(rows)
 }
-
-/* === Private Functions === */
 
 fn encode<A: Application, S: Stream<A>>(batch: &Batch<A>) -> io::Result<Vec<Map<String, Value>>> {
     let mut rows = Vec::new();
@@ -303,5 +278,3 @@ fn capture_path(directory: &Path, id: &str) -> PathBuf {
 fn json_error(error: serde_json::Error) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error)
 }
-
-/* === Tests === */

@@ -7,36 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use futures_util::FutureExt;
 
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[cfg(feature = "simulation")]
 struct InitializingBank;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[cfg(feature = "simulation")]
 impl harmos_runtime::Application for InitializingBank {
@@ -71,12 +47,6 @@ impl harmos_runtime::Lifecycle for InitializingBank {
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[tokio::test(start_paused = true)]
 async fn retry_retains_invocation_identity() {

@@ -7,21 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::error::Error as StdError;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
-// Local Imports
+
 use super::session::Session;
 use super::{Active, Error};
 use crate::{
@@ -29,15 +22,7 @@ use crate::{
     plugin::{DispatchError, PluginEndpoint},
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Outcome = Result<(), Arc<dyn StdError + Send + Sync>>;
-
-/* === Structs === */
 
 pub struct Serving<A: Application> {
     instance: Option<PluginEndpoint>,
@@ -55,17 +40,11 @@ struct Cleanup<A: Application> {
     within: Duration,
 }
 
-/* === Enums === */
-
 enum Finalization<A: Application> {
     Pending(JoinHandle<(Cleanup<A>, Outcome)>),
     Failed(Box<Cleanup<A>>, Arc<dyn StdError + Send + Sync>),
     Complete,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> Active<A> {
     pub fn serve(mut self) -> Result<Serving<A>, Error> {
@@ -209,9 +188,3 @@ impl<A: Application> Drop for Cleanup<A> {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

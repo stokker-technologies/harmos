@@ -7,23 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use crate::message::{PostcardReader, PostcardValue};
 use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described, declaration};
 use crate::{MemorySize, MessageError, RowMetadata};
-
-/* === Constants === */
 
 // Protobuf variant tags, hashed from each authored variant name exactly as
 // `#[harmos::message]` derives them; the message tests pin them against a
@@ -41,16 +32,8 @@ const RANK: u32 = 211_531_165;
 
 // Variant tags in declaration order, indexed by the Postcard ordinal.
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 // The percentile variant payload: one `rank` field carrying the percentage.
 struct Rank;
-
-/* === Enums === */
 
 // The one statistic vocabulary every Harmos reduction answers: plot buckets,
 // storage group-bys and stream batch measurements name what they compute with
@@ -86,10 +69,6 @@ pub enum Aggregate {
     Std,
     Percentile(#[serde(with = "rank")] u8),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Aggregate {
     // The wire name: the member in snake case, a percentile as `p` and its rank.
@@ -246,10 +225,6 @@ impl MemorySize for Aggregate {
 
 impl RowMetadata for Aggregate {}
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 // Serde carries the rank as the declared u32, so its Postcard matches the schema.
 mod rank {
     pub(super) fn serialize<S: serde::Serializer>(rank: &u8, serializer: S) -> Result<S::Ok, S::Error> {
@@ -272,8 +247,6 @@ const fn variant(name: &'static str, tag: u32, payload: declaration::Definition)
 }
 
 // A zero rank is the proto3 default and stays off the wire.
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

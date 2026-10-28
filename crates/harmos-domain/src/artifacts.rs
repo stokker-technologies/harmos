@@ -7,21 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use memchr::{memchr, memmem};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
-// Local Imports
-
-/* === Constants === */
 
 const FAMILY: &[u8] = b"\0HARMOS:ARTIFACT:\0";
 pub const PREFIX: &[u8] = b"\0HARMOS:ARTIFACT:V1:";
@@ -48,18 +36,10 @@ pub const KINDS: [&str; 17] = [
     "subscribe",
 ];
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(Deserialize)]
 struct Kinded {
     kind: String,
 }
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum ScanError {
@@ -78,12 +58,6 @@ pub enum ScanError {
     #[error("a Harmos metadata fragment declares the unknown kind `{kind}`")]
     UnknownKind { kind: String },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn fragments<F: DeserializeOwned>(artifact: &[u8], owned: &[&str]) -> Result<Vec<F>, ScanError> {
     fragments_with_settings(artifact, owned, &mut crate::config::SchemaSettings::default())
@@ -134,7 +108,3 @@ pub(crate) fn fragments_with_settings<F: DeserializeOwned>(
     settings.preparation_work = std::num::NonZeroUsize::new(remaining_work).ok_or(ScanError::Budget)?;
     Ok(found)
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

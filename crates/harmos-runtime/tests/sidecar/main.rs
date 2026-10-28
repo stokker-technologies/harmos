@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "composition.rs"]
 mod composition;
 
@@ -56,20 +54,12 @@ mod status;
 #[path = "../sidecar/visibility.rs"]
 mod visibility;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-// Third Party Imports
-
-// Local Imports
 use harmos_runtime::Message;
 use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos_runtime::sidecar::{Frame, Notice, SidecarError, Supervised};
@@ -81,20 +71,12 @@ use harmos_sidecar::{Attach, Refusal, Supervisor};
 use status::service_status;
 use support::{Bank, Ledger, catalog, streams};
 
-/* === Constants === */
-
 static GAUGE_DEACTIVATED: AtomicBool = AtomicBool::new(false);
 const GAUGE_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(1),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_runtime::operation(resources = [MeterHandler], id = "device.amplify",
     policy = harmos_runtime::OperationPolicy {
@@ -291,8 +273,6 @@ struct MeterSource {
 #[error("gRPC transport error: {0}")]
 struct ProbeTransport(#[source] std::io::Error);
 
-/* === Enums === */
-
 use support::Lanes as HostLanes;
 
 #[harmos_runtime::catalog]
@@ -336,10 +316,6 @@ enum MeasureError {
     #[error("operation `gauge.probe.read` failed: {0}")]
     Probe(#[source] ProbeTransport),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_operations::lifecycle::Policy for Joinable {
     const INITIALIZATION_POLICY: OperationPolicy = GAUGE_POLICY;
@@ -670,10 +646,6 @@ impl Attach for MeterSource {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn meter(attachments: Arc<AtomicUsize>) -> MeterSource {
     MeterSource {
         source: harmos_sidecar::PluginNative::new(NonZeroUsize::new(16).unwrap()).unwrap(),
@@ -690,5 +662,3 @@ async fn assembly(configure: impl FnOnce(&mut harmos_runtime::Setup<Bank>)) -> R
     .await
     .unwrap()
 }
-
-/* === Tests === */

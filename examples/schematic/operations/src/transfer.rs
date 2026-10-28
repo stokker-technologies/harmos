@@ -9,32 +9,12 @@
 
 // Shared Bounded Transfer Contracts For Carrier Benchmarks.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
 #[cfg(feature = "runtime")]
 use {
     harmos::MemorySize,
     std::collections::{BTreeMap, VecDeque},
     std::sync::Mutex,
 };
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::message]
 #[derive(Clone)]
@@ -132,8 +112,6 @@ struct Stored {
     batches: VecDeque<Batch>,
 }
 
-/* === Enums === */
-
 #[harmos::catalog]
 pub enum Transfers {
     Upload(Upload),
@@ -160,10 +138,6 @@ pub enum Native {
     #[nested]
     Transfers(Transfers),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[cfg(feature = "runtime")]
 impl harmos::Operation for Upload {
@@ -287,9 +261,3 @@ impl harmos::Operation for Hash {
         ctx.operation(self.request.clone()).await.map_err(Into::into)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

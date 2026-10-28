@@ -7,34 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::Any;
 use std::ops::Bound;
 use std::sync::Arc;
-// Third Party Imports
+
 use harmos_domain::Aggregate;
 use harmos_storage::signal::Summary;
 use tokio::sync::{mpsc, oneshot};
-// Local Imports
+
 use super::BeneathWindow;
 use crate::aggregate;
 use crate::{state::At, state::Position, streams::Definition};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub(crate) type Served = At<Arc<dyn Any + Send + Sync>>;
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Point {
@@ -70,8 +55,6 @@ pub(crate) struct Tier {
     sender: mpsc::Sender<Request>,
     readers: Arc<tokio::sync::Semaphore>,
 }
-
-/* === Enums === */
 
 pub(crate) enum Request {
     Reader {
@@ -112,10 +95,6 @@ pub(crate) enum Request {
         reply: oneshot::Sender<Position>,
     },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Bucket {
     pub fn point(field: impl Into<String>, point: Point) -> Self {
@@ -235,10 +214,6 @@ impl Tier {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn earliest(held: Point, next: Point) -> Point {
     if next.axis < held.axis { next } else { held }
 }
@@ -254,5 +229,3 @@ fn lower(held: Point, next: Point) -> Point {
 fn higher(held: Point, next: Point) -> Point {
     if next.value > held.value { next } else { held }
 }
-
-/* === Tests === */

@@ -10,30 +10,12 @@
 // In-process binding of the portable host: a thin layer over the
 // manager's own submission, so in-process and remote bodies share one shape.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 
-// Third Party Imports
-
-// Local Imports
 use super::caller::Source;
 use super::{CallContext, Context, ContextError, ContextValue, Manager, OperationDeclaration, Response, Running};
 use super::{EndpointSet, Lane, RetryPolicy};
 use crate::{Error, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[must_use = "an invocation runs only when start or run is awaited"]
 pub struct Invocation<O: OperationDeclaration, L: Lane, E: EndpointSet = ()> {
@@ -44,18 +26,12 @@ pub struct Invocation<O: OperationDeclaration, L: Lane, E: EndpointSet = ()> {
     endpoints: E,
 }
 
-/* === Enums === */
-
 enum Target {
     Host(Manager),
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     Plugin(crate::plugin::PluginScope),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<O: OperationDeclaration, L: Lane> Invocation<O, L> {
     pub(crate) fn new(operations: Manager, request: O::Request) -> Self {
@@ -394,12 +370,6 @@ impl harmos_sdk::operations::Host for Context<'_> {
     // A resident outlives the attempt that activated it; its lease names the
     // attempt's caller.
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

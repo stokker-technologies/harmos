@@ -7,28 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::definition::{Table, Wired};
 use super::{ManagedPublication, StreamPublicationError};
 use crate::state::Position;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct StagedPublication {
@@ -63,12 +48,6 @@ struct Pending {
     publication: ManagedPublication,
     reply: watch::Sender<bool>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl std::fmt::Debug for Activation {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -228,9 +207,3 @@ impl Activation {
         drop(rows);
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

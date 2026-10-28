@@ -7,40 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::{Notify, mpsc};
-// Local Imports
+
 use super::{Bank, assembly, service_status, support};
 use super::{Ledger, Runtime};
 use harmos_runtime::{services::ServiceContext, services::ServiceExit, services::ServiceStatus};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn late_ready_ignored() {
@@ -319,5 +294,3 @@ async fn context_publishes_streams() {
     assert_eq!(rows[0].value.sample, 7);
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

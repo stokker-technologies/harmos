@@ -7,18 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-// Third Party Imports
 
-// Local Imports
 use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::wire::EncodedInput;
@@ -31,14 +22,6 @@ use crate::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
 use crate::supervision::executor;
 use crate::{Error, Message, Result};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 // The Erased Lifecycle Request Forwarded To A Guest As Its Original Bytes.
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 pub(super) struct Encoded(pub(super) Vec<u8>);
@@ -49,12 +32,6 @@ pub struct PluginSdkRegistration {
     entries: [Arc<Entry>; 2],
     kind: PluginKind,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 impl crate::Message for Encoded {
@@ -278,9 +255,3 @@ impl Drop for PluginSdkRegistration {
         self.operations.remove_settled(&self.entries);
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

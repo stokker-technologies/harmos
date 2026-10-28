@@ -7,38 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use crate::state::support::{Bank, HOUSE, alice, deposit, runtime};
 use harmos_runtime::{Application, Runtime, state::Focus, state::ManagedState, state::Never, state::Position};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct State {
     value: i64,
 }
 struct Plain;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[harmos_runtime::lanes]
 pub enum PlainLanes {
@@ -74,12 +49,6 @@ impl Application for Plain {
     type Record = ();
     type Streams = ();
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[tokio::test]
 async fn cloned_read_handles() {

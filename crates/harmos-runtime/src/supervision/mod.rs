@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 pub(crate) mod cleanup;
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub(crate) mod dependencies;
@@ -19,48 +17,28 @@ pub(crate) mod instance;
 mod listeners;
 mod task;
 
-/* === Re-Exports === */
-
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub(crate) use listeners::{Delivery as ListenerDelivery, Listener};
 pub(crate) use task::{Task, settle_all};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::watch;
 use tokio::task::{JoinError, JoinHandle};
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub(crate) struct Backoff;
 
 struct Attempt<T>(JoinHandle<T>);
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Failure {
     Panicked,
     StopTimedOut,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl Backoff {
@@ -87,8 +65,6 @@ impl<T> Drop for Attempt<T> {
         self.0.abort();
     }
 }
-
-/* === Public Functions === */
 
 pub(crate) async fn attempt<F>(future: F, mut stopping: watch::Receiver<bool>, stop_timeout: Duration) -> Result<F::Output, Failure>
 where
@@ -144,7 +120,3 @@ where
 {
     Attempt(executor::task(future)).await
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

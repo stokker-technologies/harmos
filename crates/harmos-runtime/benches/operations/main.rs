@@ -7,35 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
 extern crate harmos_runtime as harmos;
 
-// Standard Library Imports
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-// Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
 use tokio::sync::{Semaphore, mpsc};
 
-// Local Imports
 use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Error, Refusal, Runtime};
 
-/* === Constants === */
-
-/* === Macros === */
-
 criterion::criterion_group!(benches, benchmarks);
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Cancellation {
     stopped: Vec<Duration>,
@@ -51,8 +34,6 @@ struct Signals {
 struct Waiting(Option<Arc<Signals>>);
 
 struct DispatchGuard(Arc<Signals>);
-
-/* === Enums === */
 
 #[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
 enum DispatchOperations {
@@ -80,10 +61,6 @@ struct Dispatch {
     wait: bool,
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl harmos_runtime::Operation for Dispatch {
     type Error = std::convert::Infallible;
 
@@ -103,10 +80,6 @@ impl Drop for DispatchGuard {
         self.0.stopped.try_send(Instant::now()).unwrap();
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 struct App;
 impl harmos_runtime::Lifecycle for App {
@@ -277,5 +250,3 @@ fn latency_samples(count: usize) {
         }
     }
 }
-
-/* === Tests === */

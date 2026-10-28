@@ -9,33 +9,15 @@
 
 // Progress Retained Native Transports While Plugin Lifecycle Futures Wait.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::task::Context;
 
-// Third Party Imports
-
-// Local Imports
 use crate::plugin::PluginGeneration;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 type Key = (String, PluginGeneration);
 type Poller = Arc<dyn Fn(&mut Context<'_>) + Send + Sync>;
 type Transports = Arc<Mutex<BTreeMap<Key, Poller>>>;
-
-/* === Structs === */
 
 #[derive(Clone, Default)]
 pub(crate) struct Driving {
@@ -48,12 +30,6 @@ pub(crate) struct Lease {
     key: Key,
     poller: Poller,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Driving {
     #[cfg(feature = "plugin-sidecar")]
@@ -89,9 +65,3 @@ impl Drop for Lease {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

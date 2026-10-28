@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod error;
 
 #[cfg(feature = "transport")]
@@ -22,8 +20,6 @@ pub mod kit;
 
 #[cfg(feature = "transport")]
 mod wire;
-
-/* === Re-Exports === */
 
 pub use harmos_domain::model;
 pub use harmos_operations as builtins;
@@ -74,35 +70,7 @@ pub use harmos_sdk::plugin;
 #[cfg(feature = "kit")]
 pub use kit::__private;
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 #[cfg(feature = "kit")]
 impl harmos_domain::__private::CarrierContext for Supervisor {
     const FACILITY: &'static str = "sidecar";
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

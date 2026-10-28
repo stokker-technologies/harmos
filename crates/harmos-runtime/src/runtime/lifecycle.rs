@@ -7,37 +7,22 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, OnceLock, Weak};
 use std::task::Poll;
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
-// Local Imports
+
 use super::{Handle, Participants, Runtime, STOP_GRACE, Stopping};
 use crate::storage::StorageManager;
 use crate::supervision::cleanup::{Cleanup, Finalize, Resource};
 use crate::{Application, Error, Result, state::Position};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub(super) type Outcome = std::result::Result<Position, Failure>;
-
-/* === Structs === */
 
 pub(super) struct Shutdown<A: Application> {
     application: Option<super::launch::ApplicationCleanup<A>>,
@@ -56,16 +41,10 @@ pub(super) struct Failure {
     source: Arc<dyn std::error::Error + Send + Sync>,
 }
 
-/* === Enums === */
-
 enum Drain {
     Running(JoinHandle<Position>),
     Drained(Outcome),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> Runtime<A> {
     pub async fn start_storage<C>(&self, storage: StorageManager<C>) -> Result<()> {
@@ -273,10 +252,6 @@ impl<A: Application> Handle<A> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn joined(supervisor: &mut JoinHandle<Position>, journal_handles: &Weak<()>, notices: &watch::Sender<Option<String>>) -> Outcome {
     let mut grace = Box::pin(tokio::time::sleep(STOP_GRACE));
     let joined = std::future::poll_fn(|context| {
@@ -319,5 +294,3 @@ fn outcome(settled: &Outcome) -> Result<Position> {
         }),
     }
 }
-
-/* === Tests === */

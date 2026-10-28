@@ -7,45 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-// Third Party Imports
 use harmos_domain::Identifier;
 use harmos_storage::Error;
 use harmos_storage::*;
 
-// Local Imports
 use super::backend::{history, storage_settings};
 use super::fixture::state_settings;
 use super::waveforms;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[tokio::test]
 async fn oversized_batch_refused() {

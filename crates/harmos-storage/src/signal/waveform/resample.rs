@@ -7,34 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 #[must_use]
 pub fn value_at(x: &[f64], y: &[f64], at: f64) -> f64 {
     let length = x.len().min(y.len());
@@ -112,7 +84,3 @@ pub fn nearest(x: &[f64], at: f64) -> Option<usize> {
     let below = above - 1;
     Some(if at - x[below] <= x[above] - at { below } else { above })
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

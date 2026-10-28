@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod __bindings {
     wit_bindgen::generate!({
         path: "wit",
@@ -18,26 +16,15 @@ pub mod __bindings {
     });
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::TypeId;
 use std::cell::RefCell;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
-// Third Party Imports
 
-// Local Imports
 use super::context::Context;
 use harmos_sdk::__private::WireTable;
 use harmos_sdk::operations::{Contracts, WireCommand};
 use harmos_sdk::plugin::{Declared, Owner, Plugin};
-
-/* === Constants === */
-
-/* === Macros === */
 
 thread_local! {
     static TABLE: RefCell<Option<Instance>> = const { RefCell::new(None) };
@@ -66,12 +53,8 @@ macro_rules! export_plugin {
     };
 }
 
-/* === Type Aliases === */
-
 type Table = Arc<Mutex<WireTable>>;
 type Refusal = __bindings::harmos::guest::capabilities::Refusal;
-
-/* === Structs === */
 
 struct Instance {
     owner: TypeId,
@@ -80,14 +63,6 @@ struct Instance {
     table: Table,
     assignments: harmos_sdk::operations::OperationAssignments,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn registrations<P: Plugin + Declared>() -> Result<Vec<__bindings::harmos::guest::capabilities::Registration>, String> {
     supported_observers::<P>()?;
@@ -185,8 +160,6 @@ where
     answer.encode().map_err(refusal)
 }
 
-/* === Private Functions === */
-
 fn supported_observers<P: Declared>() -> Result<(), String> {
     if harmos_domain::catalog::count(P::OBSERVERS) != 0 {
         return Err("guest observer callbacks are unsupported".into());
@@ -201,5 +174,3 @@ pub fn refusal(error: impl std::fmt::Display) -> Refusal {
         failure: refusal.failure().encode(),
     }
 }
-
-/* === Tests === */

@@ -10,8 +10,6 @@
 // Storage Values: Cursors, Keys, Selections, Query Plans, Files, Objects And
 // Write Batches. The Runtime Owns Admission, Persistence And Execution.
 
-/* === Modules === */
-
 pub mod arrow;
 pub mod catalog;
 pub mod codec;
@@ -27,8 +25,6 @@ pub mod query;
 pub mod schema_input;
 pub mod time;
 pub mod writes;
-
-/* === Re-Exports === */
 
 pub use arrow::ArrowIpc;
 pub use catalog::{ObjectCatalog, ObjectDefinition, ObjectDefinitions, StoredObject};
@@ -49,31 +45,3 @@ pub use query::{
 };
 pub use schema_input::{SchemaInfo, SchemaInput};
 pub use writes::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt};
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

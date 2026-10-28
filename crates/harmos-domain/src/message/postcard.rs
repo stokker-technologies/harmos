@@ -7,29 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::{MessageError, decoding_add, decoding_multiply, decoding_vector};
-
-/* === Constants === */
 
 pub(crate) const MAX_DEPTH: usize = 32;
 const MAX_VALUES: usize = 1_048_576;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Append<'a>(&'a mut Vec<u8>);
 
@@ -39,10 +20,6 @@ pub struct Reader<'a> {
     depth: usize,
     remaining: usize,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait Value: Sized + Send + Sync {
     fn write(&self, bytes: &mut Vec<u8>);
@@ -75,8 +52,6 @@ pub trait Value: Sized + Send + Sync {
         Ok(values)
     }
 }
-
-/* === Implementations === */
 
 impl Extend<u8> for Append<'_> {
     fn extend<I: IntoIterator<Item = u8>>(&mut self, iter: I) {
@@ -284,12 +259,6 @@ impl<T: Value> Value for Option<T> {
         input.nested(|input| if input.value::<bool>()? { T::read(input).map(Some) } else { Ok(None) })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

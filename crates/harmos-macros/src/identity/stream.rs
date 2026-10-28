@@ -7,33 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Error, Expr, Fields, Ident, Item, LitInt, LitStr, Meta, Path, Token, Type};
-// Local Imports
+
 use crate::path::{self, HarmosPath};
 
-/* === Constants === */
-
 const DEPTH: usize = 4;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Declaration {
     id: Option<LitStr>,
@@ -50,14 +33,6 @@ struct Tuple {
     fields: Vec<Ident>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 pub(crate) fn stamp(attribute: TokenStream, item: TokenStream) -> TokenStream {
     match expand(attribute, &item) {
         Ok(stamped) => stamped,
@@ -68,8 +43,6 @@ pub(crate) fn stamp(attribute: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 }
-
-/* === Private Functions === */
 
 fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Error> {
     let mut declared = declaration(attribute)?;
@@ -561,5 +534,3 @@ fn named(item: &Item) -> Result<&Ident, Error> {
         other => Err(Error::new(other.span(), "a stream attribute belongs on the struct or enum the row is")),
     }
 }
-
-/* === Tests === */

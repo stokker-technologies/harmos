@@ -7,30 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::Arc;
-// Third Party Imports
-use tokio::sync::Semaphore;
-// Local Imports
 
-/* === Constants === */
+use tokio::sync::Semaphore;
 
 // The lane resident controls run in: unbounded, so a control that runs until
 // cancelled never holds a slot another call is waiting for.
 pub(crate) const RESIDENT: &str = "harmos.resident";
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Capacity {
@@ -58,18 +42,12 @@ pub(crate) struct Lanes {
     lanes: BTreeMap<&'static str, Admission>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub trait Lane: Copy + Eq + Send + Sync + 'static {
     fn catalog() -> LaneSet;
     fn default_lane() -> Self;
     fn name(&self) -> &'static str;
     fn capacity(&self) -> Capacity;
 }
-
-/* === Implementations === */
 
 impl Capacity {
     pub const fn serial() -> Self {
@@ -160,9 +138,3 @@ impl Lanes {
         self.lanes.get(name).cloned()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

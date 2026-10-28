@@ -10,8 +10,6 @@
 // The Closed Catalog Of Storage Operation Declarations. The Runtime Binds
 // Each Declaration To Its Storage Handler.
 
-/* === Modules === */
-
 mod abandon_file;
 mod append_file;
 mod capture_file;
@@ -38,8 +36,6 @@ mod write_records;
 mod write_schema;
 mod write_streams;
 
-/* === Re-Exports === */
-
 pub use abandon_file::AbandonFile;
 pub use append_file::AppendFile;
 pub use capture_file::CaptureFile;
@@ -64,17 +60,9 @@ pub use write_records::WriteRecords;
 pub use write_schema::WriteSchema;
 pub use write_streams::WriteStreams;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::Duration;
-// Third Party Imports
-
-// Local Imports
 
 use harmos_domain::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
-
-/* === Constants === */
 
 pub const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(60),
@@ -103,8 +91,6 @@ pub const IO_POLICY: OperationPolicy = OperationPolicy {
     retries: RetryPolicy::Never,
 };
 
-/* === Macros === */
-
 #[harmos::catalog(harmos_path = crate)]
 pub enum Storage {
     ListDirectory(ListDirectory),
@@ -131,22 +117,6 @@ pub enum Storage {
     WriteObjects(WriteObjects),
     FollowObjects(FollowObjects),
 }
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 const IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);

@@ -7,28 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, Weak};
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::{PluginGeneration, PluginGraph, PluginScope};
 use harmos_domain::Refusal;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub struct Router(Arc<Registry>);
@@ -61,8 +46,6 @@ pub struct PluginCaller {
     live: Weak<Live>,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum DispatchError {
     #[error("plugin `{owner}` is absent from the admitted graph")]
@@ -92,10 +75,6 @@ pub enum DispatchError {
     #[error(transparent)]
     Refused(#[from] Refusal),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl DispatchError {
     pub fn code(&self) -> i64 {
@@ -288,9 +267,3 @@ impl PluginCaller {
         live.scope.as_ref().cloned().ok_or(DispatchError::Unavailable)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

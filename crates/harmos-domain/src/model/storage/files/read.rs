@@ -9,23 +9,11 @@
 
 // Finished File Read Contract
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::path::PathBuf;
-// Third Party Imports
-// Local Imports
+
 use super::FileReference;
 use crate::model::storage::codec::{Nested, Unsigned, coded, variants};
 use crate::{Error, MemorySize, Result};
-
-/* === Constants === */
-
-/* === Macros === */
 
 crate::model::storage::codec::product!(ByteRange {
     offset: crate::model::storage::codec::Unsigned => 1,
@@ -58,10 +46,6 @@ crate::model::storage::codec::product!(FileHash {
     sha256: super::codec::Digest => 2,
 });
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ByteRange {
     pub offset: u64,
@@ -82,8 +66,6 @@ pub struct FileHash {
     pub bytes_read: u64,
     pub sha256: [u8; 32],
 }
-
-/* === Enums === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FileSource {
@@ -110,10 +92,6 @@ pub enum CaptureConsistency {
     Bounded,
     Stable,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl FileSource {
     pub fn grant_scope(&self) -> Option<String> {
@@ -189,9 +167,3 @@ impl MemorySize for FileCompletion {
         std::mem::size_of::<Self>()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,17 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::STREAM_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, Optional, product};
@@ -25,18 +14,10 @@ use harmos_domain::model::storage::{ObjectEntry, ObjectSelection, StorageCursor}
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(FollowObjects {
     after: Optional<Nested<StorageCursor>> => 1,
     selection: Nested<ObjectSelection> => 2,
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
     id = "storage.follow_objects",
@@ -50,12 +31,6 @@ pub struct FollowObjects {
     pub selection: ObjectSelection,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl MemorySize for FollowObjects {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
@@ -66,12 +41,6 @@ impl MemorySize for FollowObjects {
 
 #[cfg(feature = "runtime")]
 mod execution {
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
 
     use harmos_sdk::operations::Operation;
 
@@ -102,9 +71,3 @@ mod execution {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

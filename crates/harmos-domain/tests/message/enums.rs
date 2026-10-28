@@ -9,8 +9,6 @@
 
 // Enum Variant Selection Against A Newer Twin Schema
 
-/* === Modules === */
-
 // The Deployed Schema Knows Two Modes
 mod known {
     use harmos_domain::message;
@@ -85,33 +83,10 @@ mod newer {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fmt::Debug;
-// Third Party Imports
 
-// Local Imports
 use harmos_domain::Message;
 use harmos_sdk::grpc::{self, DecodeInput};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 #[test]
 fn unknown_mode_refused() {
@@ -164,8 +139,6 @@ fn known_mode_defaults() {
     assert_eq!(<known::Mode as Message>::decode(&manual).unwrap(), known::Mode::Manual);
 }
 
-/* === Private Functions === */
-
 fn wire<T: harmos_domain::Message + harmos_domain::schema::Described>(value: &T) -> Vec<u8> {
     crate::encode(value)
 }
@@ -179,5 +152,3 @@ fn refused<T: harmos_domain::Message + harmos_domain::schema::Described + Debug>
     assert!(error.to_string().contains("unknown protobuf enum variant"), "{error}");
     assert!(grpc::prepare::<T>(DecodeInput::new(bytes)).map(|prepared| prepared.memory()).is_err());
 }
-
-/* === Tests === */

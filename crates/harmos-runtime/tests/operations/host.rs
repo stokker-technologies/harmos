@@ -11,39 +11,22 @@
 // through it, and the built-in status, cancel and watch operations it shares
 // with the remote bindings.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-// Third Party Imports
 use tokio::sync::{Notify, Semaphore};
 
-// Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::instance::{Outcome, Phase};
 use harmos_runtime::operations::{Host, Instance, OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
-
-/* === Constants === */
 
 const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(5),
     attempt_timeout: Duration::from_secs(5),
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // The declaration is its own request, so `call` and `submit` infer it.
 #[harmos_runtime::operation(resources = [Gate, harmos_runtime::operations::HostContext], id = "fixture.hold",  response = u64, policy = POLICY)]
@@ -69,12 +52,6 @@ struct CompletionGuard(Arc<Gate>);
 )]
 struct TickerDeclaration {}
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl harmos_runtime::Operation for HoldDeclaration {
     type Error = Error;
 
@@ -95,10 +72,6 @@ impl Drop for CompletionGuard {
         self.0.cleanup.notify_one();
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn runtime() -> (Runtime<App>, Arc<Gate>) {
     let gate = Arc::new(Gate {
@@ -131,8 +104,6 @@ fn hidden(error: Option<Error>) -> bool {
     };
     matches!(source.downcast_ref::<harmos_operations::Error>(), Some(harmos_operations::Error::UnknownInstance(_)))
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn owned_request_survives_caller_cancellation() {

@@ -7,43 +7,22 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-// Third Party Imports
+
 use tokio::io::AsyncWriteExt;
-// Local Imports
+
 use super::{Opening, Serving, Supervisor, catalog, local};
 use crate::inventory::{Declaration, Facility};
 use crate::{Attach, Attached, PluginCatalog, Refusal, StreamDeclaration};
 use harmos_sdk::plugin::{Declared, Owner, Plugin};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct PluginNative<P> {
     declaration: Declaration,
     capacity: NonZeroUsize,
     _plugin: PhantomData<fn() -> P>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<P: Plugin<Context = Supervisor> + Declared> PluginNative<P> {
     pub fn new(capacity: NonZeroUsize) -> std::io::Result<Self> {
@@ -138,8 +117,6 @@ impl<P: Plugin<Context = Supervisor> + Declared> Attach for PluginNative<P> {
     }
 }
 
-/* === Public Functions === */
-
 pub async fn run_plugin<P>(capacity: NonZeroUsize) -> std::io::Result<()>
 where
     P: Plugin<Context = Supervisor> + Declared,
@@ -169,8 +146,6 @@ where
     let opening = Arc::new(tokio::sync::Mutex::new(opening(&native)?));
     super::connection::run_binary(opening, data, control, std::future::pending()).await
 }
-
-/* === Private Functions === */
 
 fn opening<P>(native: &PluginNative<P>) -> std::io::Result<Opening>
 where
@@ -208,5 +183,3 @@ where
         },
     })
 }
-
-/* === Tests === */

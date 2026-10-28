@@ -7,39 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
 use std::process::Output;
-// Third Party Imports
 
-// Local Imports
 use crate::fixtures;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn author(rustc: &OsStr, fixtures: &Path, dependencies: &Path, output: &Path, facade: &Path, fixture: &str, features: &[&str]) -> Output {
     let mut command = fixtures::command(rustc);
@@ -59,8 +32,6 @@ fn author(rustc: &OsStr, fixtures: &Path, dependencies: &Path, output: &Path, fa
     }
     command.output().unwrap_or_else(|error| panic!("rustc runs {fixture}: {error}"))
 }
-
-/* === Tests === */
 
 #[test]
 fn crate_builds_against() {

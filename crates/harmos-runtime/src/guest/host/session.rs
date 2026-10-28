@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -22,13 +15,13 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-// Third Party Imports
+
 use futures_util::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tracing::Instrument;
 use wasmtime::AsContextMut;
-// Local Imports
+
 use super::{Active, Error};
 use crate::Application;
 use crate::operations::children::Children;
@@ -37,18 +30,10 @@ use crate::plugin::PluginEndpoint;
 use crate::supervision::executor;
 use crate::supervision::executor::InContext;
 
-/* === Constants === */
-
 const CALLS: usize = 128;
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 type Contexts = Arc<Mutex<BTreeMap<[u8; 32], Children>>>;
 type Running<A> = JoinHandle<(Owned<A>, Result<(), Error>)>;
-
-/* === Structs === */
 
 struct Called<'a> {
     future: Pin<Box<dyn Future<Output = bool> + Send + 'a>>,
@@ -99,8 +84,6 @@ struct Retired {
     token: [u8; 32],
 }
 
-/* === Enums === */
-
 enum Command {
     Operation(WireCommand),
     Background { call: WireChildCall, submitted: tokio::time::Instant },
@@ -116,10 +99,6 @@ enum Ending {
     Stopped,
     Closing(Option<PluginEndpoint>),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Future for Called<'_> {
     type Output = bool;
@@ -531,15 +510,9 @@ impl<A: Application> Owned<A> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn unavailable() -> Error {
     Error::Unavailable {
         method: "operate".to_owned(),
         discarded: "the original guest store is unavailable".to_owned(),
     }
 }
-
-/* === Tests === */

@@ -7,28 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "../../tests/support/mod.rs"]
 mod support;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
 extern crate harmos_runtime as harmos;
 
-// Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-// Third Party Imports
+
 use tokio::sync::RwLock;
-// Local Imports
+
 use harmos_runtime::state::Transaction;
 use support::{Change, HOUSE, Ledger, deposit, runtime_from};
-
-/* === Constants === */
 
 const WORDS: usize = 131_072;
 
@@ -36,25 +27,9 @@ const COMMITS: usize = 200;
 
 const READERS: usize = 4;
 
-/* === Macros === */
-
 criterion::criterion_group!(benches, benchmarks);
 
 criterion::criterion_main!(benches);
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn in_place_writer_against_deleted_clone_and_publish_path() {
     let state = WORDS * size_of::<u64>();
@@ -224,5 +199,3 @@ fn benchmarks(c: &mut criterion::Criterion) {
     }
     group.finish();
 }
-
-/* === Tests === */

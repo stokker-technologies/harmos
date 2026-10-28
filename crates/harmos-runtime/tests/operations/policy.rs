@@ -7,28 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::Notify;
-// Local Imports
+
 use super::{Lanes, runtime_with};
 use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationDeclaration, OperationPolicy, ReplaySafety, RetryPolicy};
 use harmos_runtime::{Error, Refusal};
-
-/* === Constants === */
-
-/* === Macros === */
 
 // Each Request Executes Its Scripted Policy With Declared Resources.
 macro_rules! behaves {
@@ -89,10 +78,6 @@ macro_rules! scripted {
         behaves!($name);
     };
 }
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // Each Request Carries Its Scripted Behavior, Which Can Hold A Shared Gate,
 // So Every Policy Request Stays In Process.
@@ -192,16 +177,12 @@ struct Owner(Arc<Probe>);
 
 struct BlockerOwner(Arc<Probe>);
 
-/* === Enums === */
-
 #[derive(Clone)]
 enum Behavior {
     Fail { remaining: usize, kind: std::io::ErrorKind },
     Pending,
     Gate(Arc<Notify>),
 }
-
-/* === Traits === */
 
 trait Behaves:
     harmos_runtime::Operation<Error = std::io::Error>
@@ -217,8 +198,6 @@ trait Behaves:
 {
     fn behavior(&self) -> &Behavior;
 }
-
-/* === Implementations === */
 
 behaves!(ExponentialDeclaration, JitteredDeclaration, EmptyRetriesDeclaration, InvertedBackoffDeclaration);
 
@@ -242,10 +221,6 @@ impl harmos_runtime::Operation for BlockerDeclaration {
         Ok(1.into())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 const fn policy(overall: u64, attempt: u64, retries: usize, delay: u64) -> OperationPolicy {
     OperationPolicy {
@@ -469,5 +444,3 @@ async fn jitter_respects_ceiling() {
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 5);
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

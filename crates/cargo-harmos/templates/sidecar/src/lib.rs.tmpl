@@ -9,35 +9,12 @@
 
 // Plugin Composition And Explicit Lifecycle Ownership.
 
-/* === Modules === */
 pub mod domain;
 pub mod operations;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 #[cfg(feature = "runtime")]
 pub struct Plugin;
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 #[cfg(feature = "runtime")]
 impl harmos::builtins::lifecycle::Policy for Plugin {
     const INITIALIZATION_POLICY: harmos::OperationPolicy = operations::POLICY;
@@ -70,9 +47,3 @@ impl harmos::Lifecycle for Plugin {
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

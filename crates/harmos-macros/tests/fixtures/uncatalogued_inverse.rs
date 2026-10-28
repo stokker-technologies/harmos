@@ -8,25 +8,10 @@
  */
 
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::convert::Infallible;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Sheet;
 
@@ -38,16 +23,12 @@ struct Place;
 #[derive(Deserialize, Serialize)]
 struct Remove;
 
-/* === Enums === */
 
 #[harmos::transactions(state = Sheet)]
 enum Change {
     Place(Place),
 }
 
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos::state::Transaction<Sheet> for Place {
     type Error = Infallible;
@@ -85,10 +66,5 @@ impl harmos::state::Invertible<Sheet> for Remove {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn main() {}
-
-/* === Tests === */

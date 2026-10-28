@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod streams {
     use serde::{Deserialize, Deserializer, Serialize};
 
@@ -68,27 +66,13 @@ mod streams {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::convert::Infallible;
 use std::pin::Pin;
-// Third Party Imports
-// Local Imports
+
 use harmos_runtime::{
     Application, Runtime, state::At, state::Position, state::Transaction, streams::Axial, streams::Item, streams::Prefix, streams::Stream,
     streams::Tracked,
 };
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Default)]
 struct State;
@@ -103,13 +87,7 @@ struct PresentedSample {
     sample_index: u64,
 }
 
-/* === Enums === */
-
 enum Change {}
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Transaction<State> for Change {
     type Error = Infallible;
@@ -168,10 +146,6 @@ impl harmos_runtime::state::CatalogCodec for Change {
 }
 
 impl harmos_runtime::state::TransactionCatalog<State> for Change {}
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin)) -> Option<Item<S>> {
     std::future::poll_fn(|context| Pin::new(&mut *watching).poll_next(context)).await
@@ -306,8 +280,6 @@ fn stream_attribute_carries() {
     #[cfg(feature = "plugin")]
     assert_eq!(ENTRIES[0].row_metadata(), <PresentedSample as StreamSpec>::row_metadata());
 }
-
-/* === Tests === */
 
 #[test]
 fn current_row_restores() {

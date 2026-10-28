@@ -7,40 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::atomic::Ordering;
 
-// Third Party Imports
-
-// Local Imports
 use super::{Fixture, config, metadata};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::{FilePhase, MutationId, StagedFile};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn fixture() -> Fixture {
     let f = Fixture::new(config()).await;
@@ -53,8 +25,6 @@ fn key(f: &Fixture, key: &str) -> MutationId {
         key: Identifier::new(key).unwrap(),
     }
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn file_receipts_replay() {

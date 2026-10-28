@@ -7,34 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-// Third Party Imports
+
 use tokio::sync::Notify;
-// Local Imports
+
 use super::{CleanupCapture, closed};
 use crate::storage::support::{HOUSE, Noted, deposit};
 use crate::storage::{Bank, Data, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history, record, schema};
 use harmos_runtime::storage::ReadLimits;
 use harmos_runtime::{Error, Identifier, Runtime, services::ServiceContext, state::Position};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_runtime::message]
 struct Balance {
@@ -51,12 +36,6 @@ struct Gate {
     entered: Notify,
     release: Notify,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Store {
     fn new() -> Self {
@@ -104,10 +83,6 @@ impl Store {
         runtime.shutdown().await.unwrap();
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn limits() -> ReadLimits {
     ReadLimits {
@@ -486,5 +461,3 @@ async fn cancelled_boot_settles() {
     closed(&storage, cleanup.get()).await;
     assert_eq!(storage.status().recovery_saved.sequence, 1);
 }
-
-/* === Tests === */

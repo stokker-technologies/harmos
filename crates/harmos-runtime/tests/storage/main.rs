@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "../../../harmos-storage/tests/support/storage.rs"]
 mod backend;
 #[path = "../storage/coordinator.rs"]
@@ -29,33 +27,3 @@ mod support;
 #[allow(dead_code, reason = "shared with the benchmark of the same domain")]
 mod waveforms;
 use fixture::*;
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

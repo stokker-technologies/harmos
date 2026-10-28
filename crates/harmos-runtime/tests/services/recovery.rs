@@ -7,34 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
-// Third Party Imports
 use tokio::sync::Notify;
 
-// Local Imports
 use super::{app::App, service_status};
 use harmos_runtime::operations::{OperationOutcome, OperationPhase};
 use harmos_runtime::{Runtime, services::Resident, services::ServiceExit, services::ServiceStatus};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct RetainedCleanup {
     gate: Option<tokio::sync::oneshot::Receiver<()>>,
@@ -46,18 +29,12 @@ struct RetainedCleanup {
     environmental: bool,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug)]
 enum CleanupRequest {
     Instance,
     Definition,
     Runtime,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Resident<App> for RetainedCleanup {
     type Error = std::io::Error;
@@ -92,10 +69,6 @@ impl Resident<App> for RetainedCleanup {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn stop_cleanup(
     runtime: &Runtime<App>, request: CleanupRequest,
     lease: &harmos_runtime::operations::Running<harmos_runtime::operations::resident::Activation>,
@@ -109,8 +82,6 @@ async fn stop_cleanup(
         CleanupRequest::Runtime => runtime.shutdown().await.map(|_| ()),
     }
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn unregister_retains_cleanup() {

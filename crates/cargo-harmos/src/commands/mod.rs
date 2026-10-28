@@ -9,8 +9,6 @@
 
 // Compose The Cargo Harmos Command Tree.
 
-/* === Modules === */
-
 mod bindings;
 
 #[cfg(feature = "guest")]
@@ -26,26 +24,6 @@ mod package;
 
 #[cfg(feature = "sidecar")]
 mod sidecar;
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(clap::Subcommand)]
 pub enum Command {
@@ -64,10 +42,6 @@ pub enum Command {
     Guest(Box<guest::Arguments>),
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl Command {
     pub fn run(self, cancellation: &harmos_packaging::BuildCancellation) -> Result<(), crate::error::Error> {
         #[cfg(not(any(feature = "sidecar", feature = "guest")))]
@@ -82,9 +56,3 @@ impl Command {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

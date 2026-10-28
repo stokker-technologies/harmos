@@ -7,36 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use crate::config::DecodeSettings;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::{marker::PhantomData, sync::Arc};
 
-// Third Party Imports
 use bytes::Buf;
 use tokio::sync::Semaphore;
 use tonic::{Status, codec::DecodeBuf};
 
-// Local Imports
 use super::codec::Wire;
 use crate::{MemorySize, operations::StreamItem};
 use harmos_sdk::grpc::DecodeInput;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub(super) type AdditionalMemory = Arc<dyn Fn(&[u8]) -> Result<usize, Status> + Send + Sync>;
-
-/* === Structs === */
 
 pub struct Decoder<W, T> {
     settings: DecodeSettings,
@@ -45,12 +28,6 @@ pub struct Decoder<W, T> {
     failure: Option<Status>,
     message: PhantomData<fn() -> (W, T)>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl DecodeSettings {
     pub(super) fn validate(&self) -> Result<(), Status> {
@@ -147,9 +124,3 @@ impl<W: Wire<T>, T: MemorySize + 'static> tonic::codec::Decoder for Decoder<W, T
         Ok(Some(value))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

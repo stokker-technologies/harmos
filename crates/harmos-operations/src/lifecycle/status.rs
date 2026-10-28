@@ -7,31 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 #[cfg(feature = "runtime")]
 use harmos_sdk::operations::instances::InstanceAccess;
 
 #[cfg(feature = "runtime")]
 use crate::{Error, Operation, Response};
 use harmos_domain::operations::instance::Id;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::operation(
     harmos_path = crate,
@@ -55,12 +36,6 @@ pub struct InstanceState {
     pub cancellation_requested: bool,
     pub attempt: u32,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Status {
     pub fn of(instance: Id) -> Self {
@@ -108,9 +83,3 @@ impl TryFrom<&InstanceState> for harmos_domain::operations::instance::Status {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

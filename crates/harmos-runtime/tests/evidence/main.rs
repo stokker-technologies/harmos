@@ -7,39 +7,24 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "../support/mod.rs"]
 mod support;
 #[path = "../support/vault.rs"]
 mod vault;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
-// Local Imports
+
 use harmos_runtime::{
     DefinitionId, Identified, Runtime, Setup, StartupError, evidence::EvidenceError, evidence::EvidenceKind, evidence::Vault,
     services::Resident, services::ServiceContext, state::Position,
 };
 use support::{Bank, Copied, Ledger, Stored, catalog};
 use vault::Directory;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Recording;
 
@@ -66,18 +51,12 @@ struct Counted {
 #[derive(Clone)]
 struct Idle;
 
-/* === Enums === */
-
 #[derive(Clone, Copy)]
 enum Interruption {
     Verify,
     Fact,
     Claim,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Identified for Recording {
     fn definition() -> (DefinitionId, u32) {
@@ -247,10 +226,6 @@ impl Resident<Bank> for Idle {
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn upload() -> Upload {
     Upload {
@@ -637,5 +612,3 @@ fn refusal(booted: Result<Runtime<Bank>, StartupError>) -> StartupError {
         Err(refused) => refused,
     }
 }
-
-/* === Tests === */

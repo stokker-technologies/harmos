@@ -7,36 +7,13 @@
  * ***
  */
 
-/* === Modules === */
 
 #[path = "policy.rs"]
 mod controls;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Plugin;
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos::builtins::lifecycle::Policy for Plugin {
     const INITIALIZATION_POLICY: harmos::OperationPolicy = controls::POLICY;
@@ -63,10 +40,5 @@ impl harmos::Plugin for Plugin {
     const CATALOGS: &'static [harmos::operations::Catalog] = &[];
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn main() {}
-
-/* === Tests === */

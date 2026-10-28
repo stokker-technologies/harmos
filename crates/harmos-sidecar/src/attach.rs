@@ -7,19 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
 #[cfg(unix)]
 pub(crate) mod control;
 #[cfg(windows)]
 #[path = "attach/windows.rs"]
 pub(crate) mod control;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::ffi::OsString;
 use std::future::Future;
 use std::io::Error;
@@ -27,27 +20,19 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::Arc;
-// Third Party Imports
+
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::process::{Child, Command};
-// Local Imports
+
 use crate::StreamDeclaration;
 use crate::inventory::{Declaration, DeclarationError, Facility};
-
-/* === Constants === */
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type EndWork = Pin<Box<dyn Future<Output = std::io::Result<()>> + Send>>;
 type EndStart = Box<dyn FnOnce() -> EndWork + Send>;
-
-/* === Structs === */
 
 #[must_use = "retain the ending until physical settlement succeeds"]
 pub struct Ending {
@@ -84,8 +69,6 @@ pub struct Executable {
     environment: Vec<(OsString, OsString)>,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum ExecutableError {
     #[error("the sidecar executable `{path}` is not an absolute path")]
@@ -105,8 +88,6 @@ pub enum ExecutableError {
         source: Box<DeclarationError>,
     },
 }
-
-/* === Traits === */
 
 pub trait End: Send + 'static {
     fn settle(&mut self) -> Pin<Box<dyn Future<Output = std::io::Result<()>> + Send + '_>>;
@@ -151,8 +132,6 @@ pub trait Attach: Clone + Send + Sync + 'static {
 
     fn attach(&self) -> impl Future<Output = Result<Attached, Self::Error>> + Send;
 }
-
-/* === Implementations === */
 
 impl Ending {
     pub fn new(receipt: impl End) -> Self {
@@ -393,10 +372,6 @@ impl Attach for Executable {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn command(
     program: &Path, arguments: &[OsString], directory: Option<&Path>, environment: &[(OsString, OsString)],
 ) -> Result<Command, Error> {
@@ -447,8 +422,6 @@ fn system_root() -> Result<OsString, Error> {
         buffer.resize(length as usize, 0);
     }
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

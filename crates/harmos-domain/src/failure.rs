@@ -13,21 +13,12 @@
 // consumer. Sidecar frames, host refusals, gRPC status details and guest
 // records carry the same value; no carrier re-embeds another's text.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::backtrace::{Backtrace, BacktraceStatus};
 use std::fmt;
-// Third Party Imports
-use serde::{Deserialize, Serialize};
-// Local Imports
-use crate::operations;
 
-/* === Constants === */
+use serde::{Deserialize, Serialize};
+
+use crate::operations;
 
 const LINK_LIMIT: usize = 4 * 1024;
 
@@ -36,12 +27,6 @@ const CHAIN_LIMIT: usize = 16;
 const BACKTRACE_LIMIT: usize = 32 * 1024;
 
 const VERSION: u8 = 1;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // Boxed so every error enum that carries a failure stays one pointer wide.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -83,8 +68,6 @@ pub struct Diagnostics {
     backtrace: Option<String>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Origin {
@@ -100,10 +83,6 @@ pub enum CodecError {
     #[error("failure encoding is malformed")]
     Encoding(#[source] postcard::Error),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Failure {
     pub fn new(code: operations::FailureKind, cause: impl Into<String>) -> Self {
@@ -249,10 +228,6 @@ impl Diagnostics {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn sources<'a>(error: &'a (dyn std::error::Error + 'static)) -> impl Iterator<Item = &'a (dyn std::error::Error + 'static)> {
     std::iter::successors(Some(error), |error| error.source())
 }
@@ -273,5 +248,3 @@ fn bounded(mut text: String, limit: usize) -> String {
     text.truncate(end);
     text
 }
-
-/* === Tests === */

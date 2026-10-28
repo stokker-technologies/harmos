@@ -9,28 +9,7 @@
 
 // Wait Operation Contract And Execution.
 
-/* === --- === Definition Module === --- === */
-
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::{Duration, Echoed, OperationPolicy, RetryPolicy};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(harmos_path = ::harmos_domain,
     operations = [super::ProviderEchoOperation], id = "probe.wait", response = Echoed, policy = OperationPolicy {
@@ -48,50 +27,12 @@ use super::{Duration, Echoed, OperationPolicy, RetryPolicy};
 
 pub struct WaitOperation {}
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
-
-/* === --- === Runtime Module === --- === */
-
 #[cfg(target_arch = "wasm32")]
 mod runtime {
-    /* === Modules === */
 
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
     use super::super::ProviderEchoOperation;
     use super::{Echoed, WaitOperation};
     use harmos::guest::OperationRefusal;
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
 
     impl harmos::guest::Operation for WaitOperation {
         type Error = OperationRefusal;
@@ -110,10 +51,4 @@ mod runtime {
             result.map(Into::into)
         }
     }
-
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
 }

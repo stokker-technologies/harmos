@@ -7,26 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[harmos::operation(
     id = "schematic.route",
     response = Route,
@@ -47,12 +27,6 @@ pub struct Route {
     pub points: Vec<schematic_domain::model::Point>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 #[cfg(feature = "runtime")]
 impl harmos::Operation for ProposeRoute {
     type Error = crate::Error;
@@ -64,9 +38,3 @@ impl harmos::Operation for ProposeRoute {
         Ok(Route { points }.into())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

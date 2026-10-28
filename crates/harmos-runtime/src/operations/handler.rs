@@ -7,15 +7,8 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_domain::operations::instance::Id as OperationInstanceId;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{
@@ -23,26 +16,17 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 use std::task::{Context as TaskContext, Poll};
-// Third Party Imports
+
 use tokio::sync::oneshot;
 
-// Local Imports
 use super::Manager;
 use super::admission::Admission;
 use super::caller::{Origin, Source};
 use crate::operations::OperationDeclaration;
 use crate::{Error, Result, operations::Scope, state::Position};
 
-/* === Constants === */
-
 static NEXT_INSTANCE: AtomicU64 = AtomicU64::new(1);
 static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct OperationGeneration(u64);
@@ -102,12 +86,6 @@ pub struct HostContext {
     #[cfg(feature = "plugin-sidecar")]
     retirement: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl OperationGeneration {
     pub(super) fn fresh() -> Result<Self> {
@@ -422,8 +400,6 @@ impl Context<'_> {
     }
 }
 
-/* === Public Functions === */
-
 impl HostContext {
     pub fn request_claims(&self) -> Option<&super::RequestClaims> {
         self.request_claims.as_ref()
@@ -502,10 +478,6 @@ pub(crate) fn fresh_instance() -> Result<OperationInstanceId> {
         }
     })
 }
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 impl harmos_sdk::operations::instances::Instances for HostContext {
     fn owned(&self, id: OperationInstanceId) -> Option<Arc<dyn harmos_sdk::operations::instances::InstanceControl>> {

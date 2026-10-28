@@ -7,19 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
 use schematic_domain as schematic;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
-// Third Party Imports
 
-// Local Imports
 use crate::support;
 use harmos_runtime::Runtime;
 use harmos_runtime::plugin::PluginState;
@@ -27,31 +18,13 @@ use schematic::model::{Connection, Point, Snapshot};
 use schematic_operations::Operations;
 use schematic_operations::schematic::{analyze, propose, validate};
 
-/* === Constants === */
-
 const PLUGIN: &str = "schematic_tools";
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[harmos_runtime::lanes]
 enum Lanes {
     #[default]
     Open,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn route() -> propose::ProposeRoute {
     propose::ProposeRoute {
@@ -149,5 +122,3 @@ async fn guest_composition_walks() {
     // Scene 9: The Host Stops Cleanly
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

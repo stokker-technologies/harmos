@@ -6,33 +6,17 @@
  *
  * ***
  */
-/* === Modules === */
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::{NonZeroU32, NonZeroUsize};
 
-// Third Party Imports
 use arrow_array::{Array, Float64Array, ListArray, StructArray, UInt32Array};
 use harmos_storage::Query;
 use harmos_storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 use harmos_storage::*;
 use harmos_storage::{Identifier, Message};
 
-// Local Imports
 use super::backend::{history, storage_settings};
 use super::fixture::state_settings;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_domain::message]
 struct Payload {
@@ -54,17 +38,11 @@ struct Mapped {
     at: StorageCursor,
 }
 
-/* === Enums === */
-
 #[harmos_domain::message]
 enum Event {
     Reading(i64),
     Empty,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Mapped {
     async fn new<T: harmos_domain::schema::Described + Message>(settings: StorageSettings, id: &str, payloads: &[T]) -> Self {
@@ -142,10 +120,6 @@ impl Mapped {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn payloads() -> [Payload; 2] {
     [
         Payload {
@@ -164,8 +138,6 @@ fn payloads() -> [Payload; 2] {
 fn compact() -> [Expansion; 1] {
     [Expansion { values: vec![String::new(); 4096] }]
 }
-
-/* === Tests === */
 
 #[harmos_domain::message]
 struct PlotSample {

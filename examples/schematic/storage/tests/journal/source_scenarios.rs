@@ -7,38 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::Model;
 use harmos::storage::Source;
 use schematic_storage::Jsonl;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[test]
 fn contract_scenario() {
@@ -57,5 +28,3 @@ fn contract_scenario() {
         }
     }
 }
-
-/* === Tests === */

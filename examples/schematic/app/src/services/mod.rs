@@ -7,42 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod guest;
 pub mod sidecar;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::path::Path;
 
-// Third Party Imports
-
-// Local Imports
 use crate::app::{Runtime, SchematicEditor};
 use harmos::guest::Loaded;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 pub enum Plugin {
     Guest { manager: harmos::plugin::PluginHost<SchematicEditor> },
     Sidecar { manager: harmos::plugin::PluginHost<SchematicEditor> },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Plugin {
     pub async fn guest(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos::Result<Self> {
@@ -62,9 +38,3 @@ impl Plugin {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -9,21 +9,12 @@
 
 // Finished File Reads
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-// Third Party Imports
 use sha2::{Digest, Sha256};
 
-// Local Imports
 use super::backend::ScanPage;
 use super::manager::{Inner, Operation, encoded_size};
 use super::query::FileSelection;
@@ -33,14 +24,6 @@ use crate::FileReadBatch;
 use crate::local::LocalReader;
 use crate::{BackendFailure, Error, Result};
 use harmos_domain::model::storage::files::{FileHash, FileSource};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct FileRead {
@@ -69,12 +52,6 @@ struct StoredReader {
     verify: bool,
     hash: Sha256,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.file_reads.read_file", level = "debug", skip_all)]
@@ -286,10 +263,6 @@ impl StoredReader {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "file reference", reason }
 }
@@ -297,5 +270,3 @@ fn invalid(reason: &'static str) -> Error {
 fn corrupt(reason: &'static str) -> Error {
     Error::backend("file read", BackendFailure::Corrupt, io::Error::new(io::ErrorKind::InvalidData, reason))
 }
-
-/* === Tests === */

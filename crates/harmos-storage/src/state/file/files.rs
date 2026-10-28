@@ -9,44 +9,23 @@
 
 // State File Ownership And Durable Replacement
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-// Third Party Imports
+
 use serde::{Serialize, de::DeserializeOwned};
-// Local Imports
+
 use super::format::{self, Read, corrupt, io};
 use crate::{BackendFailure, Error, Result};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub(super) type JournalOpener = Arc<dyn Fn(&Path) -> std::io::Result<File> + Send + Sync>;
-
-/* === Structs === */
 
 pub(super) struct Files {
     root: PathBuf,
     _lease: File,
     opener: JournalOpener,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Files {
     #[tracing::instrument(name = "storage.state.file.open", level = "debug", skip_all)]
@@ -115,9 +94,3 @@ impl Files {
         self.sync_directory()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

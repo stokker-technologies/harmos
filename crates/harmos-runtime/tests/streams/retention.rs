@@ -7,35 +7,20 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use support::{Bank, Change, Ledger, booted, catalog, deposit};
 use tokio::sync::watch;
-// Local Imports
+
 use crate::streams::support;
 use harmos_runtime::{
     Error, Runtime, runtime::Incompatible, state::Entry, state::Position, state::Recorded, storage::Horizon, storage::JournalConsumer,
     storage::Recovery, storage::Source,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Save = Box<dyn FnMut() -> io::Result<()> + Send>;
-
-/* === Structs === */
 
 // A Snapshot Is Durable Exactly As Far As Its Last Successful Save.
 struct Snapshot {
@@ -58,12 +43,6 @@ struct Watched {
     pruned: watch::Sender<Option<Position>>,
     batches: Arc<Mutex<Vec<Vec<Position>>>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Prunable {
     fn controlled(advance: bool) -> (Self, Watched) {
@@ -150,10 +129,6 @@ impl Source<Bank> for Prunable {
         self.pruned.send_replace(Some(beneath));
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn snapshot_blocks_pruning() {
@@ -258,5 +233,3 @@ async fn saved(attempts: &watch::Sender<usize>) {
 async fn pruned(watched: &Watched, beneath: Position) {
     watched.pruned.subscribe().wait_for(|pruned| *pruned == Some(beneath)).await.expect("the source keeps its prune record");
 }
-
-/* === Tests === */

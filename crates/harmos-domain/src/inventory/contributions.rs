@@ -7,31 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeSet;
-// Third Party Imports
+
 use serde::de::{DeserializeOwned, IgnoredAny};
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use super::contracts::{Encoder, valid_identity};
 use crate::PREFIX;
 
-/* === Constants === */
-
 const ENTRY_LIMIT: usize = 256;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -59,8 +44,6 @@ struct Decoded {
     sections: Vec<Section>,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("multiple contribution inventories for `{owner}`")]
@@ -86,10 +69,6 @@ pub enum Error {
     #[error("invalid contribution inventory JSON: {0}")]
     Decode(#[from] serde_json::Error),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Section {
     pub const fn new(namespace: &'static str, payload: &'static str) -> Self {
@@ -127,8 +106,6 @@ impl TryFrom<Decoded> for Manifest {
         Ok(manifest)
     }
 }
-
-/* === Public Functions === */
 
 pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str) -> Result<Vec<Section>, Error> {
     let mut matching = manifests.into_iter().filter(|manifest| manifest.facility == facility && manifest.owner == owner);
@@ -195,8 +172,6 @@ pub const fn encode<const N: usize>(facility: &str, owner: &str, sections: &[Sec
     encoded::<N>(facility, owner, sections).bytes
 }
 
-/* === Private Functions === */
-
 const fn encoded<const N: usize>(facility: &str, owner: &str, sections: &[Section]) -> Encoder<N> {
     assert!(valid_identity(facility, owner));
     assert!(sections.len() <= ENTRY_LIMIT, "contribution sections exceed their budget");
@@ -224,5 +199,3 @@ const fn encoded<const N: usize>(facility: &str, owner: &str, sections: &[Sectio
     out.raw(b"]}\0");
     out
 }
-
-/* === Tests === */

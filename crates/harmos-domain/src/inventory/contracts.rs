@@ -7,21 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
 use crate::model::operations::lifecycle;
 
-// Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::time::Duration;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use crate::PREFIX;
 use crate::catalog::Node;
 use crate::config::SchemaSettings;
@@ -30,16 +23,8 @@ use crate::plugin::{Grant, Requirement};
 use crate::schema::declaration::Named;
 use crate::schema::graph::Schema;
 
-/* === Constants === */
-
 const ENTRY_LIMIT: usize = 4096;
 const GRANT_LIMIT: usize = 256;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "Decoded")]
@@ -149,8 +134,6 @@ pub(crate) struct Encoder<const N: usize> {
     pub(crate) cursor: usize,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("missing complete {facility} contract inventory for `{owner}`")]
@@ -192,10 +175,6 @@ pub enum Error {
     #[error("invalid contract inventory JSON: {0}")]
     Decode(#[from] serde_json::Error),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl NamedContract {
     pub fn resolve(self, declarations: &[Named], settings: &mut SchemaSettings) -> Result<Contract, Error> {
@@ -327,8 +306,6 @@ impl<const N: usize> Encoder<N> {
         }
     }
 }
-
-/* === Public Functions === */
 
 pub fn decode(fragment: &[u8]) -> Result<Manifest, Error> {
     if fragment.len() > crate::FRAGMENT_LIMIT {
@@ -494,8 +471,6 @@ pub(crate) const fn policy<const N: usize>(out: &mut Encoder<N>, value: Operatio
     out.raw(b"}");
 }
 
-/* === Private Functions === */
-
 const fn encoded_identity<const N: usize>(facility: &str, id: &str, version: &str, description: &str, config: &str) -> Encoder<N> {
     assert!(valid_identity(facility, id));
     let mut out = Encoder { bytes: [0; N], cursor: 0 };
@@ -648,5 +623,3 @@ const fn backoff<const N: usize>(out: &mut Encoder<N>, value: Backoff) {
     });
     out.raw(b"}}");
 }
-
-/* === Tests === */

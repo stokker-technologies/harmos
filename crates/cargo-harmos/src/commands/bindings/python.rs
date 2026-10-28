@@ -9,30 +9,14 @@
 
 // Adapt Explicit Producer Selection To The Shared Python Generator.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{io::Read as _, path::PathBuf};
-// Third Party Imports
-// Local Imports
+
 use harmos_packaging::{
     proto::Artifacts,
     python::{self, Settings},
 };
 
-/* === Constants === */
-
 const MAX_BUILD_BYTES: u64 = 16 * 1024 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(clap::Args)]
 pub struct Arguments {
@@ -76,14 +60,6 @@ pub struct Arguments {
     protoc: PathBuf,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 pub fn run(arguments: Arguments) -> Result<(), crate::error::Error> {
     let export = selected_export(&arguments)?;
     let artifacts = Artifacts::read(&export).map_err(python::Error::from)?;
@@ -105,8 +81,6 @@ pub fn run(arguments: Arguments) -> Result<(), crate::error::Error> {
     println!("{}", output.display());
     Ok(())
 }
-
-/* === Private Functions === */
 
 fn selected_export(arguments: &Arguments) -> Result<PathBuf, python::Error> {
     if let Some(path) = &arguments.export {
@@ -132,5 +106,3 @@ fn selected_export(arguments: &Arguments) -> Result<PathBuf, python::Error> {
     }
     Ok(entry.directory)
 }
-
-/* === Tests === */

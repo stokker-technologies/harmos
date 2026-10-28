@@ -7,21 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
 mod boot;
 mod launch;
 mod lifecycle;
-
-/* === Re-Exports === */
 
 pub use boot::{BootstrapCleanup, BootstrapStatus};
 pub use harmos_macros::{runtime_catalog as catalog, runtime_operation as operation};
 pub use harmos_sdk::StartupError;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::{TypeId, type_name};
 use std::collections::HashSet;
 use std::fmt;
@@ -31,11 +24,11 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::task::Poll;
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tracing::Instrument;
-// Local Imports
+
 use crate::evidence::{Declaration, Evidence, Vault};
 use crate::services::{Once as DeclaredService, ServiceDefinition};
 use crate::state::dispatch::Dispatch;
@@ -49,17 +42,9 @@ use crate::{
     state::Entry, state::JournalCapture, state::Kind, state::Position, state::StateManager, storage::Cursor,
 };
 
-/* === Constants === */
-
 const REQUESTS: usize = 64;
 
 const STOP_GRACE: Duration = Duration::from_millis(100);
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Inspection<A: Application> {
     state: Arc<At<A::State>>,
@@ -184,8 +169,6 @@ pub struct StopParticipant {
     released: bool,
 }
 
-/* === Enums === */
-
 enum Stopping<A: Application> {
     Running(Option<JoinHandle<Position>>),
     Closing {
@@ -251,13 +234,9 @@ enum Turn<A: Application> {
     Stopped,
 }
 
-/* === Traits === */
-
 pub trait Registration<A: Application>: Clone + Send {
     fn register(self) -> Catalog<A>;
 }
-
-/* === Implementations === */
 
 impl<A, S, T> Registration<A> for harmos_domain::state::TransactionDefinitions<S, T>
 where
@@ -1118,10 +1097,6 @@ impl Drop for StopParticipant {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn none<A: Application>(_change: &A::Transaction, _before: &A::State) -> Option<A::Transaction> {
     None
 }
@@ -1327,5 +1302,3 @@ async fn inspect_reads<A: Application>(mut consumers: Consumers<A>, mut requests
         answer(request, &mut consumers, None, none::<A>).await;
     }
 }
-
-/* === Tests === */

@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
 use std::pin::Pin;
 use std::sync::{
@@ -22,9 +15,7 @@ use std::sync::{
 };
 use std::thread::ThreadId;
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use super::operations::{Lanes, Managed};
 use super::support::Pulse;
 use harmos_runtime::Message;
@@ -34,16 +25,8 @@ use harmos_runtime::sidecar::{
     Observer, ObserverAttachment, ObserverCaller, ObserverContext, ObserverHost, ObserverPublisher, PublishError, Publisher, Supervisor,
 };
 
-/* === Constants === */
-
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
 static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Settings>>> = Mutex::new(std::collections::BTreeMap::new());
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Default)]
 struct State {
@@ -81,17 +64,11 @@ struct ReadValue;
 
 struct Watch<const N: u64>(Arc<State>);
 
-/* === Enums === */
-
 #[harmos_domain::catalog]
 enum Observers {
     First(Watch<0>),
     Second(Watch<1>),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Seed {
     fn new(resources: &Arc<Settings>) -> Self {
@@ -227,10 +204,6 @@ impl<const N: u64> Observer<Host> for Watch<N> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn exercise(panic_first: bool) {
     let resources = Arc::new(Settings { panic_first, ..Settings::default() });
     let state = resources.state.clone();
@@ -309,5 +282,3 @@ async fn custom_hosts_bind() {
 async fn binding_panic_isolated() {
     exercise(true).await;
 }
-
-/* === Tests === */

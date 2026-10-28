@@ -7,28 +7,8 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod progress;
 pub mod validated;
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_domain::message]
 #[derive(Clone, Debug, PartialEq)]
@@ -51,12 +31,6 @@ pub struct Snapshot {
     pub connections: Vec<Connection>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl Snapshot {
     pub fn diagnostics(&self) -> Vec<String> {
         let symbols: std::collections::BTreeSet<_> = self.symbols.iter().copied().collect();
@@ -76,9 +50,3 @@ impl Snapshot {
         if self.diagnostics().is_empty() { Ok(()) } else { Err(crate::Error::InvalidSchematic) }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

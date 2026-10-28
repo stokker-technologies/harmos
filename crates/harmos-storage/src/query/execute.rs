@@ -9,34 +9,17 @@
 
 // Storage Query Plan Execution Over Arrow Batches
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
 
-// Local Imports
 use super::RowSlice;
 use super::spill::{Builder, Pages};
 use super::transform::{Transform, TransformExecution, invalid};
 use crate::Result;
 
-/* === Constants === */
-
 pub(super) const MAX_TRANSFORMS: usize = 64;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(super) struct Plan {
     input: Arc<Schema>,
@@ -49,12 +32,6 @@ pub(super) struct Plan {
     skipped: u64,
     emitted: u64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Plan {
     #[tracing::instrument(name = "storage.query.execute.new", level = "trace", skip_all)]
@@ -157,10 +134,6 @@ impl Plan {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 // Run The Streaming Prefix In Source Order.
 #[tracing::instrument(name = "storage.query.execute.apply", level = "trace", skip_all)]
 fn apply(transforms: &[Transform], mut current: RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch> {
@@ -172,8 +145,6 @@ fn apply(transforms: &[Transform], mut current: RecordBatch, check: &mut impl Fn
     }
     Ok(current)
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

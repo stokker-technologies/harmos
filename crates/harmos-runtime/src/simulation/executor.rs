@@ -7,42 +7,21 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
 use tokio::time::error::Elapsed;
-// Local Imports
+
 use super::clock::Clock;
 use super::entropy;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(crate) struct Executor {
     runtime: Runtime,
     clock: Clock,
     entropy: entropy::Context,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Executor {
     pub(crate) fn seeded(seed: u64) -> Self {
@@ -83,8 +62,6 @@ impl Executor {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn task<F>(future: F) -> JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
@@ -115,7 +92,3 @@ where
 {
     tokio::time::timeout(duration, future).await
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,32 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context as TaskContext, Poll};
 use std::time::Duration;
 
-// Third Party Imports
 use tokio::time::Instant;
 
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type Sleep = Pin<Box<dyn Future<Output = ()> + Send>>;
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Elapsed;
@@ -53,12 +35,6 @@ struct Scoped<F> {
     context: Context,
     future: Option<Pin<Box<F>>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Execution {
     pub const fn new(now: fn() -> Instant, sleep: fn(Duration) -> Sleep) -> Self {
@@ -154,9 +130,3 @@ impl Default for Execution {
         Self::new(Instant::now, |duration| Box::pin(tokio::time::sleep(duration)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

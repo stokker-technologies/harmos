@@ -7,39 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::path::PathBuf;
 
-// Third Party Imports
-
-// Local Imports
 use harmos_domain::model::storage::*;
 use harmos_domain::{MemorySize, Message};
 use harmos_operations::storage::{CaptureFile, FollowFile, FollowProduction, HashFile, ListDirectory, ReadFile, WatchDirectory};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn roundtrip<T: Message + MemorySize + harmos_domain::schema::Described + PartialEq + std::fmt::Debug>(value: T) {
     let bytes = value.encode();
@@ -50,8 +22,6 @@ fn roundtrip<T: Message + MemorySize + harmos_domain::schema::Described + Partia
     assert!(prepared.memory() >= value.memory_size());
     assert_eq!(prepared.decode().unwrap(), value);
 }
-
-/* === Tests === */
 
 #[test]
 fn directory_contract_roundtrips() {

@@ -7,29 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "encoding.rs"]
 mod encoding;
 
-/* === Re-Exports === */
-
 pub use encoding::{EncodingError, encode_borrowed, encoding_memory_bytes};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
-// Third Party Imports
 
-// Local Imports
 use crate::journal::Position;
 use crate::message::{PostcardReader, PostcardValue, decoding_add};
 use crate::schema::declaration::{self, Field, Kind};
 use crate::schema::{Cardinality, Described};
 use crate::{MemorySize, Message, MessageError};
-
-/* === Constants === */
 
 const CONTEXT_FIELDS: &[Field] = &[
     Field {
@@ -45,8 +34,6 @@ const CONTEXT_FIELDS: &[Field] = &[
         cardinality: Cardinality::Variant,
     },
 ];
-
-/* === Macros === */
 
 macro_rules! context_shape {
     ($name:ident, $fields:expr) => {
@@ -87,10 +74,6 @@ context_shape!(
 );
 context_shape!(DeliveryContext, CONTEXT_FIELDS);
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 // One Delivered Row Of Listener `L`. Each Listener Is A Distinct Type, So Its
 // Delivery Is Its Callback Operation's Request.
 pub struct Callback<L: Listener>(std::marker::PhantomData<L>);
@@ -99,8 +82,6 @@ pub struct Delivery<L: Listener> {
     context: Context,
     row: L::Row,
 }
-
-/* === Enums === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Context {
@@ -117,16 +98,12 @@ pub enum ContextError {
     Sequence,
 }
 
-/* === Traits === */
-
 // A Listener Declaration: The Row It Receives And Its Callback Operation.
 pub trait Listener: Send + Sync + 'static {
     type Row: crate::Portable;
     const CALLBACK: &'static str;
     const POLICY: crate::operations::OperationPolicy;
 }
-
-/* === Implementations === */
 
 impl Context {
     pub fn validate(self) -> Result<(), ContextError> {
@@ -293,8 +270,6 @@ impl<L: Listener> Described for Delivery<L> {
         declaration::encode_buffer::<2048>(Self::NAME, Self::FIELDS).split_at(declaration::encoded_len(Self::NAME, Self::FIELDS)).0;
 }
 
-/* === Public Functions === */
-
 pub(super) fn matches(
     request: crate::schema::graph::View<'_>, row: &crate::schema::graph::Schema, settings: &crate::config::SchemaSettings,
 ) -> Result<bool, crate::schema::graph::Error> {
@@ -318,7 +293,3 @@ pub(super) fn matches(
     Ok(request.schema().equivalent(context.index(), &expected, expected.root, settings)?
         && request.schema().equivalent(delivered.index(), row, row.root, settings)?)
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

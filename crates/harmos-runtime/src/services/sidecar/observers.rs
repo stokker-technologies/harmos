@@ -13,30 +13,15 @@
 // observer up through the invocation's ordinary cleanup. The activation keeps
 // the connection alive until its invocation settles.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
-// Third Party Imports
+
 use tokio::sync::{mpsc, watch};
-// Local Imports
+
 use super::{Arrival, SidecarError};
 use crate::observers::{ChildSettlement, ObserverActivation, ObserverBackend, ObserverDefinition, ObserverRegistration};
 use crate::operations::{Manager, OperationPhase};
 use harmos_sidecar::inventory::observers::{Activation, Declaration};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct ControlContext {
     operations: Manager,
@@ -77,12 +62,6 @@ struct Closing {
     end: Option<harmos_sidecar::attach::Ending>,
     ending_failure: Option<String>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Remote {
     pub(super) fn new(arrivals: mpsc::Sender<Arrival>, provider: Option<Arc<crate::supervision::instance::Instance>>) -> Arc<Self> {
@@ -354,8 +333,6 @@ impl Closing {
     }
 }
 
-/* === Public Functions === */
-
 pub(super) fn stage(
     operations: &Manager, remote: &Arc<Remote>, plugin: Option<&crate::plugin::PluginScope>, definitions: &[Declaration],
     publications: &[harmos_sidecar::StreamDeclaration],
@@ -426,13 +403,9 @@ pub(super) async fn demand(
     }
 }
 
-/* === Private Functions === */
-
 fn failure(error: impl std::error::Error + Send + Sync + 'static) -> crate::Error {
     crate::Error::TaskFailed {
         domain: "remote observer",
         source: Arc::new(error),
     }
 }
-
-/* === Tests === */

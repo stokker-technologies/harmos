@@ -9,37 +9,20 @@
 
 // Durable File Session Fences, Prefix Checkpoints And Mutation Receipts.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     fs::{self, OpenOptions},
     io::{Read, Seek, SeekFrom},
     time::SystemTime,
 };
 
-// Third Party Imports
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-// Local Imports
 use super::{
     files::{Files, Production},
     format,
 };
 use crate::{FileCheckpoint, FilePhase, FileProgress, MutationReceipt, MutationValue, ReadLimits, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Deserialize)]
 struct Progress {
@@ -53,12 +36,6 @@ struct Progress {
 struct Length {
     length: u64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Files {
     pub fn fence(&self, key: &str, expected: u64, next: u64) -> Result<()> {
@@ -264,10 +241,6 @@ impl Files {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn push_recovered<T>(output: &mut Vec<T>, value: T) -> Result<()> {
     if output.len() == output.capacity() {
         let capacity = output
@@ -280,5 +253,3 @@ fn push_recovered<T>(output: &mut Vec<T>, value: T) -> Result<()> {
     output.push(value);
     Ok(())
 }
-
-/* === Tests === */

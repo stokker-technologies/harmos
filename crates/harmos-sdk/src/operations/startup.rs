@@ -9,28 +9,7 @@
 
 // Typed Startup Configuration Errors
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::ServingError;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum StartupError {
@@ -62,10 +41,6 @@ pub enum StartupError {
     },
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl StartupError {
     pub fn aggregate(mut errors: Vec<Self>) -> Option<Self> {
         match errors.len() {
@@ -75,9 +50,3 @@ impl StartupError {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

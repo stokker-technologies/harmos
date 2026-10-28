@@ -7,46 +7,29 @@
  * ***
  */
 
-/* === Modules === */
-
 mod sdk;
 mod serving;
 pub(crate) mod session;
 
-/* === Re-Exports === */
-
 pub use serving::Serving;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-// Third Party Imports
 use harmos_domain::Refusal as OperationRefusal;
 use sha2::{Digest, Sha256};
 use wasmtime::component::{Component, InstancePre, Linker};
 use wasmtime::{Config, Engine as WasmEngine, Store, StoreLimits, StoreLimitsBuilder};
 
-// Local Imports
 use super::Registration;
 use crate::config::PluginGuestSettings;
 use crate::{Application, Runtime, streams::StreamManager};
 use harmos_domain::inventory::{Declaration, DeclarationError, Facility};
 
-/* === Constants === */
-
 const TICK: Duration = Duration::from_millis(1);
 
 const UNBOUNDED: u64 = u64::MAX / 2;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Epochs {
     engine: WasmEngine,
@@ -106,8 +89,6 @@ struct Bridge<A: Application> {
     limits: StoreLimits,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
@@ -155,10 +136,6 @@ pub enum Error {
         source: std::sync::Arc<wasmtime::Error>,
     },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Epochs {
     fn start(engine: &WasmEngine) -> Arc<Self> {
@@ -467,10 +444,6 @@ impl<A: Application> Bridge<A> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 pub(super) fn store_limits(settings: PluginGuestSettings) -> StoreLimits {
     StoreLimitsBuilder::new()
         .memory_size(settings.memory_bytes.get())
@@ -495,5 +468,3 @@ fn refused(refusal: sdk::capabilities::Refusal) -> OperationRefusal {
         Err(_) => OperationRefusal::failed(harmos_domain::FAILED, failure),
     }
 }
-
-/* === Tests === */

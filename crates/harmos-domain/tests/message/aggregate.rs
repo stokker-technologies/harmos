@@ -9,8 +9,6 @@
 
 // The Hand-Written Aggregate Message Against Its Derived Twin
 
-/* === Modules === */
-
 // The Shape `#[harmos::message]` Derives For The Same Vocabulary
 mod twin {
     use harmos_domain::message;
@@ -30,22 +28,11 @@ mod twin {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::graph::Schema;
 use harmos_domain::schema::{Cardinality, Described, Kind};
 use harmos_domain::{Aggregate, MemorySize, Message, message};
 use harmos_sdk::grpc::{self, DecodeInput, prost};
-
-/* === Constants === */
 
 const EVERY: [Aggregate; 11] = [
     Aggregate::Count,
@@ -61,12 +48,6 @@ const EVERY: [Aggregate; 11] = [
     Aggregate::Percentile(255),
 ];
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 // The Aggregate Reaches Every Field Cardinality Of A Derived Message
 #[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
@@ -75,14 +56,6 @@ struct Summary {
     optional: Option<Aggregate>,
     aggregates: Vec<Aggregate>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 #[test]
 fn aggregate_protobuf_contract() {
@@ -172,8 +145,6 @@ fn schema_matches_derive() {
     Schema::from_declaration(Summary::DEFINITION, &settings).unwrap();
 }
 
-/* === Private Functions === */
-
 fn twin(value: Aggregate) -> twin::Aggregate {
     match value {
         Aggregate::Count => twin::Aggregate::Count,
@@ -187,5 +158,3 @@ fn twin(value: Aggregate) -> twin::Aggregate {
         Aggregate::Percentile(rank) => twin::Aggregate::Percentile { rank: u32::from(rank) },
     }
 }
-
-/* === Tests === */

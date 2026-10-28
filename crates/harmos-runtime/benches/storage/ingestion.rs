@@ -6,50 +6,26 @@
  *
  * ***
  */
-/* === Modules === */
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
-// Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
 use harmos_runtime::storage::query::{RecordSelection, StreamSelection};
 use harmos_runtime::storage::*;
 use harmos_runtime::{Identifier, MemorySize, Message};
 
-// Local Imports
 use super::{fixture::Fixture, waveforms};
-
-/* === Constants === */
 
 const RECORDS: usize = 10_000;
 const SAMPLES: usize = 1_000_000;
 const BATCH_ROWS: usize = 4096;
 const BATCH_BYTES: usize = 1024 * 1024;
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[harmos_runtime::message]
 struct Record {
     sequence: u64,
     payload: Vec<u8>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
     let mut group = criterion.benchmark_group("storage/ingestion");
@@ -125,7 +101,6 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
     }
     group.finish();
 }
-/* === Private Functions === */
 
 async fn ingest(storage: &StorageManager, kind: &str, schema: &SchemaKey, count: usize) -> StorageCursor {
     let mut after = 0;
@@ -275,5 +250,3 @@ async fn read(fixture: &Fixture, kind: &str, schema: &SchemaKey, count: usize) -
     assert_eq!(checked, count);
     elapsed
 }
-
-/* === Tests === */

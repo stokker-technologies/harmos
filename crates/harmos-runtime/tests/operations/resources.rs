@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -21,27 +14,14 @@ use std::sync::{
 
 use std::time::Duration;
 
-// Third Party Imports
-
-// Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Runtime, state::Position};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Bench {
     device: String,
     reads: AtomicUsize,
 }
-
-/* === Enums === */
 
 #[harmos_runtime::operation(resources = [Bench], operations = [ReadContractDeclaration], response = Reading,
         id = "resources.read",
@@ -67,10 +47,6 @@ enum Operations {
     ReadContractDeclaration(ReadContractDeclaration),
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl harmos_runtime::Operation for ReadContractDeclaration {
     type Error = harmos_runtime::operations::InvocationError;
 
@@ -85,12 +61,6 @@ impl harmos_runtime::Operation for ReadContractDeclaration {
         Ok(Reading { device: resources.device.clone(), seen }.into())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[tokio::test]
 async fn needs_lacks_registration() {

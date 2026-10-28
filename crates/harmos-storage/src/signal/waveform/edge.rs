@@ -7,33 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Edge {
     pub at: f64,
     pub rising: bool,
 }
-
-/* === Enums === */
 
 #[derive(Clone, Copy)]
 enum Level {
@@ -41,12 +19,6 @@ enum Level {
     Between,
     Above,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 #[must_use]
 pub fn edges(x: &[f64], y: &[f64], low: f64, high: f64) -> Vec<Edge> {
@@ -104,8 +76,6 @@ pub fn crossing(x: &[f64], y: &[f64], target: f64) -> Option<f64> {
     })
 }
 
-/* === Private Functions === */
-
 fn level(value: f64, low: f64, high: f64) -> Level {
     if value > high {
         Level::Above
@@ -126,5 +96,3 @@ fn crossed(x: &[f64], index: usize, target: f64, previous: f64, current: f64) ->
 
     before + (target - previous) / rise * (after - before)
 }
-
-/* === Tests === */

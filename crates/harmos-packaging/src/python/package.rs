@@ -9,13 +9,6 @@
 
 // Stage Deterministic Standard Protobuf Sources And Producer Packaging Metadata.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt::Write as _,
@@ -23,35 +16,17 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-// Third Party Imports
+
 use heck::{ToShoutySnakeCase, ToUpperCamelCase};
 use prost_reflect::{DescriptorPool, MessageDescriptor, prost::Message as _, prost_types::FileDescriptorSet};
-// Local Imports
+
 use super::{Error, Settings, identifier, python_version};
 use crate::proto::Artifacts;
 use harmos_domain::operations::Contract;
 
-/* === Constants === */
-
 const MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_OUTPUT_FILES: usize = 16_384;
 const HEADER: &str = "# ***\n#\n# Harmos\n#\n# SPDX-License-Identifier: Apache-2.0\n#\n# ***\n\n";
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 pub(super) fn export(
     artifacts: &Artifacts, contracts: &[Contract], settings: &Settings, output: &Path, protoc: &Path,
@@ -359,5 +334,3 @@ fn package_metadata(root: &Path, settings: &Settings, runtime: &str) -> Result<(
 fn quoted(value: &str) -> Result<String, Error> {
     Ok(serde_json::to_string(value)?)
 }
-
-/* === Tests === */

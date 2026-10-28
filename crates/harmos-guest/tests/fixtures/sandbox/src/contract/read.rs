@@ -9,28 +9,7 @@
 
 // Read Operation Contract And Execution.
 
-/* === --- === Definition Module === --- === */
-
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::{Backoff, Duration, Jitter, OperationPolicy, RetryPolicy, Value};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(harmos_path = ::harmos_domain,
     resources = [crate::Owner, harmos_guest::kit::Context],
@@ -64,49 +43,11 @@ pub struct ReadOperation {
     pub value: String,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
-
-/* === --- === Runtime Module === --- === */
-
 #[cfg(target_arch = "wasm32")]
 mod runtime {
-    /* === Modules === */
 
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
     use super::super::Stage;
     use super::{ReadOperation, Value};
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
 
     impl harmos::guest::Operation for ReadOperation {
         type Error = std::io::Error;
@@ -178,10 +119,4 @@ mod runtime {
             harmos::guest::operations::FailureKind::Transient
         }
     }
-
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
 }

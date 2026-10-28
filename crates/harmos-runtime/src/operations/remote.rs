@@ -7,38 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-// Third Party Imports
 use tokio::sync::watch;
 
-// Local Imports
 use super::{EndpointSet, StreamInput, StreamOutput};
 use crate::operations::{FailureKind, WireAnswer, WireCommand};
 use crate::{MemorySize, Message};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Transfer<'a> {
     observed: &'a AtomicBool,
     completed: bool,
 }
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum RemoteStreamError {
@@ -56,8 +37,6 @@ pub enum RemoteStreamError {
     Remote(harmos_domain::Failure),
 }
 
-/* === Traits === */
-
 pub trait StreamPeer: Sync {
     type Error: From<RemoteStreamError> + Send;
     fn stream_phase(&self, command: WireCommand) -> impl Future<Output = Result<WireAnswer, Self::Error>> + Send;
@@ -68,8 +47,6 @@ pub trait StreamEndpoints: EndpointSet {
         &mut self, peer: &P, invocation: u64, epoch: u64, ended: watch::Receiver<bool>, transferred: &AtomicBool,
     ) -> impl Future<Output = Result<(), P::Error>> + Send;
 }
-
-/* === Implementations === */
 
 impl Drop for Transfer<'_> {
     fn drop(&mut self) {
@@ -189,10 +166,6 @@ where
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 #[tracing::instrument(target = "harmos::carrier", name = "carrier.stream_attempt", level = "debug", skip_all, fields(invocation, epoch))]
 pub(super) async fn attempt<P: StreamPeer, E: StreamEndpoints>(
     peer: &P, endpoints: &mut E, invocation: u64, epoch: u64, transferred: &AtomicBool,
@@ -227,5 +200,3 @@ fn acknowledge(answer: WireAnswer) -> Result<(), RemoteStreamError> {
         _ => Err(RemoteStreamError::Protocol("expected empty stream acknowledgement")),
     }
 }
-
-/* === Tests === */

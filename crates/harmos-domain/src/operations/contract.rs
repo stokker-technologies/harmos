@@ -7,18 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use super::{Direction, Entry, OperationDeclaration, OperationDefinition};
 use crate::catalog::{Catalog, Member, Projection, Visitor};
 use crate::config::SchemaSettings;
@@ -26,16 +19,8 @@ use crate::schema::declaration::Definition as SchemaDefinition;
 use crate::schema::graph::{Kind, Schema, View};
 use crate::schema::{self, Described};
 
-/* === Constants === */
-
 static INITIALIZE_CONTRACT: OnceLock<Contract> = OnceLock::new();
 static SHUTDOWN_CONTRACT: OnceLock<Contract> = OnceLock::new();
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "DecodedContract")]
@@ -81,8 +66,6 @@ pub struct Contracts;
 
 // Wire Contracts Projected From Resource-Bound Operation Handlers.
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Codec {
@@ -112,10 +95,6 @@ pub enum ContractError {
         source: schema::Error,
     },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Codec {
     pub const fn id(self) -> &'static str {
@@ -482,10 +461,6 @@ impl Contracts {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 const fn direction<D: super::Direction>() -> Option<SchemaDefinition> {
     if D::STREAMED { Some(<D::Item as Described>::DEFINITION) } else { None }
 }
@@ -500,8 +475,6 @@ fn append(
     contracts.push(contract);
     Ok(())
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

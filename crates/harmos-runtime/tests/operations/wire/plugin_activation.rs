@@ -9,40 +9,9 @@
 
 // Exercise Portable Plugin Registration And Generation Replacement.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
 #[cfg(feature = "grpc")]
 use harmos_sdk::grpc::{self, DecodeInput};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[tokio::test]
 async fn callbacks_guard_admission() {
@@ -616,5 +585,3 @@ where
         tonic::codegen::http::Request::builder().header("content-type", "application/grpc").body(tonic::body::Body::new(body)).unwrap();
     harmos_runtime::grpc::server::unary::<O, harmos_runtime::grpc::Transcoded>(authority, settings, request).await
 }
-
-/* === Tests === */

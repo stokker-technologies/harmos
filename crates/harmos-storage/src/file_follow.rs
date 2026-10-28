@@ -9,31 +9,13 @@
 
 // Follow Immutable Storage Or A Local Path With Explicit Identity Changes.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::path::PathBuf;
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use crate::local::LocalReader;
 use crate::manager::Inner;
 use crate::{ByteRange, Error, FileBatch, FileCompletion, FileRead, FileReadEvent, FileReader, Result, StorageManager};
 use harmos_domain::model::storage::files::{FileEvent, FileSource, FollowStart};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct FileFollow {
@@ -56,8 +38,6 @@ struct Local {
     missing: bool,
 }
 
-/* === Enums === */
-
 enum Source {
     Stored(FileReader),
     Local(Local),
@@ -69,10 +49,6 @@ enum Step {
     Wait,
     Done,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.file_follow.follow_file", level = "debug", skip_all)]
@@ -210,10 +186,6 @@ impl Local {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn start(start: FollowStart, length: u64) -> u64 {
     match start {
         FollowStart::Beginning => 0,
@@ -221,5 +193,3 @@ fn start(start: FollowStart, length: u64) -> u64 {
         FollowStart::At(offset) => offset,
     }
 }
-
-/* === Tests === */

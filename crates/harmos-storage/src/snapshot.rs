@@ -9,20 +9,10 @@
 
 // Pinned Historical Images For Admitted Reads
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-// Third Party Imports
-
-// Local Imports
 use super::backend::{BackendSnapshot, ScanPage};
 use super::capacity::{Attempt, Refusal};
 use super::config::SNAPSHOT_BYTES;
@@ -31,15 +21,7 @@ use super::selection::Entry;
 use super::{FileReference, ObjectEntry, ObjectPoint, StorageCursor, StorageManager};
 use crate::{Error, Result};
 
-/* === Constants === */
-
 static NEXT_SNAPSHOT: AtomicU64 = AtomicU64::new(1);
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(super) struct Snapshot {
     inner: Arc<Inner>,
@@ -56,16 +38,10 @@ pub(super) struct SnapshotState {
     released: bool,
 }
 
-/* === Enums === */
-
 pub(super) enum SnapshotAction {
     Open(u64, StorageCursor),
     Release(u64, Option<BackendSnapshot>),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Drop for SnapshotState {
     fn drop(&mut self) {
@@ -277,12 +253,6 @@ impl State {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "read snapshot", reason }
 }
-
-/* === Tests === */

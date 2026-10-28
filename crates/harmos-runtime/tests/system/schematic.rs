@@ -9,48 +9,18 @@
 
 // Walk The CLI Across Both Built Plugin Backends
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Stdio};
 
-// Third Party Imports
-
-// Local Imports
 use super::support::fixtures;
 
-/* === Constants === */
-
 const REOPENED: &str = "Reopened: 2 symbols, 1 net, 3 route points";
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Debug, PartialEq, Eq)]
 enum Startup {
     Initializing,
     Ready,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[test]
 fn cli_backends_reopen() {

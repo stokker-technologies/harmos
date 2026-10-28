@@ -9,24 +9,15 @@
 
 // Storage Query Result Reader
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
 
-// Third Party Imports
 use arrow_array::RecordBatch;
 use tokio::sync::OwnedSemaphorePermit;
 
-// Local Imports
 use super::execute::Plan;
 use super::object_schemas::NormalizedObjects;
 use super::transform::{ProjectExecution, Transform, project::Project};
@@ -41,17 +32,9 @@ use crate::storage::{FileReference, ObjectEntry, SchemaKey, StorageManager, Stor
 use crate::{Error, MemorySize, Result};
 use harmos_domain::model::storage::ArrowIpc;
 
-/* === Constants === */
-
 // Two Protobuf Keys (Five Bytes Each) And Two Length Varints (Ten Bytes Each),
 // Less The Postcard Variant And Length Bytes They Replace.
 const PROTOBUF_FRAMING: usize = 30;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct Query {
@@ -82,8 +65,6 @@ pub struct QueryReader {
     inflight: bool,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Debug)]
 pub enum QueryArrow {
     Schema(ArrowSchema),
@@ -104,10 +85,6 @@ enum Rows {
     Schemas(Vec<StorageSchema>),
     Files(Vec<FileReference>),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Query {
     pub fn validate(&self) -> harmos_domain::Result<()> {
@@ -491,8 +468,6 @@ impl Rows {
     }
 }
 
-/* === Public Functions === */
-
 #[tracing::instrument(name = "storage.query.reader.schema_at", level = "trace", skip_all)]
 pub(crate) async fn schema_at(inner: &Arc<Inner>, snapshot: &Snapshot, key: &SchemaKey) -> Result<StorageSchema> {
     find_schema(inner, snapshot, key).await?.ok_or(Error::InvalidInput {
@@ -524,12 +499,8 @@ pub(crate) async fn query_slot(inner: &Arc<Inner>) -> Result<OwnedSemaphorePermi
     Arc::clone(&inner.query_active).acquire_owned().await.map_err(|_| Error::Closing { domain: "storage queries" })
 }
 
-/* === Private Functions === */
-
 #[tracing::instrument(name = "storage.query.reader.scan", level = "trace", skip_all)]
 async fn scan<T: Entry>(snapshot: &Snapshot, selection: &T::Selection, page: ScanPage, wrap: fn(Vec<T>) -> Rows) -> Result<(Rows, usize)> {
     let (entries, bytes) = snapshot.scan::<T>(selection, page).await?;
     Ok((wrap(entries), bytes))
 }
-
-/* === Tests === */

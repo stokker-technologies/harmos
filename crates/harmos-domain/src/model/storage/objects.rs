@@ -7,38 +7,21 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod codec;
-
-/* === Re-Exports === */
 
 pub use codec::Key;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::num::{NonZeroU64, NonZeroUsize};
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 
-// Local Imports
 use crate::Identifier;
 use crate::model::storage::keys::invalid;
 use crate::model::storage::{ObjectKey, ObjectValue, StorageCursor, StoreHistory};
 use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
 use crate::{MemorySize, Message, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -76,17 +59,11 @@ pub struct ObjectReceipt {
     pub version: ObjectVersionToken,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ObjectVersion {
     Latest,
     Exact(ObjectVersionToken),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl MemorySize for ObjectPoint {
     fn memory_size(&self) -> usize {
@@ -207,9 +184,3 @@ impl Described for ObjectVersionToken {
         { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
     >(Self::NAME, Self::FIELDS);
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

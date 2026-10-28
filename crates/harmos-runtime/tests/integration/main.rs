@@ -14,8 +14,6 @@
 
 extern crate harmos_runtime as harmos;
 
-/* === Modules === */
-
 #[path = "../application/main.rs"]
 mod application;
 #[path = "../evidence/main.rs"]
@@ -44,33 +42,3 @@ mod state;
 mod storage;
 #[path = "../streams/main.rs"]
 mod streams;
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,28 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{future::Future, pin::Pin, sync::Arc};
-// Third Party Imports
+
 use harmos_domain::model::operations::publication::FollowingRow;
-// Local Imports
+
 use super::access::AccessError;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type Published<'a> = Pin<Box<dyn Future<Output = Result<(), AccessError>> + Send + 'a>>;
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub struct PublicationAccess(pub Arc<dyn PublicationHost>);
@@ -43,18 +28,6 @@ pub struct Publication<'a> {
     pub following: &'a mut Vec<FollowingRow>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub trait PublicationHost: Send + Sync {
     fn publish<'a>(&'a self, context: super::CallContext, publication: Publication<'a>) -> Published<'a>;
 }
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

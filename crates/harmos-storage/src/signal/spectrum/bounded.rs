@@ -7,43 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use crate::signal::{Error, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Slices<'a> {
     real: &'a mut [f64],
     imag: &'a mut [f64],
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub(super) trait Buffer {
     fn len(&self) -> usize;
     fn get(&mut self, index: usize) -> Result<(f64, f64)>;
     fn set(&mut self, index: usize, value: (f64, f64)) -> Result<()>;
 }
-
-/* === Implementations === */
 
 impl Buffer for Slices<'_> {
     fn len(&self) -> usize {
@@ -58,8 +33,6 @@ impl Buffer for Slices<'_> {
         Ok(())
     }
 }
-
-/* === Public Functions === */
 
 pub fn fft_in_place(real: &mut [f64], imag: &mut [f64], check: impl FnMut() -> bool) -> Result<()> {
     if real.len() != imag.len() {
@@ -126,8 +99,6 @@ pub(super) fn transform(buffer: &mut impl Buffer, mut check: impl FnMut() -> boo
     validate(buffer, &mut check, "FFT exceeds finite range")
 }
 
-/* === Private Functions === */
-
 fn validate(buffer: &mut impl Buffer, check: &mut impl FnMut() -> bool, reason: &'static str) -> Result<()> {
     for index in 0..buffer.len() {
         if !check() {
@@ -140,5 +111,3 @@ fn validate(buffer: &mut impl Buffer, check: &mut impl FnMut() -> bool, reason: 
     }
     Ok(())
 }
-
-/* === Tests === */

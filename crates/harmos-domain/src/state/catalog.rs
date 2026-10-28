@@ -7,30 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::{DecodeError, Kind};
 use crate::DefinitionId;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type TransactionDecoder<T> = fn(&DefinitionId, u32, &[u8]) -> Result<Option<T>, DecodeError>;
 pub type Inverse<S, T> = fn(&T, &S) -> Option<T>;
-
-/* === Structs === */
 
 pub struct TransactionDefinitions<S, T> {
     pub definitions: Vec<(Kind, DefinitionId, u32)>,
@@ -42,12 +23,6 @@ pub struct RecordDefinitions<R> {
     pub definitions: Vec<(Kind, DefinitionId, u32)>,
     pub marker: std::marker::PhantomData<fn() -> R>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<S, T> Clone for TransactionDefinitions<S, T> {
     fn clone(&self) -> Self {
@@ -67,9 +42,3 @@ impl<R> Clone for RecordDefinitions<R> {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

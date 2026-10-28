@@ -7,29 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use heck::ToUpperCamelCase;
 use prost_reflect::ServiceDescriptor;
 
-// Local Imports
 use super::{DescriptorError, descriptor};
 use crate::operations::Contract;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Method<'a> {
     pub name: &'a str,
@@ -42,8 +24,6 @@ pub struct GeneratedService {
     pub source: String,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum GenerateError {
     #[error(transparent)]
@@ -52,12 +32,6 @@ pub enum GenerateError {
     #[error("expected a named Rust path, received `{0}`")]
     Path(String),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn generate_server(package: &str, service: &str, harmos_path: &str, methods: &[Method<'_>]) -> Result<GeneratedService, GenerateError> {
     path(harmos_path)?;
@@ -123,8 +97,6 @@ impl {harmos_path}::grpc::__private::tonic::codegen::Service<
     Ok(GeneratedService { descriptor, source })
 }
 
-/* === Private Functions === */
-
 fn path(value: &str) -> Result<(), GenerateError> {
     let segments = value.strip_prefix("::").unwrap_or(value);
     let valid = !segments.is_empty()
@@ -137,5 +109,3 @@ fn path(value: &str) -> Result<(), GenerateError> {
         });
     if valid { Ok(()) } else { Err(GenerateError::Path(value.into())) }
 }
-
-/* === Tests === */

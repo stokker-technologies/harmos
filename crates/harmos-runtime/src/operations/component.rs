@@ -7,21 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::marker::PhantomData;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-// Third Party Imports
+
 use tokio::sync::mpsc;
-// Local Imports
+
 use super::Context;
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
 use crate::catalog::{Catalog, Member, Visitor};
@@ -30,14 +23,6 @@ use crate::guest::host::session::Endpoint;
 use crate::operations::{Declarations, FailureKind, OperationDeclaration, OperationDefinition, WireAnswer, WireCommand};
 use crate::{Error, Identifier, Message, operations::Lane};
 use harmos_sdk::operations::Carrier;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Component {
     endpoint: Arc<Endpoint>,
@@ -70,8 +55,6 @@ struct SdkBinding {
     component: Arc<Component>,
     definition: OperationDefinition,
 }
-
-/* === Enums === */
 
 enum Phase {
     Initialize,
@@ -116,10 +99,6 @@ pub enum ComponentError {
     #[error(transparent)]
     Remote(harmos_domain::Failure),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl ComponentError {
     pub(crate) fn classification(&self) -> FailureKind {
@@ -510,10 +489,6 @@ impl Carrier for SdkOperation {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn register<O>(bindings: &mut super::Bindings<'_>, lane: &'static str, component: Arc<Component>) -> crate::Result<()>
 where
     O: crate::operations::OperationDeclaration,
@@ -599,5 +574,3 @@ fn acknowledged(answer: WireAnswer) -> Result<(), ComponentError> {
     }
     Ok(())
 }
-
-/* === Tests === */

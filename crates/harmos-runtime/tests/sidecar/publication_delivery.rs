@@ -9,38 +9,7 @@
 
 // Exercise Publication Windows, Capture And Observer Activation.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[tokio::test]
 async fn capture_survives_reload() {
@@ -694,5 +663,3 @@ fn explicit_artifact_grants() {
         Err(harmos_runtime::sidecar::inventory::DeclarationError::ObserverInventory(_))
     ));
 }
-
-/* === Tests === */

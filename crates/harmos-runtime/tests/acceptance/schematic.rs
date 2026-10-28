@@ -9,39 +9,12 @@
 
 // Inspect The Stamped Plugin Metadata Through The Cargo Subcommand
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::path::Path;
 use std::process::Output;
 
-// Third Party Imports
 use serde_json::Value;
 
-// Local Imports
 use super::fixtures;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 // Cargo Invokes Its Subcommand With The Subcommand Name First
 fn cargo_harmos(directory: &Path, arguments: &[&std::ffi::OsStr]) -> Output {
@@ -53,8 +26,6 @@ fn cargo_harmos(directory: &Path, arguments: &[&std::ffi::OsStr]) -> Output {
 fn succeeded(output: &Output) {
     assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
 }
-
-/* === Tests === */
 
 #[test]
 fn inspect_reports_plugins() {

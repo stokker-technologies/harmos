@@ -7,15 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use quote::ToTokens;
 use serde_json::{Value, json};
 use syn::{
@@ -24,15 +15,6 @@ use syn::{
     punctuated::Punctuated,
     spanned::Spanned,
 };
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Default)]
 pub(crate) struct Presentation {
@@ -53,12 +35,6 @@ struct Attribute {
 struct AttributeValue(Value);
 
 struct ObjectMember(Attribute);
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Parse for Attribute {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
@@ -158,8 +134,6 @@ impl Presentation {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn fields(fields: &mut Fields) -> Result<String, Error> {
     let mut rows = Vec::new();
     for field in fields {
@@ -192,8 +166,6 @@ pub(crate) fn fields(fields: &mut Fields) -> Result<String, Error> {
 
     Ok(Value::Array(rows).to_string())
 }
-
-/* === Private Functions === */
 
 fn key(input: ParseStream<'_>) -> syn::Result<(String, proc_macro2::Span)> {
     if input.peek(syn::LitStr) {
@@ -295,5 +267,3 @@ fn literal(expr: &Expr) -> Result<Value, Error> {
 
     Ok(json!({"type": kind, "value": value}))
 }
-
-/* === Tests === */

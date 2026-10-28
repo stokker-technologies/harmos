@@ -9,23 +9,11 @@
 
 // Shared Directory Discovery Contract
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::path::PathBuf;
-// Third Party Imports
-// Local Imports
+
 use super::codec::{Flag, Nested, Repeated, Text, Unsigned, product, variants};
 use super::files::codec::LocalPath;
 use crate::MemorySize;
-
-/* === Constants === */
-
-/* === Macros === */
 
 product!(DirectoryRule { pattern: Text => 1, include: Flag => 2 });
 product!(DirectorySelection { root: LocalPath => 1, recursive: Flag => 2, rules: Repeated<DirectoryRule> => 3 });
@@ -40,10 +28,6 @@ variants!(DirectoryEvent {
     5, 6, "renamed": Self::Renamed { from, to } => { from: Text => 1, to: Text => 2 } => Self::Renamed { from, to };
     6, 7, "rescan_required": Self::RescanRequired => {} => Self::RescanRequired;
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DirectoryRule {
@@ -70,8 +54,6 @@ pub struct DirectoryCompletion {
     pub entries: u64,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DirectoryEvent {
     Existing(DirectoryEntry),
@@ -82,10 +64,6 @@ pub enum DirectoryEvent {
     Renamed { from: String, to: String },
     RescanRequired,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl MemorySize for DirectoryRule {
     fn memory_size(&self) -> usize {
@@ -120,9 +98,3 @@ impl MemorySize for DirectoryEvent {
         std::mem::size_of::<Self>().saturating_add(extra)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

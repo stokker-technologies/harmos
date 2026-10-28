@@ -7,31 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
 use crate::storage::manager::RecordWriteBytes;
-// Standard Library Imports
-use std::sync::Arc;
-// Third Party Imports
 
-// Local Imports
+use std::sync::Arc;
+
 use super::{RecoveryEntry, RecoverySnapshot};
 use crate::storage::manager::{Inner, Operation, Pending, Target, recovery_encoded_bound};
 use crate::storage::{ReadLimits, RecordInput, StorageCursor, StorageManager, StoredRecord};
 use crate::{Error, Result};
 use harmos_domain::state::Position;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Permit {
     context: crate::execution::Context,
@@ -46,12 +30,6 @@ pub struct Permit {
     active: bool,
     snapshot: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.state.admission.reserve_transition", level = "debug", skip_all)]
@@ -352,9 +330,3 @@ impl Drop for Permit {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,33 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-// Third Party Imports
+
 use bytes::{Buf, BufMut};
 use prost_reflect::{DynamicMessage, Kind, MessageDescriptor, MethodDescriptor, ReflectMessage, Value};
 use tonic::Status;
 use tonic::codec::{BufferSettings, DecodeBuf, EncodeBuf};
-// Local Imports
+
 use crate::operations::Contract;
 use harmos_sdk::grpc::{DecodeInput, Validator as ProtobufValidator, prost};
 use prost::Message;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub struct Operation {
@@ -77,17 +62,11 @@ struct Json {
     limit: usize,
 }
 
-/* === Enums === */
-
 #[derive(Debug, PartialEq)]
 pub enum Event {
     Item(serde_json::Value),
     Completion(serde_json::Value),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Operation {
     pub fn new(contract: &Contract, message_bytes: NonZeroUsize) -> Result<Self, Status> {
@@ -310,10 +289,6 @@ impl tonic::codec::Decoder for Decoder {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn direction(message: MessageDescriptor, field: &str, envelope: bool) -> Result<MessageDescriptor, Status> {
     if !envelope {
         return Ok(message);
@@ -328,5 +303,3 @@ fn direction(message: MessageDescriptor, field: &str, envelope: bool) -> Result<
 fn invalid(message: impl Into<String>) -> Status {
     Status::invalid_argument(message.into())
 }
-
-/* === Tests === */

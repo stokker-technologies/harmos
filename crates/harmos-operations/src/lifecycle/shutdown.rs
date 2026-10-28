@@ -7,28 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use harmos_domain::{MemorySize, schema::Described};
 
-/* === Constants === */
-
-/* === Macros === */
-
 harmos_domain::postcard_product!(Shutdown {});
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::operation(harmos_path = crate, codec = manual, id = "harmos.shutdown", response = (), policy = super::POLICY, )]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -39,12 +20,6 @@ pub struct Control {
     #[cfg(feature = "lifecycle")]
     instance: Box<dyn harmos_sdk::operations::lifecycle::LifecycleInstance>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Described for Shutdown {
     const NAME: &'static str = <harmos_domain::model::operations::lifecycle::ShutdownSchema as Described>::NAME;
@@ -86,9 +61,3 @@ impl harmos_sdk::operations::Carrier for Control {
 impl crate::Executable for Shutdown {
     type Carrier = Control;
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

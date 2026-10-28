@@ -7,30 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::manager::encoded_size;
 use super::state::Permit;
 use super::{ReadLimits, RecordInput};
 use crate::{Error, Result, state::Envelope};
 use std::{future::Future, pin::Pin};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct ProjectedRecords<'a> {
     permit: &'a mut Permit,
@@ -43,17 +24,11 @@ pub(crate) struct Projection {
     pub(crate) handler: Box<dyn RecordProjection>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub trait RecordProjection: Send + Sync + 'static {
     fn project<'a>(
         &'a self, record: &'a Envelope<&serde_json::Value>, output: &'a mut ProjectedRecords<'_>,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
 }
-
-/* === Implementations === */
 
 impl<'a> ProjectedRecords<'a> {
     pub(crate) fn new(permit: &'a mut Permit, limits: ReadLimits) -> Self {
@@ -87,15 +62,9 @@ impl<'a> ProjectedRecords<'a> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn limit() -> Error {
     Error::InvalidInput {
         field: "record projection",
         reason: "capture limit exceeded",
     }
 }
-
-/* === Tests === */

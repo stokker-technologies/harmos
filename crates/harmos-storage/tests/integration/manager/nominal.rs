@@ -9,16 +9,9 @@
 
 // Journaled Stream And File Read Stories Over Balanced Three-Phase Samples
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::time::{Duration, UNIX_EPOCH};
-// Third Party Imports
+
 use harmos_storage::Identifier;
 use harmos_storage::query::transform::{
     Transform,
@@ -30,18 +23,10 @@ use harmos_storage::query::transform::{
 use harmos_storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
 use harmos_storage::*;
 use harmos_storage::{FileRead, Query};
-// Local Imports
+
 use super::backend::{history, storage_settings};
 use super::fixture::state_settings;
 use super::waveforms::{self, Sample};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // Journaled Storage Holding Durable Three-Phase Stream Samples.
 struct Nominal {
@@ -51,12 +36,6 @@ struct Nominal {
     samples: Vec<Sample>,
     durable: StorageCursor,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Nominal {
     async fn new() -> Self {
@@ -127,10 +106,6 @@ impl Nominal {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn project(fields: &[(&str, &str)]) -> Transform {
     Transform::Project(Project {
         fields: fields
@@ -196,8 +171,6 @@ fn column<'a, T: 'static>(batch: &'a arrow_array::RecordBatch, name: &str) -> &'
 fn rms() -> f64 {
     waveforms::AMPLITUDE / 2.0_f64.sqrt()
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn stream_values_roundtrip() {

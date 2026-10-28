@@ -11,37 +11,20 @@
 // inside the instance's owned attempt, driven by the restart policy, and its
 // cleanup stays owned by the instance until it settles.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::TypeId;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-// Third Party Imports
 
-// Local Imports
 use super::{Resident, ServiceContext, ServiceDefinition, ServiceExit};
 use crate::operations::OperationPhase;
 use crate::operations::resident::{Completion, Outcome, Report, Resources, Runner, Settlement, Start};
 use crate::supervision::{self, Task, instance::Instance};
 use crate::{Application, Error, Result};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Created<A> = Result<Option<Box<dyn ErasedResident<A>>>>;
-
-/* === Structs === */
 
 // A service whose resident each activation creates from shared resources.
 pub(crate) struct Typed<A: Application, R, F> {
@@ -75,10 +58,6 @@ pub(super) struct Cleanup<A: Application> {
     logical: Mutex<Option<Outcome>>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub(super) trait ErasedResident<A: Application>: Send {
     fn bind_lifecycle(&mut self, lifecycle: Arc<Instance>, report: Report);
 
@@ -91,8 +70,6 @@ trait Create<A: Application>: Send + Sync + 'static {
     fn definition(&self) -> &ServiceDefinition;
     fn create(&self, resources: Resources, admitted: bool) -> Created<A>;
 }
-
-/* === Implementations === */
 
 impl<A, R, F, T> Typed<A, R, F>
 where
@@ -315,10 +292,6 @@ impl<A: Application> Settlement for Cleanup<A> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn spawn<A: Application, C: Create<A>>(create: Arc<C>, start: Start) -> (Task<Outcome>, Arc<dyn Settlement>) {
     let Start {
         resources,
@@ -397,5 +370,3 @@ pub(super) async fn cleanup<A: Application>(resident: &mut dyn ErasedResident<A>
     })
     .await
 }
-
-/* === Tests === */

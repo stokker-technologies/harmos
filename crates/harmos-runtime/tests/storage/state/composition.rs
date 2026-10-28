@@ -7,27 +7,8 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use harmos_runtime::storage::{FileMetadata, FileReference, ObjectVersionToken, StorageCursor, StoreHistory};
 use harmos_runtime::{Identifier, Message, message, schema::Described};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[message]
 #[derive(PartialEq)]
@@ -44,22 +25,12 @@ struct Seal {
     file: Option<FileReference>,
 }
 
-/* === Enums === */
-
 #[message]
 #[derive(PartialEq)]
 enum Source {
     Stored { cursor: StorageCursor },
     Empty,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn revision() -> Revision {
     let history = StoreHistory {
@@ -83,8 +54,6 @@ fn revision() -> Revision {
     };
     Revision { cursor, version, file }
 }
-
-/* === Tests === */
 
 #[test]
 fn values_roundtrip_prost() {

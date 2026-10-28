@@ -7,40 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::atomic::Ordering;
 
-// Third Party Imports
-
-// Local Imports
 use super::{Fixture, config};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::{FileMetadata, MutationId, StagedFile, StorageBackend};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn metadata(id: &str) -> FileMetadata {
     FileMetadata {
@@ -63,8 +35,6 @@ fn request(f: &Fixture, id: &str) -> harmos_operations::storage::DeleteFile {
         },
     }
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn delete_removes_file() {

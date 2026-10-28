@@ -9,27 +9,13 @@
 
 // Native Declared Calls Preserve Typed Payload Owners Through Erased Admission.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::Any;
 use std::sync::{Arc, Mutex};
 
-// Third Party Imports
-
-// Local Imports
 use super::HostContext;
 use harmos_domain::{MemorySize, Message, MessageError, OperationDeclaration};
 use harmos_sdk::__private::ErasedResponse;
 use harmos_sdk::operations::{CallFuture, Caller, InvocationError, Target};
-
-/* === Constants === */
-
-/* === Macros === */
 
 macro_rules! native_payload {
     ($ty:ty) => {
@@ -60,10 +46,6 @@ native_payload!(Request);
 
 native_payload!(Answer);
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 struct Request {
     payload: Mutex<Option<Box<dyn Any + Send>>>,
     memory: usize,
@@ -72,12 +54,6 @@ struct Request {
 struct Answer(ErasedResponse);
 
 struct Invocation;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Caller for HostContext {
     fn call(&self, target: Target, request: Box<dyn Any + Send>) -> CallFuture<'_> {
@@ -170,12 +146,6 @@ impl MemorySize for Answer {
         std::mem::size_of::<Self>()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

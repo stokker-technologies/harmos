@@ -7,31 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{Arc, Mutex, Weak};
-// Third Party Imports
 
-// Local Imports
 use super::definition::{Table, Wired};
 use super::publications::{publication_definitions, validate_existing};
 use super::{PluginStream, PublicationLease, StreamAdmissionError, StreamManager, window};
 use crate::plugin::PluginScope;
 use crate::{Application, state::Position};
 use harmos_domain::StreamDeclaration;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[must_use = "retain the stream registration through plugin settlement"]
 pub struct StreamRegistration {
@@ -47,12 +30,6 @@ pub(super) struct Staged {
     pub(super) previous: Option<Arc<Wired>>,
     pub(super) activation: Weak<super::Activation>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> StreamManager<A> {
     pub async fn stage_plugin(
@@ -223,9 +200,3 @@ impl Drop for StreamRegistration {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,25 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::SystemTime;
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 
-// Local Imports
 use crate::model::storage::{FileSession, StorageCursor, StoreHistory};
 use crate::{Identifier, MemorySize};
-
-/* === Constants === */
-
-/* === Macros === */
 
 crate::model::storage::codec::product!(MutationId {
     window: crate::model::storage::codec::Id => 1,
@@ -47,10 +34,6 @@ crate::model::storage::codec::product!(StorageInfo {
     mutations: crate::model::storage::codec::Optional<crate::model::storage::codec::Nested<MutationWindow>> => 3,
     file_batch_bytes: crate::model::storage::codec::Unsigned => 4,
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -81,12 +64,6 @@ pub struct StorageInfo {
     pub file_batch_bytes: u64,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl MemorySize for MutationId {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>() + self.window.memory_size() - std::mem::size_of::<Identifier>() + self.key.memory_size()
@@ -113,9 +90,3 @@ impl MemorySize for StorageInfo {
             - std::mem::size_of::<Option<MutationWindow>>()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

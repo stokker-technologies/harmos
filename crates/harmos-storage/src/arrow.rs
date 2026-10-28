@@ -9,35 +9,20 @@
 
 // Storage Arrow Query Contract
 
-/* === Modules === */
-
 mod ipc;
 mod retention;
 
-/* === Re-Exports === */
-
 pub use super::writes::convert::encode_payloads;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
-// Third Party Imports
+
 use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
-// Local Imports
-use crate::{Error, MemorySize, Result};
 
-/* === Constants === */
+use crate::{Error, MemorySize, Result};
 
 pub(crate) const MAX_DEPTH: usize = 32;
 pub(crate) const MAX_FIELDS: usize = 4096;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct ArrowSchema {
@@ -51,12 +36,6 @@ pub struct ArrowBatch {
     ipc: Arc<Vec<u8>>,
     resident: usize,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl ArrowSchema {
     #[tracing::instrument(name = "storage.arrow.schema.try_new", level = "trace", skip_all, fields(outcome = "cancelled"))]
@@ -170,8 +149,6 @@ impl MemorySize for ArrowBatch {
     }
 }
 
-/* === Public Functions === */
-
 pub fn validate_schema(schema: &Schema) -> Result<()> {
     let mut fields = 0;
     for field in schema.fields() {
@@ -182,8 +159,6 @@ pub fn validate_schema(schema: &Schema) -> Result<()> {
     }
     Ok(())
 }
-
-/* === Private Functions === */
 
 fn validate_field(field: &Field, depth: usize, count: &mut usize) -> Result<()> {
     *count = count.checked_add(1).ok_or_else(|| invalid("Arrow field count overflow"))?;
@@ -235,8 +210,6 @@ pub(crate) fn schema_memory(schema: &Schema) -> usize {
 pub(crate) fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "storage Arrow", reason }
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

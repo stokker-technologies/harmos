@@ -7,29 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fmt;
 use std::io::{self, Write};
-// Third Party Imports
+
 use serde::de::{IgnoredAny, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
-// Local Imports
+
 use super::{Error, Executable, Identity, Limits, Source};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Count {
     size: usize,
@@ -39,12 +24,6 @@ struct Count {
 struct Files(Limits);
 
 struct Registrations(usize);
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Write for Count {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
@@ -110,8 +89,6 @@ impl<'de> Visitor<'de> for Registrations {
     }
 }
 
-/* === Public Functions === */
-
 pub(super) fn identity_size(identity: &Identity, limit: usize) -> Result<usize, Error> {
     let mut output = Count { size: 0, limit };
     output.write_all(b"{\"schema\":1,\"identity\":")?;
@@ -160,7 +137,3 @@ pub(super) fn preflight(bytes: &[u8], limits: Limits) -> Result<(), Error> {
     json.end()?;
     Ok(())
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

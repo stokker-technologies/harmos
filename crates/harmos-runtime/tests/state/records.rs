@@ -7,26 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use harmos_runtime::{Error, Runtime, state::DecodeError, state::Position, state::PrincipalId, state::Recorded};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_runtime::record(id = "manager.note")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -34,17 +17,11 @@ struct Noted(String);
 
 struct Model;
 
-/* === Enums === */
-
 #[harmos_runtime::records]
 #[derive(Clone, Debug)]
 enum Records {
     Noted(Noted),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[harmos_runtime::lanes]
 pub enum ModelLanes {
@@ -80,10 +57,6 @@ impl harmos_runtime::Application for Model {
     type Record = Records;
     type Streams = ();
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn undeclared_record_refused() {
@@ -192,8 +165,6 @@ async fn discovery_shares_producer() {
     drop(producer);
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn record_registration_uses_runtime_schema_settings() {

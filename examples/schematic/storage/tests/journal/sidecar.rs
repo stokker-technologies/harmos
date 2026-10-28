@@ -7,32 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
 use super::support;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fs::File;
 use std::io;
 use std::path::Path;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use harmos::state::Position;
 use schematic_storage::Jsonl;
 use support::{Bank, Ledger, booted, deposit, ledger, scratch};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Deserialize, Serialize)]
 struct Artifact {
@@ -40,16 +25,6 @@ struct Artifact {
     at: Position,
     state: Ledger,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[test]
 fn contract_scenario() {
@@ -187,5 +162,3 @@ fn read(path: &Path) -> Artifact {
 fn lines(path: &Path) -> usize {
     std::fs::read_to_string(path).expect("the sidecar is there").lines().count()
 }
-
-/* === Tests === */

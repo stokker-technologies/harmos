@@ -7,17 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
-// Third Party Imports
+
 use tokio::sync::Semaphore;
-// Local Imports
+
 use super::{Definition, Registry};
 use crate::state::dispatch::Dispatch;
 use crate::storage::SchemaKey;
@@ -26,26 +19,12 @@ use crate::{
     state::SystemFact,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 pub struct RecordManager<A: Application> {
     pub(super) state: StateManager<A>,
     pub(super) catalog: Arc<Dispatch<A, crate::storage::Payload<A>>>,
     preparing: Arc<Semaphore>,
     pub(super) schemas: Arc<Registry>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> RecordManager<A> {
     pub fn new(state: StateManager<A>) -> Self {
@@ -118,9 +97,3 @@ impl<A: Application> Clone for RecordManager<A> {
         Self::new(self.state.clone())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

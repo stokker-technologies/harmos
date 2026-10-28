@@ -7,35 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use crate::{Handle, Lifecycle, ResourceError};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Startup<A: Application> {
     pub runtime: Handle<A>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait Application: Lifecycle<Context = Startup<Self>> + Sync {
     type Lanes: crate::operations::Lane;
@@ -53,8 +31,6 @@ pub trait Application: Lifecycle<Context = Startup<Self>> + Sync {
     type Streams: Send + Sync + 'static;
 }
 
-/* === Implementations === */
-
 impl<A: Application> Clone for Startup<A> {
     fn clone(&self) -> Self {
         Self { runtime: self.runtime.clone() }
@@ -70,9 +46,3 @@ impl<A: Application> Startup<A> {
         self.runtime.operations.context().resource::<T>()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

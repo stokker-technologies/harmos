@@ -9,46 +9,17 @@
 
 // Greeting Values And Pure Formatting.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 #[harmos::message]
 pub struct Greeting {
     pub message: String,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 impl Greeting {
     pub fn for_name(name: &str) -> Self {
         Self { message: format!("Hello, {name}!") }
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 #[cfg(test)]
 mod tests {
     #[test]

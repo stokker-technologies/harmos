@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod tests {
     use std::time::Duration;
 
@@ -227,33 +225,3 @@ mod sdk {
         assert!(driving.await.unwrap().is_err());
     }
 }
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

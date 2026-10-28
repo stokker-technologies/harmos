@@ -9,13 +9,6 @@
 
 // Retain Cargo And Its Process Tree Until Successful Or Cancelled Settlement.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io::Read;
 use std::process::{Command, ExitStatus, Output};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -23,19 +16,9 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-// Third Party Imports
 use process_wrap::std::{ChildWrapper, CommandWrap};
 
-// Local Imports
 use super::Error;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Default)]
 pub struct BuildCancellation {
@@ -47,12 +30,6 @@ pub(super) struct Process {
     finished: Arc<AtomicBool>,
     monitor: Option<JoinHandle<std::io::Result<()>>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl BuildCancellation {
     pub fn cancel(&self) {
@@ -154,9 +131,3 @@ impl Drop for Process {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,23 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use harmos::{evidence::EvidenceError, evidence::Vault};
-
-/* === Constants === */
 
 const CEILING: usize = 1024 * 1024;
 
@@ -41,24 +30,12 @@ const KEPT: &str = "kept";
 
 const QUARANTINE: &str = "quarantine";
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(Clone)]
 pub struct EvidenceDirectory {
     root: PathBuf,
     ceiling: usize,
     cadence: Duration,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl EvidenceDirectory {
     pub fn at(root: impl AsRef<Path>) -> io::Result<Self> {
@@ -229,10 +206,6 @@ impl Vault for EvidenceDirectory {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn window(path: &Path, offset: u64, limit: usize) -> Result<(Vec<u8>, u64), EvidenceError> {
     let mut file = File::open(path).map_err(EvidenceError::unreadable)?;
     let length = file.metadata().map(|held| held.len()).map_err(EvidenceError::unreadable)?;
@@ -254,5 +227,3 @@ fn fold(digest: u64, bytes: &[u8]) -> u64 {
 fn sync(directory: &Path) -> io::Result<()> {
     if cfg!(unix) { File::open(directory)?.sync_all() } else { Ok(()) }
 }
-
-/* === Tests === */

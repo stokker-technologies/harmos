@@ -7,37 +7,20 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 
-// Third Party Imports
 use futures_core::Stream;
 use futures_util::StreamExt;
 use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 
-// Local Imports
 use super::{Codec, InputEnvelope, server};
 use crate::operations::{EncodedInvocation, GrpcBinding, StreamItem};
 use harmos_sdk::operations::{WireStreamLimits, WireStreams};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Incoming = Streaming<StreamItem<InputEnvelope<Vec<u8>, Vec<u8>>>>;
 type Forward = Pin<Box<dyn Future<Output = Result<(), Status>> + Send>>;
 type OutputStream = Pin<Box<dyn Stream<Item = Result<Output, Status>> + Send>>;
-
-/* === Structs === */
 
 struct Raw;
 
@@ -59,12 +42,6 @@ struct Pending {
     output: bool,
     settled: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl super::Wire<Vec<u8>> for Raw {
     fn encode(value: &Vec<u8>, bytes: &mut Vec<u8>) -> Result<(), crate::MessageError> {
@@ -246,8 +223,6 @@ impl tonic::server::StreamingService<StreamItem<InputEnvelope<Vec<u8>, Vec<u8>>>
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn serve(authority: server::Authority, settings: server::Settings, request: http::Request<Body>) -> server::HttpFuture {
     Box::pin(async move {
         let server::Authority::Binding(binding) = authority else {
@@ -299,10 +274,6 @@ pub(crate) fn serve(authority: server::Authority, settings: server::Settings, re
     })
 }
 
-/* === Private Functions === */
-
 fn serving(error: harmos_sdk::ServingError) -> Status {
     Status::internal(error.to_string())
 }
-
-/* === Tests === */

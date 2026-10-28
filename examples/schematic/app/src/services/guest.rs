@@ -7,40 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use crate::app::{Runtime, SchematicEditor};
 use crate::lanes::Lanes;
 use harmos::config::PluginSettings;
 use harmos::guest::{Host, Loaded};
 use schematic_operations::Operations;
 
-/* === Constants === */
-
 pub const NAME: &str = "schematic_tools";
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub async fn start(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos::Result<()> {
     if loaded.declaration().id != NAME {
@@ -57,7 +30,3 @@ pub fn load(runtime: &Runtime, component: &[u8]) -> Result<Loaded<SchematicEdito
     let host = Host::new(runtime)?;
     host.load(component)
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

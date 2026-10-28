@@ -7,26 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[harmos::operation(
     id = "schematic.validate",
     response = Validation,
@@ -46,12 +26,6 @@ pub struct Validation {
     pub diagnostics: Vec<String>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 #[cfg(feature = "runtime")]
 impl harmos::Operation for ValidateSchematic {
     type Error = crate::Error;
@@ -61,9 +35,3 @@ impl harmos::Operation for ValidateSchematic {
         Ok(Validation { diagnostics }.into())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,31 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use super::EvidenceError;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub(crate) type Answering<'a, T> = Pin<Box<dyn Future<Output = Result<T, EvidenceError>> + Send + 'a>>;
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Excerpt {
@@ -40,10 +23,6 @@ pub struct Excerpt {
     pub bytes: Vec<u8>,
     pub length: u64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait Vault: Send + Sync + 'static {
     fn ceiling(&self) -> usize;
@@ -92,8 +71,6 @@ pub(crate) trait Keeping: Send + Sync + 'static {
 
     fn read_draft<'a>(&'a self, name: &'a str, offset: u64, limit: usize) -> Answering<'a, (Vec<u8>, u64)>;
 }
-
-/* === Implementations === */
 
 impl Excerpt {
     pub fn next(&self) -> u64 {
@@ -146,9 +123,3 @@ impl<V: Vault> Keeping for V {
         Box::pin(Vault::read_draft(self, name, offset, limit))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

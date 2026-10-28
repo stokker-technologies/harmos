@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     num::NonZeroUsize,
     pin::Pin,
@@ -21,21 +14,11 @@ use std::{
     task::{Context, Poll},
 };
 
-// Third Party Imports
 use http_body::{Frame, SizeHint};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tonic::{Status, body::Body};
 
-// Local Imports
 use super::HttpFuture;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub struct Calls {
@@ -46,12 +29,6 @@ struct Retained {
     body: Body,
     permit: Option<OwnedSemaphorePermit>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Calls {
     pub fn new(limit: NonZeroUsize) -> Result<Self, Status> {
@@ -100,9 +77,3 @@ impl http_body::Body for Retained {
         self.body.size_hint()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

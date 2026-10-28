@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod analysis;
 pub mod app;
 pub mod config;
@@ -23,36 +21,6 @@ pub mod streams;
 pub mod transactions;
 mod wire;
 
-/* === Re-Exports === */
-
 pub use error::{Error, Result};
 pub use schematic_domain as domain;
 pub use schematic_operations as operations;
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

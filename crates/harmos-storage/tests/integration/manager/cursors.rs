@@ -7,38 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::Ordering;
-// Third Party Imports
 
-// Local Imports
 use super::{Fixture, config, record, schema, write};
 use harmos_storage::StorageCursor;
 use harmos_storage::{Error, Identifier};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn foreign_cursor_refused() {
@@ -180,8 +153,6 @@ async fn receipt_cannot_cover() {
     assert_eq!(f.storage.flush().await.unwrap(), second);
     f.finish().await;
 }
-
-/* === Tests === */
 
 #[tokio::test(start_paused = true)]
 async fn saved_wait_passive() {

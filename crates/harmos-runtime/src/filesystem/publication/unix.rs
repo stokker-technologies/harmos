@@ -7,38 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     fs::{self, File},
     io,
     path::Path,
 };
-// Third Party Imports
 
-// Local Imports
 use super::{ConfirmError, confirm_error, parent, sync_file};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(super) fn create_dir_all(path: &Path) -> io::Result<()> {
     if path.is_dir() {
@@ -109,10 +84,6 @@ pub(super) fn confirm_with_checkpoint<E>(path: &Path, checkpoint: &mut impl FnMu
     checkpoint().map_err(ConfirmError::Checkpoint)
 }
 
-/* === Private Functions === */
-
 fn sync_directory(path: &Path) -> io::Result<()> {
     File::open(path)?.sync_all()
 }
-
-/* === Tests === */

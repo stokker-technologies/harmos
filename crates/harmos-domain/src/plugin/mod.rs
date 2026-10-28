@@ -7,31 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
 mod requirement;
 
-/* === Re-Exports === */
-
 pub use requirement::{Grant, Requirement, Requirements, aggregate, callee_count};
-
-/* === Imports === */
-
-// Standard Library Imports
-// Third Party Imports
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait Contribution: 'static {
     const NAMESPACE: &'static str;
@@ -53,10 +31,6 @@ pub trait Declared: Send + Sync + 'static {
 
     fn markers() -> Result<Vec<&'static [u8]>, crate::schema::graph::Error>;
 }
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 // Retain Each Shared Type Once Alongside The Artifact's Carrier Sections.
 pub fn schema_markers<P: Declared>(
@@ -116,8 +90,6 @@ pub fn schema_markers<P: Declared>(
     Ok(carrier)
 }
 
-/* === Private Functions === */
-
 fn push_schema_root(
     roots: &mut Vec<crate::schema::declaration::Definition>, definition: crate::schema::declaration::Definition, carrier_bytes: usize,
     settings: &crate::config::SchemaSettings,
@@ -134,5 +106,3 @@ fn push_schema_root(
     roots.push(definition);
     Ok(())
 }
-
-/* === Tests === */

@@ -7,17 +7,8 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
-// Third Party Imports
 
-// Local Imports
 use super::{Identifier, Metadata};
 use crate::MessageError;
 use crate::message::{PostcardReader as Reader, PostcardValue, decoding_add};
@@ -27,8 +18,6 @@ use crate::value::codec::{
     ENTRY_DEFINITION, TIMESTAMP_DEFINITION, VALUE_DEPTH, entries_memory, entries_size, read_entries, read_timestamp, timestamp_size,
     write_entries, write_timestamp,
 };
-
-/* === Constants === */
 
 const IDENTIFIER_FIELDS: &[Field] = &[Field {
     name: Cow::Borrowed("value"),
@@ -46,18 +35,6 @@ const METADATA_FIELDS: &[Field] = &[
     field("created_at", 6, message(TIMESTAMP_DEFINITION), Cardinality::Optional),
     field("updated_at", 7, message(TIMESTAMP_DEFINITION), Cardinality::Optional),
 ];
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Described for Identifier {
     const NAME: &'static str = "harmos::Identifier";
@@ -134,10 +111,6 @@ impl PostcardValue for Metadata {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 const fn field(name: &'static str, tag: u32, kind: Kind, cardinality: Cardinality) -> Field {
     Field {
         name: Cow::Borrowed(name),
@@ -165,5 +138,3 @@ fn instant_size(value: Option<time::OffsetDateTime>) -> usize {
 fn read_instant(input: &mut Reader<'_>) -> Result<Option<time::OffsetDateTime>, MessageError> {
     if bool::read(input)? { read_timestamp(input).map(Some) } else { Ok(None) }
 }
-
-/* === Tests === */

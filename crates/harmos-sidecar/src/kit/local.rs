@@ -7,34 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-// Third Party Imports
+
 use tokio::io::{duplex, split};
-// Local Imports
+
 use super::{Opening, SharedOpening, connection};
 use crate::Attached;
 use crate::attach::{End, Ending};
 
-/* === Constants === */
-
 const BUFFER: usize = 64 * 1024;
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type EndWork = Pin<Box<dyn Future<Output = std::io::Result<()>> + Send>>;
-
-/* === Structs === */
 
 struct LocalEnd {
     opening: Option<SharedOpening>,
@@ -43,12 +28,6 @@ struct LocalEnd {
     work: Option<EndWork>,
     completed: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl End for LocalEnd {
     fn settle(&mut self) -> Pin<Box<dyn Future<Output = std::io::Result<()>> + Send + '_>> {
@@ -77,8 +56,6 @@ impl End for LocalEnd {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn binary(opening: Opening) -> Attached {
     let opening = Arc::new(tokio::sync::Mutex::new(opening));
     let (here, there) = duplex(BUFFER);
@@ -104,7 +81,3 @@ pub(crate) fn binary(opening: Opening) -> Attached {
     let (control_read, control_write) = split(control_here);
     Attached::new(write, read).control((Box::new(control_read), Box::new(control_write))).ending(ending)
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

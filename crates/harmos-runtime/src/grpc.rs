@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod authentication;
 pub mod dynamic;
 
@@ -41,8 +39,6 @@ pub mod __private {
     pub use tonic;
 }
 
-/* === Re-Exports === */
-
 #[cfg(feature = "plugin-sidecar")]
 pub(crate) use codec::encode_bytes;
 
@@ -63,34 +59,18 @@ pub use input::{InputError, input, open};
 pub use manager::{Attached, GrpcManager, Settings};
 pub use origin::Origin;
 
-/* === Imports === */
-
-// Standard Library Imports
-
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
 
-// Third Party Imports
-
 use futures_core::Stream;
 
 use tokio::sync::mpsc;
 use tonic::Status;
 
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Settlement<R, E> = Pin<Box<dyn Future<Output = Result<crate::operations::Response<R>, E>> + Send>>;
-
-/* === Structs === */
 
 pub struct ResponseStream<O: crate::operations::OperationDeclaration, T, E = crate::Error> {
     pending: Settlement<O::Response, E>,
@@ -113,8 +93,6 @@ pub struct Opening {
     failure: Option<Status>,
 }
 
-/* === Enums === */
-
 pub enum Event<T, R> {
     Item(T),
     Completion(R),
@@ -125,10 +103,6 @@ enum State<R> {
     Response(R),
     Failed(Status),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<O: crate::operations::OperationDeclaration, T, E: Unpin> Stream for ResponseStream<O, T, E> {
     type Item = Result<Event<crate::operations::StreamItem<T>, crate::operations::Response<O::Response>>, E>;
@@ -280,8 +254,6 @@ impl Opening {
     }
 }
 
-/* === Public Functions === */
-
 pub fn stream<O: crate::operations::OperationDeclaration>(
     instance: crate::operations::Running<O>, items: crate::operations::StreamInput<<O::Output as crate::operations::Direction>::Item>,
 ) -> ResponseStream<O, <O::Output as crate::operations::Direction>::Item> {
@@ -320,7 +292,3 @@ pub fn response<O: crate::operations::OperationDeclaration>(
         result
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

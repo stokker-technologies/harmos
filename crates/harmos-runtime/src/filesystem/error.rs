@@ -7,29 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{io, path::PathBuf};
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -42,10 +22,6 @@ pub enum Error {
         source: io::Error,
     },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Error {
     pub(crate) fn publication(operation: &'static str, path: &std::path::Path, source: io::Error) -> Self {
@@ -64,9 +40,3 @@ impl From<Error> for io::Error {
         source
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

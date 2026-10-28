@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod batches;
 mod definition;
 mod demand;
@@ -28,8 +26,6 @@ mod series;
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 mod staging;
 mod window;
-
-/* === Re-Exports === */
 
 pub use batches::{BatchItem, Batches, Measurement, Summary};
 pub use definition::Stream;
@@ -59,31 +55,4 @@ pub use series::{Aggregated, Bucket, Point};
 pub(crate) use series::{Opened, Request, Tier};
 pub use window::{BeneathWindow, Item};
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use manager::Partition;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

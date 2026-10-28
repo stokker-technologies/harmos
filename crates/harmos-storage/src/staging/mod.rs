@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 pub(super) mod checkpoint;
 mod creation;
 mod mutations;
@@ -17,35 +15,20 @@ mod producer;
 mod session;
 mod state;
 
-/* === Re-Exports === */
-
 pub(crate) use perform::perform;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-// Third Party Imports
 use sha2::{Digest, Sha256};
 
-// Local Imports
 use super::manager::{Operation, Pending, State, Target, encoded_size};
 use super::*;
 use crate::{Error, Result};
 use session::Session;
 
-/* === Constants === */
-
 static NEXT_FILE: AtomicU64 = AtomicU64::new(1);
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct StorageFile {
     manager: StorageManager<super::manager::ErasedCatalog>,
@@ -93,8 +76,6 @@ pub(super) struct FileState {
     reference_bytes: usize,
 }
 
-/* === Enums === */
-
 enum Command {
     Create,
     Resume { expected: u64, next: u64 },
@@ -128,19 +109,11 @@ pub(super) enum FileCompleted {
     Aborted,
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl FileAction {
     pub(crate) fn independent(&self) -> bool {
         !matches!(self, Self::Finish { .. } | Self::Refuse { .. })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn file_bytes(metadata: &FileMetadata, history: &StoreHistory) -> Result<usize> {
     let reference = FileReference {
@@ -178,5 +151,3 @@ fn admission(state: &State) -> Result<()> {
     }
     Ok(())
 }
-
-/* === Tests === */

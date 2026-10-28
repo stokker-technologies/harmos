@@ -7,20 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
 use super::support;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use harmos::{
     state::CausationId, state::CorrelationId, state::Entry, state::FactSource, state::Focus, state::Link,
     state::Metadata as JournalMetadata, state::Position, state::PrincipalId, state::Recorded, state::RequestKey, state::SystemFact,
@@ -29,30 +20,16 @@ use harmos::{
 use schematic_storage::Jsonl;
 use support::{Bank, Ledger, Noted, alice, booted, deposit, ledger, scratch, withdraw};
 
-/* === Constants === */
-
 const GOLDEN: &str = include_str!("../fixtures/journal.v1.jsonl");
 
 const NON_CANONICAL: &str = r#"{ "kind": "Transaction", "version": 1, "position": 4, "id": "ledger.bonus", "payload": { "amount": 3 }, "metadata": { "at_us": -1000001, "correlation": 4, "principal": null, "causation": null, "request": null, "link": null } }"#;
 
 const SYSTEM_FACTS: &str = include_str!("../fixtures/system-facts.v1.jsonl");
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 struct Witnesses {
     seen: Arc<Mutex<Vec<(Position, JournalMetadata)>>>,
     resume: Position,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl JournalConsumer<Bank> for Witnesses {
     fn resume(&self) -> Position {
@@ -70,10 +47,6 @@ impl JournalConsumer<Bank> for Witnesses {
         applied.min(self.resume)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[test]
 fn contract_scenario() {
@@ -387,5 +360,3 @@ fn micros() -> i64 {
 
     i64::try_from(since.as_micros()).expect("the test clock stands before the year 294247")
 }
-
-/* === Tests === */

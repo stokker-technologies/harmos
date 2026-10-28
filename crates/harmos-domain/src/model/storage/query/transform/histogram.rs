@@ -9,42 +9,17 @@
 
 // Storage Arrow Query Contract
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::FieldPath;
 use crate::MemorySize;
 use crate::model::storage::codec::{Float, Many, Nested, product};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(Histogram { field: Nested<FieldPath> => 1, edges: Many<Float> => 2 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct Histogram {
     pub field: FieldPath,
     pub edges: Vec<f64>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl MemorySize for Histogram {
     fn memory_size(&self) -> usize {
@@ -53,9 +28,3 @@ impl MemorySize for Histogram {
             + self.edges.capacity().saturating_mul(8)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

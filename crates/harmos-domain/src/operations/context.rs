@@ -7,32 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::{Any, TypeId, type_name};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-// Third Party Imports
 
-// Local Imports
 use crate::{Message, MessageError};
-
-/* === Constants === */
 
 pub const PORTABLE_VALUES: usize = 64;
 
 pub const PORTABLE_BYTES: usize = 64 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Default)]
 pub struct CallContext {
@@ -46,8 +29,6 @@ pub struct CallValue {
     pub key: String,
     pub payload: Vec<u8>,
 }
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum ContextError {
@@ -69,13 +50,9 @@ pub enum ContextError {
     Budget,
 }
 
-/* === Traits === */
-
 pub trait ContextValue: Message + Send + Sync + 'static {
     const KEY: &'static str;
 }
-
-/* === Implementations === */
 
 impl CallContext {
     pub fn insert<T: Send + Sync + 'static>(&mut self, value: T) -> Result<(), ContextError> {
@@ -188,9 +165,3 @@ impl CallContext {
         self.values.is_empty() && self.portable.is_empty()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -9,8 +9,6 @@
 
 // Exercise Storage Engine Without Runtime Composition
 
-/* === Modules === */
-
 #[allow(dead_code)]
 #[path = "../../support/storage.rs"]
 pub(crate) mod backend;
@@ -29,33 +27,4 @@ mod typed_reads;
 #[path = "../../support/waveforms.rs"]
 mod waveforms;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use fixture::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

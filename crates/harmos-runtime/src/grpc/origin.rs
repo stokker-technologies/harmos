@@ -9,20 +9,12 @@
 
 // Exact Browser Origins And Cross-Origin Handling For The gRPC-Web Listener
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
 
-// Third Party Imports
 use futures_util::{
     FutureExt,
     future::{self, Either, Map, Ready},
@@ -35,20 +27,11 @@ use tonic::{
 use tower::{Layer, Service};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
-// Local Imports
 use crate::{Error, Result};
-
-/* === Constants === */
 
 const MAX_AGE: Duration = Duration::from_secs(600);
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Accepted<E> = fn(std::result::Result<Response<Body>, E>) -> std::result::Result<Response<Body>, E>;
-
-/* === Structs === */
 
 // An exact browser origin such as `tauri://localhost`: scheme and authority,
 // with no path, credentials or wildcard.
@@ -67,12 +50,6 @@ pub(super) struct Gate<S> {
     origins: Arc<[HeaderValue]>,
     inner: S,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Origin {
     pub fn parse(origin: &str) -> Result<Self> {
@@ -166,15 +143,9 @@ where
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn no_content<E>(result: std::result::Result<Response<Body>, E>) -> std::result::Result<Response<Body>, E> {
     result.map(|mut response| {
         *response.status_mut() = StatusCode::NO_CONTENT;
         response
     })
 }
-
-/* === Tests === */

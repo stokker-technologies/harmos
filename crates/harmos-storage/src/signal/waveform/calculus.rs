@@ -7,34 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 #[must_use]
 pub fn derivative(x: &[f64], y: &[f64]) -> Vec<f64> {
     let length = x.len().min(y.len());
@@ -68,7 +40,3 @@ pub fn integral(x: &[f64], y: &[f64]) -> Vec<f64> {
 
     area
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

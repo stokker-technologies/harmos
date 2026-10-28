@@ -7,28 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::Any;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-// Third Party Imports
 
-// Local Imports
 use crate::{state::At, state::Position, storage::Cursor};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug)]
 pub struct ReadLimits {
@@ -75,8 +58,6 @@ pub struct RowReader<S> {
     pending: Option<Ready<S>>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReadCut {
     Window { delivered: Cursor },
@@ -113,16 +94,12 @@ pub enum ReadError {
     Closed,
 }
 
-/* === Traits === */
-
 pub trait RowSource: Send {
     fn cut(&self) -> ReadCut;
 
     #[allow(clippy::type_complexity)]
     fn next(&mut self, cancelled: &AtomicBool) -> Result<Option<At<Arc<dyn Any + Send + Sync>>>, ReadError>;
 }
-
-/* === Implementations === */
 
 impl Default for ReadLimits {
     fn default() -> Self {
@@ -309,8 +286,6 @@ impl<S: Clone + serde::Serialize + Send + Sync + 'static> super::Query<S> {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn encoded_size<S: serde::Serialize>(row: &S, limit: usize) -> Result<usize, ReadError> {
     struct Count {
         size: usize,
@@ -339,7 +314,3 @@ pub(crate) fn encoded_size<S: serde::Serialize>(row: &S, limit: usize) -> Result
     })?;
     Ok(count.size)
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

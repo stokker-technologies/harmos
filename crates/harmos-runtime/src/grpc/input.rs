@@ -7,33 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
 use futures_core::Stream;
 use futures_util::StreamExt;
 
-// Local Imports
 use super::{InputEnvelope, Opening, Pending};
 use crate::Error;
 use crate::operations::{Running, StreamItem, StreamOutput};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum InputError {
@@ -48,12 +29,6 @@ pub enum InputError {
         settlement: Option<Box<Error>>,
     },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 #[tracing::instrument(target = "harmos::grpc", name = "grpc.open", level = "debug", skip_all)]
 pub async fn open<R, I, S>(
@@ -136,7 +111,3 @@ where
         }
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

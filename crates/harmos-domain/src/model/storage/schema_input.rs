@@ -7,33 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use crate::model::storage::codec::{Nested, Shared, product};
 use crate::model::storage::{SchemaKey, StorageCursor};
 use crate::schema::graph::Schema;
 use crate::{Error, MemorySize, Result};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(SchemaInput { key: Nested<SchemaKey> => 1, graph: Shared<Schema> => 2 });
 product!(SchemaInfo { position: Nested<StorageCursor> => 1, schema: Nested<SchemaInput> => 2 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SchemaInput {
@@ -46,12 +28,6 @@ pub struct SchemaInfo {
     pub position: StorageCursor,
     pub schema: SchemaInput,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl SchemaInput {
     pub fn new(key: SchemaKey, graph: impl Into<Arc<Schema>>) -> Result<Self> {
@@ -84,12 +60,6 @@ impl MemorySize for SchemaInfo {
             - std::mem::size_of::<SchemaInput>()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

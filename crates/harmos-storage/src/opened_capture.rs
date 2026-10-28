@@ -9,12 +9,6 @@
 
 // Capture An Opened Source Into One Retained Producer.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
 use crate::{ByteRange, CaptureConsistency, FileChunk, FileReader, FileReference, Result, StorageFile, StorageManager};
 use std::{
     future::Future,
@@ -25,21 +19,7 @@ use std::{
     },
 };
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Pending = Pin<Box<dyn Future<Output = (State, Result<Step>)> + Send>>;
-
-/* === Structs === */
 
 /// Retains the original opened source, producer and exact in-flight copy across cancellation.
 pub struct OpenedCapture {
@@ -73,8 +53,6 @@ struct State {
     _frozen: Option<crate::FrozenFile>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Request {
     Finish,
@@ -100,10 +78,6 @@ enum Step {
     Synchronized(bool),
     Finished,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     pub fn capture_frozen_file(&self, source: crate::FrozenFile, target: StorageFile) -> Result<OpenedCapture> {
@@ -418,10 +392,6 @@ impl State {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn work(mut state: State) -> (State, Result<Step>) {
     let result = state.advance().await;
     (state, result)
@@ -433,5 +403,3 @@ fn conflict() -> crate::Error {
         reason: "source differs from retained producer prefix",
     }
 }
-
-/* === Tests === */

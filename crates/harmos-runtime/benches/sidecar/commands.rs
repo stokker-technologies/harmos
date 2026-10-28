@@ -9,36 +9,11 @@
 
 // Measure Host Commands Through A Real Schematic Sidecar Process.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::Duration;
 
-// Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
 
-// Local Imports
 use super::fixture::{self, Fixture};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
     let mut startup = criterion.benchmark_group("sidecar-host/startup");
@@ -81,7 +56,3 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
     commands.finish();
     executor.block_on(fixture.finish());
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,29 +7,7 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type Result<T> = std::result::Result<T, Error>;
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -42,13 +20,3 @@ pub enum Error {
     #[error("signal computation interrupted")]
     Interrupted,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

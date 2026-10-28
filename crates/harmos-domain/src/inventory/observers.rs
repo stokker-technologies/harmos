@@ -7,29 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
 use std::time::Duration;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use super::contracts::{self, Encoder};
 use super::{StreamDeclaration, publications};
 use crate::catalog::Node;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Descriptors;
 
@@ -68,8 +53,6 @@ pub struct Manifest {
     pub observers: Vec<Declaration>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Activation {
@@ -97,13 +80,9 @@ pub enum Error {
     Invalid { id: String, reason: &'static str },
 }
 
-/* === Traits === */
-
 pub trait Declared {
     const ENTRY: Entry;
 }
-
-/* === Implementations === */
 
 impl crate::catalog::Visitor for Descriptors {
     type Entry = Entry;
@@ -155,8 +134,6 @@ impl<const N: usize> Encoder<N> {
         self.cursor -= 1;
     }
 }
-
-/* === Public Functions === */
 
 pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str, grants: &[StreamDeclaration]) -> Result<Vec<Declaration>, Error> {
     Ok(select_manifest(manifests, facility, owner, grants)?.observers)
@@ -229,8 +206,6 @@ pub const fn encode_tree<const N: usize>(facility: &str, owner: &str, entries: &
     assert!(N == encoded_tree_len(facility, owner, entries));
     encoded_tree::<N>(facility, owner, entries).bytes
 }
-
-/* === Private Functions === */
 
 const fn encoded<const N: usize>(facility: &str, owner: &str, entries: &[Entry]) -> Encoder<N> {
     assert!(contracts::valid_identity(facility, owner), "invalid observer inventory identity");
@@ -319,5 +294,3 @@ const fn tree<const N: usize>(out: &mut Encoder<N>, entries: &[Node<Entry>], fir
         index += 1;
     }
 }
-
-/* === Tests === */

@@ -7,30 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 
-// Local Imports
 use crate::error::SchematicError;
 use crate::state::{Net, NetId, NetName, PinRef, Schematic};
 use harmos::state::Transaction;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::transaction(id = "net.connect")]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -39,12 +22,6 @@ pub struct ConnectPins {
     pub name: NetName,
     pub pins: BTreeSet<PinRef>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Transaction<Schematic> for ConnectPins {
     type Error = SchematicError;
@@ -76,9 +53,3 @@ impl Transaction<Schematic> for ConnectPins {
             .extend(self.pins.iter().copied());
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

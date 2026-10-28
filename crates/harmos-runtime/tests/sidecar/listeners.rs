@@ -7,38 +7,21 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use super::operations::{Calling, Lanes, Managed};
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener};
 use harmos_runtime::Message;
 use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_sidecar::{Refusal, Supervisor};
 
-/* === Constants === */
-
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
 static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Probe>>> = Mutex::new(std::collections::BTreeMap::new());
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 // The Callback Handler Is The Delivery Of Its Listener.
 type Observe = harmos_runtime::listeners::Callback<Observed>;
-
-/* === Structs === */
 
 #[derive(Default)]
 struct Probe {
@@ -66,16 +49,10 @@ struct Observation {
     value: u32,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 enum Callbacks {
     Observe(Observing),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Seed {
     fn new(probe: &Arc<Probe>) -> Self {
@@ -215,10 +192,6 @@ impl harmos_runtime::Operation for Observing {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn delivered(value: u32) -> Delivery<Observed> {
     Delivery::new(
         DeliveryContext::Record {
@@ -285,5 +258,3 @@ async fn callback_outcomes_cleanup() {
     assert_eq!(probe.active.load(Ordering::SeqCst), 0);
     assert!(probe.cleaned.load(Ordering::SeqCst));
 }
-
-/* === Tests === */

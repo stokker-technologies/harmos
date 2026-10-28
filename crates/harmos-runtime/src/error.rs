@@ -7,27 +7,7 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::convert::Infallible;
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error<E = Infallible> {
@@ -227,10 +207,6 @@ pub use harmos_storage::BackendFailure;
 
 pub use harmos_domain::state::PreparationError;
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl<E> From<harmos_storage::Error> for Error<E> {
     fn from(error: harmos_storage::Error) -> Self {
         use harmos_storage::Error as Storage;
@@ -308,10 +284,6 @@ impl<E> Error<E> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 // The first failure along a source chain, read through the carrier that
 // transported it where that carrier hides it behind a transparent line.
 fn carried<'a>(source: &'a (dyn std::error::Error + 'static)) -> Option<&'a harmos_domain::Failure> {
@@ -330,5 +302,3 @@ fn carried<'a>(source: &'a (dyn std::error::Error + 'static)) -> Option<&'a harm
         harmos_domain::Failure::find(link)
     })
 }
-
-/* === Tests === */

@@ -7,32 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 
-// Third Party Imports
 use tokio::sync::{RwLockReadGuard, watch};
 
-// Local Imports
 use super::{RecoveryPage, RecoverySnapshot};
 use crate::storage::manager::{Lifecycle, encoded_size, recovery_encoded_bound};
 use crate::storage::{ReadLimits, RecoveryPosition, StorageManager};
 use crate::{Error, Result};
 use harmos_domain::state::Position;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct RecoveryReader<'a, C> {
     context: crate::execution::Context,
@@ -42,12 +25,6 @@ pub struct RecoveryReader<'a, C> {
     limits: ReadLimits,
     snapshot_bytes: Option<NonZeroUsize>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.state.reader.recovery_reader", level = "debug", skip_all)]
@@ -133,9 +110,3 @@ impl<C> RecoveryReader<'_, C> {
         durable
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

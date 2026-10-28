@@ -7,21 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
-// Local Imports
+
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
 use harmos_runtime::operations::{OperationPolicy, PluginRegistration, RetryPolicy, WireDeclaration};
 use harmos_runtime::plugin::{
@@ -32,16 +25,8 @@ use harmos_runtime::records::PluginListenerRegistration;
 use harmos_runtime::schema::{Described, Field};
 use harmos_runtime::{Error, Message, MessageError, Result, Runtime, state::Position};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Backends = PluginBackend<Resources, Resources, Resources>;
 type Seen = Vec<(bool, u32, Position)>;
-
-/* === Structs === */
 
 // Neither The Original Native Record Nor Its Decoded Callback Copy Is Clone.
 #[harmos_runtime::record(id = "listener.fact")]
@@ -97,8 +82,6 @@ struct Host {
     view: Option<Arc<tokio::sync::Mutex<PluginListenerRegistration>>>,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 enum HandlerOperations {
     First(HearingFirst),
@@ -130,10 +113,6 @@ enum Failed {
     #[error(transparent)]
     Runtime(#[from] Error),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Drop for Fact {
     fn drop(&mut self) {
@@ -404,10 +383,6 @@ impl PluginLifecycle for Host {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn fact(value: u32) -> Fact {
     Fact {
         value,
@@ -669,8 +644,6 @@ async fn gap_fences_generation() {
     manager.shutdown(&mut host).await.unwrap();
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn shutdown_releases_callback_before_source() {

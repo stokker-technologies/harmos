@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Read, Write},
@@ -25,7 +18,7 @@ use std::{
     },
     path::Path,
 };
-// Third Party Imports
+
 use windows_sys::Win32::{
     Foundation::{ERROR_INVALID_PARAMETER, GENERIC_WRITE, INVALID_HANDLE_VALUE},
     Storage::FileSystem::{
@@ -35,26 +28,10 @@ use windows_sys::Win32::{
     },
     System::WindowsProgramming::{FILE_RENAME_FLAG_POSIX_SEMANTICS, FILE_RENAME_FLAG_REPLACE_IF_EXISTS},
 };
-// Local Imports
+
 use super::{ConfirmError, Staging, confirm_error, parent};
 
-/* === Constants === */
-
 const COPY_BYTES: usize = 64 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(super) fn create_dir_all(path: &Path) -> io::Result<()> {
     if path.is_dir() {
@@ -173,8 +150,6 @@ pub(super) fn confirm_with_checkpoint<E>(path: &Path, checkpoint: &mut impl FnMu
     move_file_with_checkpoint(&staging.0, path, true, checkpoint)
 }
 
-/* === Private Functions === */
-
 fn move_file(source: &Path, destination: &Path, replace: bool) -> io::Result<()> {
     match move_file_with_checkpoint(source, destination, replace, &mut || Ok::<(), std::convert::Infallible>(())) {
         Ok(()) => Ok(()),
@@ -274,5 +249,3 @@ fn wide(path: &Path) -> io::Result<Vec<u16>> {
     value.push(0);
     Ok(value)
 }
-
-/* === Tests === */

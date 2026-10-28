@@ -7,36 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
 mod admission;
 pub mod config;
 pub mod file;
 mod reader;
 
-/* === Re-Exports === */
-
 pub use admission::Permit;
 pub use config::StorageStateSettings;
 pub use reader::RecoveryReader;
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use super::{ReadLimits, RecoveryPosition, StorageBatch, StorageFuture, StoreHistory};
 use crate::{Error, MemorySize, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -64,10 +47,6 @@ pub struct RecoveryPage {
     pub next: Option<RecoveryPosition>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub trait StateBackend: Send + Sync + 'static {
     fn history(&self) -> &StoreHistory;
     fn open(&self) -> StorageFuture<'_, RecoveryPosition>;
@@ -80,8 +59,6 @@ pub trait StateBackend: Send + Sync + 'static {
     fn flush<'a>(&'a self, through: &'a RecoveryPosition) -> StorageFuture<'a, RecoveryPosition>;
     fn close(&self) -> StorageFuture<'_, ()>;
 }
-
-/* === Implementations === */
 
 impl MemorySize for RecoveryEntry {
     fn memory_size(&self) -> usize {
@@ -176,10 +153,6 @@ impl RecoveryPage {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 // Opaque Payloads Encode As Unpadded Base64, So Every Byte Changes The Encoded Size.
 mod payload {
     use base64::Engine;
@@ -195,5 +168,3 @@ mod payload {
         STANDARD_NO_PAD.decode(encoded.as_bytes()).map_err(D::Error::custom)
     }
 }
-
-/* === Tests === */

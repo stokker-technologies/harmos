@@ -7,16 +7,8 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{collections::BTreeSet, pin::Pin};
 
-// Third Party Imports
 use futures_core::Stream;
 use futures_util::StreamExt;
 use prost_reflect::{DescriptorPool, FileDescriptor, prost::Message as _};
@@ -28,30 +20,15 @@ use tonic_reflection::pb::v1::{
     server_reflection_server::{ServerReflection, ServerReflectionServer},
 };
 
-// Local Imports
 use crate::operations::Manager;
-
-/* === Constants === */
 
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
 const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub(crate) struct Reflection {
     operations: Manager,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Reflection {
     pub(crate) fn service(operations: Manager) -> ServerReflectionServer<Self> {
@@ -99,10 +76,6 @@ impl ServerReflection for Reflection {
         Ok(Response::new(Box::pin(stream)))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn answer(pool: &DescriptorPool, request: Option<&MessageRequest>) -> Result<MessageResponse, Status> {
     let missing = || Status::not_found("descriptor not found");
@@ -184,5 +157,3 @@ fn file_response(file: FileDescriptor) -> Result<MessageResponse, Status> {
     }
     Ok(MessageResponse::FileDescriptorResponse(pb::FileDescriptorResponse { file_descriptor_proto: files }))
 }
-
-/* === Tests === */

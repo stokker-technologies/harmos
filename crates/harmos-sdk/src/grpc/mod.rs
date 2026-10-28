@@ -13,37 +13,19 @@
 // and its described shape. This module projects every such message onto the
 // protobuf form packaging publishes, so no per-type protobuf code is generated.
 
-/* === Modules === */
-
 mod input;
 mod transcode;
 mod validator;
-
-/* === Re-Exports === */
 
 pub use input::{DecodeField, DecodeInput, DecodeScalar, DecodeValue};
 pub use prost;
 pub use validator::{PayloadError, Validator};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::marker::PhantomData;
 
-// Third Party Imports
-
-// Local Imports
 use harmos_domain::__private::decoding_add;
 use harmos_domain::schema::Described;
 use harmos_domain::{Message, MessageError};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Prepared<T> {
     postcard: Vec<u8>,
@@ -57,8 +39,6 @@ struct Encoding {
     length: usize,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum EncodeError {
     #[error(transparent)]
@@ -67,10 +47,6 @@ pub enum EncodeError {
     #[error("protobuf encoding requires {required} wire bytes, limit is {limit}")]
     Limit { required: usize, limit: usize },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Encoding {
     fn new<T: Message + Described>(
@@ -126,8 +102,6 @@ impl<T: Message> Prepared<T> {
         self.postcard
     }
 }
-
-/* === Public Functions === */
 
 // These Read And Write `T`'s Message Bytes As Its Canonical Postcard Value; Host
 // Adapters Whose Message Bytes Are Opaque Payloads Forward Them Instead.
@@ -220,10 +194,6 @@ pub fn prepare<T: Message + Described>(input: DecodeInput<'_>) -> Result<Prepare
     tracing::Span::current().record("required_bytes", memory);
     Ok(Prepared { postcard, memory, value: PhantomData })
 }
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

@@ -7,33 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::cmp::Ordering;
 use std::num::NonZeroU128;
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 
-// Local Imports
 use crate::MessageError;
 use crate::model::storage::codec::{
     Flag, Float, Nested, Percent, Signed as SignedInt, Text, Unsigned, Wide, WideNonZero, WideSigned, coded, product, variants,
 };
 use crate::{Aggregate, Error, MemorySize, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -42,8 +25,6 @@ pub struct ExactNumber {
     pub numerator: u128,
     pub denominator: NonZeroU128,
 }
-
-/* === Enums === */
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ScalarValue {
@@ -78,10 +59,6 @@ pub enum Agg {
     Last,
     Of(Aggregate),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl ExactNumber {
     pub fn new(negative: bool, numerator: u128, denominator: NonZeroU128) -> Self {
@@ -266,10 +243,6 @@ variants!(ScalarValue {
     8, 9, "exact": Self::Exact(value) => { value: Nested<ExactNumber> => 1 } => Self::Exact(value);
 });
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "storage reduce", reason }
 }
@@ -304,5 +277,3 @@ pub fn ratio_cmp(mut a: u128, mut b: u128, mut c: u128, mut d: u128) -> Ordering
         reverse = !reverse;
     }
 }
-
-/* === Tests === */

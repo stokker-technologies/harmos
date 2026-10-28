@@ -7,31 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::parse::{ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Attribute, Error, Ident, ItemEnum, LitInt, Meta, Path, Token, parenthesized};
-// Local Imports
+
 use crate::path::{self, HarmosPath};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Declared {
     name: Ident,
@@ -39,17 +22,11 @@ struct Declared {
     default: bool,
 }
 
-/* === Enums === */
-
 enum Capacity {
     Serial,
     Concurrent(LitInt),
     Unbounded,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Declared {
     fn capacity(&self, harmos: &HarmosPath) -> TokenStream {
@@ -63,16 +40,12 @@ impl Declared {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn close(attribute: TokenStream, item: TokenStream) -> TokenStream {
     match expand(attribute, item) {
         Ok(closed) => closed,
         Err(refused) => refused.to_compile_error(),
     }
 }
-
-/* === Private Functions === */
 
 fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
     let harmos = harmos_path(attribute)?;
@@ -277,5 +250,3 @@ fn is_lane(attribute: &Attribute) -> bool {
 fn is_default(attribute: &Attribute) -> bool {
     matches!(attribute.meta, Meta::Path(_)) && attribute.path().is_ident("default")
 }
-
-/* === Tests === */

@@ -9,33 +9,18 @@
 
 // Shared Message Schema Definitions And References
 
-/* === Modules === */
-
 mod codec;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt;
 use std::mem::size_of;
-// Third Party Imports
+
 use serde::de::{DeserializeSeed, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
-// Local Imports
+
 use super::{Cardinality, MAX_NAME_BYTES, diagnostic_name};
 use crate::config::SchemaSettings;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Schema {
@@ -79,8 +64,6 @@ struct Budget {
     remaining: usize,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Kind<R = usize> {
@@ -110,10 +93,6 @@ pub enum Error {
     #[error("invalid schema field `{field}`: {reason}")]
     Field { field: String, reason: &'static str },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<R> Kind<R> {
     pub(crate) fn try_map<S, E>(self, reference: impl FnOnce(R) -> Result<S, E>) -> Result<Kind<S>, E> {
@@ -510,10 +489,6 @@ impl<'de> Visitor<'de> for DefinitionSeed<'_> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn definition<'de, D: Deserializer<'de>, R: Deserialize<'de>>(deserializer: D) -> Result<Option<R>, D::Error> {
     R::deserialize(deserializer).map(Some)
 }
@@ -544,5 +519,3 @@ fn name<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Cow<'static, str>,
     }
     deserializer.deserialize_string(Name).map(Cow::Owned)
 }
-
-/* === Tests === */

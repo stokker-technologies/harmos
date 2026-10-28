@@ -10,17 +10,6 @@
 // A Declarative Storage Query: A Source At A Full Cursor, Ordered Transforms
 // And A Final Row Slice. Results Cross The Wire As Arrow IPC.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::IO_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::StorageCursor;
@@ -33,20 +22,12 @@ use harmos_sdk::operations::access::GrantAccess;
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(Query {
     at: Nested<StorageCursor> => 1,
     source: Nested<Source> => 2,
     transforms: Repeated<Transform> => 3,
     slice: Nested<RowSlice> => 4,
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::operation(
     harmos_path = crate,
@@ -68,12 +49,6 @@ pub struct Query {
     pub transforms: Vec<Transform>,
     pub slice: RowSlice,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Query {
     fn grant_for(request: &Query) -> Option<harmos_domain::plugin::Grant> {
@@ -102,12 +77,6 @@ mod execution {
     use harmos_domain::plugin::Grant;
     use harmos_sdk::operations::{Operation, OperationDeclaration};
     use harmos_storage::query::QueryCompletion;
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
 
     impl Operation for super::Query {
         type Error = Error;
@@ -143,9 +112,3 @@ mod execution {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

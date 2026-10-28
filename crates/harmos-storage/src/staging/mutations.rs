@@ -7,40 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
 mod append;
 mod create;
 mod end;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
 use crate::MemorySize;
 use crate::storage::receipts::ReceiptState;
 use crate::storage::{FileProducer, MutationId, MutationValue};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 pub(super) struct Mutation {
     pub(super) id: MutationId,
     pub(super) kind: Kind,
 }
-
-/* === Enums === */
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Kind {
@@ -50,10 +29,6 @@ pub(super) enum Kind {
     Finish,
     Abandon,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.staging.mutations.resume_file_once", level = "debug", skip_all)]
@@ -161,10 +136,6 @@ impl MemorySize for Mutation {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn fingerprint(domain: &str, session: &FileSession) -> [u8; 32] {
     let mut hash = Sha256::new();
     hash_part(&mut hash, domain.as_bytes());
@@ -210,5 +181,3 @@ fn reserve(
 fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "file mutation", reason }
 }
-
-/* === Tests === */

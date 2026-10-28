@@ -7,17 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::lifecycle::{GuestOperations, Lifecycle, Manager, serve_host};
 use super::sandbox::{CountsOperation, ReadOperation, Stage};
 use super::schematic::model::{Connection, Point, Snapshot};
@@ -26,25 +15,7 @@ use harmos_runtime::Message;
 use harmos_runtime::operations::ComponentError;
 use schematic_operations::schematic::{analyze, propose, validate};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
 use support::Lanes;
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn pending_settings() -> harmos_runtime::config::PluginSettings {
     let host_operations = ["host.publish", "provider.echo"];
@@ -366,5 +337,3 @@ async fn stream_lifecycle_preserved() {
     drop((manager, lifecycle));
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

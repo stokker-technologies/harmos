@@ -9,8 +9,6 @@
 
 // Parse Cargo Subcommand Arguments And Report One Command Outcome.
 
-/* === Modules === */
-
 mod commands;
 mod error;
 #[cfg(any(feature = "sidecar", feature = "guest"))]
@@ -18,24 +16,7 @@ mod input;
 #[cfg(any(feature = "sidecar", feature = "guest"))]
 mod output;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use clap::Parser;
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Parser)]
 #[command(name = "cargo harmos", version, about = "Build And Inspect Harmos Plugin Artifacts")]
@@ -43,16 +24,6 @@ struct Arguments {
     #[command(subcommand)]
     command: commands::Command,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn main() -> std::process::ExitCode {
     let mut arguments: Vec<_> = std::env::args_os().collect();
@@ -79,5 +50,3 @@ fn main() -> std::process::ExitCode {
         }
     }
 }
-
-/* === Tests === */

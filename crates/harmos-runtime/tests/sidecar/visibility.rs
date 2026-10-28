@@ -9,32 +9,7 @@
 
 // Bind Private And Shared Native Handlers To Their Original Resources.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[harmos_runtime::message]
 #[derive(Clone, PartialEq)]
@@ -76,9 +51,3 @@ impl harmos_runtime::Operation for ScalePubliclyDeclaration {
         result.map(::core::convert::Into::into)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

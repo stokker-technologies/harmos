@@ -7,41 +7,26 @@
  * ***
  */
 
-/* === Modules === */
-
 mod draft;
 mod fact;
 mod vault;
-
-/* === Re-Exports === */
 
 pub use draft::Draft;
 pub(crate) use fact::SOURCE;
 pub use fact::{EvidenceKind, EvidenceRecord};
 pub use vault::{Excerpt, Vault};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, Weak};
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use crate::supervision::executor;
 use crate::{Application, DefinitionId, state::At, state::Entry, state::Recorded, state::StateManager};
 use draft::{Open, Staged};
 use vault::Keeping;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Held<T> = BTreeMap<String, BTreeMap<(DefinitionId, String), T>>;
-
-/* === Structs === */
 
 pub(crate) struct Declaration {
     vault: Arc<dyn Keeping>,
@@ -59,8 +44,6 @@ struct Inner<A: Application> {
     drafts: Mutex<Held<Arc<Open>>>,
     kept: Mutex<Held<EvidenceRecord>>,
 }
-
-/* === Enums === */
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum EvidenceError {
@@ -106,10 +89,6 @@ pub enum EvidenceError {
     #[error("the state is unavailable, so nothing was finalized")]
     Unavailable,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl EvidenceError {
     pub fn unreadable(cause: impl std::fmt::Display) -> Self {
@@ -438,10 +417,6 @@ impl<A: Application> Inner<A> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn observing(draft: Weak<Open>, cadence: std::time::Duration) {
     loop {
         executor::sleep(cadence).await;
@@ -473,5 +448,3 @@ fn encode(kind: &DefinitionId, scope: &str, key: &str) -> String {
 
     name
 }
-
-/* === Tests === */

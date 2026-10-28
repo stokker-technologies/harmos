@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod admission;
 mod authored;
 pub mod authorization;
@@ -49,8 +47,6 @@ mod remote;
 #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 mod sdk;
 mod wire;
-
-/* === Re-Exports === */
 
 pub use crate::supervision::instance::{Outcome as OperationOutcome, Phase as OperationPhase, Status as OperationStatus};
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
@@ -113,31 +109,3 @@ pub use wire::PluginCallback;
 
 #[cfg(feature = "plugin-sidecar")]
 pub(crate) use wire::PluginControl;
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

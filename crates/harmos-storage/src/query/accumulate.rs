@@ -7,32 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{cmp::Ordering, num::NonZeroU128};
 
-// Third Party Imports
-
-// Local Imports
 use super::order_stats::Values;
 use super::scalar::{self, Agg, ExactNumber, ScalarKind, ScalarValue};
 use crate::aggregate;
 use crate::config::StorageAccumulatorSettings;
 use crate::signal::Summary;
 use crate::{Aggregate, Error, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct Accumulator {
@@ -45,12 +27,6 @@ pub struct Accumulator {
     running: Summary,
     scratch: Values,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Accumulator {
     pub fn new(agg: Agg) -> Self {
@@ -197,8 +173,6 @@ impl Accumulator {
     }
 }
 
-/* === Public Functions === */
-
 // Fallible In-Place Heapsort Polls Original Cancellation During Comparisons.
 pub fn sort_values<T: Copy>(order: &mut [T], mut compare: impl FnMut(T, T) -> Result<Ordering>) -> Result<()> {
     fn sift<T: Copy>(order: &mut [T], mut root: usize, end: usize, compare: &mut impl FnMut(T, T) -> Result<Ordering>) -> Result<()> {
@@ -224,8 +198,6 @@ pub fn sort_values<T: Copy>(order: &mut [T], mut compare: impl FnMut(T, T) -> Re
     }
     Ok(())
 }
-
-/* === Private Functions === */
 
 fn numeric_kind(kind: ScalarKind) -> bool {
     matches!(kind, ScalarKind::Signed | ScalarKind::Unsigned | ScalarKind::Float | ScalarKind::Exact)
@@ -263,8 +235,6 @@ fn integral(value: ExactNumber, kind: Option<ScalarKind>) -> ScalarValue {
 pub(super) fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "storage reduce", reason }
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {
