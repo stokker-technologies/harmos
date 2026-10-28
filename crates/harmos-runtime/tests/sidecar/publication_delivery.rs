@@ -49,43 +49,34 @@ async fn capture_survives_reload() {
     let definitions = operations::inspected(&source, serde_json::to_vec(&()).unwrap());
     let calls = Supervised::new(source, (|_: &ServiceContext<Bank>, _: Notice| {}) as fn(&ServiceContext<Bank>, Notice));
     let rows = Arc::new(Mutex::new(Vec::new()));
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(Lanes::catalog())
-        .operation_settings(harmos_runtime::operations::Settings {
-            preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
-            ..Default::default()
-        })
-        .attach_streams(Recorder {
-            cursor: Cursor::ORIGIN,
-            rows: rows.clone(),
-        })
-        .runtime()
-        .await
-        .unwrap();
-    let mut fixture = Managed::from_runtime(
+    let sample_projection = Arc::new(SampleProjection { streams: std::sync::OnceLock::new() });
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.resource::<SampleProjection>(Arc::clone(&sample_projection));
+        setup
+            .settings()
+            .register(catalog())
+            .operation_settings(harmos_runtime::operations::Settings {
+                preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
+                ..Default::default()
+            })
+            .attach_streams(Recorder {
+                cursor: Cursor::ORIGIN,
+                rows: rows.clone(),
+            });
+    })
+    .await
+    .unwrap();
+    let mut fixture = Managed::from_runtime_with_projection(
         runtime,
         definitions,
         calls,
         Lanes::Open,
         std::num::NonZeroUsize::new(16).unwrap(),
         harmos_runtime::services::POLICY,
+        sample_projection,
     );
     fixture.publication().await.unwrap();
-    fixture
-        .runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() })).unwrap();
-                dependencies
-            })
-            .operation::<super::SampleDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    fixture.runtime.operations.register::<crate::sidecar::SampleOperations>(Lanes::Open).await.unwrap();
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
     fixture.call::<PublishPulseDeclaration>(PublishPulseDeclaration { sample: 41 }).await.unwrap();
@@ -110,7 +101,7 @@ async fn capture_survives_reload() {
     assert_eq!(samples, [41, 42]);
     assert_eq!(attachments.load(Ordering::SeqCst), 2);
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 
     let recorded = rows.lock().unwrap();
     assert_eq!(recorded.len(), 2);
@@ -195,7 +186,7 @@ async fn demand_survives_reload() {
     row(&mut after_restart).await;
     drop(held);
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -203,14 +194,13 @@ async fn batches_keep_order() {
     let capacity = std::num::NonZeroUsize::new(2).unwrap();
     let source = harmos_sidecar::PluginNative::<Batches>::new(capacity).unwrap();
     // A Decoded 100-Row Batch Outgrows The Usual 4 KiB Preparation Budget
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: std::num::NonZeroUsize::new(64 * 1024),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let definitions = super::super::operations::inspected(&source, serde_json::to_vec(&()).unwrap());
     let resident = harmos_runtime::sidecar::Supervised::new(
         source,
@@ -255,7 +245,7 @@ async fn batches_keep_order() {
     assert_eq!(stamps("batches.clocked").await, (0..100).map(|sample| (sample, TIMED_BASE + 1_000 * sample as i64)).collect::<Vec<_>>());
     // The Backwards Row And Everything After It Stay Unpublished
     assert_eq!(stamps("batches.stamped").await, vec![(1, TIMED_BASE), (2, TIMED_BASE + 1_000), (3, TIMED_BASE + 1_000), (4, TIMED_BASE),]);
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -297,7 +287,7 @@ async fn held_ingest_lossless() {
     assert_eq!(samples, (0..FLOOD_ROWS).collect::<Vec<_>>());
     assert!(batches > 1, "the producer was paced across ingest batches");
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -328,7 +318,7 @@ async fn named_streams_isolated() {
             .unwrap()
         );
     }
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -353,7 +343,7 @@ async fn projection_preserves_evidence() {
             source.query(..).await.unwrap().map(|row| support::Pulse::decode(row.value.payload.as_slice()).unwrap().sample).collect();
         assert_eq!(retained, expected);
     }
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -398,7 +388,7 @@ async fn shared_row_independence() {
     assert_eq!(support::Pulse::decode(right.query(..).await.unwrap().next().unwrap().value.payload.as_slice()).unwrap().sample, 201);
 
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
     assert_eq!(counts.stopped[0].load(SeqCst), 1);
     assert_eq!(counts.stopped[1].load(SeqCst), 1);
     assert_eq!(counts.released.load(SeqCst), 1);
@@ -482,7 +472,7 @@ async fn catalog_precedes_initialization() {
         assert!(OBSERVER_SEEDS.lock().unwrap().contains_key(&seed.id), "wire mismatch precedes preparation");
         assert!(!*fixture.ready().borrow());
         assert_eq!(counts.released.load(SeqCst), 0);
-        fixture.runtime.stop().await.unwrap();
+        fixture.runtime.shutdown().await.unwrap();
     }
 }
 
@@ -519,7 +509,7 @@ async fn catalog_order_admission() {
     ready(fixture.ready().clone()).await;
     assert_eq!(counts.initialized.load(SeqCst), 1);
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -559,7 +549,7 @@ async fn shutdown_signals_siblings() {
     .await
     .unwrap();
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
     assert_eq!(counts.stopped[0].load(SeqCst), 1);
     assert_eq!(counts.stopped[1].load(SeqCst), 1);
     assert_eq!(counts.released.load(SeqCst), 1);
@@ -616,7 +606,7 @@ async fn stop_preserves_failure() {
     assert_eq!(counts.started[0].load(SeqCst), 1);
     assert_eq!(counts.stopped[0].load(SeqCst), 1);
     let _ = fixture.shutdown().await;
-    let _ = fixture.runtime.stop().await;
+    let _ = fixture.runtime.shutdown().await;
     assert_eq!(counts.released.load(SeqCst), 1);
 }
 
@@ -658,7 +648,7 @@ async fn dropped_manager_recovery() {
         assert_eq!(counts.stopped[0].load(SeqCst), 1);
         assert_eq!(counts.released.load(SeqCst), 1);
         drop(left);
-        let _ = runtime.stop().await;
+        let _ = runtime.shutdown().await;
     })
     .await;
 }

@@ -13,9 +13,14 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+
+// Third Party Imports
+use tokio::time::Instant;
+
+// Local Imports
 use super::manager::{Inner, State};
 use crate::{Error, Result};
-use tokio::time::Instant;
 
 /* === Constants === */
 
@@ -90,8 +95,6 @@ impl Inner {
 
 /* === Public Functions === */
 
-/* === Private Functions === */
-
 pub(super) fn admitting(state: &State, write: bool) -> Result<()> {
     if state.status.closing {
         return Err(Error::Closing { domain: "storage" });
@@ -104,3 +107,7 @@ pub(super) fn admitting(state: &State, write: bool) -> Result<()> {
     }
     Ok(())
 }
+
+/* === Private Functions === */
+
+/* === Tests === */

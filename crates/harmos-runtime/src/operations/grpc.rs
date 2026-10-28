@@ -84,7 +84,8 @@ impl GrpcBinding {
         self.entry.authorize(&origin)?;
         let factory = self.native_factory()?;
         let name = self.entry.id().to_owned();
-        let prepared = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| factory.prepare_grpc(&payload, limits)))
+        let resources = self.operations.resources_for(&self.entry);
+        let prepared = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| factory.prepare_grpc(resources, &payload, limits)))
             .map_err(|_| crate::Error::OperationPanicked { operation: name.clone() })?
             .map_err(|source| crate::Error::OperationFailed {
                 operation: name,

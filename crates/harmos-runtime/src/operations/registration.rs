@@ -30,6 +30,7 @@ use crate::catalog::{Catalog, Visitor};
 
 #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 use crate::operations::Declarations;
+#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 use crate::operations::OperationDeclaration;
 #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 use crate::operations::OperationDefinition;
@@ -51,8 +52,8 @@ type BindCatalog = dyn Fn(&Manager) -> Result<()> + Send + Sync;
 /* === Structs === */
 
 #[derive(Clone)]
-pub struct Registration<L: Lane> {
-    pub(crate) batch: harmos_sdk::RegistrationBatch,
+pub(crate) struct Registration<L: Lane> {
+    pub(crate) batch: harmos_sdk::__private::RegistrationBatch,
     pub(crate) lane: Option<L>,
     pub(crate) defaults: std::collections::BTreeMap<&'static str, L>,
 }
@@ -60,6 +61,8 @@ pub struct Registration<L: Lane> {
 #[derive(Clone)]
 pub(crate) struct CatalogBinding {
     bind: Arc<BindCatalog>,
+    factories: Vec<harmos_sdk::operations::OperationFactory>,
+    lanes: Vec<&'static str>,
 }
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
@@ -85,14 +88,13 @@ pub struct PluginRegistration {
 
 /* === Traits === */
 
-pub trait RegistrationExt {
+pub(crate) trait RegistrationExt {
     fn lane<L: Lane>(self, lane: L) -> Registration<L>;
-    fn defaults<L: Lane>(self) -> Registration<L>;
 }
 
 /* === Implementations === */
 
-impl RegistrationExt for harmos_sdk::RegistrationBatch {
+impl RegistrationExt for harmos_sdk::__private::RegistrationBatch {
     fn lane<L: Lane>(self, lane: L) -> Registration<L> {
         Registration {
             batch: self,
@@ -100,28 +102,44 @@ impl RegistrationExt for harmos_sdk::RegistrationBatch {
             defaults: std::collections::BTreeMap::new(),
         }
     }
-
-    fn defaults<L: Lane>(self) -> Registration<L> {
-        Registration {
-            batch: self,
-            lane: None,
-            defaults: std::collections::BTreeMap::new(),
-        }
-    }
-}
-
-impl<L: Lane> Registration<L> {
-    pub fn default_lane_for<O: OperationDeclaration>(mut self, lane: L) -> Self {
-        self.defaults.insert(O::ID, lane);
-        self
-    }
 }
 
 impl CatalogBinding {
     pub(crate) fn new<L: Lane>(registration: Registration<L>) -> Self {
+        let factories = registration.batch.operations.clone();
+        let lanes = factories
+            .iter()
+            .map(|factory| {
+                registration
+                    .defaults
+                    .get(factory.definition.id.as_str())
+                    .copied()
+                    .or(registration.lane)
+                    .unwrap_or_else(L::default_lane)
+                    .name()
+            })
+            .collect();
         Self {
             bind: Arc::new(move |operations| operations.register_native(registration.clone())),
+            factories,
+            lanes,
         }
+    }
+
+    pub(crate) fn validate(
+        &self, resources: &harmos_sdk::__private::ResourceSet, lanes: &crate::operations::LaneSet,
+    ) -> Vec<harmos_sdk::StartupError> {
+        let provided = Manager::provided_resources();
+        let mut errors = Vec::new();
+        for factory in &self.factories {
+            errors.extend(factory.missing_resources(resources, &provided));
+        }
+        for lane in &self.lanes {
+            if !lanes.contains(lane) {
+                errors.push(harmos_sdk::StartupError::UnknownLane { lane });
+            }
+        }
+        errors
     }
     pub(crate) fn bind(&self, operations: &Manager) -> Result<()> {
         (self.bind)(operations)
@@ -182,14 +200,18 @@ impl Manager {
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl Bindings<'_> {
-    pub fn register<L: Lane>(&mut self, registration: Registration<L>) -> Result<()> {
+    pub fn operations<C: harmos_sdk::operations::OperationCatalog>(&mut self, lane: impl Lane) -> Result<()> {
+        self.register(C::batch().lane(lane))
+    }
+
+    pub(crate) fn register<L: Lane>(&mut self, registration: Registration<L>) -> Result<()> {
         let entries = self.operations.native_entries(registration, self.owner, self.scope)?;
         self.entries.extend(entries);
         Ok(())
     }
 
     #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
-    pub(super) fn stage_implementation<D, O>(&mut self, lane: &'static str, dependencies: harmos_sdk::Dependencies) -> Result<()>
+    pub(super) fn stage_implementation<D, O>(&mut self, lane: &'static str, dependencies: harmos_sdk::__private::ResourceSet) -> Result<()>
     where
         D: OperationDeclaration,
         O: harmos_sdk::operations::Carrier<Declaration = D>,
@@ -202,9 +224,10 @@ impl Bindings<'_> {
             })?;
         let wire = (contract.input().is_none() && contract.output().is_none())
             .then_some(crate::operations::wire::dispatch_native as crate::operations::wire::Dispatch);
-        let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).carrier::<D, O>();
+        let mut batch = harmos_sdk::__private::RegistrationBatch::new().carrier::<D, O>();
         let factory = batch.operations.pop().expect("one native implementation");
         let mut entry = self.operations.binding_erased(self.owner, lane, Arc::new(factory), D::definition(), wire, self.scope.cloned())?;
+        Arc::get_mut(&mut entry).expect("new native entry").carrier = dependencies;
         #[cfg(feature = "grpc")]
         if contract.grpc().is_some() {
             Arc::get_mut(&mut entry).expect("new native entry").grpc = Some(crate::grpc::routing::handler::<D>());

@@ -172,10 +172,13 @@ pub struct Copied {
 pub enum Lanes {
     #[default]
     Open,
+
     #[lane(serial)]
     Serial,
+
     #[lane(concurrent(2))]
     Concurrent,
+
     #[lane(unbounded)]
     Unbounded,
 }
@@ -244,6 +247,27 @@ impl From<String> for Failed {
         Self::Attempt(message)
     }
 }
+impl harmos_runtime::Lifecycle for Bank {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 impl Application for Bank {
     type Lanes = Lanes;
@@ -251,7 +275,6 @@ impl Application for Bank {
     type Transaction = Change;
     type Record = Fact;
     type Streams = feeds::Bank;
-    type Resources = ();
 }
 
 impl Registration<Bank> for Definitions {

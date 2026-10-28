@@ -101,29 +101,17 @@ impl Drop for AttemptGuard {
 /* === Private Functions === */
 
 async fn runtime() -> (Runtime<App>, Arc<Resources>) {
-    let runtime = Runtime::<App>::builder((), ())
-        .register(Lanes::catalog())
-        .operation_settings(harmos_runtime::operations::Settings {
+    let resources = Arc::new(Resources::default());
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Resources>(resources.clone());
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
-    let resources = Arc::new(Resources::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(resources.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ReadContractDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+        });
+        setup.operations::<crate::operations::Single<ReadContractDeclaration>>(Lanes::Open);
+    })
+    .await
+    .unwrap();
     assert!(resources.events.lock().unwrap().is_empty());
     (runtime, resources)
 }
@@ -132,24 +120,16 @@ async fn runtime() -> (Runtime<App>, Arc<Resources>) {
 async fn wire_bindings_execute() {
     {
         let resources = Arc::new(Resources::default());
-        let runtime = Runtime::<App>::builder((), ())
-            .register(Lanes::catalog())
-            .operation_settings(harmos_runtime::operations::Settings {
+        let runtime = Runtime::<App>::launch_with((), (), |setup| {
+            setup.resource::<Resources>(resources.clone());
+            setup.settings().operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
                 ..Default::default()
-            })
-            .with_registration(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(resources.clone()).unwrap();
-                    dependencies
-                })
-                .operation::<ReadContractDeclaration>(),
-                Lanes::Open,
-            ))
-            .runtime()
-            .await
-            .unwrap();
+            });
+            setup.operations::<crate::operations::Single<ReadContractDeclaration>>(Lanes::Open);
+        })
+        .await
+        .unwrap();
         assert!(resources.events.lock().unwrap().is_empty());
         let invocation = runtime
             .operations
@@ -158,7 +138,7 @@ async fn wire_bindings_execute() {
         let response = invocation.await.unwrap();
         assert_eq!(Text::decode(&response).unwrap().value, "hello:1");
         assert_eq!(resources.events.lock().unwrap().iter().filter(|event| **event == "run").count(), 1);
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
     {
         let (runtime, resources) = runtime().await;
@@ -172,41 +152,27 @@ async fn wire_bindings_execute() {
         assert_eq!(*resources.events.lock().unwrap(), ["run", "drop"]);
         let answer = runtime.operation(ReadContractDeclaration { value: "local".to_owned() }).run().await.unwrap();
         assert_eq!(answer.value, "local:1");
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
 #[tokio::test]
 async fn contracts_guard_identity() {
     let (runtime, resources) = runtime().await;
-    for change_policy in [false, true] {
-        let mut batch = harmos_runtime::RegistrationBatch::new({
-            let mut dependencies = harmos_runtime::Dependencies::new();
-            dependencies.insert(resources.clone()).unwrap();
-            dependencies
-        })
-        .operation::<ReadContractDeclaration>();
-        if change_policy {
-            batch.operations[0].definition.policy.timeout += Duration::from_secs(1);
-        } else {
-            batch.operations[0].definition.id = harmos_runtime::Identifier::new("camera_read").unwrap();
-        }
-        assert!(runtime.operations.register(harmos_runtime::RegistrationExt::lane(batch, Lanes::Open)).await.is_err());
-    }
+    assert!(runtime.operations.register::<crate::operations::Single<ReadContractDeclaration>>(Lanes::Open).await.is_err());
     assert!(resources.events.lock().unwrap().is_empty());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[cfg(feature = "plugin")]
 #[tokio::test]
 async fn owner_assignments_isolate_instances() {
-    let (runtime, _) = runtime().await;
-    let mut owners = Vec::new();
+    let (runtime, resources) = runtime().await;
+    let mut event_count = 0;
     for owner in ["camera", "simulator"] {
-        let resources = Arc::new(Resources::default());
         runtime
             .plugin
-            .register_embedded(
+            .register_embedded::<crate::operations::Single<ReadContractDeclaration>, Lanes>(
                 harmos_runtime::plugin::PluginDefinition {
                     id: owner.into(),
                     version: "1.0.0".parse().unwrap(),
@@ -216,32 +182,28 @@ async fn owner_assignments_isolate_instances() {
                     contributions: Default::default(),
                 },
                 Default::default(),
-                harmos_runtime::RegistrationExt::lane(
-                    harmos_runtime::RegistrationBatch::new({
-                        let mut dependencies = harmos_runtime::Dependencies::new();
-                        dependencies.insert(resources.clone()).unwrap();
-                        dependencies
-                    })
-                    .operation::<ReadContractDeclaration>(),
-                    Lanes::Open,
-                ),
+                Lanes::Open,
             )
             .await
             .unwrap();
         runtime.plugin.initialize().await.unwrap();
-        assert!(resources.events.lock().unwrap().is_empty());
+        assert_eq!(resources.events.lock().unwrap().len(), event_count, "activation registration executes no requests");
         let response = runtime
             .operations
-            .submit_encoded(&format!("{owner}.{}", ReadContractDeclaration::ID), Text { value: owner.into() }.encode())
+            .submit_from::<ReadContractDeclaration>(owner, ReadContractDeclaration { value: owner.into() })
             .unwrap()
             .await
             .unwrap();
-        assert_eq!(Text::decode(&response).unwrap().value, format!("{owner}:1"));
-        assert_eq!(*resources.events.lock().unwrap(), ["run", "drop"]);
-        owners.push(resources);
+        assert_eq!(response.value, format!("{owner}:1"));
+        event_count += 2;
+        assert_eq!(&resources.events.lock().unwrap()[event_count - 2..], ["run", "drop"]);
     }
-    assert_ne!(owners[0].ids.lock().unwrap()[0], owners[1].ids.lock().unwrap()[0]);
-    runtime.stop().await.unwrap();
+    assert_eq!(*resources.events.lock().unwrap(), ["run", "drop", "run", "drop"]);
+    {
+        let ids = resources.ids.lock().unwrap();
+        assert_ne!(ids[0], ids[1]);
+    }
+    runtime.shutdown().await.unwrap();
 }
 
 fn payload(value: &str) -> Vec<u8> {
@@ -275,26 +237,27 @@ async fn wire_registration_uses_supplied_schema_snapshot() {
     for initial in [false, true] {
         for accepted in [true, false] {
             let settings = if accepted { harmos_runtime::config::SchemaSettings::default() } else { tiny };
-            let builder = Runtime::<App>::builder((), ()).schema_settings(settings).register(Lanes::catalog());
-            let mut dependencies = harmos_runtime::Dependencies::new();
-            dependencies.insert(Arc::new(Resources::default())).unwrap();
-            let batch = harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new(dependencies).operation::<ReadContractDeclaration>(),
-                Lanes::Open,
-            );
+            let resources = Arc::new(Resources::default());
+            let runtime = Runtime::<App>::launch_with((), (), |setup| {
+                setup.resource::<Resources>(resources.clone());
+                setup.settings().schema_settings(settings);
+                if initial {
+                    setup.operations::<crate::operations::Single<ReadContractDeclaration>>(Lanes::Open);
+                }
+            })
+            .await;
             if initial {
-                let result = builder.with_registration(batch).runtime().await;
-                assert_eq!(result.is_ok(), accepted);
-                if let Ok(runtime) = result {
+                assert_eq!(runtime.is_ok(), accepted);
+                if let Ok(runtime) = runtime {
                     assert!(runtime.operations.definition(ReadContractDeclaration::ID).is_ok());
-                    runtime.stop().await.unwrap();
+                    runtime.shutdown().await.unwrap();
                 }
             } else {
-                let runtime = builder.runtime().await.unwrap();
-                let result = runtime.operations.register(batch).await;
+                let runtime = runtime.unwrap();
+                let result = runtime.operations.register::<crate::operations::Single<ReadContractDeclaration>>(Lanes::Open).await;
                 assert_eq!(result.is_ok(), accepted);
                 assert_eq!(runtime.operations.definition(ReadContractDeclaration::ID).is_ok(), accepted);
-                runtime.stop().await.unwrap();
+                runtime.shutdown().await.unwrap();
             }
         }
     }

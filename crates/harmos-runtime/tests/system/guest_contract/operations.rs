@@ -23,7 +23,7 @@ use super::sandbox::{CountsOperation, ReadOperation, Stage};
 use super::schematic::model::{Connection, Point, Snapshot};
 use super::{GuestLanes, corner, route, runtime, sandbox, support};
 use harmos_runtime::Message;
-use harmos_runtime::operations::{ComponentError, ComponentOperation};
+use harmos_runtime::operations::ComponentError;
 use schematic_operations::schematic::{analyze, propose, validate};
 
 /* === Constants === */
@@ -85,7 +85,7 @@ async fn inert_plan_denies() {
 
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -132,7 +132,7 @@ async fn declared_operation_roundtrip() {
 
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -146,7 +146,7 @@ async fn wrong_catalog_refused() {
     let refused = runtime.plugin.register_guest::<()>(loaded, pending_settings(), GuestLanes::Open).await.unwrap_err();
     assert!(matches!(refused, harmos_runtime::Error::InvalidInput { field: "guest operation catalog", .. }));
     assert!(runtime.plugin.status("sandbox_guest").is_none());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 // A Pending Guest Stop Retains Cleanup After Its Deadline
@@ -184,7 +184,7 @@ async fn shutdown_retains_cleanup() {
     }
     assert!(settled, "the guest's own shutdown deadline settled the retained invocation");
     assert_eq!(runtime.plugin.status("sandbox_guest").unwrap().attempts, 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -204,7 +204,7 @@ async fn overlay_preserves_parent() {
 
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -224,7 +224,7 @@ async fn request_clones_and_resource_attempts() {
 
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -251,7 +251,7 @@ async fn exact_live_bindings() {
 
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -264,12 +264,11 @@ async fn children_retire_authority() {
 
 async fn children_in_lane(serial: bool) {
     let preparation_bytes = std::num::NonZeroUsize::new(4096);
-    let runtime = harmos_runtime::Runtime::<support::Bank>::builder(support::Ledger::default(), ())
-        .operation_settings(harmos_runtime::operations::Settings { preparation_bytes, ..Default::default() })
-        .register(Lanes::catalog())
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = harmos_runtime::Runtime::<support::Bank>::launch_with(support::Ledger::default(), (), |setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings { preparation_bytes, ..Default::default() });
+    })
+    .await
+    .unwrap();
     let lane = if serial { Lanes::Serial } else { Lanes::Open };
     let mut lifecycle = Lifecycle::sandbox_in(&runtime, lane).await;
     let mut manager = Manager::new(lifecycle.candidate("children").await).unwrap();
@@ -283,39 +282,9 @@ async fn children_in_lane(serial: bool) {
 
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
-#[tokio::test]
-async fn wire_alias_refused() {
-    let _report = crate::report::system();
-    let runtime = runtime().await;
-    let mut lifecycle = Lifecycle::schematic(&runtime);
-    let mut manager = Manager::new(lifecycle.candidate(()).await).unwrap();
-    manager.initialize(&mut lifecycle).await.unwrap();
-
-    // A Declaration That Binds A gRPC Method Keeps Its Original Identity Under Any Other Operation Id
-    let mut batch = harmos_runtime::RegistrationBatch::new({
-        let mut dependencies = harmos_runtime::Dependencies::new();
-        dependencies.insert(lifecycle.component()).unwrap();
-        dependencies
-    })
-    .carrier::<propose::ProposeRoute, ComponentOperation<propose::ProposeRoute>>();
-    batch.operations[0].definition.id = harmos_runtime::Identifier::new("aliased_route").unwrap();
-    let refused = runtime.operations.register(harmos_runtime::RegistrationExt::lane(batch, GuestLanes::Open)).await.unwrap_err();
-    assert!(matches!(refused, harmos_runtime::Error::OperationFailed {ref source, ..}
-        if matches!(source.downcast_ref::<harmos_runtime::operations::ServingError>(), Some(harmos_runtime::operations::ServingError::Catalog))));
-    assert!(matches!(
-        runtime.operations.submit_at::<propose::ProposeRoute>("aliased_route", route(3)),
-        Err(harmos_runtime::Error::NotRegistered { .. })
-    ));
-
-    manager.shutdown(&mut lifecycle).await.unwrap();
-    drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
-}
-
-#[cfg(feature = "grpc")]
 #[tokio::test]
 async fn grpc_original_owner() {
     let _report = crate::report::system();
@@ -365,7 +334,7 @@ async fn grpc_original_owner() {
 
     manager.shutdown(&mut lifecycle).await.unwrap();
     assert!(runtime.grpc().methods().is_empty());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -395,7 +364,7 @@ async fn stream_lifecycle_preserved() {
 
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */

@@ -34,7 +34,7 @@ kit = ["harmos-operations/lifecycle", "transport", "dep:getrandom"]
 # The Shared Process Boundary Without Plugin Authoring Or Callback Runners
 transport = ["dep:sha2", "dep:getrandom", "dep:libc", "dep:postcard", "dep:futures-util", "dep:tokio", "dep:windows-sys"]
 
-derive = ["harmos-domain/derive"]
+derive = ["harmos-domain/derive", "harmos-sdk/derive", "dep:harmos-macros"]
 # Optional Payload Codec Only; No Host Networking Or gRPC Carrier
 grpc = ["harmos-sdk/grpc"]
 streaming = ["harmos-sdk/streaming"]
@@ -43,8 +43,9 @@ streaming = ["harmos-sdk/streaming"]
 
 [dependencies]
 # Local
-harmos-operations = { workspace = true }
 harmos-domain = { workspace = true }
+harmos-macros = { workspace = true, optional = true }
+harmos-operations = { workspace = true }
 harmos-sdk = { workspace = true }
 
 # Git

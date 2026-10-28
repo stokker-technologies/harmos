@@ -128,7 +128,7 @@ async fn close_retains_writes() {
     assert_eq!(f.data.records.lock().unwrap().len(), 1);
     assert!(f.data.control.writes.lock().unwrap().iter().all(|at| *at == 1));
     assert_eq!(f.storage.status().saved.sequence, 1);
-    f.runtime.stop().await.unwrap();
+    f.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -162,12 +162,16 @@ async fn backend_close_failure() {
     f.storage.close().await.unwrap();
     assert_eq!(f.data.control.closes.load(Ordering::SeqCst), 1);
     assert_eq!(f.recovery.control.closes.load(Ordering::SeqCst), 2);
-    f.runtime.stop().await.unwrap();
+    f.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn partial_open_remains() {
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(catalog());
+    })
+    .await
+    .unwrap();
     let data = Arc::new(Data::new(history()));
     let recovery = Arc::new(Recovery::new(history()));
     recovery.control.fail_open.store(true, Ordering::SeqCst);
@@ -191,7 +195,7 @@ async fn partial_open_remains() {
             .and_then(|item| item.health)
             .is_none()
     );
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -217,7 +221,7 @@ async fn cancelled_close_retains() {
     f.data.control.flush_release.notify_one();
     f.storage.close().await.unwrap();
     assert_eq!(f.data.control.flushes.lock().unwrap().as_slice(), &[1]);
-    f.runtime.stop().await.unwrap();
+    f.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]

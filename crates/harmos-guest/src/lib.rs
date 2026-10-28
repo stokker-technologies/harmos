@@ -20,11 +20,14 @@ pub use harmos_domain::model;
 pub use harmos_operations as builtins;
 
 pub use error::{Error, Result};
-pub use harmos_domain::{catalog, listeners};
+pub mod catalog {
+    pub use harmos_domain::catalog::*;
+}
+pub use harmos_domain::listeners;
 pub use harmos_sdk::operations;
 pub use harmos_sdk::operations::Host;
 pub use harmos_sdk::operations::{Backoff, CacheKey, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
-pub use harmos_sdk::{Context, Dependencies, Dependent, Executable, Operation, Plugin, RegistrationBatch, Resource, Response, Service};
+pub use harmos_sdk::{Context, Dependent, Executable, Lifecycle, Operation, Plugin, Resource, Response, Service, Setup};
 
 pub use harmos_domain::inventory;
 pub use harmos_domain::{
@@ -44,7 +47,9 @@ pub use harmos_domain::{
     Storable,
 };
 #[cfg(feature = "derive")]
-pub use harmos_domain::{listener, message, operation, stream};
+pub use harmos_domain::{listener, message, stream};
+#[cfg(feature = "derive")]
+pub use harmos_macros::{guest_catalog as catalog, guest_operation as operation};
 pub use harmos_sdk::plugin;
 
 /* === Imports === */

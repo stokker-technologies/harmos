@@ -25,7 +25,7 @@ use tracing_subscriber::{Layer, layer::Context as TraceContext, prelude::*, regi
 // Local Imports
 use super::{
     Lanes,
-    support::{self, Bank, Fact, Ledger, Noted, catalog},
+    support::{self, Bank, Fact, Noted},
 };
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Runtime, state::CausationId, state::Position};
@@ -190,46 +190,10 @@ impl harmos_runtime::operations::Operation for FamilyContractDeclaration {
 /* === Private Functions === */
 
 async fn runtime() -> Runtime<Bank> {
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(())).unwrap();
-                dependencies
-            })
-            .operation::<FamilyContractDeclaration>(),
-            Lanes::Serial,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(())).unwrap();
-                dependencies
-            })
-            .operation::<DescendContractDeclaration>(),
-            Lanes::Concurrent,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(())).unwrap();
-                dependencies
-            })
-            .operation::<NoteContractDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = super::runtime_with(|_| {}).await;
+    runtime.operations.register::<super::Single<FamilyContractDeclaration>>(Lanes::Serial).await.unwrap();
+    runtime.operations.register::<super::Single<DescendContractDeclaration>>(Lanes::Concurrent).await.unwrap();
+    runtime.operations.register::<super::Single<NoteContractDeclaration>>(Lanes::Open).await.unwrap();
     runtime
 }
 
@@ -254,7 +218,7 @@ async fn scoped_trace_handoffs() {
     }
     .with_subscriber(subscriber)
     .await;
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     let records = capture.0.lock().unwrap();
     let root = records.iter().find(|record| record.name == "request").unwrap().id;
@@ -296,7 +260,7 @@ async fn filtered_trace_behaves() {
     .await;
     let records: Vec<_> = runtime.state.query::<Fact>(Position::ORIGIN).await.collect();
     assert_eq!(records.len(), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert!(capture.0.lock().unwrap().is_empty());
 }
 
@@ -318,7 +282,7 @@ async fn dropped_trace_handoff() {
     .await;
 
     // The Dispatcher Drains The Queued Cancellation Outside The Caller's Scope.
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     let records = capture.0.lock().unwrap();
     let instance = records.iter().find(|record| record.name == "operations.instance").unwrap();
     assert_eq!(instance.fields.get("outcome").map(String::as_str), Some("Cancelled"));
@@ -356,7 +320,7 @@ async fn children_inherit_cause() {
     assert_eq!(noted.get("inherited-child"), Some(&root), "inheritance chains: a default-lane grandchild is in the same family");
     assert_eq!(noted.get("rerooted"), Some(&other), "a child that named its own cause re-roots itself");
     assert_eq!(noted.get("rerooted-child"), Some(&other), "and everything beneath it inherits the cause it re-rooted onto");
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -385,5 +349,5 @@ async fn caused_submit_records() {
         "the recorded fact answers the position the submission named"
     );
     assert_eq!(noted[0].metadata.correlation.0, receipt.position);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }

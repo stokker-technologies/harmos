@@ -18,6 +18,8 @@ pub use error::{Error, Result};
 
 /* === Imports === */
 
+extern crate harmos_domain as harmos;
+
 // Standard Library Imports
 
 // Third Party Imports

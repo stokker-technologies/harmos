@@ -188,7 +188,7 @@ impl<A: Application> Host for Owner<A> {
                 .map_err(|_| Error::ResourceExhausted { resource: "gRPC listener generations" })?
                 + 1;
             let service = format!("{SERVICE}.{generation}");
-            self.operations.register_service::<A, _, _, _>(
+            self.operations.register_service_with_context::<A, _, _, _>(
                 ServiceDefinition {
                     id: service.clone(),
                     policy: crate::ServicePolicy {
@@ -212,7 +212,7 @@ impl<A: Application> Host for Owner<A> {
                 return Err(Error::Closing { domain: "gRPC listener" });
             }
             let started = async {
-                let lease = self.operations.submit_with_resources_at(&service, resources.clone()).await?;
+                let lease = self.operations.submit_infrastructure(&service, resources.clone()).await?;
                 let lease = Arc::new(lease);
                 if let Some(current) = self.current().get_mut(&generation) {
                     current.lease = Some(lease.clone());

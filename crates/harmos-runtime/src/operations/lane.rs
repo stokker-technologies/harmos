@@ -37,6 +37,11 @@ pub struct Capacity {
     width: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LaneSettings {
+    pub capacity: Capacity,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct LaneSet {
     entries: Vec<(&'static str, Capacity)>,
@@ -58,6 +63,7 @@ pub(crate) struct Lanes {
 /* === Traits === */
 
 pub trait Lane: Copy + Eq + Send + Sync + 'static {
+    fn catalog() -> LaneSet;
     fn default_lane() -> Self;
     fn name(&self) -> &'static str;
     fn capacity(&self) -> Capacity;
@@ -92,8 +98,16 @@ impl LaneSet {
         self.entries
     }
 
-    pub(crate) fn extend(&mut self, other: Self) {
-        self.entries.extend(other.entries);
+    pub(crate) fn contains(&self, lane: &str) -> bool {
+        self.entries.iter().any(|(name, _)| *name == lane)
+    }
+
+    pub(crate) fn configure(&mut self, lane: &str, capacity: Capacity) -> bool {
+        let Some((_, configured)) = self.entries.iter_mut().find(|(name, _)| *name == lane) else {
+            return false;
+        };
+        *configured = capacity;
+        true
     }
 }
 

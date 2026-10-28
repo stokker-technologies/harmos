@@ -79,6 +79,27 @@ pub enum AmplifierLanes {
     #[default]
     Open,
 }
+impl harmos_runtime::Lifecycle for Amplifier {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 impl Application for Amplifier {
     type Lanes = AmplifierLanes;
@@ -86,7 +107,6 @@ impl Application for Amplifier {
     type Transaction = SetGain;
     type Record = ();
     type Streams = ();
-    type Resources = ();
 }
 
 #[derive(Clone)]
@@ -124,11 +144,11 @@ fn declared() -> Vec<(Kind, DefinitionId, u32)> {
 }
 
 fn scripted<C: Registration<Amplifier> + 'static>(catalog: C) -> SimulatedRuntime<Amplifier> {
-    let mut sim = Runtime::<Amplifier>::builder(Model::default(), ())
-        .register(catalog)
-        .entropy_seed(1)
-        .simulate()
-        .expect("a memory-only simulation boots");
+    let catalog = std::sync::Mutex::new(catalog);
+    let mut sim = Runtime::<Amplifier>::simulate_with(Model::default(), (), 1, move |setup| {
+        setup.settings().register(catalog.lock().unwrap().clone());
+    })
+    .expect("a memory-only simulation boots");
 
     for gain in [3, 9] {
         sim.commit(PrincipalId::new("tester"), SetGain(gain)).expect("accepted");

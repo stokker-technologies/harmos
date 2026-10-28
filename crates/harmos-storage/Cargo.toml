@@ -119,7 +119,36 @@ tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }
 # === Target Dependencies === #
 
 [target.'cfg(windows)'.dependencies]
+# Local
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
 windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
 
 # === Test Targets === #
 

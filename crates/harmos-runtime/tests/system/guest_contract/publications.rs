@@ -64,7 +64,7 @@ async fn publications_survive_unload() {
     replacement.shutdown(&mut lifecycle).await.unwrap();
     assert_eq!(values(&stream).await, ["initialize", "route", "replacement"]);
     drop((replacement, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -84,7 +84,7 @@ async fn replacement_preserves_owner() {
     assert_eq!(values(&stream).await, ["original", "replacement"]);
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -104,7 +104,7 @@ async fn initialization_aborts_staging() {
     assert_eq!(values(&stream).await, ["replacement"]);
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -128,7 +128,7 @@ async fn bounded_window_gaps() {
     assert_eq!(retained, ["4", "5", "6", "7"]);
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -148,7 +148,7 @@ async fn saved_context_generation() {
     assert_eq!(dependency.said, "provider:original");
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */

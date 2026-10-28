@@ -35,6 +35,18 @@ use super::*;
 /* === Implementations === */
 
 impl Manager {
+    pub(crate) fn provided_resources() -> Vec<std::any::TypeId> {
+        vec![
+            std::any::TypeId::of::<harmos_sdk::operations::Calls>(),
+            std::any::TypeId::of::<harmos_sdk::operations::access::DiscoveryAccess>(),
+            std::any::TypeId::of::<harmos_sdk::operations::access::GrantAccess>(),
+            std::any::TypeId::of::<harmos_sdk::operations::instances::InstanceAccess>(),
+            std::any::TypeId::of::<crate::operations::HostContext>(),
+            #[cfg(feature = "plugin-sidecar")]
+            std::any::TypeId::of::<harmos_sdk::operations::publication::PublicationAccess>(),
+        ]
+    }
+
     pub(in crate::operations) fn register_with_services<L: Lane>(
         &self, registration: crate::operations::Registration<L>, staged: crate::operations::resident::Staged,
     ) -> Result<()> {
@@ -97,16 +109,8 @@ impl Manager {
         }
         let mut entries = Vec::with_capacity(batch.operations.len());
         for factory in batch.operations {
-            let provided = vec![
-                std::any::TypeId::of::<harmos_sdk::operations::Calls>(),
-                std::any::TypeId::of::<harmos_sdk::operations::access::DiscoveryAccess>(),
-                std::any::TypeId::of::<harmos_sdk::operations::access::GrantAccess>(),
-                std::any::TypeId::of::<harmos_sdk::operations::instances::InstanceAccess>(),
-                std::any::TypeId::of::<crate::operations::HostContext>(),
-                #[cfg(feature = "plugin-sidecar")]
-                std::any::TypeId::of::<harmos_sdk::operations::publication::PublicationAccess>(),
-            ];
-            factory.verify_resources(&provided).map_err(|source| Error::OperationFailed {
+            let provided = Self::provided_resources();
+            factory.verify_resources(self.resources(), &provided).map_err(|source| Error::OperationFailed {
                 operation: factory.definition.id.to_string(),
                 source: Arc::new(source),
             })?;
@@ -160,16 +164,22 @@ impl Manager {
     }
     #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(in crate::operations) fn bind_native<D, O>(
-        &self, owner: &str, lane: &'static str, dependencies: harmos_sdk::Dependencies, definition: OperationDefinition,
+        &self, owner: &str, lane: &'static str, dependencies: harmos_sdk::__private::ResourceSet, definition: OperationDefinition,
         wire: Option<crate::operations::wire::Dispatch>, plugin: Option<PluginScope>,
     ) -> Result<Arc<Entry>>
     where
         D: OperationDeclaration,
         O: harmos_sdk::operations::Carrier<Declaration = D>,
     {
-        let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).carrier::<D, O>();
+        let mut batch = harmos_sdk::__private::RegistrationBatch::new().carrier::<D, O>();
         let factory = batch.operations.pop().expect("one native implementation");
-        let binding = crate::operations::authored::factory::<D, O::StreamEndpoints>(self, factory);
+        let resources = harmos_sdk::ExecutionContext::new(dependencies, super::super::CallContext::default())
+            .with_resources(self.resources().clone())
+            .resources()
+            .clone();
+        let binding = crate::operations::authored::factory_with::<D, O::StreamEndpoints>(self, move |request, endpoints| {
+            factory.prepare_native(resources.clone(), Box::new(request), Box::new(endpoints))
+        });
         self.binding_erased(owner, lane, Arc::new(binding), definition, wire, plugin)
     }
 
@@ -191,6 +201,7 @@ impl Manager {
         })?;
         let generation = OperationGeneration::fresh()?;
         Ok(Arc::new(Entry {
+            carrier: harmos_sdk::__private::ResourceSet::new(),
             owner,
             definition,
             contract: None,

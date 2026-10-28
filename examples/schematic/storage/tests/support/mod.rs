@@ -21,8 +21,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 // Local Imports
 use harmos::{
-    Application, Builder, DefinitionId, Runtime, runtime::Catalog, runtime::Incompatible, runtime::Registration, state::DecodeError,
-    state::Invert, state::Kind, state::PrincipalId, state::Recorded, state::Transaction, storage::Payload,
+    Application, DefinitionId, Runtime, Setup, StartupError, runtime::Catalog, runtime::Registration, state::DecodeError, state::Invert,
+    state::Kind, state::PrincipalId, state::Recorded, state::Transaction, storage::Payload,
 };
 use schematic_storage::Wire;
 
@@ -205,12 +205,30 @@ impl Transaction<Ledger> for Explode {
     }
 }
 
+impl harmos::Lifecycle for Bank {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos::Startup<Self>;
+
+    async fn prepare(_: (), _setup: &mut harmos::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl Application for Bank {
     type State = Ledger;
     type Transaction = Change;
     type Record = Fact;
     type Streams = ();
-    type Resources = ();
     type Lanes = TestLanes;
 }
 
@@ -283,12 +301,16 @@ pub fn pay(effect: u64, amount: i64) -> Pay {
     Pay { effect, amount }
 }
 
-pub async fn booted(origin: Ledger, attach: impl FnOnce(Builder<Bank>) -> Builder<Bank>) -> Runtime<Bank> {
+pub async fn booted(origin: Ledger, attach: impl FnOnce(&mut Setup<Bank>)) -> Runtime<Bank> {
     opened(origin, attach).await.expect("the copy replays")
 }
 
-pub async fn opened(origin: Ledger, attach: impl FnOnce(Builder<Bank>) -> Builder<Bank>) -> Result<Runtime<Bank>, Incompatible> {
-    attach(Runtime::<Bank>::builder(origin, ()).register(Change::catalog()).register(Fact::catalog())).runtime().await
+pub async fn opened(origin: Ledger, attach: impl FnOnce(&mut Setup<Bank>)) -> Result<Runtime<Bank>, StartupError> {
+    Runtime::<Bank>::launch_with(origin, (), |setup| {
+        setup.settings().register(Change::catalog()).register(Fact::catalog());
+        attach(setup);
+    })
+    .await
 }
 
 pub async fn ledger(runtime: &Runtime<Bank>) -> Ledger {
@@ -313,7 +335,7 @@ pub fn scratch(name: &str) -> PathBuf {
 fn definitions_of<A: Application>(catalog: impl Registration<A>) -> Vec<(Kind, DefinitionId, u32)> {
     match catalog.register() {
         Catalog::Transactions { definitions, .. } => definitions,
-        Catalog::Streams(_) | Catalog::Lanes(_) => {
+        Catalog::Streams(_) => {
             unreachable!("a transaction or fact catalog always registers as `Transactions`")
         }
     }

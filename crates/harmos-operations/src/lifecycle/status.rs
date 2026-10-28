@@ -13,6 +13,11 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 #[cfg(feature = "runtime")]
 use harmos_sdk::operations::instances::InstanceAccess;
 
@@ -42,6 +47,15 @@ pub struct Status {
     pub instance: u64,
 }
 
+#[harmos::message(harmos_path = crate)]
+#[derive(Clone, Default, PartialEq)]
+pub struct InstanceState {
+    pub phase: String,
+    pub outcome: String,
+    pub cancellation_requested: bool,
+    pub attempt: u32,
+}
+
 /* === Enums === */
 
 /* === Traits === */
@@ -66,14 +80,6 @@ impl Operation for Status {
     }
 }
 
-#[harmos::message(harmos_path = crate)]
-#[derive(Clone, Default, PartialEq)]
-pub struct InstanceState {
-    pub phase: String,
-    pub outcome: String,
-    pub cancellation_requested: bool,
-    pub attempt: u32,
-}
 impl From<harmos_domain::operations::instance::Status> for InstanceState {
     fn from(status: harmos_domain::operations::instance::Status) -> Self {
         Self {

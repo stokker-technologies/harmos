@@ -16,8 +16,6 @@ pub mod operations;
 /* === Re-Exports === */
 
 /* === Imports === */
-#[cfg(feature = "runtime")]
-use std::sync::Arc;
 
 // Standard Library Imports
 
@@ -33,9 +31,7 @@ use std::sync::Arc;
 
 /* === Structs === */
 #[cfg(feature = "runtime")]
-pub struct Plugin {
-    resources: Arc<()>,
-}
+pub struct Plugin;
 
 /* === Enums === */
 
@@ -43,27 +39,27 @@ pub struct Plugin {
 
 /* === Implementations === */
 #[cfg(feature = "runtime")]
-impl harmos_sidecar::builtins::lifecycle::Policy for Plugin {
+impl harmos::builtins::lifecycle::Policy for Plugin {
     const INITIALIZATION_POLICY: harmos::OperationPolicy = operations::POLICY;
     const SHUTDOWN_POLICY: harmos::OperationPolicy = operations::POLICY;
 }
 
 #[cfg(feature = "runtime")]
-#[harmos_sidecar::plugin(id = "__RUST_MODULE__", provides = operations::Operations, requires = ())]
-impl harmos_sidecar::Plugin for Plugin {
+#[harmos::sidecar(id = "__RUST_MODULE__", requires = ())]
+impl harmos::sidecar::Plugin for Plugin {
+    const CATALOGS: &'static [harmos::Catalog] = &[operations::Operations::CATALOG];
+}
+
+#[cfg(feature = "runtime")]
+impl harmos::Lifecycle for Plugin {
     type Config = ();
     type Error = std::io::Error;
-    type Context = harmos_sidecar::Supervisor;
-    type Resources = ();
-    fn prepare(_: ()) -> Result<Self, Self::Error> {
-        Ok(Self { resources: Arc::new(()) })
+    type Context = harmos::sidecar::Supervisor;
+
+    async fn prepare(_: (), _: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {
+        Ok(Self)
     }
-    fn resources(&self) -> Arc<()> {
-        Arc::clone(&self.resources)
-    }
-    fn bind_operations(&self, table: &mut harmos_sidecar::operations::WireTable) -> Result<(), harmos_sidecar::operations::ServingError> {
-        table.register(operations::Operations::registration(harmos_sidecar::Dependencies::new()))
-    }
+
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }

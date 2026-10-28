@@ -11,7 +11,7 @@
 
 /* === Re-Exports === */
 
-pub use std::convert::Infallible as Error;
+pub use std::io::Error;
 
 /* === Imports === */
 
@@ -22,8 +22,12 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use harmos_sidecar::Supervisor;
-use harmos_sidecar::operations::{OperationPolicy, ServingError, StreamSettings, WireStreamLimits, WireTable};
+use harmos::operations::{OperationPolicy, StreamSettings, WireStreamLimits};
+use harmos::sidecar::Supervisor;
+#[cfg(not(feature = "benchmark"))]
+use schematic_operations::Native as Operations;
+#[cfg(feature = "benchmark")]
+use schematic_operations::transfer::Native as Operations;
 
 /* === Constants === */
 
@@ -33,14 +37,11 @@ use harmos_sidecar::operations::{OperationPolicy, ServingError, StreamSettings, 
 
 /* === Structs === */
 
-pub struct Resources {
-    analysis: Arc<schematic_operations::resources::AnalysisResources>,
-}
-
 pub struct Plugin {
     #[cfg(feature = "benchmark")]
     transfer: Arc<schematic_operations::transfer::Store>,
-    resources: Arc<Resources>,
+
+    analysis: Arc<schematic_operations::resources::AnalysisResources>,
 }
 
 /* === Enums === */
@@ -49,48 +50,35 @@ pub struct Plugin {
 
 /* === Implementations === */
 
-impl harmos_sidecar::builtins::lifecycle::Policy for Plugin {
+impl harmos::builtins::lifecycle::Policy for Plugin {
     const INITIALIZATION_POLICY: OperationPolicy = schematic_operations::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[cfg_attr(not(feature = "benchmark"), harmos_sidecar::plugin(id = "schematic_tools", provides = schematic_operations::Native, requires = (), streams(schematic_domain::model::schematic::progress::AnalysisProgress)))]
-#[cfg_attr(feature = "benchmark", harmos_sidecar::plugin(id = "schematic_tools", provides = schematic_operations::transfer::Native, requires = (), streams(schematic_domain::model::schematic::progress::AnalysisProgress)))]
-impl harmos_sidecar::Plugin for Plugin {
+impl harmos::Lifecycle for Plugin {
     type Config = ();
     type Error = Error;
     type Context = Supervisor;
-    type Resources = Resources;
 
-    fn prepare(_: ()) -> Result<Self, Error> {
-        Ok(Self {
-            #[cfg(feature = "benchmark")]
-            transfer: Arc::new(schematic_operations::transfer::Store::default()),
-            resources: Arc::new(Resources {
-                analysis: Arc::new(schematic_operations::resources::AnalysisResources::default()),
-            }),
-        })
-    }
-
-    fn resources(&self) -> Arc<Resources> {
-        Arc::clone(&self.resources)
-    }
-
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), ServingError> {
-        let mut dependencies = harmos_sidecar::Dependencies::new();
-        dependencies.insert(self.resources.analysis.clone()).expect("each dependency is inserted once");
+    async fn prepare(_: (), setup: &mut harmos::Setup<Self>) -> Result<Self, Error> {
+        let analysis = Arc::new(schematic_operations::resources::AnalysisResources::default());
         #[cfg(feature = "benchmark")]
-        dependencies.insert(self.transfer.clone()).expect("each dependency is inserted once");
+        let transfer = Arc::new(schematic_operations::transfer::Store::default());
+
+        let plugin = Self {
+            #[cfg(feature = "benchmark")]
+            transfer,
+            analysis,
+        };
+        setup.resource::<schematic_operations::resources::AnalysisResources>(Arc::clone(&plugin.analysis));
+        #[cfg(feature = "benchmark")]
+        setup.resource::<schematic_operations::transfer::Store>(Arc::clone(&plugin.transfer));
         let direction = StreamSettings {
             items: NonZeroUsize::new(4).unwrap(),
             bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap(),
         };
-        table.stream_limits(WireStreamLimits { input: direction, output: direction })?;
-        #[cfg(feature = "benchmark")]
-        let batch = schematic_operations::transfer::Native::registration(dependencies);
-        #[cfg(not(feature = "benchmark"))]
-        let batch = schematic_operations::Native::registration(dependencies);
-        table.register(batch)
+        setup.settings().stream_limits(WireStreamLimits { input: direction, output: direction }).map_err(Error::other)?;
+        Ok(plugin)
     }
 
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Error> {
@@ -104,6 +92,11 @@ impl harmos_sidecar::Plugin for Plugin {
     async fn cleanup(&mut self) -> Result<(), Error> {
         Ok(())
     }
+}
+
+#[harmos::sidecar(id = "schematic_tools", requires = (), streams(schematic_domain::model::schematic::progress::AnalysisProgress))]
+impl harmos::Plugin for Plugin {
+    const CATALOGS: &'static [harmos::Catalog] = &[Operations::CATALOG];
 }
 
 /* === Public Functions === */

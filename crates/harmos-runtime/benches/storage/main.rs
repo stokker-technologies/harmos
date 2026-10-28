@@ -25,6 +25,8 @@ mod waveforms;
 
 /* === Imports === */
 
+extern crate harmos_runtime as harmos;
+
 // Standard Library Imports
 use std::convert::Infallible;
 use std::num::{NonZeroU32, NonZeroUsize};
@@ -49,7 +51,9 @@ static STATE_CLONES: AtomicUsize = AtomicUsize::new(0);
 
 /* === Structs === */
 
-struct Model;
+struct Model {
+    storage: Option<StorageManager>,
+}
 
 #[harmos_runtime::message]
 struct Text {
@@ -106,13 +110,36 @@ impl Clone for State {
     }
 }
 
+impl harmos_runtime::Lifecycle for Model {
+    type Config = ();
+    type Error = std::io::Error;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _setup: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self { storage: None })
+    }
+    async fn initialize(&mut self, context: &Self::Context) -> std::result::Result<(), Self::Error> {
+        self.storage = Some(context.resource::<StorageManager>().map_err(std::io::Error::other)?.as_ref().clone());
+        Ok(())
+    }
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        if let Some(storage) = &self.storage {
+            storage.close().await.map_err(std::io::Error::other)?;
+        }
+        Ok(())
+    }
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        self.storage.take();
+        Ok(())
+    }
+}
+
 impl harmos_runtime::Application for Model {
     type Lanes = Lanes;
     type State = State;
     type Transaction = Transactions;
     type Record = Records;
     type Streams = ();
-    type Resources = ();
 }
 
 impl harmos_runtime::state::Transaction<State> for Advance {
@@ -199,21 +226,27 @@ fn main() {
 async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duration {
     let directory = tempfile::tempdir().unwrap();
     let storage: StorageManager = StorageManager::new(fixture::backends(directory.path()), fixture::settings()).unwrap();
-    let mut builder = Runtime::<Model>::builder(State::default(), ()).register(Transactions::catalog()).register(Records::catalog());
-    if matches!(mode, "journal" | "captured_record" | "transaction") {
-        builder = builder.managed_storage(harmos_runtime::config::ManagedStorageSettings {
-            replay: limits(1, 64 * 1_024),
-            capture: limits(1, 64 * 1_024),
-            snapshots: None,
-            journal_tail: 1,
-        });
-    } else {
-        builder = builder.tail(1);
-    }
-    if matches!(mode, "captured_record" | "transaction") {
-        builder = builder.store_records(Projection);
-    }
-    let runtime = builder.runtime_with_storage(&storage).await.unwrap();
+    let runtime = Runtime::<Model>::launch_with(State::default(), (), |setup| {
+        setup.resource::<StorageManager>(storage.clone());
+        setup.settings().storage(&storage);
+        setup.settings().register(Transactions::catalog());
+        setup.settings().register(Records::catalog());
+        if matches!(mode, "journal" | "captured_record" | "transaction") {
+            setup.settings().managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(1, 64 * 1_024),
+                capture: limits(1, 64 * 1_024),
+                snapshots: None,
+                journal_tail: 1,
+            });
+        } else {
+            setup.settings().tail(1);
+        }
+        if matches!(mode, "captured_record" | "transaction") {
+            setup.settings().store_records(Projection);
+        }
+    })
+    .await
+    .unwrap();
     let schema = schema();
     storage
         .write_schema(
@@ -313,8 +346,7 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     verify_records(&storage, if mode == "journal" { 0 } else { count }, &payload).await;
     assert_eq!(storage.status().recovery_saved.sequence, if mode.starts_with("direct") { 0 } else { count as u64 });
     verify_recovery(&storage).await;
-    storage.close().await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     Duration::from_secs_f64((admission_ms + flush_data_ms + flush_recovery_ms + replay_ms) / 1_000.0)
 }

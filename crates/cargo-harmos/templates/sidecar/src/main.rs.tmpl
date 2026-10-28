@@ -40,7 +40,7 @@
 /* === Private Functions === */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    harmos_sidecar::run_plugin::<__RUST_MODULE__::Plugin>(std::num::NonZeroUsize::new(4).unwrap()).await?;
+    harmos::sidecar::run_plugin::<__RUST_MODULE__::Plugin>(std::num::NonZeroUsize::new(4).unwrap()).await?;
     Ok(())
 }
 

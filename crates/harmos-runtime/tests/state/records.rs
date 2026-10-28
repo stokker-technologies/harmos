@@ -51,6 +51,27 @@ pub enum ModelLanes {
     #[default]
     Open,
 }
+impl harmos_runtime::Lifecycle for Model {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 impl harmos_runtime::Application for Model {
     type Lanes = ModelLanes;
@@ -58,7 +79,6 @@ impl harmos_runtime::Application for Model {
     type Transaction = harmos_runtime::state::Never;
     type Record = Records;
     type Streams = ();
-    type Resources = ();
 }
 
 /* === Public Functions === */
@@ -67,19 +87,23 @@ impl harmos_runtime::Application for Model {
 
 #[tokio::test]
 async fn undeclared_record_refused() {
-    let runtime = Runtime::<Model>::builder((), ()).runtime().await.unwrap();
+    let runtime = Runtime::<Model>::launch((), ()).await.unwrap();
     let refused = runtime.records.publish(Noted("absent".into())).await;
     assert!(matches!(refused,
         Err(Error::RecordDeclaration { source: DecodeError::UnknownDefinition { id } })
         if id.as_str() == "manager.note"
     ));
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn producers_share_order() {
-    let runtime = Runtime::<Model>::builder((), ()).register(Records::catalog()).runtime().await.unwrap();
+    let runtime = Runtime::<Model>::launch_with((), (), |setup| {
+        setup.settings().register(Records::catalog());
+    })
+    .await
+    .unwrap();
     let first = runtime.records.publish(Noted("first".into())).await.unwrap();
     let producer = runtime.records.as_principal(PrincipalId::new("editor")).caused_by(first.position).clone();
     let second = producer.publish(Noted("second".into())).await.unwrap();
@@ -89,7 +113,7 @@ async fn producers_share_order() {
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[1].metadata.principal, Some(PrincipalId::new("editor")));
     assert_eq!(entries[1].metadata.causation, Some(harmos_runtime::state::CausationId(first.position)));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -104,7 +128,7 @@ async fn discovery_shares_producer() {
         value: String,
     }
 
-    let runtime = Runtime::<Model>::builder((), ()).runtime().await.unwrap();
+    let runtime = Runtime::<Model>::launch((), ()).await.unwrap();
     let schema = SchemaKey {
         payload_encoding: harmos_runtime::storage::PayloadEncoding::PostcardV1,
         id: harmos_runtime::Identifier::new("plugin.note").unwrap(),
@@ -166,7 +190,7 @@ async fn discovery_shares_producer() {
     assert_eq!(producer.definitions().len(), 1);
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     drop(producer);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */
@@ -193,10 +217,14 @@ async fn record_registration_uses_runtime_schema_settings() {
         if !accepted {
             settings.preparation_bytes = NonZeroUsize::new(1).unwrap();
         }
-        let runtime = Runtime::<Model>::builder((), ()).schema_settings(settings).runtime().await.unwrap();
+        let runtime = Runtime::<Model>::launch_with((), (), |setup| {
+            setup.settings().schema_settings(settings);
+        })
+        .await
+        .unwrap();
         let result = runtime.records.register("configured", key.clone(), graph.clone()).await;
         assert_eq!(result.is_ok(), accepted);
         assert_eq!(runtime.records.definition(&key).is_some(), accepted);
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }

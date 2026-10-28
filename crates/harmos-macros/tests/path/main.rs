@@ -96,12 +96,7 @@ fn crate_builds_against() {
     let facade = output.join("libfacade.rlib");
     assert!(facade.is_file(), "the facade build did not produce {}", facade.display());
 
-    for fixture in [
-        "facade_message_with_override.rs",
-        "facade_operations_with_override.rs",
-        "facade_catalog_with_override.rs",
-        "facade_lanes_with_override.rs",
-    ] {
+    for fixture in ["facade_message_with_override.rs", "facade_operations_with_override.rs", "facade_lanes_with_override.rs"] {
         let compiled = author(&rustc, &fixtures, &dependencies, &output, &facade, fixture, &[]);
         assert!(
             compiled.status.success(),

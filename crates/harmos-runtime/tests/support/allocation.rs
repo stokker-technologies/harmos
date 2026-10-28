@@ -98,10 +98,13 @@ struct Counting;
 pub enum Lanes {
     #[default]
     Open,
+
     #[lane(serial)]
     Serial,
+
     #[lane(concurrent(2))]
     Concurrent,
+
     #[lane(unbounded)]
     Unbounded,
 }
@@ -110,13 +113,34 @@ pub enum Lanes {
 
 /* === Implementations === */
 
+impl harmos_runtime::Lifecycle for Probe {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl Application for Probe {
     type Lanes = Lanes;
     type State = ();
     type Transaction = Never;
     type Record = ();
     type Streams = feeds::Bank;
-    type Resources = ();
 }
 
 // The one unsafe block this crate's tests carry: a pass-through allocator is
@@ -176,7 +200,7 @@ pub async fn streams_r004_publish_cost_is_independent_of_the_window_size() {
         Wide::WINDOW,
     );
 
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 pub async fn streams_ac006_concurrent_waveform_measurement() {
@@ -267,7 +291,7 @@ pub async fn streams_ac006_concurrent_waveform_measurement() {
         Wide::WINDOW,
     );
 
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Private Functions === */
@@ -292,7 +316,11 @@ fn count_allocation() {
 }
 
 async fn measured_runtime() -> Runtime<Probe> {
-    Runtime::<Probe>::builder((), ()).register(feeds::Bank::catalog()).runtime().await.expect("a memory-only boot recovers nothing")
+    Runtime::<Probe>::launch_with((), (), |setup| {
+        setup.settings().register(feeds::Bank::catalog());
+    })
+    .await
+    .expect("a memory-only boot recovers nothing")
 }
 
 async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin)) -> Option<Item<S>> {

@@ -416,7 +416,8 @@ pub(super) fn dispatch_native(
             submission.preparation = Some(decoded);
         }
     }
-    let prepared = catch_unwind(AssertUnwindSafe(|| factory.prepare_encoded(&input.payload)))
+    let resources = operations.resources_for(&submission.entry);
+    let prepared = catch_unwind(AssertUnwindSafe(|| factory.prepare_encoded(resources, &input.payload)))
         .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
         .map_err(|source| Error::OperationFailed {
             operation: name,
@@ -428,11 +429,11 @@ pub(super) fn dispatch_native(
 
 pub(super) fn dispatch_prepared(
     operations: &Manager, submission: Submission, source: Source, parent: Option<Parent<'_>>,
-    prepared: harmos_sdk::operations::registration::PreparedNative, mut request: super::binding::Request<Vec<u8>>,
+    prepared: harmos_sdk::__private::PreparedNative, mut request: super::binding::Request<Vec<u8>>,
 ) -> Result<EncodedInvocation> {
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
-    let harmos_sdk::operations::registration::PreparedNative { instance, grant, key, .. } = prepared;
+    let harmos_sdk::__private::PreparedNative { instance, grant, key, .. } = prepared;
     let instance = std::sync::Mutex::new(Some(instance));
     let binding = super::authored::factory_with::<Encoded, ()>(operations, move |_, ()| {
         instance.lock().expect("native preparation lock is healthy").take().ok_or(harmos_sdk::ServingError::Uninitialized)
@@ -476,7 +477,7 @@ pub(super) fn budget(timeout: Duration, submitted: tokio::time::Instant) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::RegistrationExt;
+    use crate::operations::RegistrationExt;
 
     #[crate::lanes]
     enum Lanes {
@@ -485,13 +486,34 @@ mod tests {
     }
 
     struct Model;
+    impl crate::Lifecycle for Model {
+        type Config = ();
+        type Error = std::convert::Infallible;
+        type Context = crate::Startup<Self>;
+
+        async fn prepare(_: (), _: &mut crate::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+            Ok(Self)
+        }
+
+        async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
     impl crate::Application for Model {
         type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
         type Streams = ();
-        type Resources = ();
     }
 
     #[crate::operation(harmos_path = crate, resources = [], id = "fenced.probe", response = u64,
@@ -515,10 +537,9 @@ mod tests {
 
     #[tokio::test]
     async fn assigned_identity_fences_before_decoding() {
-        let builder = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog());
-        let runtime = builder.runtime().await.unwrap();
-        let batch = harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).operation::<Probe>();
-        runtime.register(batch.clone().defaults()).await.unwrap();
+        let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
+        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<Probe>();
+        runtime.register_batch(batch.clone().lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
         let entry = runtime.operations.entry(Probe::ID).unwrap();
         let fingerprint = entry.declared().fingerprint.0;
         let generation = entry.generation.value();
@@ -540,8 +561,8 @@ mod tests {
 
         let id = crate::QualifiedId::parse("host.fenced.probe").unwrap();
         runtime.unregister(&id).await.unwrap();
-        runtime.register(batch.defaults()).await.unwrap();
+        runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
         assert!(matches!(submit(fingerprint, generation), Err(Error::InvalidInput { field: "encoded operation identity", .. })));
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }

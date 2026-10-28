@@ -10,15 +10,27 @@ without adding another forwarding operation or another local operation tree.
 
 ## Advertisement And Registration
 
-Native and guest plugin attributes describe provided and required catalogs.
-Advertisement does not start execution. The same catalog provides portable
-`Operations::catalog()` and runtime-gated `Operations::registration(dependencies)`.
+Authors depend on the `harmos` facade with `sidecar` or `guest`. Use the matching
+`harmos::sidecar` or `harmos::guest` attribute, including explicit
+requirements and publication streams. The shared `Plugin` trait extends
+`Lifecycle` and declares its complete operation inventory once:
 
-Carrier setup constructs `WireTable::new(owner)` after host assignment. The
-plugin's binding hook receives that table and calls
-`table.register(Operations::registration(dependencies))`. Typed endpoint contracts
-and consumer-selected stream limits remain with their existing owners.
-`unregister(&QualifiedId)` withdraws an entry and awaits settlement.
+```rust
+const CATALOGS: &'static [harmos::Catalog] = &[Operations::CATALOG];
+```
+
+That slice drives both inert metadata inspection and executable binding. Keep
+feature selection on the selected catalog types or members. Inspection never
+runs prepare or initialize. Portable catalogs remain available without runtime
+execution dependencies.
+
+Async `prepare(config, &mut Setup<Self>)` acquires and inserts resources using
+`setup.resource::<T>(value)` and adjusts optional settings through
+`setup.settings()`. Plugin setup has no operations registration method: the SDK
+owner installs constant catalogs and observer attachments, validates every setup
+error, then calls initialize. Plugin authors never construct a WireTable or a
+resource store. Typed stream endpoint contracts and consumer-selected stream
+limits keep their existing owners.
 
 The host authenticates advertisements and checks owner equality; plugins cannot
 choose a registration prefix. Advertisements carry local IDs, while routed
@@ -27,23 +39,18 @@ validate those IDs without adding a prefix. Old version-only peers are refused.
 
 ## Lifecycle Responsibilities
 
-The shared SDK plugin contract supplies `Config`, `Error`, `Context` and
-`Resources` associated types for plugin composition and these responsibilities:
+The shared `Lifecycle` contract owns `Config`, `Error` and `Context`:
 
 | Hook | Responsibility |
 | --- | --- |
-| `prepare(config)` | Construct the plugin from decoded configuration. |
-| `resources()` | Expose the retained shared resource owner. |
-| `initialize(context)` | Acquire/start resources that need activation and retain their lifecycle owners. |
-| `bind_operations(table)` | Register the catalog factories with a dependency snapshot. |
-| `stop(context)` | Settle application work during shutdown. |
-| `cleanup()` | Release resources, including partial initialization state. |
+| `prepare(config, setup)` | Asynchronously acquire resources, configure setup and return their owner. |
+| `initialize(context)` | Activate the validated owner with the assigned carrier context. |
+| `stop(context)` | Close resources after supervised consumers drain. |
+| `cleanup()` | Release ownership, including partial initialization state. |
 
-The shared SDK owner prepares the plugin, awaits initialization, then binds and
-validates its advertised contracts before marking it initialized. Account for
-failures in both initialization and binding. Stop active consumers before
-releasing shared devices and connections; do not rely on dropping a handle
-to settle asynchronous work.
+The SDK validates resources, catalogs, attachments and contracts before
+initialize. Stop and cleanup remain fallible and preserve supervised cleanup
+ownership; dropping a handle does not settle asynchronous work.
 
 ## Requirements And Isolation
 
@@ -51,6 +58,11 @@ A plugin can require operations implemented by another registered provider.
 The host matches complete contracts, including fingerprints, schema, policy,
 visibility and replay behavior. Shared visibility and unambiguous selection
 are required; explicit provider selection does not relax compatibility.
+
+Native observers do not declare a typed resources bundle. Their initialization
+receives `&ExecutionContext`, and callbacks receive `ObserverContext<'_, Host>`
+(with `Supervisor` as the default host type). Call `resource::<T>()` on that
+context to resolve an `Arc<T>`; resource lookup returns `Result<_, ResourceError>`.
 
 For genuine process isolation, a separate sidecar can host the product runtime
 while another plugin requires its contracts through the entry crate's default
@@ -60,17 +72,17 @@ different integration boundary.
 
 ## Native And Guest Capabilities
 
-Use `harmos-sidecar` for native process carriers and `harmos-guest` for Wasm
-components. Both share SDK contracts without depending on the full host runtime.
-Guest operations import `harmos_guest::{Context, Operation, Response}`: these are the SDK types, with no host runtime dependency.
-`run(self, ctx: Context<'_, Self>)` consumes the request. Declare resources and callees with `resources = [...]` and
-`operations = [...]`; use infallible `ctx.resource::<T>()`, `ctx.operation(request)` and the derived `ctx.streams()`.
-Guest plugin lifecycle hooks instead use `harmos_guest::kit::Context`. Initialize shared resources in the plugin lifecycle,
-then supply them in the registration dependency snapshot. Authored operations have no initialization hook or mutable handler state.
-A required remote operation needs only its declaration, including in a runtime-enabled carrier crate.
-
-Host composition uses `harmos`; `plugin-sidecar` and `plugin-guest` select
-the corresponding host facilities and imply `plugin`.
+Use `harmos` with `sidecar` for native process carriers or `guest` for Wasm
+components and native guest hosting. The corresponding `sidecar` and `guest`
+modules expose symmetric plugin, catalog and operation attributes. Shared
+operation implementations import `harmos::{Context, Operation, Response}` and
+consume their request in `run(self, ctx)`. Declare resources and callees with
+`resources = [...]` and `operations = [...]`; use infallible
+`ctx.resource::<T>()`, `ctx.operation(request)` and derived `ctx.streams()`.
+Lifecycle contexts are `harmos::sidecar::Supervisor` and
+`harmos::guest::kit::Context`. They share the SDK lifecycle without introducing a
+native host runtime into Wasm. Required remote operations need only portable
+declarations.
 
 A guest is not automatically able to embed a native product runtime. Check
 target-compatible dependencies, resource dependencies, host calls and permissions.

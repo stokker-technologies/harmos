@@ -21,8 +21,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 // Local Imports
 use super::contract;
 use crate::sidecar::witness::Witness;
-use contract::{POLICY, ReadDeclaration, Readings, Step};
-use harmos_runtime::operations::{OperationPolicy, WireTable};
+use contract::{POLICY, ReadDeclaration, Step};
+use harmos_runtime::operations::OperationPolicy;
 use harmos_runtime::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -80,6 +80,11 @@ struct AttemptGuard {
 
 /* === Enums === */
 
+#[harmos_runtime::catalog]
+enum Handlers {
+    Read(Reading),
+}
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -89,53 +94,43 @@ impl harmos_operations::lifecycle::Policy for Provider {
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos_runtime::plugin(id = "process_provider", provides = Readings, requires = ())]
-impl harmos_runtime::Plugin for Provider {
+impl harmos_runtime::Lifecycle for Provider {
     type Context = Supervisor;
     type Config = String;
     type Error = Refusal;
-    type Resources = Resources;
 
-    fn prepare(key: String) -> Result<Self, Refusal> {
-        Ok(Self {
+    async fn prepare(key: String, setup: &mut harmos_sdk::Setup<Self>) -> std::result::Result<Self, Refusal> {
+        let plugin = Self {
             resources: Arc::new(Resources {
                 marks: Witness::find(&key).ok_or_else(|| Refusal::of("the story witness is gone"))?,
                 initialized: AtomicBool::new(false),
             }),
-        })
+        };
+        setup.resource::<Resources>(Arc::clone(&plugin.resources));
+        Ok(plugin)
     }
 
-    async fn initialize(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+    async fn initialize(&mut self, _: &Supervisor) -> std::result::Result<(), Refusal> {
         self.resources.marks.mark("initialized");
         self.resources.initialized.store(true, Ordering::SeqCst);
         Ok(())
     }
 
-    fn resources(&self) -> Arc<Resources> {
-        Arc::clone(&self.resources)
-    }
-
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<Reading>(),
-        )
-    }
-
-    async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Supervisor) -> std::result::Result<(), Refusal> {
         self.resources.initialized.store(false, Ordering::SeqCst);
         self.resources.marks.mark("shutdown");
         Ok(())
     }
 
-    async fn cleanup(&mut self) -> Result<(), Refusal> {
+    async fn cleanup(&mut self) -> std::result::Result<(), Refusal> {
         self.resources.marks.mark("cleaned");
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "process_provider", requires = ())]
+impl harmos_runtime::Plugin for Provider {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[Handlers::CATALOG];
 }
 
 impl harmos_runtime::Operation for Reading {

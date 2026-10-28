@@ -25,8 +25,6 @@ crate-type = ["cdylib", "rlib"]
 # === Features === #
 
 [features]
-default = ["runtime"]
-runtime = []
 benchmark = []
 
 # === Dependencies === #
@@ -34,7 +32,7 @@ benchmark = []
 # The Guest Executes Shared Operations With Target-Compatible Resources.
 [dependencies]
 # Local
-harmos-guest = { workspace = true, features = ["derive", "grpc", "kit", "streaming"] }
+harmos = { workspace = true, features = ["guest"] }
 schematic-operations = { path = "../operations", features = ["runtime"] }
 
 # Git

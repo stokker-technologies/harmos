@@ -114,20 +114,12 @@ async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
         entered,
         release: Semaphore::new(0),
     });
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(gauge.clone()).unwrap();
-                dependencies
-            })
-            .operation::<MeasureContractDeclaration>(),
-            lane,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Gauge>(gauge.clone());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<Operations>(lane).await.unwrap();
     let mut instances = Vec::new();
     for _ in 0..count {
         instances.push(runtime.operation(MeasureContractDeclaration {}).start().await.unwrap());
@@ -144,7 +136,7 @@ async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
     assert_eq!(gauge.maximum.load(Ordering::SeqCst), admitted);
     assert_eq!(gauge.ran.load(Ordering::SeqCst), count);
     assert_eq!(gauge.active.load(Ordering::SeqCst), 0);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */

@@ -24,7 +24,7 @@ simulation = ["harmos/simulation"]
 # transaction it is decoded as.
 [dependencies]
 # Local
-harmos = { workspace = true, default-features = true, features = ["runtime", "plugin-guest", "plugin-sidecar"] }
+harmos = { workspace = true, default-features = true, features = ["runtime", "guest", "sidecar"] }
 schematic-domain = { path = "../domain" }
 schematic-operations = { path = "../operations" }
 schematic-storage = { path = "../storage" }

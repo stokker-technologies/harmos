@@ -60,9 +60,36 @@ pub enum Lanes {
     Open,
 }
 
+#[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
+pub enum Operations {
+    Echo(EchoDeclaration),
+}
+
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::Lifecycle for Model {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 impl harmos_runtime::Application for Model {
     type Lanes = Lanes;
@@ -70,7 +97,6 @@ impl harmos_runtime::Application for Model {
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
     type Streams = ();
-    type Resources = ();
 }
 
 impl harmos_runtime::operations::Operation for EchoDeclaration {

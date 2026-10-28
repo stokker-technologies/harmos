@@ -52,12 +52,6 @@ pub(crate) struct Fixture {
 
 impl Fixture {
     pub(crate) async fn new(config: StorageSettings) -> Self {
-        let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-            .register(catalog())
-            .register(operations::Lanes::catalog())
-            .runtime()
-            .await
-            .unwrap();
         let data = Arc::new(Data::new(history()));
         let recovery = Arc::new(Recovery::new(history()));
         let storage = StorageManager::new(
@@ -68,6 +62,12 @@ impl Fixture {
             config,
         )
         .unwrap();
+        let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            setup.resource(std::ops::Deref::deref(&storage).erased());
+            setup.settings().register(catalog());
+        })
+        .await
+        .unwrap();
         storage.start(&runtime).await.unwrap();
         Self { runtime, storage, data, recovery }
     }
@@ -75,7 +75,7 @@ impl Fixture {
     pub(crate) async fn finish(self) {
         self.storage.close().await.unwrap();
         assert!(self.runtime.operations.resident(&harmos_runtime::operations::resident::Key::root("harmos-storage")).is_none());
-        self.runtime.stop().await.unwrap();
+        self.runtime.shutdown().await.unwrap();
     }
 }
 

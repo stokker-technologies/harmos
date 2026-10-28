@@ -54,10 +54,13 @@ pub(crate) struct Editor;
 pub enum Lanes {
     #[default]
     Open,
+
     #[lane(serial)]
     Serial,
+
     #[lane(concurrent(2))]
     Concurrent,
+
     #[lane(unbounded)]
     Unbounded,
 }
@@ -136,6 +139,27 @@ impl From<Rename> for Change {
         Self::Rename(change)
     }
 }
+impl harmos_runtime::Lifecycle for Editor {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 impl Application for Editor {
     type Lanes = Lanes;
@@ -143,7 +167,6 @@ impl Application for Editor {
     type Transaction = Change;
     type Record = Note;
     type Streams = ();
-    type Resources = ();
 }
 
 impl harmos_runtime::state::TransactionCatalog<Sheet> for Change {}

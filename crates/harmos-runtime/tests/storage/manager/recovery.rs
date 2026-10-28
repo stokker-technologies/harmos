@@ -20,7 +20,7 @@ use std::time::Duration;
 // Third Party Imports
 // Local Imports
 use super::metadata;
-use crate::storage::{Bank, Data, Fixture, Ledger, Recovery, Runtime, catalog, config, operations};
+use crate::storage::{Bank, Data, Fixture, Ledger, Recovery, Runtime, catalog, config};
 use harmos_runtime::storage::{StagedFile, StorageBackends, StorageManager};
 
 /* === Constants === */
@@ -80,8 +80,11 @@ fn crash_image(source: &Fixture) -> Arc<Data> {
 pub(super) async fn restart(source: &Fixture) -> Fixture {
     let data = crash_image(source);
     let recovery = Arc::new(Recovery::new(source.data.history.clone()));
-    let runtime =
-        Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).register(operations::Lanes::catalog()).runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(catalog());
+    })
+    .await
+    .unwrap();
     let settings = config();
     let storage = StorageManager::new(
         StorageBackends {
@@ -243,13 +246,17 @@ async fn failed_recovery_releases() {
             // File Restoration Succeeded Before The Recovery Owner Failed.
             _ => recovery.control.fail_open.store(true, Ordering::SeqCst),
         }
-        let runtime = Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).runtime().await.unwrap();
+        let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            setup.settings().register(catalog());
+        })
+        .await
+        .unwrap();
         let storage: StorageManager = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery }, settings).unwrap();
         assert!(storage.start(&runtime).await.is_err());
         storage.close().await.unwrap();
         assert_eq!(storage.status().pending_bytes, 0);
         assert_eq!(data.saved_productions.lock().unwrap().len(), 2);
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
     drop((first, second));
     source.finish().await;

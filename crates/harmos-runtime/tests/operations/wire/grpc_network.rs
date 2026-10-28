@@ -40,12 +40,6 @@ use super::*;
 
 /* === Private Functions === */
 
-fn scenario(behavior: Behavior) -> harmos_runtime::Dependencies {
-    let mut dependencies = harmos_runtime::Dependencies::new();
-    dependencies.insert(Arc::new(behavior)).unwrap();
-    dependencies
-}
-
 /* === Tests === */
 
 #[tokio::test]
@@ -56,7 +50,6 @@ async fn filesystem_hash_roundtrip() {
     let path = directory.path().join("input.bin");
     let bytes = b"host filesystem across grpc";
     std::fs::write(&path, bytes).unwrap();
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let settings = crate::storage::fixture::config();
     let primary = JsonStorage::new(
         JsonStorageSettings {
@@ -70,15 +63,12 @@ async fn filesystem_hash_roundtrip() {
         max_checkpoint_bytes: settings.request.max_pending_write_bytes,
     });
     let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
-    storage.start(&runtime).await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.settings().storage(&storage);
+        setup.operations::<harmos_operations::Storage>(Lanes::Open);
+    })
+    .await
+    .unwrap();
 
     let attached = runtime.grpc().attach(super::settings()).await.unwrap();
     let address = format!("http://{}", attached.local_addr());
@@ -94,7 +84,7 @@ async fn filesystem_hash_roundtrip() {
     assert_eq!(answer.sha256, <[u8; 32]>::from(Sha256::digest(&bytes[5..15])));
     drop(attached);
     storage.close().await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -120,29 +110,14 @@ async fn builtin_grpc_roundtrip() {
         }
     }
 
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let release = Arc::new(tokio::sync::Notify::new());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(release.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ParkedContract>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_operations::Lifecycle::registration(harmos_runtime::Dependencies::new()),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<tokio::sync::Notify>(release.clone());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<crate::operations::Single<ParkedContract>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<harmos_operations::Lifecycle>(Lanes::Open).await.unwrap();
     let paths = runtime
         .operations
         .grpc_methods()
@@ -174,45 +149,22 @@ async fn builtin_grpc_roundtrip() {
     assert!(cancelled.cancellation_requested);
     assert!(parked.await.is_err());
     drop(attached);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn external_authority_parity() {
     use harmos_domain::plugin::Grant;
+    use harmos_storage::{ErasedCatalog, StorageManager};
 
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(())).unwrap();
-                dependencies
-            })
-            .operation::<GuardedDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(())).unwrap();
-                dependencies
-            })
-            .operation::<DescendantDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(harmos_runtime::builtin::catalog_registration::<()>(None).unwrap(), Lanes::Open))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Option<Arc<StorageManager<ErasedCatalog>>>>(None);
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<crate::operations::Single<GuardedDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<DescendantDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<harmos_operations::Host>(Lanes::Open).await.unwrap();
     // Internal Boot Work Does Not Freeze The Later Listener Policy.
     assert_eq!(runtime.operation(GuardedDeclaration {}).run().await.unwrap().actor, "host:anonymous");
     let mode = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -293,23 +245,11 @@ async fn external_authority_parity() {
     mode.store(0, std::sync::atomic::Ordering::Release);
     assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap(), "external:alice");
     assert!(runtime.operations.register_authorizer(policy).is_err());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     // Existing Explicit Anonymous Routes Have No New Registration Requirement.
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(())).unwrap();
-                dependencies
-            })
-            .operation::<GuardedDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<GuardedDeclaration>>(Lanes::Open).await.unwrap();
     runtime
         .grpc()
         .register_service(Endpoint {
@@ -319,21 +259,9 @@ async fn external_authority_parity() {
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
     assert_eq!(external_call(channel, None, "/fixture.Identity/Guarded").await.unwrap(), "external:anonymous");
-    runtime.stop().await.unwrap();
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(())).unwrap();
-                dependencies
-            })
-            .operation::<GuardedDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    runtime.shutdown().await.unwrap();
+    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<GuardedDeclaration>>(Lanes::Open).await.unwrap();
     let operations = Arc::new(runtime.operations.clone());
     runtime
         .operations
@@ -351,12 +279,12 @@ async fn external_authority_parity() {
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
     assert_eq!(external_call(channel, None, "/fixture.Identity/Guarded").await.unwrap_err().code(), tonic::Code::PermissionDenied);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn empty_manager_attaches() {
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
     assert!(runtime.grpc().local_addr().is_none());
     for round in 0..2 {
         let attached = runtime.grpc().attach(settings()).await.unwrap();
@@ -381,7 +309,7 @@ async fn empty_manager_attaches() {
     same.address = address;
     let rebound = runtime.grpc().attach(same).await.unwrap();
     assert_eq!(rebound.local_addr(), address);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert!(runtime.grpc().local_addr().is_none());
     assert!(runtime.grpc().attach(settings()).await.is_err());
 }
@@ -389,15 +317,12 @@ async fn empty_manager_attaches() {
 #[tokio::test]
 async fn independent_listeners() {
     use tonic::transport::{Certificate, ClientTlsConfig, Identity, ServerTlsConfig};
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(scenario(Behavior::Read)).operation::<WhoDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Behavior>(Behavior::read());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -465,7 +390,7 @@ async fn independent_listeners() {
     assert_eq!(call(replacement_channel.clone(), Some("Bearer alice")).await.unwrap(), "alice");
 
     // Shutdown Cancels Both Before Draining Their Independent Residents.
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert!(call(replacement_channel, Some("Bearer alice")).await.is_err());
     assert!(call(secure_channel, Some("Bearer alice")).await.is_err());
     assert!(runtime.grpc().local_addr().is_none());
@@ -476,29 +401,14 @@ async fn independent_listeners() {
 #[tokio::test]
 async fn stalled_listener_settles() {
     use harmos_runtime::grpc::OutputEnvelope;
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let stopped = Arc::new(tokio::sync::Semaphore::new(0));
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(Behavior::Holding(stopped.clone()))).unwrap();
-                dependencies
-            })
-            .operation::<HoldDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(scenario(Behavior::Read)).operation::<WhoDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Behavior>(Behavior::holding(stopped.clone()));
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<crate::operations::Single<HoldDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -555,40 +465,21 @@ async fn stalled_listener_settles() {
         assert_eq!(call(channel, Some("Bearer alice")).await.unwrap(), "alice");
         replacement.detach().await.unwrap();
     }
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn shutdown_streams_unavailable() {
     use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(Behavior::Holding(Arc::new(tokio::sync::Semaphore::new(0))))).unwrap();
-                dependencies
-            })
-            .operation::<HoldDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
     let uploading = Arc::new(tokio::sync::Notify::new());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(Behavior::Uploading(uploading.clone()))).unwrap();
-                dependencies
-            })
-            .operation::<UploadDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let stopped = Arc::new(tokio::sync::Semaphore::new(0));
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Behavior>(Behavior::holding_and_uploading(stopped.clone(), uploading.clone()));
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<crate::operations::Single<HoldDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<UploadDeclaration>>(Lanes::Open).await.unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -650,14 +541,14 @@ async fn shutdown_streams_unavailable() {
     assert_eq!(streamed.code(), tonic::Code::Unavailable, "{streamed:?}");
     assert_eq!(uploaded.code(), tonic::Code::Unavailable, "{uploaded:?}");
     drop(attached);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
 async fn grpc_web_served() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
     let mut settings = settings();
     settings.web = true;
     let attached = runtime.grpc().attach(settings).await.unwrap();
@@ -677,7 +568,7 @@ async fn grpc_web_served() {
     assert!(response.contains("application/grpc-web"), "{response}");
     assert!(response.contains("grpc-status: 12"), "{response}");
     drop(attached);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -685,28 +576,13 @@ async fn grpc_web_cors() {
     const ORIGIN: &str = "tauri://localhost";
     const OTHER: &str = "https://other.example";
     const ALLOW: &str = "access-control-allow-origin";
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(scenario(Behavior::Read)).operation::<WhoDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(Behavior::Read)).unwrap();
-                dependencies
-            })
-            .operation::<DownloadDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Behavior>(Behavior::read());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<DownloadDeclaration>>(Lanes::Open).await.unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -787,60 +663,16 @@ async fn grpc_web_cors() {
     assert!(!unlisted.starts_with("http/1.1 204"), "{unlisted}");
     assert!(!unlisted.contains("access-control"), "{unlisted}");
     drop(attached);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn status_propagation() {
-    let statuses = failures(|operations| async move {
-        operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(Behavior::Reject)).unwrap();
-                    dependencies
-                })
-                .operation::<WhoDeclaration>(),
-                Lanes::Open,
-            ))
-            .await
-            .unwrap();
-        operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(Behavior::Reject)).unwrap();
-                    dependencies
-                })
-                .operation::<DownloadDeclaration>(),
-                Lanes::Open,
-            ))
-            .await
-            .unwrap();
-        operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(Behavior::Reject)).unwrap();
-                    dependencies
-                })
-                .operation::<UploadDeclaration>(),
-                Lanes::Open,
-            ))
-            .await
-            .unwrap();
-        operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(Behavior::Reject)).unwrap();
-                    dependencies
-                })
-                .operation::<ExchangeDeclaration>(),
-                Lanes::Open,
-            ))
-            .await
-            .unwrap();
+    let statuses = failures(Behavior::reject(), |operations| async move {
+        operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
+        operations.register::<crate::operations::Single<DownloadDeclaration>>(Lanes::Open).await.unwrap();
+        operations.register::<crate::operations::Single<UploadDeclaration>>(Lanes::Open).await.unwrap();
+        operations.register::<crate::operations::Single<ExchangeDeclaration>>(Lanes::Open).await.unwrap();
     })
     .await;
     for status in statuses {
@@ -850,55 +682,11 @@ async fn status_propagation() {
         assert_eq!(status.metadata().get("x-fixture-rejection").unwrap(), "absent");
         assert_eq!(status.metadata().get_bin("x-fixture-context-bin").unwrap().to_bytes().unwrap().as_ref(), &[0, 255, 1]);
     }
-    let statuses = failures(|operations| async move {
-        operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(Behavior::Crash)).unwrap();
-                    dependencies
-                })
-                .operation::<WhoDeclaration>(),
-                Lanes::Open,
-            ))
-            .await
-            .unwrap();
-        operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(Behavior::Crash)).unwrap();
-                    dependencies
-                })
-                .operation::<DownloadDeclaration>(),
-                Lanes::Open,
-            ))
-            .await
-            .unwrap();
-        operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(Behavior::Crash)).unwrap();
-                    dependencies
-                })
-                .operation::<UploadDeclaration>(),
-                Lanes::Open,
-            ))
-            .await
-            .unwrap();
-        operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(Behavior::Crash)).unwrap();
-                    dependencies
-                })
-                .operation::<ExchangeDeclaration>(),
-                Lanes::Open,
-            ))
-            .await
-            .unwrap();
+    let statuses = failures(Behavior::crash(), |operations| async move {
+        operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
+        operations.register::<crate::operations::Single<DownloadDeclaration>>(Lanes::Open).await.unwrap();
+        operations.register::<crate::operations::Single<UploadDeclaration>>(Lanes::Open).await.unwrap();
+        operations.register::<crate::operations::Single<ExchangeDeclaration>>(Lanes::Open).await.unwrap();
     })
     .await;
     for status in statuses {
@@ -909,16 +697,13 @@ async fn status_propagation() {
 
 #[tokio::test]
 async fn runtime_stops_listener() {
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Behavior>(Behavior::read());
+    })
+    .await
+    .unwrap();
     assert!(runtime.grpc().local_addr().is_none());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(scenario(Behavior::Read)).operation::<WhoDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
     let trace = Arc::new(Mutex::new(Vec::new()));
     runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
@@ -937,7 +722,7 @@ async fn runtime_stops_listener() {
     assert_eq!(alice.unwrap(), "alice");
     assert_eq!(bob.unwrap(), "bob");
     assert_eq!(*trace.lock().unwrap(), [tonic::Code::Unauthenticated, tonic::Code::Ok, tonic::Code::Ok]);
-    (runtime.stop()).await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert!(runtime.grpc().local_addr().is_none());
     assert!(call(channel, Some("Bearer alice")).await.is_err());
 }
@@ -973,7 +758,7 @@ impl harmos_runtime::Operation for NativeUpload {
         let context = host.borrow();
         let input = ctx.streams();
         let result: ::core::result::Result<Reply, Self::Error> = async move {
-            if let Behavior::Uploading(started) = behavior.as_ref() {
+            if let Some(started) = &behavior.uploading {
                 started.notify_one();
             }
             while input.recv().await.is_some() {}
@@ -1020,17 +805,21 @@ async fn native_batch_streaming_preserves_principals() {
 
 async fn streaming_principals(native: bool) {
     use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    use harmos_runtime::RegistrationExt;
-    let mut dependencies = harmos_runtime::Dependencies::new();
-    dependencies.insert(Arc::new(Behavior::Uploading(Arc::new(tokio::sync::Notify::new())))).unwrap();
-    let batch = harmos_runtime::RegistrationBatch::new(dependencies);
-    let batch = if native {
-        batch.operation::<NativeDownload>().operation::<NativeUpload>().operation::<NativeExchange>()
+    let behavior = Arc::new(Behavior::uploading(Arc::new(tokio::sync::Notify::new())));
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Behavior>(behavior.clone());
+    })
+    .await
+    .unwrap();
+    if native {
+        runtime.operations.register::<crate::operations::Single<NativeDownload>>(Lanes::Open).await.unwrap();
+        runtime.operations.register::<crate::operations::Single<NativeUpload>>(Lanes::Open).await.unwrap();
+        runtime.operations.register::<crate::operations::Single<NativeExchange>>(Lanes::Open).await.unwrap();
     } else {
-        batch.operation::<DownloadDeclaration>().operation::<UploadDeclaration>().operation::<ExchangeDeclaration>()
-    };
-    runtime.operations.register(batch.lane(Lanes::Open)).await.unwrap();
+        runtime.operations.register::<crate::operations::Single<DownloadDeclaration>>(Lanes::Open).await.unwrap();
+        runtime.operations.register::<crate::operations::Single<UploadDeclaration>>(Lanes::Open).await.unwrap();
+        runtime.operations.register::<crate::operations::Single<ExchangeDeclaration>>(Lanes::Open).await.unwrap();
+    }
     let trace = Arc::new(Mutex::new(Vec::new()));
     runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
@@ -1107,22 +896,19 @@ async fn streaming_principals(native: bool) {
         }
     }
     assert_eq!(*trace.lock().unwrap(), [tonic::Code::Ok; 3]);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
 async fn configured_tls_serves() {
     use tonic::transport::{Certificate, ClientTlsConfig, Identity, ServerTlsConfig};
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(scenario(Behavior::Read)).operation::<WhoDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Behavior>(Behavior::read());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -1149,7 +935,7 @@ async fn configured_tls_serves() {
         .await
         .unwrap();
     assert_eq!(call(channel, Some("Bearer alice")).await.unwrap(), "alice");
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -1177,21 +963,13 @@ async fn observes_cancel_deadline() {
     }
 
     for expired in [false, true] {
-        let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
         let stopped = Arc::new(tokio::sync::Semaphore::new(0));
-        runtime
-            .operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(Behavior::Holding(stopped.clone()))).unwrap();
-                    dependencies
-                })
-                .operation::<NativeHold>(),
-                Lanes::Open,
-            ))
-            .await
-            .unwrap();
+        let runtime = Runtime::<App>::launch_with((), (), |setup| {
+            setup.resource::<Behavior>(Behavior::holding(stopped.clone()));
+        })
+        .await
+        .unwrap();
+        runtime.operations.register::<crate::operations::Single<NativeHold>>(Lanes::Open).await.unwrap();
         let trace = Arc::new(Mutex::new(Vec::new()));
         runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
         runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
@@ -1227,13 +1005,13 @@ async fn observes_cancel_deadline() {
         drop(stream);
         (stopped.acquire()).await.unwrap().forget();
         assert_eq!(*trace.lock().unwrap(), [if expired { tonic::Code::DeadlineExceeded } else { tonic::Code::Cancelled }]);
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
 #[tokio::test]
 async fn authentication_bounded_operation() {
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
     let trace = Arc::new(Mutex::new(Vec::new()));
     runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(PendingAuthentication)))).unwrap();
@@ -1252,7 +1030,7 @@ async fn authentication_bounded_operation() {
     let result = (call(channel, Some("Bearer alice"))).await;
     assert_eq!(result.unwrap_err().code(), tonic::Code::DeadlineExceeded);
     assert_eq!(*trace.lock().unwrap(), [tonic::Code::DeadlineExceeded]);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -1261,15 +1039,12 @@ async fn access_never_grant() {
         ServerReflectionRequest, server_reflection_client::ServerReflectionClient, server_reflection_request::MessageRequest,
         server_reflection_response::MessageResponse,
     };
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(scenario(Behavior::Read)).operation::<WhoDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Behavior>(Behavior::read());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime.grpc().register_middleware(Arc::new(DiscoveryAccess)).unwrap();
     runtime
@@ -1302,5 +1077,5 @@ async fn access_never_grant() {
     assert!(response.message().await.unwrap().is_none());
     assert_eq!(call(channel.clone(), Some("Bearer bob")).await.unwrap_err().code(), tonic::Code::PermissionDenied);
     assert_eq!(call(channel, Some("Bearer alice")).await.unwrap(), "alice");
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }

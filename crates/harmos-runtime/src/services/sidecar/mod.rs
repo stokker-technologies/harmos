@@ -296,10 +296,10 @@ where
     let remote = observers::Remote::new(arrivals.clone(), Some(context.provider.clone()));
     cleanup.session = Some(observers::Session::new(remote.clone(), operations.clone(), end));
     cleanup.ended = Some(ended);
-    cleanup.session.as_mut().expect("the attempt owns its session").bind()?;
     let plugin = cleanup.instance.as_ref().and_then(|endpoint| endpoint.scope()).cloned();
-    let candidate = observers::stage(&operations, &remote, plugin.as_ref(), settling.observers, settling.publications)
+    let (candidate, observer_context) = observers::stage(&operations, &remote, plugin.as_ref(), settling.observers, settling.publications)
         .map_err(|error| error.to_string())?;
+    cleanup.session.as_mut().expect("the attempt owns its session").bind(observer_context)?;
     let (demand, changes) = tokio::sync::watch::channel(BTreeMap::new());
 
     let connected = executor::timeout(settling.handshake, connecting.connect())

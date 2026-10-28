@@ -21,6 +21,12 @@ Keep generated tooling current with `stkr project update` when adopting company 
 
 ## Operation Context
 
-Operations consume their request in `run(self, ctx: harmos::Context<'_, Self>)`. The guest SDK re-exports the same
-`Operation`, `Context` and `Response` types. Declare `resources` and `operations` on the operation; use
-`ctx.resource::<T>()`, `ctx.operation(request)` and `ctx.streams()`. Plugin lifecycle hooks use `harmos_guest::kit::Context`.
+Operations consume their request in `run(self, ctx: harmos::Context<'_, Self>)`. Declare `resources` and `operations` on the operation; use
+`ctx.resource::<T>()`, `ctx.operation(request)` and `ctx.streams()`. Plugin lifecycle hooks use `harmos::guest::kit::Context`.
+
+## Plugin Lifecycle
+
+`Lifecycle::prepare(config, setup)` constructs the plugin and registers shared resources
+with `setup.resource(value)`. `Plugin::CATALOGS` declares its operation catalogs.
+The owner validates setup before `initialize`, then drains work before `stop` and
+`cleanup` during shutdown. Use the `harmos` facade for contracts, execution and carrier APIs.

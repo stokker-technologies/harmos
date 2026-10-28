@@ -63,7 +63,10 @@ fn owned(change: Change) -> (harmos_runtime::operations::Response<Change>, Weak<
 
 #[tokio::test]
 async fn owned_commit_survives_queued_caller_cancellation_and_tail_eviction() {
-    let runtime = support::booted(support::Ledger::default(), |builder| builder.tail(1)).await;
+    let runtime = support::booted(support::Ledger::default(), |setup| {
+        setup.settings().tail(1);
+    })
+    .await;
     let (transaction, owner) = owned(deposit(4));
     let mut commit = Box::pin(runtime.state.commit_owned(transaction));
     let queued = std::future::poll_fn(|context| Poll::Ready(commit.as_mut().poll(context))).await;
@@ -85,12 +88,15 @@ async fn owned_commit_survives_queued_caller_cancellation_and_tail_eviction() {
     drop(entry);
     drop(feed);
     assert!(owner.upgrade().is_none());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn owned_forward_history_survives_undo_and_redo() {
-    let runtime = support::booted(support::Ledger::default(), |builder| builder.tail(1)).await;
+    let runtime = support::booted(support::Ledger::default(), |setup| {
+        setup.settings().tail(1);
+    })
+    .await;
     let journal = runtime.state.as_principal(support::alice());
     let (transaction, owner) = owned(deposit(4));
     journal.commit_owned(transaction).await.unwrap();
@@ -106,7 +112,7 @@ async fn owned_forward_history_survives_undo_and_redo() {
     journal.undo(support::alice(), harmos_runtime::state::Focus::all()).await.unwrap();
     journal.commit(deposit(2)).await.unwrap();
     assert!(owner.upgrade().is_none());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -121,7 +127,7 @@ async fn keyed_owned_duplicate_releases_the_unused_owner() {
     assert_eq!(support::balance(&runtime, support::HOUSE).await, 4);
     assert!(original.upgrade().is_some());
     assert!(unused.upgrade().is_none());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]

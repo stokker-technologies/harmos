@@ -61,8 +61,8 @@ fn contract_scenario() {
                 let (artifact, sidecar) = (directory.join("book.json"), directory.join("book.jsonl"));
 
                 write(&artifact, 1, Position::ORIGIN, &Ledger::default());
-                let opened = booted(Ledger::default(), |builder| {
-                    builder.recover(Jsonl::<Bank>::sidecar(&sidecar, 1, Position::ORIGIN).expect("a fresh sidecar"))
+                let opened = booted(Ledger::default(), |setup| {
+                    setup.settings().recover(Jsonl::<Bank>::sidecar(&sidecar, 1, Position::ORIGIN).expect("a fresh sidecar"));
                 })
                 .await;
                 opened.state.commit(deposit(30)).await.expect("accepted");
@@ -70,11 +70,11 @@ fn contract_scenario() {
                 let unsaved = ledger(&opened).await;
 
                 // The crash: nothing was saved, so the artifact is still the empty book.
-                opened.stop().await.unwrap();
+                opened.shutdown().await.unwrap();
 
                 let saved = read(&artifact);
-                let recovered = booted(saved.state, |builder| {
-                    builder.recover(Jsonl::<Bank>::sidecar(&sidecar, saved.generation, saved.at).expect("the sidecar is there"))
+                let recovered = booted(saved.state, |setup| {
+                    setup.settings().recover(Jsonl::<Bank>::sidecar(&sidecar, saved.generation, saved.at).expect("the sidecar is there"));
                 })
                 .await;
 
@@ -91,12 +91,12 @@ fn contract_scenario() {
                 let (artifact, sidecar) = (directory.join("book.json"), directory.join("book.jsonl"));
 
                 write(&artifact, 1, Position::ORIGIN, &Ledger::default());
-                let opened = booted(Ledger::default(), |builder| {
-                    builder.recover(Jsonl::<Bank>::sidecar(&sidecar, 1, Position::ORIGIN).expect("a fresh sidecar"))
+                let opened = booted(Ledger::default(), |setup| {
+                    setup.settings().recover(Jsonl::<Bank>::sidecar(&sidecar, 1, Position::ORIGIN).expect("a fresh sidecar"));
                 })
                 .await;
                 opened.state.commit(deposit(30)).await.expect("accepted");
-                opened.stop().await.unwrap();
+                opened.shutdown().await.unwrap();
 
                 // The artifact moved on without this sidecar — saved elsewhere, or by a
                 // half-landed save whose reset never ran. Either way it belongs to
@@ -109,8 +109,8 @@ fn contract_scenario() {
                 write(&artifact, 2, Position(9), &elsewhere);
 
                 let saved = read(&artifact);
-                let recovered = booted(saved.state.clone(), |builder| {
-                    builder.recover(Jsonl::<Bank>::sidecar(&sidecar, saved.generation, saved.at).expect("the sidecar is there"))
+                let recovered = booted(saved.state.clone(), |setup| {
+                    setup.settings().recover(Jsonl::<Bank>::sidecar(&sidecar, saved.generation, saved.at).expect("the sidecar is there"));
                 })
                 .await;
 
@@ -129,7 +129,10 @@ fn contract_scenario() {
                 write(&artifact, 1, Position::ORIGIN, &Ledger::default());
                 let copy = Jsonl::<Bank>::sidecar(&sidecar, 1, Position::ORIGIN).expect("a fresh sidecar");
                 let saves = copy.sidecars();
-                let opened = booted(Ledger::default(), |builder| builder.recover(copy)).await;
+                let opened = booted(Ledger::default(), |setup| {
+                    setup.settings().recover(copy);
+                })
+                .await;
 
                 opened.state.commit(deposit(30)).await.expect("accepted");
                 opened.state.wait_until_stored(Position(1)).await;
@@ -156,11 +159,11 @@ fn contract_scenario() {
                 assert_eq!(lines(&sidecar), 1, "a reset sidecar is its header alone");
 
                 opened.state.commit(deposit(4)).await.expect("accepted");
-                opened.stop().await.unwrap();
+                opened.shutdown().await.unwrap();
 
                 let saved = read(&artifact);
-                let recovered = booted(saved.state, |builder| {
-                    builder.recover(Jsonl::<Bank>::sidecar(&sidecar, saved.generation, saved.at).expect("the sidecar is there"))
+                let recovered = booted(saved.state, |setup| {
+                    setup.settings().recover(Jsonl::<Bank>::sidecar(&sidecar, saved.generation, saved.at).expect("the sidecar is there"));
                 })
                 .await;
 

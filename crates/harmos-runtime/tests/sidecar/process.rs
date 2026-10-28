@@ -28,7 +28,7 @@ use std::time::Duration;
 use super::{HostLanes, assembly, operations, service_status};
 use crate::sidecar::support::Bank;
 use crate::sidecar::witness::Witness;
-use harmos_runtime::operations::{OperationPolicy, RestartPolicy, RetryPolicy, WireTable};
+use harmos_runtime::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos_runtime::sidecar::{Notice, Refusal, Supervised, Supervisor};
 use harmos_runtime::{Runtime, services::ServiceContext, services::ServiceStatus};
 
@@ -156,6 +156,11 @@ struct Finished {
 /* === Enums === */
 
 #[harmos_runtime::catalog]
+enum CallbackOperations {
+    Publish(CallbackPublication),
+}
+
+#[harmos_runtime::catalog]
 pub enum Operations {
     Echo(Echo),
     Nested(Nested),
@@ -185,37 +190,21 @@ impl harmos_operations::lifecycle::Policy for Process {
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos_runtime::plugin(id = "process", provides = Operations, requires(harmos_operations::streams::Publish), streams(Blob))]
-impl harmos_runtime::Plugin for Process {
+impl harmos_runtime::Lifecycle for Process {
     type Context = Supervisor;
     type Config = String;
     type Error = Refusal;
-    type Resources = Witness;
 
-    fn prepare(key: String) -> Result<Self, Refusal> {
+    async fn prepare(key: String, setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Refusal> {
         let marks = Witness::find(&key).ok_or_else(|| Refusal::of("the story witness is gone"))?;
-        Ok(Self { marks })
+        let plugin = Self { marks };
+        setup.resource::<Witness>(Arc::clone(&plugin.marks));
+        Ok(plugin)
     }
 
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         self.marks.mark("started");
         Ok(())
-    }
-
-    fn resources(&self) -> Arc<Witness> {
-        Arc::clone(&self.marks)
-    }
-
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<Echo>()
-            .operation::<Nested>(),
-        )
     }
 
     async fn stop(&mut self, context: &Supervisor) -> Result<(), Refusal> {
@@ -232,6 +221,11 @@ impl harmos_runtime::Plugin for Process {
         self.marks.mark("cleaned");
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "process", requires(harmos_operations::streams::Publish), streams(Blob))]
+impl harmos_runtime::Plugin for Process {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[Operations::CATALOG];
 }
 
 impl harmos_runtime::Operation for Echo {
@@ -323,35 +317,21 @@ impl Fixture {
         let source = Source::new(NonZeroUsize::new(CAPACITY).unwrap()).unwrap();
         let definition = operations::definition(&source, serde_json::to_vec(marks.key()).unwrap());
         let resident: Resident = Supervised::new(source, notices as fn(&ServiceContext<Bank>, Notice));
-        let runtime = assembly()
-            .operation_settings(harmos_runtime::operations::Settings {
-                preparation_bytes: Some(NonZeroUsize::new(harmos_sidecar::Frame::LIMIT * 4).unwrap()),
-                ..Default::default()
-            })
-            .runtime()
-            .await
-            .unwrap();
         let echo = Arc::new(Forced::default());
         let calls = Arc::new(AtomicUsize::new(0));
-        runtime
-            .operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies
-                        .insert(Arc::new(Callback {
-                            _resident: Arc::new(resident.clone()),
-                            echo: Arc::clone(&echo),
-                            calls: Arc::clone(&calls),
-                        }))
-                        .unwrap();
-                    dependencies
-                })
-                .operation::<CallbackPublication>(),
-                HostLanes::Open,
-            ))
-            .await
-            .unwrap();
+        let runtime = assembly(|setup| {
+            setup.resource::<Callback>(Callback {
+                _resident: Arc::new(resident.clone()),
+                echo: Arc::clone(&echo),
+                calls: Arc::clone(&calls),
+            });
+            setup.settings().operation_settings(harmos_runtime::operations::Settings {
+                preparation_bytes: Some(NonZeroUsize::new(harmos_sidecar::Frame::LIMIT * 4).unwrap()),
+                ..Default::default()
+            });
+        })
+        .await;
+        runtime.operations.register::<CallbackOperations>(HostLanes::Open).await.unwrap();
         runtime
             .operations
             .register_service(
@@ -362,7 +342,7 @@ impl Fixture {
                         ..harmos_runtime::services::POLICY
                     },
                 },
-                move |_: Arc<()>| {
+                move |_: Arc<harmos_sdk::ExecutionContext>| {
                     harmos_runtime::sidecar::Managed::new_catalog::<Operations>(
                         resident.clone(),
                         definition.clone(),
@@ -386,7 +366,7 @@ impl Fixture {
     }
 
     async fn finish(self) {
-        self.runtime.stop().await.unwrap();
+        self.runtime.shutdown().await.unwrap();
         assert_eq!(self.marks.count("shutdown"), 1);
         assert_eq!(self.marks.count("cleaned"), 1);
     }
@@ -481,7 +461,7 @@ async fn disconnect_no_replay() {
     assert_eq!(fixture.marks.count("started"), 1);
     assert_eq!(fixture.marks.count(&format!("echo-started-{ABANDON}")), 1);
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
-    assert!(fixture.runtime.stop().await.is_err());
+    assert!(fixture.runtime.shutdown().await.is_err());
 }
 
 #[tokio::test]
@@ -509,22 +489,14 @@ async fn shutdown_sdk_publication() {
         notices.fetch_add(1, Ordering::SeqCst);
     });
     let calls = resident.clone();
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            crate::sidecar::publication_registration(Arc::new(resident.clone())),
-            HostLanes::Open,
-        ))
-        .await
-        .unwrap();
+        });
+    })
+    .await;
+    runtime.operations.register::<crate::sidecar::PublicationOperations>(HostLanes::Open).await.unwrap();
     runtime
         .operations
         .register_service(
@@ -535,7 +507,7 @@ async fn shutdown_sdk_publication() {
                     ..harmos_runtime::services::POLICY
                 },
             },
-            move |_: Arc<()>| {
+            move |_: Arc<harmos_sdk::ExecutionContext>| {
                 harmos_runtime::sidecar::Managed::new_catalog::<Operations>(
                     resident.clone(),
                     definition.clone(),
@@ -556,7 +528,7 @@ async fn shutdown_sdk_publication() {
     assert_eq!(delivered.load(Ordering::SeqCst), 0);
 
     // Shutdown Publishes Through The Live Generation Before It Retires
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert_eq!(delivered.load(Ordering::SeqCst), 1);
     for mark in ["shutdown-publication-acknowledged", "shutdown", "cleaned"] {
         assert_eq!(marks.count(mark), 1, "{mark}");

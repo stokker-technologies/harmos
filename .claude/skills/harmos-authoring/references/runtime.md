@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/runtime.md; sha256:c39080b267985fca8b30cf4051fcbc1b002a30f7739220b06d98d03be02daf5a -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/runtime.md; sha256:610cf90f5e57ef8b96f5014abd1892139b1d228976ebea365c150feaf5ae8a7b -->
 
 # Runtime Composition
 
@@ -32,16 +32,40 @@ Do not invent universal operational defaults in reusable guidance.
 
 ## Startup And Shutdown
 
-Use a cohesive runtime owner with explicit construction, startup and shutdown
-responsibilities. `runtime.rs` is a useful possible module name; `boot.rs`
-is not mandatory. The entry point or hosting plugin retains the owner for the
-whole execution lifetime.
+Implement the shared `harmos::Lifecycle` alongside `Application`. Its `Config`
+is deserializable and defaultable; `Context` is `Startup<Self>`. Async
+`prepare(config, &mut Setup<Self>)` acquires resources, configures settings and
+places operations. Group preparation into Resources, Lanes and Operations.
+`setup.resource::<T>(arc)` retains one allocation per concrete type; use distinct
+newtypes for independent values with the same Rust type. All `Application::Lanes`
+are declared automatically; `setup.lane(lane, LaneSettings { capacity })` adjusts
+one declared lane.
 
-Make resource acquisition failure-safe: unwind what was successfully acquired
-if a later step fails. Ensure partially initialized resources can be released.
-On shutdown, stop accepting new application work, settle or cancel active
-operations and background producers, then release resources in dependency order.
-Keep resources alive until their last supervised consumer has settled.
+Call `Runtime::<App>::launch(origin, config).await` to prepare, validate and
+initialize the retained owner. Configuration errors are collected before
+`initialize`: duplicate resource types, duplicate catalogs, missing declared
+resources and unknown lanes remain typed. Tests use the same path through
+`launch_with(origin, config, |setup| ...)`; the callback replaces prepared
+resources by type and does not replace catalogs. There is no public builder or
+consumer resource-store object.
+
+`launch_with` runs prepare before applying overrides. Configure acquisition for
+the test environment; the callback changes execution lookups, and the lifecycle
+owner still closes the resources it acquired.
+
+`initialize(&Startup<Self>)` runs after validation. `runtime.shutdown().await`
+drains operations and residents, then calls the retained owner's `stop` and
+`cleanup`. Stop performs domain shutdown; cleanup closes acquired devices,
+connections and workers, including when validation prevents initialize. Failed
+cleanup retains its owner for retry. Cleanup is attempted when stop fails. If
+prepare fails before returning an owner, prepare itself must unwind partial
+acquisitions. Setup errors and a prepare error are reported together.
+
+Configure optional subsystem settings through `setup.settings()`. For an
+existing storage manager use `setup.settings().storage(&manager)` during prepare;
+managed replay, capture and snapshot policy belongs to the same setup.
+Simulation uses `Runtime::simulate(origin, config, seed)` or `simulate_with` and
+reruns lifecycle preparation with cloned configuration on reboot.
 
 An interface binding handlers must use the runtime's initialized resources,
 not construct a second runtime for the same product. An embedded runtime does

@@ -33,7 +33,7 @@ struct WireRequest {
     count: u64,
 }
 
-#[facade::operation(
+#[facade::__harmos::runtime::operation(
     harmos_path = ::facade::__harmos, id = "test.export",
     codec = manual, resources = [RuntimeResource],
     policy = facade::__harmos::operations::OperationPolicy {
@@ -82,7 +82,7 @@ impl facade::__harmos::schema::Described for Export {
 #[cfg(feature = "runtime")]
 struct RuntimeResource;
 
-#[facade::operation(
+#[facade::__harmos::runtime::operation(
     harmos_path = ::facade::__harmos,
     id = "test.export_again",
     policy = <Export as facade::__harmos::OperationDeclaration>::POLICY,
@@ -91,15 +91,17 @@ struct ExportAgain;
 
 /* === Enums === */
 
-#[facade::catalog(harmos_path = ::facade::__harmos)]
+#[facade::__harmos::runtime::catalog(harmos_path = ::facade::__harmos)]
 enum Operations {
+
     #[cfg(any())]
     Missing(unresolved::Operation),
+
     Export(Export),
     ExportAgain(ExportAgain),
 }
 
-#[facade::catalog(harmos_path = ::facade::__harmos)]
+#[facade::__harmos::runtime::catalog(harmos_path = ::facade::__harmos)]
 enum NestedOperations {
     #[nested]
     Operations(Operations),
@@ -140,7 +142,7 @@ fn main() {
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].id.as_str(), "test.export");
     #[cfg(feature = "runtime")]
-    let _ = NestedOperations::registration(facade::__harmos::Dependencies::new());
+    let _ = <NestedOperations as facade::__harmos::OperationCatalog>::batch();
 }
 
 /* === Tests === */

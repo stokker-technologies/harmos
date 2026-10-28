@@ -39,7 +39,7 @@ pub struct Bridge;
 
 /* === Implementations === */
 
-#[harmos::plugin(description = "A bridge.", id = "bridge", provides = (), requires = (), version = "1.0.0")]
+#[harmos::plugin(description = "A bridge.", id = "bridge", requires = (), version = "1.0.0")]
 impl harmos::Plugin for Bridge {}
 
 /* === Public Functions === */

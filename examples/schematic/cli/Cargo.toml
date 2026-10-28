@@ -24,7 +24,7 @@ version = { workspace = true }
 
 [dependencies]
 # Local
-harmos = { workspace = true, default-features = true, features = ["runtime", "plugin-guest", "plugin"] }
+harmos = { workspace = true, default-features = true, features = ["runtime", "guest", "plugin"] }
 schematic-app = { path = "../app" }
 
 # Git
@@ -33,9 +33,9 @@ schematic-app = { path = "../app" }
 thiserror = { workspace = true, default-features = true }
 
 # Logging
+tracing = { workspace = true, default-features = true }
 tracing-perfetto-file = { workspace = true }
 tracing-subscriber = { workspace = true }
-tracing = { workspace = true, default-features = true }
 
 # Utilities
 

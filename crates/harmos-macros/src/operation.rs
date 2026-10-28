@@ -40,7 +40,15 @@ use crate::path::{self, HarmosPath};
 /* === Public Functions === */
 
 pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    expand(attribute, item).unwrap_or_else(Error::into_compile_error)
+    expand(attribute, item, false, false).unwrap_or_else(Error::into_compile_error)
+}
+
+pub(crate) fn declare_runtime(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    expand(attribute, item, true, false).unwrap_or_else(Error::into_compile_error)
+}
+
+pub(crate) fn declare_domain(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    expand(attribute, item, false, true).unwrap_or_else(Error::into_compile_error)
 }
 
 /* === Private Functions === */
@@ -77,7 +85,7 @@ fn argument(input: syn::parse::ParseStream<'_>) -> Result<Meta, Error> {
     input.parse()
 }
 
-fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
+fn expand(attribute: TokenStream, item: TokenStream, runtime: bool, domain: bool) -> Result<TokenStream, Error> {
     let declaration: syn::ItemStruct = syn::parse2(item).map_err(|error| {
         Error::new(
             error.span(),
@@ -95,8 +103,9 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
             metadata.push(argument);
         }
     }
-    let sdk = HarmosPath::resolve(explicit);
-    crate::catalog::operation::structure(quote!(#(#metadata),*), declaration, &sdk)
+    let sdk = explicit.map(|path| HarmosPath::resolve(Some(path))).unwrap_or_else(HarmosPath::catalog);
+    let sdk = if runtime || domain { sdk.runtime_enabled() } else { sdk };
+    crate::catalog::operation::structure(quote!(#(#metadata),*), declaration, &sdk, !domain)
 }
 
 pub(crate) fn configuration(attributes: &[Attribute]) -> Result<Vec<Attribute>, Error> {
@@ -124,3 +133,24 @@ pub(crate) fn configuration(attributes: &[Attribute]) -> Result<Vec<Attribute>, 
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::declare_domain;
+    use quote::quote;
+
+    #[test]
+    fn portable_domain_operation() {
+        let expanded = declare_domain(
+            quote!(resources = [crate::Owner], id = "domain.read", policy = crate::POLICY),
+            quote!(
+                struct Read;
+            ),
+        )
+        .to_string();
+
+        assert!(expanded.contains("OperationDeclaration"));
+        assert!(!expanded.contains("Dependent"));
+        assert!(!expanded.contains("Requires"));
+    }
+}

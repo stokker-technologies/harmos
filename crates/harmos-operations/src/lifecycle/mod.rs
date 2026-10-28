@@ -19,6 +19,7 @@ mod watch;
 
 pub use cancel::Cancel;
 pub use harmos_domain::model::operations::lifecycle::*;
+
 #[cfg(feature = "lifecycle")]
 pub use initialize::ControlError;
 pub use initialize::Initialize;
@@ -27,6 +28,12 @@ pub use status::{InstanceState, Status};
 pub use watch::Watch;
 
 /* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 
 /* === Constants === */
 
@@ -56,12 +63,18 @@ pub enum Lifecycle {
     Watch(Watch),
 }
 
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
 #[cfg(feature = "lifecycle")]
 pub fn bind<P: harmos_sdk::Plugin>(
     owner: std::sync::Arc<harmos_sdk::plugin::Owner<P>>, table: &harmos_sdk::plugin::Table,
 ) -> Result<(), harmos_sdk::plugin::Error<P>> {
     use harmos_sdk::operations::lifecycle::LifecycleAccess;
-    let mut dependencies = harmos_sdk::Dependencies::new();
+    let mut dependencies = harmos_sdk::__private::ResourceSet::new();
     dependencies
         .insert(std::sync::Arc::new(LifecycleAccess(owner)))
         .map_err(|error| harmos_sdk::plugin::Error::Resource(std::sync::Arc::new(error)))?;
@@ -79,12 +92,6 @@ pub fn bind<P: harmos_sdk::Plugin>(
         .install_lifecycle::<Shutdown, shutdown::Control>(dependencies, shutdown)
         .map_err(|error| harmos_sdk::plugin::Error::Serving(std::sync::Arc::new(error)))
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

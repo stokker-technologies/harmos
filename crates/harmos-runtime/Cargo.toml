@@ -60,10 +60,10 @@ simulation = ["tokio/test-util"]
 
 [dependencies]
 # Local
-harmos-operations = { workspace = true, features = ["runtime"] }
 harmos-domain = { workspace = true, features = ["derive"] }
 harmos-guest = { workspace = true, optional = true }
 harmos-macros = { workspace = true, default-features = true }
+harmos-operations = { workspace = true, features = ["runtime"] }
 harmos-packaging = { workspace = true, optional = true }
 harmos-sdk = { workspace = true, features = ["streaming"] }
 harmos-storage = { workspace = true }
@@ -269,10 +269,6 @@ path = "tests/system/main.rs"
 
 # === Bench Targets === #
 
-# Both carriers, because the fixture is a sidecar program that co-links a guest
-# declaration into its own artifact — the one shape that proves a single binary
-# can carry two declarations. Declaring only `sidecar` left it built against a
-# `harmos::guest` that the selected features had not opened.
 [[bench]]
 name = "integration-runtime"
 path = "benches/runtime/main.rs"

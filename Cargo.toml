@@ -19,10 +19,10 @@ publish = true
 [workspace.dependencies]
 # Local
 harmos = { path = "crates/harmos", version = "0.1.1" }
-harmos-operations = { path = "crates/harmos-operations", version = "0.1.1", default-features = false }
 harmos-domain = { path = "crates/harmos-domain", version = "0.1.1", default-features = false }
 harmos-guest = { path = "crates/harmos-guest", version = "0.1.1", default-features = false }
 harmos-macros = { path = "crates/harmos-macros", version = "0.1.1" }
+harmos-operations = { path = "crates/harmos-operations", version = "0.1.1", default-features = false }
 harmos-packaging = { path = "crates/harmos-packaging", version = "0.1.1", default-features = false }
 harmos-runtime = { path = "crates/harmos-runtime", version = "0.1.1", default-features = false }
 harmos-sdk = { path = "crates/harmos-sdk", version = "0.1.1", default-features = false }
@@ -79,10 +79,10 @@ prost-reflect = { version = "0.16.5", default-features = false }
 protoc-bin-vendored = { version = "3.3.0", default-features = false }
 serde = { version = "1.0.229", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.154", default-features = false }
-wit-bindgen = { version = "=0.63.0", default-features = false }
-wit-component = { version = "=0.262.0", default-features = false }
 wasm-encoder = { version = "=0.262.0", default-features = false }
 wasmparser = { version = "=0.262.0", default-features = false }
+wit-bindgen = { version = "=0.63.0", default-features = false }
+wit-component = { version = "=0.262.0", default-features = false }
 
 # Configuration
 clap = { version = "4.6.7", default-features = false }

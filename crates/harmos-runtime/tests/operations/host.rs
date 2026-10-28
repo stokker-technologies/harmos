@@ -109,28 +109,13 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
         cleanup: Notify::new(),
         request: Mutex::new(None),
     });
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(gate.clone()).unwrap();
-                dependencies
-            })
-            .operation::<HoldDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_operations::Lifecycle::registration(harmos_runtime::Dependencies::new()),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Gate>(gate.clone());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<super::Single<HoldDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<harmos_operations::Lifecycle>(Lanes::Open).await.unwrap();
     (runtime, gate)
 }
 
@@ -163,7 +148,7 @@ async fn owned_request_survives_caller_cancellation() {
 
     // A Native Worker May Own The Request Allocation After The Caller Cancels.
     assert!(instance.cancel_and_join().await.is_err());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert_eq!(budget.available_permits(), 0);
     drop(retained);
     assert_eq!(budget.available_permits(), 64);
@@ -177,7 +162,7 @@ async fn refused_owned_request_releases_admission() {
     let claims = harmos_runtime::operations::RequestClaims::retain(permit);
     assert!(Host::submit_owned::<TickerDeclaration>(&runtime.operations, TickerDeclaration {}, claims).await.is_err());
     assert_eq!(budget.available_permits(), 64);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -196,7 +181,7 @@ async fn host_instances_settle() {
         gate.release.add_permits(1);
         assert_eq!(*called.await.unwrap(), 8);
         assert_eq!(gate.completed.load(Ordering::SeqCst), 2);
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
     {
         let (runtime, gate) = runtime().await;
@@ -205,7 +190,7 @@ async fn host_instances_settle() {
         assert!(instance.cancel_and_join().await.is_err());
         assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
         assert_eq!(gate.cleaned.load(Ordering::SeqCst), 1);
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
     {
         let (runtime, gate) = runtime().await;
@@ -216,7 +201,7 @@ async fn host_instances_settle() {
         // Dropping an unsettled instance cancels it.
         cleaned.await;
         assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
     {
         let (runtime, gate) = runtime().await;
@@ -229,7 +214,7 @@ async fn host_instances_settle() {
         gate.release.add_permits(1);
         cleaned.await;
         assert_eq!(gate.completed.load(Ordering::SeqCst), 1);
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
@@ -256,7 +241,7 @@ async fn builtin_controls_instance() {
     assert!(hidden(refused.err()));
     let status = harmos_runtime::operations::instance::Status::try_from(&*cancelled);
     assert_ne!(status.unwrap().outcome, Some(Outcome::Succeeded));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -264,7 +249,8 @@ async fn resident_leases_watched() {
     let (runtime, gate) = runtime().await;
     let operations = &runtime.operations;
     operations
-        .register_service::<App, Gate, _, _>(harmos_runtime::services::ServiceDefinition::new(TickerDeclaration::ID), |gate: Arc<Gate>| {
+        .register_service::<App, _, _>(harmos_runtime::services::ServiceDefinition::new(TickerDeclaration::ID), |resources| {
+            let gate = resources.resource::<Gate>().unwrap();
             move |mut context: harmos_runtime::services::ServiceContext<App>| {
                 let gate = gate.clone();
                 async move {
@@ -278,8 +264,8 @@ async fn resident_leases_watched() {
         .unwrap();
 
     // Activations Over The Same Resources Share One Instance
-    let first = operations.submit_with_resources_at(TickerDeclaration::ID, gate.clone()).await.unwrap();
-    let second = operations.submit_with_resources_at(TickerDeclaration::ID, gate.clone()).await.unwrap();
+    let first = operations.submit_resident(TickerDeclaration::ID).await.unwrap();
+    let second = operations.submit_resident(TickerDeclaration::ID).await.unwrap();
     assert_eq!(first.id(), second.id());
     first.ready().await.unwrap();
     let id = first.id();
@@ -315,5 +301,5 @@ async fn resident_leases_watched() {
     // A Stopped Resident Leaves The Index Like A Settled Request
     let stopped = operations.call::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
     assert!(hidden(stopped.err()));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }

@@ -63,15 +63,15 @@ pub use grpc::GrpcBinding;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcMethod;
 pub use harmos_sdk::operations::{
-    Backoff, CHILD_METHOD, CacheKey, CacheKeyError, CallValue, Callees, Codec, ContextError, ContextValue, Contract, ContractError,
-    Contracts, Declarations, Dependent, Direction, Entry, Executable, FailureKind, Grpc, InvocationError, Invokes, Jitter,
-    MAX_CACHE_KEY_BYTES, NoStream, Operation, OperationDeclaration, OperationDefinition, OperationPolicy, PORTABLE_BYTES, PORTABLE_VALUES,
-    PolicyError, ReplaySafety, Requires, Resource, RestartPolicy, RetryPolicy, ServingError, Stream, Visibility, WIRE_METHOD, WireAnswer,
-    WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand, WireDeclaration, WireEndpoints,
-    WireStreamLimits, WireStreams, WireTable, item_types,
+    Backoff, CHILD_METHOD, CacheKey, CacheKeyError, CallValue, Callees, Catalog, Codec, ContextError, ContextValue, Contract,
+    ContractError, Contracts, Declarations, Dependent, Direction, Entry, Executable, FailureKind, Grpc, InvocationError, Invokes, Jitter,
+    MAX_CACHE_KEY_BYTES, NoStream, Operation, OperationCatalog, OperationDeclaration, OperationDefinition, OperationPolicy, PORTABLE_BYTES,
+    PORTABLE_VALUES, PolicyError, ReplaySafety, Requires, Resource, RestartPolicy, RetryPolicy, ServingError, Stream, Visibility,
+    WIRE_METHOD, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand, WireDeclaration,
+    WireEndpoints, WireStreamLimits, WireStreams, item_types,
 };
 pub use harmos_sdk::operations::{CallContext, Host, Instance, RequestClaims, Response, instance};
-pub use lane::{Capacity, Lane, LaneSet};
+pub use lane::{Capacity, Lane, LaneSet, LaneSettings};
 #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 pub use remote::{RemoteStreamError, StreamEndpoints, StreamPeer};
 pub use scope::Scope;
@@ -99,7 +99,7 @@ pub use native::{Native, NativeBindings, NativeError, NativeOperation};
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub use registration::Bindings;
 pub(crate) use registration::CatalogBinding;
-pub use registration::{Registration, RegistrationExt};
+pub(crate) use registration::{Registration, RegistrationExt};
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub use registration::PluginRegistration;

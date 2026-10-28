@@ -186,6 +186,27 @@ pub enum ModelLanes {
     #[default]
     Open,
 }
+impl harmos_runtime::Lifecycle for Model {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 impl Application for Model {
     type Lanes = ModelLanes;
@@ -193,7 +214,6 @@ impl Application for Model {
     type Transaction = Changes;
     type Record = Facts;
     type Streams = ();
-    type Resources = ();
 }
 
 impl Wire for Model {
@@ -247,14 +267,14 @@ fn add(amount: i64, count: usize, mode: u8) -> Add {
 }
 
 async fn boot(copy: &Store, tail: usize) -> Runtime<Model> {
-    Runtime::<Model>::builder(State::default(), ())
-        .register(Changes::catalog())
-        .register(Facts::catalog())
-        .recover(Journal::<Model>::open(copy))
-        .tail(tail)
-        .runtime()
-        .await
-        .unwrap()
+    Runtime::<Model>::launch_with(State::default(), (), |setup| {
+        setup.settings().register(Changes::catalog());
+        setup.settings().register(Facts::catalog());
+        setup.settings().recover(Journal::<Model>::open(copy));
+        setup.settings().tail(tail);
+    })
+    .await
+    .unwrap()
 }
 
 #[tokio::test]
@@ -271,7 +291,7 @@ async fn preparation_failure_inert() {
         runtime.state.commit(add(1, Records::MAX_RECORDS + 1, 0)).await,
         Err(Error::Preparation(harmos_runtime::state::PreparationError::Limit))
     ));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert!(copy.lines().is_empty());
 }
 
@@ -292,11 +312,11 @@ async fn restart_preserves_members() {
     assert_eq!(facts[0].position, Position(2));
     assert_eq!(facts[0].value, Facts::Observed(Observed { before: 0, amount: 7, ordinal: 0 }));
     assert!(matches!(runtime.state.state().at(Origin::initial(State::default()), Position(1)).await, Err(Error::IncompleteCommit)));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     let restarted = boot(&copy, 1).await;
     assert_eq!(restarted.state.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (7, 1));
     assert_eq!(restarted.state.query::<Facts>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap().len(), 2);
-    restarted.stop().await.unwrap();
+    restarted.shutdown().await.unwrap();
     assert_eq!(copy.lines().len(), 1);
 }
 
@@ -315,11 +335,11 @@ async fn reversals_emit_records() {
     assert_eq!(changes[1].metadata.link, Some(harmos_runtime::state::Link::UndoOf(initial.position)));
     assert_eq!(journal.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (9, 3));
     drop(journal);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     let restarted = boot(&copy, 1).await;
     assert_eq!(restarted.state.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (9, 3));
     assert_eq!(restarted.state.query::<Facts>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap().len(), 3);
-    restarted.stop().await.unwrap();
+    restarted.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -328,7 +348,7 @@ async fn record_keeps_group() {
     let mirror = Store::default();
     let live = boot(&copy, 1).await;
     live.state.commit(add(5, 1, 0)).await.unwrap();
-    live.stop().await.unwrap();
+    live.shutdown().await.unwrap();
     let original: Vec<String> = copy.lines().iter().map(|line| line.replace("atomic.observed", "atomic.future")).collect();
     copy.replace(original.clone());
     let snapshots = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -337,20 +357,20 @@ async fn record_keeps_group() {
         observed.lock().unwrap().push((state.balance, position));
         Ok(())
     });
-    let runtime = Runtime::<Model>::builder(State::default(), ())
-        .register(Changes::catalog())
-        .register(Facts::catalog())
-        .recover(Journal::<Model>::open(&copy))
-        .attach(Journal::<Model>::open(&mirror))
-        .snapshot(snapshot)
-        .tail(1)
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = Runtime::<Model>::launch_with(State::default(), (), |setup| {
+        setup.settings().register(Changes::catalog());
+        setup.settings().register(Facts::catalog());
+        setup.settings().recover(Journal::<Model>::open(&copy));
+        setup.settings().attach(Journal::<Model>::open(&mirror));
+        setup.settings().snapshot(snapshot);
+        setup.settings().tail(1);
+    })
+    .await
+    .unwrap();
     assert_eq!(runtime.state.applied(), Position(2));
     assert!(matches!(runtime.state.state().at(Origin::initial(State::default()), Position(1)).await, Err(Error::IncompleteCommit)));
     assert_eq!(runtime.state.query::<Facts>(Position::ORIGIN).await.count(), 0);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert_eq!(*snapshots.lock().unwrap(), vec![(5, Position(2))]);
     assert_eq!(mirror.lines(), original);
 }
@@ -362,7 +382,7 @@ async fn facts_share_group() {
     let receipt = runtime.state.commit(add(5, 1, 10)).await.unwrap();
     assert_eq!((receipt.position, receipt.frontier), (Position(1), Position(3)));
     runtime.state.wait_until_stored(receipt.frontier).await;
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     let runtime = boot(&copy, 1).await;
     let facts = runtime.state.query::<harmos_runtime::state::SystemFact>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(facts.len(), 1);
@@ -381,7 +401,7 @@ async fn facts_share_group() {
     assert_eq!(typed.len(), 1);
     assert_eq!(typed[0].position, Position(3));
     assert_eq!(runtime.state.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (5, 1));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -398,7 +418,7 @@ async fn mixed_frontier_recovers() {
     assert!(matches!(entries[0].value, Recorded::Transaction(_)));
     assert!(matches!(entries[1].value, Recorded::System(_)));
     assert!(matches!(entries[2].value, Recorded::Record(_)));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     let inspector = Runtime::<Model>::inspect(State::default(), Journal::<Model>::open(&copy)).await.unwrap();
     let read =
         inspector.state.query_through::<Recorded<Model>>(Position::ORIGIN, first.frontier).await.collect::<Result<Vec<_>, _>>().unwrap();
@@ -421,26 +441,25 @@ async fn contract_refuses_apply() {
         }
     }
     let captures = Arc::new(AtomicUsize::new(0));
-    let runtime = Runtime::<Model>::builder(State::default(), ())
-        .register(Changes::catalog())
-        .require_capture(
+    let runtime = Runtime::<Model>::launch_with(State::default(), (), |setup| {
+        setup.settings().register(Changes::catalog());
+        setup.settings().require_capture(
             harmos_runtime::state::CaptureLimits {
                 pending_bytes: 4096,
                 max_group_bytes: 4096,
             },
             Capture(Arc::clone(&captures)),
-        )
-        .unwrap()
-        .runtime()
-        .await
-        .unwrap();
+        );
+    })
+    .await
+    .unwrap();
     let refused = runtime.state.commit(add(7, 1, 0)).await;
     assert!(matches!(refused, Err(Error::Preparation(harmos_runtime::state::PreparationError::Membership))));
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     let state = runtime.state.state().read(|state| (state.balance, state.applications)).await.unwrap();
     assert_eq!(state.value, (0, 0));
     assert_eq!(state.position, Position::ORIGIN);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert_eq!(captures.load(Ordering::SeqCst), 0);
 }
 

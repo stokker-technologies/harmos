@@ -59,7 +59,7 @@ async fn native_consumption_settles() {
         assert_eq!(acknowledged.rows, expected);
         assert_eq!(acknowledged.bytes, expected * size as u64);
     }
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */

@@ -40,6 +40,7 @@ pub(super) type Outcome = std::result::Result<Position, Failure>;
 /* === Structs === */
 
 pub(super) struct Shutdown<A: Application> {
+    application: Option<super::launch::ApplicationCleanup<A>>,
     handles: Handle<A>,
     participants: Participants,
     journal_handles: Weak<()>,
@@ -92,12 +93,12 @@ impl<A: Application> Runtime<A> {
         self.storage.get()
     }
 
-    pub async fn stop_with_timeout(&self, timeout: Duration) -> Result<Position> {
+    pub async fn shutdown_with_timeout(&self, timeout: Duration) -> Result<Position> {
         let deadline = tokio::time::Instant::now().checked_add(timeout).filter(|_| !timeout.is_zero()).ok_or(Error::InvalidInput {
             field: "runtime shutdown timeout",
             reason: "must be positive and representable",
         })?;
-        match tokio::time::timeout_at(deadline, self.stop()).await {
+        match tokio::time::timeout_at(deadline, self.shutdown()).await {
             Ok(result) => result,
             Err(_) => {
                 let stopping = self.stopping.lock().expect("runtime transition is healthy");
@@ -111,7 +112,7 @@ impl<A: Application> Runtime<A> {
         }
     }
 
-    pub async fn stop(&self) -> Result<Position> {
+    pub async fn shutdown(&self) -> Result<Position> {
         self.closing.store(true, Ordering::Release);
         #[cfg(feature = "grpc")]
         self.grpc.close_admission();
@@ -134,6 +135,7 @@ impl<A: Application> Runtime<A> {
                 let outcome = Arc::new(OnceLock::new());
                 let progress = watch::channel("producers and listeners").0;
                 let original = Shutdown {
+                    application: self.application.clone(),
                     handles: self.handle(),
                     participants: self.participants.clone(),
                     journal_handles: self.journal_handles.clone(),
@@ -206,9 +208,20 @@ impl<A: Application> Shutdown<A> {
             self.handles.operations.shutdown().await?;
             self.progress.send_replace("participants");
             self.participants.stop().await;
+            self.progress.send_replace("application lifecycle");
+            if let Some(application) = &self.application {
+                application.settle().await.map_err(|source| {
+                    Arc::try_unwrap(source).unwrap_or_else(|source| Error::TaskFailed { domain: "application lifecycle", source })
+                })?;
+            }
             self.handles.state.seal();
             self.progress.send_replace("journal");
             let mut settled = joined(supervisor, &self.journal_handles, &self.notices).await;
+            if let Some(source) = self.application.as_ref().and_then(super::launch::ApplicationCleanup::failure)
+                && settled.is_ok()
+            {
+                settled = Err(Failure { domain: "application", source });
+            }
             if let Err(source) = observers
                 && settled.is_ok()
             {

@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 // Local Imports
 use harmos_runtime::{
-    Builder, DefinitionId, Identified, Runtime, evidence::EvidenceError, evidence::EvidenceKind, evidence::Vault, runtime::Incompatible,
+    DefinitionId, Identified, Runtime, Setup, StartupError, evidence::EvidenceError, evidence::EvidenceKind, evidence::Vault,
     services::Resident, services::ServiceContext, state::Position,
 };
 use support::{Bank, Copied, Ledger, Stored, catalog};
@@ -265,16 +265,25 @@ fn scratch(name: &str) -> Arc<tempfile::TempDir> {
     Arc::new(directory)
 }
 
-fn declared(vault: impl Vault) -> Builder<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).evidence(vault, [Recording::definition(), Report::definition()])
+fn declared(setup: &mut Setup<Bank>, vault: impl Vault) {
+    setup.settings().register(catalog()).evidence(vault, [Recording::definition(), Report::definition()]);
 }
 
 async fn kept(vault: impl Vault) -> Runtime<Bank> {
-    declared(vault).runtime().await.expect("a fresh boot")
+    Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        declared(setup, vault);
+    })
+    .await
+    .expect("a fresh boot")
 }
 
 async fn kept_with(vault: impl Vault, history: &Stored) -> Runtime<Bank> {
-    declared(vault).recover(Copied::resuming(history)).runtime().await.expect("the copy replays")
+    Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        declared(setup, vault);
+        setup.settings().recover(Copied::resuming(history));
+    })
+    .await
+    .expect("the copy replays")
 }
 
 #[tokio::test]
@@ -324,7 +333,7 @@ async fn details_survive_reboot() {
             upload(),
             "what the draft was opened with is what the fact records"
         );
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 
     let reopened = kept_with(Directory::at(&directory), &history).await;
@@ -357,7 +366,7 @@ async fn unnamed_bytes_invisible() {
         // the instant before the fact naming them would have been recorded.
         let refused = runtime.evidence.finalize(&draft).await.expect_err("the crash falls between the durable bytes and the fact");
         assert!(matches!(refused, EvidenceError::Unreadable(_)));
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 
     let reopened = kept_with(Directory::at(&directory), &history).await;
@@ -389,7 +398,7 @@ async fn interrupted_claim_heals() {
         assert!(matches!(refused, EvidenceError::Unwritable(_)));
 
         assert_eq!(runtime.evidence.list("session-7").len(), 1, "the fact landed before the claim, so the evidence is already true");
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 
     let reopened = kept_with(Directory::at(&directory), &history).await;
@@ -583,7 +592,11 @@ async fn key_claimed_once() {
 
 #[tokio::test]
 async fn undeclared_vault_unserved() {
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).runtime().await.expect("a fresh boot");
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(catalog());
+    })
+    .await
+    .expect("a fresh boot");
 
     assert_eq!(
         runtime.evidence.open::<Recording>("run-0", "nowhere.log", upload()).await.expect_err("nothing was declared to keep it in"),
@@ -594,7 +607,13 @@ async fn undeclared_vault_unserved() {
 
 #[tokio::test]
 async fn artifact_service_refused() {
-    let refused = refusal(Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).service("artifact", Idle).runtime().await);
+    let refused = refusal(
+        Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            setup.settings().register(catalog());
+            setup.settings().service("artifact", Idle);
+        })
+        .await,
+    );
 
     assert!(refused.to_string().contains("artifact"), "one fact namespace, one author: {refused}");
 }
@@ -602,17 +621,17 @@ async fn artifact_service_refused() {
 #[tokio::test]
 async fn duplicate_kind_refused() {
     let refused = refusal(
-        Runtime::<Bank>::builder(Ledger::default(), ())
-            .register(catalog())
-            .evidence(Directory::at(&scratch("twice")), [Recording::definition(), Recording::definition()])
-            .runtime()
-            .await,
+        Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            setup.settings().register(catalog());
+            setup.settings().evidence(Directory::at(&scratch("twice")), [Recording::definition(), Recording::definition()]);
+        })
+        .await,
     );
 
     assert!(refused.to_string().contains("recording"), "{refused}");
 }
 
-fn refusal(booted: Result<Runtime<Bank>, Incompatible>) -> Incompatible {
+fn refusal(booted: Result<Runtime<Bank>, StartupError>) -> StartupError {
     match booted {
         Ok(_) => panic!("this build was never meant to stand up"),
         Err(refused) => refused,

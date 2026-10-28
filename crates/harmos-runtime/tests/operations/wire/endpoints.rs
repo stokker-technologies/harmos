@@ -180,8 +180,12 @@ fn channel() -> (StreamOutput<u32>, StreamInput<u32>) {
 async fn bounded<T>(future: impl Future<Output = T>) -> T {
     (future).await
 }
-async fn runtime() -> Runtime<App> {
-    Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap()
+async fn runtime_with_resource<T: Send + Sync + 'static>(resource: Arc<T>) -> Runtime<App> {
+    Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<T>(resource);
+    })
+    .await
+    .unwrap()
 }
 
 #[cfg(feature = "grpc")]
@@ -261,21 +265,9 @@ async fn decoded_charge_releases_on_hand_off() {
     let capacity = admitted_items(&mut SlowCodec::new(decode, encode).unwrap(), FRAMES).await;
     assert!((2..WINDOW as usize).contains(&capacity), "the window must outgrow the decode budget: {capacity}");
 
-    let runtime = runtime().await;
     let gate = Arc::new(Gate::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(gate.clone()).unwrap();
-                dependencies
-            })
-            .operation::<SlowDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_resource(gate.clone()).await;
+    runtime.operations.register::<crate::operations::Single<SlowDeclaration>>(Lanes::Open).await.unwrap();
     let mut codec = SlowCodec::new(decode, encode).unwrap();
     let opened = gate.clone();
     let frames = futures_util::stream::iter(0..=FRAMES).map(move |index| {
@@ -296,40 +288,16 @@ async fn decoded_charge_releases_on_hand_off() {
     let total = bounded(harmos_runtime::grpc::input(instance, sending, items)).await.unwrap();
     assert_eq!(*total, (1..=FRAMES).sum::<u32>());
     assert_eq!(admitted_items(&mut codec, FRAMES).await, capacity);
-    bounded(runtime.stop()).await.unwrap();
+    bounded(runtime.shutdown()).await.unwrap();
 }
 
 #[tokio::test]
 async fn endpoint_admission_contract() {
-    let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
+    let runtime = runtime_with_resource(trace.clone()).await;
     {
-        runtime
-            .operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(trace.clone()).unwrap();
-                    dependencies
-                })
-                .operation::<RetryDeclaration>(),
-                Lanes::Open,
-            ))
-            .await
-            .unwrap();
-        runtime
-            .operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(trace.clone()).unwrap();
-                    dependencies
-                })
-                .operation::<CachedDeclaration>(),
-                Lanes::Open,
-            ))
-            .await
-            .unwrap();
+        runtime.operations.register::<crate::operations::Single<RetryDeclaration>>(Lanes::Open).await.unwrap();
+        runtime.operations.register::<crate::operations::Single<CachedDeclaration>>(Lanes::Open).await.unwrap();
         let (input, receiving) = channel();
         let (sending, _output) = channel();
         assert!(matches!(
@@ -340,19 +308,7 @@ async fn endpoint_admission_contract() {
         assert!(input.is_closed());
     }
 
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ForwardDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
@@ -366,26 +322,14 @@ async fn endpoint_admission_contract() {
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(*item, 8);
-    bounded(runtime.stop()).await.unwrap();
+    bounded(runtime.shutdown()).await.unwrap();
 }
 
 #[tokio::test]
 async fn cancellation_settles_owner() {
-    let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ForwardDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_resource(trace.clone()).await;
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
@@ -404,7 +348,7 @@ async fn cancellation_settles_owner() {
     assert!(input.is_closed());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(*held, 2);
-    bounded(runtime.stop()).await.unwrap();
+    bounded(runtime.shutdown()).await.unwrap();
 }
 
 #[tokio::test]
@@ -416,21 +360,9 @@ async fn cancellation_settles_child() {
 #[cfg(feature = "grpc")]
 #[tokio::test]
 async fn half_close_joins() {
-    let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ForwardDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_resource(trace.clone()).await;
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
     let (producer, decoded) = channel();
     producer.send_with(4, || Ok(7)).await.unwrap();
     let item = decoded.recv().await.unwrap();
@@ -445,27 +377,15 @@ async fn half_close_joins() {
     assert_eq!(*held, 8);
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.stop()).await.unwrap();
+    bounded(runtime.shutdown()).await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
 async fn settlement_never_wait() {
-    let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ForwardDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_resource(trace.clone()).await;
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
     let (input, receiving) = channel();
     let (sending, _output) = channel();
     let instance =
@@ -473,27 +393,15 @@ async fn settlement_never_wait() {
     let result = bounded(harmos_runtime::grpc::input(instance, input, futures_util::stream::pending())).await.unwrap();
     assert_eq!(*result, 0);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.stop()).await.unwrap();
+    bounded(runtime.shutdown()).await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
 async fn input_failure_settles_attempt() {
-    let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ForwardDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_resource(trace.clone()).await;
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
     let (input, receiving) = channel();
     let (sending, _output) = channel();
     let instance =
@@ -511,34 +419,22 @@ async fn input_failure_settles_attempt() {
     assert!(matches!(*source, Error::TaskFailed { domain: "gRPC input", .. }));
     assert!(matches!(settlement.as_deref(), Some(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.stop()).await.unwrap();
+    bounded(runtime.shutdown()).await.unwrap();
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
 }
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
 async fn input_drop_cancels() {
-    let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ForwardDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_resource(trace.clone()).await;
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
     let (input, receiving) = channel();
     let (sending, _output) = channel();
     let instance =
         runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
     drop(harmos_runtime::grpc::input(instance, input, futures_util::stream::pending()));
-    bounded(runtime.stop()).await.unwrap();
+    bounded(runtime.shutdown()).await.unwrap();
     // Abandoned before it started, the instance never constructed.
     assert_eq!(trace.new.load(Ordering::SeqCst), 0);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
@@ -547,21 +443,9 @@ async fn input_drop_cancels() {
 #[cfg(feature = "grpc")]
 #[tokio::test(start_paused = true)]
 async fn deadline_settles_peer() {
-    let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ForwardDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_resource(trace.clone()).await;
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
     let (input, receiving) = channel();
     let (sending, _output) = channel();
     let instance =
@@ -571,28 +455,16 @@ async fn deadline_settles_peer() {
         matches!(error, harmos_runtime::grpc::InputError::Operation(source) if matches!(*source, Error::OperationRefused(harmos_runtime::Refusal::TimedOut)))
     );
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.stop()).await.unwrap();
+    bounded(runtime.shutdown()).await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
 async fn grpc_exchange_polls() {
     use futures_util::StreamExt;
-    let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ForwardDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_resource(trace.clone()).await;
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
     let (producer, decoded) = stream::<u32>(StreamSettings {
         items: NonZeroUsize::new(3).unwrap(),
         bytes: NonZeroUsize::new(12).unwrap(),
@@ -617,28 +489,16 @@ async fn grpc_exchange_polls() {
     assert!(bounded(exchange.next()).await.is_none());
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.stop()).await.unwrap();
+    bounded(runtime.shutdown()).await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
 async fn exchange_failure_settles_attempt() {
     use futures_util::StreamExt;
-    let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ForwardDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_resource(trace.clone()).await;
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
@@ -660,7 +520,7 @@ async fn exchange_failure_settles_attempt() {
         if matches!(settlement.as_ref(), Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     assert!(bounded(exchange.next()).await.is_none());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.stop()).await.unwrap();
+    bounded(runtime.shutdown()).await.unwrap();
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
 }
@@ -668,27 +528,15 @@ async fn exchange_failure_settles_attempt() {
 #[cfg(feature = "grpc")]
 #[tokio::test]
 async fn exchange_drop_cancels() {
-    let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ForwardDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_resource(trace.clone()).await;
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
         runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
     drop(harmos_runtime::grpc::exchange(instance, input, futures_util::stream::pending(), output));
-    bounded(runtime.stop()).await.unwrap();
+    bounded(runtime.shutdown()).await.unwrap();
     // Abandoned before it started, the instance never constructed.
     assert_eq!(trace.new.load(Ordering::SeqCst), 0);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
@@ -696,21 +544,9 @@ async fn exchange_drop_cancels() {
 
 #[tokio::test]
 async fn charged_request_ownership() {
-    let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ForwardDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_resource(trace.clone()).await;
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
     let (requests, decoded) = stream::<ForwardDeclaration>(StreamSettings {
         items: NonZeroUsize::new(1).unwrap(),
         bytes: NonZeroUsize::new(1).unwrap(),
@@ -729,7 +565,7 @@ async fn charged_request_ownership() {
     let instance = runtime.operations.submit_charged::<ForwardDeclaration, _>(request, (receiving, sending)).unwrap();
     assert_eq!(*bounded(instance).await.unwrap(), 0);
     drop(bounded(requests.reserve(1)).await.unwrap());
-    bounded(runtime.stop()).await.unwrap();
+    bounded(runtime.shutdown()).await.unwrap();
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
 }
 
@@ -754,21 +590,9 @@ async fn opening_admission_exchange() {
         assert!(items.next().await.is_none());
     }
 
-    let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ForwardDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_resource(trace.clone()).await;
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
     let frames = futures_util::stream::iter([
         Ok(envelope(InputEnvelope::Request(ForwardDeclaration { consume: true })).await),
         Ok(envelope(InputEnvelope::Item(7)).await),
@@ -783,33 +607,14 @@ async fn opening_admission_exchange() {
     assert!(bounded(exchange.next()).await.is_none());
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.stop()).await.unwrap();
+    bounded(runtime.shutdown()).await.unwrap();
 }
 
 async fn parent_cancellation<const CHARGED: bool>() {
-    let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ForwardDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<ParentDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_resource(trace.clone()).await;
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<ParentDeclaration>>(Lanes::Open).await.unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let parent = runtime
@@ -829,5 +634,5 @@ async fn parent_cancellation<const CHARGED: bool>() {
     assert_eq!(*held, 8);
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.stop()).await.unwrap();
+    bounded(runtime.shutdown()).await.unwrap();
 }

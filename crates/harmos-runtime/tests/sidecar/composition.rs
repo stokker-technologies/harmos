@@ -54,20 +54,7 @@ async fn declared_publication_enters() {
     )
     .await;
     fixture.publication().await.unwrap();
-    fixture
-        .runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() })).unwrap();
-                dependencies
-            })
-            .operation::<SampleDeclaration>(),
-            operations::Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    fixture.runtime.operations.register::<crate::sidecar::SampleOperations>(operations::Lanes::Open).await.unwrap();
     fixture.initialize().await.unwrap();
     publications::ready(fixture.ready().clone()).await;
     let runtime = &fixture.runtime;
@@ -86,7 +73,7 @@ async fn declared_publication_enters() {
     assert_eq!(samples, [42]);
 
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -107,48 +94,34 @@ async fn crash_spends_credit() {
         },
         ..harmos_runtime::services::POLICY
     };
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let sample_projection = Arc::new(SampleProjection { streams: std::sync::OnceLock::new() });
+    let runtime = assembly(|setup| {
+        setup.resource::<SampleProjection>(Arc::clone(&sample_projection));
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            crate::sidecar::publication_registration(Arc::new(calls.clone())),
-            operations::Lanes::Open,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(SampleProjection { streams: runtime.streams.clone() })).unwrap();
-                dependencies
-            })
-            .operation::<SampleDeclaration>(),
-            operations::Lanes::Open,
-        ))
-        .await
-        .unwrap();
+        });
+    })
+    .await;
+    sample_projection.streams.set(runtime.streams.clone()).unwrap();
+    runtime.operations.register::<crate::sidecar::PublicationOperations>(operations::Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::sidecar::SampleOperations>(operations::Lanes::Open).await.unwrap();
     let resident = calls.clone();
     runtime
         .operations
-        .register_service(harmos_runtime::services::ServiceDefinition { id: "meter".into(), policy }, move |_: Arc<()>| {
-            harmos_runtime::sidecar::Managed::new(
-                resident.clone(),
-                definition.clone(),
-                operations::Lanes::Open,
-                NonZeroUsize::new(16).unwrap(),
-                NonZeroUsize::new(4096).unwrap(),
-            )
-            .unwrap()
-        })
+        .register_service(
+            harmos_runtime::services::ServiceDefinition { id: "meter".into(), policy },
+            move |_: Arc<harmos_sdk::ExecutionContext>| {
+                harmos_runtime::sidecar::Managed::new(
+                    resident.clone(),
+                    definition.clone(),
+                    operations::Lanes::Open,
+                    NonZeroUsize::new(16).unwrap(),
+                    NonZeroUsize::new(4096).unwrap(),
+                )
+                .unwrap()
+            },
+        )
         .unwrap();
     let lease = runtime.operations.submit_resident("meter").await.unwrap();
 
@@ -186,7 +159,7 @@ async fn crash_spends_credit() {
     assert_eq!(Amplified::decode(&amplified).unwrap(), Amplified { value: 10 });
     lease.release().await.unwrap();
     runtime.operations.unregister_resident("meter").await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -201,20 +174,7 @@ async fn oversized_exchange_survives() {
     )
     .await;
     fixture.publication().await.unwrap();
-    fixture
-        .runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() })).unwrap();
-                dependencies
-            })
-            .operation::<SampleDeclaration>(),
-            operations::Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    fixture.runtime.operations.register::<crate::sidecar::SampleOperations>(operations::Lanes::Open).await.unwrap();
     fixture.initialize().await.unwrap();
     publications::ready(fixture.ready().clone()).await;
     let request = BudgetedRouteDeclaration {
@@ -249,7 +209,7 @@ async fn oversized_exchange_survives() {
     );
 
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -258,22 +218,14 @@ async fn announced_exit_reason() {
     let source = meter(Arc::clone(&attachments));
     let definition = operations::definition(&source, serde_json::to_vec(&()).unwrap());
     let resident = Supervised::new(source, (|_: &ServiceContext<Bank>, _: Notice| {}) as fn(&ServiceContext<Bank>, Notice));
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            crate::sidecar::publication_registration(Arc::new(resident.clone())),
-            HostLanes::Open,
-        ))
-        .await
-        .unwrap();
+        });
+    })
+    .await;
+    runtime.operations.register::<crate::sidecar::PublicationOperations>(HostLanes::Open).await.unwrap();
     runtime
         .operations
         .register_service(
@@ -281,7 +233,7 @@ async fn announced_exit_reason() {
                 id: "meter".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            move |_: Arc<()>| {
+            move |_: Arc<harmos_sdk::ExecutionContext>| {
                 harmos_runtime::sidecar::Managed::new(
                     resident.clone(),
                     definition.clone(),
@@ -328,7 +280,7 @@ async fn announced_exit_reason() {
     let facts = work_facts(&runtime).await;
     assert_eq!(facts.len(), 1);
     assert_eq!(facts[0].name, "deactivated");
-    assert!(matches!(runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
+    assert!(matches!(runtime.shutdown().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 }
 
 #[tokio::test]
@@ -415,7 +367,7 @@ async fn public_private_handlers() {
     );
 
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -490,7 +442,7 @@ async fn generated_entry_attaches() {
     );
 
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
     assert!(GAUGE_DEACTIVATED.load(Ordering::SeqCst), "the local attachment runs the generated entry's awaited deactivation");
 }
 
@@ -514,7 +466,7 @@ async fn refusal_keeps_carrier() {
     assert!(fixture.call::<PublishPulseDeclaration>(PublishPulseDeclaration { sample: 42 }).await.is_err());
     assert_eq!(fixture.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 5 }).await.unwrap().value, 10);
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -546,20 +498,7 @@ async fn ingestion_authority_bounded() {
         )
         .await;
         fixture.publication().await.unwrap();
-        fixture
-            .runtime
-            .operations
-            .register(harmos_runtime::RegistrationExt::lane(
-                harmos_runtime::RegistrationBatch::new({
-                    let mut dependencies = harmos_runtime::Dependencies::new();
-                    dependencies.insert(Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() })).unwrap();
-                    dependencies
-                })
-                .operation::<SampleDeclaration>(),
-                operations::Lanes::Open,
-            ))
-            .await
-            .unwrap();
+        fixture.runtime.operations.register::<crate::sidecar::SampleOperations>(operations::Lanes::Open).await.unwrap();
         fixture.initialize().await.unwrap();
         publications::ready(fixture.ready().clone()).await;
         let refused = fixture.call::<PublishPulseDeclaration>(PublishPulseDeclaration { sample: 42 }).await.unwrap_err();
@@ -569,7 +508,7 @@ async fn ingestion_authority_bounded() {
                 if failure.cause().contains("stream or schema differs from the frozen generation inventory"))));
         assert_eq!(fixture.runtime.streams.query::<support::Pulse>(..).await.unwrap().count(), 0);
         fixture.shutdown().await.unwrap();
-        fixture.runtime.stop().await.unwrap();
+        fixture.runtime.shutdown().await.unwrap();
     }
 }
 
@@ -690,7 +629,7 @@ async fn graceful_stop_joins() {
     }
     release.notify_one();
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */

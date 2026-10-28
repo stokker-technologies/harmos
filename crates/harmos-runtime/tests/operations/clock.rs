@@ -16,7 +16,6 @@
 // Standard Library Imports
 use std::fs;
 use std::path::Path;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 // Third Party Imports
@@ -133,20 +132,8 @@ fn sources_avoid_tokio() {
 
 #[tokio::test(start_paused = true)]
 async fn clock_measures_script() {
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(())).unwrap();
-                dependencies
-            })
-            .operation::<MeasureContractDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+    runtime.operations.register::<Operations>(Lanes::Open).await.unwrap();
     let scripted = Duration::from_secs(300);
 
     let answer = runtime
@@ -170,5 +157,5 @@ async fn clock_measures_script() {
         .await
         .expect("the second attempt measures its own wait");
     assert_eq!(Duration::from_nanos(again.scoped_nanos), scoped);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }

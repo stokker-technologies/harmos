@@ -161,33 +161,13 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
         child_started: Notify::new(),
         parent_ready: Notify::new(),
     });
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ParentContractDeclaration>(),
-            Lanes::Serial,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<ChildContractDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Trace>(trace.clone());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<super::Single<ParentContractDeclaration>>(Lanes::Serial).await.unwrap();
+    runtime.operations.register::<super::Single<ChildContractDeclaration>>(Lanes::Open).await.unwrap();
     (runtime, trace)
 }
 
@@ -214,7 +194,7 @@ async fn parent_joins_child() {
             Err(Error::OperationRefused(Refusal::Cancelled)) => assert!(cancel),
             Err(error) => panic!("unexpected parent outcome: {error}"),
         }
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
@@ -229,5 +209,5 @@ async fn retry_waits_child() {
         *trace.events.lock().unwrap(),
         ["parent-attempt", "child-started", "child-dropped", "parent-attempt", "child-started", "child-dropped",]
     );
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }

@@ -40,7 +40,9 @@ use sha2::{Digest, Sha256};
 
 /* === Structs === */
 
-pub struct Model;
+pub struct Model {
+    storage: Option<StorageManager>,
+}
 
 pub struct Fixture {
     pub runtime: Runtime<Model>,
@@ -61,13 +63,36 @@ pub enum Lanes {
 
 /* === Implementations === */
 
+impl harmos_runtime::Lifecycle for Model {
+    type Config = ();
+    type Error = std::io::Error;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _setup: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self { storage: None })
+    }
+    async fn initialize(&mut self, context: &Self::Context) -> std::result::Result<(), Self::Error> {
+        self.storage = Some(context.resource::<StorageManager>().map_err(std::io::Error::other)?.as_ref().clone());
+        Ok(())
+    }
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        if let Some(storage) = &self.storage {
+            storage.close().await.map_err(std::io::Error::other)?;
+        }
+        Ok(())
+    }
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        self.storage.take();
+        Ok(())
+    }
+}
+
 impl harmos_runtime::Application for Model {
     type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
     type Streams = ();
-    type Resources = ();
 }
 
 impl Fixture {
@@ -147,13 +172,11 @@ impl Fixture {
         let answer = self.runtime.operation(request).run().await.unwrap();
         assert_eq!(answer.bytes_read, 10);
         assert_eq!(answer.sha256, <[u8; 32]>::from(Sha256::digest(&bytes[5..15])));
-        self.storage.close().await.unwrap();
-        assert!(!self.storage.status().running);
     }
 
     pub async fn finish(self) {
-        self.storage.close().await.unwrap();
-        self.runtime.stop().await.unwrap();
+        self.runtime.shutdown().await.unwrap();
+        assert!(!self.storage.status().running);
     }
 }
 
@@ -195,19 +218,6 @@ pub fn artifact(name: &str) -> PathBuf {
 
 async fn runtime() -> (Runtime<Model>, StorageManager, tempfile::TempDir, Duration) {
     let started = Instant::now();
-    let preparation_bytes = nz(64 * 1024 * 1024);
-    let runtime = Runtime::<Model>::builder((), ())
-        .register(Lanes::catalog())
-        .operation_settings(harmos_runtime::operations::Settings {
-            queued: nz(64),
-            lifecycle_queued: nz(16),
-            preparation_bytes: Some(preparation_bytes),
-        })
-        .runtime()
-        .await
-        .unwrap();
-    let host_elapsed = started.elapsed();
-
     let root = tempfile::tempdir().unwrap();
     let settings = StorageSettings {
         filesystem: StorageFilesystemSettings {
@@ -244,16 +254,20 @@ async fn runtime() -> (Runtime<Model>, StorageManager, tempfile::TempDir, Durati
         max_checkpoint_bytes: nz(16 * 1024 * 1024),
     });
     let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
-    let mut dependencies = harmos_runtime::Dependencies::new();
-    dependencies.insert(Arc::new(storage.clone())).unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_operations::storage::Storage::registration(dependencies),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let storage_resource = Arc::new(storage.clone());
+    let preparation_bytes = nz(64 * 1024 * 1024);
+    let runtime = Runtime::<Model>::launch_with((), (), |setup| {
+        setup.resource::<StorageManager>(storage_resource);
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            queued: nz(64),
+            lifecycle_queued: nz(16),
+            preparation_bytes: Some(preparation_bytes),
+        });
+        setup.operations::<harmos_operations::storage::Storage>(Lanes::Open);
+    })
+    .await
+    .unwrap();
+    let host_elapsed = started.elapsed();
     (runtime, storage, root, host_elapsed)
 }
 

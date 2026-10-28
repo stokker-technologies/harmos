@@ -720,7 +720,8 @@ impl PluginScope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Application, RegistrationExt};
+    use crate::Application;
+    use crate::operations::RegistrationExt;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[crate::lanes]
@@ -730,13 +731,34 @@ mod tests {
     }
 
     struct Model;
+    impl crate::Lifecycle for Model {
+        type Config = ();
+        type Error = std::convert::Infallible;
+        type Context = crate::Startup<Self>;
+
+        async fn prepare(_: (), _: &mut crate::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+            Ok(Self)
+        }
+
+        async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
     impl Application for Model {
         type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
         type Streams = ();
-        type Resources = ();
     }
 
     #[crate::operation(harmos_path = crate, resources = [AtomicUsize], id = "test.read", response = u64,
@@ -779,21 +801,23 @@ mod tests {
 
     #[tokio::test]
     async fn dynamic_services_are_scoped_and_drained_on_unload() {
-        let runtime = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
         let scope = PluginScope::new("worker", PluginGeneration::fresh().unwrap());
-        let mut receipt = runtime.operations.stage_plugin(&scope, |_| Ok(())).unwrap();
-        assert!(scope.commit());
         let calls = Arc::new(AtomicUsize::new(0));
         let started = Arc::new(tokio::sync::Notify::new());
-        let mut dependencies = harmos_sdk::Dependencies::new();
-        dependencies.insert(started.clone()).unwrap();
-        dependencies.insert(calls.clone()).unwrap();
+        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+            setup.resource::<tokio::sync::Notify>(started.clone());
+            setup.resource::<AtomicUsize>(calls.clone());
+        })
+        .await
+        .unwrap();
+        let mut receipt = runtime.operations.stage_plugin(&scope, |_| Ok(())).unwrap();
+        assert!(scope.commit());
         scope
-            .register(
-                harmos_sdk::RegistrationBatch::new(dependencies)
+            .register_batch(
+                harmos_sdk::__private::RegistrationBatch::new()
                     .operation::<Read>()
                     .service::<Worker>("service", crate::services::POLICY)
-                    .defaults::<Lanes>(),
+                    .lane(<Lanes as crate::operations::Lane>::default_lane()),
             )
             .await
             .unwrap();
@@ -804,21 +828,23 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert!(runtime.operations.resident_definition("worker.service").is_none());
         assert!(scope.operation::<Read, Lanes>(Read).start().await.is_err());
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 
     #[tokio::test]
     async fn dynamic_entries_follow_scope_authority_and_withdrawal() {
-        let runtime = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
         let scope = PluginScope::new("worker", PluginGeneration::fresh().unwrap());
+        let initialized = Arc::new(AtomicUsize::new(0));
+        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+            setup.resource::<AtomicUsize>(initialized.clone());
+        })
+        .await
+        .unwrap();
         let mut receipt = runtime.operations.stage_plugin(&scope, |_| Ok(())).unwrap();
         assert!(scope.commit());
-        let initialized = Arc::new(AtomicUsize::new(0));
-        let mut dependencies = harmos_sdk::Dependencies::new();
-        dependencies.insert(initialized.clone()).unwrap();
-        let batch = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Read>();
+        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<Read>();
         let invocation = scope.operation::<Read, Lanes>(Read);
-        scope.register(batch.clone().defaults::<Lanes>()).await.unwrap();
+        scope.register_batch(batch.clone().lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
         assert_eq!(initialized.load(Ordering::SeqCst), 0);
         assert_eq!(*invocation.run().await.unwrap(), 7);
         assert_eq!(initialized.load(Ordering::SeqCst), 1);
@@ -827,8 +853,8 @@ mod tests {
         let stale = scope.operation::<Read, Lanes>(Read);
         receipt.shutdown().await.unwrap();
         assert!(stale.start().await.is_err());
-        assert!(scope.register(batch.defaults::<Lanes>()).await.is_err());
+        assert!(scope.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.is_err());
         assert!(runtime.operations.definitions().iter().all(|definition| definition.id.as_str() != "read"));
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }

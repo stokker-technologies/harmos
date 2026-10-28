@@ -66,7 +66,7 @@ async fn host_resource_settings() {
     let allowed = Host::new(&runtime).unwrap().load(&bytes).unwrap().register().await.unwrap();
     drop(allowed);
     drop(restricted);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -80,7 +80,7 @@ async fn memory_growth_bounded() {
     assert!(execution_error(&refused).root_cause().to_string().starts_with("forcing trap when growing memory to "), "{refused}");
     retire_failed_guest(&mut manager, &mut lifecycle).await;
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -94,7 +94,7 @@ async fn fuel_retains_cause() {
     assert_eq!(execution_error(&spun).downcast_ref::<wasmtime::Trap>(), Some(&wasmtime::Trap::OutOfFuel));
     retire_failed_guest(&mut manager, &mut lifecycle).await;
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -109,7 +109,7 @@ async fn manager_bounds_wait() {
     assert!(matches!(waited, harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut)), "{waited:?}");
     retire_failed_guest(&mut manager, &mut lifecycle).await;
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -126,7 +126,7 @@ async fn trap_discards_instance() {
     assert!(matches!(component_error(&after), harmos_runtime::operations::ComponentError::Unavailable));
     retire_failed_guest(&mut manager, &mut lifecycle).await;
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -145,7 +145,7 @@ async fn refusal_keeps_classification() {
     assert_eq!(answered.said, "heard two", "a declined call keeps the instance");
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */

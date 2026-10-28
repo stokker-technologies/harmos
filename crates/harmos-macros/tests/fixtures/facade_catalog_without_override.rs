@@ -89,8 +89,10 @@ struct ExportAgain;
 
 #[facade::catalog]
 enum Operations {
+
     #[cfg(any())]
     Missing(unresolved::Operation),
+
     Export(Export),
     ExportAgain(ExportAgain),
 }
@@ -136,7 +138,7 @@ fn main() {
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].id.as_str(), "test.export");
     #[cfg(feature = "runtime")]
-    let _ = NestedOperations::registration(facade::__harmos::Dependencies::new());
+    let _ = <NestedOperations as facade::__harmos::operations::Catalog>::batch();
 }
 
 /* === Tests === */

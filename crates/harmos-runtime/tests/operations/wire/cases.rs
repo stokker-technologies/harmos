@@ -19,7 +19,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::{Failed, Lanes, Owner, runtime};
+use super::{Failed, Lanes, Owner};
 use harmos_runtime::operations::{Backoff, CacheKey, FailureKind, Jitter, OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Message, Refusal};
 
@@ -367,81 +367,48 @@ impl harmos_runtime::Operation for DetachedDeclaration {
 
 /* === Private Functions === */
 
+async fn runtime_with_owner(owner: Arc<Owner>) -> harmos_runtime::Runtime<crate::operations::support::Bank> {
+    crate::operations::fixture::runtime_with(|setup| {
+        setup.overrides(|setup| {
+            setup.resource::<Owner>(owner).resource::<Destination>(Arc::new(Destination("host")));
+        });
+    })
+    .await
+}
+
 #[tokio::test]
 async fn malformed_payload_refused() {
-    let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(owner.clone()).unwrap();
-                dependencies.insert(Arc::new(Destination("host"))).unwrap();
-                dependencies
-            })
-            .operation::<EchoDeclaration>()
-            .operation::<PrivateEchoDeclaration>()
-            .operation::<NestedDeclaration>()
-            .operation::<DetachedDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_owner(owner.clone()).await;
+    runtime.operations.register::<crate::operations::Single<EchoDeclaration>>(Lanes::Open).await.unwrap();
     assert!(matches!(
         runtime.operations.submit_encoded(&format!("host.{}", EchoDeclaration::ID), vec![0xff]),
         Err(Error::OperationPayload { .. })
     ));
     // The refused payload constructs nothing.
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn decode_panic_refused() {
-    let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(owner.clone()).unwrap();
-                dependencies.insert(Arc::new(Destination("host"))).unwrap();
-                dependencies
-            })
-            .operation::<Codec>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_owner(owner.clone()).await;
+    runtime.operations.register::<crate::operations::Single<Codec>>(Lanes::Open).await.unwrap();
     assert!(matches!(
         runtime.operations.submit_encoded(&format!("host.{}", Codec::ID), Text::from("decode_panic").encode()),
         Err(Error::OperationPanicked { .. })
     ));
     // The panic stays inside submission and constructs nothing.
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn encode_panic_settles() {
-    let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(owner.clone()).unwrap();
-                dependencies.insert(Arc::new(Destination("host"))).unwrap();
-                dependencies
-            })
-            .operation::<Codec>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_owner(owner.clone()).await;
+    runtime.operations.register::<crate::operations::Single<Codec>>(Lanes::Open).await.unwrap();
     assert!(matches!(
         runtime.operations.call_encoded(&format!("host.{}", Codec::ID), Text::from("encode_panic").encode()).await,
         Err(Error::OperationPanicked { .. })
@@ -449,46 +416,22 @@ async fn encode_panic_settles() {
     // The response panics after one completed run.
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn decode_races_replacement() {
-    let runtime = runtime().await;
     let old = Arc::new(Owner::default());
-    let replacement = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(old.clone()).unwrap();
-                dependencies
-            })
-            .operation::<Codec>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let replacement = old.clone();
+    let runtime = runtime_with_owner(old.clone()).await;
+    runtime.operations.register::<crate::operations::Single<Codec>>(Lanes::Open).await.unwrap();
     let operations = runtime.operations.clone();
-    let new_owner = replacement.clone();
     DECODE_HOOK.with(|hook| {
         *hook.borrow_mut() = Some(Box::new(move || {
             std::thread::spawn(move || {
                 tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
                     operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Codec::ID).unwrap()).await.unwrap();
-                    operations
-                        .register(harmos_runtime::RegistrationExt::lane(
-                            harmos_runtime::RegistrationBatch::new({
-                                let mut dependencies = harmos_runtime::Dependencies::new();
-                                dependencies.insert(new_owner).unwrap();
-                                dependencies
-                            })
-                            .operation::<Codec>(),
-                            Lanes::Open,
-                        ))
-                        .await
-                        .unwrap();
+                    operations.register::<crate::operations::Single<Codec>>(Lanes::Open).await.unwrap();
                 });
             })
             .join()
@@ -504,28 +447,15 @@ async fn decode_races_replacement() {
     let reply = runtime.operations.call_encoded(&format!("host.{}", Codec::ID), Text::from("replacement").encode()).await.unwrap();
     assert_eq!(Text::decode(&reply).unwrap().value, "replacement");
     assert_eq!(replacement.prepared.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn children_refuse_held() {
-    let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(owner.clone()).unwrap();
-                dependencies.insert(Arc::new(Destination("host"))).unwrap();
-                dependencies
-            })
-            .operation::<SameLaneDeclaration>()
-            .operation::<PrivateEchoDeclaration>(),
-            Lanes::Serial,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_owner(owner.clone()).await;
+    runtime.operations.register::<crate::operations::Single<PrivateEchoDeclaration>>(Lanes::Serial).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<SameLaneDeclaration>>(Lanes::Serial).await.unwrap();
     let error = runtime.operation(SameLaneDeclaration::from("child")).run().await.unwrap_err();
     let Error::OperationFailed { source, .. } = error else {
         panic!("nested refusal retained");
@@ -533,64 +463,34 @@ async fn children_refuse_held() {
     assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))));
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn success_joins_unawaited() {
-    let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(owner.clone()).unwrap();
-                dependencies.insert(Arc::new(Destination("host"))).unwrap();
-                dependencies
-            })
-            .operation::<EchoDeclaration>()
-            .operation::<PrivateEchoDeclaration>()
-            .operation::<NestedDeclaration>()
-            .operation::<DetachedDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_owner(owner.clone()).await;
+    runtime.operations.register::<crate::operations::Single<PrivateEchoDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<DetachedDeclaration>>(Lanes::Open).await.unwrap();
     assert_eq!(&*runtime.operation(DetachedDeclaration::from("ignored")).run().await.unwrap(), "parent");
     assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", PrivateEchoDeclaration::ID).unwrap()).await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn cancellation_joins_child() {
-    let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(owner.clone()).unwrap();
-                dependencies.insert(Arc::new(Destination("host"))).unwrap();
-                dependencies
-            })
-            .operation::<EchoDeclaration>()
-            .operation::<PrivateEchoDeclaration>()
-            .operation::<NestedDeclaration>()
-            .operation::<DetachedDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with_owner(owner.clone()).await;
+    runtime.operations.register::<crate::operations::Single<PrivateEchoDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<NestedDeclaration>>(Lanes::Open).await.unwrap();
     let started = owner.wire_started.notified();
     let parent = runtime.operation(NestedDeclaration::from("block")).start().await.unwrap();
     started.await;
     parent.cancel();
     assert!(matches!(parent.await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */

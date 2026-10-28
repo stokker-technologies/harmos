@@ -46,8 +46,6 @@ enum Observers { Watch(Watch) }
 
 /* === Traits === */
 
-trait ProductPlugin {}
-
 /* === Implementations === */
 
 impl harmos::builtins::lifecycle::Policy for Bridge {
@@ -57,12 +55,24 @@ impl harmos::builtins::lifecycle::Policy for Bridge {
 
 #[harmos::observer(interval_ms = 5, streams(Output))]
 impl Watch {
-    async fn observe(&mut self, _: &harmos::sidecar::ObserverContext<'_, ()>) -> Result<(), harmos::sidecar::Refusal> { Ok(()) }
+    async fn observe(&mut self, _: &harmos::sidecar::ObserverContext<'_>) -> Result<(), harmos::sidecar::Refusal> { Ok(()) }
 }
 
-#[harmos::plugin(id = "missing_output", context = harmos::sidecar::Supervisor, config = (),
-    provides = (), requires = (), observers = Observers, restart = "never")]
-impl ProductPlugin for Bridge {}
+impl harmos::Lifecycle for Bridge {
+    type Config = ();
+    type Context = harmos::sidecar::Supervisor;
+    type Error = std::convert::Infallible;
+
+    async fn prepare(_: (), _: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> { Ok(Self) }
+    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> { Ok(()) }
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> { Ok(()) }
+    async fn cleanup(&mut self) -> Result<(), Self::Error> { Ok(()) }
+}
+
+#[harmos::sidecar::plugin(id = "missing_output", requires = (), observers = Observers, restart = "never")]
+impl harmos::Plugin for Bridge {
+    const CATALOGS: &'static [harmos::operations::Catalog] = &[];
+}
 
 /* === Public Functions === */
 

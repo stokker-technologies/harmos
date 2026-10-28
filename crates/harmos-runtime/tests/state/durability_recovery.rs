@@ -49,7 +49,10 @@ struct Saved {
 async fn restart_recovers_history() {
     let copy = Store::default();
 
-    let live = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy))).await;
+    let live = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy));
+    })
+    .await;
     let handle = live.state.as_principal(alice());
     handle.commit(deposit(40)).await.expect("accepted");
     handle.commit(withdraw(15)).await.expect("accepted");
@@ -61,9 +64,12 @@ async fn restart_recovers_history() {
     // A derived handle is a handle: the writer stops when the last one goes.
     drop(handle);
 
-    assert_eq!(live.stop().await.unwrap(), applied, "shutdown drained the whole tail");
+    assert_eq!(live.shutdown().await.unwrap(), applied, "shutdown drained the whole tail");
 
-    let recovered = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy))).await;
+    let recovered = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy));
+    })
+    .await;
 
     assert_eq!(ledger(&recovered).await, expected);
     assert_eq!(recovered.state.applied(), applied);
@@ -77,7 +83,10 @@ async fn crash_loses_unsynced() {
 
     // Three entries to a batch, so the fourth sits in the adapter's own risk
     // window when the process dies.
-    let live = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy).syncing_every(3))).await;
+    let live = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy).syncing_every(3));
+    })
+    .await;
     for amount in [10, 20, 30, 40] {
         live.state.commit(deposit(amount)).await.expect("accepted");
     }
@@ -91,7 +100,10 @@ async fn crash_loses_unsynced() {
     // batch — a crash is exactly the path where nobody gets to.
     std::mem::forget(live);
 
-    let recovered = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy))).await;
+    let recovered = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy));
+    })
+    .await;
 
     assert_eq!(ledger(&recovered).await.balance, 60, "everything synced survived, and only the window was lost");
     assert_eq!(recovered.state.applied(), Position(3));
@@ -119,13 +131,17 @@ async fn redelivery_forwards_stored() {
     // A fresh mirror lags behind everything, so boot redelivers it the whole
     // recovered history.
     let recovered = booted(Ledger::default(), |builder| {
-        builder.recover(Journal::<Bank>::open(&copy)).attach(Journal::<Bank>::open(&mirror)).attach(Journal::<Bank>::open(&second_mirror))
+        builder
+            .settings()
+            .recover(Journal::<Bank>::open(&copy))
+            .attach(Journal::<Bank>::open(&mirror))
+            .attach(Journal::<Bank>::open(&second_mirror));
     })
     .await;
 
     assert_eq!(ledger(&recovered).await.balance, 13, "the current bonus applies once");
     assert_eq!(recovered.state.applied(), Position(10), "the unknown record was skipped, and its position was taken all the same");
-    recovered.stop().await.unwrap();
+    recovered.shutdown().await.unwrap();
 
     let written = mirror.lines();
 
@@ -163,11 +179,13 @@ async fn undecodable_history_forwarded() {
         (1..=1030).map(|position| frame(position, Kind::Record, "ledger.audited", 1, serde_json::json!({ "note": "kept" }))).collect();
     copy.replace(history.clone());
 
-    let recovered =
-        booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy)).attach(Journal::<Bank>::open(&mirror))).await;
+    let recovered = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy)).attach(Journal::<Bank>::open(&mirror));
+    })
+    .await;
 
     assert_eq!(recovered.state.applied(), Position(1030), "every skipped record's position was taken all the same");
-    recovered.stop().await.unwrap();
+    recovered.shutdown().await.unwrap();
 
     assert_eq!(
         mirror.lines(),
@@ -183,17 +201,23 @@ async fn stop_flushes_batch() {
 
     // Three entries to a batch, so both commits sit in the adapter's own risk
     // window when the stop begins.
-    let live = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy).syncing_every(3))).await;
+    let live = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy).syncing_every(3));
+    })
+    .await;
     for amount in [10, 20] {
         live.state.commit(deposit(amount)).await.expect("accepted");
     }
-    let settled = live.stop().await.unwrap();
+    let settled = live.shutdown().await.unwrap();
 
     // The settled frontier is read back after the flush; the drain alone had
     // synced nothing under a three-entry batch.
     assert_eq!(settled, Position(2), "stop reports what the flush made durable, not what the drain had synced");
 
-    let recovered = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy))).await;
+    let recovered = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy));
+    })
+    .await;
 
     assert_eq!(ledger(&recovered).await.balance, 30, "the held batch reached disk on stop rather than dying with the process");
     assert_eq!(recovered.state.applied(), Position(2));
@@ -202,7 +226,10 @@ async fn stop_flushes_batch() {
 #[tokio::test]
 async fn stored_resolves_sync() {
     let copy = Store::default();
-    let runtime = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy).syncing_every(2))).await;
+    let runtime = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy).syncing_every(2));
+    })
+    .await;
 
     let first = runtime.state.commit(deposit(5)).await.expect("accepted");
     let mut waiting = Box::pin(runtime.state.wait_until_stored(first.position));
@@ -224,15 +251,19 @@ async fn tail_restores_state() {
     let snapshot: Arc<Mutex<Option<Saved>>> = Arc::default();
 
     let live = booted(Ledger::default(), |builder| {
-        builder.recover(Journal::<Bank>::open(&copy)).snapshot(Snapshot::<Bank>::folding(Ledger::default(), Position::ORIGIN, {
-            let snapshot = Arc::clone(&snapshot);
-            move |state, at| {
-                let saved = Saved { at, state: state.clone() };
-                *snapshot.lock().expect("the snapshot is never poisoned") = Some(saved);
+        builder.settings().recover(Journal::<Bank>::open(&copy)).snapshot(Snapshot::<Bank>::folding(
+            Ledger::default(),
+            Position::ORIGIN,
+            {
+                let snapshot = Arc::clone(&snapshot);
+                move |state, at| {
+                    let saved = Saved { at, state: state.clone() };
+                    *snapshot.lock().expect("the snapshot is never poisoned") = Some(saved);
 
-                Ok(())
-            }
-        }))
+                    Ok(())
+                }
+            },
+        ));
     })
     .await;
     for amount in [10, 20, 30, 40, 50] {
@@ -240,12 +271,15 @@ async fn tail_restores_state() {
     }
     let expected = ledger(&live).await;
     let applied = live.state.applied();
-    live.stop().await.unwrap();
+    live.shutdown().await.unwrap();
 
     // Boot the same equation the other way round: the origin is the snapshot,
     // and the entries above its horizon are the rest.
     let saved = snapshot.lock().expect("the snapshot is never poisoned").take().expect("a snapshot was taken");
-    let recovered = booted(saved.state, |builder| builder.recover(Journal::<Bank>::open(&copy).after(saved.at))).await;
+    let recovered = booted(saved.state, |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy).after(saved.at));
+    })
+    .await;
 
     assert_eq!(saved.at, applied, "the snapshot names the position it holds");
     assert_eq!(ledger(&recovered).await, expected);
@@ -253,13 +287,16 @@ async fn tail_restores_state() {
 }
 
 async fn seeded(copy: &Store) {
-    let runtime = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(copy))).await;
+    let runtime = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(copy));
+    })
+    .await;
 
     for amount in [1, 2, 3, 4] {
         runtime.state.commit(deposit(amount * 2)).await.expect("accepted");
         runtime.state.commit(withdraw(amount)).await.expect("accepted");
     }
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */

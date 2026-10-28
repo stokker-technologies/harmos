@@ -22,7 +22,8 @@ use std::sync::{Arc, Mutex, Weak};
 
 // Local Imports
 use super::{Attachment, Context as PluginContext, Error, Plugin};
-use crate::operations::{Contract, ExecutionContext, ServingError, WireTable};
+use crate::Setup;
+use crate::operations::{Contract, ExecutionContext, ServingError, StartupError, WireTable};
 use harmos_domain::model::operations::lifecycle;
 
 /* === Constants === */
@@ -32,7 +33,7 @@ use harmos_domain::model::operations::lifecycle;
 /* === Type Aliases === */
 
 pub type Table = Arc<Mutex<WireTable>>;
-type Transition<P> = Pin<Box<dyn Future<Output = (P, Result<(), Error<P>>, bool)> + Send>>;
+type Transition<P> = Pin<Box<dyn Future<Output = Completed<P>> + Send>>;
 
 /* === Structs === */
 
@@ -64,6 +65,7 @@ struct RetirementLoan<P: Plugin> {
 
 struct Slot<P: Plugin> {
     plugin: Option<P>,
+    context: Option<P::Context>,
     phase: Phase,
     attachment: Option<Arc<dyn Attachment<P::Context>>>,
     generation_context: Option<[u8; 32]>,
@@ -73,16 +75,29 @@ struct State<P: Plugin> {
     slot: Arc<Mutex<Slot<P>>>,
     table: Weak<Mutex<WireTable>>,
     plugin: Option<P>,
+    config: Option<P::Config>,
+    configuration: Option<WireTable>,
     work: Option<Transition<P>>,
     result: Option<Result<(), Error<P>>>,
     action: lifecycle::Action,
     delivered: bool,
     failure_reported: bool,
     shutdown_attempted: bool,
+    cleanup_finished: bool,
     context: Option<P::Context>,
     assignments: Vec<u8>,
     attachment: Option<Arc<dyn Attachment<P::Context>>>,
     generation_context: Option<[u8; 32]>,
+}
+
+struct Completed<P: Plugin> {
+    plugin: Option<P>,
+    context: Option<P::Context>,
+    configuration: Option<WireTable>,
+    attachment: Option<Arc<dyn Attachment<P::Context>>>,
+    result: Result<(), Error<P>>,
+    shutdown_attempted: bool,
+    cleanup_finished: bool,
 }
 
 /* === Enums === */
@@ -118,6 +133,7 @@ impl<P: Plugin> Owner<P> {
         let owner = Arc::new(Self {
             slot: Arc::new(Mutex::new(Slot {
                 plugin: None,
+                context: None,
                 phase: Phase::Empty,
                 attachment: None,
                 generation_context: None,
@@ -179,12 +195,15 @@ impl<P: Plugin> Owner<P> {
             slot: Arc::clone(&self.slot),
             table: self.table.clone(),
             plugin,
+            config: None,
+            configuration: None,
             work: None,
             result: None,
             action,
             delivered: false,
             failure_reported: false,
             shutdown_attempted: false,
+            cleanup_finished: false,
             context: None,
             assignments: Vec::new(),
             attachment: None,
@@ -216,13 +235,13 @@ impl<P: Plugin> Owner<P> {
             Some(token)
         };
         let config = crate::decode_config(config_json).map_err(|error| Error::Configuration(Arc::new(error)))?;
-        let plugin = P::prepare(config).map_err(|error| Error::Plugin(Arc::new(error)))?;
         let mut slot = self.slot.lock().map_err(|_| Error::Poisoned)?;
         if slot.phase != Phase::Empty {
             return Err(Error::Phase);
         }
         slot.phase = Phase::Initializing;
-        let mut state = self.state(Some(plugin), lifecycle::Action::Initialize);
+        let mut state = self.state(None, lifecycle::Action::Initialize);
+        state.config = Some(config);
         state.generation_context = generation_context;
         state.assignments = assignments.to_vec();
         Ok(state)
@@ -231,52 +250,33 @@ impl<P: Plugin> Owner<P> {
     async fn initialize(&self, state: &mut State<P>, context: &P::Context) -> Result<(), Error<P>> {
         if state.work.is_none() && state.result.is_none() {
             context.assign_operations(&state.assignments).map_err(|error| Error::Serving(Arc::new(error)))?;
-            let mut plugin = state.plugin.take().ok_or(Error::Phase)?;
+            let config = state.config.take().ok_or(Error::Phase)?;
+            let configuration = {
+                let table = self.table.upgrade().ok_or(Error::Phase)?;
+                let table = table.lock().map_err(|_| Error::Poisoned)?;
+                table.configuration().map_err(|error| Error::Serving(Arc::new(error)))?
+            };
             let context = state.generation_context.map_or_else(|| context.clone(), |token| context.with_generation(token));
-            state.work = Some(Box::pin(async move {
-                let result = guarded(async { plugin.initialize(&context).await.map_err(|error| Error::Plugin(Arc::new(error))) }).await;
-                (plugin, result, false)
-            }));
+            state.work = Some(Box::pin(prepare::<P>(
+                config,
+                configuration,
+                context,
+                self.contracts.clone(),
+                self.observers.clone(),
+                state.assignments.clone(),
+            )));
         }
         state.finish().await?;
         state.result.as_ref().ok_or(Error::Phase)?.clone()?;
         if state.delivered {
             return Ok(());
         }
-        let inventory = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let plugin = state.plugin.as_ref().ok_or(Error::Phase)?;
-            state.attachment = plugin.attachment();
-            if let Some(attachment) = &state.attachment {
-                let resources: Arc<dyn std::any::Any + Send + Sync> = plugin.resources();
-                if !Arc::ptr_eq(&resources, &attachment.resources()) {
-                    return Err(Error::Serving(Arc::new(ServingError::Catalog)));
-                }
-            }
-            let actual = state.attachment.as_ref().map_or_else(Vec::new, |attachment| attachment.observers());
-            if actual.as_slice() != self.observers.as_ref() {
-                return Err(Error::Serving(Arc::new(ServingError::Catalog)));
-            }
-            Ok(())
-        }))
-        .map_err(|_| Error::Panicked)
-        .and_then(|result| result);
-        if let Err(error) = inventory {
-            state.result = Some(Err(error.clone()));
-            return Err(error);
-        }
         let attachment = state.attachment.clone();
         let table = self.table.upgrade().ok_or(Error::Phase)?;
         let binding = {
             let mut table = table.lock().map_err(|_| Error::Poisoned)?;
-            let plugin = state.plugin.as_ref().ok_or(Error::Phase)?;
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                plugin
-                    .bind_operations(&mut table)
-                    .and_then(|()| table.validate_contracts(&self.contracts))
-                    .and_then(|()| table.validate_callees(&state.assignments))
-            }))
-            .map_err(|_| Error::Panicked)
-            .and_then(|result| result.map_err(|error| Error::Serving(Arc::new(error))))
+            let configuration = state.configuration.take().ok_or(Error::Phase)?;
+            table.install_configuration(configuration).map_err(|error| Error::Serving(Arc::new(error)))
         };
         if let Err(error) = binding {
             state.result = Some(Err(error.clone()));
@@ -284,6 +284,7 @@ impl<P: Plugin> Owner<P> {
         }
         let mut slot = self.slot.lock().map_err(|_| Error::Poisoned)?;
         slot.plugin = state.plugin.take();
+        slot.context = state.context.take();
         slot.attachment = attachment;
         slot.generation_context = state.generation_context;
         slot.phase = Phase::Initialized;
@@ -305,6 +306,7 @@ impl<P: Plugin> Owner<P> {
         slot.phase = Phase::Stopping;
         let mut state = self.state(Some(plugin), lifecycle::Action::Shutdown);
         state.attachment = slot.attachment.take();
+        state.context = slot.context.take();
         state.generation_context = slot.generation_context;
         Ok(state)
     }
@@ -362,10 +364,20 @@ impl<P: Plugin> crate::operations::lifecycle::LifecycleInstance for LifecycleInv
 impl<P: Plugin> State<P> {
     async fn finish(&mut self) -> Result<(), Error<P>> {
         if let Some(work) = &mut self.work {
-            let (plugin, result, shutdown_attempted) = work.await;
-            self.shutdown_attempted = shutdown_attempted;
-            self.plugin = Some(plugin);
-            self.result = Some(result);
+            let completed = work.await;
+            self.shutdown_attempted = completed.shutdown_attempted;
+            self.cleanup_finished = completed.cleanup_finished;
+            self.plugin = completed.plugin;
+            if completed.context.is_some() {
+                self.context = completed.context;
+            }
+            self.result = Some(completed.result);
+            if completed.configuration.is_some() {
+                self.configuration = completed.configuration;
+            }
+            if completed.attachment.is_some() {
+                self.attachment = completed.attachment;
+            }
             self.work = None;
         }
         Ok(())
@@ -377,6 +389,7 @@ impl<P: Plugin> State<P> {
         let table = self.table.clone();
         let context = self.context.clone();
         let mut shutdown_attempted = self.shutdown_attempted;
+        let mut cleanup_finished = self.cleanup_finished;
         self.result = None;
         self.work = Some(Box::pin(async move {
             let result = guarded(async {
@@ -394,15 +407,33 @@ impl<P: Plugin> State<P> {
                     table.release_ordinary().map_err(|error| Error::Serving(Arc::new(error)))?
                 };
                 drop(retired);
+                let mut errors = Vec::new();
                 if !shutdown_attempted && let Some(context) = &context {
                     // Domain Effects Are Never Replayed By Physical Cleanup Retries.
                     shutdown_attempted = true;
-                    plugin.stop(context).await.map_err(|error| Error::Plugin(Arc::new(error)))?;
+                    if let Err(error) = guarded(async { plugin.stop(context).await.map_err(|error| Error::Plugin(Arc::new(error))) }).await
+                    {
+                        errors.push(error);
+                    }
                 }
-                plugin.cleanup().await.map_err(|error| Error::Plugin(Arc::new(error)))
+                if !cleanup_finished {
+                    match guarded(async { plugin.cleanup().await.map_err(|error| Error::Plugin(Arc::new(error))) }).await {
+                        Ok(()) => cleanup_finished = true,
+                        Err(error) => errors.push(error),
+                    }
+                }
+                combine(errors)
             })
             .await;
-            (plugin, result, shutdown_attempted)
+            Completed {
+                plugin: Some(plugin),
+                context: None,
+                configuration: None,
+                attachment: None,
+                result,
+                shutdown_attempted,
+                cleanup_finished,
+            }
         }));
         Ok(())
     }
@@ -415,6 +446,11 @@ impl<P: Plugin> State<P> {
             self.finish().await?;
             self.action = lifecycle::Action::Shutdown;
             self.result = None;
+        }
+        if self.plugin.is_none() {
+            self.configuration.take();
+            self.slot.lock().map_err(|_| Error::Poisoned)?.phase = Phase::Closed;
+            return Ok(());
         }
         if let Some(Err(error)) = &self.result {
             if !self.failure_reported {
@@ -441,8 +477,89 @@ impl<P: Plugin> State<P> {
 
 /* === Private Functions === */
 
+async fn prepare<P: Plugin>(
+    config: P::Config, configuration: WireTable, context: P::Context, contracts: Arc<[Contract]>,
+    observers: Arc<[crate::inventory::observers::Declaration]>, assignments: Vec<u8>,
+) -> Completed<P> {
+    let mut setup = Setup::<P>::new(configuration);
+    for catalog in P::CATALOGS {
+        setup.settings().catalog(catalog);
+    }
+    let prepared = guarded::<P, _>(async { P::prepare(config, &mut setup).await.map_err(|error| Error::Plugin(Arc::new(error))) }).await;
+    let mut errors = Vec::new();
+    let mut plugin = match prepared {
+        Ok(plugin) => Some(plugin),
+        Err(source) => {
+            errors.push(StartupError::Runtime { source: Box::new(source) });
+            None
+        }
+    };
+
+    let mut attachment = None;
+    let binding = guarded::<P, _>(async {
+        if let Some(plugin) = &plugin {
+            attachment = plugin.attachment();
+            let actual = attachment.as_ref().map_or_else(Vec::new, |attachment| attachment.observers());
+            if actual.as_slice() != observers.as_ref() {
+                return Err(Error::Serving(Arc::new(ServingError::Catalog)));
+            }
+            if let Some(attachment) = &attachment {
+                attachment.clone().bind(setup.settings()).map_err(|error| Error::Serving(Arc::new(error)))?;
+            }
+        }
+        Ok(())
+    })
+    .await;
+    if let Err(source) = binding {
+        errors.push(StartupError::Runtime { source: Box::new(source) });
+    }
+    if let Err(error) = setup.validate() {
+        match error {
+            StartupError::Multiple { errors: configuration } => errors.extend(configuration),
+            error => errors.push(error),
+        }
+    }
+    let configuration = setup.into_configuration();
+    if errors.is_empty() {
+        if let Err(source) = configuration.validate_contracts(&contracts) {
+            errors.push(StartupError::Binding { source: Box::new(source) });
+        }
+        if let Err(source) = configuration.validate_callees(&assignments) {
+            errors.push(StartupError::Binding { source: Box::new(source) });
+        }
+    }
+    let result = match StartupError::aggregate(errors) {
+        Some(error) => Err(Error::Serving(Arc::new(ServingError::Startup(Box::new(error))))),
+        None => {
+            let plugin = plugin.as_mut().expect("successful preparation retains the plugin owner");
+            guarded(async { plugin.initialize(&context).await.map_err(|error| Error::Plugin(Arc::new(error))) }).await
+        }
+    };
+    let context = result.is_ok().then_some(context);
+    Completed {
+        plugin,
+        context,
+        configuration: Some(configuration),
+        attachment,
+        result,
+        shutdown_attempted: false,
+        cleanup_finished: false,
+    }
+}
+
+fn combine<P: Plugin>(mut errors: Vec<Error<P>>) -> Result<(), Error<P>> {
+    if errors.len() == 1 {
+        return Err(errors.pop().expect("one lifecycle error"));
+    }
+    let errors = errors.into_iter().map(|source| StartupError::Runtime { source: Box::new(source) }).collect();
+    match StartupError::aggregate(errors) {
+        None => Ok(()),
+        Some(error) => Err(Error::Serving(Arc::new(ServingError::Startup(Box::new(error))))),
+    }
+}
+
 // Guard Only The Borrowed Machinery Future; The Outer Future Retains P
-async fn guarded<P: Plugin>(future: impl Future<Output = Result<(), Error<P>>>) -> Result<(), Error<P>> {
+async fn guarded<P: Plugin, T>(future: impl Future<Output = Result<T, Error<P>>>) -> Result<T, Error<P>> {
     let mut future = std::pin::pin!(future);
     std::future::poll_fn(|context| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| future.as_mut().poll(context))) {
         Ok(result) => result,
@@ -452,3 +569,247 @@ async fn guarded<P: Plugin>(future: impl Future<Output = Result<(), Error<P>>>) 
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Message;
+    use crate::operations::{OperationCatalog, RegistrationBatch, WireDeclaration};
+
+    struct Events(Arc<Mutex<Vec<&'static str>>>);
+    struct ServedCatalog;
+
+    static SERVED: [crate::catalog::Node<WireDeclaration>; 1] = [crate::catalog::Node::Leaf(WireDeclaration::of::<Serve>())];
+
+    impl OperationCatalog for ServedCatalog {
+        const CATALOG: crate::operations::Catalog = crate::operations::Catalog::of::<Self>("ServedCatalog", &SERVED, &[]);
+
+        fn batch() -> RegistrationBatch {
+            RegistrationBatch::new().operation::<Serve>()
+        }
+    }
+
+    #[crate::operation(harmos_path = crate, resources = [Events, u32], id = "serve", response = u32,
+        policy = <TestPlugin as lifecycle::Policy>::INITIALIZATION_POLICY)]
+    struct Serve;
+
+    impl crate::Operation for Serve {
+        type Error = std::convert::Infallible;
+
+        async fn run(self, context: crate::Context<'_, Self>) -> Result<crate::Response<u32>, Self::Error> {
+            context.resource::<Events>().0.lock().unwrap().push("serve");
+            Ok(crate::Response::from_owner(context.resource::<u32>()))
+        }
+    }
+
+    fn contracts() -> Vec<Contract> {
+        vec![WireDeclaration::of::<Serve>().contract().unwrap()]
+    }
+
+    #[derive(Default, serde::Deserialize)]
+    #[serde(default)]
+    struct Config {
+        #[serde(skip)]
+        events: Arc<Mutex<Vec<&'static str>>>,
+
+        value: u32,
+        duplicate: bool,
+        fail_prepare: bool,
+        fail_stop: bool,
+        fail_cleanup: bool,
+    }
+
+    struct TestPlugin(Config);
+
+    impl lifecycle::Policy for TestPlugin {
+        const INITIALIZATION_POLICY: crate::OperationPolicy = crate::OperationPolicy {
+            timeout: std::time::Duration::from_secs(1),
+            attempt_timeout: std::time::Duration::from_secs(1),
+            retries: crate::RetryPolicy::Never,
+        };
+        const SHUTDOWN_POLICY: crate::OperationPolicy = Self::INITIALIZATION_POLICY;
+    }
+
+    impl crate::Lifecycle for TestPlugin {
+        type Config = Config;
+        type Error = std::io::Error;
+        type Context = ();
+
+        async fn prepare(config: Config, setup: &mut Setup<Self>) -> Result<Self, Self::Error> {
+            config.events.lock().unwrap().push("prepare");
+            setup.resource(Events(config.events.clone()));
+            setup.resource(config.value);
+            if config.duplicate {
+                setup.resource(config.value + 1);
+            }
+            if config.fail_prepare {
+                return Err(std::io::Error::other("prepare failure"));
+            }
+            Ok(Self(config))
+        }
+
+        async fn initialize(&mut self, _: &()) -> Result<(), Self::Error> {
+            self.0.events.lock().unwrap().push("initialize");
+            Ok(())
+        }
+
+        async fn stop(&mut self, _: &()) -> Result<(), Self::Error> {
+            self.0.events.lock().unwrap().push("stop");
+            if self.0.fail_stop {
+                return Err(std::io::Error::other("stop failure"));
+            }
+            Ok(())
+        }
+
+        async fn cleanup(&mut self) -> Result<(), Self::Error> {
+            self.0.events.lock().unwrap().push("cleanup");
+            if self.0.fail_cleanup {
+                return Err(std::io::Error::other("cleanup failure"));
+            }
+            Ok(())
+        }
+    }
+
+    impl Plugin for TestPlugin {
+        const CATALOGS: &'static [crate::operations::Catalog] = &[ServedCatalog::CATALOG];
+    }
+
+    fn ready<T>(future: impl Future<Output = T>) -> T {
+        let mut future = std::pin::pin!(future);
+        let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+        match future.as_mut().poll(&mut context) {
+            std::task::Poll::Ready(value) => value,
+            std::task::Poll::Pending => panic!("the lifecycle fixture completes synchronously"),
+        }
+    }
+
+    fn prepared(config: Config) -> Completed<TestPlugin> {
+        ready(prepare::<TestPlugin>(config, WireTable::new("fixture").unwrap(), (), contracts().into(), Arc::from([]), Vec::new()))
+    }
+
+    #[test]
+    fn validates_before_initialize() {
+        let events = Arc::default();
+        let valid = prepared(Config {
+            events: Arc::clone(&events),
+            ..Default::default()
+        });
+        assert!(valid.result.is_ok());
+        assert_eq!(*events.lock().unwrap(), ["prepare", "initialize"]);
+
+        events.lock().unwrap().clear();
+        let invalid = prepared(Config {
+            events: Arc::clone(&events),
+            duplicate: true,
+            ..Default::default()
+        });
+        assert!(invalid.result.is_err());
+        assert!(invalid.plugin.is_some());
+        assert_eq!(*events.lock().unwrap(), ["prepare"]);
+    }
+
+    #[test]
+    fn retained_owner_lifecycle() {
+        let (owner, table) = Owner::<TestPlugin>::new("fixture", contracts(), NonZeroUsize::MIN).unwrap();
+        let mut state = owner.prepare_initialize(b"{}", &[], &[]).unwrap();
+        ready(owner.initialize(&mut state, &())).unwrap();
+        let events = {
+            let slot = owner.slot.lock().unwrap();
+            assert!(slot.context.is_some());
+            slot.plugin.as_ref().unwrap().0.events.clone()
+        };
+        assert_eq!(*events.lock().unwrap(), ["prepare", "initialize"]);
+
+        {
+            let mut table = table.lock().unwrap();
+            let context = table.context();
+            table.prepare(1, "fixture.serve", Serve::definition().fingerprint.0, 1, Serve.encode()).unwrap();
+            ready(table.bind(1, &context)).unwrap();
+            assert_eq!(ready(table.attempt(1, &context)).unwrap(), 0u32.encode());
+            ready(table.finalize(1)).unwrap();
+            ready(table.settle()).unwrap();
+        }
+        ready(owner.retire()).unwrap();
+        assert_eq!(*events.lock().unwrap(), ["prepare", "initialize", "serve", "stop", "cleanup"]);
+    }
+
+    #[test]
+    fn failed_prepare_aggregates() {
+        let completed = prepared(Config {
+            fail_prepare: true,
+            duplicate: true,
+            ..Default::default()
+        });
+        let Err(Error::Serving(error)) = completed.result else {
+            panic!("preparation and setup failures must be reported");
+        };
+        let ServingError::Startup(error) = error.as_ref() else {
+            panic!("setup failures retain their typed source");
+        };
+        let StartupError::Multiple { errors } = error.as_ref() else {
+            panic!("both independent failures must be retained");
+        };
+        assert_eq!(errors.len(), 2);
+        assert!(errors.iter().any(|error| matches!(error, StartupError::DuplicateResource { .. })));
+        assert!(completed.plugin.is_none());
+    }
+
+    #[test]
+    fn setup_replaces_resource() {
+        let mut setup = Setup::<TestPlugin>::new(WireTable::new("fixture").unwrap());
+        let _plugin = ready(<TestPlugin as crate::Lifecycle>::prepare(Config { value: 1, ..Default::default() }, &mut setup)).unwrap();
+        let replacement = Arc::new(2u32);
+        setup.overrides(|setup| {
+            setup.resource::<u32>(replacement.clone());
+        });
+        setup.validate().unwrap();
+        let actual = setup.settings().context().resource::<u32>().unwrap();
+        assert!(Arc::ptr_eq(&replacement, &actual));
+    }
+
+    #[test]
+    fn stop_failure_cleanup() {
+        let events = Arc::default();
+        let plugin = TestPlugin(Config {
+            events: Arc::clone(&events),
+            fail_stop: true,
+            ..Default::default()
+        });
+        let (owner, _table) = Owner::new("fixture", Vec::new(), NonZeroUsize::MIN).unwrap();
+        let mut state = owner.state(Some(plugin), lifecycle::Action::Shutdown);
+        state.context = Some(());
+        state.start_shutdown().unwrap();
+        ready(state.finish()).unwrap();
+        assert!(state.result.as_ref().unwrap().is_err());
+        assert_eq!(*events.lock().unwrap(), ["stop", "cleanup"]);
+
+        assert!(ready(state.finalize()).is_err());
+        ready(state.finalize()).unwrap();
+        assert_eq!(*events.lock().unwrap(), ["stop", "cleanup"]);
+    }
+
+    #[test]
+    fn retirement_reports_failures() {
+        let plugin = TestPlugin(Config {
+            fail_stop: true,
+            fail_cleanup: true,
+            ..Default::default()
+        });
+        let (owner, _table) = Owner::new("fixture", Vec::new(), NonZeroUsize::MIN).unwrap();
+        let mut state = owner.state(Some(plugin), lifecycle::Action::Shutdown);
+        state.context = Some(());
+        state.start_shutdown().unwrap();
+        ready(state.finish()).unwrap();
+
+        let Err(Error::Serving(error)) = state.result.take().unwrap() else {
+            panic!("both lifecycle failures must remain available");
+        };
+        let ServingError::Startup(error) = error.as_ref() else {
+            panic!("lifecycle errors retain an aggregate source");
+        };
+        let StartupError::Multiple { errors } = error.as_ref() else {
+            panic!("both lifecycle failures must remain available");
+        };
+        assert_eq!(errors.len(), 2);
+    }
+}

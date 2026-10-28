@@ -124,6 +124,7 @@ struct State {
 }
 
 pub(super) struct Entry {
+    pub(super) carrier: harmos_sdk::__private::ResourceSet,
     owner: Identifier,
     definition: OperationDefinition,
     pub(super) contract: Option<crate::operations::Contract>,
@@ -203,6 +204,19 @@ enum Retirement {
 
 /* === Implementations === */
 
+impl Manager {
+    pub(crate) fn resources(&self) -> &harmos_sdk::__private::ResourceSet {
+        &self.instances.resources
+    }
+
+    pub(super) fn resources_for(&self, entry: &Entry) -> harmos_sdk::__private::ResourceSet {
+        harmos_sdk::ExecutionContext::new(entry.carrier.clone(), super::CallContext::default())
+            .with_resources(self.resources().clone())
+            .resources()
+            .clone()
+    }
+}
+
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl std::fmt::Debug for WeakOperationManager {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -252,7 +266,12 @@ impl<L: Lane> OperationManager<L> {
         self.inner.clone()
     }
 
-    pub async fn register(&self, registration: crate::operations::Registration<L>) -> Result<()> {
+    pub async fn register<C: harmos_sdk::operations::OperationCatalog>(&self, lane: L) -> Result<()> {
+        use crate::operations::RegistrationExt;
+        self.register_batch(C::batch().lane(lane)).await
+    }
+
+    pub(crate) async fn register_batch(&self, registration: crate::operations::Registration<L>) -> Result<()> {
         self.inner.register_native(registration)
     }
 

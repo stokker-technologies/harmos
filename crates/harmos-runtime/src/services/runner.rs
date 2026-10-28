@@ -180,7 +180,7 @@ where
 
 impl<A: Application> Runner for Once<A> {
     fn resources(&self) -> TypeId {
-        TypeId::of::<()>()
+        TypeId::of::<harmos_sdk::ExecutionContext>()
     }
 
     fn reactivates(&self) -> bool {

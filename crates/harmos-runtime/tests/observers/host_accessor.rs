@@ -34,7 +34,7 @@ use harmos_runtime::sidecar::{
 
 /* === Type Aliases === */
 
-type Context<'a> = ObserverContext<'a, u64, Host>;
+type Context<'a> = ObserverContext<'a, Host>;
 type Identity = (&'static str, ActivationId, u64);
 
 /* === Structs === */
@@ -98,7 +98,7 @@ impl StreamSpec for WrongVersion {
     const WINDOW: usize = Pulse::WINDOW;
 }
 
-impl ObserverCaller<u64, Measure> for Host {
+impl ObserverCaller<Measure> for Host {
     type Request = u64;
     type Response = u64;
     type Error = Failure;
@@ -112,11 +112,11 @@ impl ObserverCaller<u64, Measure> for Host {
         if ctx.tick().ordinal() == 1 {
             return Err(Failure::Refused);
         }
-        Ok(request + ctx.resources())
+        Ok(request + *ctx.resource::<u64>().unwrap())
     }
 }
 
-impl ObserverPublisher<u64, Recorded> for Host {
+impl ObserverPublisher<Recorded> for Host {
     type Error = Failure;
 
     async fn publish(&self, ctx: &Context<'_>, value: Recorded) -> Result<(), Failure> {
@@ -125,7 +125,7 @@ impl ObserverPublisher<u64, Recorded> for Host {
     }
 }
 
-impl ObserverPublisher<u64, Pulse> for Host {
+impl ObserverPublisher<Pulse> for Host {
     type Error = Failure;
     const STREAM: Option<publications::Entry> = Some(publications::Entry::of::<Pulse>());
 
@@ -135,7 +135,7 @@ impl ObserverPublisher<u64, Pulse> for Host {
     }
 }
 
-impl ObserverPublisher<u64, Denied> for Host {
+impl ObserverPublisher<Denied> for Host {
     type Error = Failure;
     const STREAM: Option<publications::Entry> = Some(publications::Entry::of::<WrongVersion>());
 
@@ -144,7 +144,7 @@ impl ObserverPublisher<u64, Denied> for Host {
     }
 }
 
-impl<S: StreamSpec<Row = Pulse>> ObserverStreamPublisher<u64, S> for Host {
+impl<S: StreamSpec<Row = Pulse>> ObserverStreamPublisher<S> for Host {
     type Error = Failure;
 
     async fn publish_on(&self, ctx: &Context<'_>, row: &Pulse) -> Result<(), Failure> {
@@ -155,7 +155,7 @@ impl<S: StreamSpec<Row = Pulse>> ObserverStreamPublisher<u64, S> for Host {
 
 #[harmos_runtime::observer(id = "host.watch", interval_ms = 5, streams(Pulse))]
 impl Watch {
-    async fn observe(&mut self, ctx: &ObserverContext<'_, u64, Host>) -> Result<(), Failure> {
+    async fn observe(&mut self, ctx: &ObserverContext<'_, Host>) -> Result<(), Failure> {
         let value = ctx.call(7).await?;
         ctx.publish(Recorded(value)).await?;
         ctx.publish(Pulse { sample: value }).await?;
@@ -165,7 +165,7 @@ impl Watch {
 
 #[harmos_runtime::observer(id = "host.grants", interval_ms = 5, streams(Pulse))]
 impl CheckGrants {
-    async fn observe(&mut self, ctx: &ObserverContext<'_, u64, Host>) -> Result<(), Failure> {
+    async fn observe(&mut self, ctx: &ObserverContext<'_, Host>) -> Result<(), Failure> {
         assert!(matches!(ctx.publish(Denied).await, Err(Failure::Publication(PublicationError::Undeclared { .. }))));
         assert!(matches!(
             ctx.publish_on::<WrongVersion>(&Pulse { sample: 0 }).await,
@@ -225,7 +225,7 @@ async fn next(events: &mut mpsc::Receiver<Event>) -> Event {
 #[tokio::test]
 async fn typed_context_dispatch() {
     let (host, mut events, _) = host(false);
-    let task = Observing::start(Instance::<u64, Host>::of::<Watch>().activate(Arc::new(35), host).unwrap());
+    let task = Observing::start(Instance::<Host>::of::<Watch>().activate(super::observer_context(Arc::new(35_u64)), host).unwrap());
     let activation = task.activation;
     assert_eq!(next(&mut events).await, Event::Call(("host.watch", activation, 1), 7));
     assert_eq!(next(&mut events).await, Event::Call(("host.watch", activation, 2), 7));
@@ -238,7 +238,7 @@ async fn typed_context_dispatch() {
 #[tokio::test]
 async fn version_grants_checked() {
     let (host, mut events, _) = host(false);
-    let task = Observing::start(Instance::<u64, Host>::of::<CheckGrants>().activate(Arc::new(0), host).unwrap());
+    let task = Observing::start(Instance::<Host>::of::<CheckGrants>().activate(super::observer_context(Arc::new(0_u64)), host).unwrap());
     assert_eq!(next(&mut events).await, Event::GrantsChecked);
     task.stop().await;
 }
@@ -246,7 +246,7 @@ async fn version_grants_checked() {
 #[tokio::test]
 async fn stop_drops_call() {
     let (host, mut events, dropped) = host(true);
-    let task = Observing::start(Instance::<u64, Host>::of::<Watch>().activate(Arc::new(0), host).unwrap());
+    let task = Observing::start(Instance::<Host>::of::<Watch>().activate(super::observer_context(Arc::new(0_u64)), host).unwrap());
     assert!(matches!(next(&mut events).await, Event::Call(..)));
     assert!(!dropped.load(Ordering::SeqCst));
     task.stop().await;

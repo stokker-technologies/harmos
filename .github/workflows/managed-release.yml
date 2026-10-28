@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-release.yml; sha256:0395f7ce02d48b484dfc73e3c2ccbfa93f0c84629b1ff885fa007d22f6529072
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-release.yml; sha256:841b02fbb3ad61de0a7d4ca419ed827c35bb8d95f4073e475a38af5c54da0a3a
 name: Release
 "on":
   workflow_call:
@@ -274,6 +274,18 @@ jobs:
           }}-${{ env.STKR_RUNNER_IMAGE }}-${{ env.STKR_JOB_IMAGE }}-${{ env.STKR_MISE_ROOT
           }}-${{ env.STKR_WORKSPACE_ROOT }}-${{ hashFiles('mise.lock') }}
         path: ${{ env.MISE_DATA_DIR }}
+    - id: sccache
+      name: Cache / sccache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        key: >-
+          stkr-v4-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock')
+          }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-release-publish-dry-${{
+          github.sha }}
+        path: .cache/sccache/
+        restore-keys: >-
+          stkr-v4-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock')
+          }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-release-publish-dry-
     - id: uv
       name: Cache / uv
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -289,17 +301,6 @@ jobs:
         install: true
         cache: false
         mise_dir: ${{ env.MISE_DATA_DIR }}
-    - name: Compiler Cache Storage
-      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
-      with:
-        script: |-
-          for (const key of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL', 'ACTIONS_CACHE_URL']) {
-            const value = process.env[key];
-            if (value) { core.setSecret(value); core.exportVariable(key, value); }
-          }
-          if (process.env.ACTIONS_CACHE_SERVICE_V2) {
-            core.exportVariable('ACTIONS_CACHE_SERVICE_V2', process.env.ACTIONS_CACHE_SERVICE_V2);
-          }
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: package-${{ env.PROFILE }}-rust-linux
@@ -354,6 +355,15 @@ jobs:
         success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
         || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
         (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.sccache.outputs.cache-hit != 'true'
+      with:
+        key: ${{ steps.sccache.outputs.cache-primary-key }}
+        path: .cache/sccache/
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
         endsWith(github.ref, '/merge'))) && steps.uv.outputs.cache-hit != 'true'
       with:
         key: ${{ steps.uv.outputs.cache-primary-key }}
@@ -361,14 +371,15 @@ jobs:
     - name: Cache Summary
       if: always()
       env:
-        STKR_CACHE_RESTORES: "{\"Mise\":\"${{ steps.mise.outputs.cache-hit == 'true' && 'Exact Hit' || steps.mise.outputs.cache-hit == 'false' && 'Partial Hit' || steps.mise.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.cargo_downloads.outputs.cache-hit == 'true' && 'Exact Hit' || steps.cargo_downloads.outputs.cache-hit == 'false' && 'Partial Hit' || steps.cargo_downloads.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.uv.outputs.cache-hit == 'true' && 'Exact Hit' || steps.uv.outputs.cache-hit == 'false' && 'Partial Hit' || steps.uv.outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+        STKR_CACHE_RESTORES: "{\"Mise\":\"${{ steps.mise.outputs.cache-hit == 'true' && 'Exact Hit' || steps.mise.outputs.cache-hit == 'false' && 'Partial Hit' || steps.mise.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.cargo_downloads.outputs.cache-hit == 'true' && 'Exact Hit' || steps.cargo_downloads.outputs.cache-hit == 'false' && 'Partial Hit' || steps.cargo_downloads.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.uv.outputs.cache-hit == 'true' && 'Exact Hit' || steps.uv.outputs.cache-hit == 'false' && 'Partial Hit' || steps.uv.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.sccache.outputs.cache-hit == 'true' && 'Exact Hit' || steps.sccache.outputs.cache-hit == 'false' && 'Partial Hit' || steps.sccache.outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.summary
     env:
       MISE_ENABLE_TOOLS: gh,git-cliff,glab,go,node,python,rust,sccache,uv
       MISE_TASK_SKIP: package:rust
-      STKR_SCCACHE_BACKEND: gha
+      STKR_SCCACHE_BACKEND: disk
+      STKR_SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       STKR_SCCACHE_MODE: >-
         ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
         github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
@@ -1526,6 +1537,18 @@ jobs:
           }}-${{ env.STKR_RUNNER_IMAGE }}-${{ env.STKR_JOB_IMAGE }}-${{ env.STKR_MISE_ROOT
           }}-${{ env.STKR_WORKSPACE_ROOT }}-${{ hashFiles('mise.lock') }}
         path: ${{ env.MISE_DATA_DIR }}
+    - id: sccache
+      name: Cache / sccache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        key: >-
+          stkr-v4-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock')
+          }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-release-publish-${{
+          github.sha }}
+        path: .cache/sccache/
+        restore-keys: >-
+          stkr-v4-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock')
+          }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-release-publish-
     - id: uv
       name: Cache / uv
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -1541,17 +1564,6 @@ jobs:
         install: true
         cache: false
         mise_dir: ${{ env.MISE_DATA_DIR }}
-    - name: Compiler Cache Storage
-      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
-      with:
-        script: |-
-          for (const key of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL', 'ACTIONS_CACHE_URL']) {
-            const value = process.env[key];
-            if (value) { core.setSecret(value); core.exportVariable(key, value); }
-          }
-          if (process.env.ACTIONS_CACHE_SERVICE_V2) {
-            core.exportVariable('ACTIONS_CACHE_SERVICE_V2', process.env.ACTIONS_CACHE_SERVICE_V2);
-          }
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: package-${{ env.PROFILE }}-rust-linux
@@ -1614,6 +1626,15 @@ jobs:
         success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
         || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
         (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.sccache.outputs.cache-hit != 'true'
+      with:
+        key: ${{ steps.sccache.outputs.cache-primary-key }}
+        path: .cache/sccache/
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
         endsWith(github.ref, '/merge'))) && steps.uv.outputs.cache-hit != 'true'
       with:
         key: ${{ steps.uv.outputs.cache-primary-key }}
@@ -1621,14 +1642,15 @@ jobs:
     - name: Cache Summary
       if: always()
       env:
-        STKR_CACHE_RESTORES: "{\"Mise\":\"${{ steps.mise.outputs.cache-hit == 'true' && 'Exact Hit' || steps.mise.outputs.cache-hit == 'false' && 'Partial Hit' || steps.mise.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.cargo_downloads.outputs.cache-hit == 'true' && 'Exact Hit' || steps.cargo_downloads.outputs.cache-hit == 'false' && 'Partial Hit' || steps.cargo_downloads.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.uv.outputs.cache-hit == 'true' && 'Exact Hit' || steps.uv.outputs.cache-hit == 'false' && 'Partial Hit' || steps.uv.outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+        STKR_CACHE_RESTORES: "{\"Mise\":\"${{ steps.mise.outputs.cache-hit == 'true' && 'Exact Hit' || steps.mise.outputs.cache-hit == 'false' && 'Partial Hit' || steps.mise.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.cargo_downloads.outputs.cache-hit == 'true' && 'Exact Hit' || steps.cargo_downloads.outputs.cache-hit == 'false' && 'Partial Hit' || steps.cargo_downloads.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.uv.outputs.cache-hit == 'true' && 'Exact Hit' || steps.uv.outputs.cache-hit == 'false' && 'Partial Hit' || steps.uv.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.sccache.outputs.cache-hit == 'true' && 'Exact Hit' || steps.sccache.outputs.cache-hit == 'false' && 'Partial Hit' || steps.sccache.outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.summary
     env:
       MISE_ENABLE_TOOLS: gh,git-cliff,glab,go,node,python,rust,sccache,uv
       MISE_TASK_SKIP: package:rust
-      STKR_SCCACHE_BACKEND: gha
+      STKR_SCCACHE_BACKEND: disk
+      STKR_SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       STKR_SCCACHE_MODE: >-
         ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
         github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||

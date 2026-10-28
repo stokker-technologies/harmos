@@ -119,7 +119,7 @@ fn trace(mode: Mode, block_cleanup: bool, fail_cleanup: bool) -> Arc<Trace> {
 async fn runtime(
     mode: Mode, block_cleanup: bool, fail_cleanup: bool, backoff: Duration,
 ) -> (Runtime<App>, harmos_runtime::operations::Running<harmos_runtime::operations::resident::Activation>, Arc<Trace>) {
-    let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
+    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
     let trace = trace(mode, block_cleanup, fail_cleanup);
     runtime
         .operations
@@ -141,7 +141,7 @@ async fn runtime(
             },
             {
                 let trace = trace.clone();
-                move |_: Arc<()>| {
+                move |_: Arc<harmos_sdk::ExecutionContext>| {
                     trace.factories.fetch_add(1, Ordering::SeqCst);
                     Worker(trace.clone())
                 }
@@ -171,18 +171,18 @@ async fn queued_cancel_unstarted() {
     assert!(status.started_at().is_none());
     assert!(status.settled_at().is_some());
     assert_eq!(built.factories.load(Ordering::SeqCst), 0);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     // An owned resident stopped while queued never runs; its owner is finalized once.
     let owned = trace(Mode::Complete, false, false);
-    let runtime = Runtime::<App>::builder((), ())
-        .service_with("owned", harmos_runtime::services::POLICY, Worker(owned.clone()))
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.settings().service_with("owned", harmos_runtime::services::POLICY, Worker(owned.clone()));
+    })
+    .await
+    .unwrap();
     let snapshot = runtime.operations.resident(&harmos_runtime::operations::resident::Key::root("owned")).unwrap();
     assert_eq!(snapshot.lifecycle.phase(), OperationPhase::Queued);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert_eq!(owned.attempts.load(Ordering::SeqCst), 0);
     assert_eq!(owned.finalizers.load(Ordering::SeqCst), 1);
     assert_eq!(owned.drops.load(Ordering::SeqCst), 1);
@@ -206,7 +206,7 @@ async fn finalizing_projects_cleanup() {
     );
     assert_eq!(trace.drops.load(Ordering::SeqCst), 0);
     trace.cleanup_release.add_permits(1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     let settled = lease.status();
     assert_eq!(settled.phase(), OperationPhase::Stopped);
     assert_eq!(settled.outcome(), Some(OperationOutcome::Succeeded));
@@ -224,9 +224,9 @@ async fn failed_cleanup_projected() {
     assert_eq!(failed.outcome(), Some(OperationOutcome::Succeeded));
     assert!(failed.cleanup_pending());
     assert!(failed.settled_at().is_none());
-    assert!(runtime.stop().await.is_err());
+    assert!(runtime.shutdown().await.is_err());
     trace.fail_cleanup.store(false, Ordering::SeqCst);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert_eq!(lease.status().phase(), OperationPhase::Stopped);
     assert_eq!(lease.status().outcome(), Some(OperationOutcome::Succeeded));
     assert!(lease.status().cleanup_failure().is_none());
@@ -241,7 +241,7 @@ async fn cancel_wakes_backoff() {
     assert_eq!(waiting.outcome(), None);
     assert!(!waiting.cleanup_pending());
     let stopping = tokio::time::Instant::now();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert!(stopping.elapsed() < Duration::from_secs(100));
     assert_eq!(lease.status().outcome(), Some(OperationOutcome::Cancelled));
     assert_eq!(lease.status().phase(), OperationPhase::Stopped);
@@ -261,7 +261,7 @@ async fn restart_cancels_refill() {
     assert_eq!(trace.attempts.load(Ordering::SeqCst), 2);
     // Cancellation Must Not Wait For The Pending 250 ms Health Refill.
     let stopping = tokio::time::Instant::now();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert!(stopping.elapsed() < Duration::from_millis(250));
     assert_eq!(lease.status().outcome(), Some(OperationOutcome::Cancelled));
     assert_eq!(lease.status().attempt(), 1);

@@ -94,14 +94,7 @@ pub(super) async fn seed(f: &Fixture) {
 #[tokio::test]
 async fn record_exchange_receipts() {
     let f = Fixture::new(config()).await;
-    f.runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    f.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     seed(&f).await;
     let mut records = f
         .runtime
@@ -135,14 +128,7 @@ async fn record_exchange_receipts() {
 #[tokio::test]
 async fn cancelled_exchange_retains() {
     let f = Fixture::new(config()).await;
-    f.runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    f.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     seed(&f).await;
 
     // Cancelling Delivery Does Not Retract Storage-Owned Samples.

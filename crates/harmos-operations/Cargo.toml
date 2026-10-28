@@ -23,14 +23,44 @@ runtime = ["lifecycle", "dep:tokio", "dep:harmos-storage", "dep:serde", "dep:ser
 # === Dependencies === #
 
 [dependencies]
+# Local
 harmos-domain = { workspace = true, features = ["derive"] }
+harmos-macros = { workspace = true }
+harmos-sdk = { workspace = true, features = ["streaming"], optional = true }
 harmos-storage = { workspace = true, optional = true }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, optional = true }
+
+# Logging
+tracing = { workspace = true, optional = true }
+
+# Utilities
+
+# Serialization
 serde = { workspace = true, features = ["derive"], optional = true }
 serde_json = { workspace = true, optional = true }
-harmos-sdk = { workspace = true, features = ["streaming"], optional = true }
-tracing = { workspace = true, optional = true }
-thiserror = { workspace = true, optional = true }
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
 tokio = { workspace = true, features = ["sync", "macros", "time"], optional = true }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
 
 # === Build Dependencies === #
 

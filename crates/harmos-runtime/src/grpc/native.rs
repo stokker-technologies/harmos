@@ -13,14 +13,19 @@
 
 /* === Imports === */
 
-use super::{Codec, InputEnvelope, server};
-use crate::operations::{EncodedInvocation, GrpcBinding, StreamItem};
-use futures_core::Stream;
-use futures_util::StreamExt;
-use harmos_sdk::operations::{WireStreamLimits, WireStreams};
+// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
+
+// Third Party Imports
+use futures_core::Stream;
+use futures_util::StreamExt;
 use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
+
+// Local Imports
+use super::{Codec, InputEnvelope, server};
+use crate::operations::{EncodedInvocation, GrpcBinding, StreamItem};
+use harmos_sdk::operations::{WireStreamLimits, WireStreams};
 
 /* === Constants === */
 
@@ -35,14 +40,17 @@ type OutputStream = Pin<Box<dyn Stream<Item = Result<Output, Status>> + Send>>;
 /* === Structs === */
 
 struct Raw;
+
 struct Output {
     bytes: Vec<u8>,
     tag: Option<u32>,
 }
+
 struct Endpoint {
     binding: GrpcBinding,
     settings: server::Settings,
 }
+
 struct Pending {
     invocation: EncodedInvocation,
     streams: Option<WireStreams>,
@@ -71,6 +79,7 @@ impl super::Wire<Vec<u8>> for Raw {
         Ok((bytes.to_vec(), claim))
     }
 }
+
 impl super::Encode<Raw> for Output {
     fn write(&self, bytes: &mut Vec<u8>) -> Result<(), crate::MessageError> {
         match self.tag {
@@ -85,6 +94,7 @@ impl super::Encode<Raw> for Output {
         }
     }
 }
+
 impl Drop for Pending {
     fn drop(&mut self) {
         if !self.settled {
@@ -92,6 +102,7 @@ impl Drop for Pending {
         }
     }
 }
+
 impl Pending {
     async fn next(&mut self) -> Result<Option<Output>, Status> {
         loop {
@@ -145,6 +156,7 @@ impl Pending {
         Ok(Response::new(output))
     }
 }
+
 impl Endpoint {
     fn binding<T>(&self, request: &Request<T>) -> GrpcBinding {
         request
@@ -189,6 +201,7 @@ impl Endpoint {
         Ok(pending)
     }
 }
+
 impl tonic::server::UnaryService<StreamItem<Vec<u8>>> for Endpoint {
     type Response = Output;
     type Future = tonic::codegen::BoxFuture<Response<Output>, Status>;
@@ -197,6 +210,7 @@ impl tonic::server::UnaryService<StreamItem<Vec<u8>>> for Endpoint {
         Box::pin(async move { pending?.response().await })
     }
 }
+
 impl tonic::server::ServerStreamingService<StreamItem<Vec<u8>>> for Endpoint {
     type Response = Output;
     type ResponseStream = OutputStream;
@@ -206,6 +220,7 @@ impl tonic::server::ServerStreamingService<StreamItem<Vec<u8>>> for Endpoint {
         Box::pin(async move { Ok(Response::new(pending?.output())) })
     }
 }
+
 impl tonic::server::ClientStreamingService<StreamItem<InputEnvelope<Vec<u8>, Vec<u8>>>> for Endpoint {
     type Response = Output;
     type Future = tonic::codegen::BoxFuture<Response<Output>, Status>;
@@ -217,6 +232,7 @@ impl tonic::server::ClientStreamingService<StreamItem<InputEnvelope<Vec<u8>, Vec
         Box::pin(async move { endpoint.opening(request).await?.response().await })
     }
 }
+
 impl tonic::server::StreamingService<StreamItem<InputEnvelope<Vec<u8>, Vec<u8>>>> for Endpoint {
     type Response = Output;
     type ResponseStream = OutputStream;

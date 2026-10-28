@@ -35,15 +35,12 @@ path = "src/lib.rs"
 # === Features === #
 
 [features]
-default = ["runtime"]
-runtime = []
 
 # === Dependencies === #
 
 [dependencies]
 # Local
-harmos-domain = { path = "../../../../harmos-domain", default-features = false, features = ["derive"] }
-harmos-guest = { path = "../../..", default-features = false, features = ["derive", "kit"] }
+harmos = { path = "../../../../harmos", default-features = false, features = ["guest"] }
 
 # Git
 

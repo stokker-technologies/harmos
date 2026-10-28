@@ -109,20 +109,12 @@ impl Drop for AttemptGuard {
 
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace::default());
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(trace.clone()).unwrap();
-                dependencies
-            })
-            .operation::<WaitContractDeclaration>(),
-            Lanes::Serial,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Trace>(trace.clone());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<Operations>(Lanes::Serial).await.unwrap();
     (runtime, trace)
 }
 
@@ -148,7 +140,7 @@ async fn cancellation_observable_queued() {
 
     // The cancelled queued instance was never constructed.
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 2);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -156,7 +148,7 @@ async fn shutdown_cancels_attempts() {
     let (runtime, trace) = runtime().await;
     let instance = runtime.operation(WaitContractDeclaration { mode: Mode::Hold }).start().await.unwrap();
     trace.started.notified().await;
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert!(matches!(instance.await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     assert!(matches!(runtime.operations.submit_resident("late").await, Err(Error::Closing { domain: "resident" })));

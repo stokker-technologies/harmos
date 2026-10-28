@@ -36,11 +36,8 @@ use crate::path::{self, HarmosPath};
 
 struct Declaration {
     id: LitStr,
-    context: Option<Type>,
-    config: Option<Type>,
     restart: Option<super::restart::Policy>,
     description: Option<LitStr>,
-    provides: Type,
     requires: Required,
     listeners: Type,
     observers: Type,
@@ -84,11 +81,8 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
     let span = attribute.span();
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute)?;
     let mut id = None;
-    let mut context = None;
-    let mut config = None;
     let mut restart = None;
     let mut description = None;
-    let mut provides = None;
     let mut requires = None;
     let mut listeners = None;
     let mut observers = None;
@@ -113,27 +107,16 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
                 }
                 set_once(&mut restart, super::restart::Policy::NEVER, named.span(), "restart")?;
             }
-            Meta::NameValue(named) if named.path.is_ident("context") => {
-                set_once(&mut context, syn::parse2::<Type>(named.value.to_token_stream())?, named.span(), "context")?;
-            }
-            Meta::NameValue(named) if named.path.is_ident("config") => {
-                set_once(&mut config, syn::parse2::<Type>(named.value.to_token_stream())?, named.span(), "config")?;
-            }
             Meta::NameValue(named) if named.path.is_ident("id") => {
                 set_once(&mut id, syn::parse2::<LitStr>(named.value.to_token_stream())?, named.span(), "id")?;
             }
             Meta::NameValue(named) if named.path.is_ident("description") => {
                 set_once(&mut description, syn::parse2::<LitStr>(named.value.to_token_stream())?, named.span(), "description")?;
             }
-            Meta::NameValue(named) if named.path.is_ident("provides") || named.path.is_ident("requires") => {
-                let catalog = syn::parse2::<Type>(named.value.to_token_stream()).map_err(|_| {
-                    Error::new(named.value.span(), "select a typed catalog or `()` with `provides = Catalog` and `requires = Catalog`")
-                })?;
-                if named.path.is_ident("provides") {
-                    set_once(&mut provides, catalog, named.span(), "provides")?;
-                } else {
-                    set_once(&mut requires, Required::Catalog(Box::new(catalog)), named.span(), "requires")?;
-                }
+            Meta::NameValue(named) if named.path.is_ident("requires") => {
+                let catalog = syn::parse2::<Type>(named.value.to_token_stream())
+                    .map_err(|_| Error::new(named.value.span(), "select a typed catalog or `()` with `requires = Catalog`"))?;
+                set_once(&mut requires, Required::Catalog(Box::new(catalog)), named.span(), "requires")?;
             }
             Meta::List(list) if list.path.is_ident("requires") => {
                 let listed = list.parse_args_with(requirements)?;
@@ -166,25 +149,17 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
             other => {
                 return Err(Error::new(
                     other.span(),
-                    "a plugin declares `id`, `provides`, `requires` (a catalog or a granted list), optional `description`, `contributions(Contribution, ...)`, typed `listeners` and `observers`, `streams(Row, ...)`, `stream_entries`, native `restart`, paired SDK `context` and `config`, and `harmos_path`",
+                    "a plugin declares `id`, `requires` (a catalog or a granted list), optional `description`, `contributions(Contribution, ...)`, typed `listeners` and `observers`, `streams(Row, ...)`, `stream_entries`, native `restart`, and `harmos_path`; provided catalogs belong in `Plugin::CATALOGS`",
                 ));
             }
         }
     }
     let id = id.ok_or_else(|| Error::new(span, "a plugin requires `id = \"artifact_id\"`"))?;
-    if context.is_some() != config.is_some() {
-        return Err(Error::new(span, "SDK inert projection supplies both context and config types"));
-    }
     Ok(Declaration {
         id,
-        context,
-        config,
         restart,
         description,
-        provides: provides.ok_or_else(|| Error::new(span, "a plugin requires an explicit `provides = Catalog` or `provides = ()`"))?,
-        requires: requires.ok_or_else(|| {
-            Error::new(span, "a plugin requires an explicit `requires = Catalog`, `requires(Op, ...)` or `requires = ()`")
-        })?,
+        requires: requires.unwrap_or_else(|| Required::Listed(Vec::new())),
         listeners: listeners.unwrap_or_else(|| syn::parse_quote!(())),
         observers: observers.unwrap_or_else(|| syn::parse_quote!(())),
         contributions: contributions.unwrap_or_default(),
@@ -227,16 +202,12 @@ fn requirements(input: ParseStream) -> Result<Vec<Listed>, Error> {
     Ok(listed)
 }
 
-fn implemented(block: &ItemImpl, projection: bool) -> Result<&Type, Error> {
+fn implemented(block: &ItemImpl) -> Result<&Type, Error> {
     let Some((trait_path, _)) = &block.trait_ else {
         return Err(Error::new(block.span(), "`#[harmos::plugin]` belongs on `impl Plugin for ConcreteType`"));
     };
     if block.modifiers.polarity.is_some()
-        || (!projection
-            && !trait_path
-                .segments
-                .last()
-                .is_some_and(|segment| segment.ident == "Plugin" && matches!(segment.arguments, PathArguments::None)))
+        || !trait_path.segments.last().is_some_and(|segment| segment.ident == "Plugin" && matches!(segment.arguments, PathArguments::None))
     {
         return Err(Error::new(trait_path.span(), "`#[harmos::plugin]` requires the unified `Plugin` trait implementation"));
     }
@@ -257,13 +228,13 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     let declared = declaration(attribute)?;
     let block: ItemImpl =
         syn::parse2(item.clone()).map_err(|_| Error::new(item.span(), "`#[harmos::plugin]` belongs on `impl Plugin for ConcreteType`"))?;
-    let name = implemented(&block, declared.context.is_some())?.clone();
+    let name = implemented(&block)?.clone();
     let name = &name;
     let harmos = &declared.harmos;
     let mut block = block;
     let contributed = &declared.contributions;
     // A Product Projection Is Not `Plugin`; Its Owner Runs Contributions Itself.
-    if !contributed.is_empty() && declared.context.is_none() {
+    if !contributed.is_empty() {
         if block.items.iter().any(|item| matches!(item, syn::ImplItem::Fn(method) if method.sig.ident == "register")) {
             return Err(Error::new(block.span(), "`contributions(...)` owns `Plugin::register`; register through a contribution instead"));
         }
@@ -279,7 +250,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     }
     let id = &declared.id;
     let description = super::description(declared.description, &block.attrs);
-    let provides = &declared.provides;
     let requirement = quote!(#harmos::__private::PluginRequirement);
     let requires = match &declared.requires {
         Required::Catalog(catalog) => quote! {
@@ -319,12 +289,61 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     let contribution_marker = format_ident!("__HARMOS_PLUGIN_CONTRIBUTIONS_{symbol}");
     let direct_entries = format_ident!("__HARMOS_PLUGIN_DIRECT_ENTRIES_{symbol}");
     let projected_entries = format_ident!("__HARMOS_PLUGIN_PROJECTED_ENTRIES_{symbol}");
-    let context = declared.context.as_ref().map_or_else(|| quote!(<#name as #harmos::Plugin>::Context), |context| quote!(#context));
-    let config = declared.config.as_ref().map_or_else(|| quote!(<#name as #harmos::Plugin>::Config), |config| quote!(#config));
+    let context = quote!(<#name as #harmos::Lifecycle>::Context);
+    let config = quote!(<#name as #harmos::Lifecycle>::Config);
     let facility = quote!(<#context as #harmos::__private::CarrierContext>::FACILITY);
     let inventory = quote!(#harmos::__private::PluginInventory);
     let declarations = quote!(#harmos::__private::PluginDeclared);
     let entry = quote!(#inventory::publications::Entry);
+    let catalog = quote!(#harmos::operations::Catalog);
+    let declaration_node = quote!(#harmos::catalog::Node<#harmos::operations::WireDeclaration>);
+    let callee_node = quote!(#harmos::catalog::Node<&'static [#harmos::operations::WireDeclaration]>);
+    let catalog_provides = quote! {
+        {
+            const fn declarations<const N: usize>(catalogs: &'static [#catalog]) -> [#declaration_node; N] {
+                let mut nodes = [const { #harmos::catalog::Node::Nested(&[]) }; N];
+                let mut index = 0;
+                while index < N {
+                    let empty = ::core::mem::replace(
+                        &mut nodes[index],
+                        #harmos::catalog::Node::Nested(catalogs[index].declarations),
+                    );
+                    discard(empty);
+                    index += 1;
+                }
+                nodes
+            }
+            const fn discard<T>(value: T) {
+                ::core::mem::forget(value);
+            }
+            &declarations::<{ <#name as #harmos::Plugin>::CATALOGS.len() }>(
+                <#name as #harmos::Plugin>::CATALOGS,
+            )
+        }
+    };
+    let catalog_callees = quote! {
+        {
+            const fn callees<const N: usize>(catalogs: &'static [#catalog]) -> [#callee_node; N] {
+                let mut nodes = [const { #harmos::catalog::Node::Nested(&[]) }; N];
+                let mut index = 0;
+                while index < N {
+                    let empty = ::core::mem::replace(
+                        &mut nodes[index],
+                        #harmos::catalog::Node::Nested(catalogs[index].callees),
+                    );
+                    discard(empty);
+                    index += 1;
+                }
+                nodes
+            }
+            const fn discard<T>(value: T) {
+                ::core::mem::forget(value);
+            }
+            &callees::<{ <#name as #harmos::Plugin>::CATALOGS.len() }>(
+                <#name as #harmos::Plugin>::CATALOGS,
+            )
+        }
+    };
     let lifecycle = quote! {
         [
             <#name as #harmos::model::operations::lifecycle::Policy>::INITIALIZATION_POLICY,
@@ -364,11 +383,9 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             const ID: &'static str = #id;
             const VERSION: &'static str = ::core::env!("CARGO_PKG_VERSION");
             const DESCRIPTION: &'static str = #description;
-            const PROVIDES: &'static [#harmos::catalog::Node<#harmos::operations::WireDeclaration>] =
-                <#provides as #harmos::catalog::InertCatalog<#harmos::operations::Contracts, #harmos::operations::WireDeclaration>>::ENTRIES;
+            const PROVIDES: &'static [#harmos::catalog::Node<#harmos::operations::WireDeclaration>] = #catalog_provides;
             const REQUIRES: &'static [#harmos::catalog::Node<#requirement>] = {
-                const CALLEES: &[#harmos::catalog::Node<&'static [#harmos::operations::WireDeclaration]>] =
-                    <#provides as #harmos::catalog::InertCatalog<#harmos::operations::Callees, &'static [#harmos::operations::WireDeclaration]>>::ENTRIES;
+                const CALLEES: &[#harmos::catalog::Node<&'static [#harmos::operations::WireDeclaration]>] = #catalog_callees;
                 const EXPLICIT: &[#harmos::catalog::Node<#requirement>] = #requires;
                 const REQUIRED: [#harmos::catalog::Node<#requirement>; 1 + #harmos::plugin::callee_count(CALLEES)] =
                     #harmos::plugin::aggregate(EXPLICIT, <#name as #declarations>::PROVIDES, CALLEES);

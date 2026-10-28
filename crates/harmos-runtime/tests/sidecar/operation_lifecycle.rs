@@ -78,7 +78,7 @@ async fn catalog_mismatch_refused() {
         assert_eq!(counts.cleaned.load(Ordering::SeqCst), 0);
         assert!(!*fixture.host.ready.as_ref().unwrap().borrow());
         assert!(fixture.runtime.operations.residents().is_empty());
-        fixture.runtime.stop().await.unwrap();
+        fixture.runtime.shutdown().await.unwrap();
     }
 }
 
@@ -93,7 +93,7 @@ async fn catalog_order_admission() {
     assert_eq!(counts.attached.load(Ordering::SeqCst), 1);
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 1);
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
     assert_eq!(counts.cleaned.load(Ordering::SeqCst), 1);
     assert!(!*fixture.host.ready.as_ref().unwrap().borrow());
 }
@@ -108,7 +108,7 @@ async fn runner_retry_finalization() {
     assert_eq!(counts.runs.load(Ordering::SeqCst), 2);
     assert_eq!(counts.finished.load(Ordering::SeqCst), 2);
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
     assert_eq!(counts.cleaned.load(Ordering::SeqCst), 1);
 }
 
@@ -128,7 +128,7 @@ async fn portable_call_context() {
         "every retried attempt carries the admitted values; local ones stay"
     );
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -137,15 +137,7 @@ async fn submitted_child_controls() {
     counts.submit_child.store(true, Ordering::SeqCst);
     counts.refresh_hold.store(true, Ordering::SeqCst);
     let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
-    fixture
-        .runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_operations::Lifecycle::registration(harmos_runtime::Dependencies::new()),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    fixture.runtime.operations.register::<harmos_operations::Lifecycle>(Lanes::Open).await.unwrap();
     fixture.initialize().await.unwrap();
     fixture.call::<ReadDeclaration>(ReadDeclaration {}).await.unwrap();
     assert_eq!(counts.children.load(Ordering::SeqCst), 4);
@@ -154,7 +146,7 @@ async fn submitted_child_controls() {
     let refused = counts.detached_status.lock().unwrap().take().unwrap();
     assert!(refused.contains("may not invoke operation"), "{refused}");
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -179,7 +171,7 @@ async fn children_attempt_lifetime() {
         let saved = counts.saved.lock().unwrap().take().unwrap();
         assert!(saved.call::<RefreshDeclaration>(RefreshDeclaration {}).await.is_err());
         fixture.shutdown().await.unwrap();
-        fixture.runtime.stop().await.unwrap();
+        fixture.runtime.shutdown().await.unwrap();
     }
 }
 
@@ -201,7 +193,7 @@ async fn cancelled_attempt_resources() {
     // Cancellation Drops The Attempt Before Returning Its Outcome.
     assert_eq!(counts.finished.load(Ordering::SeqCst), 1);
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
@@ -250,7 +242,7 @@ async fn grpc_original_owner() {
     assert_eq!(counts.finished.load(Ordering::SeqCst), 2);
     fixture.shutdown().await.unwrap();
     assert!(fixture.runtime.grpc().methods().is_empty());
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
     assert_eq!(counts.cleaned.load(Ordering::SeqCst), 1);
 }
 

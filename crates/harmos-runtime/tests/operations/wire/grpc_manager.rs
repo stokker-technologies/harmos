@@ -121,12 +121,16 @@ struct HoldingGuard(Arc<Behavior>);
 
 /* === Enums === */
 
-enum Behavior {
-    Read,
+#[derive(Clone, Copy)]
+enum FailureBehavior {
     Reject,
     Crash,
-    Uploading(Arc<tokio::sync::Notify>),
-    Holding(Arc<tokio::sync::Semaphore>),
+}
+
+struct Behavior {
+    failure: Option<FailureBehavior>,
+    uploading: Option<Arc<tokio::sync::Notify>>,
+    stopped: Option<Arc<tokio::sync::Semaphore>>,
 }
 
 /* === Traits === */
@@ -134,17 +138,59 @@ enum Behavior {
 /* === Implementations === */
 
 impl Behavior {
+    fn read() -> Self {
+        Self {
+            failure: None,
+            uploading: None,
+            stopped: None,
+        }
+    }
+    fn reject() -> Self {
+        Self {
+            failure: Some(FailureBehavior::Reject),
+            uploading: None,
+            stopped: None,
+        }
+    }
+    fn crash() -> Self {
+        Self {
+            failure: Some(FailureBehavior::Crash),
+            uploading: None,
+            stopped: None,
+        }
+    }
+    fn uploading(notify: Arc<tokio::sync::Notify>) -> Self {
+        Self {
+            failure: None,
+            uploading: Some(notify),
+            stopped: None,
+        }
+    }
+    fn holding(stopped: Arc<tokio::sync::Semaphore>) -> Self {
+        Self {
+            failure: None,
+            uploading: None,
+            stopped: Some(stopped),
+        }
+    }
+    fn holding_and_uploading(stopped: Arc<tokio::sync::Semaphore>, uploading: Arc<tokio::sync::Notify>) -> Self {
+        Self {
+            failure: None,
+            uploading: Some(uploading),
+            stopped: Some(stopped),
+        }
+    }
     fn check(&self, exchange: bool) -> harmos_runtime::Result<()> {
-        let source: Arc<dyn std::error::Error + Send + Sync> = match self {
-            Self::Reject => Arc::new(authored_rejection()),
-            Self::Crash => Arc::new(std::io::Error::other("disk detail")),
-            _ => return Ok(()),
+        let source: Arc<dyn std::error::Error + Send + Sync> = match self.failure {
+            Some(FailureBehavior::Reject) => Arc::new(authored_rejection()),
+            Some(FailureBehavior::Crash) => Arc::new(std::io::Error::other("disk detail")),
+            None => return Ok(()),
         };
         let failure = Error::OperationFailed {
             operation: "fixture.response".into(),
             source,
         };
-        if exchange && matches!(self, Self::Reject) {
+        if exchange && matches!(self.failure, Some(FailureBehavior::Reject)) {
             return Err(Error::TaskFailed {
                 domain: "fixture response",
                 source: Arc::new(failure),
@@ -155,7 +201,7 @@ impl Behavior {
 }
 impl Drop for HoldingGuard {
     fn drop(&mut self) {
-        if let Behavior::Holding(stopped) = self.0.as_ref() {
+        if let Some(stopped) = &self.0.stopped {
             stopped.add_permits(1);
         }
     }
@@ -396,7 +442,7 @@ impl harmos_runtime::Operation for UploadDeclaration {
         let context = host.borrow();
         let input = ctx.streams();
         let result: ::core::result::Result<Reply, Self::Error> = async move {
-            if let Behavior::Uploading(started) = behavior.as_ref() {
+            if let Some(started) = &behavior.uploading {
                 started.notify_one();
             }
             while input.recv().await.is_some() {}
@@ -610,10 +656,14 @@ async fn web(address: std::net::SocketAddr, method: &str, path: &str, headers: &
 }
 
 async fn failures<F: Future<Output = ()>>(
-    register: impl FnOnce(harmos_runtime::operations::OperationManager<Lanes>) -> F,
+    behavior: Behavior, register: impl FnOnce(harmos_runtime::operations::OperationManager<Lanes>) -> F,
 ) -> [tonic::Status; 4] {
     use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource(behavior);
+    })
+    .await
+    .unwrap();
     register(runtime.operations.clone()).await;
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
@@ -685,7 +735,7 @@ async fn failures<F: Future<Output = ()>>(
         Err(status) => status,
     };
     drop(attached);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     [unary, streaming, upload, exchange]
 }
 

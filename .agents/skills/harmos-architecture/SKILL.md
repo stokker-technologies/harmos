@@ -37,10 +37,12 @@ this facade rule applies to interfaces, not every internal dependency.
 
 In a reusable product, use one file per operation for its request struct, response and runtime-gated `Operation` implementation in
 `<p>-operations/src/<concern>/<operation>.rs`. Its catalog supplies both
-`catalog() -> Vec<OperationDefinition>` and, with `runtime`,
-`registration(Dependencies) -> RegistrationBatch`. There is one operation tree.
-Shared models remain in the domain; resource crates remain optional lower-level
-dependencies. Runtime composition supplies dependencies and lane placement.
+`catalog() -> Vec<OperationDefinition>` and, with `runtime`, implements
+`operations::OperationCatalog` with an executable `CATALOG` descriptor. There is one
+operation tree. Shared models remain in the domain; resource crates remain
+optional lower-level dependencies. Application `Lifecycle::prepare` supplies resources through `Setup<Self>`
+and places each catalog on a declared lane. Plugin `const CATALOGS` is the single
+source for inert inventory and executable binding.
 
 A self-contained crate can use the same vertical layout under `operations/`.
 Create a separate operations crate when independent contract consumers justify

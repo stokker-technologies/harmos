@@ -69,12 +69,10 @@ type Backends = PluginBackend<(), Resources, ()>;
 /* === Structs === */
 
 struct Dependent {
-    resources: Arc<()>,
     notify: bool,
 }
 
 struct Publishing {
-    resources: Arc<()>,
     publish_on_cleanup: bool,
 }
 
@@ -247,7 +245,7 @@ enum PublicationStart {
 
 #[harmos_runtime::catalog]
 enum PublishingOperations {
-    Publish(PublishPulseDeclaration),
+    Publish(PublishingCall),
 }
 
 #[harmos_runtime::catalog]
@@ -257,7 +255,7 @@ enum DependentRequirements {
 
 #[harmos_runtime::catalog]
 enum ProviderOperations {
-    AmplifyDeclaration(AmplifyDeclaration),
+    AmplifyDeclaration(Amplifying),
     RetryDeclaration(RetryDeclaration),
 }
 
@@ -286,51 +284,39 @@ impl harmos_operations::lifecycle::Policy for ProviderEndpoint {
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(id = "provider", provides = ProviderOperations, requires = ())]
-impl harmos_runtime::Plugin for ProviderEndpoint {
+impl harmos_runtime::Lifecycle for ProviderEndpoint {
     type Context = Supervisor;
     type Config = usize;
     type Error = Refusal;
-    type Resources = Provider;
-    fn prepare(configuration: usize) -> Result<Self, Refusal> {
+
+    async fn prepare(configuration: usize, setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Refusal> {
         let resources = PROVIDER_SEEDS
             .lock()
             .unwrap()
             .get(&configuration)
             .and_then(std::sync::Weak::upgrade)
             .ok_or_else(|| Refusal::of("original provider resources unavailable"))?;
-        Ok(Self { resources })
+        let plugin = Self { resources };
+        setup.resource::<Provider>(plugin.resources.clone());
+        Ok(plugin)
     }
+
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
     }
-    fn resources(&self) -> Arc<Provider> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources.clone()).unwrap();
-                dependencies
-            })
-            .operation::<Amplifying>(),
-        )?;
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources.clone()).unwrap();
-                dependencies
-            })
-            .operation::<RetryDeclaration>(),
-        )
-    }
+
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Refusal> {
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "provider", requires = ())]
+impl harmos_runtime::Plugin for ProviderEndpoint {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[ProviderOperations::CATALOG];
 }
 
 impl harmos_operations::lifecycle::Policy for CallerEndpoint {
@@ -338,37 +324,33 @@ impl harmos_operations::lifecycle::Policy for CallerEndpoint {
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(id = "caller", provides = CallerOperations, requires = DependentRequirements)]
-impl harmos_runtime::Plugin for CallerEndpoint {
+impl harmos_runtime::Lifecycle for CallerEndpoint {
     type Context = Supervisor;
     type Config = ();
     type Error = Refusal;
-    type Resources = Forwarder;
-    fn prepare(_: ()) -> Result<Self, Refusal> {
-        Ok(Self { resources: Arc::new(Forwarder) })
+
+    async fn prepare(_: (), setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Refusal> {
+        let plugin = Self { resources: Arc::new(Forwarder) };
+        setup.resource::<Forwarder>(plugin.resources.clone());
+        Ok(plugin)
     }
+
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
     }
-    fn resources(&self) -> Arc<Forwarder> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources.clone()).unwrap();
-                dependencies
-            })
-            .operation::<Forward>(),
-        )
-    }
+
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Refusal> {
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "caller", requires = DependentRequirements)]
+impl harmos_runtime::Plugin for CallerEndpoint {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[CallerOperations::CATALOG];
 }
 
 impl harmos_operations::lifecycle::Policy for UnauthorizedEndpoint {
@@ -376,37 +358,33 @@ impl harmos_operations::lifecycle::Policy for UnauthorizedEndpoint {
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(id = "unauthorized", provides = UnauthorizedOperations, requires = ())]
-impl harmos_runtime::Plugin for UnauthorizedEndpoint {
+impl harmos_runtime::Lifecycle for UnauthorizedEndpoint {
     type Context = Supervisor;
     type Config = ();
     type Error = Refusal;
-    type Resources = Forwarder;
-    fn prepare(_: ()) -> Result<Self, Refusal> {
-        Ok(Self { resources: Arc::new(Forwarder) })
+
+    async fn prepare(_: (), setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Refusal> {
+        let plugin = Self { resources: Arc::new(Forwarder) };
+        setup.resource::<Forwarder>(plugin.resources.clone());
+        Ok(plugin)
     }
+
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
     }
-    fn resources(&self) -> Arc<Forwarder> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources.clone()).unwrap();
-                dependencies
-            })
-            .operation::<UnauthorizedForward>(),
-        )
-    }
+
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Refusal> {
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "unauthorized", requires = ())]
+impl harmos_runtime::Plugin for UnauthorizedEndpoint {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[UnauthorizedOperations::CATALOG];
 }
 
 impl harmos_operations::lifecycle::Policy for Publishing {
@@ -431,18 +409,15 @@ impl harmos_runtime::Operation for PublishingCall {
     }
 }
 
-#[harmos_runtime::plugin(description = "Publishes Before Its Generation Commits.", id = "caller", streams(MeterPulse), provides = PublishingOperations, requires(harmos_operations::streams::Publish))]
-impl harmos_runtime::Plugin for Publishing {
+impl harmos_runtime::Lifecycle for Publishing {
     type Context = Supervisor;
     type Config = bool;
     type Error = Refusal;
-    type Resources = ();
-    fn prepare(publish_on_cleanup: bool) -> Result<Self, Refusal> {
-        Ok(Self {
-            resources: Arc::new(()),
-            publish_on_cleanup,
-        })
+
+    async fn prepare(publish_on_cleanup: bool, _setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Refusal> {
+        Ok(Self { publish_on_cleanup })
     }
+
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         for sample in [41, 42] {
             context
@@ -453,19 +428,7 @@ impl harmos_runtime::Plugin for Publishing {
         }
         Ok(())
     }
-    fn resources(&self) -> Arc<()> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<PublishingCall>(),
-        )
-    }
+
     async fn stop(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         if self.publish_on_cleanup {
             context
@@ -476,9 +439,15 @@ impl harmos_runtime::Plugin for Publishing {
         }
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Refusal> {
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Publishes Before Its Generation Commits.", id = "caller", streams(MeterPulse), requires(harmos_operations::streams::Publish))]
+impl harmos_runtime::Plugin for Publishing {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[PublishingOperations::CATALOG];
 }
 
 impl harmos_operations::lifecycle::Policy for Dependent {
@@ -490,15 +459,15 @@ impl harmos_operations::lifecycle::Policy for Dependent {
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(description = "Calls A Dependency During Current Lifecycle Hooks.", id = "caller", provides = (), requires = DependentRequirements)]
-impl harmos_runtime::Plugin for Dependent {
+impl harmos_runtime::Lifecycle for Dependent {
     type Context = Supervisor;
     type Config = bool;
     type Error = Refusal;
-    type Resources = ();
-    fn prepare(notify: bool) -> Result<Self, Refusal> {
-        Ok(Self { resources: Arc::new(()), notify })
+
+    async fn prepare(notify: bool, _setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Refusal> {
+        Ok(Self { notify })
     }
+
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         context.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 11 }).await.map_err(Refusal::from)?;
         if self.notify {
@@ -506,19 +475,20 @@ impl harmos_runtime::Plugin for Dependent {
         }
         Ok(())
     }
-    fn resources(&self) -> Arc<()> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, _: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        Ok(())
-    }
+
     async fn stop(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         context.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 22 }).await.expect("provider remains available through cleanup");
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Refusal> {
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Calls A Dependency During Current Lifecycle Hooks.", id = "caller", requires = DependentRequirements)]
+impl harmos_runtime::Plugin for Dependent {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[];
 }
 
 impl Drop for DroppedHandler {
@@ -683,12 +653,7 @@ impl Host {
             if self.project_publications {
                 resident = resident.ingest::<MeterPulse>();
             }
-            self.operations
-                .register(harmos_runtime::RegistrationExt::lane(
-                    crate::sidecar::publication_registration(Arc::new(resident.clone())),
-                    HostLanes::Open,
-                ))
-                .await?;
+            self.operations.register::<crate::sidecar::PublicationOperations>(HostLanes::Open).await?;
             self.publication_resident = Some(resident);
         }
         Ok(())
@@ -739,10 +704,10 @@ impl PluginLifecycle for Host {
         };
         resources.resident = Some(resident.clone());
         let policy = harmos_runtime::services::POLICY;
-        self.operations
-            .register_service(harmos_runtime::services::ServiceDefinition { id: definition.id.clone(), policy }, move |_: Arc<()>| {
-                resident.clone()
-            })?;
+        self.operations.register_service(
+            harmos_runtime::services::ServiceDefinition { id: definition.id.clone(), policy },
+            move |_: Arc<harmos_sdk::ExecutionContext>| resident.clone(),
+        )?;
         resources.registered = true;
         resources.lease = Some(self.operations.submit_resident(&definition.id).await?);
         let native =

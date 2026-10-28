@@ -143,6 +143,11 @@ pub(crate) enum Operations {
     Slow(Slow),
 }
 
+#[harmos_runtime::catalog]
+pub(crate) enum Single<O: harmos_runtime::OperationDeclaration> {
+    Operation(O),
+}
+
 pub(crate) use support::Lanes;
 
 #[derive(Debug, thiserror::Error)]
@@ -278,37 +283,34 @@ impl harmos_runtime::Operation for Parent {
 /* === Private Functions === */
 
 pub(crate) async fn runtime() -> Runtime<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ())
-        .operation_settings(harmos_runtime::operations::Settings {
-            preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
-            ..Default::default()
-        })
-        .register(catalog())
-        .register(Lanes::catalog())
-        .runtime()
-        .await
-        .unwrap()
+    runtime_with(|_| {}).await
+}
+
+pub(crate) async fn runtime_with(update: impl FnOnce(&mut harmos_runtime::Setup<Bank>)) -> Runtime<Bank> {
+    Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup
+            .settings()
+            .operation_settings(harmos_runtime::operations::Settings {
+                preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
+                ..Default::default()
+            })
+            .register(catalog());
+        setup.resource(Owner::default()).resource(ParentOwner);
+        update(setup);
+    })
+    .await
+    .unwrap()
 }
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub(crate) async fn runtime_with_preparation(bytes: std::num::NonZeroUsize) -> Runtime<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(Lanes::catalog())
-        .operation_settings(harmos_runtime::operations::Settings {
+    runtime_with(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(bytes),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap()
-}
-
-pub(crate) fn registration(owner: Arc<Owner>, lane: Lanes) -> harmos_runtime::operations::Registration<Lanes> {
-    use harmos_runtime::operations::RegistrationExt;
-    let mut dependencies = harmos_runtime::Dependencies::new();
-    dependencies.insert(owner).unwrap();
-    harmos_runtime::RegistrationBatch::new(dependencies).operation::<Compute>().operation::<Slow>().lane(lane)
+        });
+    })
+    .await
 }
 
 pub(crate) fn request() -> Request {

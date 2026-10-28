@@ -63,12 +63,30 @@ enum Feeds {
 
 /* === Implementations === */
 
+impl harmos::Lifecycle for Model {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos::Startup<Self>;
+
+    async fn prepare(_: (), _setup: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {
+        Ok(Self)
+    }
+    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl harmos::Application for Model {
     type State = support::Ledger;
     type Transaction = support::Change;
     type Record = support::Fact;
     type Streams = Feeds;
-    type Resources = ();
     type Lanes = TestLanes;
 }
 
@@ -90,16 +108,15 @@ fn contract_scenario() {
                     harmos::storage::Cursor::ORIGIN,
                     "a directory nothing has recorded into resumes from the origin"
                 );
-                let runtime = harmos::Runtime::<Model>::builder(support::Ledger::default(), ())
-                    .register(Feeds::catalog())
-                    .attach_streams(capture.select::<Reading>())
-                    .runtime()
-                    .await
-                    .unwrap();
+                let runtime = harmos::Runtime::<Model>::launch_with(support::Ledger::default(), (), |setup| {
+                    setup.settings().register(Feeds::catalog()).attach_streams(capture.select::<Reading>());
+                })
+                .await
+                .unwrap();
                 for value in 1..=7 {
                     runtime.streams.publish(Reading { value });
                 }
-                runtime.stop().await.unwrap();
+                runtime.shutdown().await.unwrap();
                 assert_eq!(
                     JsonlStreams::<Model>::open(directory).unwrap().resume(),
                     harmos::storage::Cursor(7),

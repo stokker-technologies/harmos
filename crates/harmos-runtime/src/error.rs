@@ -37,6 +37,14 @@ pub enum Error<E = Infallible> {
     #[error("runtime shutdown budget expired during {phase}; cleanup remains owned")]
     ShutdownTimeout { phase: &'static str },
 
+    #[error("application stop failed ({stop}); cleanup also failed: {cleanup}")]
+    ApplicationLifecycle {
+        stop: std::sync::Arc<Error>,
+
+        #[source]
+        cleanup: std::sync::Arc<Error>,
+    },
+
     #[error("authenticated caller identity is required")]
     Unauthenticated,
 
@@ -280,6 +288,7 @@ impl<E> Error<E> {
     // written once at the origin and the operation frame the host added.
     pub fn failure(&self) -> Option<&harmos_domain::Failure> {
         match self {
+            Self::ApplicationLifecycle { stop, cleanup } => stop.failure().or_else(|| cleanup.failure()),
             Self::OperationFailed { source, .. } | Self::TaskFailed { source, .. } => carried(source.as_ref()),
             // The Attempt's Outcome Names The Failure; Cleanup Is Secondary
             Self::OperationFinalization { outcome, source, .. } => outcome.as_deref().and_then(Error::failure).or_else(|| source.failure()),

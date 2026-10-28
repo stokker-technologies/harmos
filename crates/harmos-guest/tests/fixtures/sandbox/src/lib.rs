@@ -18,7 +18,7 @@ pub mod contract;
 
 /* === Imports === */
 
-use harmos_guest::builtins::{lifecycle, streams};
+use harmos::guest::builtins::{lifecycle, streams};
 
 // Standard Library Imports
 use std::sync::atomic::AtomicUsize;
@@ -28,10 +28,10 @@ use std::time::Duration;
 
 // Local Imports
 use contract::{Echoed, ProviderEchoOperation};
-use harmos_domain::operations::{OperationPolicy, RetryPolicy};
-use harmos_guest::kit::Context;
-use harmos_guest::operations::{ServingError, WireTable};
-use harmos_guest::{Host, PublishError};
+use harmos::guest::kit::Context;
+use harmos::operations::{OperationPolicy, RetryPolicy};
+
+use harmos::guest::{Host, PublishError};
 
 /* === Constants === */
 
@@ -43,7 +43,7 @@ const LIFECYCLE: OperationPolicy = OperationPolicy {
 
 /* === Macros === */
 
-harmos_guest::export_plugin!(Sandbox, capacity = 2);
+harmos::guest::export_plugin!(Sandbox, capacity = 2);
 
 /* === Type Aliases === */
 
@@ -75,48 +75,22 @@ impl lifecycle::Policy for Sandbox {
     const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
 }
 
-#[harmos_guest::plugin(
-    id = "sandbox_guest",
-    description = "Answers the host harness's sandbox probes.",
-    provides = contract::Operations,
-    requires(contract::ProviderEchoOperation, streams::Publish),
-    streams(Echoed)
-)]
-impl harmos_guest::Plugin for Sandbox {
+impl harmos::Lifecycle for Sandbox {
     type Config = String;
     type Error = std::io::Error;
     type Context = Context;
-    type Resources = Owner;
 
-    fn register(registrar: &mut harmos_guest::Registrar) -> Result<(), harmos_guest::RegistrationError> {
-        registrar.register("zeta.catalog", 2, &"second")?;
-        registrar.register("alpha.catalog", 1, &"first")
-    }
-
-    fn prepare(config: String) -> Result<Self, Self::Error> {
-        Ok(Self {
+    async fn prepare(config: String, setup: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {
+        let plugin = Self {
             config,
             check_publication_revocation: false,
             check_dependency_revocation: false,
             owner: Arc::new(Owner::default()),
-        })
-    }
-
-    fn resources(&self) -> Arc<Owner> {
-        Arc::clone(&self.owner)
-    }
-
-    // A Mismatched Guest Declares Its Catalog But Binds None Of It
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), ServingError> {
-        if self.config == "mismatch" {
-            return Ok(());
+        };
+        if plugin.config != "missing-resource" {
+            setup.resource::<Owner>(Arc::clone(&plugin.owner));
         }
-        let mut dependencies = harmos_guest::Dependencies::new();
-        if self.config != "missing-resource" {
-            dependencies.insert(self.resources()).map_err(|_| ServingError::Catalog)?;
-        }
-        let entries = contract::Operations::registration(dependencies);
-        table.register(entries)
+        Ok(plugin)
     }
 
     async fn initialize(&mut self, context: &Context) -> Result<(), Self::Error> {
@@ -179,6 +153,21 @@ impl harmos_guest::Plugin for Sandbox {
     }
 }
 
+#[harmos::guest(
+    id = "sandbox_guest",
+    description = "Answers the host harness's sandbox probes.",
+    requires(contract::ProviderEchoOperation, streams::Publish),
+    streams(Echoed)
+)]
+impl harmos::Plugin for Sandbox {
+    const CATALOGS: &'static [harmos::guest::operations::Catalog] = &[contract::Operations::CATALOG];
+
+    fn register(registrar: &mut harmos::guest::Registrar) -> Result<(), harmos::guest::RegistrationError> {
+        registrar.register("zeta.catalog", 2, &"second")?;
+        registrar.register("alpha.catalog", 1, &"first")
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
@@ -189,8 +178,8 @@ async fn progress(context: &Context, value: &str) -> Result<(), PublishError> {
 
 // Drives Every Child Control Once: Status And Join, Cancel, Release By Drop, Detach
 async fn submitted(context: &Context) -> Result<(), std::io::Error> {
-    use harmos_guest::operations::Instance;
-    use harmos_guest::operations::instance::Phase;
+    use harmos::guest::operations::Instance;
+    use harmos::guest::operations::instance::Phase;
     let request = |say: &str| ProviderEchoOperation { say: say.into() };
 
     let joined = context.submit::<contract::ProviderEchoOperation>(request("joined")).await.map_err(std::io::Error::other)?;

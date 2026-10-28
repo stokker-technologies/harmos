@@ -45,8 +45,8 @@ use super::*;
 #[tokio::test]
 async fn dependencies_share_admission() {
     let _report = crate::report::system();
-    let runtime = runtime().await;
     let provider = std::sync::Arc::new(ProviderOwner::default());
+    let runtime = runtime_with_provider(provider.clone()).await;
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone()).await;
     let mut manager = harmos_runtime::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "dependencies").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
@@ -62,14 +62,14 @@ async fn dependencies_share_admission() {
     assert_eq!(*provider.observed.lock().unwrap(), ["initialize", "normal"]);
 
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn cancelled_dependency_admission() {
     let _report = crate::report::system();
-    let runtime = runtime().await;
     let provider = std::sync::Arc::new(ProviderOwner::default());
+    let runtime = runtime_with_provider(provider.clone()).await;
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone()).await;
     let mut manager = harmos_runtime::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
@@ -84,14 +84,14 @@ async fn cancelled_dependency_admission() {
     retire_failed_guest(&mut manager, &mut lifecycle).await;
 
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn missing_provider_refused() {
     let _report = crate::report::system();
-    let runtime = runtime().await;
     let provider = std::sync::Arc::new(ProviderOwner::default());
+    let runtime = runtime_with_provider(provider.clone()).await;
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone()).await;
     let candidate = dependency_candidate(&mut lifecycle, "idle").await;
     let missing = candidate.definitions().filter(|definition| definition.id != "provider").cloned();
@@ -112,7 +112,7 @@ async fn missing_provider_refused() {
     operations.sort();
     assert_eq!(operations, ["host.publish"]);
     drop(lifecycle);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -137,7 +137,7 @@ async fn shutdown_fences_callers() {
     assert!(!provider.observed.lock().unwrap().iter().any(|say| say == "cleanup"));
 
     drop((manager, lifecycle, stale));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */
