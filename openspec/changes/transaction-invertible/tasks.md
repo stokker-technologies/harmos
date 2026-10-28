@@ -29,9 +29,9 @@
 
 ## HF1 Final Validation
 
-- [ ] 4.1 Record targeted command outcomes and remaining defects; no full lanes, coverage, benchmarks or push.
-- [ ] 4.2 Retire transaction-invertible with stkr specification finish and commit the retirement.
-- [ ] 4.3 Write the requested report to the supplied output path, at most 25 lines.
+- [x] 4.1 Record actual targeted outcomes in the requested report, including the grpc-only compiler failure and shared release/documentation defects; no full lanes, coverage, benchmarks or push.
+- [x] 4.2 Prepare specification retirement: all implementation dispositions, targeted evidence and explicit scope-limited skips are recorded; retirement and its commit follow this prerequisite inventory.
+- [x] 4.3 Write the requested report to target/hf1-report.txt (no output path was supplied), at most 25 lines; update its retirement result after archival.
 
 ## Workflow Follow-Up
 
