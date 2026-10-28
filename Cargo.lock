@@ -299,7 +299,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "cargo-harmos"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "clap",
  "ctrlc",
@@ -1074,7 +1074,7 @@ dependencies = [
 
 [[package]]
 name = "harmos"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "harmos-domain",
  "harmos-operations",
@@ -1084,7 +1084,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-domain"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "harmos-macros",
  "harmos-operations",
@@ -1106,7 +1106,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-guest"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "harmos-domain",
  "harmos-operations",
@@ -1126,7 +1126,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-macros"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "heck",
  "proc-macro-crate",
@@ -1138,7 +1138,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-operations"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "harmos-domain",
  "harmos-sdk",
@@ -1152,7 +1152,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-packaging"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "harmos-domain",
  "harmos-sdk",
@@ -1176,7 +1176,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-runtime"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -1231,7 +1231,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-sdk"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "criterion",
  "harmos-domain",
@@ -1246,7 +1246,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-sidecar"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "criterion",
  "futures-util",
@@ -1270,7 +1270,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-storage"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -2317,7 +2317,7 @@ dependencies = [
 
 [[package]]
 name = "schematic-domain"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "harmos-domain",
  "serde",
@@ -2326,7 +2326,7 @@ dependencies = [
 
 [[package]]
 name = "schematic-operations"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "harmos",
  "schematic-domain",
