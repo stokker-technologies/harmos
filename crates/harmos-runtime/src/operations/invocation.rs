@@ -180,7 +180,7 @@ impl MemorySize for Answer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operations::RegistrationExt;
+    use crate::operations::{Lane, RegistrationExt};
     use harmos_sdk::{Context, Operation, Response};
 
     #[crate::lanes]
@@ -268,6 +268,67 @@ mod tests {
         let child = runtime.operation(Parent { value: 5 }).run().await.unwrap();
         assert_eq!(*child, 12);
         assert!(direct.ptr_eq(&child));
+        runtime.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn typed_calls_keep_carrier_and_runtime_resources() {
+        struct Carrier(u32);
+
+        impl harmos_sdk::operations::Carrier for Carrier {
+            type Declaration = Leaf;
+            type Error = harmos_sdk::ResourceError;
+            type StreamEndpoints = ();
+
+            async fn bind(context: harmos_sdk::ExecutionContext) -> Result<Self, Self::Error> {
+                let handle = context.resource::<u32>()?;
+                Ok(Self(*handle))
+            }
+
+            async fn attempt(
+                &mut self, context: harmos_sdk::ExecutionContext, request: &mut Leaf, _: &mut (),
+            ) -> Result<Response<u64>, Self::Error> {
+                let resource = context.resource::<u64>()?;
+                let response = request.value + u64::from(self.0) + *resource;
+                Ok(response.into())
+            }
+        }
+
+        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+            setup.resource(7_u64);
+        })
+        .await
+        .unwrap();
+
+        let mut batch = harmos_sdk::__private::RegistrationBatch::new().carrier::<Leaf, Carrier>();
+        let factory = batch.operations.pop().unwrap();
+        let binding = Arc::new(factory);
+        let lane = <Lanes as Lane>::default_lane().name();
+        let definition = Leaf::definition();
+        let mut entry = runtime
+            .operations
+            .binding_erased(
+                "host",
+                lane,
+                binding,
+                definition,
+                None,
+                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                None,
+            )
+            .unwrap();
+
+        let handle = Arc::new(11_u32);
+        let staged = Arc::get_mut(&mut entry).unwrap();
+        staged.carrier.insert(handle).unwrap();
+        runtime.operations.reserve(&[entry]).unwrap();
+
+        let response = runtime.operation(Leaf { value: 5 }).run().await.unwrap();
+        assert_eq!(*response, 23);
+        let resources = runtime.operations.resources();
+        assert!(resources.resource::<u32>().is_err());
+        let owner = resources.resource::<u64>().unwrap();
+        assert_eq!(*owner, 7);
         runtime.shutdown().await.unwrap();
     }
 }

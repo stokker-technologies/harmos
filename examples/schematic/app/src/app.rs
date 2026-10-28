@@ -86,7 +86,6 @@ impl Lifecycle for SchematicEditor {
 
         // Operations
         setup.settings().register(Transactions::catalog()).register(Records::catalog()).register(Streams::catalog());
-        setup.operations::<schematic_operations::Operations>(crate::lanes::Lanes::Open);
         Ok(Self { checkpoint })
     }
 

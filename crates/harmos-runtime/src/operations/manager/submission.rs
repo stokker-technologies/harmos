@@ -156,7 +156,8 @@ impl Manager {
             if factory.definition.fingerprint != O::definition().fingerprint || !factory.accepts_native::<O, P>() {
                 return Err(original);
             }
-            Ok(Arc::new(crate::operations::authored::factory::<O, P>(self, factory.clone())))
+            let binding = crate::operations::authored::factory::<O, P>(self, &entry, factory.clone());
+            Ok(Arc::new(binding))
         });
         let binding = binding.map_err(|_| Error::InvalidInput {
             field: "operation",

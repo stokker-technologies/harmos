@@ -196,9 +196,9 @@ impl Finalizer for Owned {
 /* === Public Functions === */
 
 pub(super) fn factory<D: OperationDeclaration, P: Send + 'static>(
-    operations: &Manager, factory: harmos_sdk::operations::OperationFactory,
+    operations: &Manager, entry: &Entry, factory: harmos_sdk::operations::OperationFactory,
 ) -> Typed<D, P> {
-    let resources = operations.resources().clone();
+    let resources = operations.resources_for(entry);
     factory_with(operations, move |request, endpoints| factory.prepare_native(resources.clone(), Box::new(request), Box::new(endpoints)))
 }
 
