@@ -24,7 +24,7 @@
 - [x] 3.7 Reproduce the SDK grpc hashed-field span test and fix its root cause if it fails.
 - [x] 3.8 Exact-pin published sibling dependencies to the workspace version and audit release tooling; report the Hub-owned exact-pin synchronization defect under the no-sidequest limit.
 - [x] 3.9 Audit release CHANGELOG packaging: skipped implementation because Hub-owned asset staging omits the generated notes file; report this shared-tooling defect under the no-sidequest limit.
-- [ ] 3.10 Last: audit unused dependencies, refresh all workspace dependencies including breaking releases, repair local fallout and record design-changing skips; commit dependencies separately.
+- [x] 3.10 Last: audit unused dependencies, refresh all workspace dependencies including breaking releases, repair local fallout and record design-changing skips; commit dependencies separately.
 - [ ] 3.11 Last: refresh every mise tool and lock; commit tools separately.
 
 ## HF1 Final Validation
@@ -39,3 +39,4 @@
 - Hub asset staging publishes git-cliff notes as the provider release body but does not stage CHANGELOG.md as a checksummed download. No Hub changes are made during HF1 while its separate Dokime timing work is active.
 - README review found pre-existing feature labels `plugin-guest` / `plugin-sidecar` where the facade exposes `guest` / `sidecar`, plus a schematic README table claiming separate request types. Report these unrelated documentation defects without expanding HF1.
 - The initial shell inherited Dokime's UV_PROJECT_ENVIRONMENT and TMPDIR. The first prepare task touched that other environment before the overrides were cleared for all later compilation; its environment is not repaired while separate Dokime work is active.
+- The additional grpc-only runtime compiler check fails on the existing ungated `pub(crate) use codec::encode_bytes` re-export in src/grpc.rs; its consumers are plugin-gated. Preserve the failure and report it under the no-sidequest rule; the workspace all-targets compiler check passes after dependency refresh.
