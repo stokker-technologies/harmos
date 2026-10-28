@@ -25,7 +25,7 @@
 - [x] 3.8 Exact-pin published sibling dependencies to the workspace version and audit release tooling; report the Hub-owned exact-pin synchronization defect under the no-sidequest limit.
 - [x] 3.9 Audit release CHANGELOG packaging: skipped implementation because Hub-owned asset staging omits the generated notes file; report this shared-tooling defect under the no-sidequest limit.
 - [x] 3.10 Last: audit unused dependencies, refresh all workspace dependencies including breaking releases, repair local fallout and record design-changing skips; commit dependencies separately.
-- [ ] 3.11 Last: refresh every mise tool and lock; commit tools separately.
+- [x] 3.11 Last: refresh every mise tool and lock; commit tools separately.
 
 ## HF1 Final Validation
 
