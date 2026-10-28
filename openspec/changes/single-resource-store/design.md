@@ -96,5 +96,5 @@ Focused mise build:rust:focused Clippy/no-run builds cover touched crates/featur
 Run operation/resident/shutdown, carrier lifecycle, macro compile and schematic binaries in
 parallel. Add aggregate setup errors, application/plugin lifecycle ordering, constant inert
 inventory, override/frozen-resource and facade-attribute proofs. No full lanes or ci:simulate.
-Strict OpenSpec and stkr project check must pass. Retire with stkr specification finish only
-after tracked work closes, commit breaking changes, push, verify SHA and report under 25 lines.
+Strict OpenSpec must pass; the owner assigns existing project-check policy cleanup separately.
+Retire after tracked work closes, commit breaking changes, push, verify SHA and report briefly.

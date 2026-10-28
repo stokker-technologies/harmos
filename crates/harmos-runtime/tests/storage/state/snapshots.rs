@@ -167,6 +167,19 @@ async fn balance(runtime: &Runtime<Bank>) -> i64 {
     runtime.state.state().read(|state| state.balances.get(&HOUSE).copied().unwrap_or(0)).await.unwrap().value
 }
 
+async fn launch(snapshot: SnapshotPolicy, storage: &StorageManager) -> Runtime<Bank> {
+    Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().storage(storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
+            replay: limits(),
+            capture: limits(),
+            snapshots: Some(snapshot),
+            journal_tail: 2,
+        });
+    })
+    .await
+    .unwrap()
+}
+
 #[tokio::test]
 async fn snapshot_restores_state() {
     let store = Store::new();
@@ -216,6 +229,58 @@ async fn snapshot_restores_state() {
     journal.undo(who, Focus::all()).await.unwrap();
     assert_eq!(balance(&runtime).await, 5);
     runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn snapshot_restores_at_payload_limit() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = launch(policy(100), &storage).await;
+    runtime.state.commit(deposit(4)).await.unwrap();
+    runtime.shutdown().await.unwrap();
+
+    let mut exact = policy(100);
+    exact.max_bytes = NonZeroUsize::new(store.snapshot().payload.len()).unwrap();
+    store.recovery.snapshot.lock().unwrap().take();
+    let storage = store.manager(config());
+    let runtime = launch(exact.clone(), &storage).await;
+    runtime.shutdown().await.unwrap();
+    let snapshot = store.snapshot();
+    assert_eq!(snapshot.payload.len(), exact.max_bytes.get());
+    assert!(serde_json::to_vec(&snapshot).unwrap().len() > exact.max_bytes.get());
+    store.recovery.entries.lock().unwrap().clear();
+
+    let storage = store.manager(config());
+    let runtime = launch(exact, &storage).await;
+    assert_eq!(balance(&runtime).await, 4);
+    assert_eq!(runtime.state.applied(), Position(1));
+    assert_eq!(runtime.state.stored(), Position(1));
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn snapshot_over_payload_limit_retains_journal() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = launch(policy(100), &storage).await;
+    runtime.state.commit(deposit(4)).await.unwrap();
+    runtime.shutdown().await.unwrap();
+
+    let mut small = policy(100);
+    small.max_bytes = NonZeroUsize::new(store.snapshot().payload.len() - 1).unwrap();
+    store.recovery.snapshot.lock().unwrap().take();
+    let storage = store.manager(config());
+    let runtime = launch(small.clone(), &storage).await;
+    runtime.shutdown().await.unwrap();
+    assert!(store.recovery.snapshot.lock().unwrap().is_none());
+    assert_eq!(storage.status().pending_bytes, 0);
+
+    let storage = store.manager(config());
+    let runtime = launch(small, &storage).await;
+    assert_eq!(balance(&runtime).await, 4);
+    assert_eq!(runtime.state.applied(), Position(1));
+    runtime.shutdown().await.unwrap();
+    assert!(store.recovery.snapshot.lock().unwrap().is_none());
 }
 
 #[tokio::test]

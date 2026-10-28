@@ -14,13 +14,18 @@
 
 ## Validation And Delivery
 
-- [ ] 2.1 Strict OpenSpec validation and stkr project check pass with HX3 findings repaired.
+- [x] 2.1 Strict OpenSpec validation passes; run stkr project check, repair HX3 findings and report existing policy findings under the owner's separate-cleanup decision.
 - [x] 2.2 Focused Clippy and no-run builds pass for every touched crate/example and relevant feature combination.
 - [x] 2.3 Focused operation/resident/shutdown, carrier lifecycle, macro compile and schematic tests pass, including aggregate setup, lifecycle order, CATALOGS inert inventory and facade attributes.
 - [x] 2.4 Commit breaking changes, push and verify the remote SHA, and write the requested report under 25 lines.
+
+## Dev Merge Proof
+
+- [x] 3.1 Merge origin/dev without rebasing, retaining dev release versions and snapshot accounting while migrating its recovery tests to the shared lifecycle API.
+- [x] 3.2 Pass focused storage/runtime recovery tests and workspace Clippy/no-run proof on the combined tree.
 
 ## Workflow Follow-Up
 
 - The owner forbids full lanes, ci:simulate, versions and releases here; preserve the original PR handoff restriction and deliver this branch for one dev-drop PR.
 - Retire the change after its recorded tasks close; commit and push the resulting current specification.
-- Project-check policy cleanup outside HX3 needs an owner scope decision: existing Rustdoc, test naming/layout and attributed-member spacing findings include unrelated state/storage files.
+- The owner assigns existing project-check policy cleanup to a separate change; retain the reported failure without expanding this migration into unrelated state/storage cleanup.
