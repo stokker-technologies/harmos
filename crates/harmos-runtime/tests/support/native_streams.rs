@@ -68,13 +68,31 @@ pub enum Lanes {
 
 /* === Implementations === */
 
+impl harmos_runtime::Lifecycle for Model {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _setup: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
+        Ok(Self)
+    }
+    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl harmos_runtime::Application for Model {
     type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
     type Streams = Streams;
-    type Resources = ();
 }
 
 impl Fixture {
@@ -124,16 +142,14 @@ impl Fixture {
             },
         };
         let resident = Supervised::new(source, notices as fn(&ServiceContext<Model>, Notice));
-        let runtime = Runtime::<Model>::builder((), ())
-            .register(Streams::catalog())
-            .register(Lanes::catalog())
-            .operation_settings(harmos_runtime::operations::Settings {
+        let runtime = Runtime::<Model>::launch_with((), (), |setup| {
+            setup.settings().register(Streams::catalog()).operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(NonZeroUsize::new(32 * 1024 * 1024).unwrap()),
                 ..Default::default()
-            })
-            .runtime()
-            .await
-            .unwrap();
+            });
+        })
+        .await
+        .unwrap();
         runtime
             .operations
             .register_service(
@@ -144,7 +160,7 @@ impl Fixture {
                         ..harmos_runtime::services::POLICY
                     },
                 },
-                move |_: Arc<()>| {
+                move |_: Arc<harmos_sdk::ExecutionContext>| {
                     construct(resident.clone(), definition.clone(), Lanes::Open, capacity, NonZeroUsize::new(4096).unwrap())
                         .unwrap()
                         .stream_listeners(|_, bindings| bindings.stream::<Payload>(0))

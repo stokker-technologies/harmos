@@ -24,7 +24,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery};
-use harmos_runtime::operations::{OperationPolicy, RetryPolicy, WireTable};
+use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -78,7 +78,7 @@ pub struct ProgressDeclaration {
 #[harmos_runtime::operation(codec = manual, resources = [State], id = "consumption.consume", response = (),
     policy = POLICY, visibility = Shared)]
 #[derive(Clone)]
-struct Consumption(Delivery<Listener>);
+pub struct Consumption(Delivery<Listener>);
 
 impl harmos_runtime::Message for Consumption {
     const CODEC: &'static str = <Delivery<Listener> as harmos_runtime::Message>::CODEC;
@@ -118,11 +118,11 @@ pub struct Listener;
 
 #[harmos_runtime::catalog]
 pub enum Callbacks {
-    Consume(harmos_runtime::listeners::Callback<Listener>),
+    Consume(Consumption),
     ProgressDeclaration(ProgressDeclaration),
 }
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 pub enum Listeners {
     Listener(Listener),
 }
@@ -136,45 +136,33 @@ impl harmos_operations::lifecycle::Policy for Receiver {
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos_runtime::plugin(description = "Consumes Host Stream Rows And Acknowledges Verified Payload Bytes.", id = "consumption", provides = Callbacks, requires = (), listeners = Listeners)]
-impl harmos_runtime::Plugin for Receiver {
+impl harmos_runtime::Lifecycle for Receiver {
     type Config = ();
     type Context = Supervisor;
-    type Resources = State;
     type Error = Refusal;
-    fn prepare(_: ()) -> Result<Self, Refusal> {
-        Ok(Self { state: Arc::new(State::default()) })
+
+    async fn prepare(_: (), setup: &mut harmos_sdk::Setup<Self>) -> std::result::Result<Self, Refusal> {
+        let plugin = Self { state: Arc::new(State::default()) };
+        setup.resource::<State>(plugin.state.clone());
+        Ok(plugin)
     }
-    async fn initialize(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+
+    async fn initialize(&mut self, _: &Supervisor) -> std::result::Result<(), Refusal> {
         Ok(())
     }
-    fn resources(&self) -> Arc<State> {
-        self.state.clone()
-    }
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<Consumption>(),
-        )?;
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<ProgressDeclaration>(),
-        )
-    }
-    async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+
+    async fn stop(&mut self, _: &Supervisor) -> std::result::Result<(), Refusal> {
         Ok(())
     }
-    async fn cleanup(&mut self) -> Result<(), Refusal> {
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Refusal> {
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Consumes Host Stream Rows And Acknowledges Verified Payload Bytes.", id = "consumption", requires = (), listeners = Listeners)]
+impl harmos_runtime::Plugin for Receiver {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[Callbacks::CATALOG];
 }
 
 impl harmos_runtime::Operation for Consumption {

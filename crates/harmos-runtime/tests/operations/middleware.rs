@@ -160,23 +160,9 @@ fn keyed<O>(_: &O) -> Option<harmos_runtime::operations::CacheKey> {
 }
 
 async fn runtime() -> Runtime<App> {
-    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<DeclareChildDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<DeclareParentDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+    runtime.operations.register::<super::Single<DeclareChildDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<super::Single<DeclareParentDeclaration>>(Lanes::Open).await.unwrap();
     runtime
 }
 
@@ -255,29 +241,15 @@ fn portable_preserves_local() {
 #[tokio::test]
 async fn child_preserves_authority() {
     let runtime = runtime().await;
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<OverlayChildDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<OverlayParentDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    runtime.operations.register::<super::Single<OverlayChildDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<super::Single<OverlayParentDeclaration>>(Lanes::Open).await.unwrap();
     let mut original = context("alice");
     original.insert_portable(Stage { id: "parent".into() }).unwrap();
     let operations = runtime.operations.with_context(original.clone());
     assert_eq!(&*operations.call::<OverlayParentDeclaration>(OverlayParentDeclaration {}).await.unwrap(), "alice:parent:alice:child");
     assert_eq!(original.require::<Stage>().unwrap().id, "parent");
     assert_eq!(&*operations.call::<OverlayChildDeclaration>(OverlayChildDeclaration {}).await.unwrap(), "alice:parent");
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -326,7 +298,7 @@ async fn children_inherit_principals() {
     );
     assert_eq!(&*a.unwrap(), "alice:alice");
     assert_eq!(&*b.unwrap(), "bob:bob");
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -346,7 +318,7 @@ async fn layers_skips_layers() {
             "first observe middleware.parent",
         ]
     );
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -372,45 +344,26 @@ async fn cancellation_interrupts_policy() {
         assert_eq!(observations[0].outcome, harmos_runtime::operations::OperationOutcome::Cancelled);
         assert!(observations[0].settled);
     }
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn overrides_preserve_type() {
     let runtime = runtime().await;
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", DeclareChildDeclaration::ID).unwrap()).await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).operation::<DeclareChildDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    runtime.operations.register::<super::Single<DeclareChildDeclaration>>(Lanes::Open).await.unwrap();
     let operations = runtime.operations.with_context(context("alice"));
     let result =
         operations.submit_at::<DeclareChildDeclaration>(DeclareChildDeclaration::ID, DeclareChildDeclaration {}).unwrap().await.unwrap();
     assert_eq!(&*result, "alice");
     assert!(operations.submit_at::<DeclareParentDeclaration>(DeclareChildDeclaration::ID, DeclareParentDeclaration {}).is_err());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn retries_preserve_principal() {
     let runtime = runtime().await;
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(())).unwrap();
-                dependencies
-            })
-            .operation::<RetryDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    runtime.operations.register::<super::Single<RetryDeclaration>>(Lanes::Open).await.unwrap();
     let events = Arc::new(Mutex::new(Vec::new()));
     runtime
         .operations
@@ -423,7 +376,7 @@ async fn retries_preserve_principal() {
     let answer = runtime.operations.with_context(context("alice")).call::<RetryDeclaration>(RetryDeclaration {}).await.unwrap();
     assert_eq!(&*answer, "alice:3");
     assert_eq!(*events.lock().unwrap(), ["once enter middleware.retry", "once observe middleware.retry"]);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 struct Wait {

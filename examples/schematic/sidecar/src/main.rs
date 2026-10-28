@@ -49,7 +49,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let report = capture()?;
     let story = tracing::debug_span!("system.story", application = "schematic-sidecar", process = std::process::id());
-    let outcome = harmos_sidecar::run_plugin::<schematic_sidecar::Plugin>(NonZeroUsize::new(4).unwrap()).instrument(story).await;
+    let outcome = harmos::sidecar::run_plugin::<schematic_sidecar::Plugin>(NonZeroUsize::new(4).unwrap()).instrument(story).await;
     let flushed = report.as_ref().map(FlushGuard::flush).transpose();
     outcome?;
     flushed?;

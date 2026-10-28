@@ -25,7 +25,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 // Third Party Imports
-use serde::de::DeserializeOwned;
 
 // Local Imports
 use crate::operations::{ServingError, WireTable};
@@ -43,32 +42,17 @@ use harmos_domain::model::operations::lifecycle;
 
 /* === Traits === */
 
-pub trait Context: Clone + Send + Sync + 'static {
+pub trait Context: crate::lifecycle::Context<Configuration = WireTable> {
     fn assign_operations(&self, bytes: &[u8]) -> Result<(), ServingError>;
     fn with_generation(&self, token: [u8; 32]) -> Self;
 }
 
-pub trait Plugin: lifecycle::Policy + Send + Sync + Sized + 'static {
+pub trait Plugin: crate::Lifecycle<Context: Context> + lifecycle::Policy + Sync {
+    const CATALOGS: &'static [crate::operations::Catalog];
+
     fn register(_registrar: &mut crate::Registrar) -> Result<(), crate::RegistrationError> {
         Ok(())
     }
-
-    type Config: DeserializeOwned + Default + Send + 'static;
-    type Error: std::error::Error + Send + Sync + 'static;
-    type Context: Context;
-    type Resources: Send + Sync + 'static;
-
-    fn resources(&self) -> Arc<Self::Resources>;
-
-    fn prepare(config: Self::Config) -> Result<Self, Self::Error>;
-
-    fn initialize(&mut self, context: &Self::Context) -> impl Future<Output = Result<(), Self::Error>> + Send;
-
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), ServingError>;
-
-    fn stop(&mut self, context: &Self::Context) -> impl Future<Output = Result<(), Self::Error>> + Send;
-
-    fn cleanup(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     fn attachment(&self) -> Option<Arc<dyn Attachment<Self::Context>>> {
         None
@@ -76,12 +60,18 @@ pub trait Plugin: lifecycle::Policy + Send + Sync + Sized + 'static {
 }
 
 pub trait Attachment<C>: Send + Sync + 'static {
+    #[doc(hidden)]
+    fn bind(self: Arc<Self>, table: &mut WireTable) -> Result<(), ServingError>;
+
     fn observers(&self) -> Vec<crate::inventory::observers::Declaration>;
-    fn resources(&self) -> Arc<dyn std::any::Any + Send + Sync>;
     fn quiesce(&self) -> Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + '_>>;
 }
 
 /* === Implementations === */
+
+impl crate::lifecycle::Context for () {
+    type Configuration = WireTable;
+}
 
 impl Context for () {
     fn assign_operations(&self, bytes: &[u8]) -> Result<(), ServingError> {

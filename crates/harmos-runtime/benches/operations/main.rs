@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+extern crate harmos_runtime as harmos;
+
 // Standard Library Imports
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -22,7 +24,7 @@ use criterion::{BenchmarkId, Criterion, Throughput};
 use tokio::sync::{Semaphore, mpsc};
 
 // Local Imports
-use harmos_runtime::operations::{RegistrationExt, RetryPolicy};
+use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -51,6 +53,11 @@ struct Waiting(Option<Arc<Signals>>);
 struct DispatchGuard(Arc<Signals>);
 
 /* === Enums === */
+
+#[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
+enum DispatchOperations {
+    Dispatch(Dispatch),
+}
 
 #[harmos_runtime::lanes]
 enum Lanes {
@@ -102,24 +109,40 @@ impl Drop for DispatchGuard {
 /* === Private Functions === */
 
 struct App;
+impl harmos_runtime::Lifecycle for App {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), setup: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
+        setup.operations::<DispatchOperations>(Lanes::Open);
+        Ok(Self)
+    }
+    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl harmos_runtime::Application for App {
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
     type Streams = ();
-    type Resources = ();
     type Lanes = Lanes;
 }
 
 async fn runtime(signals: Option<Arc<Signals>>) -> Runtime<App> {
-    let mut dependencies = harmos_runtime::Dependencies::new();
-    dependencies.insert(Arc::new(Waiting(signals))).unwrap();
-    Runtime::<App>::builder((), ())
-        .register(Lanes::catalog())
-        .with_registration(harmos_runtime::RegistrationBatch::new(dependencies).operation::<Dispatch>().lane(Lanes::Open))
-        .runtime()
-        .await
-        .unwrap()
+    Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Waiting>(Waiting(signals));
+    })
+    .await
+    .unwrap()
 }
 
 // Startup And Admission Are Outside Both Cancellation Measurements.
@@ -134,7 +157,7 @@ async fn cancellation(load: u32) -> Cancellation {
     signals.running.acquire_many(load).await.expect("all operations enter run before cancellation").forget();
 
     let requested = Instant::now();
-    runtime.stop().await.expect("runtime cancellation settles");
+    runtime.shutdown().await.expect("runtime cancellation settles");
     let settled = requested.elapsed();
     let mut dispatched = Vec::with_capacity(load as usize);
     for _ in 0..load {
@@ -166,7 +189,7 @@ fn benchmarks(c: &mut Criterion) {
         });
     });
     dispatch.finish();
-    executor.block_on(runtime.stop()).unwrap();
+    executor.block_on(runtime.shutdown()).unwrap();
 
     let mut stopping = c.benchmark_group("operations/runtime_cancel");
     stopping.sample_size(20);

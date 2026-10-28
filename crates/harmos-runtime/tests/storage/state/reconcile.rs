@@ -22,11 +22,11 @@ use std::sync::{
 // Third Party Imports
 use tokio::sync::Notify;
 // Local Imports
-use super::closed;
+use super::{CleanupCapture, closed};
 use crate::storage::support::{HOUSE, Noted, deposit};
 use crate::storage::{Bank, Data, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history, record, schema};
 use harmos_runtime::storage::ReadLimits;
-use harmos_runtime::{Builder, Error, Identifier, Runtime, services::ServiceContext, state::Position};
+use harmos_runtime::{Error, Identifier, Runtime, services::ServiceContext, state::Position};
 
 /* === Constants === */
 
@@ -77,7 +77,16 @@ impl Store {
     }
     async fn seed(&self) {
         let storage = self.manager();
-        let runtime = builder().runtime_with_storage(&storage).await.unwrap();
+        let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(),
+                capture: limits(),
+                snapshots: None,
+                journal_tail: 1024,
+            });
+        })
+        .await
+        .unwrap();
         storage
             .write_schema(
                 schema(),
@@ -92,22 +101,13 @@ impl Store {
         let payload = harmos_runtime::Message::encode(&Balance { value: 8 });
         storage.write_records(vec![record(&schema(), &Identifier::new("saved-balance").unwrap(), &payload)]).await.unwrap();
         runtime.state.commit(deposit(3)).await.unwrap();
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-fn builder() -> Builder<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
-        replay: limits(),
-        capture: limits(),
-        snapshots: None,
-        journal_tail: 1024,
-    })
-}
 
 fn limits() -> ReadLimits {
     ReadLimits {
@@ -176,25 +176,35 @@ async fn saved_facts_reconcile() {
         let started = Arc::new(Notify::new());
         let signal = started.clone();
         let saved = storage.clone();
-        let runtime = builder()
-            .reconcile(restore)
-            .service("application", move |context: ServiceContext<Bank>| {
-                let signal = signal.clone();
-                let saved = saved.clone();
-                async move {
-                    assert_eq!(context.state().state().read(|state| state.balances[&HOUSE]).await.unwrap().value, 8);
-                    assert_eq!(context.state().stored(), Position(2));
-                    assert_eq!(saved.status().recovery_saved.sequence, 2);
-                    signal.notify_one();
-                    Ok::<(), std::io::Error>(())
-                }
-            })
-            .runtime_with_storage(&storage)
-            .await
-            .unwrap();
+        let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            setup
+                .settings()
+                .storage(&storage)
+                .register(catalog())
+                .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                    replay: limits(),
+                    capture: limits(),
+                    snapshots: None,
+                    journal_tail: 1024,
+                })
+                .reconcile(restore)
+                .service("application", move |context: ServiceContext<Bank>| {
+                    let signal = signal.clone();
+                    let saved = saved.clone();
+                    async move {
+                        assert_eq!(context.state().state().read(|state| state.balances[&HOUSE]).await.unwrap().value, 8);
+                        assert_eq!(context.state().stored(), Position(2));
+                        assert_eq!(saved.status().recovery_saved.sequence, 2);
+                        signal.notify_one();
+                        Ok::<(), std::io::Error>(())
+                    }
+                });
+        })
+        .await
+        .unwrap();
         started.notified().await;
         assert_eq!(runtime.state.applied(), Position(2));
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
@@ -207,16 +217,26 @@ async fn reconciliation_precedes_services() {
     store.recovery.control.block_flush.store(true, Ordering::SeqCst);
     let started = Arc::new(AtomicBool::new(false));
     let mark = started.clone();
-    let opening = builder()
-        .reconcile(|journal, storage| async move {
-            storage.write_records(vec![record(&schema(), &Identifier::new("repair-marker").unwrap(), b"saved")]).await?;
-            restore(journal, storage).await
-        })
-        .service("application", move |_context: ServiceContext<Bank>| {
-            mark.store(true, Ordering::SeqCst);
-            async { Ok::<(), std::io::Error>(()) }
-        })
-        .runtime_with_storage(&storage);
+    let opening = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup
+            .settings()
+            .storage(&storage)
+            .register(catalog())
+            .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(),
+                capture: limits(),
+                snapshots: None,
+                journal_tail: 1024,
+            })
+            .reconcile(|journal, storage| async move {
+                storage.write_records(vec![record(&schema(), &Identifier::new("repair-marker").unwrap(), b"saved")]).await?;
+                restore(journal, storage).await
+            })
+            .service("application", move |_context: ServiceContext<Bank>| {
+                mark.store(true, Ordering::SeqCst);
+                async { Ok::<(), std::io::Error>(()) }
+            });
+    });
     tokio::pin!(opening);
     tokio::select! {
         _ = &mut opening => panic!("primary save must block boot"),
@@ -238,7 +258,7 @@ async fn reconciliation_precedes_services() {
     store.recovery.control.flush_release.notify_one();
     let runtime = opening.await.unwrap();
     assert_eq!(runtime.state.stored(), Position(2));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -247,17 +267,27 @@ async fn failed_reconcile_repairs() {
     let storage = store.manager();
     let started = Arc::new(AtomicBool::new(false));
     let mark = started.clone();
-    let result = builder()
-        .reconcile(|journal, _| async move {
-            journal.commit(deposit(2)).await.unwrap();
-            Err(failure())
-        })
-        .service("application", move |_context: ServiceContext<Bank>| {
-            mark.store(true, Ordering::SeqCst);
-            async { Ok::<(), std::io::Error>(()) }
-        })
-        .runtime_with_storage(&storage)
-        .await;
+    let result = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup
+            .settings()
+            .storage(&storage)
+            .register(catalog())
+            .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(),
+                capture: limits(),
+                snapshots: None,
+                journal_tail: 1024,
+            })
+            .reconcile(|journal, _| async move {
+                journal.commit(deposit(2)).await.unwrap();
+                Err(failure())
+            })
+            .service("application", move |_context: ServiceContext<Bank>| {
+                mark.store(true, Ordering::SeqCst);
+                async { Ok::<(), std::io::Error>(()) }
+            });
+    })
+    .await;
     assert!(result.err().unwrap().to_string().contains("reconciliation"));
     assert!(!started.load(Ordering::SeqCst));
     assert!(storage.status().closed);
@@ -265,9 +295,18 @@ async fn failed_reconcile_repairs() {
     assert!(!store.recovery.control.open.load(Ordering::SeqCst));
     // Boot failure is not a rollback of admitted repairs.
     let storage = store.manager();
-    let runtime = builder().runtime_with_storage(&storage).await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
+            replay: limits(),
+            capture: limits(),
+            snapshots: None,
+            journal_tail: 1024,
+        });
+    })
+    .await
+    .unwrap();
     assert_eq!(runtime.state.state().read(|state| state.balances[&HOUSE]).await.unwrap().value, 2);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -278,25 +317,35 @@ async fn cancelled_reconcile_seals() {
     let entered = gate.clone();
     let retained = Arc::new(std::sync::Mutex::new(None));
     let keep = retained.clone();
-    let cleanup;
+    let cleanup = CleanupCapture::default();
     {
-        let opening = builder()
-            .reconcile(move |journal, _| async move {
-                journal.commit(deposit(2)).await.unwrap();
-                *keep.lock().unwrap() = Some(journal);
-                entered.entered.notify_one();
-                entered.release.notified().await;
-                Ok(())
-            })
-            .runtime_with_storage(&storage);
-        cleanup = opening.cleanup();
+        let opening = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            cleanup.capture(setup);
+            setup
+                .settings()
+                .storage(&storage)
+                .register(catalog())
+                .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                    replay: limits(),
+                    capture: limits(),
+                    snapshots: None,
+                    journal_tail: 1024,
+                })
+                .reconcile(move |journal, _| async move {
+                    journal.commit(deposit(2)).await.unwrap();
+                    *keep.lock().unwrap() = Some(journal);
+                    entered.entered.notify_one();
+                    entered.release.notified().await;
+                    Ok(())
+                });
+        });
         tokio::pin!(opening);
         tokio::select! {
             _ = &mut opening => panic!("callback must wait"),
             _ = gate.entered.notified() => {}
         }
     }
-    closed(&storage, &cleanup).await;
+    closed(&storage, cleanup.get()).await;
     let journal = retained.lock().unwrap().take().unwrap();
     assert!(journal.commit(deposit(2)).await.is_err());
     assert_eq!(storage.status().recovery_saved.sequence, 1);
@@ -312,18 +361,28 @@ async fn repair_save_blocks() {
     let mark = started.clone();
     store.recovery.control.flush_failures.store(1, Ordering::SeqCst);
     assert!(
-        builder()
-            .reconcile(|journal, _| async move {
-                harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("repair".into())).await?;
-                Ok(())
-            })
-            .service("application", move |_context: ServiceContext<Bank>| {
-                mark.store(true, Ordering::SeqCst);
-                async { Ok::<(), std::io::Error>(()) }
-            })
-            .runtime_with_storage(&storage)
-            .await
-            .is_err()
+        Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            setup
+                .settings()
+                .storage(&storage)
+                .register(catalog())
+                .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                    replay: limits(),
+                    capture: limits(),
+                    snapshots: None,
+                    journal_tail: 1024,
+                })
+                .reconcile(|journal, _| async move {
+                    harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("repair".into())).await?;
+                    Ok(())
+                })
+                .service("application", move |_context: ServiceContext<Bank>| {
+                    mark.store(true, Ordering::SeqCst);
+                    async { Ok::<(), std::io::Error>(()) }
+                });
+        })
+        .await
+        .is_err()
     );
     assert!(!started.load(Ordering::SeqCst));
     assert!(storage.status().closed);
@@ -335,12 +394,25 @@ async fn reconcile_requires_managed() {
     let store = Store::new();
     let storage = store.manager();
     assert!(
-        Runtime::<Bank>::builder(Ledger::default(), ()).reconcile(|_, _| async { Ok(()) }).runtime_with_storage(&storage).await.is_err()
+        Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            setup.settings().storage(&storage).reconcile(|_, _| async { Ok(()) });
+        })
+        .await
+        .is_err()
     );
     assert!(!store.data.control.open.load(Ordering::SeqCst));
     assert!(!store.recovery.control.open.load(Ordering::SeqCst));
-    let runtime = builder().runtime_with_storage(&storage).await.unwrap();
-    runtime.stop().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
+            replay: limits(),
+            capture: limits(),
+            snapshots: None,
+            journal_tail: 1024,
+        });
+    })
+    .await
+    .unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -349,16 +421,30 @@ async fn reconcile_panic_saves() {
         .run_until(async {
             let store = Store::new();
             let storage = store.manager();
-            let startup = builder()
-                .reconcile(|journal, _| async move {
-                    harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("before panic".into())).await?;
-                    panic!("controlled reconciliation panic");
-                })
-                .runtime_with_storage(&storage);
-            let cleanup = startup.cleanup();
+            let cleanup = CleanupCapture::default();
+            let capture = cleanup.clone();
+            let opening_storage = storage.clone();
+            let startup = Runtime::<Bank>::launch_with(Ledger::default(), (), move |setup| {
+                capture.capture(setup);
+                setup
+                    .settings()
+                    .storage(&opening_storage)
+                    .register(catalog())
+                    .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                        replay: limits(),
+                        capture: limits(),
+                        snapshots: None,
+                        journal_tail: 1024,
+                    })
+                    .reconcile(|journal, _| async move {
+                        harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("before panic".into())).await?;
+                        panic!("controlled reconciliation panic");
+                    });
+            });
+
             let task = tokio::task::spawn_local(startup);
             assert!(task.await.err().unwrap().is_panic());
-            closed(&storage, &cleanup).await;
+            closed(&storage, cleanup.get()).await;
             assert_eq!(storage.status().recovery_saved.sequence, 1);
         })
         .await;
@@ -369,15 +455,25 @@ async fn cancelled_boot_settles() {
     let store = Store::new();
     let storage = store.manager();
     store.recovery.control.block_flush.store(true, Ordering::SeqCst);
-    let cleanup;
+    let cleanup = CleanupCapture::default();
     {
-        let opening = builder()
-            .reconcile(|journal, _| async move {
-                harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("repair".into())).await?;
-                Ok(())
-            })
-            .runtime_with_storage(&storage);
-        cleanup = opening.cleanup();
+        let opening = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            cleanup.capture(setup);
+            setup
+                .settings()
+                .storage(&storage)
+                .register(catalog())
+                .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                    replay: limits(),
+                    capture: limits(),
+                    snapshots: None,
+                    journal_tail: 1024,
+                })
+                .reconcile(|journal, _| async move {
+                    harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("repair".into())).await?;
+                    Ok(())
+                });
+        });
         tokio::pin!(opening);
         tokio::select! {
             _ = &mut opening => panic!("save must wait"),
@@ -387,7 +483,7 @@ async fn cancelled_boot_settles() {
     assert!(!storage.status().closed);
     store.recovery.control.block_flush.store(false, Ordering::SeqCst);
     store.recovery.control.flush_release.notify_one();
-    closed(&storage, &cleanup).await;
+    closed(&storage, cleanup.get()).await;
     assert_eq!(storage.status().recovery_saved.sequence, 1);
 }
 

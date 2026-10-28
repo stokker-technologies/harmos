@@ -196,9 +196,10 @@ impl Finalizer for Owned {
 /* === Public Functions === */
 
 pub(super) fn factory<D: OperationDeclaration, P: Send + 'static>(
-    operations: &Manager, factory: harmos_sdk::operations::OperationFactory,
+    operations: &Manager, entry: &Entry, factory: harmos_sdk::operations::OperationFactory,
 ) -> Typed<D, P> {
-    factory_with(operations, move |request, endpoints| factory.prepare_native(Box::new(request), Box::new(endpoints)))
+    let resources = operations.resources_for(entry);
+    factory_with(operations, move |request, endpoints| factory.prepare_native(resources.clone(), Box::new(request), Box::new(endpoints)))
 }
 
 pub(super) fn factory_with<D: OperationDeclaration, P: Send + 'static>(
@@ -292,7 +293,7 @@ pub(super) fn factory_projected<D: OperationDeclaration, P: Send + 'static>(
 /* === Private Functions === */
 
 fn execution_context(context: Context<'_>) -> Result<harmos_sdk::ExecutionContext> {
-    let mut dependencies = harmos_sdk::Dependencies::new();
+    let mut dependencies = harmos_sdk::__private::ResourceSet::new();
     dependencies.insert(Arc::new(harmos_sdk::operations::Calls(Arc::new(context.owned())))).map_err(|source| Error::OperationFailed {
         operation: "declared calls".into(),
         source: Arc::new(source),

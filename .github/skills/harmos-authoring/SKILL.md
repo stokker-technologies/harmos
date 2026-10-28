@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:40cce2fadb33fa3cdc83a8c447b8c2188078fb6eeb2002b9eb7f779abd493672 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:bd62682031746d4bf55770bfd5cbf7412a5de32ac8f18287b164efb538578e72 -->
 
 ---
 name: harmos-authoring
@@ -19,10 +19,15 @@ skeleton, each with its own Tests section. The operation struct is its request m
 contracts by default and enables execution with `runtime`; resource dependencies
 can be optional. A self-contained plugin uses the same layout under `operations/`.
 
-One catalog provides `catalog()` for portable definitions and
-`registration(Dependencies)` for execution factories. Runtime composition inserts
-shared `Arc<T>` dependencies, chooses typed lanes with `RegistrationExt`, and
-registers the batch. `Context::resource` reads declared resources infallibly from that snapshot.
+One catalog provides `catalog()` for portable definitions and an executable
+`CATALOG` descriptor through `operations::OperationCatalog`. Applications and
+plugins share `Lifecycle`: acquire resources in async `prepare(config, setup)`,
+register each once with `setup.resource::<T>(value)`, and retain their owners for
+stop and cleanup. Application setup places catalogs with
+`setup.operations::<Catalog>(lane)`; plugin `const CATALOGS` supplies its complete
+inert and executable inventory. `Runtime::launch` validates setup before
+initialization; `launch_with` replaces prepared resources by type for tests.
+`Context::resource` reads declared resources from the frozen owner context.
 Native, sidecar and guest bodies implement the common SDK `Operation` trait;
 carrier composition supplies target-compatible resources. Keep one implementation
 where dependencies support both carriers. Do not add forwarding operations.

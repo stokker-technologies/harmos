@@ -83,6 +83,9 @@ pub enum Error {
 
     #[error(transparent)]
     Incompatible(#[from] harmos::runtime::Incompatible),
+
+    #[error(transparent)]
+    Startup(#[from] harmos::StartupError),
 }
 
 /* === Traits === */

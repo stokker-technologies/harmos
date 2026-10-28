@@ -84,29 +84,17 @@ impl harmos_runtime::Operation for Request {
 
 #[tokio::test(start_paused = true)]
 async fn retries_clone_the_original_request() {
-    let runtime = harmos_runtime::Runtime::<crate::operations::probe::Editor>::builder(crate::operations::probe::Sheet::default(), ())
-        .register(crate::operations::probe::Lanes::catalog())
-        .runtime()
-        .await
-        .unwrap();
     let events = Arc::new(Mutex::new(Vec::new()));
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(events.clone()).unwrap();
-                dependencies
-            })
-            .operation::<Request>(),
-            crate::operations::probe::Lanes::Open,
-        ))
+    let runtime =
+        harmos_runtime::Runtime::<crate::operations::probe::Editor>::launch_with(crate::operations::probe::Sheet::default(), (), |setup| {
+            setup.operations::<crate::operations::Single<Request>>(crate::operations::probe::Lanes::Open);
+        })
         .await
         .unwrap();
     let request = Request { value: 19, events: events.clone() };
     let call = runtime.operation(request).start().await.unwrap();
     assert_eq!(*call.join().await.unwrap(), 20);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     assert_eq!(*events.lock().unwrap(), ["run", "request dropped", "run", "request dropped", "request dropped"]);
 }
 
@@ -116,23 +104,13 @@ async fn transfer_blocks_retry() {
         num::NonZeroUsize,
         sync::atomic::{AtomicUsize, Ordering},
     };
-    let runtime = harmos_runtime::Runtime::<crate::operations::probe::Editor>::builder(crate::operations::probe::Sheet::default(), ())
-        .register(crate::operations::probe::Lanes::catalog())
-        .runtime()
-        .await
-        .unwrap();
     let runs = Arc::new(AtomicUsize::new(0));
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(runs.clone()).unwrap();
-                dependencies
-            })
-            .operation::<Streaming>(),
-            crate::operations::probe::Lanes::Open,
-        ))
+    let runtime =
+        harmos_runtime::Runtime::<crate::operations::probe::Editor>::launch_with(crate::operations::probe::Sheet::default(), (), |setup| {
+            setup
+                .resource::<AtomicUsize>(runs.clone())
+                .operations::<crate::operations::Single<Streaming>>(crate::operations::probe::Lanes::Open);
+        })
         .await
         .unwrap();
     let settings = harmos_runtime::operations::StreamSettings {
@@ -161,7 +139,7 @@ async fn transfer_blocks_retry() {
             assert_eq!(*receive.recv().await.unwrap(), 7);
         }
     }
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[harmos_runtime::operation(harmos_path = harmos_runtime, resources = [std::sync::atomic::AtomicUsize],

@@ -44,11 +44,14 @@ async fn unacked_item_redelivered() {
     let copy = Store::default();
     let (listener, watched) = Payouts::new();
 
-    let live = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy)).attach(listener.holding(7))).await;
+    let live = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy)).attach(listener.holding(7));
+    })
+    .await;
     live.state.commit(deposit(100)).await.expect("accepted");
     live.state.commit(pay(1, 10)).await.expect("accepted");
     live.state.commit(pay(7, 10)).await.expect("accepted");
-    live.stop().await.unwrap();
+    live.shutdown().await.unwrap();
 
     let (checkpoint, dispatched) = &watched;
     assert_eq!(*dispatched.lock().expect("the listener is never poisoned"), vec![1], "the held payout was never dispatched");
@@ -56,10 +59,12 @@ async fn unacked_item_redelivered() {
 
     // The restart: the same persisted checkpoint, and a handler that will
     // acknowledge this time.
-    let recovered =
-        booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy)).attach(Payouts::resuming(&watched))).await;
+    let recovered = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy)).attach(Payouts::resuming(&watched));
+    })
+    .await;
     let restored = ledger(&recovered).await;
-    recovered.stop().await.unwrap();
+    recovered.shutdown().await.unwrap();
 
     assert_eq!(
         *dispatched.lock().expect("the listener is never poisoned"),

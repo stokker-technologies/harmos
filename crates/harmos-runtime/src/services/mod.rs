@@ -72,6 +72,7 @@ pub(crate) type ServiceRunner =
 #[derive(Clone)]
 pub(crate) enum ServiceOwner {
     Host,
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     Plugin(crate::plugin::PluginScope),
 }
@@ -79,7 +80,7 @@ pub(crate) enum ServiceOwner {
 pub(crate) fn authored_runner<A: Application>(
     definition: ServiceDefinition, factory: harmos_sdk::operations::ServiceFactory, owner: ServiceOwner,
 ) -> Arc<dyn crate::operations::resident::Runner> {
-    Arc::new(Typed::<A, (), _>::new(definition, move |_| AuthoredService {
+    Arc::new(Typed::<A, harmos_sdk::ExecutionContext, _>::new(definition, move |_| AuthoredService {
         factory: factory.clone(),
         instance: None,
         owner: owner.clone(),
@@ -126,6 +127,7 @@ pub struct ServiceContext<A: Application> {
 
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) provider: Arc<crate::supervision::instance::Instance>,
+
     #[cfg(feature = "plugin-sidecar")]
     deactivation: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -194,13 +196,20 @@ impl ServiceManager {
         }
     }
 
-    pub async fn register(&self, batch: harmos_sdk::RegistrationBatch) -> Result<()> {
+    pub async fn register<S: harmos_sdk::Service>(&self, id: &str, policy: crate::ServicePolicy) -> Result<()> {
+        let batch = harmos_sdk::__private::RegistrationBatch::new().service::<S>(id, policy);
+        self.register_batch(batch).await
+    }
+
+    pub(crate) async fn register_batch(&self, batch: harmos_sdk::__private::RegistrationBatch) -> Result<()> {
         let (staged, ids) = self.stage(batch)?;
         staged.commit()?;
         self.activate(&ids).await
     }
 
-    pub(crate) fn stage(&self, batch: harmos_sdk::RegistrationBatch) -> Result<(crate::operations::resident::Staged, Vec<String>)> {
+    pub(crate) fn stage(
+        &self, batch: harmos_sdk::__private::RegistrationBatch,
+    ) -> Result<(crate::operations::resident::Staged, Vec<String>)> {
         if !batch.operations.is_empty() {
             return Err(Error::InvalidInput {
                 field: "service registration",
@@ -260,13 +269,14 @@ impl<A: Application> Resident<A> for AuthoredService {
     async fn run(&mut self, context: ServiceContext<A>) -> std::result::Result<(), Self::Error> {
         let mut stopping = context.stopping.clone();
         let context = Arc::new(context);
-        let mut dependencies = harmos_sdk::Dependencies::new();
+        let mut dependencies = harmos_sdk::__private::ResourceSet::new();
         match &self.owner {
             ServiceOwner::Host => dependencies.insert(context.clone()).map_err(|_| harmos_sdk::ServingError::Catalog)?,
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             ServiceOwner::Plugin(scope) => dependencies.insert(Arc::new(scope.clone())).map_err(|_| harmos_sdk::ServingError::Catalog)?,
         }
-        let call = harmos_sdk::ExecutionContext::new(dependencies, harmos_sdk::operations::Host::context(&context.operations).clone());
+        let call = harmos_sdk::ExecutionContext::new(dependencies, harmos_sdk::operations::Host::context(&context.operations).clone())
+            .with_resources(context.operations.resources().clone());
         self.instance = Some(self.factory.initialize(call.clone()).await?);
         context.ready();
         tokio::select! {
@@ -332,6 +342,10 @@ impl<A: Application> Clone for Handles<A> {
 }
 
 impl<A: Application> ServiceContext<A> {
+    pub fn resource<T: Send + Sync + 'static>(&self) -> std::result::Result<Arc<T>, harmos_sdk::ResourceError> {
+        self.operations.resources().resource::<T>()
+    }
+
     pub fn ready(&self) {
         if !self.is_stopping() {
             self.ready.send_replace(true);
@@ -517,13 +531,34 @@ mod tests {
     }
 
     struct Model;
+    impl crate::Lifecycle for Model {
+        type Config = ();
+        type Error = std::convert::Infallible;
+        type Context = crate::Startup<Self>;
+
+        async fn prepare(_: (), _: &mut crate::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+            Ok(Self)
+        }
+
+        async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
     impl Application for Model {
         type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
         type Streams = ();
-        type Resources = ();
     }
 
     #[derive(Default)]
@@ -575,12 +610,14 @@ mod tests {
 
     #[tokio::test]
     async fn authored_service_reconstructs_after_cleanup_and_stops_on_withdrawal() {
-        use crate::RegistrationExt;
+        use crate::operations::RegistrationExt;
 
-        let runtime = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
         let counts = Arc::new(Counts::default());
-        let mut dependencies = harmos_sdk::Dependencies::new();
-        dependencies.insert(counts.clone()).unwrap();
+        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+            setup.resource::<Counts>(counts.clone());
+        })
+        .await
+        .unwrap();
         let policy = ServicePolicy {
             stop_timeout: Duration::from_secs(1),
             restart: RestartPolicy::OnFailure {
@@ -592,8 +629,8 @@ mod tests {
                 },
             },
         };
-        let batch = harmos_sdk::RegistrationBatch::new(dependencies).service::<Worker>("worker", policy);
-        runtime.register(batch.defaults()).await.unwrap();
+        let batch = harmos_sdk::__private::RegistrationBatch::new().service::<Worker>("worker", policy);
+        runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
         executor::timeout(Duration::from_secs(2), counts.running.notified()).await.unwrap();
         assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);
         assert_eq!(counts.cleaned.load(Ordering::SeqCst), 1);
@@ -601,7 +638,7 @@ mod tests {
         runtime.unregister(&crate::QualifiedId::parse("host.worker").unwrap()).await.unwrap();
         assert_eq!(counts.stopped.load(Ordering::SeqCst), 2);
         assert_eq!(counts.cleaned.load(Ordering::SeqCst), 2);
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
         assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);
     }
 }

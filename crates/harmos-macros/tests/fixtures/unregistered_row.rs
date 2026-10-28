@@ -38,16 +38,22 @@ struct OutsideTheCatalog;
 
 /* === Enums === */
 
+#[harmos::lanes]
+enum Lanes {
+    #[default]
+    Open,
+}
+
 /* === Traits === */
 
 /* === Implementations === */
 
 impl Application for Studio {
+    type Lanes = Lanes;
     type State = State;
     type Transaction = Never;
     type Record = ();
     type Streams = ();
-    type Resources = ();
 }
 
 /* === Public Functions === */

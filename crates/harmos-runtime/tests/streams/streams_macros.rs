@@ -128,6 +128,27 @@ pub enum StudioLanes {
     #[default]
     Open,
 }
+impl harmos_runtime::Lifecycle for Studio {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 impl Application for Studio {
     type Lanes = StudioLanes;
@@ -135,7 +156,6 @@ impl Application for Studio {
     type Transaction = Change;
     type Record = ();
     type Streams = streams::Studio;
-    type Resources = ();
 }
 
 impl harmos_runtime::state::CatalogCodec for Change {
@@ -158,11 +178,11 @@ async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item
 }
 
 async fn studio() -> Runtime<Studio> {
-    Runtime::<Studio>::builder(State, ())
-        .register(streams::Studio::catalog())
-        .runtime()
-        .await
-        .expect("the generated stream catalog is honorable")
+    Runtime::<Studio>::launch_with(State, (), |setup| {
+        setup.settings().register(streams::Studio::catalog());
+    })
+    .await
+    .expect("the generated stream catalog is honorable")
 }
 
 #[tokio::test]
@@ -203,7 +223,7 @@ async fn streams_publish_query() {
 
     drop(watching);
     assert_eq!(*demand.borrow(), 0);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[test]

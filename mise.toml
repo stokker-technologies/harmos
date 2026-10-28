@@ -48,8 +48,14 @@ glab = "1.124.0"
 
 [tasks."prepare:tests:fixtures"]
 description = "Join Independently Built Product And Test Fixtures"
-usage = 'flag "--profile <profile>" default="dev"'
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.prepare.tests.fixtures --profile {{usage.profile}}"
+usage = '''
+flag "--profile <profile>" default="dev"
+flag "--focused-messages <path>"
+flag "--libraries <names>"
+flag "--inspection-messages <paths>"
+flag "--inspections <names>"
+'''
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.prepare.tests.fixtures --profile {{usage.profile}}{% if usage.focused_messages %} --focused-messages {{usage.focused_messages}} --libraries {{usage.libraries}}{% endif %}{% if usage.inspection_messages %} --inspection-messages {{usage.inspection_messages}} --inspections {{usage.inspections}}{% endif %}"
 
 [tasks."prepare:tools"]
 description = "Prepare Locked Repository Tools"
@@ -179,7 +185,6 @@ usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = ["uv run --locked --no-sync --project tools/python python -m harmos_tools.build.rust.tests --profile {{usage.profile}}"]
 
-
 # === Dev === #
 
 # === Test === #
@@ -211,7 +216,6 @@ run = [
   { task = "test --profile {{usage.profile}}" },
 ]
 
-
 [tasks."test:rust:unit"]
 description = "Test Unit Rust"
 usage = 'flag "--profile <profile>" default="dev"'
@@ -238,6 +242,12 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} -- -E \"!test(/^authoring::/)\"",
 ]
 
+[tasks."test:rust:coverage"]
+description = "Measure Coverage Over Instrumented Lanes"
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["prepare:tools"]
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust --profile {{usage.profile}}"
+
 [tasks."test:rust:starter"]
 description = "Prove Standalone Starter Compiler Contracts In Nightly Validation"
 usage = 'flag "--profile <profile>" default="release"'
@@ -246,12 +256,6 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category acceptance --starter --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} -- -E \"test(/^authoring::/)\"",
 ]
-
-[tasks."test:rust:coverage"]
-description = "Measure Coverage Over Instrumented Lanes"
-usage = 'flag "--profile <profile>" default="dev"'
-depends = ["prepare:tools"]
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust --profile {{usage.profile}}"
 
 [tasks."test:rust:system"]
 description = "Test System Rust"
@@ -375,6 +379,8 @@ run = "uv run --locked --project tools/python python -m harmos_tools.release.run
 [tasks."release:verify"]
 description = "Verify Published Release Assets And Opted-In Installers"
 run = "uv run --locked --project tools/python python -m harmos_tools.release.run verify"
+
+# === Clean === #
 
 # === Housekeeping === #
 

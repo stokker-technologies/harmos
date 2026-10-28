@@ -32,7 +32,7 @@ pub mod __private {
 
 /* === Re-Exports === */
 
-pub use harmos_sdk::{Dependencies, ExecutionContext, Operation, RegistrationBatch, Service};
+pub use harmos_sdk::{ExecutionContext, Operation, Service};
 
 pub use catalog::{CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT};
 pub use host::{CallError, PublicationError, Supervisor};
@@ -69,7 +69,7 @@ const INCOMING_REQUESTS: usize = 128;
 type Prepare = Box<dyn Fn(&str) -> Result<Serving, Refusal> + Send + Sync>;
 
 type Cancellations = Arc<Mutex<BTreeMap<u64, Option<oneshot::Sender<()>>>>>;
-type Table = Arc<Mutex<crate::operations::WireTable>>;
+type Table = Arc<Mutex<harmos_sdk::__private::WireTable>>;
 type SharedOpening = Arc<tokio::sync::Mutex<Opening>>;
 type Retirement = Box<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), Refusal>> + Send>> + Send + Sync>;
 
@@ -550,7 +550,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
         let phase = match table.lock() {
             Ok(mut table) => {
                 let call = operation_host.context().clone();
-                let mut dependencies = crate::Dependencies::new();
+                let mut dependencies = harmos_sdk::__private::ResourceSet::new();
                 let caller = Arc::new(harmos_sdk::operations::Calls(Arc::new(operation_host.clone())));
                 if let Err(error) = dependencies.insert(caller).and_then(|()| dependencies.insert(Arc::new(operation_host))) {
                     return Answered::Frame(Frame::Refusal { id, refusal: Refusal::of(error) });

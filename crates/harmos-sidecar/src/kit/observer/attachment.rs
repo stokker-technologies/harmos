@@ -23,15 +23,16 @@
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
 // Third Party Imports
 use tokio::sync::oneshot;
 // Local Imports
 use super::{Activity, Instance, ObserverError, ObserverHost};
 use crate::{Refusal, Supervisor};
 use harmos_domain::observers::Control;
-use harmos_sdk::operations::{Carrier, Dependencies, ExecutionContext, RegistrationBatch, ServingError, WireTable};
+use harmos_sdk::__private::{RegistrationBatch, WireTable};
+use harmos_sdk::operations::{Carrier, ExecutionContext, ServingError};
 use harmos_sdk::plugin::Attachment;
 
 /* === Constants === */
@@ -42,15 +43,15 @@ use harmos_sdk::plugin::Attachment;
 
 /* === Structs === */
 
-pub struct ObserverAttachment<R, H = Supervisor> {
-    resources: Arc<R>,
+pub struct ObserverAttachment<H = Supervisor> {
+    resources: OnceLock<Arc<ExecutionContext>>,
     declarations: Vec<harmos_domain::inventory::observers::Declaration>,
-    instances: BTreeMap<&'static str, Instance<R, H>>,
+    instances: BTreeMap<&'static str, Instance<H>>,
     closing: AtomicBool,
 }
 
-struct Observe<R, H> {
-    attachment: Arc<ObserverAttachment<R, H>>,
+struct Observe<H> {
+    attachment: Arc<ObserverAttachment<H>>,
     running: Option<Running>,
     activity: Option<Activity>,
 }
@@ -71,10 +72,8 @@ struct Running {
 
 /* === Implementations === */
 
-impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
-    pub fn new(
-        instances: Vec<Instance<R, H>>, resources: Arc<R>, grants: &[harmos_domain::inventory::publications::Entry],
-    ) -> Result<Arc<Self>, Refusal> {
+impl<H: ObserverHost> ObserverAttachment<H> {
+    pub fn new(instances: Vec<Instance<H>>, grants: &[harmos_domain::inventory::publications::Entry]) -> Result<Arc<Self>, Refusal> {
         super::validate_outputs(&instances, grants).map_err(Refusal::of)?;
         let declarations: Vec<_> = instances.iter().map(Instance::declaration).collect();
         let mut selected = BTreeMap::new();
@@ -85,16 +84,16 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
             selected.insert(instance.id(), instance);
         }
         Ok(Arc::new(Self {
-            resources,
+            resources: OnceLock::new(),
             declarations,
             instances: selected,
             closing: AtomicBool::new(false),
         }))
     }
 
-    pub fn from_catalog<C>(resources: Arc<R>, grants: &[harmos_domain::inventory::publications::Entry]) -> Result<Arc<Self>, Refusal>
+    pub fn from_catalog<C>(grants: &[harmos_domain::inventory::publications::Entry]) -> Result<Arc<Self>, Refusal>
     where
-        C: harmos_domain::catalog::Catalog<super::Declarations<R, H>>,
+        C: harmos_domain::catalog::Catalog<super::Declarations<H>>,
     {
         use harmos_domain::catalog::Projection;
         let mut instances = Vec::new();
@@ -104,24 +103,19 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
                 Ok::<(), std::convert::Infallible>(())
             })
             .unwrap();
-        Self::new(instances, resources, grants)
-    }
-
-    // Bind the built-in observe control the host submits to run an observer.
-    pub fn bind(self: &Arc<Self>, table: &mut WireTable) -> Result<(), ServingError> {
-        let mut dependencies = Dependencies::new();
-        dependencies.insert(Arc::clone(self)).map_err(|_| ServingError::Catalog)?;
-        table.register(RegistrationBatch::new(dependencies).carrier::<Control, Observe<R, H>>())
+        Self::new(instances, grants)
     }
 }
 
-impl<R: Send + Sync + 'static, H: ObserverHost<R>> Attachment<Supervisor> for ObserverAttachment<R, H> {
+impl<H: ObserverHost> Attachment<Supervisor> for ObserverAttachment<H> {
+    // Bind The Built-In Observe Control Before Initialization
+    fn bind(self: Arc<Self>, table: &mut WireTable) -> Result<(), ServingError> {
+        self.resources.set(Arc::new(table.context())).map_err(|_| ServingError::Catalog)?;
+        table.provide_resource(Arc::clone(&self)).map_err(|_| ServingError::Catalog)?;
+        table.register(RegistrationBatch::new().carrier::<Control, Observe<H>>())
+    }
     fn observers(&self) -> Vec<harmos_domain::inventory::observers::Declaration> {
         self.declarations.clone()
-    }
-
-    fn resources(&self) -> Arc<dyn std::any::Any + Send + Sync> {
-        self.resources.clone()
     }
 
     // Running activations are invocations the host cancels and cleans up;
@@ -132,17 +126,16 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> Attachment<Supervisor> for Ob
     }
 }
 
-impl<R, H> Carrier for Observe<R, H>
+impl<H> Carrier for Observe<H>
 where
-    R: Send + Sync + 'static,
-    H: ObserverHost<R>,
+    H: ObserverHost,
 {
     type Declaration = Control;
     type Error = Refusal;
     type StreamEndpoints = ();
 
     async fn bind(context: ExecutionContext) -> Result<Self, Refusal> {
-        let attachment = context.resource::<ObserverAttachment<R, H>>().map_err(Refusal::of)?;
+        let attachment = context.resource::<ObserverAttachment<H>>().map_err(Refusal::of)?;
         Ok(Self {
             attachment,
             running: None,
@@ -215,9 +208,7 @@ impl Drop for Interrupt<'_> {
 }
 
 impl Running {
-    fn spawn<R: Send + Sync + 'static, H: ObserverHost<R>>(
-        attachment: Arc<ObserverAttachment<R, H>>, observer: &'static str, host: Supervisor,
-    ) -> Result<Self, Refusal> {
+    fn spawn<H: ObserverHost>(attachment: Arc<ObserverAttachment<H>>, observer: &'static str, host: Supervisor) -> Result<Self, Refusal> {
         let (stop, stopped) = oneshot::channel();
         let (failing, failed) = oneshot::channel();
         let (returning, returned) = oneshot::channel();
@@ -225,7 +216,7 @@ impl Running {
             let Some(instance) = attachment.instances.get(observer) else {
                 return;
             };
-            let resources = Arc::clone(&attachment.resources);
+            let resources = Arc::clone(attachment.resources.get().expect("observer attachment bound before activation"));
             // Binding Happens On The Activation's Own Thread
             let bound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| H::bind(Arc::clone(&resources), host)));
             let activated = bound.map_err(|_| ObserverError::BindingPanicked).and_then(|bound| instance.activate(resources, bound));

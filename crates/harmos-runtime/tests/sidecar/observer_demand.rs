@@ -74,7 +74,7 @@ struct Resources {
 
 struct Producer {
     resources: Arc<Resources>,
-    attachment: Arc<ObserverAttachment<Resources, Publisher<Producer>>>,
+    attachment: Arc<ObserverAttachment<Publisher<Producer>>>,
 }
 
 struct RecordOnly(Arc<Counts>);
@@ -83,7 +83,7 @@ struct Mixed(Arc<Counts>);
 
 /* === Enums === */
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 enum Observers {
     RecordOnly(RecordOnly),
     Mixed(Mixed),
@@ -127,13 +127,12 @@ impl harmos_operations::lifecycle::Policy for Producer {
     const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
 }
 
-#[harmos_runtime::plugin(id = "demand_authoring", provides = (), requires(harmos_operations::streams::Publish),  observers = Observers, streams(Row))]
-impl harmos_runtime::Plugin for Producer {
+impl harmos_runtime::Lifecycle for Producer {
     type Config = usize;
-    type Resources = Resources;
     type Context = Supervisor;
     type Error = harmos_runtime::sidecar::Refusal;
-    fn prepare(id: usize) -> Result<Self, Self::Error> {
+
+    async fn prepare(id: usize, setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
         let counts = SEEDS
             .lock()
             .unwrap()
@@ -143,27 +142,22 @@ impl harmos_runtime::Plugin for Producer {
         counts.prepared.fetch_add(1, SeqCst);
         counts.progress.send_replace(());
         let resources = Arc::new(Resources { counts });
-        let attachment =
-            ObserverAttachment::from_catalog::<Observers>(resources.clone(), <Self as harmos_domain::plugin::Declared>::STREAMS)?;
-        Ok(Self { resources, attachment })
+        let attachment = ObserverAttachment::from_catalog::<Observers>(<Self as harmos_domain::plugin::Declared>::STREAMS)?;
+        let plugin = Self { resources, attachment };
+        setup.resource::<Resources>(plugin.resources.clone());
+        Ok(plugin)
     }
+
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         self.resources.counts.initialized.fetch_add(1, SeqCst);
         self.resources.counts.progress.send_replace(());
         Ok(())
     }
-    fn resources(&self) -> Arc<Resources> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        self.attachment.bind(table)
-    }
-    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Supervisor>>> {
-        Some(self.attachment.clone())
-    }
+
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         for index in 0..2 {
             assert_eq!(self.resources.counts.started[index].load(SeqCst), self.resources.counts.stopped[index].load(SeqCst));
@@ -172,22 +166,33 @@ impl harmos_runtime::Plugin for Producer {
     }
 }
 
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "demand_authoring", requires(harmos_operations::streams::Publish),  observers = Observers, streams(Row))]
+impl harmos_runtime::Plugin for Producer {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[];
+
+    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Supervisor>>> {
+        Some(self.attachment.clone())
+    }
+}
+
 #[harmos_runtime::observer(id = "demand.record-only", interval_ms = 5, activation = "demand", demand_keys(RECORD))]
 impl RecordOnly {
-    async fn initialize(resources: &Resources) -> Result<Self, Infallible> {
+    async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
+        let resolved = context.resource::<Resources>().unwrap();
+        let resources = resolved.as_ref();
         resources.counts.started[0].fetch_add(1, SeqCst);
         resources.counts.progress.send_replace(());
         Ok(Self(resources.counts.clone()))
     }
-    async fn observe(&mut self, ctx: &ObserverContext<'_, Resources, Publisher<Producer>>) -> Result<(), Infallible> {
+    async fn observe(&mut self, ctx: &ObserverContext<'_, Publisher<Producer>>) -> Result<(), Infallible> {
         assert!(matches!(
             ctx.publish_on::<Row>(&Row { sample: 0 }).await,
             Err(PublishError::Publication(PublicationError::Undeclared { .. }))
         ));
-        ctx.resources().counts.rejected.fetch_add(1, SeqCst);
-        ctx.resources().counts.progress.send_replace(());
-        ctx.resources().counts.observed[0].fetch_add(1, SeqCst);
-        ctx.resources().counts.progress.send_replace(());
+        ctx.resource::<Resources>().unwrap().counts.rejected.fetch_add(1, SeqCst);
+        ctx.resource::<Resources>().unwrap().counts.progress.send_replace(());
+        ctx.resource::<Resources>().unwrap().counts.observed[0].fetch_add(1, SeqCst);
+        ctx.resource::<Resources>().unwrap().counts.progress.send_replace(());
         Ok(())
     }
     async fn stop(&mut self) -> Result<(), Infallible> {
@@ -200,15 +205,17 @@ impl RecordOnly {
 
 #[harmos_runtime::observer(id = "demand.mixed", interval_ms = 5, activation = "demand", streams(Row), demand_keys(RECORD, AUXILIARY))]
 impl Mixed {
-    async fn initialize(resources: &Resources) -> Result<Self, Infallible> {
+    async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
+        let resolved = context.resource::<Resources>().unwrap();
+        let resources = resolved.as_ref();
         resources.counts.started[1].fetch_add(1, SeqCst);
         resources.counts.progress.send_replace(());
         Ok(Self(resources.counts.clone()))
     }
-    async fn observe(&mut self, ctx: &ObserverContext<'_, Resources, Publisher<Producer>>) -> Result<(), Infallible> {
+    async fn observe(&mut self, ctx: &ObserverContext<'_, Publisher<Producer>>) -> Result<(), Infallible> {
         ctx.publish_on::<Row>(&Row { sample: 1 }).await.unwrap();
-        ctx.resources().counts.observed[1].fetch_add(1, SeqCst);
-        ctx.resources().counts.progress.send_replace(());
+        ctx.resource::<Resources>().unwrap().counts.observed[1].fetch_add(1, SeqCst);
+        ctx.resource::<Resources>().unwrap().counts.progress.send_replace(());
         Ok(())
     }
     async fn stop(&mut self) -> Result<(), Infallible> {
@@ -310,7 +317,7 @@ async fn demand_survives_reload() {
     assert!(replacement.keys().all(|key| !first_statuses.contains_key(key)), "reload gets fresh resource scopes");
     drop(held);
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
     assert_eq!(counts.released.load(SeqCst), 2, "the replacement resources are released before shutdown returns");
     assert_eq!(counts.stopped[0].load(SeqCst), 3);
     assert_eq!(counts.stopped[1].load(SeqCst), 3);

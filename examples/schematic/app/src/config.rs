@@ -32,10 +32,16 @@ pub const RECORDINGS: &str = "SCHEMATIC_RECORDINGS";
 
 /* === Structs === */
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize)]
 pub struct Settings {
     pub journal_sync_entries: NonZeroUsize,
     recordings: PathBuf,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct LaunchConfig {
+    pub document: crate::document::Document,
+    pub settings: Settings,
 }
 
 /* === Enums === */

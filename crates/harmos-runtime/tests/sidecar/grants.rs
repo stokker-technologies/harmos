@@ -26,7 +26,7 @@ use super::operations::{Lanes, Managed};
 use harmos_domain::plugin::Grant;
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::Invocation;
-use harmos_runtime::operations::{OperationPolicy, RetryPolicy, WireTable};
+use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -103,6 +103,11 @@ enum Gated {
     Fetch(RemoteFetchDeclaration),
 }
 
+#[harmos_runtime::catalog]
+enum LocalOperations {
+    Fetch(LocalFetchDeclaration),
+}
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -161,43 +166,39 @@ impl harmos_operations::lifecycle::Policy for Provider {
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos_runtime::plugin(id = "gated", provides = Gated, requires = ())]
-impl harmos_runtime::Plugin for Provider {
+impl harmos_runtime::Lifecycle for Provider {
     type Config = usize;
     type Context = Supervisor;
-    type Resources = Runs;
     type Error = Refusal;
-    fn prepare(id: usize) -> Result<Self, Self::Error> {
+
+    async fn prepare(id: usize, setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
         let runs = SEEDS
             .lock()
             .unwrap()
             .remove(&id)
             .and_then(|runs| runs.upgrade())
             .ok_or_else(|| Refusal::of("original gated resources unavailable"))?;
-        Ok(Self { runs })
+        let plugin = Self { runs };
+        setup.resource::<Runs>(plugin.runs.clone());
+        Ok(plugin)
     }
+
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn resources(&self) -> Arc<Runs> {
-        self.runs.clone()
-    }
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<RemoteFetchDeclaration>(),
-        )
-    }
+
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "gated", requires = ())]
+impl harmos_runtime::Plugin for Provider {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[Gated::CATALOG];
 }
 
 impl harmos_runtime::Operation for RemoteFetchDeclaration {
@@ -277,23 +278,22 @@ async fn external_request_grants() {
     let seed = Seed::new(&remote);
     let capacity = std::num::NonZeroUsize::new(2).unwrap();
     let source = harmos_sidecar::PluginNative::<Provider>::new(capacity).unwrap();
-    let mut fixture =
-        Managed::attach(source, serde_json::to_vec(&seed.id).unwrap(), Lanes::Open, capacity, vec![], std::convert::identity).await;
+    let definitions = super::operations::inspected(&source, serde_json::to_vec(&seed.id).unwrap());
+    let resident = harmos_runtime::sidecar::Supervised::new(
+        source,
+        notices as fn(&harmos_runtime::services::ServiceContext<super::Bank>, harmos_runtime::sidecar::Notice),
+    );
+    let runtime = super::assembly(|setup| {
+        setup.resource::<Runs>(local.clone());
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        });
+    })
+    .await;
+    let mut fixture = Managed::from_runtime(runtime, definitions, resident, Lanes::Open, capacity, harmos_runtime::services::POLICY);
     fixture.initialize().await.unwrap();
-    fixture
-        .runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(local.clone()).unwrap();
-                dependencies
-            })
-            .operation::<LocalFetchDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    fixture.runtime.operations.register::<LocalOperations>(Lanes::Open).await.unwrap();
     fixture.runtime.operations.register_authorizer(Arc::new(Holdings)).unwrap();
     fixture.runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Bearers)))).unwrap();
     let settings = harmos_runtime::grpc::Settings {
@@ -315,7 +315,9 @@ async fn external_request_grants() {
     drop(channel);
     attached.detach().await.unwrap();
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */
+
+fn notices(_: &harmos_runtime::services::ServiceContext<super::Bank>, _: harmos_runtime::sidecar::Notice) {}

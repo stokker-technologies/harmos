@@ -19,7 +19,7 @@ version = { workspace = true }
 
 [features]
 default = ["derive"]
-derive = ["harmos-domain/derive"]
+derive = ["harmos-domain/derive", "dep:harmos-macros"]
 grpc = ["dep:prost"]
 streaming = ["dep:tokio"]
 
@@ -28,6 +28,7 @@ streaming = ["dep:tokio"]
 [dependencies]
 # Local
 harmos-domain = { workspace = true }
+harmos-macros = { workspace = true, optional = true }
 
 # Git
 

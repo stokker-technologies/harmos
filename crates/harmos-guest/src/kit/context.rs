@@ -49,6 +49,10 @@ pub struct Context {
 
 /* === Implementations === */
 
+impl harmos_sdk::lifecycle::Context for Context {
+    type Configuration = harmos_sdk::__private::WireTable;
+}
+
 impl harmos_sdk::plugin::Context for Context {
     fn assign_operations(&self, bytes: &[u8]) -> Result<(), harmos_sdk::operations::ServingError> {
         self.assignments.install(bytes)

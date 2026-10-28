@@ -613,6 +613,27 @@ mod tests {
         #[default]
         Default,
     }
+    impl crate::Lifecycle for Model {
+        type Config = ();
+        type Error = std::convert::Infallible;
+        type Context = crate::Startup<Self>;
+
+        async fn prepare(_: (), _: &mut crate::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+            Ok(Self)
+        }
+
+        async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+    }
 
     impl Application for Model {
         type Lanes = Lanes;
@@ -620,7 +641,6 @@ mod tests {
         type Transaction = crate::state::Never;
         type Record = PageRecord;
         type Streams = ();
-        type Resources = ();
     }
 
     #[test]

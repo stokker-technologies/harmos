@@ -23,7 +23,7 @@ use std::time::Duration;
 use super::operations::{Calling, Lanes, Managed};
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener};
 use harmos_runtime::Message;
-use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RetryPolicy, WireTable};
+use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -70,7 +70,7 @@ struct Observation {
 
 #[harmos_runtime::catalog]
 enum Callbacks {
-    Observe(Observe),
+    Observe(Observing),
 }
 
 /* === Traits === */
@@ -108,45 +108,41 @@ impl harmos_operations::lifecycle::Policy for Receiver {
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(description = "Native Callback Transport; Source Feed Ownership Is Tested By The Record Manager.", id = "listener", provides = Callbacks, requires = (), listeners = ())]
-impl harmos_runtime::Plugin for Receiver {
+impl harmos_runtime::Lifecycle for Receiver {
     type Config = usize;
     type Context = Supervisor;
-    type Resources = Probe;
     type Error = Refusal;
-    fn prepare(id: usize) -> Result<Self, Self::Error> {
+
+    async fn prepare(id: usize, setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
         let probe = SEEDS
             .lock()
             .unwrap()
             .remove(&id)
             .and_then(|probe| probe.upgrade())
             .ok_or_else(|| Refusal::of("original callback resources unavailable"))?;
-        Ok(Self { probe })
+        let plugin = Self { probe };
+        setup.resource::<Probe>(plugin.probe.clone());
+        Ok(plugin)
     }
+
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn resources(&self) -> Arc<Probe> {
-        self.probe.clone()
-    }
-    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.register(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(self.resources()).unwrap();
-                dependencies
-            })
-            .operation::<Observing>(),
-        )
-    }
+
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
     }
+
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         assert_eq!(self.probe.active.load(Ordering::SeqCst), 0);
         self.probe.cleaned.store(true, Ordering::SeqCst);
         Ok(())
     }
+}
+
+#[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Native Callback Transport; Source Feed Ownership Is Tested By The Record Manager.", id = "listener", requires = (), listeners = ())]
+impl harmos_runtime::Plugin for Receiver {
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[Callbacks::CATALOG];
 }
 
 impl Listener for Observed {
@@ -285,7 +281,7 @@ async fn callback_outcomes_cleanup() {
     fixture.call::<Observe>(delivered(2)).await.unwrap();
     assert_eq!(probe.total.load(Ordering::SeqCst), 12);
     fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
     assert_eq!(probe.active.load(Ordering::SeqCst), 0);
     assert!(probe.cleaned.load(Ordering::SeqCst));
 }

@@ -146,17 +146,25 @@ async fn title(runtime: &Runtime<Editor>) -> String {
 
 #[tokio::test]
 async fn boot_preserves_origin() {
-    let runtime = Runtime::<Editor>::builder(Sheet::default(), ()).register(catalog()).runtime().await.expect("nothing was recovered");
+    let runtime = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+        setup.settings().register(catalog());
+    })
+    .await
+    .expect("nothing was recovered");
 
     assert_eq!(title(&runtime).await, "");
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     assert_eq!(runtime.state.stored(), runtime.state.applied(), "with nothing attached, stored tracks applied");
-    assert_eq!(runtime.stop().await.unwrap(), Position::ORIGIN);
+    assert_eq!(runtime.shutdown().await.unwrap(), Position::ORIGIN);
 }
 
 #[tokio::test]
 async fn read_stamped_position() {
-    let runtime = Runtime::<Editor>::builder(Sheet::default(), ()).register(catalog()).runtime().await.expect("nothing was recovered");
+    let runtime = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+        setup.settings().register(catalog());
+    })
+    .await
+    .expect("nothing was recovered");
 
     let receipt = runtime.state.commit(rename("draft")).await.expect("accepted");
     let read = runtime.state.state().read(|sheet| sheet.title.clone()).await.expect("reads are open");
@@ -169,24 +177,28 @@ async fn read_stamped_position() {
 #[tokio::test]
 async fn boot_folds_state() {
     // The live path: two renames and one undo of the second.
-    let live = Runtime::<Editor>::builder(origin(), ()).register(catalog()).runtime().await.expect("nothing was recovered");
+    let live = Runtime::<Editor>::launch_with(origin(), (), |setup| {
+        setup.settings().register(catalog());
+    })
+    .await
+    .expect("nothing was recovered");
     let handle = live.state.as_principal(alice());
     handle.commit(rename("first")).await.expect("accepted");
     let second = handle.commit(rename("second")).await.expect("accepted");
     handle.undo(alice(), Focus::all()).await.expect("alice has an entry to undo");
 
     // The recovered path: the very same entries, replayed.
-    let recovered = Runtime::<Editor>::builder(origin(), ())
-        .register(catalog())
-        .recover(recovering(vec![
+    let recovered = Runtime::<Editor>::launch_with(origin(), (), |setup| {
+        setup.settings().register(catalog());
+        setup.settings().recover(recovering(vec![
             renamed(1, "first", None),
             renamed(2, "second", None),
             renamed(3, "first", Some(Link::UndoOf(second.position))),
             stored(4, EXPORTED.1, None, Recorded::Record(Note::Exported)),
-        ]))
-        .runtime()
-        .await
-        .expect("every definition is declared");
+        ]));
+    })
+    .await
+    .expect("every definition is declared");
 
     assert_eq!(title(&live).await, title(&recovered).await);
     assert_eq!(recovered.state.applied(), Position(4));
@@ -203,16 +215,16 @@ async fn boot_folds_state() {
 
 #[tokio::test]
 async fn boot_refuses_loudly() {
-    let booted = Runtime::<Editor>::builder(Sheet::default(), ())
-        .register(catalog())
-        .recover(recovering(vec![stored(
+    let booted = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+        setup.settings().register(catalog());
+        setup.settings().recover(recovering(vec![stored(
             1,
             "sheet.rotate",
             None,
             Recorded::Transaction(harmos_runtime::operations::Response::new(Change::Seal)),
-        )]))
-        .runtime()
-        .await;
+        )]));
+    })
+    .await;
 
     let Err(refused) = booted else {
         panic!("no definition is declared under that name");

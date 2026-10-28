@@ -24,7 +24,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["runtime"]
-runtime = ["harmos/runtime", "dep:harmos-guest"]
+runtime = ["harmos/guest"]
 
 # === Dependencies === #
 
@@ -33,14 +33,6 @@ runtime = ["harmos/runtime", "dep:harmos-guest"]
 git = "https://github.com/stokker-technologies/harmos"
 rev = "__HARMOS_REVISION__"
 default-features = false
-
-[dependencies.harmos-guest]
-git = "https://github.com/stokker-technologies/harmos"
-rev = "__HARMOS_REVISION__"
-default-features = false
-features = ["derive", "kit"]
-optional = true
-
 
 # === Build Dependencies === #
 

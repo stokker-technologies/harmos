@@ -42,7 +42,7 @@ use crate::fixtures;
 
 #[test]
 fn owner_ids_compile() {
-    let sidecar = fixtures::library("harmos_sidecar");
+    let harmos = fixtures::library("harmos");
     let dependencies = fixtures::dependencies();
     let output = std::env::temp_dir().join(format!("harmos-owner-ui-{}", std::process::id()));
     fs::create_dir_all(&output).unwrap();
@@ -54,20 +54,29 @@ fn owner_ids_compile() {
         let literal = format!("{owner:?}");
         let authored = format!(
             r#"
-use harmos_sidecar as sidecar;
+use harmos;
 struct Example;
-trait Projection {{}}
-impl sidecar::model::operations::lifecycle::Policy for Example {{
-    const INITIALIZATION_POLICY: sidecar::OperationPolicy = sidecar::OperationPolicy {{
+impl harmos::builtins::lifecycle::Policy for Example {{
+    const INITIALIZATION_POLICY: harmos::OperationPolicy = harmos::OperationPolicy {{
         timeout: std::time::Duration::from_secs(10),
         attempt_timeout: std::time::Duration::from_secs(10),
-        retries: sidecar::RetryPolicy::Never,
+        retries: harmos::RetryPolicy::Never,
     }};
-    const SHUTDOWN_POLICY: sidecar::OperationPolicy = Self::INITIALIZATION_POLICY;
+    const SHUTDOWN_POLICY: harmos::OperationPolicy = Self::INITIALIZATION_POLICY;
 }}
-#[sidecar::plugin(id = {literal}, context = sidecar::Supervisor, config = (),
-    provides = (), requires = (), harmos_path = sidecar)]
-impl Projection for Example {{}}
+impl harmos::Lifecycle for Example {{
+    type Config = ();
+    type Context = harmos::sidecar::Supervisor;
+    type Error = std::convert::Infallible;
+    async fn prepare(_: (), _: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {{ Ok(Self) }}
+    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {{ Ok(()) }}
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {{ Ok(()) }}
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {{ Ok(()) }}
+}}
+#[harmos::sidecar::plugin(id = {literal}, requires = ())]
+impl harmos::Plugin for Example {{
+    const CATALOGS: &'static [harmos::operations::Catalog] = &[];
+}}
 fn main() {{}}
 "#
         );
@@ -77,7 +86,7 @@ fn main() {{}}
             .env("CARGO_PKG_VERSION", env!("CARGO_PKG_VERSION"))
             .arg(&source)
             .arg("--extern")
-            .arg(format!("harmos_sidecar={}", sidecar.display()))
+            .arg(format!("harmos={}", harmos.display()))
             .arg("-L")
             .arg(format!("dependency={}", dependencies.display()))
             .arg("--out-dir")
@@ -90,6 +99,23 @@ fn main() {{}}
             assert!(stderr.contains("plugin id must match"), "plugin {owner:?}:\n{stderr}");
         }
     }
+    let source = fixtures::manifest().join("tests/fixtures/facade_runtime_catalogs.rs");
+    let compiled = fixtures::command(&rustc)
+        .args(["--edition=2024", "--crate-type=bin", "--crate-name=facade_runtime_catalogs"])
+        .env("CARGO_PKG_VERSION", env!("CARGO_PKG_VERSION"))
+        .arg(source)
+        .arg("--extern")
+        .arg(format!("harmos={}", harmos.display()))
+        .arg("-L")
+        .arg(format!("dependency={}", dependencies.display()))
+        .arg("--out-dir")
+        .arg(&output)
+        .output()
+        .unwrap();
+    assert!(compiled.status.success(), "facade role catalogs failed to build:\n{}", String::from_utf8_lossy(&compiled.stderr));
+    let executable = output.join(if cfg!(windows) { "facade_runtime_catalogs.exe" } else { "facade_runtime_catalogs" });
+    let executed = fixtures::command(&executable).status().unwrap();
+    assert!(executed.success(), "facade role inventory fixture failed at runtime");
     fs::remove_dir_all(output).unwrap();
 }
 
@@ -132,9 +158,9 @@ fn authoring_refusals_compile() {
         // Direct artifact declaration failures.
         ("explicit_version_plugin.rs", "remove `version`"),
         ("plugin_on_struct.rs", "belongs on `impl Plugin for ConcreteType`"),
+        ("plugin_setup_operations.rs", "ApplicationConfiguration"),
         ("synchronous_activation.rs", "initializing awaits"),
         ("synchronous_deactivation.rs", "stopping awaits"),
-        ("empty_catalog.rs", "observers = Observers"),
         ("undeclared_observer_output.rs", "observer outputs must be a subset"),
         ("undeclared_custom_observer_output.rs", "observer outputs must be a subset"),
         // A requirement grants its own operation, scoped by name; an empty

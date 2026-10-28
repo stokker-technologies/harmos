@@ -25,6 +25,7 @@ mod state;
 // Standard Library Imports
 
 // Third Party Imports
+extern crate harmos_domain as harmos;
 
 // Local Imports
 

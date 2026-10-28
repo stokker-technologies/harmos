@@ -31,7 +31,8 @@ use std::sync::{Arc, Mutex};
 
 // Local Imports
 use super::context::Context;
-use harmos_sdk::operations::{Contracts, WireCommand, WireTable};
+use harmos_sdk::__private::WireTable;
+use harmos_sdk::operations::{Contracts, WireCommand};
 use harmos_sdk::plugin::{Declared, Owner, Plugin};
 
 /* === Constants === */
@@ -174,7 +175,7 @@ where
         call: Arc::new(call),
     });
     let call = context.context().clone();
-    let mut dependencies = crate::Dependencies::new();
+    let mut dependencies = harmos_sdk::__private::ResourceSet::new();
     dependencies.insert(Arc::new(harmos_sdk::operations::Calls(context.clone()))).map_err(refusal)?;
     dependencies.insert(context).map_err(refusal)?;
     let context = harmos_sdk::operations::ExecutionContext::new(dependencies, call);

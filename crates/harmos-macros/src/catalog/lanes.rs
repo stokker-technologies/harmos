@@ -82,7 +82,6 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
     strip(&mut catalog);
 
     let name = &catalog.ident;
-    let visibility = &catalog.vis;
     let names = lanes.iter().map(|lane| {
         let variant = &lane.name;
         let text = variant.to_string();
@@ -131,11 +130,8 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
             fn capacity(&self) -> #harmos::operations::Capacity {
                 match self { #(#capacities)* }
             }
-        }
 
-        impl #name {
-
-            #visibility fn catalog() -> #harmos::operations::LaneSet {
+            fn catalog() -> #harmos::operations::LaneSet {
                 #harmos::operations::LaneSet::declared([#(#entries),*])
             }
         }

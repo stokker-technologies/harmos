@@ -420,7 +420,7 @@ impl Component {
                     scope.owner(),
                     lane.name(),
                     {
-                        let mut dependencies = harmos_sdk::Dependencies::new();
+                        let mut dependencies = harmos_sdk::__private::ResourceSet::new();
                         dependencies.insert(handler)?;
                         dependencies
                     },
@@ -521,7 +521,7 @@ where
     use crate::operations::Direction;
     type In<O> = super::StreamInput<<<O as crate::operations::OperationDeclaration>::Input as Direction>::Item>;
     type Out<O> = super::StreamOutput<<<O as crate::operations::OperationDeclaration>::Output as Direction>::Item>;
-    let mut dependencies = harmos_sdk::Dependencies::new();
+    let mut dependencies = harmos_sdk::__private::ResourceSet::new();
     dependencies.insert(component)?;
     match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {
         (false, false) => bindings.stage_implementation::<O, ComponentOperation<O, ()>>(lane, dependencies),

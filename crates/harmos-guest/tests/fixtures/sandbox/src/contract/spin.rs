@@ -32,11 +32,16 @@ use super::{Duration, Echoed, OperationPolicy, RetryPolicy};
 
 /* === Structs === */
 
-#[harmos_guest::operation(harmos_path = ::harmos_guest, id = "probe.spin", response = Echoed, policy = OperationPolicy {
+#[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(harmos_path = ::harmos_domain, id = "probe.spin", response = Echoed, policy = OperationPolicy {
         timeout: Duration::from_secs(600),
         attempt_timeout: Duration::from_secs(600),
         retries: RetryPolicy::Never,
-    })]
+    }))]
+#[cfg_attr(target_arch = "wasm32", harmos::guest::operation(harmos_path = ::harmos::guest, id = "probe.spin", response = Echoed, policy = OperationPolicy {
+        timeout: Duration::from_secs(600),
+        attempt_timeout: Duration::from_secs(600),
+        retries: RetryPolicy::Never,
+    }))]
 #[derive(Clone, PartialEq)]
 
 pub struct SpinOperation {}
@@ -69,7 +74,7 @@ mod runtime {
 
     // Local Imports
     use super::{Echoed, SpinOperation};
-    use harmos_guest::OperationRefusal;
+    use harmos::guest::OperationRefusal;
 
     /* === Constants === */
 
@@ -85,10 +90,12 @@ mod runtime {
 
     /* === Implementations === */
 
-    impl harmos_guest::Operation for SpinOperation {
+    impl harmos::guest::Operation for SpinOperation {
         type Error = OperationRefusal;
 
-        async fn run(self, _sdk: harmos_guest::Context<'_, Self>) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
+        async fn run(
+            self, _sdk: harmos::guest::Context<'_, Self>,
+        ) -> Result<harmos::guest::operations::Response<Echoed>, OperationRefusal> {
             let result: Result<Echoed, OperationRefusal> = async move {
                 let mut counted = 0u64;
                 loop {

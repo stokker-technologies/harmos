@@ -22,7 +22,7 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::Notify;
 // Local Imports
-use super::{Lanes, runtime};
+use super::{Lanes, runtime_with};
 use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationDeclaration, OperationPolicy, ReplaySafety, RetryPolicy};
 use harmos_runtime::{Error, Refusal};
 
@@ -96,7 +96,7 @@ macro_rules! scripted {
 
 // Each Request Carries Its Scripted Behavior, Which Can Hold A Shared Gate,
 // So Every Policy Request Stays In Process.
-#[harmos_runtime::operation(resources = [Owner, harmos_runtime::operations::HostContext], codec = manual, id = "policy.blocker",
+#[harmos_runtime::operation(resources = [BlockerOwner], codec = manual, id = "policy.blocker",
     response = u64,
     policy = policy(30_000, 30_000, 0, 1)
 )]
@@ -190,6 +190,8 @@ struct Probe {
 
 struct Owner(Arc<Probe>);
 
+struct BlockerOwner(Arc<Probe>);
+
 /* === Enums === */
 
 #[derive(Clone)]
@@ -218,7 +220,28 @@ trait Behaves:
 
 /* === Implementations === */
 
-behaves!(BlockerDeclaration, ExponentialDeclaration, JitteredDeclaration, EmptyRetriesDeclaration, InvertedBackoffDeclaration);
+behaves!(ExponentialDeclaration, JitteredDeclaration, EmptyRetriesDeclaration, InvertedBackoffDeclaration);
+
+super::in_process!(BlockerDeclaration);
+
+impl harmos_runtime::MemorySize for BlockerDeclaration {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
+
+impl harmos_runtime::Operation for BlockerDeclaration {
+    type Error = std::io::Error;
+
+    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u64>, Self::Error> {
+        let probe = context.resource::<BlockerOwner>();
+        probe.0.attempts.fetch_add(1, Ordering::SeqCst);
+        probe.0.started.notify_one();
+        let Behavior::Gate(gate) = self.behavior else { unreachable!("the blocker owns a release gate") };
+        gate.notified().await;
+        Ok(1.into())
+    }
+}
 
 /* === Public Functions === */
 
@@ -272,61 +295,44 @@ fn waits(probe: &Probe) -> Vec<u64> {
 }
 
 async fn bound<O: Behaves>() -> (harmos_runtime::Runtime<super::support::Bank>, Arc<Probe>) {
-    let runtime = runtime().await;
+    bound_with::<O>(|_| {}).await
+}
+
+async fn bound_with<O: Behaves>(
+    update: impl FnOnce(&mut harmos_runtime::Setup<super::support::Bank>),
+) -> (harmos_runtime::Runtime<super::support::Bank>, Arc<Probe>) {
     let probe = Arc::new(Probe::default());
-    let mut dependencies = harmos_runtime::Dependencies::new();
-    dependencies.insert(Arc::new(Owner(probe.clone()))).unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(dependencies).operation::<O>(),
-            Lanes::Serial,
-        ))
-        .await
-        .unwrap();
+    let runtime = runtime_with(|setup| {
+        setup.resource(Owner(probe.clone()));
+        update(setup);
+    })
+    .await;
+    runtime.operations.register::<super::Single<O>>(Lanes::Serial).await.unwrap();
     (runtime, probe)
 }
 
 async fn invalid<O: Behaves>() {
-    let runtime = runtime().await;
     let probe = Arc::new(Probe::default());
-    let error = runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(Owner(Arc::clone(&probe)))).unwrap();
-                dependencies
-            })
-            .operation::<O>(),
-            Lanes::Serial,
-        ))
-        .await
-        .unwrap_err();
+    let runtime = runtime_with(|setup| {
+        setup.resource(Owner(probe.clone()));
+    })
+    .await;
+    let error = runtime.operations.register::<super::Single<O>>(Lanes::Serial).await.unwrap_err();
     assert!(matches!(error, Error::OperationDeclaration { .. }));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 0);
     assert!(runtime.operations.definition(<O as OperationDeclaration>::ID).is_err());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
 async fn queued_deadline_starts() {
     scripted!(Queued, 50, 1000, 0, 1, false);
-    let (runtime, queued_probe) = bound::<Queued>().await;
     let blocker_probe = Arc::new(Probe::default());
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(Owner(Arc::clone(&blocker_probe)))).unwrap();
-                dependencies
-            })
-            .operation::<BlockerDeclaration>(),
-            Lanes::Serial,
-        ))
-        .await
-        .unwrap();
+    let (runtime, queued_probe) = bound_with::<Queued>(|setup| {
+        setup.resource(BlockerOwner(blocker_probe.clone()));
+    })
+    .await;
+    runtime.operations.register::<super::Single<BlockerDeclaration>>(Lanes::Serial).await.unwrap();
     let gate = Arc::new(Notify::new());
     let blocker = runtime
         .operation(BlockerDeclaration {
@@ -343,7 +349,7 @@ async fn queued_deadline_starts() {
     assert_eq!(queued_probe.attempts.load(Ordering::SeqCst), 0);
     gate.notify_one();
     assert_eq!(*blocker.await.unwrap(), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -355,7 +361,7 @@ async fn attempt_limits_backoff() {
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(submitted.elapsed(), Duration::from_millis(100));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     scripted!(Retrying, 100, 1000, 10, 1000, false);
     let (runtime, probe) = bound::<Retrying>().await;
@@ -364,7 +370,7 @@ async fn attempt_limits_backoff() {
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(submitted.elapsed(), Duration::from_millis(100));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -374,7 +380,7 @@ async fn retry_reuses_state() {
     assert_eq!(*runtime.operation(failing::<Retrying>(2)).run().await.unwrap(), 3);
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 3);
     assert_eq!(waits(&probe), [20, 20]);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -385,7 +391,7 @@ async fn reaches_wait_ceiling() {
     assert_eq!(source.downcast_ref::<std::io::Error>().unwrap().kind(), std::io::ErrorKind::Interrupted);
     assert_eq!(waits(&probe), [200, 400, 800, 1000]);
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 5);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -399,7 +405,7 @@ async fn cancellation_skips_backoff() {
     assert!(matches!(invocation.await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(cancelled.elapsed(), Duration::ZERO);
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -409,7 +415,7 @@ async fn timeouts_require_replay() {
     let result = runtime.operation(Unknown { behavior: Behavior::Pending }).run().await;
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     scripted!(Replayable, 1000, 5, 1, 1, true);
     let (runtime, probe) = bound::<Replayable>().await;
@@ -417,7 +423,7 @@ async fn timeouts_require_replay() {
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 2);
     assert_eq!(waits(&probe), [6]);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -447,7 +453,7 @@ async fn calls_settle_retry() {
     assert!(matches!(first.await, Err(Error::OperationRefused(Refusal::Cancelled))));
     // A Cancelled Queued Request Never Starts An Attempt.
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -461,7 +467,7 @@ async fn jitter_respects_ceiling() {
         assert!((minimum..=maximum).contains(&wait));
     }
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 5);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */

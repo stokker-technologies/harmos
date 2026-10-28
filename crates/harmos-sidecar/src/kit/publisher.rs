@@ -192,28 +192,28 @@ impl<S: StreamSpec> Batch<S> {
     }
 }
 
-impl<R, P: Declared> ObserverHost<R> for Publisher<P> {
-    fn bind(_: Arc<R>, supervisor: Supervisor) -> Self {
+impl<P: Declared> ObserverHost for Publisher<P> {
+    fn bind(_: Arc<harmos_sdk::ExecutionContext>, supervisor: Supervisor) -> Self {
         supervisor.publisher::<P>()
     }
 }
 
-impl<R: Sync, V: StreamSpec<Row = V> + harmos_domain::schema::Described + Message, P: Declared> ObserverPublisher<R, V> for Publisher<P> {
+impl<V: StreamSpec<Row = V> + harmos_domain::schema::Described + Message, P: Declared> ObserverPublisher<V> for Publisher<P> {
     type Error = PublishError;
     const STREAM: Option<harmos_domain::inventory::publications::Entry> = Some(harmos_domain::inventory::publications::Entry::of::<V>());
 
-    async fn publish(&self, _: &ObserverContext<'_, R, Self>, value: V) -> Result<(), PublishError> {
+    async fn publish(&self, _: &ObserverContext<'_, Self>, value: V) -> Result<(), PublishError> {
         self.publish_on::<V>(&value).await
     }
 }
 
-impl<R: Sync, S: StreamSpec, P: Declared> ObserverStreamPublisher<R, S> for Publisher<P>
+impl<S: StreamSpec, P: Declared> ObserverStreamPublisher<S> for Publisher<P>
 where
     S::Row: Message,
 {
     type Error = PublishError;
 
-    async fn publish_on(&self, _: &ObserverContext<'_, R, Self>, row: &S::Row) -> Result<(), PublishError> {
+    async fn publish_on(&self, _: &ObserverContext<'_, Self>, row: &S::Row) -> Result<(), PublishError> {
         Publisher::publish_on::<S>(self, row).await
     }
 }
@@ -290,7 +290,7 @@ mod tests {
     }
 
     #[test]
-    fn publication_never_reencodes_rows() {
+    fn publication_retains_encoding() {
         use std::sync::{
             Arc,
             atomic::{AtomicUsize, Ordering},

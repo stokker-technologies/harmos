@@ -253,23 +253,23 @@ fn admitted(start: Bound<Position>, end: Bound<Position>, at: Position) -> bool 
 }
 
 async fn resumed(tape: Tape, at: Position) -> Runtime<Bank> {
-    Runtime::<Bank>::builder(At { value: Ledger::default(), position: at }, ())
-        .register(catalog())
-        .register(streams())
-        .series(tape)
-        .runtime()
-        .await
-        .expect("a boot standing on a recovered frontier")
+    Runtime::<Bank>::launch_with(At { value: Ledger::default(), position: at }, (), |setup| {
+        setup.settings().register(catalog());
+        setup.settings().register(streams());
+        setup.settings().series(tape);
+    })
+    .await
+    .expect("a boot standing on a recovered frontier")
 }
 
 async fn served(tape: Tape) -> Runtime<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(streams())
-        .series(tape)
-        .runtime()
-        .await
-        .expect("a memory-only boot recovers nothing")
+    Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(catalog());
+        setup.settings().register(streams());
+        setup.settings().series(tape);
+    })
+    .await
+    .expect("a memory-only boot recovers nothing")
 }
 
 async fn captured(rows: &Kept, count: usize) {
@@ -314,21 +314,21 @@ async fn range_beneath_window() {
         "the served tier is asked once, and asked about the stream by name"
     );
 
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn retained_skips_tier() {
     let (tape, (rows, asked, _budgets)) = Tape::new();
     let (second, (second_rows, _, _)) = Tape::new();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(streams())
-        .series(tape)
-        .attach_streams(second)
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(catalog());
+        setup.settings().register(streams());
+        setup.settings().series(tape);
+        setup.settings().attach_streams(second);
+    })
+    .await
+    .unwrap();
 
     publish(&runtime, &rows, &[1, 2]).await;
     captured(&second_rows, 2).await;
@@ -348,7 +348,7 @@ async fn retained_skips_tier() {
         "the window answered the whole range, so nothing was asked beneath it"
     );
 
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     drop((runtime, rows, original, second_rows));
     assert_eq!(shared.iter().map(|row| row.ordinal).collect::<Vec<_>>(), [1, 2]);
 }
@@ -396,7 +396,7 @@ async fn window_stands_durable() {
 
     assert_eq!(answered, vec![1, 2, 3], "the boundary is the watermark: beneath it the tier's, above it the ring's");
 
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -412,7 +412,7 @@ async fn floor_lacks_tier() {
         "the floor is evidence, not a shortened answer"
     );
 
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -453,7 +453,7 @@ async fn tracked_read_narrows() {
         "the component labels of the selection are what narrow the served read"
     );
 
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -482,7 +482,7 @@ async fn survey_spends_caller() {
     );
     assert!(sealed > Position::ORIGIN);
 
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -502,7 +502,7 @@ async fn seal_reports_position() {
         "four points of budget is one bucket over the whole sealed range"
     );
 
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -515,7 +515,7 @@ async fn absent_adapter_refuses() {
     );
     assert_eq!(runtime.streams.seal::<Capture>().await, Position::ORIGIN, "nothing serving means nothing durable, said plainly");
 
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */

@@ -32,13 +32,13 @@ use super::CallContext;
 /* === Structs === */
 
 #[derive(Clone, Default)]
-pub struct Dependencies {
+pub struct ResourceSet {
     entries: Arc<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ExecutionContext {
-    dependencies: Dependencies,
+    resources: ResourceSet,
     pub call: CallContext,
 }
 
@@ -69,7 +69,7 @@ pub enum ResourceError {
 
 /* === Implementations === */
 
-impl Dependencies {
+impl ResourceSet {
     pub fn new() -> Self {
         Self::default()
     }
@@ -91,28 +91,35 @@ impl Dependencies {
             .ok_or(ResourceError::Missing { name: type_name::<T>() })
     }
 
+    pub fn replace<T: Send + Sync + 'static>(&mut self, value: Arc<T>) {
+        Arc::make_mut(&mut self.entries).insert(TypeId::of::<T>(), value);
+    }
+
     pub fn contains(&self, resource: TypeId) -> bool {
         self.entries.contains_key(&resource)
     }
 }
 
 impl ExecutionContext {
-    pub fn new(dependencies: Dependencies, call: CallContext) -> Self {
-        Self { dependencies, call }
+    #[doc(hidden)]
+    pub fn new(resources: ResourceSet, call: CallContext) -> Self {
+        Self { resources, call }
     }
 
     pub fn resource<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, ResourceError> {
-        self.dependencies.resource::<T>()
+        self.resources.resource::<T>()
     }
 
-    pub fn dependencies(&self) -> &Dependencies {
-        &self.dependencies
+    #[doc(hidden)]
+    pub fn resources(&self) -> &ResourceSet {
+        &self.resources
     }
 
-    pub(crate) fn for_registration(&self, mut dependencies: Dependencies) -> Self {
-        // Carrier Dependencies Retain Their Trusted Handles In Each Invocation Snapshot.
-        Arc::make_mut(&mut dependencies.entries).extend(self.dependencies.entries.iter().map(|(key, value)| (*key, value.clone())));
-        Self::new(dependencies, self.call.clone())
+    #[doc(hidden)]
+    pub fn with_resources(&self, mut resources: ResourceSet) -> Self {
+        // Trusted Carrier Handles Retain Priority In Each Invocation Snapshot.
+        Arc::make_mut(&mut resources.entries).extend(self.resources.entries.iter().map(|(key, value)| (*key, value.clone())));
+        Self::new(resources, self.call.clone())
     }
 }
 
@@ -169,15 +176,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn snapshots_share_values_and_isolate_insertions() {
-        let mut dependencies = Dependencies::new();
+    fn independent_resource_snapshots() {
+        let mut resources = ResourceSet::new();
         let value = Arc::new(7u32);
-        dependencies.insert(value.clone()).unwrap();
-        let snapshot = dependencies.clone();
-        dependencies.insert(Arc::new(9u64)).unwrap();
+        resources.insert(value.clone()).unwrap();
+        let snapshot = resources.clone();
+        resources.insert(Arc::new(9u64)).unwrap();
         assert!(Arc::ptr_eq(&snapshot.resource::<u32>().unwrap(), &value));
         assert!(matches!(snapshot.resource::<u64>(), Err(ResourceError::Missing { .. })));
-        assert!(matches!(dependencies.insert(Arc::new(8u32)), Err(ResourceError::Duplicate { .. })));
-        assert_eq!(*dependencies.resource::<u32>().unwrap(), 7);
+        assert!(matches!(resources.insert(Arc::new(8u32)), Err(ResourceError::Duplicate { .. })));
+        assert_eq!(*resources.resource::<u32>().unwrap(), 7);
     }
 }

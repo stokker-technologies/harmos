@@ -60,24 +60,43 @@ mod atomic_records {
         Observed(Observed),
     }
     struct Model;
+    impl harmos_runtime::Lifecycle for Model {
+        type Config = ();
+        type Error = std::convert::Infallible;
+        type Context = harmos_runtime::Startup<Self>;
+
+        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+            Ok(Self)
+        }
+
+        async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
     impl Application for Model {
         type Lanes = Lanes;
         type State = State;
         type Transaction = Changes;
         type Record = Facts;
         type Streams = ();
-        type Resources = ();
     }
 
     #[test]
     fn records_survive_reboot() {
         let make = || {
-            Runtime::<Model>::builder(State::default(), ())
-                .register(Changes::catalog())
-                .register(Facts::catalog())
-                .entropy_seed(17)
-                .simulate()
-                .unwrap()
+            Runtime::<Model>::simulate_with(State::default(), (), 17, |setup| {
+                setup.settings().register(Changes::catalog()).register(Facts::catalog());
+            })
+            .unwrap()
         };
         let mut first = make();
         let mut second = make();
@@ -109,12 +128,11 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::operations::WireTable;
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::sidecar::{Notice, Supervised};
 use harmos_runtime::simulation::entropy;
 use harmos_runtime::{
-    Application, Builder, DefinitionId, Identified, Runtime, evidence::EvidenceKind, runtime::Catalog, runtime::Registration,
+    Application, DefinitionId, Identified, Runtime, Setup, evidence::EvidenceKind, runtime::Catalog, runtime::Registration,
     simulation::SimulatedRuntime, state::Focus, state::Kind, state::Transaction,
 };
 use harmos_sidecar::{Attach, PluginNative, Supervisor};
@@ -200,9 +218,7 @@ struct Capture;
 #[derive(Clone)]
 struct Capturing;
 
-struct Idle {
-    resources: Arc<()>,
-}
+struct Idle;
 
 struct IdleResident {
     managed: IdleManaged,
@@ -292,6 +308,27 @@ impl Identified for DivergentChange {
         (DefinitionId::new("sim.divergent"), 1)
     }
 }
+impl harmos_runtime::Lifecycle for Divergent {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 impl Application for Divergent {
     type Lanes = Lanes;
@@ -299,7 +336,6 @@ impl Application for Divergent {
     type Transaction = DivergentChange;
     type Record = NoRecord;
     type Streams = ();
-    type Resources = ();
 }
 
 impl Registration<Divergent> for DivergentCatalog {
@@ -408,22 +444,14 @@ impl harmos_operations::lifecycle::Policy for Idle {
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(id = "idle", provides = (), requires = ())]
-impl harmos_runtime::Plugin for Idle {
+impl harmos_runtime::Lifecycle for Idle {
     type Context = Supervisor;
     type Config = ();
     type Error = Infallible;
-    type Resources = ();
-    fn prepare(_: ()) -> Result<Self, Infallible> {
-        Ok(Self { resources: Arc::new(()) })
+    async fn prepare(_: (), _: &mut Setup<Self>) -> Result<Self, Infallible> {
+        Ok(Self)
     }
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Infallible> {
-        Ok(())
-    }
-    fn resources(&self) -> Arc<()> {
-        self.resources.clone()
-    }
-    fn bind_operations(&self, _: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
         Ok(())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Infallible> {
@@ -432,6 +460,11 @@ impl harmos_runtime::Plugin for Idle {
     async fn cleanup(&mut self) -> Result<(), Infallible> {
         Ok(())
     }
+}
+
+#[harmos_runtime::sidecar(id = "idle", requires = ())]
+impl harmos_runtime::Plugin for Idle {
+    const CATALOGS: &'static [harmos_runtime::operations::Catalog] = &[];
 }
 
 impl IdleResident {
@@ -489,20 +522,21 @@ impl harmos_runtime::services::Resident<Bank> for IdleResident {
 
 /* === Private Functions === */
 
-fn bank(seed: u64) -> Builder<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(streams())
-        .register(Lanes::catalog())
-        .with_registration(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
-                .operation::<PendingDeclaration>()
-                .operation::<AnsweringDeclaration>()
-                .operation::<DrawingDeclaration>()
-                .operation::<TimingItsOwnWaitDeclaration>(),
-            Lanes::Serial,
-        ))
-        .entropy_seed(seed)
+#[harmos_runtime::catalog]
+enum SimOperations {
+    Pending(PendingDeclaration),
+    Answering(AnsweringDeclaration),
+    Drawing(DrawingDeclaration),
+    Timing(TimingItsOwnWaitDeclaration),
+}
+
+fn bank(seed: u64, configure: impl Fn(&mut Setup<Bank>) + Send + Sync + 'static) -> SimulatedRuntime<Bank> {
+    Runtime::<Bank>::simulate_with(Ledger::default(), (), seed, move |setup| {
+        setup.operations::<SimOperations>(Lanes::Serial);
+        setup.settings().register(catalog()).register(streams());
+        configure(setup);
+    })
+    .expect("the simulation boots")
 }
 
 async fn resident(mut context: harmos_runtime::services::ServiceContext<Bank>) -> Result<(), std::io::Error> {
@@ -512,11 +546,11 @@ async fn resident(mut context: harmos_runtime::services::ServiceContext<Bank>) -
 }
 
 fn scripted(seed: u64) -> SimulatedRuntime<Bank> {
-    oracle::scripted(bank(seed))
+    oracle::scripted(bank(seed, oracle::configure))
 }
 
 fn scripted_wait(seed: u64) -> Duration {
-    let mut sim = bank(seed).simulate().expect("the simulation boots");
+    let mut sim = bank(seed, |_| {});
     let timed = sim.submit::<TimingItsOwnWaitDeclaration>(TimingItsOwnWaitDeclaration { wait_ms: 750 }).unwrap();
     sim.advance_ms(400);
     sim.advance_ms(350);
@@ -527,8 +561,9 @@ fn scripted_wait(seed: u64) -> Duration {
 fn entropy_run(seed: u64) -> (SimulatedRuntime<Bank>, Vec<u64>) {
     let draws = Arc::new(Mutex::new(Vec::new()));
     let service_draws = Arc::clone(&draws);
-    let mut sim = bank(seed)
-        .simulated_service("entropy", move |mut context: harmos_runtime::services::ServiceContext<Bank>| {
+    let mut sim = bank(seed, move |setup| {
+        let service_draws = Arc::clone(&service_draws);
+        setup.settings().simulated_service("entropy", move |mut context: harmos_runtime::services::ServiceContext<Bank>| {
             let draws = Arc::clone(&service_draws);
             async move {
                 draws.lock().expect("draw lock is healthy").push(entropy());
@@ -536,9 +571,8 @@ fn entropy_run(seed: u64) -> (SimulatedRuntime<Bank>, Vec<u64>) {
                 context.stopping().await;
                 Ok::<(), std::io::Error>(())
             }
-        })
-        .simulate()
-        .expect("the simulation boots");
+        });
+    });
     let handle = sim.submit::<DrawingDeclaration>(DrawingDeclaration { draws: Arc::clone(&draws) }).unwrap();
     sim.settle(handle).expect("the entropy job settles");
     let values = draws.lock().expect("draw lock is healthy").clone();
@@ -552,11 +586,10 @@ fn vault(name: &str) -> vault::Directory {
 }
 
 fn capturing(seed: u64, name: &str) -> SimulatedRuntime<Bank> {
-    let mut sim = bank(seed)
-        .simulated_evidence(vault(name), [Capture::definition()])
-        .simulated_service("recorder", Capturing)
-        .simulate()
-        .expect("the simulation boots");
+    let directory = vault(name);
+    let mut sim = bank(seed, move |setup| {
+        setup.settings().simulated_evidence(directory.clone(), [Capture::definition()]).simulated_service("recorder", Capturing);
+    });
     sim.advance_ms(1);
     sim.reboot().expect("the recorded facts replay");
     sim.advance_ms(1);
@@ -567,10 +600,13 @@ fn capturing(seed: u64, name: &str) -> SimulatedRuntime<Bank> {
 
 #[test]
 fn attached_fold_refused() {
-    let (mirror, _) = support::Mirror::new();
-    let refusal = bank(42).attach(mirror).simulate().err().expect("a live fold makes this composition incompatible with simulation");
+    let refusal = Runtime::<Bank>::simulate_with(Ledger::default(), (), 42, move |setup| {
+        setup.settings().attach(support::Mirror::new().0);
+    })
+    .err()
+    .expect("a live fold makes this composition incompatible with simulation");
 
-    assert_eq!(refusal.to_string(), "this build cannot be simulated after attaching an attached fold");
+    assert!(refusal.to_string().contains("attached fold"), "{refusal}");
 }
 
 #[test]
@@ -586,8 +622,8 @@ fn seed_replays_identically() {
 
 #[test]
 fn backoff_delays_restart() {
-    let mut sim = bank(7)
-        .simulated_service_with(
+    let mut sim = bank(7, |setup| {
+        setup.settings().simulated_service_with(
             "adapter",
             harmos_runtime::ServicePolicy {
                 restart: harmos_runtime::operations::RestartPolicy::OnFailure {
@@ -602,9 +638,8 @@ fn backoff_delays_restart() {
                 ..harmos_runtime::services::POLICY
             },
             resident,
-        )
-        .simulate()
-        .expect("the simulation boots");
+        );
+    });
 
     sim.fault("adapter", "disconnected").expect("the running service receives its exit");
     assert_eq!(sim.service("adapter").restarts(), 0);
@@ -617,7 +652,7 @@ fn backoff_delays_restart() {
 
 #[test]
 fn attempt_deadline_expires() {
-    let mut sim = bank(7).simulate().expect("the simulation boots");
+    let mut sim = bank(7, |_| {});
     let deadline = sim.submit::<PendingDeclaration>(PendingDeclaration {}).unwrap();
     sim.advance_ms(5);
     assert!(matches!(sim.settle(deadline), Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
@@ -638,11 +673,10 @@ fn scope_clock_scripted() {
 #[test]
 fn oracle_catches_divergence() {
     DIVERGENCE.store(0, Ordering::SeqCst);
-    let mut sim = Runtime::<Divergent>::builder(DivergentState::default(), ())
-        .register(DivergentCatalog)
-        .entropy_seed(9)
-        .simulate()
-        .expect("the deliberately divergent simulation boots");
+    let mut sim = Runtime::<Divergent>::simulate_with(DivergentState::default(), (), 9, |setup| {
+        setup.settings().register(DivergentCatalog);
+    })
+    .expect("the deliberately divergent simulation boots");
     sim.commit(harmos_runtime::state::PrincipalId::new("tester"), DivergentChange).expect("the first application succeeds");
 
     let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -663,7 +697,7 @@ fn entropy_draws_seeded() {
 
 #[test]
 fn full_script_replays() {
-    let mut sim = bank(101).simulated_service("adapter", resident).simulate().expect("the simulation boots");
+    let mut sim = bank(101, oracle::configure);
     sim.commit(alice(), Deposit { account: support::HOUSE, amount: 3 }).expect("commit lands");
     sim.record(alice(), Noted("full script".to_owned())).expect("record lands");
     sim.publish(pulse(8)).expect("publish lands");
@@ -697,14 +731,15 @@ fn sidecar_fault_scripted() {
             },
             ..harmos_runtime::services::POLICY
         };
-        let mut sim = bank(seed)
-            .operation_settings(harmos_runtime::operations::Settings {
-                preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
-                ..Default::default()
-            })
-            .simulated_service_with("meter", policy, IdleResident::new())
-            .simulate()
-            .expect("the simulation boots a sidecar with no process behind it");
+        let mut sim = bank(seed, move |setup| {
+            setup
+                .settings()
+                .operation_settings(harmos_runtime::operations::Settings {
+                    preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                    ..Default::default()
+                })
+                .simulated_service_with("meter", policy, IdleResident::new());
+        });
         sim.fault("meter", "the meter fell over").expect("the attached sidecar receives its scripted exit");
         sim.advance_ms(8);
         sim
@@ -749,6 +784,12 @@ fn evidence_script_deterministic() {
 // The Feature Only Adds: A Spawned Start Stays Send Under Simulation.
 #[tokio::test]
 async fn start_stays_send() {
-    let runtime = tokio::spawn(bank(7).runtime()).await.expect("the spawned start completes").expect("the bank runtime starts");
-    runtime.stop().await.unwrap();
+    let runtime = tokio::spawn(Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.operations::<SimOperations>(Lanes::Serial);
+        setup.settings().register(catalog()).register(streams());
+    }))
+    .await
+    .expect("the spawned start completes")
+    .expect("the bank runtime starts");
+    runtime.shutdown().await.unwrap();
 }

@@ -46,7 +46,6 @@ mod retirement;
 
 /* === Tests === */
 
-use harmos_runtime::catalog::{Catalog, Member};
 use harmos_runtime::operations::{
     Bindings, OperationDefinition as Definition, OperationManager, OperationPolicy, PluginRegistration, RetryPolicy, Visibility,
 };
@@ -152,12 +151,36 @@ struct RunRequest {
     value: String,
 }
 
-struct Operations<O>(std::marker::PhantomData<O>);
+#[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
+enum Operations<O: harmos_runtime::operations::Executable> {
+    Operation(O),
+}
 
 #[harmos_runtime::lanes(harmos_path = harmos_runtime)]
 enum Lanes {
     #[default]
     Open,
+}
+impl harmos_runtime::Lifecycle for Fixture {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 impl harmos_runtime::Application for Fixture {
@@ -166,7 +189,6 @@ impl harmos_runtime::Application for Fixture {
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
     type Streams = ();
-    type Resources = ();
 }
 
 const RUN_NAME: &str = concat!(module_path!(), "::Run");
@@ -225,53 +247,39 @@ operation!(OtherSlowRun, 200, Shared);
 operation!(OtherSlowPrivateRun, 200, Private);
 operation!(ChangedRun, 101, Shared);
 
-impl<V, O> Catalog<V> for Operations<O>
-where
-    V: Member<O>,
-{
-    type Entries = [V::Entry; 1];
-    const ENTRIES: Self::Entries = [V::ENTRY];
-}
-fn registration<O: harmos_runtime::Operation>() -> harmos_runtime::operations::Registration<Lanes> {
-    use harmos_runtime::RegistrationExt;
-    let mut dependencies = harmos_runtime::Dependencies::new();
-    dependencies.insert(Arc::new(Owner)).unwrap();
-    harmos_runtime::RegistrationBatch::new(dependencies).operation::<O>().lane(Lanes::Open)
-}
-
 fn request_payload() -> Vec<u8> {
     harmos_runtime::Message::encode(&RunRequest { value: String::new() })
 }
 
 fn bind<const OWNER: usize>(bindings: &mut Bindings<'_>, definition: &Definition) -> Result<()> {
     match (OWNER, definition.policy.timeout.as_millis(), definition.visibility) {
-        (0, 100, Visibility::Shared) => bindings.register(registration::<ProviderRun>()),
-        (0, 100, Visibility::Private) => bindings.register(registration::<ProviderPrivateRun>()),
-        (0, 200, Visibility::Shared) => bindings.register(registration::<ProviderSlowRun>()),
-        (0, 200, Visibility::Private) => bindings.register(registration::<ProviderSlowPrivateRun>()),
-        (1, 100, Visibility::Shared) => bindings.register(registration::<ClientRun>()),
-        (1, 100, Visibility::Private) => bindings.register(registration::<ClientPrivateRun>()),
-        (1, 200, Visibility::Shared) => bindings.register(registration::<ClientSlowRun>()),
-        (1, 200, Visibility::Private) => bindings.register(registration::<ClientSlowPrivateRun>()),
-        (2, 100, Visibility::Shared) => bindings.register(registration::<OtherRun>()),
-        (2, 100, Visibility::Private) => bindings.register(registration::<OtherPrivateRun>()),
-        (2, 200, Visibility::Shared) => bindings.register(registration::<OtherSlowRun>()),
-        (2, 200, Visibility::Private) => bindings.register(registration::<OtherSlowPrivateRun>()),
+        (0, 100, Visibility::Shared) => bindings.operations::<Operations<ProviderRun>>(Lanes::Open),
+        (0, 100, Visibility::Private) => bindings.operations::<Operations<ProviderPrivateRun>>(Lanes::Open),
+        (0, 200, Visibility::Shared) => bindings.operations::<Operations<ProviderSlowRun>>(Lanes::Open),
+        (0, 200, Visibility::Private) => bindings.operations::<Operations<ProviderSlowPrivateRun>>(Lanes::Open),
+        (1, 100, Visibility::Shared) => bindings.operations::<Operations<ClientRun>>(Lanes::Open),
+        (1, 100, Visibility::Private) => bindings.operations::<Operations<ClientPrivateRun>>(Lanes::Open),
+        (1, 200, Visibility::Shared) => bindings.operations::<Operations<ClientSlowRun>>(Lanes::Open),
+        (1, 200, Visibility::Private) => bindings.operations::<Operations<ClientSlowPrivateRun>>(Lanes::Open),
+        (2, 100, Visibility::Shared) => bindings.operations::<Operations<OtherRun>>(Lanes::Open),
+        (2, 100, Visibility::Private) => bindings.operations::<Operations<OtherPrivateRun>>(Lanes::Open),
+        (2, 200, Visibility::Shared) => bindings.operations::<Operations<OtherSlowRun>>(Lanes::Open),
+        (2, 200, Visibility::Private) => bindings.operations::<Operations<OtherSlowPrivateRun>>(Lanes::Open),
         _ => panic!("fixture has no operation for this policy"),
     }
 }
 
 impl Host {
     async fn new() -> Self {
-        let runtime = harmos_runtime::Runtime::builder((), ())
-            .operation_settings(harmos_runtime::operations::Settings {
+        let runtime = harmos_runtime::Runtime::<Fixture>::launch_with((), (), |setup| {
+            setup.resource::<Owner>(Owner);
+            setup.settings().operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
                 ..Default::default()
-            })
-            .register(Lanes::catalog())
-            .runtime()
-            .await
-            .unwrap();
+            });
+        })
+        .await
+        .unwrap();
         Self {
             runtime: Some(runtime),
             ..Self::default()

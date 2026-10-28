@@ -96,6 +96,27 @@ pub enum ModelLanes {
     #[default]
     Open,
 }
+impl harmos_runtime::Lifecycle for Model {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 impl Application for Model {
     type Lanes = ModelLanes;
@@ -103,7 +124,6 @@ impl Application for Model {
     type Transaction = Changes;
     type Record = Facts;
     type Streams = ();
-    type Resources = ();
 }
 
 impl JournalCapture<Model> for Consumer {
@@ -127,21 +147,20 @@ impl JournalCapture<Model> for Panics {
 async fn open(pending: u32, max: u32, fail: bool, tail: usize) -> (Runtime<Model>, mpsc::UnboundedReceiver<Group>, Arc<Semaphore>) {
     let (offered, observed) = mpsc::unbounded_channel();
     let release = Arc::new(Semaphore::new(0));
-    let runtime = Runtime::<Model>::builder(0, ())
-        .register(Changes::catalog())
-        .register(Facts::catalog())
-        .tail(tail)
-        .require_capture(
+    let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
+        setup.settings().register(Changes::catalog());
+        setup.settings().register(Facts::catalog());
+        setup.settings().tail(tail);
+        setup.settings().require_capture(
             CaptureLimits {
                 pending_bytes: pending,
                 max_group_bytes: max,
             },
             Consumer { offered, release: release.clone(), fail },
-        )
-        .unwrap()
-        .runtime()
-        .await
-        .unwrap();
+        );
+    })
+    .await
+    .unwrap();
     (runtime, observed, release)
 }
 
@@ -173,7 +192,7 @@ async fn owned_transaction_survives_capture_after_tail_eviction() {
     assert!(retained.upgrade().is_none());
     release.add_permits(1);
     drop(second);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -200,7 +219,7 @@ async fn capture_preserves_evicted() {
     assert!(runtime.state.query::<Facts>(Position::ORIGIN).await.next().unwrap().is_err());
     release.add_permits(1);
     runtime.state.wait_until_captured(Position(2)).await.unwrap();
-    assert_eq!(runtime.stop().await.unwrap(), Position(2));
+    assert_eq!(runtime.shutdown().await.unwrap(), Position(2));
 }
 
 #[tokio::test]
@@ -227,7 +246,7 @@ async fn stop_awaits_groups() {
     let stopping = tokio::spawn({
         let runtime = Arc::clone(&runtime);
 
-        async move { runtime.stop().await.unwrap() }
+        async move { runtime.shutdown().await.unwrap() }
     });
     let mut positions = Vec::new();
     for expected in [2, 3, 4, 6, 8] {
@@ -266,7 +285,7 @@ async fn failure_wakes_waiters() {
     assert_eq!(runtime.state.wait_until_captured(Position(1)).await, Err(CaptureError::Failed));
     assert_eq!(runtime.state.capture_status(), Err(CaptureError::Failed));
     assert!(matches!(runtime.records.publish(Observed("later".into())).await, Err(Error::CaptureFailed)));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     assert_eq!(
         runtime.state.capture_status(),
@@ -282,7 +301,7 @@ async fn oversize_never_applies() {
     assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 0);
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     assert!(observed.try_recv().is_err());
-    assert_eq!(runtime.stop().await.unwrap(), Position::ORIGIN);
+    assert_eq!(runtime.shutdown().await.unwrap(), Position::ORIGIN);
 }
 
 #[tokio::test]
@@ -302,27 +321,26 @@ async fn queued_groups_outlive() {
         let Recorded::Record(Facts::Observed(Observed(value))) = &entries[0].value else { panic!("typed record lost") };
         assert_eq!(value, &(expected - 1).to_string());
     }
-    assert_eq!(runtime.stop().await.unwrap(), Position(1100));
+    assert_eq!(runtime.shutdown().await.unwrap(), Position(1100));
 }
 
 #[tokio::test]
 async fn panic_fails_capture() {
-    let runtime = Runtime::<Model>::builder(0, ())
-        .register(Facts::catalog())
-        .require_capture(
+    let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
+        setup.settings().register(Facts::catalog());
+        setup.settings().require_capture(
             CaptureLimits {
                 pending_bytes: 4096,
                 max_group_bytes: 4096,
             },
             Panics,
-        )
-        .unwrap()
-        .runtime()
-        .await
-        .unwrap();
+        );
+    })
+    .await
+    .unwrap();
     runtime.records.publish(Observed("accepted".into())).await.unwrap();
     assert_eq!(runtime.state.wait_until_captured(Position(1)).await, Err(CaptureError::Failed));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 
     assert_eq!(
         runtime.state.capture_status(),

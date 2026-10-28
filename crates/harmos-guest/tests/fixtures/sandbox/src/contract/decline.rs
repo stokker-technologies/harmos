@@ -32,7 +32,8 @@ use super::{Echoed, PROBE};
 
 /* === Structs === */
 
-#[harmos_guest::operation(harmos_path = ::harmos_guest, id = "probe.decline", response = Echoed, policy = PROBE)]
+#[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(harmos_path = ::harmos_domain, id = "probe.decline", response = Echoed, policy = PROBE))]
+#[cfg_attr(target_arch = "wasm32", harmos::guest::operation(harmos_path = ::harmos::guest, id = "probe.decline", response = Echoed, policy = PROBE))]
 #[derive(Clone, PartialEq)]
 
 pub struct DeclineOperation {}
@@ -65,7 +66,7 @@ mod runtime {
 
     // Local Imports
     use super::{DeclineOperation, Echoed};
-    use harmos_guest::OperationRefusal;
+    use harmos::guest::OperationRefusal;
 
     /* === Constants === */
 
@@ -81,10 +82,12 @@ mod runtime {
 
     /* === Implementations === */
 
-    impl harmos_guest::Operation for DeclineOperation {
+    impl harmos::guest::Operation for DeclineOperation {
         type Error = OperationRefusal;
 
-        async fn run(self, _sdk: harmos_guest::Context<'_, Self>) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
+        async fn run(
+            self, _sdk: harmos::guest::Context<'_, Self>,
+        ) -> Result<harmos::guest::operations::Response<Echoed>, OperationRefusal> {
             let result: Result<Echoed, OperationRefusal> = async move { Err(OperationRefusal::new(7, "the probe declines")) }.await;
             result.map(Into::into)
         }

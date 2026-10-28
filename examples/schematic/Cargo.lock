@@ -856,9 +856,12 @@ name = "harmos"
 version = "0.1.12"
 dependencies = [
  "harmos-domain",
+ "harmos-guest",
+ "harmos-macros",
  "harmos-operations",
  "harmos-runtime",
  "harmos-sdk",
+ "harmos-sidecar",
 ]
 
 [[package]]
@@ -881,6 +884,7 @@ name = "harmos-guest"
 version = "0.1.12"
 dependencies = [
  "harmos-domain",
+ "harmos-macros",
  "harmos-operations",
  "harmos-sdk",
  "thiserror",
@@ -905,6 +909,7 @@ name = "harmos-operations"
 version = "0.1.12"
 dependencies = [
  "harmos-domain",
+ "harmos-macros",
  "harmos-sdk",
  "harmos-storage",
  "serde",
@@ -966,6 +971,7 @@ name = "harmos-sdk"
 version = "0.1.12"
 dependencies = [
  "harmos-domain",
+ "harmos-macros",
  "postcard",
  "prost",
  "serde",
@@ -982,6 +988,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "harmos-domain",
+ "harmos-macros",
  "harmos-operations",
  "harmos-sdk",
  "libc",
@@ -1703,8 +1710,8 @@ dependencies = [
 name = "schematic-guest"
 version = "0.1.12"
 dependencies = [
+ "harmos",
  "harmos-domain",
- "harmos-guest",
  "harmos-packaging",
  "schematic-operations",
 ]
@@ -1723,9 +1730,9 @@ dependencies = [
 name = "schematic-sidecar"
 version = "0.1.12"
 dependencies = [
+ "harmos",
  "harmos-domain",
  "harmos-packaging",
- "harmos-sidecar",
  "schematic-domain",
  "schematic-operations",
  "tempfile",

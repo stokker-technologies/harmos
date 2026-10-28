@@ -168,8 +168,10 @@ async fn snapshot_blocks_pruning() {
             if failing.load(Ordering::Acquire) { Err(io::Error::other("injected snapshot failure")) } else { Ok(()) }
         }
     });
-    let runtime =
-        booted(Ledger::default(), |builder| builder.recover(source).snapshot(snapshot).retain(Horizon::BeneathSnapshot).tail(1)).await;
+    let runtime = booted(Ledger::default(), |setup| {
+        setup.settings().recover(source).snapshot(snapshot).retain(Horizon::BeneathSnapshot).tail(1);
+    })
+    .await;
 
     let first = runtime.state.commit(deposit(1)).await.expect("accepted");
     runtime.state.wait_until_stored(first.position).await;
@@ -182,7 +184,7 @@ async fn snapshot_blocks_pruning() {
     pruned(&watched, second.position).await;
 
     assert!(matches!(runtime.state.query::<Change>(Position::ORIGIN).await.next(), Some(Err(Error::BeyondTail))));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -196,7 +198,10 @@ async fn checkpoint_blocks_pruning() {
             Ok(())
         }
     });
-    let runtime = booted(Ledger::default(), |builder| builder.recover(source).snapshot(snapshot).retain(Horizon::BeneathSnapshot)).await;
+    let runtime = booted(Ledger::default(), |setup| {
+        setup.settings().recover(source).snapshot(snapshot).retain(Horizon::BeneathSnapshot);
+    })
+    .await;
 
     runtime.state.commit(deposit(1)).await.expect("accepted");
     saved(&writes).await;
@@ -206,12 +211,16 @@ async fn checkpoint_blocks_pruning() {
     let recovered = runtime.state.commit(deposit(1)).await.expect("accepted");
     runtime.state.wait_until_stored(recovered.position).await;
     pruned(&watched, recovered.position).await;
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn retention_requires_snapshot() {
-    let started = Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).retain(Horizon::BeneathSnapshot).runtime().await;
+    let started = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(catalog());
+        setup.settings().retain(Horizon::BeneathSnapshot);
+    })
+    .await;
     let Err(refused) = started else {
         panic!("retention without its snapshot must be refused at assembly");
     };
@@ -230,11 +239,14 @@ async fn stalled_redelivery_tail() {
 
 async fn run_stalled(tail: usize) -> Vec<Vec<Position>> {
     let (source, watched) = Prunable::stalled();
-    let runtime = booted(Ledger::default(), |builder| builder.recover(source).tail(tail)).await;
+    let runtime = booted(Ledger::default(), |setup| {
+        setup.settings().recover(source).tail(tail);
+    })
+    .await;
     for _ in 0..3 {
         runtime.state.commit(deposit(1)).await.expect("accepted");
     }
-    assert_eq!(runtime.stop().await.unwrap(), Position::ORIGIN);
+    assert_eq!(runtime.shutdown().await.unwrap(), Position::ORIGIN);
 
     watched.batches.lock().expect("not poisoned").clone()
 }

@@ -62,12 +62,12 @@ pub struct ProbeDeclaration {
 
 /* === Enums === */
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 pub enum Readings {
     ReadDeclaration(ReadDeclaration),
 }
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 pub enum Queries {
     ProbeDeclaration(ProbeDeclaration),
 }

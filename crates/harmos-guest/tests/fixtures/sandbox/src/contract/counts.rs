@@ -32,8 +32,10 @@ use super::{ReadOperation, Value};
 
 /* === Structs === */
 
-#[harmos_guest::operation(harmos_path = ::harmos_guest,
-    resources = [crate::Owner], id = "fixture.counts", response = Value, policy = ReadOperation::POLICY)]
+#[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(harmos_path = ::harmos_domain,
+    resources = [crate::Owner], id = "fixture.counts", response = Value, policy = ReadOperation::POLICY))]
+#[cfg_attr(target_arch = "wasm32", harmos::guest::operation(harmos_path = ::harmos::guest,
+    resources = [crate::Owner], id = "fixture.counts", response = Value, policy = ReadOperation::POLICY))]
 #[derive(Clone, PartialEq)]
 
 pub struct CountsOperation {
@@ -83,10 +85,10 @@ mod runtime {
 
     /* === Implementations === */
 
-    impl harmos_guest::Operation for CountsOperation {
+    impl harmos::guest::Operation for CountsOperation {
         type Error = std::io::Error;
 
-        async fn run(self, sdk: harmos_guest::Context<'_, Self>) -> Result<harmos_guest::operations::Response<Value>, std::io::Error> {
+        async fn run(self, sdk: harmos::guest::Context<'_, Self>) -> Result<harmos::guest::operations::Response<Value>, std::io::Error> {
             let owner = sdk.resource::<crate::Owner>();
             Ok(Value {
                 value: owner.ran.load(std::sync::atomic::Ordering::SeqCst).to_string(),

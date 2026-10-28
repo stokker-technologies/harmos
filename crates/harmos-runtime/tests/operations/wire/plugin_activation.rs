@@ -47,13 +47,17 @@ use harmos_sdk::grpc::{self, DecodeInput};
 #[tokio::test]
 async fn callbacks_guard_admission() {
     {
-        let runtime =
-            harmos_runtime::Runtime::<crate::operations::support::Bank>::builder(crate::operations::support::Ledger::default(), ())
-                .register(crate::operations::support::catalog())
-                .register(Lanes::catalog())
-                .runtime()
-                .await
-                .unwrap();
+        let runtime = harmos_runtime::Runtime::<crate::operations::support::Bank>::launch_with(
+            crate::operations::support::Ledger::default(),
+            (),
+            |setup| {
+                setup.settings().register(crate::operations::support::catalog());
+                setup.resource(Owner::default()).resource(ParentOwner);
+                setup.resource(super::super::cases::Destination("fixture"));
+            },
+        )
+        .await
+        .unwrap();
         let mut manager = PluginManager::new(candidate()).unwrap();
         let mut host = host(runtime.operations.clone());
         manager.initialize(&mut host).await.unwrap();
@@ -68,10 +72,10 @@ async fn callbacks_guard_admission() {
         assert!(matches!(refused, Err(Error::InvalidInput { field: "operation preparation bytes", .. })));
         assert!(!encoded.load(Ordering::SeqCst));
         manager.shutdown(&mut host).await.unwrap();
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
     {
-        let runtime = super::super::runtime_with_preparation(NonZeroUsize::new(128).unwrap()).await;
+        let runtime = super::runtime_with_preparation(NonZeroUsize::new(128).unwrap()).await;
         let mut manager = PluginManager::new(candidate()).unwrap();
         let mut host = host(runtime.operations.clone());
         manager.initialize(&mut host).await.unwrap();
@@ -122,7 +126,7 @@ async fn callbacks_guard_admission() {
         let bytes = submitted.unwrap().await.unwrap();
         assert_eq!(String::decode(&bytes).unwrap(), "live:1");
         manager.shutdown(&mut host).await.unwrap();
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
@@ -151,7 +155,7 @@ async fn plugin_catalog_lifecycle() {
     manager.shutdown(&mut host).await.unwrap();
     assert!(runtime.operations.definitions().is_empty());
     assert!(matches!(runtime.operations.stage_plugin(host.scope.as_ref().unwrap(), |_| Ok(())), Err(Error::Closing { .. })));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -169,7 +173,7 @@ async fn staging_releases_names() {
     assert_eq!(runtime.operations.owner(Compute::ID).unwrap().as_str(), "fixture");
     assert_eq!(runtime.operation(request()).run().await.unwrap().value, 7);
     manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -188,7 +192,7 @@ async fn dropped_receipt_defers() {
     replacement.initialize(&mut next).await.unwrap();
     assert_eq!(runtime.operations.owner(Compute::ID).unwrap().as_str(), "fixture");
     replacement.shutdown(&mut next).await.unwrap();
-    running.runtime.stop().await.unwrap();
+    running.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -212,7 +216,7 @@ async fn unregister_cancel_retained() {
     replacement.initialize(&mut next).await.unwrap();
     assert_eq!(runtime.operation(request()).run().await.unwrap().value, 7);
     replacement.shutdown(&mut next).await.unwrap();
-    running.runtime.stop().await.unwrap();
+    running.runtime.shutdown().await.unwrap();
 }
 
 fn assert_registration_conflict(result: Result<()>) {
@@ -309,7 +313,7 @@ async fn plugin_caller_authorization() {
             grpc_call::<super::super::cases::EchoDeclaration>(harmos_runtime::grpc::server::Authority::Plugin(caller.clone())).await;
         assert_eq!(response.headers()["grpc-status"], "16");
     }
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -337,7 +341,7 @@ async fn operation_cache_partitioned() {
     assert!(!first.ptr_eq(&next));
     assert!(host_response.ptr_eq(&runtime.operation(keyed()).run().await.unwrap()));
     manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -353,7 +357,7 @@ async fn requirement_revokes_operation() {
     assert!(matches!(replacement.submit::<Shared>(Shared(request())), Err(Error::OperationUnauthorized { .. })));
     assert_eq!(runtime.operation(Shared(request())).run().await.unwrap().value, 7);
     manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -382,7 +386,7 @@ async fn queued_operations_recheck() {
     assert!(matches!(queued.await, Err(Error::OperationCaller { .. })));
     assert_eq!(host.owner.runs.load(std::sync::atomic::Ordering::SeqCst), 1);
     manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -393,7 +397,7 @@ async fn unmanaged_endpoint_refused() {
     assert!(endpoint.scope().is_none());
     assert!(matches!(runtime.operations.caller(&endpoint.caller()), Err(Error::OperationCaller { .. })));
     drop(endpoint);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -425,7 +429,7 @@ async fn encoded_calls_authorized() {
     }
     assert_eq!(host.owner.prepared.load(std::sync::atomic::Ordering::SeqCst), prepared);
     manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -451,7 +455,7 @@ async fn activation_refuses_incomplete() {
         assert_eq!(host.owner.prepared.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert_eq!(host.owner.runs.load(std::sync::atomic::Ordering::SeqCst), 0);
         manager.shutdown(&mut host).await.unwrap();
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 
     for missing in 0..3 {
@@ -490,7 +494,7 @@ async fn activation_refuses_incomplete() {
         assert!(runtime.operations.definitions().is_empty());
         assert!(!host.scope.as_ref().unwrap().is_ready());
         manager.shutdown(&mut host).await.unwrap();
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
@@ -508,7 +512,10 @@ async fn preparation_credit_expired() {
 
 #[tokio::test]
 async fn provider_selection_reload() {
-    let runtime = runtime().await;
+    let runtime = super::super::runtime_with(|setup| {
+        setup.resource(SelectedOwner("shared"));
+    })
+    .await;
     let mut host = SelectedHost {
         operations: runtime.operations.clone(),
         scopes: BTreeMap::new(),
@@ -519,8 +526,17 @@ async fn provider_selection_reload() {
     let contract = WireDeclaration::of::<SelectedDeclaration>().contract().unwrap();
     let first = runtime.operations.capture_callback(&host.scopes["first"], &contract).unwrap();
     let second = runtime.operations.capture_callback(&host.scopes["second"], &contract).unwrap();
+    let first_probe = first.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("probe").encode())).unwrap();
+    let first_provider = first_probe.generation();
+    assert_eq!(String::decode(&first_probe.await.unwrap()).unwrap(), "shared:probe");
+    let second_probe = second.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("probe").encode())).unwrap();
+    let second_provider = second_probe.generation();
+    assert_ne!(first_provider, second_provider);
+    assert_eq!(String::decode(&second_probe.await.unwrap()).unwrap(), "shared:probe");
     let old_client = runtime.operations.caller(&host.callers["client"]).unwrap();
-    assert_eq!(old_client.call::<SelectedDeclaration>(SelectedDeclaration::from("before")).await.unwrap().as_str(), "first:before");
+    let before = old_client.submit::<SelectedDeclaration>(SelectedDeclaration::from("before")).unwrap();
+    assert_eq!(before.generation(), first_provider);
+    assert_eq!(before.await.unwrap().as_str(), "shared:before");
     assert!(matches!(
         runtime.operation(SelectedDeclaration::from("ambiguous")).run().await,
         Err(Error::InvalidInput { field: "operation provider", .. })
@@ -533,27 +549,34 @@ async fn provider_selection_reload() {
     assert_eq!(host.scopes["first"].generation(), first_generation);
     assert_eq!(host.scopes["second"].generation(), second_generation);
     let client = runtime.operations.caller(&host.callers["client"]).unwrap();
-    assert_eq!(client.call::<SelectedDeclaration>(SelectedDeclaration::from("after")).await.unwrap().as_str(), "second:after");
-    let first_payload = first.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("callback").encode())).unwrap().await.unwrap();
-    assert_eq!(String::decode(&first_payload).unwrap(), "first:callback");
+    let after = client.submit::<SelectedDeclaration>(SelectedDeclaration::from("after")).unwrap();
+    assert_eq!(after.generation(), second_provider);
+    assert_eq!(after.await.unwrap().as_str(), "shared:after");
+    let callback = first.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("callback").encode())).unwrap();
+    assert_eq!(callback.generation(), first_provider);
+    let first_payload = callback.await.unwrap();
+    assert_eq!(String::decode(&first_payload).unwrap(), "shared:callback");
 
     manager.reload(selected_candidate("second", false), &mut host).await.unwrap();
     assert!(matches!(
         first.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("retired").encode())),
         Err(Error::Closing { .. })
     ));
-    let second_payload =
-        second.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("surviving").encode())).unwrap().await.unwrap();
-    assert_eq!(String::decode(&second_payload).unwrap(), "second:surviving");
+    let surviving = second.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("surviving").encode())).unwrap();
+    assert_eq!(surviving.generation(), second_provider);
+    let second_payload = surviving.await.unwrap();
+    assert_eq!(String::decode(&second_payload).unwrap(), "shared:surviving");
     assert_eq!(host.scopes["second"].generation(), second_generation);
-    assert_eq!(client.call::<SelectedDeclaration>(SelectedDeclaration::from("unchanged")).await.unwrap().as_str(), "second:unchanged");
+    let unchanged = client.submit::<SelectedDeclaration>(SelectedDeclaration::from("unchanged")).unwrap();
+    assert_eq!(unchanged.generation(), second_provider);
+    assert_eq!(unchanged.await.unwrap().as_str(), "shared:unchanged");
     manager.shutdown(&mut host).await.unwrap();
     assert!(matches!(
         second.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("closed").encode())),
         Err(Error::Closing { .. })
     ));
     drop((first, second, client, old_client, manager, host));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[cfg(feature = "grpc")]

@@ -98,6 +98,7 @@ pub struct HostContext {
     admission: Admission,
     source: Source,
     origin: Origin,
+
     #[cfg(feature = "plugin-sidecar")]
     retirement: bool,
 }

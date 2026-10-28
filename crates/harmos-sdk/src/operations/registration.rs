@@ -22,7 +22,7 @@ use std::pin::Pin;
 
 // Local Imports
 use super::{
-    Carrier, Contract, Dependencies, Executable, ExecutionContext, OperationDeclaration, OperationDefinition, Resource, ServingError,
+    Carrier, Contract, Executable, ExecutionContext, OperationDeclaration, OperationDefinition, Resource, ResourceSet, ServingError,
     WireDeclaration, WireTable,
 };
 use crate::services::Service;
@@ -35,16 +35,24 @@ use crate::{Message, ServicePolicy};
 /* === Type Aliases === */
 
 pub type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, ServingError>> + Send + 'a>>;
-type Install = fn(&mut WireTable, Dependencies, Contract) -> Result<(), ServingError>;
+type Install = fn(&mut WireTable, ResourceSet, Contract) -> Result<(), ServingError>;
 type InitializeService = fn(ExecutionContext) -> ServiceFuture<'static, Box<dyn ServiceInstance>>;
-type PrepareNative = fn(Dependencies, Box<dyn Any + Send>, Box<dyn Any + Send>) -> Result<Box<dyn NativeInstance>, ServingError>;
-type PrepareEncoded = fn(Dependencies, &[u8]) -> Result<PreparedNative, ServingError>;
+type PrepareNative = fn(ResourceSet, Box<dyn Any + Send>, Box<dyn Any + Send>) -> Result<Box<dyn NativeInstance>, ServingError>;
+type PrepareEncoded = fn(ResourceSet, &[u8]) -> Result<PreparedNative, ServingError>;
 
 /* === Structs === */
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
+pub struct Catalog {
+    pub name: &'static str,
+    pub declarations: &'static [crate::catalog::Node<WireDeclaration>],
+    pub callees: &'static [crate::catalog::Node<&'static [WireDeclaration]>],
+    identity: fn() -> std::any::TypeId,
+    factory: fn() -> RegistrationBatch,
+}
+
+#[derive(Clone, Default)]
 pub struct RegistrationBatch {
-    pub dependencies: Dependencies,
     pub operations: Vec<OperationFactory>,
     pub services: Vec<ServiceFactory>,
 }
@@ -52,6 +60,7 @@ pub struct RegistrationBatch {
 pub struct PreparedNative {
     #[cfg(feature = "streaming")]
     pub streams: Option<super::WireStreams>,
+
     pub instance: Box<dyn NativeInstance>,
     pub grant: Option<crate::plugin::Grant>,
     pub key: Option<super::CacheKey>,
@@ -64,17 +73,19 @@ pub struct OperationFactory {
     declared: fn() -> OperationDefinition,
     builtin: bool,
     resources: &'static [Resource],
-    pub dependencies: Dependencies,
     contract: fn(&harmos_domain::config::SchemaSettings) -> Result<Contract, super::ContractError>,
     install: Install,
     native: PrepareNative,
     endpoints_valid: fn() -> bool,
     native_types: fn() -> (std::any::TypeId, std::any::TypeId, std::any::TypeId),
     encoded: PrepareEncoded,
+
     #[cfg(all(feature = "grpc", feature = "streaming"))]
-    grpc: fn(Dependencies, &[u8], super::WireStreamLimits) -> Result<PreparedNative, ServingError>,
+    grpc: fn(ResourceSet, &[u8], super::WireStreamLimits) -> Result<PreparedNative, ServingError>,
+
     #[cfg(all(feature = "grpc", feature = "streaming"))]
     grpc_memory: fn(&[u8]) -> Result<usize, crate::MessageError>,
+
     decoding_memory: fn(&[u8]) -> Result<usize, crate::MessageError>,
 }
 
@@ -82,26 +93,27 @@ pub struct OperationFactory {
 pub struct ServiceFactory {
     pub local_id: String,
     pub policy: ServicePolicy,
-    pub dependencies: Dependencies,
     initialize: InitializeService,
 }
 
 struct InitializedService<S: Service> {
     service: S,
-    dependencies: Dependencies,
 }
 
 struct NativeOperation<O: Carrier> {
-    dependencies: Dependencies,
+    dependencies: ResourceSet,
     operation: Option<O>,
     request: <O::Declaration as OperationDeclaration>::Request,
     endpoints: O::StreamEndpoints,
     stopped: bool,
     encoded: bool,
+
     #[cfg(all(feature = "grpc", feature = "streaming"))]
     protobuf: bool,
+
     #[cfg(feature = "streaming")]
     streams: Option<super::WireStreams>,
+
     #[cfg(feature = "streaming")]
     epoch: u64,
 }
@@ -109,6 +121,13 @@ struct NativeOperation<O: Carrier> {
 /* === Enums === */
 
 /* === Traits === */
+
+pub trait OperationCatalog: 'static {
+    const CATALOG: Catalog;
+
+    #[doc(hidden)]
+    fn batch() -> RegistrationBatch;
+}
 
 pub trait ServiceInstance: Send {
     fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ()>;
@@ -127,13 +146,34 @@ pub trait NativeInstance: Send {
 
 /* === Implementations === */
 
-impl RegistrationBatch {
-    pub fn new(dependencies: Dependencies) -> Self {
+impl Catalog {
+    pub const fn of<C: OperationCatalog>(
+        name: &'static str, declarations: &'static [crate::catalog::Node<WireDeclaration>],
+        callees: &'static [crate::catalog::Node<&'static [WireDeclaration]>],
+    ) -> Self {
         Self {
-            dependencies,
-            operations: Vec::new(),
-            services: Vec::new(),
+            name,
+            declarations,
+            callees,
+            identity: std::any::TypeId::of::<C>,
+            factory: C::batch,
         }
+    }
+
+    #[doc(hidden)]
+    pub fn identity(&self) -> std::any::TypeId {
+        (self.identity)()
+    }
+
+    #[doc(hidden)]
+    pub fn batch(&self) -> RegistrationBatch {
+        (self.factory)()
+    }
+}
+
+impl RegistrationBatch {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn operation<O: Executable>(self) -> Self {
@@ -160,7 +200,6 @@ impl RegistrationBatch {
             definition: D::definition(),
             declared: D::definition,
             builtin: std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>(),
-            dependencies: self.dependencies.clone(),
             contract: |settings| {
                 if std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>() {
                     return crate::observers::contract();
@@ -277,12 +316,10 @@ impl RegistrationBatch {
         self.services.push(ServiceFactory {
             local_id: local_id.to_owned(),
             policy,
-            dependencies: self.dependencies.clone(),
             initialize: |context| {
                 Box::pin(async move {
-                    let dependencies = context.dependencies().clone();
                     let service = S::initialize(context).await.map_err(service_error)?;
-                    Ok(Box::new(InitializedService { service, dependencies }) as Box<dyn ServiceInstance>)
+                    Ok(Box::new(InitializedService { service }) as Box<dyn ServiceInstance>)
                 })
             },
         });
@@ -300,9 +337,8 @@ impl OperationFactory {
     }
 
     // Every Declared Resource Comes From The Snapshot Or The Carrier's Execution Context.
-    pub fn verify_resources(&self, provided: &[std::any::TypeId]) -> Result<(), ServingError> {
-        let missing =
-            self.resources.iter().find(|resource| !self.dependencies.contains(resource.id()) && !provided.contains(&resource.id()));
+    pub fn verify_resources(&self, resources: &ResourceSet, provided: &[std::any::TypeId]) -> Result<(), ServingError> {
+        let missing = self.resources.iter().find(|resource| !resources.contains(resource.id()) && !provided.contains(&resource.id()));
         match missing {
             Some(resource) => Err(ServingError::Resource {
                 operation: self.definition.id.to_string(),
@@ -325,17 +361,31 @@ impl OperationFactory {
         Ok(())
     }
 
+    #[doc(hidden)]
+    pub fn missing_resources(&self, resources: &ResourceSet, provided: &[std::any::TypeId]) -> Vec<super::StartupError> {
+        self.resources
+            .iter()
+            .filter(|resource| !resources.contains(resource.id()) && !provided.contains(&resource.id()))
+            .map(|resource| super::StartupError::MissingResource {
+                operation: self.definition.id.to_string(),
+                resource: resource.name(),
+            })
+            .collect()
+    }
+
     pub fn decoding_memory(&self, payload: &[u8]) -> Result<usize, crate::MessageError> {
         (self.decoding_memory)(payload)
     }
 
-    pub fn prepare_encoded(&self, payload: &[u8]) -> Result<PreparedNative, ServingError> {
-        (self.encoded)(self.dependencies.clone(), payload)
+    pub fn prepare_encoded(&self, resources: ResourceSet, payload: &[u8]) -> Result<PreparedNative, ServingError> {
+        (self.encoded)(resources, payload)
     }
 
     #[cfg(all(feature = "grpc", feature = "streaming"))]
-    pub fn prepare_grpc(&self, payload: &[u8], limits: super::WireStreamLimits) -> Result<PreparedNative, ServingError> {
-        (self.grpc)(self.dependencies.clone(), payload, limits)
+    pub fn prepare_grpc(
+        &self, resources: ResourceSet, payload: &[u8], limits: super::WireStreamLimits,
+    ) -> Result<PreparedNative, ServingError> {
+        (self.grpc)(resources, payload, limits)
     }
     #[cfg(all(feature = "grpc", feature = "streaming"))]
     pub fn grpc_decoding_memory(&self, payload: &[u8]) -> Result<usize, crate::MessageError> {
@@ -343,9 +393,9 @@ impl OperationFactory {
     }
 
     pub fn prepare_native(
-        &self, request: Box<dyn Any + Send>, endpoints: Box<dyn Any + Send>,
+        &self, resources: ResourceSet, request: Box<dyn Any + Send>, endpoints: Box<dyn Any + Send>,
     ) -> Result<Box<dyn NativeInstance>, ServingError> {
-        (self.native)(self.dependencies.clone(), request, endpoints)
+        (self.native)(resources, request, endpoints)
     }
 
     pub fn contract(&self) -> Result<Contract, super::ContractError> {
@@ -358,9 +408,10 @@ impl OperationFactory {
 
     pub fn install(self, table: &mut WireTable) -> Result<(), ServingError> {
         self.validate()?;
-        self.verify_resources(table.provided())?;
+        self.verify_resources(table.owner_resources(), table.provided())?;
         let contract = self.contract()?;
-        (self.install)(table, self.dependencies, contract)
+        let resources = table.owner_resources().clone();
+        (self.install)(table, resources, contract)
     }
 }
 
@@ -372,7 +423,7 @@ impl<O: Carrier> NativeInstance for NativeOperation<O> {
     fn initialize(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ()> {
         Box::pin(async move {
             if self.operation.is_none() {
-                let context = context.for_registration(self.dependencies.clone());
+                let context = context.with_resources(self.dependencies.clone());
                 self.operation = Some(O::bind(context).await.map_err(operation_error::<O>)?);
             }
             Ok(())
@@ -382,7 +433,7 @@ impl<O: Carrier> NativeInstance for NativeOperation<O> {
     fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, super::response::ErasedResponse> {
         Box::pin(async move {
             let operation = self.operation.as_mut().ok_or(ServingError::Uninitialized)?;
-            let context = context.for_registration(self.dependencies.clone());
+            let context = context.with_resources(self.dependencies.clone());
             #[cfg(feature = "streaming")]
             let attempt = if let Some(streams) = &self.streams {
                 self.epoch = self.epoch.checked_add(1).ok_or(ServingError::StreamPhase)?;
@@ -439,13 +490,13 @@ impl<O: Carrier> NativeInstance for NativeOperation<O> {
 
 impl ServiceFactory {
     pub fn initialize(&self, context: ExecutionContext) -> ServiceFuture<'static, Box<dyn ServiceInstance>> {
-        (self.initialize)(context.for_registration(self.dependencies.clone()))
+        (self.initialize)(context)
     }
 }
 
 impl<S: Service> ServiceInstance for InitializedService<S> {
     fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ()> {
-        Box::pin(async move { self.service.run(context.for_registration(self.dependencies.clone())).await.map_err(service_error) })
+        Box::pin(async move { self.service.run(context).await.map_err(service_error) })
     }
     fn stop(&mut self) -> ServiceFuture<'_, ()> {
         Box::pin(async move { self.service.stop().await.map_err(service_error) })
@@ -478,6 +529,15 @@ mod tests {
     };
 
     struct Worker(Arc<AtomicUsize>);
+
+    struct ReadCatalog;
+
+    impl OperationCatalog for ReadCatalog {
+        const CATALOG: Catalog = Catalog::of::<Self>("ReadCatalog", &[], &[]);
+        fn batch() -> RegistrationBatch {
+            RegistrationBatch::new().operation::<Read>()
+        }
+    }
 
     #[crate::operation(harmos_path = crate, resources = [u64], id = "fixture.read", response = u64,
         policy = crate::OperationPolicy {
@@ -538,13 +598,13 @@ mod tests {
     fn native_response_retains_owner_across_retries_and_cleanup() {
         let value = Arc::new(42u64);
         let retained = Arc::downgrade(&value);
-        let mut dependencies = Dependencies::new();
+        let mut dependencies = ResourceSet::new();
         dependencies.insert(value).unwrap();
-        let batch = RegistrationBatch::new(dependencies).operation::<Read>();
+        let batch = RegistrationBatch::new().operation::<Read>();
         let factory = &batch.operations[0];
-        assert!(factory.prepare_native(Box::new(7u64), Box::new(())).is_err());
-        let mut invocation = factory.prepare_native(Box::new(Read), Box::new(())).unwrap();
-        let context = ExecutionContext::new(Dependencies::new(), super::super::CallContext::default());
+        assert!(factory.prepare_native(dependencies.clone(), Box::new(7u64), Box::new(())).is_err());
+        let mut invocation = factory.prepare_native(dependencies, Box::new(Read), Box::new(())).unwrap();
+        let context = ExecutionContext::new(ResourceSet::new(), super::super::CallContext::default());
 
         ready(invocation.initialize(context.clone()));
         let first = ready(invocation.run(context.clone())).restore::<u64>().unwrap();
@@ -566,12 +626,12 @@ mod tests {
     fn encoded_factory_preserves_request_cache_key_and_response() {
         use crate::Message;
 
-        let mut dependencies = Dependencies::new();
+        let mut dependencies = ResourceSet::new();
         dependencies.insert(Arc::new(42u64)).unwrap();
-        let batch = RegistrationBatch::new(dependencies).operation::<Read>();
-        let mut prepared = batch.operations[0].prepare_encoded(&Read.encode()).unwrap();
+        let batch = RegistrationBatch::new().operation::<Read>();
+        let mut prepared = batch.operations[0].prepare_encoded(dependencies, &Read.encode()).unwrap();
         assert_eq!(prepared.key, Read::key(&Read));
-        let context = ExecutionContext::new(Dependencies::new(), super::super::CallContext::default());
+        let context = ExecutionContext::new(ResourceSet::new(), super::super::CallContext::default());
         ready(prepared.instance.initialize(context.clone()));
         let response = ready(prepared.instance.run(context)).restore::<Vec<u8>>().unwrap();
         assert_eq!(u64::decode(&response).unwrap(), 42);
@@ -596,7 +656,7 @@ mod tests {
 
     #[test]
     fn factory_rejects_a_substituted_declaration() {
-        let mut batch = RegistrationBatch::new(Dependencies::new()).operation::<Read>();
+        let mut batch = RegistrationBatch::new().operation::<Read>();
         batch.operations[0].definition.id = crate::Identifier::new("different").unwrap();
         assert!(matches!(batch.operations[0].validate(), Err(ServingError::Catalog)));
     }
@@ -605,13 +665,13 @@ mod tests {
     fn wire_identity_fences_replacement_before_decoding() {
         use crate::operations::{ServingError, WireTable};
         use crate::{Message, QualifiedId};
-        let mut dependencies = Dependencies::new();
-        dependencies.insert(Arc::new(42u64)).unwrap();
-        let batch = RegistrationBatch::new(dependencies).operation::<Read>();
+        let batch = RegistrationBatch::new().operation::<Read>();
         let fingerprint = crate::OperationDefinition::of::<Read>().unwrap().fingerprint.0;
         let mut table = WireTable::new("fixture").unwrap();
+        table.resource(42u64);
         table.capacity(std::num::NonZeroUsize::MIN);
         table.register(batch.clone()).unwrap();
+        table.validate_binding().unwrap();
         assert!(matches!(table.prepare(1, "spoof.fixture.read", fingerprint, 1, Read.encode()), Err(ServingError::Unknown { .. })));
         assert!(matches!(table.prepare(1, "fixture.fixture.read", [0; 32], 1, vec![255]), Err(ServingError::Identity { .. })));
         assert!(matches!(table.prepare(1, "fixture.fixture.read", fingerprint, 0, vec![255]), Err(ServingError::Identity { .. })));
@@ -627,20 +687,68 @@ mod tests {
     #[test]
     fn service_factory_reconstructs_from_its_snapshot() {
         let counter = Arc::new(AtomicUsize::new(0));
-        let mut dependencies = Dependencies::new();
+        let mut dependencies = ResourceSet::new();
         dependencies.insert(counter.clone()).unwrap();
         let policy = ServicePolicy {
             stop_timeout: std::time::Duration::from_secs(1),
             restart: crate::RestartPolicy::Never,
         };
-        let batch = RegistrationBatch::new(dependencies).service::<Worker>("worker", policy);
+        let batch = RegistrationBatch::new().service::<Worker>("worker", policy);
         let factory = &batch.services[0];
-        let context = ExecutionContext::new(Dependencies::new(), super::super::CallContext::default());
+        let context = ExecutionContext::new(dependencies, super::super::CallContext::default());
         let mut first = factory.initialize(context.clone());
         let mut second = factory.initialize(context);
         let mut task = std::task::Context::from_waker(std::task::Waker::noop());
         assert!(matches!(first.as_mut().poll(&mut task), std::task::Poll::Ready(Ok(_))));
         assert!(matches!(second.as_mut().poll(&mut task), std::task::Poll::Ready(Ok(_))));
         assert_eq!(counter.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn binding_errors_aggregate() {
+        use crate::StartupError;
+        let mut table = WireTable::new("fixture").unwrap();
+        table.resource(7u32).resource(8u32);
+        table.catalog(&ReadCatalog::CATALOG).catalog(&ReadCatalog::CATALOG);
+        assert!(table.definitions().is_empty());
+
+        let Err(ServingError::Startup(error)) = table.validate_binding() else {
+            panic!("invalid binding must be refused");
+        };
+        let StartupError::Multiple { errors } = *error else {
+            panic!("independent binding errors must be aggregated");
+        };
+        assert_eq!(errors.len(), 3);
+        assert!(errors.iter().any(|error| matches!(error, StartupError::DuplicateResource { .. })));
+        assert!(errors.iter().any(|error| matches!(error, StartupError::DuplicateCatalog { .. })));
+        assert!(errors.iter().any(|error| matches!(error, StartupError::MissingResource { .. })));
+        assert!(table.definitions().is_empty());
+        assert_eq!(*table.context().resource::<u32>().unwrap(), 7);
+    }
+
+    #[test]
+    fn frozen_dynamic_resources() {
+        let mut table = WireTable::new("fixture").unwrap();
+        let owner = Arc::new(41u32);
+        table.resource::<u32>(owner.clone());
+        table.validate_binding().unwrap();
+        assert!(Arc::ptr_eq(&owner, &table.context().resource::<u32>().unwrap()));
+
+        let error = table.register(ReadCatalog::batch()).unwrap_err();
+        assert!(matches!(error, ServingError::Resource { .. }));
+        table.resource(42u64);
+        assert!(table.validate_binding().is_err());
+        assert!(table.context().resource::<u64>().is_err());
+        assert!(table.definitions().is_empty());
+    }
+
+    #[test]
+    fn resource_order_independence() {
+        let mut table = WireTable::new("fixture").unwrap();
+        table.catalog(&ReadCatalog::CATALOG).resource(42u64);
+        assert!(table.definitions().is_empty());
+        table.validate_binding().unwrap();
+        assert_eq!(table.definitions().len(), 1);
+        assert_eq!(*table.context().resource::<u64>().unwrap(), 42);
     }
 }

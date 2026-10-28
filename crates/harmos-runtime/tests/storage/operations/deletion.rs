@@ -211,5 +211,5 @@ async fn close_settles_deletion() {
     closing.await.unwrap();
     assert!(f.data.mutation_receipts.lock().unwrap().contains_key(&request.mutation));
     assert!(f.data.blobs.lock().unwrap().is_empty());
-    f.runtime.stop().await.unwrap();
+    f.runtime.shutdown().await.unwrap();
 }

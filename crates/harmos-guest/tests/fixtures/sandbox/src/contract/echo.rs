@@ -32,15 +32,24 @@ use super::{Echoed, PROBE};
 
 /* === Structs === */
 
-#[harmos_guest::operation(
-    harmos_path = ::harmos_guest,
+#[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(
+    harmos_path = ::harmos_domain,
     resources = [crate::Owner, harmos_guest::kit::Context],
     operations = [super::ProviderEchoOperation, harmos_guest::builtins::streams::Publish],
     id = "probe.echo",
     response = Echoed,
     policy = PROBE,
     visibility = Shared,
-)]
+))]
+#[cfg_attr(target_arch = "wasm32", harmos::guest::operation(
+    harmos_path = ::harmos::guest,
+    resources = [crate::Owner, harmos::guest::kit::Context],
+    operations = [super::ProviderEchoOperation, harmos::guest::builtins::streams::Publish],
+    id = "probe.echo",
+    response = Echoed,
+    policy = PROBE,
+    visibility = Shared,
+))]
 #[derive(Clone, PartialEq)]
 
 pub struct EchoOperation {
@@ -76,7 +85,7 @@ mod runtime {
     // Local Imports
     use super::super::ProviderEchoOperation;
     use super::{EchoOperation, Echoed};
-    use harmos_guest::{Host, OperationRefusal};
+    use harmos::guest::{Host, OperationRefusal};
 
     /* === Constants === */
 
@@ -92,12 +101,12 @@ mod runtime {
 
     /* === Implementations === */
 
-    impl harmos_guest::Operation for EchoOperation {
+    impl harmos::guest::Operation for EchoOperation {
         type Error = OperationRefusal;
 
-        async fn run(self, sdk: harmos_guest::Context<'_, Self>) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
+        async fn run(self, sdk: harmos::guest::Context<'_, Self>) -> Result<harmos::guest::operations::Response<Echoed>, OperationRefusal> {
             let owner = sdk.resource::<crate::Owner>();
-            let carrier = sdk.resource::<harmos_guest::kit::Context>();
+            let carrier = sdk.resource::<harmos::guest::kit::Context>();
             let context = carrier.as_ref();
             let result: Result<Echoed, OperationRefusal> = async move {
                 // Calls Through The Saved Initialization Context
@@ -121,7 +130,7 @@ mod runtime {
                     return saved
                         .call::<super::super::ProviderEchoOperation>(ProviderEchoOperation { say: value.into() })
                         .await
-                        .map(harmos_guest::operations::Response::into_owned)
+                        .map(harmos::guest::operations::Response::into_owned)
                         .map_err(OperationRefusal::of);
                 }
 
@@ -130,7 +139,7 @@ mod runtime {
                     return sdk
                         .operation(ProviderEchoOperation { say: say.to_owned() })
                         .await
-                        .map(harmos_guest::operations::Response::into_owned)
+                        .map(harmos::guest::operations::Response::into_owned)
                         .map_err(OperationRefusal::of);
                 }
                 if let Some(value) = self.say.strip_prefix("publish:") {

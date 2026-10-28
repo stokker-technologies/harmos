@@ -21,7 +21,7 @@ use std::sync::{
 // Third Party Imports
 use tokio::sync::Notify;
 // Local Imports
-use super::{Bank, assembly};
+use super::{Bank, Ledger, Runtime, assembly};
 use harmos_runtime::operations::OperationManager;
 use harmos_runtime::services::ServiceDefinition;
 use harmos_runtime::{Error, services::ServiceContext, services::ServiceStatus};
@@ -52,14 +52,15 @@ struct Resources {
 
 /* === Private Functions === */
 
-fn register(manager: &OperationManager<<Bank as harmos_runtime::Application>::Lanes>) {
+fn register(manager: &OperationManager<<Bank as harmos_runtime::Application>::Lanes>, resources: Arc<Resources>) {
     manager
         .register_service(
             ServiceDefinition {
                 id: "scoped".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |resources: Arc<Resources>| {
+            move |_: Arc<harmos_sdk::ExecutionContext>| {
+                let resources = resources.clone();
                 move |mut service: ServiceContext<Bank>| {
                     let resources = resources.clone();
                     async move {
@@ -79,12 +80,16 @@ fn register(manager: &OperationManager<<Bank as harmos_runtime::Application>::La
 
 #[tokio::test]
 async fn control_retains_join() {
-    let runtime = assembly().runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        assembly(setup);
+    })
+    .await
+    .unwrap();
     let manager = &runtime.operations;
-    register(manager);
     let resources = Arc::new(Resources::default());
-    let first = manager.submit_with_resources_at("scoped", resources.clone()).await.unwrap();
-    let second = manager.submit_with_resources_at("scoped", resources.clone()).await.unwrap();
+    register(manager, resources.clone());
+    let first = manager.submit_resident("scoped").await.unwrap();
+    let second = manager.submit_resident("scoped").await.unwrap();
     first.ready().await.unwrap();
     assert_eq!(first.id(), second.id());
     assert_eq!(manager.resident_key(first.id()), manager.resident_key(second.id()));
@@ -110,7 +115,7 @@ async fn control_retains_join() {
     assert_eq!(resources.finished.load(SeqCst), 1);
     assert!(first.status().settled_at().is_some());
 
-    let replacement = manager.submit_with_resources_at("scoped", resources.clone()).await.unwrap();
+    let replacement = manager.submit_resident("scoped").await.unwrap();
     replacement.ready().await.unwrap();
     assert_ne!(replacement.id(), first.id());
     first.cancel();
@@ -124,19 +129,20 @@ async fn control_retains_join() {
     ));
     resources.cleanup.notify_one();
     replacement.release().await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn final_release_joins() {
-    let runtime = assembly().runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        assembly(setup);
+    })
+    .await
+    .unwrap();
     let manager = &runtime.operations;
-    register(manager);
     let resources = Arc::new(Resources::default());
-    let (first, second) = tokio::join!(
-        manager.submit_with_resources_at("scoped", resources.clone()),
-        manager.submit_with_resources_at("scoped", resources.clone())
-    );
+    register(manager, resources.clone());
+    let (first, second) = tokio::join!(manager.submit_resident("scoped"), manager.submit_resident("scoped"));
     let first = first.unwrap();
     let second = second.unwrap();
     first.ready().await.unwrap();
@@ -157,81 +163,25 @@ async fn final_release_joins() {
     resources.cleanup.notify_one();
     release.await.unwrap();
     assert_eq!(resources.finished.load(SeqCst), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn scope_retirement_revival() {
-    let runtime = assembly().runtime().await.unwrap();
-    let foreign = assembly().runtime().await.unwrap();
-    let manager = &runtime.operations;
-    register(manager);
-    let a = Arc::new(Resources::default());
-    let b = Arc::new(Resources::default());
-
-    let first = runtime.operations.submit_with_resources_at("scoped", a.clone()).await.unwrap();
-    let second = runtime.operations.submit_with_resources_at("scoped", b.clone()).await.unwrap();
-    first.ready().await.unwrap();
-    second.ready().await.unwrap();
-    assert_ne!(manager.resident_key(first.id()), manager.resident_key(second.id()));
-    assert_eq!(a.started.load(SeqCst), 1);
-    assert_eq!(b.started.load(SeqCst), 1);
-
-    assert!(matches!(manager.submit_resident("scoped").await, Err(Error::InvalidInput { .. })));
-    assert!(matches!(
-        foreign.operations.submit_with_resources_at("scoped", a.clone()).await,
-        Err(Error::NotRegistered { domain: "resident", .. })
-    ));
-
-    {
-        let stop = manager.retire_resources(&a);
-        tokio::pin!(stop);
-        tokio::select! {
-            _ = &mut stop => panic!("cleanup is gated"),
-            _ = a.stopping.notified() => {}
-        }
-    }
-
-    assert!(matches!(
-        manager.submit_with_resources_at("scoped", a.clone()).await,
-        Err(Error::Closing { domain })
-            if domain.ends_with("scope")
-    ));
-    assert_eq!(manager.resident(&manager.resident_key(first.id()).unwrap()).unwrap().leases, 0);
-
-    a.cleanup.notify_one();
-    manager.retire_resources(&a).await.unwrap();
-    assert_eq!(a.finished.load(SeqCst), 1);
-    assert!(manager.resident_key(first.id()).is_none());
-
-    let revived = manager.submit_with_resources_at("scoped", a.clone()).await.unwrap();
-    revived.ready().await.unwrap();
-    assert_ne!(revived.id(), first.id());
-    assert_eq!(a.started.load(SeqCst), 2);
-    assert!(matches!(manager.resident(&manager.resident_key(second.id()).unwrap()).unwrap().health, Some(ServiceStatus::Running { .. })));
-
-    first.release().await.unwrap();
-    a.cleanup.notify_one();
-    revived.release().await.unwrap();
-    b.cleanup.notify_one();
-    second.release().await.unwrap();
-
-    runtime.stop().await.unwrap();
-    foreign.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn dropped_lease_cleanup() {
-    let runtime = assembly().runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        assembly(setup);
+    })
+    .await
+    .unwrap();
     let manager = &runtime.operations;
-    register(manager);
     let resources = Arc::new(Resources::default());
-    let first = manager.submit_with_resources_at("scoped", resources.clone()).await.unwrap();
+    register(manager, resources.clone());
+    let first = manager.submit_resident("scoped").await.unwrap();
     first.ready().await.unwrap();
     let generation = first.id();
     drop(first);
     resources.stopping.notified().await;
-    let next = manager.submit_with_resources_at("scoped", resources.clone());
+    let next = manager.submit_resident("scoped");
     tokio::pin!(next);
     assert!(futures_util::poll!(&mut next).is_pending());
     assert_eq!(resources.started.load(SeqCst), 1);
@@ -243,16 +193,20 @@ async fn dropped_lease_cleanup() {
     assert_eq!(resources.started.load(SeqCst), 2);
     resources.cleanup.notify_one();
     second.release().await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn unregister_reserves_name() {
-    let runtime = assembly().runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        assembly(setup);
+    })
+    .await
+    .unwrap();
     let manager = &runtime.operations;
-    register(manager);
     let resources = Arc::new(Resources::default());
-    let stale = manager.submit_with_resources_at("scoped", resources.clone()).await.unwrap();
+    register(manager, resources.clone());
+    let stale = manager.submit_resident("scoped").await.unwrap();
     stale.ready().await.unwrap();
     {
         let remove = manager.unregister_resident("scoped");
@@ -262,7 +216,7 @@ async fn unregister_reserves_name() {
             _ = resources.stopping.notified() => {}
         }
         assert!(matches!(
-            manager.submit_with_resources_at("scoped", resources.clone()).await,
+            manager.submit_resident("scoped").await,
             Err(Error::Closing { domain })
                 if domain.ends_with("definition")
         ));
@@ -272,15 +226,15 @@ async fn unregister_reserves_name() {
                     id: "scoped".into(),
                     policy: harmos_runtime::services::POLICY
                 },
-                |_: Arc<Resources>| super::resident
+                |_: Arc<harmos_sdk::ExecutionContext>| super::resident
             ),
             Err(Error::AlreadyRegistered { .. })
         ));
         resources.cleanup.notify_one();
         remove.await.unwrap();
     }
-    register(manager);
-    let replacement = manager.submit_with_resources_at("scoped", resources.clone()).await.unwrap();
+    register(manager, resources.clone());
+    let replacement = manager.submit_resident("scoped").await.unwrap();
     replacement.ready().await.unwrap();
     assert_ne!(replacement.id(), stale.id());
     stale.release().await.unwrap();
@@ -291,7 +245,7 @@ async fn unregister_reserves_name() {
     ));
     resources.cleanup.notify_one();
     replacement.release().await.unwrap();
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -310,7 +264,11 @@ async fn shutdown_preserve_typed() {
         }
     }
 
-    let runtime = assembly().runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        assembly(setup);
+    })
+    .await
+    .unwrap();
     runtime
         .operations
         .register_service(
@@ -318,7 +276,7 @@ async fn shutdown_preserve_typed() {
                 id: "broken".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |_: Arc<()>| |_service: ServiceContext<Bank>| async { Err::<(), _>(Refused(42)) },
+            |_: Arc<harmos_sdk::ExecutionContext>| |_service: ServiceContext<Bank>| async { Err::<(), _>(Refused(42)) },
         )
         .unwrap();
     let lease = runtime.operations.submit_resident("broken").await.unwrap();
@@ -326,31 +284,8 @@ async fn shutdown_preserve_typed() {
     assert!(typed(&error), "{error:?}");
     assert!(typed(&lease.release().await.unwrap_err()));
     for _ in 0..2 {
-        assert!(typed(&runtime.stop().await.unwrap_err()));
+        assert!(typed(&runtime.shutdown().await.unwrap_err()));
     }
-}
-
-#[tokio::test]
-async fn shutdown_signals_scope() {
-    let runtime = assembly().runtime().await.unwrap();
-    register(&runtime.operations);
-    let a = Arc::new(Resources::default());
-    let b = Arc::new(Resources::default());
-    let first = runtime.operations.submit_with_resources_at("scoped", a.clone()).await.unwrap();
-    let second = runtime.operations.submit_with_resources_at("scoped", b.clone()).await.unwrap();
-    first.ready().await.unwrap();
-    second.ready().await.unwrap();
-    let stop = runtime.stop();
-    tokio::pin!(stop);
-    tokio::select! {
-        _ = &mut stop => panic!("both cleanups are gated"),
-        _ = async { a.stopping.notified().await; b.stopping.notified().await; } => {}
-    }
-    a.cleanup.notify_one();
-    b.cleanup.notify_one();
-    stop.await.unwrap();
-    assert_eq!(a.finished.load(SeqCst), 1);
-    assert_eq!(b.finished.load(SeqCst), 1);
 }
 
 #[tokio::test]
@@ -365,7 +300,11 @@ async fn unregister_drops_factory() {
             self.dropped.fetch_add(1, SeqCst);
         }
     }
-    let runtime = assembly().runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        assembly(setup);
+    })
+    .await
+    .unwrap();
     let dropped = Arc::new(AtomicUsize::new(0));
     let resource = Arc::new(Reentrant {
         manager: runtime.operations.clone(),
@@ -378,7 +317,7 @@ async fn unregister_drops_factory() {
                 id: "unused".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            move |_: Arc<()>| {
+            move |_: Arc<harmos_sdk::ExecutionContext>| {
                 let _owner = resource.clone();
                 super::resident
             },
@@ -386,12 +325,17 @@ async fn unregister_drops_factory() {
         .unwrap();
     runtime.operations.unregister_resident("unused").await.unwrap();
     assert_eq!(dropped.load(SeqCst), 1);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn resident_not_reinitialized() {
-    let runtime = assembly().service("one-shot", |_service| async { Ok::<(), std::io::Error>(()) }).runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        assembly(setup);
+        setup.settings().service("one-shot", |_service| async { Ok::<(), std::io::Error>(()) });
+    })
+    .await
+    .unwrap();
     let key = harmos_runtime::operations::resident::Key::root("one-shot");
     runtime
         .operations
@@ -401,12 +345,16 @@ async fn resident_not_reinitialized() {
         .unwrap();
     assert!(matches!(runtime.operations.submit_resident("one-shot").await, Err(Error::NotReady { domain: "retired assembly service" })));
     assert_eq!(runtime.operations.resident(&key).unwrap().health, Some(ServiceStatus::Stopped));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn factory_panic_reported() {
-    let runtime = assembly().runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        assembly(setup);
+    })
+    .await
+    .unwrap();
     runtime
         .operations
         .register_service(
@@ -414,13 +362,13 @@ async fn factory_panic_reported() {
                 id: "factory".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |fail: Arc<bool>| {
-                assert!(!*fail, "factory initialization failed");
+            |_: Arc<harmos_sdk::ExecutionContext>| {
+                assert!(std::hint::black_box(false), "factory initialization failed");
                 super::resident
             },
         )
         .unwrap();
-    let lease = runtime.operations.submit_with_resources_at("factory", Arc::new(true)).await.unwrap();
+    let lease = runtime.operations.submit_resident("factory").await.unwrap();
     assert!(matches!(lease.ready().await, Err(Error::TaskFailed { .. })));
     assert!(matches!(
         runtime.operations.resident(&runtime.operations.resident_key(lease.id()).unwrap()).unwrap().health,
@@ -429,7 +377,7 @@ async fn factory_panic_reported() {
             ..
         })
     ));
-    assert!(matches!(runtime.stop().await, Err(Error::TaskFailed { .. })));
+    assert!(matches!(runtime.shutdown().await, Err(Error::TaskFailed { .. })));
 }
 
 /* === Tests === */

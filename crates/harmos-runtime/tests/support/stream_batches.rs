@@ -64,10 +64,13 @@ struct Grouped {
 pub enum Lanes {
     #[default]
     Open,
+
     #[lane(serial)]
     Serial,
+
     #[lane(concurrent(2))]
     Concurrent,
+
     #[lane(unbounded)]
     Unbounded,
 }
@@ -83,13 +86,34 @@ enum Catalog {
 
 /* === Implementations === */
 
+impl harmos_runtime::Lifecycle for Probe {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl Application for Probe {
     type Lanes = Lanes;
     type State = ();
     type Transaction = Never;
     type Record = ();
     type Streams = Catalog;
-    type Resources = ();
 }
 
 /* === Public Functions === */
@@ -116,7 +140,7 @@ pub async fn raw_and_summary_delivery() {
         assert_eq!(a.fields[0].aggregate(harmos_runtime::Aggregate::Mean), Some(2.0));
         assert_eq!(a.fields[1].aggregate(harmos_runtime::Aggregate::Mean), Some(9.0));
     }
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     let Some(BatchItem::Summary(tail)) = first.next().await else { panic!("partial group") };
     assert_eq!(tail.count, 1);
     assert!(tail.partial);
@@ -156,13 +180,17 @@ pub async fn summary_cost() {
             values[4]
         );
     }
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Private Functions === */
 
 async fn runtime() -> Runtime<Probe> {
-    Runtime::<Probe>::builder((), ()).register(Catalog::catalog()).runtime().await.unwrap()
+    Runtime::<Probe>::launch_with((), (), |setup| {
+        setup.settings().register(Catalog::catalog());
+    })
+    .await
+    .unwrap()
 }
 
 /* === Tests === */

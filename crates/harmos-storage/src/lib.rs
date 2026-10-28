@@ -91,6 +91,8 @@ pub use writes::StorageSchema;
 // Standard Library Imports
 
 // Third Party Imports
+#[cfg(test)]
+extern crate harmos_domain as harmos;
 extern crate self as harmos_storage;
 
 // Local Imports

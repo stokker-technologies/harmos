@@ -406,7 +406,7 @@ async fn unbound_operations_refused() {
 }
 
 #[tokio::test]
-async fn declared_operation_calls_provider() {
+async fn declared_provider_call() {
     let _report = crate::report::system();
     let mut session = instantiate(&support::sandbox(), Stub::default()).await;
     session.initialize(r#""normal""#).await.unwrap();
@@ -417,7 +417,7 @@ async fn declared_operation_calls_provider() {
 }
 
 #[tokio::test]
-async fn missing_declared_resource_refuses_activation() {
+async fn missing_resource_refusal() {
     let _report = crate::report::system();
     let mut session = instantiate(&support::sandbox(), Stub::default()).await;
     assert!(session.initialize(r#""missing-resource""#).await.is_err());
@@ -425,7 +425,7 @@ async fn missing_declared_resource_refuses_activation() {
 }
 
 #[tokio::test]
-async fn attempts_clone_request_and_share_resources() {
+async fn shared_attempt_resources() {
     let _report = crate::report::system();
     use harmos_guest::OperationDeclaration;
     let mut session = instantiate(&support::sandbox(), Stub::default()).await;

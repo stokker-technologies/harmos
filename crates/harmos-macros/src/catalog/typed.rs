@@ -41,7 +41,21 @@ use crate::path::{self, HarmosPath};
 /* === Public Functions === */
 
 pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    match expand(attribute, item, true) {
+    match expand(attribute, item, true, false, false, true) {
+        Ok(expanded) => expanded,
+        Err(error) => error.to_compile_error(),
+    }
+}
+
+pub(crate) fn declare_runtime(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    match expand(attribute, item, true, true, false, true) {
+        Ok(expanded) => expanded,
+        Err(error) => error.to_compile_error(),
+    }
+}
+
+pub(crate) fn declare_domain(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    match expand(attribute, item, true, false, true, true) {
         Ok(expanded) => expanded,
         Err(error) => error.to_compile_error(),
     }
@@ -50,10 +64,12 @@ pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream 
 /* === Private Functions === */
 
 pub(super) fn projection(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
-    expand(attribute, item, false)
+    expand(attribute, item, false, false, false, true)
 }
 
-fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result<TokenStream, Error> {
+fn expand(
+    attribute: TokenStream, item: TokenStream, operations: bool, runtime: bool, domain: bool, emit_declaration: bool,
+) -> Result<TokenStream, Error> {
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute)?;
     let mut explicit = None;
     for argument in arguments {
@@ -64,16 +80,21 @@ fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result
             return Err(Error::new_spanned(argument, "harmos_path may be declared only once"));
         }
     }
-    let sdk = explicit.map(|path| HarmosPath::resolve(Some(path))).unwrap_or_else(HarmosPath::catalog);
+    let mut sdk = explicit.map(|path| HarmosPath::resolve(Some(path))).unwrap_or_else(HarmosPath::catalog);
+    if runtime {
+        sdk = sdk.runtime_enabled();
+    }
 
     let mut declared: ItemEnum = syn::parse2(item)?;
     let mut seen = std::collections::BTreeSet::new();
     let mut variants = std::collections::BTreeSet::new();
     let mut members = Vec::new();
     let mut helpers = Vec::new();
+    let mut helper_types = Vec::new();
     let mut direct = Vec::new();
     let catalog_name = declared.ident.clone();
     let catalog_generics = declared.generics.clone();
+    let gates = crate::operation::configuration(&declared.attrs)?;
     for variant in &mut declared.variants {
         if !variants.insert(variant.ident.to_string()) {
             return Err(Error::new_spanned(&variant.ident, "a catalog variant name may appear only once"));
@@ -125,15 +146,15 @@ fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result
                 #[cfg(not(#predicate))]
                 pub enum #helper #catalog_generics {}
             };
-            helpers.push(expand(quote!(harmos_path = #sdk), enabled, false)?);
-            helpers.push(expand(quote!(harmos_path = #sdk), disabled, false)?);
+            helper_types.push(quote!(#(#gates)* #enabled #(#gates)* #disabled));
+            helpers.push(expand(quote!(harmos_path = #sdk), enabled, operations, runtime, domain, false)?);
+            helpers.push(expand(quote!(harmos_path = #sdk), disabled, operations, runtime, domain, false)?);
             let (_, arguments, _) = catalog_generics.split_for_impl();
             members.push((syn::parse_quote!(#helper #arguments), true));
         }
         variant.attrs.retain(|attribute| !attribute.path().is_ident("nested"));
     }
 
-    let gates = crate::operation::configuration(&declared.attrs)?;
     let count = members.len();
     let name = &declared.ident;
     let mut visitor_name = "__HarmosVisitor".to_owned();
@@ -217,6 +238,58 @@ fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result
         lifetime_name.push('_');
     }
     let lifetime = syn::Lifetime::new(&format!("'{lifetime_name}"), proc_macro2::Span::mixed_site());
+    let execution_gate = sdk.execution_gate();
+    let mut execution_generics = declared.generics.clone();
+    execution_generics.make_where_clause().predicates.push(syn::parse_quote!(Self: 'static));
+    execution_generics.make_where_clause().predicates.push(syn::parse_quote!(Self: #sdk::catalog::Catalog<Registration>));
+    let (execution_impl, _, execution_where) = execution_generics.split_for_impl();
+    let execution = quote! {
+        #(#gates)*
+        #execution_gate
+        #[allow(unexpected_cfgs)]
+        const _: () = {
+            mod execution {
+            use super::*;
+            pub struct Registration;
+            impl #sdk::catalog::Visitor for Registration {
+                type Entry = fn(#sdk::__private::RegistrationBatch) -> #sdk::__private::RegistrationBatch;
+            }
+            impl<O> #sdk::catalog::Member<O> for Registration
+            where
+                O: #sdk::operations::Executable,
+            {
+                const ENTRY: Self::Entry = #sdk::__private::RegistrationBatch::operation::<O>;
+            }
+            impl #execution_impl #name #type_generics #execution_where {
+                pub const CATALOG: #sdk::operations::Catalog = #sdk::operations::Catalog::of::<Self>(
+                    ::core::stringify!(#name),
+                    <Self as #sdk::catalog::InertCatalog<#sdk::operations::Contracts, #sdk::operations::WireDeclaration>>::ENTRIES,
+                    <Self as #sdk::catalog::InertCatalog<#sdk::operations::Callees, &'static [#sdk::operations::WireDeclaration]>>::ENTRIES,
+                );
+            }
+
+            impl #execution_impl #sdk::operations::OperationCatalog for #name #type_generics #execution_where {
+                const CATALOG: #sdk::operations::Catalog = Self::CATALOG;
+
+                fn batch() -> #sdk::__private::RegistrationBatch {
+                    let mut batch = ::core::option::Option::Some(#sdk::__private::RegistrationBatch::new());
+                    let result: ::core::result::Result<(), ::core::convert::Infallible> =
+                        #sdk::catalog::Projection::try_for_each(
+                            &<Self as #sdk::catalog::Catalog<Registration>>::ENTRIES,
+                            |register| {
+                                let entries = batch.take().expect("registration projection retains its batch");
+                                batch = ::core::option::Option::Some(register(entries));
+                                ::core::result::Result::Ok(())
+                            },
+                        );
+                    match result { ::core::result::Result::Ok(()) => {}, ::core::result::Result::Err(error) => match error {} }
+                    batch.expect("registration projection retains its batch")
+                }
+            }
+            }
+        };
+    };
+    let execution = (!domain).then_some(execution);
     let methods = quote! {
         #(#gates)*
         const _: () = {
@@ -238,42 +311,7 @@ fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result
             }
         };
 
-        #(#gates)*
-        #[allow(unexpected_cfgs)]
-        const _: () = {
-            #[cfg(feature = "runtime")]
-            mod execution {
-            use super::*;
-            pub struct Registration<'a>(::core::marker::PhantomData<&'a ()>);
-            impl #sdk::catalog::Visitor for Registration<'_> {
-                type Entry = fn(#sdk::RegistrationBatch) -> #sdk::RegistrationBatch;
-            }
-            impl<O> #sdk::catalog::Member<O> for Registration<'_>
-            where
-                O: #sdk::operations::Executable,
-            {
-                const ENTRY: Self::Entry = #sdk::RegistrationBatch::operation::<O>;
-            }
-            impl #impl_generics #name #type_generics #where_clause {
-                pub fn registration<#lifetime>(dependencies: #sdk::Dependencies) -> #sdk::RegistrationBatch
-                where Self: #sdk::catalog::Catalog<Registration<#lifetime>>,
-                {
-                    let mut batch = ::core::option::Option::Some(#sdk::RegistrationBatch::new(dependencies));
-                    let result: ::core::result::Result<(), ::core::convert::Infallible> =
-                        #sdk::catalog::Projection::try_for_each(
-                            &<Self as #sdk::catalog::Catalog<Registration<#lifetime>>>::ENTRIES,
-                            |register| {
-                                let entries = batch.take().expect("registration projection retains its batch");
-                                batch = ::core::option::Option::Some(register(entries));
-                                ::core::result::Result::Ok(())
-                            },
-                        );
-                    match result { ::core::result::Result::Ok(()) => {}, ::core::result::Result::Err(error) => match error {} }
-                    batch.expect("registration projection retains its batch")
-                }
-            }
-            }
-        };
+        #execution
     };
 
     let methods = operations.then_some(methods);
@@ -285,11 +323,18 @@ fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result
         }
     });
 
+    let declared_type = emit_declaration.then(|| {
+        quote! {
+            // Catalog Projection Never Constructs A Member
+            #[allow(dead_code, clippy::large_enum_variant, clippy::enum_variant_names)]
+            #declared
+        }
+    });
+
     Ok(quote! {
 
-        // Catalog Projection Never Constructs A Member
-        #[allow(dead_code, clippy::large_enum_variant, clippy::enum_variant_names)]
-        #declared
+        #(#helper_types)*
+        #declared_type
 
         const _: () = {
         #(#helpers)*
@@ -322,7 +367,34 @@ fn conditions(attributes: &[syn::Attribute]) -> Result<TokenStream, Error> {
         Ok(quote!(any(not(#predicate), all(#(#conditions),*))))
     }
     let predicates = attributes.iter().map(|attribute| condition(&attribute.meta)).collect::<Result<Vec<_>, _>>()?;
-    Ok(quote!(all(#(#predicates),*)))
+    match predicates.as_slice() {
+        [predicate] => Ok(predicate.clone()),
+        predicates => Ok(quote!(all(#(#predicates),*))),
+    }
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::declare_domain;
+    use quote::quote;
+
+    #[test]
+    fn portable_domain_catalog() {
+        let expanded = declare_domain(
+            proc_macro2::TokenStream::new(),
+            quote! {
+                enum Shared {
+                    Read(crate::Read),
+                }
+            },
+        )
+        .to_string();
+
+        assert!(expanded.contains("InertCatalog"));
+        assert!(!expanded.contains("RegistrationBatch"));
+        assert!(!expanded.contains("OperationCatalog"));
+        assert!(!expanded.contains("::operations::Catalog"));
+    }
+}

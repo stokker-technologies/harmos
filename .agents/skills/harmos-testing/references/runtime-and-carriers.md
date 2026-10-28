@@ -11,9 +11,14 @@ public boundary when a runtime test needs a particular failure.
 For a native plugin composing a reusable product, consume the entry facade with
 its `runtime` feature enabled. Check that the advertised catalog contains the
 original operation declarations and that its runtime registration supplies the
-intended factories and dependency snapshot. Declaration discovery alone does not prove that a
+intended factories. Declaration discovery alone does not prove that a
 handler is bound or dispatchable. Exercise a representative call through the
 composed plugin and observe its resource effects.
+
+Use `Runtime::launch_with(origin, config, |setup| ...)` to replace prepared
+resources with controlled values of the same concrete type. This exercises the
+same lifecycle and catalog setup as production. Assert validation prevents
+initialization on invalid setup and owner stop/cleanup follows supervised drain.
 
 Keep default domain-only facade usage independent of runtime resources. If the
 product promises both domain-only and runtime-enabled consumers, cover both
@@ -23,7 +28,7 @@ dependency configurations with the project's existing check mechanism.
 
 Native, sidecar and guest bodies implement the common SDK `Operation` trait
 with `Context<'_, Self>` and request-consuming `run(self, ctx)`. Test retries with the original request clone and keep shared
-state in declared resources. Guest plugin lifecycle hooks use `harmos_guest::kit::Context`. Dependency snapshots carry process-local resources;
+state in declared resources. Guest plugin lifecycle hooks use `harmos::guest::kit::Context`. Plugin resource handles remain local to their carrier;
 sharing a declaration does not make those resources target-compatible. Check
 contract-only and runtime-enabled configurations separately, including actual
 guest dependency availability. A native test cannot prove guest buildability.

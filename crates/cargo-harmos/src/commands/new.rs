@@ -70,9 +70,9 @@ enum Command {
 /* === Public Functions === */
 
 pub fn run(arguments: Arguments) -> Result<(), Error> {
-    let (project, kind, files) = match arguments.command {
-        Command::Sidecar(project) => (project, "sidecar", embedded::SIDECAR),
-        Command::Guest(project) => (project, "guest", embedded::GUEST),
+    let (project, files) = match arguments.command {
+        Command::Sidecar(project) => (project, embedded::SIDECAR),
+        Command::Guest(project) => (project, embedded::GUEST),
     };
     let package = project
         .destination
@@ -110,12 +110,11 @@ pub fn run(arguments: Arguments) -> Result<(), Error> {
         return Err(Error::Settings("--harmos-rev requires the full published Git revision".into()));
     }
     let local = project.harmos_path.as_ref().map(std::fs::canonicalize).transpose()?;
-    if let Some(root) = &local {
-        for name in ["harmos", &format!("harmos-{kind}")] {
-            if !root.join("crates").join(name).join("Cargo.toml").is_file() {
-                return Err(Error::Settings("--harmos-path must name a Harmos source checkout".into()));
-            }
-        }
+    let facade = local.as_ref().map(|root| root.join("crates/harmos/Cargo.toml"));
+    if let Some(manifest) = facade
+        && !manifest.is_file()
+    {
+        return Err(Error::Settings("--harmos-path must name a Harmos source checkout".into()));
     }
     let mut prepared = Vec::new();
     for (name, bytes) in files {
@@ -125,7 +124,7 @@ pub fn run(arguments: Arguments) -> Result<(), Error> {
         if *name == "Cargo.toml"
             && let Some(root) = &local
         {
-            text = localized(&text, root, kind)?;
+            text = localized(&text, root)?;
         }
         text = text.replace("__HARMOS_REVISION__", project.harmos_rev.as_deref().unwrap_or(""));
         prepared.push((*name, finalize_marker(&text)));
@@ -148,28 +147,30 @@ pub fn run(arguments: Arguments) -> Result<(), Error> {
 /* === Private Functions === */
 
 // Point The Harmos Dependency Sub-Tables At A Local Checkout: Their Git Key Becomes A Path And Their Revision Goes.
-fn localized(text: &str, root: &Path, kind: &str) -> Result<String, Error> {
-    let local = ["harmos".to_owned(), format!("harmos-{kind}")];
-    let mut dependency: Option<&String> = None;
+fn localized(text: &str, root: &Path) -> Result<String, Error> {
+    let mut dependency = false;
     let mut lines = Vec::new();
+
     for line in text.lines() {
-        let entered = local.iter().find(|name| line == format!("[dependencies.{name}]"));
         // A Table Header Ends The Current Sub-Table
-        dependency = if line.starts_with('[') { entered } else { dependency };
-        let Some(name) = dependency else {
+        if line.starts_with('[') {
+            dependency = line == "[dependencies.harmos]";
+        }
+        if !dependency {
             lines.push(line.to_owned());
             continue;
-        };
+        }
         if line.starts_with("rev = ") {
             continue;
         }
         if line.starts_with("git = ") {
-            let path = root.join("crates").join(name);
+            let path = root.join("crates/harmos");
             lines.push(format!("path = {}", serde_json::to_string(&path.to_string_lossy())?));
             continue;
         }
         lines.push(line.to_owned());
     }
+
     Ok(lines.join("\n") + "\n")
 }
 

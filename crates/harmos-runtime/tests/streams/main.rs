@@ -134,7 +134,7 @@ async fn rows_gaps_account() {
     assert_eq!(delivered + missed, published, "no row is lost silently: what was not delivered was counted");
     assert_eq!(last, published, "the newest row is always delivered");
 
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -171,7 +171,7 @@ async fn watch_delivery_settles() {
             ));
         }
 
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
     {
         let runtime = streaming().await;
@@ -179,7 +179,7 @@ async fn watch_delivery_settles() {
 
         runtime.streams.publish(pulse(1));
         runtime.streams.publish(pulse(2));
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
 
         assert!(matches!(next(&mut live).await, Some(Item::Row(At { value, .. })) if value == pulse(1)));
         assert!(matches!(next(&mut live).await, Some(Item::Row(At { value, .. })) if value == pulse(2)));
@@ -234,7 +234,7 @@ async fn history_respects_cuts() {
             .collect();
         assert_eq!(retained, vec![5, 6, 7, 8, 9, 10, 11, 12]);
 
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
     {
         let runtime = streaming().await;
@@ -273,7 +273,7 @@ async fn history_respects_cuts() {
             .collect();
         assert_eq!(all, vec![1, 2, 3]);
 
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 
@@ -298,23 +298,23 @@ async fn demand_tracks_consumers() {
         drop(other);
         assert_eq!(*demand.borrow(), 0, "demand falls back to zero on drop");
 
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
     {
-        let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-            .register(support::catalog())
-            .register(streams())
-            .attach_streams(Selecting)
-            .runtime()
-            .await
-            .expect("the catalog and attachment are honorable");
+        let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            setup.settings().register(support::catalog());
+            setup.settings().register(streams());
+            setup.settings().attach_streams(Selecting);
+        })
+        .await
+        .expect("the catalog and attachment are honorable");
         let pulse_demand = runtime.streams.demand::<Pulse>();
         let reading_demand = runtime.streams.demand::<Reading>();
 
         assert_eq!(*pulse_demand.borrow(), 1, "the attached consumer counts for the stream it selected");
         assert_eq!(*reading_demand.borrow(), 0, "selection is per definition, not per facility");
 
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
 
         assert_eq!(*pulse_demand.borrow(), 0, "the consumer leaves demand when its supervisor joins");
     }
@@ -362,7 +362,7 @@ async fn demand_drives_capture() {
     // was ever exercised by the substrate itself. Stopping ends delivery; it is
     // dropping the last `Streams` handle that closes the demand channel, and
     // the runtime holds one for as long as it is alive.
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     drop(runtime);
     looped.await.expect("the capture loop ends without panic");
 }
@@ -370,12 +370,12 @@ async fn demand_drives_capture() {
 #[tokio::test]
 async fn definitions_refuse_invalid() {
     {
-        let refused = Runtime::<Bank>::builder(Ledger::default(), ())
-            .register(support::catalog())
-            .register(streams())
-            .register(colliding::Bank::catalog())
-            .runtime()
-            .await;
+        let refused = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            setup.settings().register(support::catalog());
+            setup.settings().register(streams());
+            setup.settings().register(colliding::Bank::catalog());
+        })
+        .await;
 
         let Err(refused) = refused else {
             panic!("two definitions share an id; the boot cannot honor both");
@@ -392,8 +392,11 @@ async fn definitions_refuse_invalid() {
             const WINDOW: usize = 0;
         }
 
-        let refused =
-            Runtime::<Bank>::builder(Ledger::default(), ()).register(support::catalog()).register([Hollow::definition()]).runtime().await;
+        let refused = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            setup.settings().register(support::catalog());
+            setup.settings().register([Hollow::definition()]);
+        })
+        .await;
 
         let Err(refused) = refused else {
             panic!("a window of zero rows retains nothing and cannot be honored");

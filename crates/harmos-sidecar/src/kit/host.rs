@@ -134,6 +134,10 @@ impl From<CallError> for harmos_domain::Refusal {
     }
 }
 
+impl harmos_sdk::lifecycle::Context for Supervisor {
+    type Configuration = harmos_sdk::__private::WireTable;
+}
+
 impl harmos_sdk::plugin::Context for Supervisor {
     fn assign_operations(&self, bytes: &[u8]) -> Result<(), harmos_sdk::operations::ServingError> {
         self.assignments.install(bytes)

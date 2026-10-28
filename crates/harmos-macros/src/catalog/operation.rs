@@ -42,7 +42,7 @@ use crate::path::HarmosPath;
 
 /* === Public Functions === */
 
-pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &HarmosPath) -> Result<TokenStream, Error> {
+pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &HarmosPath, executable: bool) -> Result<TokenStream, Error> {
     if !item.generics.params.is_empty() {
         return Err(Error::new_spanned(&item.generics, "an operation implementation struct cannot be generic"));
     }
@@ -164,6 +164,20 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
             impl #sdk::operations::Invokes<#operation> for #name {}
         }
     });
+    let execution = executable.then(|| {
+        quote! {
+            #(#invokes)*
+            #[allow(unexpected_cfgs)]
+            const _: () = {
+                #(#requirements)*
+                #(#gates)*
+                #execution_gate
+                impl #sdk::Dependent for #name {
+                    const RESOURCES: &'static [#sdk::Resource] = &[#(#sdk::Resource::of::<#resources>()),*];
+                }
+            };
+        }
+    });
     Ok(quote! {
         #message
 
@@ -194,16 +208,7 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
 
 
         }
-        #(#invokes)*
-        #[allow(unexpected_cfgs)]
-        const _: () = {
-        #(#requirements)*
-        #(#gates)*
-        #execution_gate
-        impl #sdk::Dependent for #name {
-            const RESOURCES: &'static [#sdk::Resource] = &[#(#sdk::Resource::of::<#resources>()),*];
-        }
-        };
+        #execution
     })
 }
 

@@ -38,24 +38,31 @@ features imply `runtime`.
 | --- | --- |
 | `runtime` | SDK lifecycle, registration and host runtime facilities. |
 | `plugin` | Shared plugin management, activation, routing, and reload. |
-| `plugin-sidecar` | Native process hosting; includes `plugin`. |
-| `plugin-guest` | Sandboxed Wasmtime hosting; includes `plugin`. |
+| `sidecar` | Native process authoring and hosting with matching module attributes. |
+| `guest` | Wasm guest authoring and native sandbox hosting with matching module attributes. |
 | `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. Includes `generate-proto`. |
 | `generate-proto` | Protobuf descriptor projection used by runtime transport. |
 | `signal` | Signal-processing kernels. |
 | `signal-fft` | FFT support; includes `signal`. |
 | `simulation` | Deterministic runtime simulation. |
 
-The `harmos` facade composes `harmos-domain` and `harmos-runtime`.
-Applications compose the runtime through `harmos`. Shared portable declarations use `harmos-domain`. Async plugin and client execution
-uses `harmos-sdk`; native plugins add
-`harmos-sidecar` and guests add `harmos-guest`. Guest operations use the same
-`harmos_guest::{Operation, Context, Response}` types as the SDK: the operation is the request, and
-`async fn run(self, ctx: Context<'_, Self>) -> Result<Response<T>, Self::Error>` is its only required method.
-Declare `resources` and `operations` on the operation; access them with `ctx.resource::<T>()` and `ctx.operation(request)`.
-`ctx.streams()` exposes the derived endpoints. Use dotted IDs and `visibility = Shared` or `Host` when needed; the default is `Private`.
-Plugin lifecycle hooks use `harmos_guest::kit::Context` and own shared resource initialization. Build scripts and development tools
-use `harmos-packaging`, which depends on the domain without hosting engines.
+Application-local attributes use `harmos::runtime::{operation, catalog}`; plugin-local
+attributes use the matching `sidecar` or `guest` module. Reusable operation libraries
+use root attributes and declare their own `runtime` feature wired to `harmos/runtime`.
+
+Applications and plugins depend on the `harmos` facade. Shared portable
+contracts are available without its runtime feature. `sidecar` and `guest`
+select matching authoring modules and attributes; guest builds use target-compatible
+SDK execution without the native host runtime. Operations use
+`harmos::{Operation, Context, Response}`: the operation is the request, and
+`async fn run(self, ctx: Context<'_, Self>) -> Result<Response<T>, Self::Error>`
+is its required method. Declare `resources` and `operations` on the operation;
+resolve them through `ctx.resource::<T>()` and `ctx.operation(request)`.
+`ctx.streams()` exposes derived endpoints. Use dotted IDs and `visibility = Shared`
+or `Host` when needed; the default is `Private`. Applications and plugins share
+`Lifecycle` with async prepare, initialize, stop and cleanup. Plugin lifecycle
+contexts are `harmos::sidecar::Supervisor` or `harmos::guest::kit::Context`.
+Build tools use `harmos-packaging` for inert inspection and generation.
 `harmos-storage` owns the Arrow query and persistence engine plus signal kernels;
 `harmos-runtime` composes that engine with host lifecycle and managed state.
 
@@ -191,16 +198,17 @@ Stream producers use `output.send_owned(response).await?` to retain the same own
 through queueing and encoding; ordinary stream payloads keep their existing `Send`
 contract. Protobuf payloads and RPC paths remain unchanged.
 
-Harmos serves no built-in operation by default. `builtins::Lifecycle::registration(Dependencies::new())`
-provides the Status, Cancel and Watch operations; register the batch on a lane (gRPC `/harmos.host.v1.Operations/Status`, `/Cancel`
+Harmos serves no built-in operation by default. Place `builtins::Lifecycle` on a
+runtime lane with `setup.operations::<builtins::Lifecycle>(lane)` to provide the
+Status, Cancel and Watch operations (gRPC `/harmos.host.v1.Operations/Status`, `/Cancel`
 and the server stream `/Watch`) over the manager's instances. Each answers only
 for active instances the caller submitted or holds a resident lease on; unknown,
 foreign and settled ids are refused alike. A watch streams every status change
 from the moment it starts until the instance stops or settles. Plugins reach them like any other operation,
 so they must declare them as requirements.
 
-Hosts register the batch from `builtin::catalog_registration(storage)` on a
-chosen lane to serve `builtins::host::Catalog` (unary gRPC path
+Hosts place `builtins::host::Host` on a chosen lane to serve
+`builtins::host::Catalog` (unary gRPC path
 `/harmos.host.v1.Host/Catalog` when `grpc` is enabled). `builtins::host::CatalogRequest` selects a
 `kind` (`Operations`, `Schemas`, `Streams` or `Objects`) and accepts optional
 `schema`, `after`, `rows` and `bytes`; defaults are 64 rows and 64 KiB, with
@@ -270,8 +278,8 @@ let storage = StorageManager::new(StorageBackends { primary, state }, settings)?
 
 Managed persistence composes replay, capture, snapshot policy and journal retention
 in `config::ManagedStorageSettings { replay, capture, snapshots, journal_tail }`.
-Pass it once to `builder.managed_storage(settings)`; select a record projection
-with `builder.store_records(projection)`. Managed state requires Serde encoding
+Pass it once to `setup.settings().managed_storage(settings)`; select a record projection
+with `setup.settings().store_records(projection)`. Managed state requires Serde encoding
 and decoding. Backend journal-entry and checkpoint bounds remain physical storage
 limits, separate from runtime snapshot cadence and payload limits.
 
@@ -646,12 +654,50 @@ pub enum Operations {
     Desktop(desktop::Inspect),
 }
 
-let mut dependencies = harmos::Dependencies::new();
-dependencies.insert(device)?;
-use harmos::RegistrationExt;
-runtime.register(Operations::registration(dependencies).lane(Lane::Interactive)).await?;
+impl harmos::Lifecycle for Product {
+    type Config = ProductSettings;
+    type Error = DeviceError;
+    type Context = harmos::Startup<Self>;
+
+    async fn prepare(config: Self::Config, setup: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {
+        // Resources
+        let device = std::sync::Arc::new(Device::open(config.device).await?);
+        setup.resource::<Device>(device.clone());
+
+        // Lanes
+        setup.lane(Lane::Interactive, harmos::operations::LaneSettings { capacity: config.capacity });
+
+        // Operations
+        setup.operations::<Operations>(Lane::Interactive);
+        Ok(Self { device })
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> { Ok(()) }
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> { Ok(()) }
+    async fn cleanup(&mut self) -> Result<(), Self::Error> { self.device.close().await }
+}
+
+let runtime = harmos::Runtime::<Product>::launch(origin, settings).await?;
 let reading = runtime.operation(Read { channel: 3 }).retry(retry).lane(Lane::Interactive).run().await?;
+runtime.shutdown().await?;
 ```
+
+Applications implement the shared `Lifecycle` and keep their resource owners in
+`Self`. `prepare` receives one mutable `Setup<Self>`; settings live behind
+`setup.settings()`, and all declared application lanes are available automatically.
+`launch` reports typed duplicate resources/catalogs, missing resources and unknown
+lanes together before initialize runs. Distinct instances of one Rust type need
+distinct newtypes. `Arc` insertion specifies the concrete type explicitly.
+Shutdown drains supervised work, then calls owner stop and cleanup; owner lifecycle
+hooks close devices and connections. Cleanup releases prepare's acquisitions even
+when validation prevents initialize, and still runs when stop fails. Put physical
+resource closure in cleanup so failed closure can retain its owner for retry.
+
+Tests use the same preparation and catalog path, replacing prepared allocations
+by type with `Runtime::launch_with(origin, settings, |setup| {
+setup.resource::<Device>(fake.clone()); })`. Overrides do not replace catalogs.
+Prepare still runs first: configure acquisition for the test environment. The
+lifecycle owner closes the resources it acquired; overrides change execution lookups.
 
 `ctx.call()` exposes portable call metadata. `ctx.resource::<T>()` returns `Arc<T>` infallibly for a type listed in `resources`.
 `operations = [other::Read]` permits `ctx.operation(other::Read { channel: 3 }).await`; catalogs aggregate these callees into
@@ -678,17 +724,16 @@ and lifecycle controls; services retain their separate `Service` lifecycle.
 
 `OperationPolicy` controls overall timeout, attempt timeout and request retries.
 Resident restart behavior belongs to `ServicePolicy { stop_timeout, restart }`
-using `RestartPolicy::OnFailure`. A service factory joins the same batch:
+using `RestartPolicy::OnFailure`. Register one typed service against the frozen
+resource context:
 
 ```rust
-let entries = harmos::RegistrationBatch::new(dependencies)
-    .service::<Poller>("poller", service_policy);
-runtime.register(entries.defaults::<Lane>()).await?;
+runtime.services().register::<Poller>("poller", service_policy).await?;
 runtime.unregister(&harmos::QualifiedId::parse("host.poller")?).await?;
 ```
 
 The host assigns provider owners. Local IDs use dotted lowercase segments; routing uses `owner.local_id` exactly once.
-Registration validates a whole batch before publishing it. Withdrawal rejects
+Registration validates a whole catalog before publishing it. Withdrawal rejects
 new calls, cancels active work and awaits bounded cleanup. Failed cleanup retains
 the closing owner, and another `unregister` resumes settlement. Re-registration
 allocates a fresh generation so stale frames cannot affect the replacement.
@@ -749,13 +794,24 @@ reload initialization and fence each new generation; cleanup retains ownership
 until settlement. A committed replacement remains the source for later explicit
 activation. `remove(id)` requires registered dependents to be removed first.
 
-Embedded operation contributions use the same `RegistrationBatch` factories and
-typed lane registration as host contributions. Plugin scopes retain their
-host-assigned ownership and authority checks. Carrier serving tables receive
-`Operations::registration(dependencies)` through `WireTable::register`; carrier
-setup creates the owner-bound table after host assignment.
-Encoded calls require an explicit `operations::Settings::preparation_bytes`
-budget.
+Embedded operation contributions and host contributions register resource-free
+catalogs through `register::<Operations>(lane)`. Plugin scopes retain their
+host-assigned ownership and authority checks. Native and guest authors declare
+one constant slice:
+
+```rust
+#[harmos::sidecar(id = "device_tools", requires = ())]
+impl harmos::Plugin for DevicePlugin {
+    const CATALOGS: &'static [harmos::Catalog] = &[Operations::CATALOG];
+}
+```
+
+The same descriptors drive inert inventory and executable binding. The SDK
+owner collects resources/settings from shared Lifecycle prepare, installs constant
+catalogs and observer attachments, validates all errors, then initializes. Plugin
+setup has no operations method; authors never construct serving tables or resource
+stores. Encoded calls still require an explicit
+`operations::Settings::preparation_bytes` budget through setup settings.
 
 `PluginManager` remains the lower-level extension for applications supplying their own backend lifecycle.
 

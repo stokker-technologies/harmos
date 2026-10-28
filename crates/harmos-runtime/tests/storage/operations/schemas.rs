@@ -16,7 +16,6 @@
 // Standard Library Imports
 use std::borrow::Cow;
 use std::num::{NonZeroU32, NonZeroUsize};
-use std::sync::Arc;
 
 // Third Party Imports
 use harmos_operations::storage::Query;
@@ -93,14 +92,7 @@ fn request(f: &Fixture, name: &str) -> harmos_operations::storage::WriteSchema {
 }
 async fn setup() -> Fixture {
     let f = Fixture::new(config()).await;
-    f.runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    f.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     f
 }
 

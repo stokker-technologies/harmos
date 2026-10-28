@@ -16,6 +16,8 @@ mod native;
 
 /* === Imports === */
 
+extern crate harmos_runtime as harmos;
+
 // Standard Library Imports
 use std::time::Duration;
 
@@ -82,7 +84,7 @@ fn benchmarks(c: &mut Criterion) {
         });
     }
     group.finish();
-    runtime.block_on(fixture.runtime.stop()).unwrap();
+    runtime.block_on(fixture.runtime.shutdown()).unwrap();
 }
 
 fn profile(runtime: &tokio::runtime::Runtime, fixture: &native::Fixture) {

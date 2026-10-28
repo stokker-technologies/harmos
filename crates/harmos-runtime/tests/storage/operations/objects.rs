@@ -48,7 +48,7 @@ struct Document {
 
 /* === Enums === */
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 enum Objects {
     Document(Document),
 }
@@ -90,20 +90,12 @@ async fn object_exchange_saves() {
         config(),
     )
     .unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(Lanes::catalog())
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().storage(&storage).register(catalog());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     let first = value("a/b", "first");
     let second = value("second", "two");
     // Register Authored Schema Before Sending Its Typed Payload.
@@ -147,7 +139,7 @@ async fn object_exchange_saves() {
     let exact = storage.read_object::<Document>(&"a/b".into(), ObjectVersion::Latest).await.unwrap().unwrap();
     assert_eq!(exact.value.text, "first");
     drop(exact);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -160,12 +152,11 @@ async fn object_batch_atomic() {
         config(),
     )
     .unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(Lanes::catalog())
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().storage(&storage).register(catalog());
+    })
+    .await
+    .unwrap();
     let mutation = MutationId {
         window: storage.mutation_window().unwrap().id,
         key: Identifier::new("atomic").unwrap(),
@@ -184,7 +175,7 @@ async fn object_batch_atomic() {
     assert!(storage.write_objects_once(&mutation, vec![]).await.is_err());
     let admitted = storage.write_objects_once(&mutation, vec![good]).await.unwrap();
     assert_eq!(admitted[0].position.sequence, 2);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -235,7 +226,7 @@ async fn object_follow_resumes() {
     call.cancel();
     assert!(call.await.is_err());
     drop(receiver);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -277,7 +268,7 @@ async fn follow_reports_pruned() {
         .join(": ");
     assert!(error.contains("retained data begins"), "{error}");
     assert!(receiver.recv().await.is_none());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Objects>>) {
@@ -290,19 +281,11 @@ async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Ob
         config(),
     )
     .unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(Lanes::catalog())
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::operations::RegistrationExt::lane(
-            harmos_runtime::builtin::storage_registration(Arc::new(storage.clone())).unwrap(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().storage(&storage).register(catalog());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     (runtime, storage, data)
 }

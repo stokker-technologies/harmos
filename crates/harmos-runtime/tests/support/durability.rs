@@ -25,9 +25,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 // Local Imports
 use harmos_runtime::{
-    Application, Builder, DefinitionId, Runtime, runtime::Catalog, runtime::Incompatible, runtime::Registration, state::DecodeError,
-    state::Entry, state::Invert, state::Kind, state::Position, state::PrincipalId, state::Recorded, state::Transaction,
-    storage::JournalConsumer, storage::Payload,
+    Application, DefinitionId, Runtime, Setup, StartupError, runtime::Catalog, runtime::Registration, state::DecodeError, state::Entry,
+    state::Invert, state::Kind, state::Position, state::PrincipalId, state::Recorded, state::Transaction, storage::JournalConsumer,
+    storage::Payload,
 };
 use journal::Wire;
 
@@ -99,10 +99,13 @@ pub struct Payouts {
 pub enum Lanes {
     #[default]
     Open,
+
     #[lane(serial)]
     Serial,
+
     #[lane(concurrent(2))]
     Concurrent,
+
     #[lane(unbounded)]
     Unbounded,
 }
@@ -223,6 +226,27 @@ impl Transaction<Ledger> for Explode {
         panic!("apply exploded");
     }
 }
+impl harmos_runtime::Lifecycle for Bank {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 impl Application for Bank {
     type Lanes = Lanes;
@@ -230,7 +254,6 @@ impl Application for Bank {
     type Transaction = Change;
     type Record = Fact;
     type Streams = ();
-    type Resources = ();
 }
 
 impl Wire for Bank {
@@ -354,12 +377,16 @@ pub fn pay(effect: u64, amount: i64) -> Pay {
     Pay { effect, amount }
 }
 
-pub async fn booted(origin: Ledger, attach: impl FnOnce(Builder<Bank>) -> Builder<Bank>) -> Runtime<Bank> {
+pub async fn booted(origin: Ledger, attach: impl FnOnce(&mut Setup<Bank>)) -> Runtime<Bank> {
     opened(origin, attach).await.expect("the copy replays")
 }
 
-pub async fn opened(origin: Ledger, attach: impl FnOnce(Builder<Bank>) -> Builder<Bank>) -> Result<Runtime<Bank>, Incompatible> {
-    attach(Runtime::<Bank>::builder(origin, ()).register(Change::catalog()).register(Fact::catalog())).runtime().await
+pub async fn opened(origin: Ledger, attach: impl FnOnce(&mut Setup<Bank>)) -> Result<Runtime<Bank>, StartupError> {
+    Runtime::<Bank>::launch_with(origin, (), |setup| {
+        setup.settings().register(Change::catalog()).register(Fact::catalog());
+        attach(setup);
+    })
+    .await
 }
 
 pub async fn ledger(runtime: &Runtime<Bank>) -> Ledger {
@@ -375,7 +402,7 @@ pub fn alice() -> PrincipalId {
 fn definitions_of<A: Application>(catalog: impl Registration<A>) -> Vec<(Kind, DefinitionId, u32)> {
     match catalog.register() {
         Catalog::Transactions { definitions, .. } => definitions,
-        Catalog::Streams(_) | Catalog::Lanes(_) => {
+        Catalog::Streams(_) => {
             unreachable!("a transaction or fact catalog always registers as `Transactions`")
         }
     }

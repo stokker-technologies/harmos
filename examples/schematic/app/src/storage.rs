@@ -11,6 +11,8 @@
 
 /* === Re-Exports === */
 
+pub use schematic_storage::Sidecar;
+
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,7 +24,7 @@ use std::io;
 use crate::app::SchematicEditor;
 use crate::config::Settings;
 use crate::streams::NetVoltage;
-use harmos::Builder;
+use harmos::Setup;
 use schematic_storage::{Jsonl, JsonlStreams};
 
 /* === Constants === */
@@ -41,18 +43,17 @@ use schematic_storage::{Jsonl, JsonlStreams};
 
 /* === Public Functions === */
 
-pub fn recordings(assembly: Builder<SchematicEditor>, config: &Settings) -> Result<Builder<SchematicEditor>, io::Error> {
+pub fn recordings(setup: &mut Setup<SchematicEditor>, config: &Settings) -> Result<(), io::Error> {
     let recordings = JsonlStreams::<SchematicEditor>::open(config.recordings())?;
     let recordings = recordings.select::<NetVoltage>();
-    Ok(assembly.attach_streams(recordings))
+    setup.settings().attach_streams(recordings);
+    Ok(())
 }
 
-pub fn attach(
-    assembly: Builder<SchematicEditor>, recovery: Jsonl<SchematicEditor>, config: &Settings,
-) -> Result<Builder<SchematicEditor>, io::Error> {
+pub fn attach(setup: &mut Setup<SchematicEditor>, recovery: Jsonl<SchematicEditor>, config: &Settings) -> Result<(), io::Error> {
     let recovery = recovery.syncing_every(config.journal_sync_entries.get());
-    let assembly = assembly.recover(recovery);
-    recordings(assembly, config)
+    setup.settings().recover(recovery);
+    recordings(setup, config)
 }
 
 /* === Private Functions === */

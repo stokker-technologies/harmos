@@ -10,15 +10,20 @@
 /* === Modules === */
 
 mod boot;
+mod launch;
 mod lifecycle;
 
 /* === Re-Exports === */
 
-pub use boot::{BootstrapCleanup, BootstrapStatus, Startup};
+pub use boot::{BootstrapCleanup, BootstrapStatus};
+pub use harmos_macros::{runtime_catalog as catalog, runtime_operation as operation};
+pub use harmos_sdk::StartupError;
 
 /* === Imports === */
 
 // Standard Library Imports
+use std::any::{TypeId, type_name};
+use std::collections::HashSet;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
@@ -67,6 +72,10 @@ pub struct Inspector<A: Application> {
 }
 
 pub struct Runtime<A: Application> {
+    #[cfg(feature = "simulation")]
+    pub(crate) simulation: crate::simulation::Configuration<A>,
+
+    application: Option<launch::ApplicationCleanup<A>>,
     pub state: StateManager<A>,
     pub records: crate::records::RecordManager<A>,
     pub streams: StreamManager<A>,
@@ -103,14 +112,20 @@ pub struct Handle<A: Application> {
     storage: Arc<OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
 }
 
+#[doc(hidden)]
 pub struct Builder<A: Application> {
+    application: Option<A>,
+    cleanup: BootstrapCleanup,
     origin: Origin<A::State>,
-    resources: Arc<A::Resources>,
+    resources: harmos_sdk::__private::ResourceSet,
+    configuration_errors: Vec<StartupError>,
+    operation_catalogs: HashSet<TypeId>,
     inverses: Inverting<A>,
     catalog: Dispatch<A, Payload<A>>,
     definitions: Vec<Definition>,
     attachments: Attachments<A>,
     managed_storage: Option<crate::config::ManagedStorageSettings>,
+    startup_storage: Option<crate::storage::StorageManager<crate::storage::ErasedCatalog>>,
     record_projection: Option<Box<dyn crate::storage::RecordProjection>>,
     reconciliation: Option<boot::Reconciliation<A>>,
     initializers: Vec<boot::Initializer<A>>,
@@ -128,6 +143,9 @@ pub struct Builder<A: Application> {
 
     #[cfg(feature = "simulation")]
     live_only: Vec<&'static str>,
+
+    #[cfg(feature = "simulation")]
+    simulation_mode: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -185,7 +203,6 @@ pub enum Catalog<A: Application> {
         inverses: Option<fn(&A::Transaction, &A::State) -> Option<A::Transaction>>,
     },
     Streams(Vec<Definition>),
-    Lanes(LaneSet),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -332,8 +349,7 @@ impl<A: Application> Drop for Inspector<A> {
     }
 }
 
-// Hand-written, because a derived `Clone` would demand `A: Clone` of an
-// application that is only ever a marker.
+// A Handle Shares Managers Without Cloning The Retained Application Owner.
 impl<A: Application> Clone for Handle<A> {
     fn clone(&self) -> Self {
         Self {
@@ -364,20 +380,25 @@ impl<A: Application> Runtime<A> {
         &self.grpc
     }
 
-    pub fn builder(origin: impl Into<Origin<A::State>>, resources: impl Into<Arc<A::Resources>>) -> Builder<A> {
+    pub(crate) fn builder(origin: impl Into<Origin<A::State>>) -> Builder<A> {
         Builder {
+            application: None,
+            cleanup: BootstrapCleanup::new(),
             origin: origin.into(),
-            resources: resources.into(),
+            resources: harmos_sdk::__private::ResourceSet::new(),
+            configuration_errors: Vec::new(),
+            operation_catalogs: HashSet::new(),
             inverses: none::<A>,
             catalog: Dispatch::default(),
             definitions: Vec::new(),
             attachments: Attachments::new(),
             managed_storage: None,
+            startup_storage: None,
             record_projection: None,
             reconciliation: None,
             initializers: Vec::new(),
             snapshots: None,
-            lanes: LaneSet::default(),
+            lanes: <A::Lanes as crate::operations::Lane>::catalog(),
             operations: Vec::new(),
             operation_settings: crate::operations::Settings::default(),
             schema_settings: Arc::new(crate::config::SchemaSettings::default()),
@@ -388,6 +409,8 @@ impl<A: Application> Runtime<A> {
             simulation: crate::simulation::Configuration::new(),
             #[cfg(feature = "simulation")]
             live_only: Vec::new(),
+            #[cfg(feature = "simulation")]
+            simulation_mode: false,
         }
     }
 
@@ -448,20 +471,34 @@ impl<A: Application, const N: usize> Registration<A> for [Definition; N] {
     }
 }
 
-impl<A: Application> Registration<A> for LaneSet {
-    fn register(self) -> Catalog<A> {
-        Catalog::Lanes(self)
-    }
-}
-
 impl<A: Application> Builder<A> {
+    pub fn startup_cleanup(&self) -> BootstrapCleanup {
+        self.cleanup.clone()
+    }
+
+    pub(crate) fn resource<T: Send + Sync + 'static>(&mut self, value: impl Into<Arc<T>>) -> &mut Self {
+        if self.resources.insert(value.into()).is_err() {
+            self.configuration_errors.push(StartupError::DuplicateResource { name: type_name::<T>() });
+        }
+        self
+    }
+
+    pub(crate) fn operations<C: harmos_sdk::operations::OperationCatalog>(&mut self, lane: A::Lanes) -> &mut Self {
+        use crate::operations::RegistrationExt;
+        if !self.operation_catalogs.insert(TypeId::of::<C>()) {
+            self.configuration_errors.push(StartupError::DuplicateCatalog { name: type_name::<C>() });
+            return self;
+        }
+        self.with_registration(C::batch().lane(lane))
+    }
+
     /// Configures Schema Preparation For Runtime-Owned Record And Stream Registrations.
-    pub fn schema_settings(mut self, settings: crate::config::SchemaSettings) -> Self {
+    pub fn schema_settings(&mut self, settings: crate::config::SchemaSettings) -> &mut Self {
         self.schema_settings = Arc::new(settings);
         self
     }
 
-    pub fn register<C: Registration<A> + 'static>(mut self, catalog: C) -> Self {
+    pub fn register<C: Registration<A> + 'static>(&mut self, catalog: C) -> &mut Self {
         #[cfg(feature = "simulation")]
         self.simulation.register(catalog.clone());
 
@@ -475,44 +512,37 @@ impl<A: Application> Builder<A> {
                 }
             }
             Catalog::Streams(definitions) => self.definitions.extend(definitions),
-            Catalog::Lanes(declared) => self.lanes.extend(declared),
         }
         self
     }
 
-    pub fn with_registration(self, registration: crate::operations::Registration<A::Lanes>) -> Self {
+    pub(crate) fn with_registration(&mut self, registration: crate::operations::Registration<A::Lanes>) -> &mut Self {
         let binding = crate::operations::CatalogBinding::new(registration);
         self.bind_operations(binding)
     }
-    pub fn operation_middleware(mut self, middleware: Arc<dyn crate::operations::middleware::Middleware>) -> Self {
-        #[cfg(feature = "simulation")]
-        self.simulation.operation_middleware(middleware.clone());
+    pub fn operation_middleware(&mut self, middleware: Arc<dyn crate::operations::middleware::Middleware>) -> &mut Self {
         self.operation_middleware.push(middleware);
         self
     }
 
-    pub fn operation_settings(mut self, settings: crate::operations::Settings) -> Self {
-        #[cfg(feature = "simulation")]
-        self.simulation.operation_settings(settings);
+    pub fn operation_settings(&mut self, settings: crate::operations::Settings) -> &mut Self {
         self.operation_settings = settings;
         self
     }
 
-    pub(crate) fn bind_operations(mut self, binding: crate::operations::CatalogBinding) -> Self {
-        #[cfg(feature = "simulation")]
-        self.simulation.operations(binding.clone());
+    pub(crate) fn bind_operations(&mut self, binding: crate::operations::CatalogBinding) -> &mut Self {
         self.operations.push(binding);
         self
     }
 
-    pub fn service<R>(self, name: impl Into<String>, resident: R) -> Self
+    pub fn service<R>(&mut self, name: impl Into<String>, resident: R) -> &mut Self
     where
         R: Resident<A>,
     {
         self.service_with(name, crate::services::POLICY, resident)
     }
 
-    pub fn service_with<R>(mut self, name: impl Into<String>, policy: crate::ServicePolicy, resident: R) -> Self
+    pub fn service_with<R>(&mut self, name: impl Into<String>, policy: crate::ServicePolicy, resident: R) -> &mut Self
     where
         R: Resident<A>,
     {
@@ -524,7 +554,7 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn evidence(mut self, vault: impl Vault, kinds: impl IntoIterator<Item = (DefinitionId, u32)>) -> Self {
+    pub fn evidence(&mut self, vault: impl Vault, kinds: impl IntoIterator<Item = (DefinitionId, u32)>) -> &mut Self {
         #[cfg(feature = "simulation")]
         self.live_only.push("an evidence vault");
 
@@ -532,7 +562,7 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn attach(mut self, consumer: impl JournalConsumer<A>) -> Self {
+    pub fn attach(&mut self, consumer: impl JournalConsumer<A>) -> &mut Self {
         #[cfg(feature = "simulation")]
         self.live_only.push("an attached fold");
 
@@ -540,7 +570,7 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn attach_streams(mut self, consumer: impl StreamConsumer<A>) -> Self {
+    pub fn attach_streams(&mut self, consumer: impl StreamConsumer<A>) -> &mut Self {
         #[cfg(feature = "simulation")]
         self.live_only.push("an attached stream fold");
 
@@ -548,7 +578,7 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn series(mut self, series: impl Series<A>) -> Self {
+    pub fn series(&mut self, series: impl Series<A>) -> &mut Self {
         #[cfg(feature = "simulation")]
         self.live_only.push("a series copy");
 
@@ -556,7 +586,7 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn recover(mut self, source: impl Source<A>) -> Self {
+    pub fn recover(&mut self, source: impl Source<A>) -> &mut Self {
         #[cfg(feature = "simulation")]
         self.live_only.push("a recovery source");
 
@@ -564,7 +594,7 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn snapshot(mut self, snapshot: impl JournalConsumer<A>) -> Self {
+    pub fn snapshot(&mut self, snapshot: impl JournalConsumer<A>) -> &mut Self {
         #[cfg(feature = "simulation")]
         self.live_only.push("a snapshot fold");
 
@@ -572,75 +602,73 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn require_capture(mut self, limits: CaptureLimits, consumer: impl JournalCapture<A>) -> Result<Self, crate::state::CaptureError> {
+    pub fn require_capture(&mut self, limits: CaptureLimits, consumer: impl JournalCapture<A>) -> &mut Self {
         #[cfg(feature = "simulation")]
         self.live_only.push("required capture");
 
-        self.attachments.require_capture(limits, consumer)?;
-
-        Ok(self)
+        if let Err(source) = self.attachments.require_capture(limits, consumer) {
+            self.configuration_errors.push(StartupError::Runtime { source: Box::new(source) });
+        }
+        self
     }
 
-    pub fn retain(mut self, horizon: Horizon) -> Self {
+    pub fn retain(&mut self, horizon: Horizon) -> &mut Self {
         self.attachments.retain(horizon);
         self
     }
 
-    pub fn tail(mut self, entries: usize) -> Self {
+    pub fn tail(&mut self, entries: usize) -> &mut Self {
         self.attachments.tail(entries);
         self
     }
 
     #[cfg(feature = "simulation")]
-    pub fn simulated_service<R>(mut self, name: impl Into<String>, resident: R) -> Self
+    pub fn simulated_service<R>(&mut self, name: impl Into<String>, resident: R) -> &mut Self
     where
         R: Resident<A> + Clone,
     {
-        self.simulation.service(name, resident);
+        let service = self.simulation.service_with(name, crate::services::POLICY, resident);
+        self.services.push(service);
         self
     }
 
     #[cfg(feature = "simulation")]
-    pub fn simulated_service_with<R>(mut self, name: impl Into<String>, policy: crate::ServicePolicy, resident: R) -> Self
+    pub fn simulated_service_with<R>(&mut self, name: impl Into<String>, policy: crate::ServicePolicy, resident: R) -> &mut Self
     where
         R: Resident<A> + Clone,
     {
-        self.simulation.service_with(name, policy, resident);
+        let service = self.simulation.service_with(name, policy, resident);
+        self.services.push(service);
         self
     }
 
     #[cfg(feature = "simulation")]
-    pub fn simulated_evidence(mut self, vault: impl Vault + Clone, kinds: impl IntoIterator<Item = (DefinitionId, u32)>) -> Self {
-        self.simulation.evidence(vault, kinds);
+    pub fn simulated_evidence(&mut self, vault: impl Vault + Clone, kinds: impl IntoIterator<Item = (DefinitionId, u32)>) -> &mut Self {
+        self.evidence = Some(Declaration::new(vault, kinds));
         self
     }
 
     #[cfg(feature = "simulation")]
-    pub fn entropy_seed(mut self, seed: u64) -> Self {
-        self.simulation.entropy_seed(seed);
-        self
-    }
-
-    #[cfg(feature = "simulation")]
-    pub fn simulate(self) -> Result<crate::simulation::SimulatedRuntime<A>, Incompatible>
-    where
-        A::State: Clone + fmt::Debug + PartialEq,
-        A::Transaction: Clone + fmt::Debug,
-        A::Record: Clone + fmt::Debug,
-    {
-        if !self.live_only.is_empty() {
-            return Err(Incompatible::simulation(self.live_only.join(", ")));
-        }
-
-        self.simulation.simulate(self.origin, self.resources)
+    pub(crate) fn simulation_recovery(&mut self, source: impl Source<A>) {
+        self.simulation_mode = true;
+        self.attachments.tail(usize::MAX);
+        self.attachments.recover(source);
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub fn runtime(self) -> Startup<A> {
-        Startup::new(self, None)
+    pub(crate) async fn runtime(mut self) -> Result<Runtime<A>, StartupError> {
+        self.validate_configuration()?;
+        let storage = self.startup_storage.clone();
+        boot::Startup::new(self, storage).await.map_err(|source| StartupError::Runtime { source: Box::new(source) })
     }
 
-    pub fn managed_storage(mut self, settings: crate::config::ManagedStorageSettings) -> Self
+    pub fn storage<C>(&mut self, storage: &crate::storage::StorageManager<C>) -> &mut Self {
+        self.resource(storage.engine_erased());
+        self.startup_storage = Some(storage.erased());
+        self
+    }
+
+    pub fn managed_storage(&mut self, settings: crate::config::ManagedStorageSettings) -> &mut Self
     where
         A::State: serde::Serialize + serde::de::DeserializeOwned,
     {
@@ -652,14 +680,14 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn store_records(mut self, projection: impl crate::storage::RecordProjection) -> Self {
+    pub fn store_records(&mut self, projection: impl crate::storage::RecordProjection) -> &mut Self {
         self.record_projection = Some(Box::new(projection));
         #[cfg(feature = "simulation")]
         self.live_only.push("managed primary record capture");
         self
     }
 
-    pub fn reconcile<F, Fut>(mut self, reconcile: F) -> Self
+    pub fn reconcile<F, Fut>(&mut self, reconcile: F) -> &mut Self
     where
         F: FnOnce(StateManager<A>, crate::storage::StorageManager<crate::storage::ErasedCatalog>) -> Fut + Send + 'static,
         Fut: Future<Output = crate::Result<()>> + Send + 'static,
@@ -670,25 +698,17 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn initialize<F, Fut, E>(mut self, timeout: Duration, initialize: F) -> Self
+    pub fn initialize<F, Fut, E>(&mut self, timeout: Duration, initialize: F) -> &mut Self
     where
         F: Fn(Handle<A>) -> Fut + Clone + Send + Sync + 'static,
         Fut: Future<Output = std::result::Result<(), E>> + Send + 'static,
         E: std::error::Error + Send + Sync + 'static,
     {
-        #[cfg(feature = "simulation")]
-        self.simulation.initialize(timeout, initialize.clone());
         self.initializers.push(boot::Initializer::new(timeout, initialize));
         self
     }
 
-    pub fn runtime_with_storage<C>(self, storage: &crate::storage::StorageManager<C>) -> Startup<A> {
-        Startup::new(self, Some(storage.erased()))
-    }
-
-    async fn boot(
-        self, storage: Option<&crate::storage::StorageManager<crate::storage::ErasedCatalog>>, cleanup: BootstrapCleanup,
-    ) -> Result<Runtime<A>, Incompatible> {
+    fn validate_configuration(&mut self) -> Result<(), StartupError> {
         if self
             .initializers
             .iter()
@@ -698,43 +718,68 @@ impl<A: Application> Builder<A> {
                 field: "runtime initialization timeout",
                 reason: "requires a positive representable finite duration",
             };
-            return Err(Incompatible::initialization(Box::new(source)));
+            self.configuration_errors.push(StartupError::Runtime {
+                source: Box::new(Incompatible::initialization(Box::new(source))),
+            });
         }
         if self.reconciliation.is_some() && self.managed_storage.is_none() {
-            return Err(Incompatible::reconciliation("reconciliation requires managed state"));
+            self.configuration_errors.push(StartupError::Runtime {
+                source: Box::new(Incompatible::reconciliation("reconciliation requires managed state")),
+            });
         }
         if self.record_projection.is_some() && self.managed_storage.is_none() {
-            return Err(Incompatible::unreadable("primary record capture requires managed state"));
+            self.configuration_errors.push(StartupError::Runtime {
+                source: Box::new(Incompatible::unreadable("primary record capture requires managed state")),
+            });
         }
-        if self.managed_storage.is_some() && (storage.is_none() || self.attachments.has_recovery_owner()) {
-            return Err(Incompatible::unreadable("managed state requires storage and exclusive recovery ownership"));
+        if self.managed_storage.is_some() && (self.startup_storage.is_none() || self.attachments.has_recovery_owner()) {
+            self.configuration_errors.push(StartupError::Runtime {
+                source: Box::new(Incompatible::unreadable("managed state requires storage and exclusive recovery ownership")),
+            });
         }
-        let mut boot = boot::Boot::new(storage, cleanup.clone()).map_err(Incompatible::work)?;
+
+        #[cfg(feature = "simulation")]
+        if self.simulation_mode && !self.live_only.is_empty() {
+            self.configuration_errors.push(StartupError::Runtime {
+                source: Box::new(Incompatible::simulation(self.live_only.join(", "))),
+            });
+        }
+        for binding in &self.operations {
+            self.configuration_errors.extend(binding.validate(&self.resources, &self.lanes));
+        }
+        match self.configuration_errors.len() {
+            0 => Ok(()),
+            1 => Err(self.configuration_errors.pop().expect("one configuration error")),
+            _ => Err(StartupError::Multiple {
+                errors: std::mem::take(&mut self.configuration_errors),
+            }),
+        }
+    }
+
+    async fn boot(
+        mut self, storage: Option<&crate::storage::StorageManager<crate::storage::ErasedCatalog>>, cleanup: BootstrapCleanup,
+    ) -> Result<Runtime<A>, Incompatible> {
+        let application = self.application.take().map(|application| launch::ApplicationCleanup::new(application, None));
+        let opened = boot::Boot::new(storage, cleanup.clone());
+        let mut boot = match opened {
+            Ok(boot) => boot,
+            Err(source) => {
+                let mut rejected = boot::Boot::new(None, cleanup).expect("no storage claim to reject");
+                rejected.application = application;
+                return Err(rejected.reject(Incompatible::work(source)).await);
+            }
+        };
+        boot.application = application;
         if let Err(error) = self.boot_owned(&mut boot).await {
-            return match boot.close().await {
-                Ok(()) => Err(error),
-                Err(failure) => {
-                    let failure = Arc::new(failure);
-                    let retained = boot.retain_cleanup();
-                    cleanup.failed(retained.clone(), Arc::clone(&failure));
-                    Err(Incompatible {
-                        cause: Cause::Cleanup {
-                            source: Box::new(error),
-                            failure: Error::TaskFailed {
-                                domain: "bootstrap cleanup",
-                                source: failure,
-                            },
-                        },
-                        cleanup: retained,
-                    })
-                }
-            };
+            return Err(boot.reject(error).await);
         }
         Ok(boot.finish())
     }
 
     async fn boot_owned(self, boot: &mut boot::Boot<A>) -> Result<(), Incompatible> {
         boot.acquire().await.map_err(Incompatible::work)?;
+        #[cfg(feature = "simulation")]
+        let simulation = self.simulation;
         let Self {
             origin,
             resources,
@@ -885,6 +930,9 @@ impl<A: Application> Builder<A> {
         )
         .map_err(Incompatible::work)?;
         boot.runtime = Some(Runtime {
+            #[cfg(feature = "simulation")]
+            simulation,
+            application: boot.application.take(),
             state: journal,
             records,
             streams,
@@ -903,6 +951,11 @@ impl<A: Application> Builder<A> {
         });
         boot.state.take();
         booted.await.map_err(Incompatible::work)?;
+        let runtime = boot.runtime.as_ref().expect("boot owns runtime during application initialization");
+        if let Some(application) = &runtime.application {
+            let context = crate::Startup { runtime: runtime.handle() };
+            application.initialize(context).await.map_err(Incompatible::initialization)?;
+        }
         if let Some(reconcile) = reconciliation {
             let runtime = boot.runtime.as_ref().expect("boot owns runtime");
             let storage = runtime.storage().expect("reconciliation requires storage");
@@ -936,8 +989,8 @@ impl Incompatible {
     }
 
     pub fn cleanup_error(&self) -> Option<&crate::Error> {
-        match (&self.cleanup, &self.cause) {
-            (Some(_), Cause::Cleanup { failure, .. }) => Some(failure),
+        match &self.cause {
+            Cause::Cleanup { failure, .. } => Some(failure),
             _ => None,
         }
     }

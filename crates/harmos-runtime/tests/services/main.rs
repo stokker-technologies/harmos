@@ -104,8 +104,8 @@ async fn service_status(
         .expect("the matched status is present")
 }
 
-fn assembly() -> harmos_runtime::Builder<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).register(Lanes::catalog())
+fn assembly(setup: &mut harmos_runtime::Setup<Bank>) {
+    setup.settings().register(catalog());
 }
 
 async fn resident(mut context: ServiceContext<Bank>) -> Result<(), std::io::Error> {
@@ -116,7 +116,12 @@ async fn resident(mut context: ServiceContext<Bank>) -> Result<(), std::io::Erro
 
 #[tokio::test]
 async fn handle_shares_manager() {
-    let runtime = assembly().service("boot", resident).runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        assembly(setup);
+        setup.settings().service("boot", resident);
+    })
+    .await
+    .unwrap();
     let manager = runtime.handle().operations;
     manager
         .register_service(
@@ -124,57 +129,59 @@ async fn handle_shares_manager() {
                 id: "dynamic".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |_: Arc<()>| resident,
+            |_: Arc<harmos_sdk::ExecutionContext>| resident,
         )
         .unwrap();
     let dynamic = manager.submit_resident("dynamic").await.unwrap();
     assert_eq!(runtime.operations.residents().len(), 2);
     assert_eq!(runtime.operations.resident_key(dynamic.id()), Some(harmos_runtime::operations::resident::Key::root("dynamic")));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn duplicate_service_refused() {
-    let runtime = assembly().service("boot", resident).runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        assembly(setup);
+        setup.settings().service("boot", resident);
+    })
+    .await
+    .unwrap();
     assert!(matches!(
         runtime.operations.register_service(
             harmos_runtime::services::ServiceDefinition {
                 id: "boot".into(),
                 policy: harmos_runtime::services::POLICY
             },
-            |_: Arc<()>| resident
+            |_: Arc<harmos_sdk::ExecutionContext>| resident
         ),
         Err(Error::AlreadyRegistered { domain: "service", name }) if name == "boot"
     ));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn shutdown_preserves_work() {
-    let runtime = assembly().service("boot", resident).runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        assembly(setup);
+        setup.settings().service("boot", resident);
+    })
+    .await
+    .unwrap();
     let manager = runtime.operations.clone();
     manager.shutdown_residents().await.unwrap();
     assert!(matches!(manager.submit_resident("late").await, Err(Error::Closing { .. })));
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(Arc::new(())).unwrap();
-                dependencies
-            })
-            .operation::<PingContractDeclaration>(),
-            Lanes::Open,
-        ))
-        .await
-        .unwrap();
+    runtime.operations.register::<Operations>(Lanes::Open).await.unwrap();
     assert_eq!(*runtime.operations.call::<PingContractDeclaration>(PingContractDeclaration {}).await.unwrap(), 42);
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn admission_rejects_reserved() {
-    let runtime = assembly().runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        assembly(setup);
+    })
+    .await
+    .unwrap();
     for name in ["", "artifact"] {
         assert!(matches!(
             runtime.operations.register_service(
@@ -182,18 +189,22 @@ async fn admission_rejects_reserved() {
                     id: name.into(),
                     policy: harmos_runtime::services::POLICY
                 },
-                |_: Arc<()>| resident
+                |_: Arc<harmos_sdk::ExecutionContext>| resident
             ),
             Err(Error::InvalidInput { field: "service name", .. })
         ));
     }
     assert!(runtime.operations.residents().is_empty());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shutdown_join_started() {
-    let runtime = assembly().runtime().await.unwrap();
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        assembly(setup);
+    })
+    .await
+    .unwrap();
     let barrier = Arc::new(Barrier::new(9));
     let entered = Arc::new(AtomicUsize::new(0));
     let exited = Arc::new(AtomicUsize::new(0));
@@ -211,7 +222,7 @@ async fn shutdown_join_started() {
                     id: id.clone(),
                     policy: harmos_runtime::services::POLICY,
                 },
-                move |_: Arc<()>| {
+                move |_: Arc<harmos_sdk::ExecutionContext>| {
                     let entered = entered.clone();
                     let exited = exited.clone();
                     move |mut context: ServiceContext<Bank>| {
@@ -240,15 +251,16 @@ async fn shutdown_join_started() {
     }
     assert_eq!(entered.load(Ordering::SeqCst), exited.load(Ordering::SeqCst));
     assert!(runtime.operations.residents().values().all(|instance| instance.health == Some(ServiceStatus::Stopped)));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn concurrent_shutdowns_join() {
     let stopping = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
-    let runtime = assembly()
-        .service("boot", {
+    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        assembly(setup);
+        setup.settings().service("boot", {
             let stopping = stopping.clone();
             let release = release.clone();
             move |mut context: ServiceContext<Bank>| {
@@ -262,10 +274,10 @@ async fn concurrent_shutdowns_join() {
                     Ok::<(), std::io::Error>(())
                 }
             }
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await
+    .unwrap();
     service_status(runtime.operations.watch_residents(), "boot", |status| matches!(status, ServiceStatus::Running { .. })).await;
     let first = runtime.operations.shutdown_residents();
     tokio::pin!(first);
@@ -285,7 +297,7 @@ async fn concurrent_shutdowns_join() {
         runtime.operations.resident(&harmos_runtime::operations::resident::Key::root("boot")).and_then(|item| item.health),
         Some(ServiceStatus::Stopped)
     );
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */

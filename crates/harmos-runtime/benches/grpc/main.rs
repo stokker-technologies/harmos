@@ -19,6 +19,8 @@ mod protocol;
 
 /* === Imports === */
 
+extern crate harmos_runtime as harmos;
+
 // Standard Library Imports
 use std::process::Stdio;
 use std::time::{Duration, Instant};

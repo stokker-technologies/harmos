@@ -14,7 +14,6 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::marker::PhantomData;
 
 // Third Party Imports
 
@@ -29,7 +28,7 @@ use harmos_runtime::{Application, state::Never};
 
 /* === Structs === */
 
-pub struct App<R = ()>(PhantomData<R>);
+pub struct App;
 
 /* === Enums === */
 
@@ -37,13 +36,34 @@ pub struct App<R = ()>(PhantomData<R>);
 
 /* === Implementations === */
 
-impl<R: Send + Sync + 'static> Application for App<R> {
+impl harmos_runtime::Lifecycle for App {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+impl Application for App {
     type Lanes = super::Lanes;
     type State = ();
     type Transaction = Never;
     type Record = ();
     type Streams = ();
-    type Resources = R;
 }
 
 /* === Public Functions === */

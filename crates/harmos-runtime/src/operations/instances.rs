@@ -54,7 +54,7 @@ pub(crate) struct Instances {
     lifecycle: Queue,
     supervisor: Task<()>,
     application_state: Box<dyn Any + Send + Sync>,
-    resources: Arc<dyn Any + Send + Sync>,
+    pub(crate) resources: harmos_sdk::__private::ResourceSet,
 }
 
 pub(crate) struct Reservation<O> {
@@ -108,7 +108,7 @@ enum Event {
 
 impl Instances {
     pub(crate) fn start(
-        lanes: Lanes, application_state: Box<dyn Any + Send + Sync>, resources: Arc<dyn Any + Send + Sync>, settings: &Settings,
+        lanes: Lanes, application_state: Box<dyn Any + Send + Sync>, resources: harmos_sdk::__private::ResourceSet, settings: &Settings,
     ) -> Arc<Self> {
         let (ordinary, ordinary_receiving) = Queue::new(settings.queued.get());
         let (lifecycle, lifecycle_receiving) = Queue::new(settings.lifecycle_queued.get());
@@ -189,10 +189,6 @@ impl Instances {
     // The runtime's typed managers a service context lends its resident.
     pub(crate) fn handles_of<A: crate::Application>(&self) -> &crate::services::Handles<A> {
         self.application_state.downcast_ref::<crate::services::Handles<A>>().expect("operation scope names its runtime's application")
-    }
-
-    pub(crate) fn resources_of<A: crate::Application>(&self) -> &A::Resources {
-        self.resources.downcast_ref::<A::Resources>().expect("operation scope names its runtime's application")
     }
 
     pub(crate) fn reserve<O: Send + 'static>(

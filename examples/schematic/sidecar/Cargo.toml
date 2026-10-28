@@ -22,15 +22,13 @@ version.workspace = true
 # === Features === #
 
 [features]
-default = ["runtime"]
-runtime = []
 benchmark = []
 
 # === Dependencies === #
 
 [dependencies]
 # Local
-harmos-sidecar = { workspace = true, features = ["derive", "grpc", "kit", "streaming"] }
+harmos = { workspace = true, features = ["sidecar"] }
 schematic-domain = { path = "../domain" }
 schematic-operations = { path = "../operations", features = ["runtime"] }
 
@@ -39,9 +37,9 @@ schematic-operations = { path = "../operations", features = ["runtime"] }
 # Error Handling
 
 # Logging
+tracing = { workspace = true, default-features = true }
 tracing-perfetto-file = { workspace = true }
 tracing-subscriber = { workspace = true }
-tracing = { workspace = true, default-features = true }
 
 # Utilities
 

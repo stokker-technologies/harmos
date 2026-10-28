@@ -19,9 +19,26 @@ version = { workspace = true }
 default = []
 runtime = ["dep:harmos-runtime", "dep:harmos-sdk"]
 plugin = ["runtime", "harmos-runtime/plugin"]
-plugin-sidecar = ["runtime", "harmos-runtime/plugin-sidecar"]
-plugin-guest = ["runtime", "harmos-runtime/plugin-guest"]
-grpc = ["runtime", "harmos-runtime/grpc", "harmos-sdk?/grpc"]
+sidecar = [
+  "runtime",
+  "dep:harmos-sidecar",
+  "harmos-sidecar/kit",
+  "harmos-sidecar/derive",
+  "harmos-sidecar/grpc",
+  "harmos-sidecar/streaming",
+  "harmos-runtime?/plugin-sidecar",
+]
+guest = [
+  "runtime",
+  "harmos-runtime?/plugin-guest",
+  "dep:harmos-guest",
+  "harmos-guest/kit",
+  "harmos-guest/derive",
+  "harmos-guest/grpc",
+  "harmos-guest/streaming",
+]
+grpc = ["runtime", "harmos-runtime?/grpc", "harmos-sdk?/grpc", "harmos-sidecar?/grpc", "harmos-guest?/grpc"]
+streaming = ["runtime", "harmos-sdk?/streaming", "harmos-sidecar?/streaming", "harmos-guest?/streaming"]
 generate-proto = ["runtime", "harmos-runtime/generate-proto"]
 signal = ["runtime", "harmos-runtime/signal"]
 signal-fft = ["runtime", "harmos-runtime/signal-fft"]
@@ -31,8 +48,10 @@ simulation = ["runtime", "harmos-runtime/simulation"]
 
 [dependencies]
 # Local
-harmos-operations = { workspace = true }
 harmos-domain = { workspace = true, features = ["derive"] }
+harmos-guest = { workspace = true, optional = true, default-features = false }
+harmos-macros = { workspace = true }
+harmos-operations = { workspace = true }
 
 # Git
 
@@ -69,10 +88,69 @@ harmos-domain = { workspace = true, features = ["derive"] }
 # === Target Dependencies === #
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Local
 harmos-runtime = { workspace = true, optional = true }
+harmos-sidecar = { workspace = true, optional = true, default-features = false }
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+# Local
 harmos-sdk = { workspace = true, optional = true, features = ["streaming"] }
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
 
 # === Test Targets === #
 

@@ -106,14 +106,13 @@ async fn published_notices(notices: &NoticeLog, count: usize) {
 
 #[tokio::test]
 async fn initialization_rows_commit() {
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let mut projected = runtime.streams.watch::<support::Pulse>();
     let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
     lifecycle.publication_start = Some(PublicationStart::Commit);
@@ -133,19 +132,18 @@ async fn initialization_rows_commit() {
     }
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle, projected, source));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn notice_wire_order() {
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
     lifecycle.publication_start = Some(PublicationStart::Commit);
     lifecycle.project_publications = false;
@@ -189,7 +187,7 @@ async fn notice_wire_order() {
     assert!(runtime.streams.query::<support::Pulse>(..).await.unwrap().next().is_none());
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle, source));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     let Notice::Published { publication } = &retained[0] else { unreachable!() };
     assert_eq!(support::Pulse::decode(publication.payload()).unwrap().sample, 41);
 }
@@ -197,14 +195,13 @@ async fn notice_wire_order() {
 #[tokio::test]
 async fn shutdown_delivery() {
     let notices = Arc::new(NoticeLog::default());
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
     lifecycle.publication_start = Some(PublicationStart::Commit);
     lifecycle.project_publications = false;
@@ -217,7 +214,7 @@ async fn shutdown_delivery() {
     published_notices(&notices, 2).await;
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
     let retained = notices.values.lock().unwrap();
     assert_eq!(retained.len(), 3);
     for (index, (notice, sample)) in retained.iter().zip([41, 42, 44]).enumerate() {
@@ -234,14 +231,13 @@ async fn shutdown_delivery() {
 
 #[tokio::test]
 async fn failed_activation_discards() {
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
     lifecycle.publication_start = Some(PublicationStart::Refuse);
     lifecycle.prepare_publication().await.unwrap();
@@ -251,19 +247,18 @@ async fn failed_activation_discards() {
     assert!(runtime.streams.query::<support::Pulse>(..).await.unwrap().next().is_none());
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn cancelled_activation_discards() {
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let started = Arc::new(tokio::sync::Notify::new());
     let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
     lifecycle.publication_start = Some(PublicationStart::Pause(started.clone()));
@@ -282,19 +277,18 @@ async fn cancelled_activation_discards() {
     assert!(runtime.streams.query::<support::Pulse>(..).await.unwrap().next().is_none());
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn undeclared_calls_refused() {
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let provider = Arc::new(Provider::default());
     let mut lifecycle = host(&runtime, provider.clone(), true);
     let mut manager = PluginManager::new(candidate(&lifecycle, true, false, false, true)).unwrap();
@@ -306,19 +300,18 @@ async fn undeclared_calls_refused() {
     assert_eq!(*provider.observed.lock().unwrap(), [11]);
     assert!(manager.status("caller").unwrap().generation.is_none());
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn dependency_original_manager() {
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let provider = Arc::new(Provider { multiplier: 3, ..Default::default() });
     let mut lifecycle = host(&runtime, provider, false);
     let mut manager = PluginManager::new(candidate(&lifecycle, false, true, false, false)).unwrap();
@@ -332,19 +325,18 @@ async fn dependency_original_manager() {
     assert_eq!(runtime.operations.call::<Forward>(Forward { value: 8 }).await.unwrap().value, 24);
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn dependency_lifecycle_calls() {
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let provider = Arc::new(Provider { multiplier: 1, ..Default::default() });
     let mut lifecycle = host(&runtime, provider.clone(), true);
     let mut manager = PluginManager::new(candidate(&lifecycle, true, false, false, false)).unwrap();
@@ -353,19 +345,18 @@ async fn dependency_lifecycle_calls() {
     manager.shutdown(&mut lifecycle).await.unwrap();
     assert_eq!(*provider.observed.lock().unwrap(), [11, 22]);
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn cancellation_settles_handlers() {
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let provider = Arc::new(Provider { multiplier: 1, ..Default::default() });
     let mut lifecycle = host(&runtime, provider.clone(), false);
     let mut manager = PluginManager::new(candidate(&lifecycle, false, false, false, false)).unwrap();
@@ -383,19 +374,18 @@ async fn cancellation_settles_handlers() {
     assert_eq!(runtime.operations.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 10 }).await.unwrap().value, 10);
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn dependency_admission_revocation() {
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let provider = Arc::new(Provider { multiplier: 3, ..Default::default() });
     let mut lifecycle = host(&runtime, provider, false);
     lifecycle.dynamic = true;
@@ -424,19 +414,18 @@ async fn dependency_admission_revocation() {
             .is_err()
     );
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn cancelled_dependency_capacity() {
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let provider = Arc::new(Provider { multiplier: 1, ..Default::default() });
     let mut lifecycle = host(&runtime, provider.clone(), false);
     lifecycle.dynamic = true;
@@ -468,19 +457,18 @@ async fn cancelled_dependency_capacity() {
     assert_eq!(Amplified::decode(bytes.as_slice()).unwrap().value, 10);
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn empty_catalog_dependencies() {
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let provider = Arc::new(Provider { multiplier: 1, ..Default::default() });
     let mut lifecycle = host(&runtime, provider.clone(), true);
     lifecycle.dynamic = true;
@@ -490,19 +478,18 @@ async fn empty_catalog_dependencies() {
     manager.shutdown(&mut lifecycle).await.unwrap();
     assert_eq!(*provider.observed.lock().unwrap(), [11, 22]);
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn retry_releases_attempt_capacity() {
-    let runtime = assembly()
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = assembly(|setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await;
     let provider = Arc::new(Provider { multiplier: 1, ..Default::default() });
     let mut lifecycle = host(&runtime, provider.clone(), false);
     lifecycle.dynamic = true;
@@ -541,20 +528,19 @@ async fn retry_releases_attempt_capacity() {
         .unwrap();
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn capacity_precedes_encoding() {
     for (dynamic, canonical) in [(true, false), (true, true), (false, true)] {
-        let runtime = assembly()
-            .operation_settings(harmos_runtime::operations::Settings {
+        let runtime = assembly(|setup| {
+            setup.settings().operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
                 ..Default::default()
-            })
-            .runtime()
-            .await
-            .unwrap();
+            });
+        })
+        .await;
         let provider = Arc::new(Provider { multiplier: 1, ..Default::default() });
         let mut lifecycle = host(&runtime, provider.clone(), false);
         lifecycle.dynamic = dynamic;
@@ -569,7 +555,7 @@ async fn capacity_precedes_encoding() {
             manager.shutdown(&mut lifecycle).await.unwrap();
             assert!(manager.status("provider").unwrap().generation.is_none());
             drop((manager, lifecycle));
-            runtime.stop().await.unwrap();
+            runtime.shutdown().await.unwrap();
             continue;
         }
         initialized.unwrap();
@@ -606,7 +592,7 @@ async fn capacity_precedes_encoding() {
         }
         manager.shutdown(&mut lifecycle).await.unwrap();
         drop((manager, lifecycle));
-        runtime.stop().await.unwrap();
+        runtime.shutdown().await.unwrap();
     }
 }
 

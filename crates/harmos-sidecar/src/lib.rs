@@ -31,16 +31,19 @@ pub use harmos_operations as builtins;
 #[cfg(feature = "transport")]
 pub use attach::{Attach, Attached, Executable, ExecutableError};
 pub use error::{Error, Result};
+pub mod catalog {
+    pub use harmos_domain::catalog::*;
+}
 pub use harmos_domain::inventory;
 pub use harmos_domain::{
     ConfigError, Failure, RESERVED, Refusal, Registrar, Registration, RegistrationError, StreamSpec, UNKNOWN, UNREADABLE, encode_config,
     reserved, validate_config,
 };
-pub use harmos_domain::{catalog, failure, listeners};
+pub use harmos_domain::{failure, listeners};
 pub use harmos_sdk::operations;
 pub use harmos_sdk::operations::Host;
 pub use harmos_sdk::operations::{Backoff, CacheKey, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
-pub use harmos_sdk::{Context, Dependencies, Dependent, ExecutionContext, Operation, Plugin, RegistrationBatch, Resource, Service};
+pub use harmos_sdk::{Context, Dependent, ExecutionContext, Lifecycle, Operation, Plugin, Resource, Service, Setup};
 
 pub use harmos_domain::StreamDeclaration;
 #[cfg(feature = "kit")]
@@ -63,7 +66,9 @@ pub use harmos_domain::{
     Storable,
 };
 #[cfg(feature = "derive")]
-pub use harmos_domain::{listener, message, operation, stream};
+pub use harmos_domain::{listener, message, stream};
+#[cfg(feature = "derive")]
+pub use harmos_macros::{sidecar_catalog as catalog, sidecar_operation as operation};
 pub use harmos_sdk::plugin;
 
 #[cfg(feature = "kit")]

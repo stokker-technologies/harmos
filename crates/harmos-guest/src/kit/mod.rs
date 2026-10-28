@@ -17,7 +17,7 @@ pub mod plugin;
 
 /* === Re-Exports === */
 
-pub use harmos_sdk::{Dependencies, Operation, RegistrationBatch, Service};
+pub use harmos_sdk::{Operation, Service};
 
 pub use crate::export_plugin;
 pub use context::Context;

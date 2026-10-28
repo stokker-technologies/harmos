@@ -20,10 +20,12 @@ mod support;
 
 /* === Imports === */
 
+extern crate harmos_runtime as harmos;
+
 use criterion::Criterion;
 use harmos_runtime::Runtime;
 use std::hint::black_box;
-use support::{Bank, Ledger, catalog, streams};
+use support::{Bank, Ledger};
 
 // Standard Library Imports
 
@@ -56,7 +58,12 @@ fn benchmarks(criterion: &mut Criterion) {
     criterion.bench_function("simulation/double_run_identity", |bench| {
         bench.iter(|| {
             let make = || {
-                oracle::scripted(Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).register(streams()).entropy_seed(42))
+                let sim = Runtime::<Bank>::simulate_with(Ledger::default(), (), 42, |setup| {
+                    setup.settings().register(support::catalog()).register(support::streams());
+                    oracle::configure(setup);
+                })
+                .unwrap();
+                oracle::scripted(sim)
             };
             let first = make();
             let second = make();

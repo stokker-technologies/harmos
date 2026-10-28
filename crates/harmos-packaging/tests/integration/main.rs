@@ -26,6 +26,9 @@ mod proto;
 
 // Third Party Imports
 
+#[cfg(feature = "generate-proto")]
+extern crate harmos_domain as harmos;
+
 // Local Imports
 
 /* === Constants === */

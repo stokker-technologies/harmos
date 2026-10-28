@@ -109,10 +109,6 @@ impl<'a> Scope<'a> {
         crate::supervision::executor::now()
     }
 
-    pub fn resources<A: crate::Application>(&self) -> &'a A::Resources {
-        self.core.instances.resources_of::<A>()
-    }
-
     pub fn records<A: crate::Application>(&self) -> crate::records::RecordManager<A> {
         crate::records::RecordManager::new(self.state::<A>())
     }

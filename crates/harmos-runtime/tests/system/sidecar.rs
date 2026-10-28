@@ -57,13 +57,34 @@ enum Lanes {
 
 /* === Implementations === */
 
+impl harmos_runtime::Lifecycle for Host {
+    type Config = ();
+    type Error = std::convert::Infallible;
+    type Context = harmos_runtime::Startup<Self>;
+
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+
+    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl harmos_runtime::Application for Host {
     type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
     type Streams = ();
-    type Resources = ();
 }
 
 /* === Public Functions === */
@@ -132,15 +153,14 @@ async fn sidecar_composition_walks() {
     }
     assert_eq!(executable.declaration().id, PLUGIN);
     // Typed Native Calls Prepare Their Encoded Requests Within An Explicit Host Budget
-    let runtime = Runtime::<Host>::builder((), ())
-        .register(Lanes::catalog())
-        .operation_settings(harmos_runtime::operations::Settings {
+    let runtime = Runtime::<Host>::launch_with((), (), |setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()),
             ..Default::default()
-        })
-        .runtime()
-        .await
-        .unwrap();
+        });
+    })
+    .await
+    .unwrap();
     // Scene 2: Locked Tokio Rejects Zero Workers Before The Native Plugin Is Ready.
     // This Exercises A Real Startup Crash Through An Existing Environment Option.
     let crashing = executable.clone().variable("TOKIO_WORKER_THREADS", "0");
@@ -231,5 +251,5 @@ async fn sidecar_composition_walks() {
     runtime.plugin.stop(PLUGIN).await.unwrap();
     assert!(!runtime.plugin.status(PLUGIN).unwrap().cleanup_pending);
     assert!(runtime.operation(ListDirectories {}).run().await.is_err());
-    runtime.stop().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }

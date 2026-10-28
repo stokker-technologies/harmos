@@ -9,8 +9,8 @@
 
 // The observer kind of resident operation. An observer's declaration (its
 // interval, streams, demand keys and activation) is attribute metadata; the
-// operation manager activates it through `submit_with_resources`, shares one
-// instance among every activation over the same resources and reports its
+// operation manager activates it through `submit_resident`, shares one
+// instance among runtime callers and reports its
 // phases through the shared operation status. A backend drives one
 // activation: in process over an authored observer, or remotely through a
 // sidecar's observe control.
@@ -67,9 +67,10 @@ pub struct ObserverDefinition {
 /* === Traits === */
 
 pub trait ObserverBackend: Send + Sync + 'static {
-    type Resources: Send + Sync + 'static;
     fn definition(&self) -> crate::Result<ObserverDefinition>;
-    fn run(&self, resources: Arc<Self::Resources>, activation: ObserverActivation) -> impl Future<Output = crate::Result<()>> + Send;
+    fn run(
+        &self, resources: Arc<harmos_sdk::ExecutionContext>, activation: ObserverActivation,
+    ) -> impl Future<Output = crate::Result<()>> + Send;
 }
 
 /* === Implementations === */

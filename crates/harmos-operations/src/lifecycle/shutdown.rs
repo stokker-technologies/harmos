@@ -13,11 +13,18 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 use harmos_domain::{MemorySize, schema::Described};
 
 /* === Constants === */
 
 /* === Macros === */
+
+harmos_domain::postcard_product!(Shutdown {});
 
 /* === Type Aliases === */
 
@@ -39,7 +46,6 @@ pub struct Control {
 
 /* === Implementations === */
 
-harmos_domain::postcard_product!(Shutdown {});
 impl Described for Shutdown {
     const NAME: &'static str = <harmos_domain::model::operations::lifecycle::ShutdownSchema as Described>::NAME;
     const FIELDS: &'static [harmos_domain::schema::declaration::Field] =
@@ -76,13 +82,13 @@ impl harmos_sdk::operations::Carrier for Control {
     }
 }
 
+#[cfg(feature = "lifecycle")]
+impl crate::Executable for Shutdown {
+    type Carrier = Control;
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
 
 /* === Tests === */
-
-#[cfg(feature = "lifecycle")]
-impl crate::Executable for Shutdown {
-    type Carrier = Control;
-}

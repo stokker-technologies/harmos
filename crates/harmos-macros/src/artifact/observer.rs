@@ -62,10 +62,9 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     let id = id.map(|id| quote!(#id)).unwrap_or_else(|| quote!(concat!(module_path!(), "::", stringify!(#name))));
     let description = super::description(description, &block.attrs);
 
-    let observing =
-        required(&block, "observe", "async fn observe(&mut self, context: &ObserverContext<'_, Resources>) -> Result<(), Error>")?;
+    let observing = required(&block, "observe", "async fn observe(&mut self, context: &ObserverContext<'_>) -> Result<(), Error>")?;
     asynchronous(observing, "a observe awaits its instrument without blocking the executor")?;
-    let (resources, host) = resources(observing)?;
+    let host = host(observing)?;
     let host = host.map(|ty| quote!(#ty)).unwrap_or_else(|| quote!(#harmos::__private::sidecar::Supervisor));
     let observed = returned(observing)?;
     let construction = if let Some(opening) = declared(&block, "initialize") {
@@ -73,16 +72,16 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         if opening.sig.inputs.len() != 1 || !matches!(opening.sig.inputs.first(), Some(FnArg::Typed(_))) {
             return Err(Error::new(
                 opening.sig.inputs.span(),
-                "initialize takes the resource bundle and returns the observer: `async fn initialize(resources: &Resources) -> Result<Self, Error>`",
+                "initialize takes the execution context and returns the observer: `async fn initialize(context: &ExecutionContext) -> Result<Self, Error>`",
             ));
         }
-        borrowed(&parameter(opening.sig.inputs.first().expect("one typed parameter"))?, "the bundle an observer binds")?;
+        borrowed(&parameter(opening.sig.inputs.first().expect("one typed parameter"))?, "the context an observer binds")?;
         returned(opening)?;
         quote!(<Self>::initialize(resources))
     } else {
         quote! {{
             let _ = resources;
-            #[diagnostic::on_unimplemented(message = "derive Default or provide async fn initialize(resources: &Resources) -> Result<Self, Error> for this observer")]
+            #[diagnostic::on_unimplemented(message = "derive Default or provide async fn initialize(context: &ExecutionContext) -> Result<Self, Error> for this observer")]
             trait ObserverDefault: ::core::default::Default {}
             impl<T: ::core::default::Default> ObserverDefault for T {}
             fn construct_default<T: ObserverDefault>() -> T { T::default() }
@@ -147,7 +146,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
 
         #[automatically_derived]
         impl #harmos::__private::sidecar::Observer<#host> for #name {
-            type Resources = #resources;
             type Error = <#observed as #answer>::Err;
             const ID: &'static str = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.id;
             const DESCRIPTION: &'static str = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.description;
@@ -160,7 +158,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             // associated function shadows the trait's, so these delegations
             // reach the lines that were written rather than loop back here.
             fn initialize(
-                resources: &Self::Resources,
+                resources: &#harmos::__private::sidecar::ExecutionContext,
             ) -> impl ::core::future::Future<
                 Output = ::core::result::Result<Self, Self::Error>,
             > + Send {
@@ -169,7 +167,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
 
             fn observe(
                 &mut self,
-                context: &#harmos::__private::sidecar::ObserverContext<'_, Self::Resources, #host>,
+                context: &#harmos::__private::sidecar::ObserverContext<'_, #host>,
             ) -> impl ::core::future::Future<
                 Output = ::core::result::Result<(), Self::Error>,
             > + Send {
@@ -181,21 +179,18 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     })
 }
 
-fn resources(observing: &syn::ImplItemFn) -> Result<(Type, Option<Type>), Error> {
+fn host(observing: &syn::ImplItemFn) -> Result<Option<Type>, Error> {
     let valid_receiver = matches!(observing.sig.inputs.first(), Some(FnArg::Receiver(receiver)) if matches!(receiver.kind, syn::ReceiverKind::Reference(_, _, Some(_))));
     if observing.sig.inputs.len() != 2 || !valid_receiver {
-        return Err(Error::new(observing.sig.inputs.span(), "observe takes `&mut self` and `context: &ObserverContext<'_, Resources>`"));
+        return Err(Error::new(observing.sig.inputs.span(), "observe takes `&mut self` and `context: &ObserverContext<'_>`"));
     }
     let context = borrowed(&parameter(&observing.sig.inputs[1])?, "the observer context")?;
     let Type::Path(path) = &context else {
-        return Err(Error::new(context.span(), "observe receives `&ObserverContext<'_, Resources>`"));
+        return Err(Error::new(context.span(), "observe receives `&ObserverContext<'_>`"));
     };
     let segment = path.path.segments.last().expect("a type path has a segment");
     let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
-        return Err(Error::new(
-            context.span(),
-            "replace the old `&Tick` parameter with `&ObserverContext<'_, Resources>`; access timing with context.tick()",
-        ));
+        return Err(Error::new(context.span(), "observe receives `&ObserverContext<'_>`; access timing with context.tick()"));
     };
     let types: Vec<_> = arguments
         .args
@@ -206,13 +201,13 @@ fn resources(observing: &syn::ImplItemFn) -> Result<(Type, Option<Type>), Error>
         })
         .collect();
     if segment.ident != "ObserverContext"
-        || !(1..=2).contains(&types.len())
+        || types.len() > 1
         || arguments.args.iter().any(|argument| !matches!(argument, GenericArgument::Type(_) | GenericArgument::Lifetime(_)))
     {
-        return Err(Error::new(context.span(), "observe receives `&ObserverContext<'_, Resources>`"));
+        return Err(Error::new(context.span(), "observe receives `&ObserverContext<'_>` or `&ObserverContext<'_, Host>`"));
     }
 
-    Ok((types[0].clone(), types.get(1).map(|ty| (*ty).clone())))
+    Ok(types.first().map(|ty| (*ty).clone()))
 }
 
 #[allow(clippy::type_complexity)]
