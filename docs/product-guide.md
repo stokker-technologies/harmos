@@ -938,3 +938,30 @@ The catalog infers an undo barrier when that implementation is absent.
 `#[harmos::transaction(id = "ledger.deposit", inverse = Withdraw)]` optionally
 checks that the inverse declaration matches the implementation and its mutual pair.
 There is no explicit irreversibility marker.
+
+## Plugin Source Layout
+
+Keep one `-sidecar` or `-guest` crate under `crates/`. Several plugins belong
+under `plugins/sidecars/<name>` and `plugins/guests/<name>`. Carrier crates use
+`publish = false`.
+
+Each operation has one portable definition in `operations/<op>/mod.rs`, with
+parallel `windows.rs` and `unix.rs` implementations declared there:
+
+```rust
+#[cfg(all(feature = "runtime", target_os = "windows"))]
+mod windows;
+#[cfg(all(feature = "runtime", unix))]
+mod unix;
+```
+
+Keep the request, response, identity and policy in that one definition. Gate
+module and re-export declarations only, never items or catalog variants. A
+plugin has one catalog, with no platform catalogs or backend traits. Its
+`Lifecycle::prepare(config, setup)` acquires resources through
+`setup.resource::<T>(value)`; `Plugin::CATALOGS` names the catalog's `CATALOG`.
+
+Rust's orphan rule prevents a runtime crate from implementing Harmos's
+`Operation` for a type declared in a separate domain crate. Keep the operation
+types and their implementations in an operations crate with a `runtime`
+feature; shared models remain in domain.

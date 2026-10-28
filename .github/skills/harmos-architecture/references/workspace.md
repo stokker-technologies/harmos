@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/references/workspace.md; sha256:8745c0de4b8c8a66b9f3c1edfc8b0185c57e198a491bcfc4f58eb08fa27269fb -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/references/workspace.md; sha256:d8d14d0f85350094e1cd7c43193864095a4c253fb455db5c24b6c30dd3c0fdc5 -->
 
 # Consumer Workspace
 
@@ -55,7 +55,10 @@ product/
             ├── error.rs
             └── operations/
                 ├── mod.rs
-                └── inspect_session.rs
+                └── inspect_session/
+                    ├── mod.rs
+                    ├── windows.rs
+                    └── unix.rs
 ```
 
 The operations crate's `read.rs` owns request, reply, declaration metadata and
@@ -65,7 +68,7 @@ composition and resource construction remain in the runtime. Interfaces enable
 the operations crate's `runtime` feature only when they execute its factories.
 
 `runtime.rs` is an illustrative cohesive assembly module, not a mandatory
-filename. Use one file per operation, with complete definition and runtime skeletons. Resource modules need not mirror the domain
+filename. Use one module per operation, with complete definition and runtime skeletons. Resource modules need not mirror the domain
 tree. `product-automation` and `product-grpc` illustrate independent external
 clients, not required crates.
 
@@ -116,13 +119,13 @@ dependencies optional under the same feature.
 ## Self-Contained And Composed Plugins
 
 A small standalone plugin can have just `lib.rs`, its entry point, resources
-and `operations/inspect.rs`. That operation file contains its declaration,
-reply and handler. A domain crate is warranted when those contracts need
+and `operations/inspect/mod.rs`. That module contains its one declaration and
+reply, with adjacent native implementation files. A domain crate is warranted when those contracts need
 independent consumers, not simply because the crate uses Harmos.
 
 A composed plugin enables `product/runtime`, retains the runtime owner and
-exposes the original product contracts. Its private `inspect_session.rs` can
-still use the vertical layout. If another interface needs that behavior, move
+exposes the original product contracts. Its private `operations/inspect_session/mod.rs` retains the same definition
+and adjacent native implementations. If another interface needs that behavior, move
 its vertical operation into the reusable operations crate rather than copying it.
 
 Host-specific files such as a plugin framework's `settings.rs` may remain;

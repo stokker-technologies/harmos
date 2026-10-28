@@ -12,7 +12,9 @@ repository fixture pipeline or company tooling is required.
 
 ## Select The Owner
 
-All product crates, including interfaces, live under `crates/`. For a reusable
+Product crates and single sidecar/guest carriers live under `crates/`. Several
+plugins use `plugins/sidecars/<name>` and `plugins/guests/<name>`, with
+`publish = false` on each carrier. For a reusable
 product, test portable contracts and configuration validation in `product-domain`
 and the operations crate without `runtime`; test execution through the operations
 crate with `runtime` and configured composition in `product-runtime`. Keep

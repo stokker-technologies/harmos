@@ -1,8 +1,9 @@
+<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:23a5d457e66afb9b533d182f0de12bf04f0941f5bb296596f4f44bbf362ef029 -->
+
 ---
 name: harmos-testing
 description: Test products using Harmos at domain, runtime, resource and carrier boundaries, including Harmos's shipped consumer examples.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:b235c4ec48f5057a77b61064d852e3d0aa386c2e8139e98c1a64047672d931a0 -->
 
 # Harmos Consumer Testing
 
@@ -13,7 +14,9 @@ repository fixture pipeline or company tooling is required.
 
 ## Select The Owner
 
-All product crates, including interfaces, live under `crates/`. For a reusable
+Product crates and single sidecar/guest carriers live under `crates/`. Several
+plugins use `plugins/sidecars/<name>` and `plugins/guests/<name>`, with
+`publish = false` on each carrier. For a reusable
 product, test portable contracts and configuration validation in `product-domain`
 and the operations crate without `runtime`; test execution through the operations
 crate with `runtime` and configured composition in `product-runtime`. Keep

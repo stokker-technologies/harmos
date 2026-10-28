@@ -1,8 +1,9 @@
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:e138463d2f40c2944fd85e0d0e73bd81715ed1defa247386e0a7c2bc6e76ce32 -->
+
 ---
 name: harmos-architecture
 description: Structure consumer applications using Harmos, including reusable domains and runtimes, self-contained plugins, resource libraries and interface crates.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:c803dbbc7fc9d3dc66232c31aa1df7582a607297e5da8801411ff3b6e6f197b0 -->
 
 # Harmos Architecture
 
@@ -36,9 +37,9 @@ this facade rule applies to interfaces, not every internal dependency.
 
 ### Plugin Internal Structure
 
-Each operation has one definition. A platform-independent operation stays a single file with its definition module and
-the inline runtime module. A platform-dependent operation is a directory whose `mod.rs` holds the definition module
-(the struct-as-request, id, policy, response types and contract tests) and exactly these declarations:
+Each operation has one definition in `operations/<op>/mod.rs`: its request,
+response, identity, policy and contract tests. Native platform implementations
+live beside it in `windows.rs` and `unix.rs`; gate only their declarations:
 
 ```rust
 #[cfg(all(feature = "runtime", target_os = "windows"))]
@@ -49,28 +50,31 @@ mod unix;
 
 ```text
 src/
-├── lib.rs                  # Composes the one catalog, dependencies and resources
+├── lib.rs                # Lifecycle/Setup resources and Plugin::CATALOGS
 └── operations/
     ├── mod.rs
-    ├── catalog.rs          # The plugin's single catalog
-    └── <family>/
-        ├── <operation>.rs  # Platform-independent: definition plus inline runtime module
-        └── <operation>/
-            ├── mod.rs      # Definition module plus the two gated declarations
-            ├── windows.rs  # `impl harmos::Operation` against the native API, with its tests
-            └── unix.rs
+    ├── catalog.rs        # The plugin's one catalog
+    └── <op>/
+        ├── mod.rs        # The one portable definition and gated mod declarations
+        ├── windows.rs    # Native Operation implementation and its tests
+        └── unix.rs
 ```
 
-Request and response types exist once, so SDK consumers name them without gates and the wire contract cannot drift.
-A plugin has one catalog: no platform catalogs, backend traits, `platform/` folder, selection blocks, `#[path]` or
-`unsupported` stubs. Every operation ships on every supported platform; one that cannot is not an operation of that
-plugin. `lib.rs` composes explicitly with `RegistrationBatch::new(dependencies).operation::<O>()` and
-`Dependencies::insert`; shared platform handles, such as a WLAN client or a D-Bus connection, are ordinary resources.
+Request and response types exist once and remain available without runtime.
+A platform-independent implementation can use a runtime-gated inline `mod runtime`
+in the same operation's `mod.rs`. Keep one catalog: no platform catalogs, backend
+traits, platform selection blocks, `#[path]` switches or unsupported stubs.
+Every catalog operation ships on each supported platform.
 
-Gate only declarations, one gate per declaration (`mod` lines, including `#[cfg(test)] mod tests` and
-`#[cfg(feature = "runtime")] mod runtime`, and `pub use` lines), none on items: never on functions, impls, structs,
-fields, statements or catalog variants. Spell predicates `target_os = "windows"` and `unix`, never the `windows`
-shortcut; use `target_os = "linux"` only for a genuinely Linux-only path.
+`Lifecycle::prepare(config, setup)` acquires shared platform handles and inserts
+them once with `setup.resource::<T>(value)`. Plugin `const CATALOGS` names the
+catalog's `CATALOG`; the SDK binds it after validating setup. A WLAN client or
+D-Bus connection is an ordinary resource retained by its lifecycle owner.
+
+Gate only declarations: `mod` lines (including test and runtime modules) and
+`pub use` lines. Never gate functions, impls, structs, fields, statements or
+catalog variants. Spell native predicates `target_os = "windows"` and `unix`;
+use `target_os = "linux"` only for Linux-specific functionality.
 
 ## Operation Placement
 
@@ -78,7 +82,11 @@ In a reusable product, use one file per operation for its request struct, respon
 `<p>-operations/src/<concern>/<operation>.rs`. Its catalog supplies both
 `catalog() -> Vec<OperationDefinition>` and, with `runtime`, implements
 `operations::OperationCatalog` with an executable `CATALOG` descriptor. There is one
-operation tree. Shared models remain in the domain; resource crates remain
+operation tree. Rust's orphan rule prevents a runtime crate from implementing
+Harmos's `Operation` trait for operation types owned by a domain crate. When
+contracts and execution need separate dependency selections, put the operation
+types and their implementations in the same operations crate and gate execution
+behind its `runtime` feature. Shared models remain in the domain; resource crates remain
 optional lower-level dependencies. Application `Lifecycle::prepare` supplies resources through `Setup<Self>`
 and places each catalog on a declared lane. Plugin `const CATALOGS` is the single
 source for inert inventory and executable binding.
