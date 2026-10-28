@@ -470,7 +470,20 @@ object encoding, decoding and catalog validation apply the same check.
 `storage::query::Accumulator` folds scalars over rows a caller already holds
 with the same semantics as query aggregates: exact rational `Sum`, `Mean` and
 `Median`, ordering for `Min`, `Max` and `Last`, and signal kernels for floating
-statistics. Snapshot reads run concurrently; closing storage waits for those in
+statistics. Exact order statistics keep numeric slots in memory up to the
+`StorageAccumulatorSettings::memory_bytes` budget, then spill to disk. The default
+is 64 KiB per accumulator; callers can supply their budget explicitly:
+
+```rust
+let accumulator = storage::query::Accumulator::with_settings(
+    storage::query::scalar::Agg::Of(storage::Aggregate::Median),
+    storage::config::StorageAccumulatorSettings { memory_bytes: 16 * 1024 },
+);
+```
+
+A zero budget selects immediate spilling. Both paths poll the cancellation closure
+passed to `finish` and preserve the same exact rank and interpolation semantics.
+Snapshot reads run concurrently; closing storage waits for those in
 flight.
 
 For storage-authoritative refresh, query an explicit `cursor_saved()` and then

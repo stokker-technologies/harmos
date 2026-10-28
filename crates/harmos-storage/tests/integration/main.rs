@@ -15,6 +15,7 @@ mod directory;
 mod json;
 mod json_sessions;
 mod manager;
+mod query;
 mod state;
 
 /* === Re-Exports === */
