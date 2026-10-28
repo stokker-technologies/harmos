@@ -1,6 +1,9 @@
-# Transaction Authoring
+# Transaction Authoring Specification
 
-## ADDED Requirements
+## Purpose
+Define transaction inverses, infer undo barriers from the absence of `Invertible<S>`, and validate optional inverse pair declarations.
+
+## Requirements
 
 ### Requirement: Invertible Transactions
 
