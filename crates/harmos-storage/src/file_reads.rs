@@ -87,11 +87,13 @@ impl<C> StorageManager<C> {
     /// Reads the supplied file object without changing the caller's cursor.
     /// On Windows, `file` must allow a separate read open; exclusive handles are refused.
     pub async fn read_opened_file(&self, file: std::fs::File, range: ByteRange) -> Result<FileReader> {
-        self.open_file_handle(file, range).await
+        self.open_file_handle(file, range, None).await
     }
 
-    pub(crate) async fn open_file_handle(&self, file: std::fs::File, range: ByteRange) -> Result<FileReader> {
-        let reader = LocalReader::opened(&self.inner, file, range).await?;
+    pub(crate) async fn open_file_handle(
+        &self, file: std::fs::File, range: ByteRange, frozen: Option<Arc<crate::frozen_file::Backing>>,
+    ) -> Result<FileReader> {
+        let reader = LocalReader::opened(&self.inner, file, range, frozen).await?;
         Ok(FileReader {
             context: crate::execution::Context::current(),
             source: Source::Local(reader),

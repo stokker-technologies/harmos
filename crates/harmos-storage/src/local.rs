@@ -42,6 +42,8 @@ pub(crate) struct LocalReader {
 
     file: Arc<fs::File>,
     path: Option<Arc<PathBuf>>,
+    diagnostic: Arc<PathBuf>,
+    frozen: Option<Arc<crate::frozen_file::Backing>>,
     identity: Arc<same_file::Handle>,
     initial: Stamp,
     offset: u64,
@@ -57,6 +59,16 @@ struct Stamp {
     created: Option<SystemTime>,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("{step} at `{path}`: {source}")]
+struct LocalIoError {
+    step: &'static str,
+    path: PathBuf,
+
+    #[source]
+    source: std::io::Error,
+}
+
 /* === Enums === */
 
 /* === Traits === */
@@ -69,21 +81,21 @@ impl LocalReader {
         let span = context.sync(|| tracing::debug_span!("storage.local.open", outcome = "cancelled"));
         context
             .result(span, async {
-                let absolute = std::path::absolute(path).map_err(io_error)?;
+                let absolute = std::path::absolute(&path).map_err(|error| io_error("resolve path", &path, error))?;
 
                 let (path, file, identity, initial, end) = {
                     let context = crate::execution::Context::current();
                     tokio::task::spawn_blocking(move || {
                         context.blocking(|| {
                             let path = validate_local_path(&absolute)?;
-                            if !fs::symlink_metadata(&path).map_err(io_error)?.is_file() {
+                            if !fs::symlink_metadata(&path).map_err(|error| io_error("inspect path", &path, error))?.is_file() {
                                 return Err(Error::InvalidInput {
                                     field: "local file",
                                     reason: "source is not a regular file",
                                 });
                             }
-                            let file = fs::File::open(&path).map_err(io_error)?;
-                            let description = file.metadata().map_err(io_error)?;
+                            let file = fs::File::open(&path).map_err(|error| io_error("open source", &path, error))?;
+                            let description = file.metadata().map_err(|error| io_error("inspect source", &path, error))?;
                             if !description.is_file() {
                                 return Err(Error::InvalidInput {
                                     field: "local file",
@@ -91,8 +103,10 @@ impl LocalReader {
                                 });
                             }
                             let end = range.end(description.len())?;
-                            let identity = same_file::Handle::from_file(file.try_clone().map_err(io_error)?).map_err(io_error)?;
-                            let initial = Stamp::of(&description)?;
+                            let identity =
+                                same_file::Handle::from_file(file.try_clone().map_err(|error| io_error("clone source", &path, error))?)
+                                    .map_err(|error| io_error("identify source", &path, error))?;
+                            let initial = Stamp::of(&description, &path)?;
                             Ok::<_, Error>((path, file, identity, initial, end))
                         })
                     })
@@ -104,7 +118,9 @@ impl LocalReader {
                     inner: Arc::clone(inner),
 
                     file: Arc::new(file),
+                    diagnostic: Arc::new(path.clone()),
                     path: Some(Arc::new(path)),
+                    frozen: None,
                     identity: Arc::new(identity),
                     initial,
                     offset: range.offset,
@@ -116,11 +132,14 @@ impl LocalReader {
             .await
     }
 
-    pub(crate) async fn opened(inner: &Arc<Inner>, file: fs::File, range: ByteRange) -> Result<Self> {
-        let (file, identity, initial, end) = tokio::task::spawn_blocking(move || {
+    pub(crate) async fn opened(
+        inner: &Arc<Inner>, file: fs::File, range: ByteRange, frozen: Option<Arc<crate::frozen_file::Backing>>,
+    ) -> Result<Self> {
+        let (file, path, identity, initial, end, frozen) = tokio::task::spawn_blocking(move || {
+            let path = opened_path(&file);
             #[cfg(windows)]
-            let file = independent_file(file)?;
-            let description = file.metadata().map_err(io_error)?;
+            let file = independent_file(file, &path)?;
+            let description = file.metadata().map_err(|error| io_error("inspect opened source", &path, error))?;
             if !description.is_file() {
                 return Err(Error::InvalidInput {
                     field: "opened file",
@@ -128,9 +147,10 @@ impl LocalReader {
                 });
             }
             let end = range.end(description.len())?;
-            let identity = same_file::Handle::from_file(file.try_clone().map_err(io_error)?).map_err(io_error)?;
-            let initial = Stamp::of(&description)?;
-            Ok((file, identity, initial, end))
+            let identity = same_file::Handle::from_file(file.try_clone().map_err(|error| io_error("clone opened source", &path, error))?)
+                .map_err(|error| io_error("identify opened source", &path, error))?;
+            let initial = Stamp::of(&description, &path)?;
+            Ok((file, path, identity, initial, end, frozen))
         })
         .await
         .map_err(task_error)??;
@@ -140,6 +160,8 @@ impl LocalReader {
 
             file: Arc::new(file),
             path: None,
+            diagnostic: Arc::new(path),
+            frozen,
             identity: Arc::new(identity),
             initial,
             offset: range.offset,
@@ -164,9 +186,14 @@ impl LocalReader {
     pub(crate) async fn observation_unchanged(&self) -> Result<bool> {
         let file = Arc::clone(&self.file);
         let initial = self.observation();
+        let path = self.diagnostic.clone();
+        let frozen = self.frozen.clone();
         tokio::task::spawn_blocking(move || {
-            let current = file.metadata().map_err(io_error)?;
-            Ok::<_, Error>((current.len(), current.modified().map_err(io_error)?) == initial)
+            let _frozen = frozen;
+            let current = file.metadata().map_err(|error| io_error("inspect opened source", path.as_ref(), error))?;
+            Ok::<_, Error>(
+                (current.len(), current.modified().map_err(|error| io_error("read modification time", path.as_ref(), error))?) == initial,
+            )
         })
         .await
         .map_err(task_error)?
@@ -205,7 +232,7 @@ impl LocalReader {
                             })?;
                             match fs::symlink_metadata(path.as_ref()) {
                                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                                Err(error) => return Err(io_error(error)),
+                                Err(error) => return Err(io_error("inspect path", path.as_ref(), error)),
                                 Ok(metadata) if !metadata.is_file() => {
                                     return Err(Error::InvalidInput {
                                         field: "local file",
@@ -215,9 +242,9 @@ impl LocalReader {
                                 Ok(_) => {}
                             }
                             let path = validate_local_path(path)?;
-                            let file = fs::File::open(path).map_err(io_error)?;
-                            let length = file.metadata().map_err(io_error)?.len();
-                            let current = same_file::Handle::from_file(file).map_err(io_error)?;
+                            let file = fs::File::open(&path).map_err(|error| io_error("open source", &path, error))?;
+                            let length = file.metadata().map_err(|error| io_error("inspect source", &path, error))?.len();
+                            let current = same_file::Handle::from_file(file).map_err(|error| io_error("identify source", &path, error))?;
                             Ok::<_, Error>(Some((*identity == current, length)))
                         })
                     })
@@ -237,13 +264,16 @@ impl LocalReader {
                 let file = Arc::clone(&self.file);
                 let identity = Arc::clone(&self.identity);
                 let initial = self.initial;
+                let diagnostic = self.diagnostic.clone();
+                let frozen = self.frozen.clone();
                 {
                     let context = crate::execution::Context::current();
                     tokio::task::spawn_blocking(move || {
                         context.blocking(|| {
-                            let opened = file.metadata().map_err(io_error)?;
+                            let _frozen = frozen;
+                            let opened = file.metadata().map_err(|error| io_error("inspect source", diagnostic.as_ref(), error))?;
                             if path.is_none() {
-                                if Stamp::of(&opened)? != initial {
+                                if Stamp::of(&opened, &diagnostic)? != initial {
                                     return Err(Error::InvalidInput {
                                         field: "capture source",
                                         reason: "source changed during stable capture",
@@ -252,10 +282,16 @@ impl LocalReader {
                                 return Ok(());
                             }
                             let path = path.as_ref().expect("path checked");
-                            let current_file = fs::File::open(validate_local_path(path)?).map_err(io_error)?;
-                            let current = current_file.metadata().map_err(io_error)?;
-                            let current_identity = same_file::Handle::from_file(current_file).map_err(io_error)?;
-                            if *identity != current_identity || Stamp::of(&opened)? != initial || Stamp::of(&current)? != initial {
+                            let current_file = fs::File::open(validate_local_path(path)?)
+                                .map_err(|error| io_error("open current source", path.as_ref(), error))?;
+                            let current =
+                                current_file.metadata().map_err(|error| io_error("inspect current source", path.as_ref(), error))?;
+                            let current_identity = same_file::Handle::from_file(current_file)
+                                .map_err(|error| io_error("identify current source", path.as_ref(), error))?;
+                            if *identity != current_identity
+                                || Stamp::of(&opened, &diagnostic)? != initial
+                                || Stamp::of(&current, path)? != initial
+                            {
                                 return Err(Error::InvalidInput {
                                     field: "capture source",
                                     reason: "source changed during stable capture",
@@ -285,13 +321,16 @@ impl LocalReader {
 
                 let file = Arc::clone(&self.file);
                 let offset = self.offset;
-                // The Blocking Job Owns Its Charge Even If The Awaiting Reader Is Cancelled.
+                let path = self.diagnostic.clone();
+                let frozen = self.frozen.clone();
+                // The Blocking Job Retains Its File And Buffer Through Caller Cancellation.
                 let batch = {
                     let context = crate::execution::Context::current();
                     tokio::task::spawn_blocking(move || {
                         context.blocking(|| {
+                            let _frozen = frozen;
                             let mut bytes = vec![0; size];
-                            read_exact_at(&file, &mut bytes, offset).map_err(io_error)?;
+                            read_exact_at(&file, &mut bytes, offset).map_err(|error| io_error("read source", path.as_ref(), error))?;
                             Ok::<_, Error>(FileBatch { offset, bytes })
                         })
                     })
@@ -314,10 +353,10 @@ impl LocalReader {
 }
 
 impl Stamp {
-    fn of(metadata: &Metadata) -> Result<Self> {
+    fn of(metadata: &Metadata, path: &Path) -> Result<Self> {
         Ok(Self {
             length: metadata.len(),
-            modified: metadata.modified().map_err(io_error)?,
+            modified: metadata.modified().map_err(|error| io_error("read modification time", path, error))?,
             created: metadata.created().ok(),
         })
     }
@@ -326,7 +365,7 @@ impl Stamp {
 /* === Public Functions === */
 
 pub(crate) fn validate_local_path(path: &Path) -> Result<PathBuf> {
-    let absolute = std::path::absolute(path).map_err(io_error)?;
+    let absolute = std::path::absolute(path).map_err(|error| io_error("resolve path", path, error))?;
     let mut checked = PathBuf::new();
     for component in absolute.components() {
         if component == Component::ParentDir {
@@ -340,7 +379,7 @@ pub(crate) fn validate_local_path(path: &Path) -> Result<PathBuf> {
         if matches!(component, Component::Prefix(_)) {
             continue;
         }
-        let metadata = fs::symlink_metadata(&checked).map_err(io_error)?;
+        let metadata = fs::symlink_metadata(&checked).map_err(|error| io_error("inspect path component", &checked, error))?;
         if linked(&metadata) {
             return Err(Error::InvalidInput {
                 field: "local path",
@@ -365,8 +404,43 @@ pub(crate) fn linked(metadata: &Metadata) -> bool {
     }
 }
 
-pub(crate) fn io_error(error: std::io::Error) -> Error {
-    Error::backend("local filesystem", BackendFailure::Permanent, error)
+pub(crate) fn io_error(step: &'static str, path: &Path, source: std::io::Error) -> Error {
+    let context = LocalIoError { step, path: path.to_owned(), source };
+    Error::backend("local filesystem", BackendFailure::Permanent, context)
+}
+
+// Diagnostic Only: Never Use A Resolved Handle Path To Reopen The Source.
+#[allow(unsafe_code, reason = "Windows queries the live owned handle into a separately allocated UTF-16 buffer")]
+pub(crate) fn opened_path(file: &fs::File) -> PathBuf {
+    #[cfg(windows)]
+    {
+        use std::os::windows::{ffi::OsStringExt, io::AsRawHandle};
+        use windows_sys::Win32::Storage::FileSystem::{FILE_NAME_OPENED, GetFinalPathNameByHandleW};
+
+        // SAFETY: The Handle Stays Live; A Zero-Length Query Writes No Bytes.
+        let length = unsafe { GetFinalPathNameByHandleW(file.as_raw_handle(), std::ptr::null_mut(), 0, FILE_NAME_OPENED) };
+        if length != 0 {
+            let mut buffer = vec![0u16; length as usize];
+            // SAFETY: The Buffer Owns The Advertised Number Of UTF-16 Elements.
+            let written = unsafe { GetFinalPathNameByHandleW(file.as_raw_handle(), buffer.as_mut_ptr(), length, FILE_NAME_OPENED) };
+            if written != 0 && written < length {
+                return std::ffi::OsString::from_wide(&buffer[..written as usize]).into();
+            }
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsRawFd;
+
+        let descriptor = file.as_raw_fd();
+        for directory in ["/proc/self/fd", "/dev/fd"] {
+            let link = Path::new(directory).join(descriptor.to_string());
+            if let Ok(path) = fs::read_link(link) {
+                return path;
+            }
+        }
+    }
+    PathBuf::from("<opened file; path unavailable>")
 }
 
 fn read_exact_at(file: &fs::File, mut bytes: &mut [u8], mut offset: u64) -> std::io::Result<()> {
@@ -403,7 +477,7 @@ fn read_exact_at(file: &fs::File, mut bytes: &mut [u8], mut offset: u64) -> std:
 
 #[cfg(windows)]
 #[expect(unsafe_code, reason = "ReOpenFile preserves the supplied file object while creating a separately owned cursor")]
-fn independent_file(file: fs::File) -> Result<fs::File> {
+fn independent_file(file: fs::File, path: &Path) -> Result<fs::File> {
     use std::os::windows::io::{AsRawHandle, FromRawHandle};
     use windows_sys::Win32::{
         Foundation::{ERROR_SHARING_VIOLATION, GENERIC_READ, INVALID_HANDLE_VALUE},
@@ -424,7 +498,7 @@ fn independent_file(file: fs::File) -> Result<fs::File> {
                 reason: "source handle does not permit an independent read handle",
             });
         }
-        return Err(io_error(error));
+        return Err(io_error("reopen independent source", path, error));
     }
     // SAFETY: ReOpenFile Returned A Fresh Owned Handle; File Closes It Once.
     let reopened = unsafe { fs::File::from_raw_handle(reopened) };

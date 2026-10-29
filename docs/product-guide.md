@@ -345,6 +345,13 @@ Native `read_opened_file(file, range)` reads the supplied process-local handle,
 preserving its original inode even when its pathname is replaced. On Windows,
 the handle must permit a separate read open; exclusive handles are rejected so
 native reads can keep the caller's cursor independent without reopening by path.
+Keep a named or shareable delete-on-close temporary owner alive through native
+reads and captures; unlinking a temporary before reopening it can fail under
+Windows filesystem filters. `StorageManager::freeze_opened_file` creates a private
+named immutable copy exposing length and SHA-256. `FrozenFile::read` and
+`capture_frozen_file` retain that owner through readers, retries, cancellation
+and blocking I/O. Local filesystem errors include the step, path and native cause;
+opened-handle paths are resolved only for diagnostics.
 The shared
 `ReadSession` supports this reader, `follow_file`, `follow_production` and
 `file_progress` alongside retained metadata. `capture_opened_file(file, target,
