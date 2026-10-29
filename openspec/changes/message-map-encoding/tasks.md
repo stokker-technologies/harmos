@@ -7,5 +7,5 @@
 - [x] 1.5 Add root Option schemas and presence-preserving codec tests.
 - [x] 2.1 Run targeted domain, macro and transport proof and repair failures.
 - [x] 2.2 Commit the complete upstream change locally.
-- [ ] 3.1 Validate consumer adoption through an integration-only local override.
-- [ ] 3.2 Run final required validation after separately authorized upstream publication.
+- [x] 3.1 Validate consumer adoption through an integration-only local override.
+- [ ] 3.2 Run final required validation against the complete upstream candidate.
