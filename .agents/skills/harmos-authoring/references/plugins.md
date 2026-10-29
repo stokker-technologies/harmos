@@ -65,6 +65,10 @@ receives `&ExecutionContext`, and callbacks receive `ObserverContext<'_, Host>`
 (with `Supervisor` as the default host type). Call `resource::<T>()` on that
 context to resolve an `Arc<T>`; resource lookup returns `Result<_, ResourceError>`.
 
+Observer `interval_ms` accepts a constant `u64` expression, including a policy
+constant or associated constant. The generated inventory evaluates it at compile
+time and rejects zero. Runtime configuration cannot change this static cadence.
+
 For genuine process isolation, a separate sidecar can host the product runtime
 while another plugin requires its contracts through the entry crate's default
 domain exports. There is no local-runtime registration path for attaching a

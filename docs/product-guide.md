@@ -990,3 +990,7 @@ Rust's orphan rule prevents a runtime crate from implementing Harmos's
 `Operation` for a type declared in a separate domain crate. Keep the operation
 types and their implementations in an operations crate with a `runtime`
 feature; shared models remain in domain.
+
+Observer `interval_ms` accepts constant `u64` expressions such as
+`interval_ms = policy::POLL_INTERVAL_MS`. The generated observer inventory
+rejects zero at compile time; the cadence remains part of the static declaration.

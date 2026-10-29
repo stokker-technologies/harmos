@@ -97,3 +97,4 @@ impl Operation for Cancel {
 - Deterministic CLI readiness already landed in `ab85df55`; `harmos-runtime/tests/system/schematic.rs` awaits Initializing/Ready events and derives its handshake bound from the operation policy.
 - Plugin folders, declaration-only benchmark gates and operations-crate orphan guidance already landed in `ab85df55`.
 - Dispatch already boxes its driver in `harmos-runtime/src/operations/instances.rs`; remaining future-depth, runtime-ID registration and host-owner questions stay open in tasks 5.2/5.3/5.6.
+- Observer cadence keeps its static `u64` millisecond contract and accepts constant expressions; generated inventory rejects zero during const evaluation. No runtime cadence configuration is introduced.
