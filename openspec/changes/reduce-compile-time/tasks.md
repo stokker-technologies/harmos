@@ -7,7 +7,7 @@
 - [x] 1.5 Review README impact and record Hub feature-selection guidance; dependency-only removal changes no README claims.
 - [ ] 1.6 Adopt the owner-approved Wasmtime 49.0.4/wit-bindgen 0.61.1/wasm-tools 0.258.3 family across all locks after repairs; pass the same native Windows integration/system selections and workspace check and record cold measurements and upstream differences.
 - [x] 1.7 Repair exact_live_bindings at its root: the sandbox now stages an extra handler in mismatch mode; the unchanged catalog-refusal condition and SDK lifecycle smoke pass on the current family without policy changes.
-- [ ] 1.8 Reproduce both gRPC preparation-credit failures on the current family and repair actual-workspace admission in the raw adapter if confirmed; preserve budgets and add bounded-admission regression proof.
+- [x] 1.8 Reproduce both gRPC preparation-credit failures on the current family and repair raw payload/envelope workspace admission; both integration cases and two bounded-admission regression tests pass with the original budgets.
 
 ## Validation And Delivery
 

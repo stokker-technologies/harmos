@@ -75,9 +75,11 @@ After restoring the original manifest and all three locks, rebuilding the origin
 
 Owner decision after the experiment: merge `feat/next-release`, repair the inert sandbox mismatch mode and reproduce/fix the two gRPC admission failures on the current family before alignment. The locked repair inventory is the sandbox fixture, its system assertion description, the raw gRPC encoder and inline deterministic admission tests, all three dependency locks, root pins, and this change's records. No assertion, budget or deadline may be weakened. Repairs and alignment are separate commits; tasks 1.6 and 2.4 close only after all required proof passes. No push is authorized.
 
-## Harness Structure
-
 Repair 1.7 restores the sandbox's inert `"mismatch"` mode by staging a real extra handler during preparation. Production exact-catalog validation rejects it; the system test preserves its refusal condition and updates only the diagnostic description. The repaired story and SDK lifecycle smoke passed on Wasmtime 50.0.0 with freshly collected wit-bindgen 0.63.0 fixtures. No public API, deadline, budget, README claim or consumer-skill contract changes.
+
+Repair 1.8 reproduced both native gRPC failures on Wasmtime 50.0.0 after the merge. `grpc/native.rs` used the cooperative encoding fallback, which admits the entire wire ceiling even when copying a small, already encoded payload. Raw payloads and native response envelopes now use the existing admitted copy/framing helpers for actual allocation peaks. The original 4096-byte budgets are unchanged; both transport reproductions and two pure tests for bounded success, exact wire bytes and refusal before allocation pass. This is a Harmos admission defect independent of upstream guest versions.
+
+## Harness Structure
 
 The integration target declares no required features. It combines twelve domain roots, with plugin, sidecar and simulation domains conditional on features. Shared support source is included repeatedly under domain-local namespaces. The fixture dependency is schematic-domain; executable guest/sidecar artifacts are produced separately, not linked fixture crates to remove from this harness. A shared support namespace is a possible structural follow-up, not an authorized mechanical edit. The one-integration-binary policy remains in force.
 
