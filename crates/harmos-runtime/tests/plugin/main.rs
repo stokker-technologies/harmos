@@ -235,19 +235,19 @@ macro_rules! operation {
     };
 }
 
-operation!(ProviderRun, 100, Shared);
+operation!(ProviderRun, 100, Public);
 operation!(ProviderPrivateRun, 100, Private);
-operation!(ProviderSlowRun, 200, Shared);
+operation!(ProviderSlowRun, 200, Public);
 operation!(ProviderSlowPrivateRun, 200, Private);
-operation!(ClientRun, 100, Shared);
+operation!(ClientRun, 100, Public);
 operation!(ClientPrivateRun, 100, Private);
-operation!(ClientSlowRun, 200, Shared);
+operation!(ClientSlowRun, 200, Public);
 operation!(ClientSlowPrivateRun, 200, Private);
-operation!(OtherRun, 100, Shared);
+operation!(OtherRun, 100, Public);
 operation!(OtherPrivateRun, 100, Private);
-operation!(OtherSlowRun, 200, Shared);
+operation!(OtherSlowRun, 200, Public);
 operation!(OtherSlowPrivateRun, 200, Private);
-operation!(ChangedRun, 101, Shared);
+operation!(ChangedRun, 101, Public);
 
 fn request_payload() -> Vec<u8> {
     harmos_runtime::Message::encode(&RunRequest { value: String::new() })
@@ -255,17 +255,17 @@ fn request_payload() -> Vec<u8> {
 
 fn bind<const OWNER: usize>(bindings: &mut Bindings<'_>, definition: &Definition) -> Result<()> {
     match (OWNER, definition.policy.timeout.as_millis(), definition.visibility) {
-        (0, 100, Visibility::Shared) => bindings.operations::<Operations<ProviderRun>>(Lanes::Open),
+        (0, 100, Visibility::Public) => bindings.operations::<Operations<ProviderRun>>(Lanes::Open),
         (0, 100, Visibility::Private) => bindings.operations::<Operations<ProviderPrivateRun>>(Lanes::Open),
-        (0, 200, Visibility::Shared) => bindings.operations::<Operations<ProviderSlowRun>>(Lanes::Open),
+        (0, 200, Visibility::Public) => bindings.operations::<Operations<ProviderSlowRun>>(Lanes::Open),
         (0, 200, Visibility::Private) => bindings.operations::<Operations<ProviderSlowPrivateRun>>(Lanes::Open),
-        (1, 100, Visibility::Shared) => bindings.operations::<Operations<ClientRun>>(Lanes::Open),
+        (1, 100, Visibility::Public) => bindings.operations::<Operations<ClientRun>>(Lanes::Open),
         (1, 100, Visibility::Private) => bindings.operations::<Operations<ClientPrivateRun>>(Lanes::Open),
-        (1, 200, Visibility::Shared) => bindings.operations::<Operations<ClientSlowRun>>(Lanes::Open),
+        (1, 200, Visibility::Public) => bindings.operations::<Operations<ClientSlowRun>>(Lanes::Open),
         (1, 200, Visibility::Private) => bindings.operations::<Operations<ClientSlowPrivateRun>>(Lanes::Open),
-        (2, 100, Visibility::Shared) => bindings.operations::<Operations<OtherRun>>(Lanes::Open),
+        (2, 100, Visibility::Public) => bindings.operations::<Operations<OtherRun>>(Lanes::Open),
         (2, 100, Visibility::Private) => bindings.operations::<Operations<OtherPrivateRun>>(Lanes::Open),
-        (2, 200, Visibility::Shared) => bindings.operations::<Operations<OtherSlowRun>>(Lanes::Open),
+        (2, 200, Visibility::Public) => bindings.operations::<Operations<OtherSlowRun>>(Lanes::Open),
         (2, 200, Visibility::Private) => bindings.operations::<Operations<OtherSlowPrivateRun>>(Lanes::Open),
         _ => panic!("fixture has no operation for this policy"),
     }

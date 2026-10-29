@@ -44,7 +44,7 @@ pub(super) type Manager = PluginManager<Resources, (), Resources>;
 /* === Structs === */
 
 #[harmos_runtime::operation(codec = manual, id = <wire::ProviderEchoOperation as OperationDeclaration>::ID, response = wire::Echoed,
-    policy = <wire::ProviderEchoOperation as OperationDeclaration>::POLICY, visibility = Shared)]
+    policy = <wire::ProviderEchoOperation as OperationDeclaration>::POLICY, visibility = Public)]
 #[derive(Clone)]
 struct Echo(wire::ProviderEchoOperation);
 
@@ -75,7 +75,7 @@ impl harmos_runtime::schema::Described for Echo {
 }
 
 #[harmos_runtime::operation(codec = manual, resources = [harmos_runtime::operations::HostContext], id = <harmos_operations::streams::Publish as OperationDeclaration>::ID, response = (),
-    policy = <harmos_operations::streams::Publish as OperationDeclaration>::POLICY, visibility = Shared)]
+    policy = <harmos_operations::streams::Publish as OperationDeclaration>::POLICY, visibility = Public)]
 #[derive(Clone)]
 struct Publish(harmos_operations::streams::Publish);
 

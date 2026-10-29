@@ -548,7 +548,7 @@ mod tests {
             for (pointer, replacement) in [
                 ("/operation/id", json!("harmos.forged")),
                 ("/operation/description", json!("forged SDK contract")),
-                ("/operation/visibility", json!("shared")),
+                ("/operation/visibility", json!("public")),
                 ("/operation/policy/attempt_timeout/secs", json!(0)),
                 ("/operation/policy/retries", json!(RetryPolicy::OnTransient { max_retries: 1, backoff })),
                 ("/fingerprint", json!("00".repeat(32))),

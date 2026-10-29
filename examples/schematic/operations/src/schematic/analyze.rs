@@ -40,7 +40,7 @@ pub struct Finding {
     response = Analysis,
     output = Finding,
     policy = crate::POLICY,
-    visibility = Shared,
+    visibility = Public,
     replay = harmos::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "Analyze"),
 )]

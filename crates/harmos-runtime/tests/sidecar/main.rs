@@ -103,7 +103,7 @@ const GAUGE_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         retries: RetryPolicy::Never,
     },
     response = Amplified,
-    visibility = Shared,
+    visibility = Public,
 )]
 #[derive(Clone, PartialEq)]
 struct AmplifyDeclaration {
@@ -137,7 +137,7 @@ struct SampleDeclaration {
         retries: RetryPolicy::Never,
     },
     response = (),
-    visibility = Shared,
+    visibility = Public,
 )]
 #[derive(Clone, PartialEq)]
 struct EmitDeclaration {
@@ -151,7 +151,7 @@ struct EmitDeclaration {
         retries: RetryPolicy::Never,
     },
     response = (),
-    visibility = Shared,
+    visibility = Public,
 )]
 #[derive(Clone, PartialEq)]
 struct PublishPulseDeclaration {
@@ -165,7 +165,7 @@ struct PublishPulseDeclaration {
         retries: RetryPolicy::Never,
     },
     response = (),
-    visibility = Shared,
+    visibility = Public,
 )]
 #[derive(Clone, PartialEq)]
 struct CollapseDeclaration {}
@@ -177,7 +177,7 @@ struct CollapseDeclaration {}
         retries: RetryPolicy::Never,
     },
     response = (),
-    visibility = Shared,
+    visibility = Public,
 )]
 #[derive(Clone, PartialEq)]
 struct FinishDeclaration {
@@ -191,7 +191,7 @@ struct FinishDeclaration {
         retries: RetryPolicy::Never,
     },
     response = BudgetedReply,
-    visibility = Shared,
+    visibility = Public,
 )]
 #[derive(Clone, PartialEq)]
 struct BudgetedRouteDeclaration {

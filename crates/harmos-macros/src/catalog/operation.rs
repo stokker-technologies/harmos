@@ -117,7 +117,7 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
     let description = description.map(|value| quote!(const DESCRIPTION: &'static str = #value;));
     let visibility = visibility.map(|value| {
         let value = match &value {
-            Expr::Path(path) if path.path.is_ident("Shared") || path.path.is_ident("Host") || path.path.is_ident("Private") => {
+            Expr::Path(path) if path.path.is_ident("Public") || path.path.is_ident("Host") || path.path.is_ident("Private") => {
                 quote!(#sdk::operations::Visibility::#value)
             }
             _ => quote!(#value),

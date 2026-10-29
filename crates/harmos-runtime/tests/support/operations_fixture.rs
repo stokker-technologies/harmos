@@ -111,7 +111,7 @@ pub(crate) struct Compute {
 pub(crate) struct Slow(pub(crate) Compute);
 
 #[harmos_runtime::operation(codec = manual, id = "test.parent", response = Response,
-    resources = [ParentOwner], operations = [Compute], visibility = Shared,
+    resources = [ParentOwner], operations = [Compute], visibility = Public,
     policy = Compute::POLICY,
 )]
 #[derive(Clone)]

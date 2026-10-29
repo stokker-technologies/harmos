@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/operations.md; sha256:60acb4fdf16effec4f012c77ca7e8f5133b06d8339a93db9dc511fa1358ca4cf -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/operations.md; sha256:ccb5b55493f5960fe1311df88bd8fe31e55fcb0b65706694348608e01bfb9d64 -->
 
 # Operations
 
@@ -41,7 +41,7 @@ const POLICY: harmos::OperationPolicy = crate::POLICY;
 pub struct Reading { pub value: f64 }
 
 #[harmos::operation(id = "temperature.read", response = Reading, policy = POLICY,
-    visibility = Shared, resources = [Device])]
+    visibility = Public, resources = [Device])]
 pub struct Read { pub channel: u32 }
 
 /* === Enums === */
@@ -118,7 +118,7 @@ mod runtime {
 
 The operations crate uses `harmos` with `default-features = false` and
 `runtime = ["harmos/runtime", "dep:device"]`. A unit operation struct is a unit request. `response` defaults to `()` and
-`visibility` to `Private`; `Shared` and `Host` are short visibility forms. The operation struct is the request message;
+`visibility` to `Private`; `Public` and `Host` are short visibility forms. The operation struct is the request message;
 its runtime implementation declares only `Error` and consuming `run` (plus optional error classification).
 
 For a platform-only operation, put `#[cfg(windows)]` on its `mod` declaration and its catalog variant. The catalog preserves
@@ -175,7 +175,7 @@ catalog composition. Owner stop/cleanup closes resources after supervised drain.
 plugin requirements. Explicit grants still belong to the plugin. There are three verification layers:
 
 - Compile: generated `Requires<T>` and `Invokes<T>` bounds reject undeclared resource and operation access.
-- Activation: the complete registration requires all resources and callee contracts. Cross-plugin calls require `Shared`, or `Host`
+- Activation: the complete registration requires all resources and callee contracts. Cross-plugin calls require `Public`, or `Host`
   for a host caller; missing targets and incompatible fingerprints are refused before execution.
 - Run: operation errors, deadlines and carrier faults remain fallible.
 

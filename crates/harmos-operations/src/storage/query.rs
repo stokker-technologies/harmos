@@ -56,7 +56,7 @@ product!(Query {
     response = QueryCompletion,
     policy = IO_POLICY,
     output = QueryOutput,
-    visibility = Shared,
+    visibility = Public,
     replay = ReplaySafety::Idempotent,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "Query"),
     grant = Self::grant_for,

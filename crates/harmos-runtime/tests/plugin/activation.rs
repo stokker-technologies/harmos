@@ -31,7 +31,7 @@ use super::*;
 #[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], harmos_path = harmos_runtime,
     id = "fixture.run",
     response = String,
-    visibility = Shared,
+    visibility = Public,
     policy = ClientRun::POLICY,
     grpc(package = "fixture.embedded.v1", service = "Client", method = "Run"),
 )]

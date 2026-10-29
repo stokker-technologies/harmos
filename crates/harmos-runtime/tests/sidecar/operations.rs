@@ -116,7 +116,7 @@ struct Endpoint {
     },
     response = (),
     description = "Reads a device",
-    visibility = Shared,
+    visibility = Public,
     grpc(package = "fixture.v1", service = "Native", method = "Read"),
 )]
 struct ReadDeclaration {}
