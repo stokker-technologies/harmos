@@ -62,7 +62,7 @@ pub struct Sample {
 #[harmos_runtime::operation(resources = [Supervisor], id = "publication.publish",
     policy = POLICY,
     response = Timings,
-    visibility = Shared,
+    visibility = Public,
 )]
 pub struct PublishDeclaration {
     pub rows: u32,

@@ -39,7 +39,7 @@ use harmos_domain::operations::instance::Id;
     id = "host.operations.status",
     response = super::InstanceState,
     policy = super::POLICY,
-    visibility = Shared,
+    visibility = Public,
     grpc(package = "harmos.host.v1", service = "Operations", method = "Status"),
 )]
 #[derive(Clone, Default, PartialEq)]

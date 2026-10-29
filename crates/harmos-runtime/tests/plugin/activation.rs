@@ -31,7 +31,7 @@ use super::*;
 #[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], harmos_path = harmos_runtime,
     id = "fixture.run",
     response = String,
-    visibility = Shared,
+    visibility = Public,
     policy = ClientRun::POLICY,
     grpc(package = "fixture.embedded.v1", service = "Client", method = "Run"),
 )]
@@ -65,6 +65,50 @@ impl harmos_runtime::operations::Operation for WireCallDeclaration {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[tokio::test]
+async fn embedded_runtime_ids() {
+    use harmos_runtime::operations::{Registration, WireDeclaration};
+
+    let runtime = harmos_runtime::Runtime::<Fixture>::launch_with((), (), |setup| {
+        setup.resource::<Owner>(Owner);
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: std::num::NonZeroUsize::new(4096),
+            ..Default::default()
+        });
+    })
+    .await
+    .unwrap();
+    let mut provider = plan().ordered().iter().find(|definition| definition.id == "provider").unwrap().clone();
+    provider.contributions = PluginContributions::default();
+    let id = format!("fixture.channel_{}", 7);
+    let batch = Registration::new(Lanes::Open).operation::<ProviderRun>(&id).unwrap();
+    runtime.plugin.register_embedded_batch(provider, Default::default(), batch.clone()).await.unwrap();
+
+    let registered = runtime.plugin.status("provider").unwrap();
+    let expected = WireDeclaration::of::<ProviderRun>().contract().unwrap().with_id(&id).unwrap();
+    let definition = registered.definition.unwrap();
+    assert_eq!(definition.contributions.operations, [expected.operation().clone()]);
+    assert_eq!(definition.contributions.wire_contracts, [expected]);
+    runtime.plugin.initialize().await.unwrap();
+    let payload = harmos_runtime::Message::encode(&ProviderRun { value: "configured".into() });
+    let bytes = runtime.operations.call_encoded(&format!("provider.{id}"), payload).await.unwrap();
+    assert_eq!(<String as harmos_runtime::Message>::decode(&bytes).unwrap(), "configured");
+    let typed = runtime.operations.submit_at::<ProviderRun>(&id, ProviderRun { value: "typed".into() }).unwrap().await.unwrap();
+    assert_eq!(&*typed, "typed");
+
+    let ready = runtime.plugin.status("provider").unwrap();
+    let mut wrong = definition.clone();
+    wrong.contributions.wire_contracts = vec![WireDeclaration::of::<ProviderRun>().contract().unwrap()];
+    assert!(matches!(
+        runtime.plugin.reload_embedded_batch(wrong, Default::default(), batch.clone()).await,
+        Err(Error::InvalidInput { field: "embedded plugin contracts", .. })
+    ));
+    assert_eq!(runtime.plugin.status("provider").unwrap(), ready);
+    runtime.plugin.reload_embedded_batch(definition, Default::default(), batch).await.unwrap();
+    assert_ne!(runtime.plugin.status("provider").unwrap().generation, ready.generation);
+    runtime.shutdown().await.unwrap();
+}
 
 #[tokio::test]
 async fn embedded_wire_contracts() {

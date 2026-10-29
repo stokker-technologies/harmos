@@ -2,7 +2,7 @@
 name: harmos-authoring
 description: Implement consumer Harmos operations, runtime resources, storage integration, composed plugins and transport exposure.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:2fb2f82c6aad70ffa8a06b128e9dd5870d31b9779a139911f93e61d6bb396258 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:c9e9d899231cbfc9d22c97bcd4a1f2af4e6e6b1aaaebfc59957aee0e936e114f -->
 
 # Harmos Authoring
 
@@ -18,7 +18,7 @@ skeleton, each with its own Tests section. The operation struct is its request m
 contracts by default and enables execution with `runtime`; resource dependencies
 can be optional. Plugin operations use `operations/<op>/mod.rs` for the one
 portable definition, with parallel `windows.rs` / `unix.rs` implementations gated
-only on their `mod` declarations. Keep one catalog with ungated variants; use no
+only on their `mod` declarations. Keep one portable plugin catalog with ungated variants; use no
 backend traits or platform catalogs. A single `-sidecar` or `-guest` carrier stays
 under `crates/`; several live under `plugins/sidecars/<name>` and
 `plugins/guests/<name>`. Carrier crates declare `publish = false`.
@@ -26,6 +26,9 @@ under `crates/`; several live under `plugins/sidecars/<name>` and
 Rust's orphan rule prevents implementing Harmos's `Operation` for a domain-owned
 type from a separate runtime crate. Keep the operation type and its runtime-gated
 implementation together in an operations crate; shared models stay in domain.
+General application catalogs can gate platform-only operations on both their
+module declarations and catalog variants; the operations reference shows that
+separate case.
 
 One catalog provides `catalog()` for portable definitions and an executable
 `CATALOG` descriptor through `operations::OperationCatalog`. Applications and

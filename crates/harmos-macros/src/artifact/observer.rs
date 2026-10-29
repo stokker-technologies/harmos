@@ -21,7 +21,7 @@ use quote::{ToTokens, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Error, FnArg, GenericArgument, LitInt, LitStr, Meta, Path, PathArguments, Token, Type};
+use syn::{Error, Expr, FnArg, GenericArgument, LitStr, Meta, Path, PathArguments, Token, Type};
 // Local Imports
 use super::contribution::{asynchronous, block, borrowed, declared, parameter, required, returned};
 use super::set_once;
@@ -137,7 +137,11 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             const ENTRY: #harmos::__private::PluginInventory::observers::Entry =
                 #harmos::__private::PluginInventory::observers::Entry {
                     id: #id, description: #description,
-                    interval: ::core::time::Duration::from_millis(#interval),
+                    interval: {
+                        let milliseconds: u64 = #interval;
+                        ::core::assert!(milliseconds > 0, "an observer's interval is at least 1 millisecond");
+                        ::core::time::Duration::from_millis(milliseconds)
+                    },
                     activation: #harmos::__private::sidecar::Activation::#activation,
                     streams: &[#(#harmos::__private::PluginInventory::publications::Entry::of::<#streams>()),*],
                     demand_keys: &[#(#demand_keys),*],
@@ -211,7 +215,7 @@ fn host(observing: &syn::ImplItemFn) -> Result<Option<Type>, Error> {
 }
 
 #[allow(clippy::type_complexity)]
-fn arguments(attribute: TokenStream) -> Result<(HarmosPath, LitInt, Vec<Path>, Vec<Path>, String, Option<LitStr>, Option<LitStr>), Error> {
+fn arguments(attribute: TokenStream) -> Result<(HarmosPath, Expr, Vec<Path>, Vec<Path>, String, Option<LitStr>, Option<LitStr>), Error> {
     let span = attribute.span();
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute)?;
     let mut harmos_path: Option<Path> = None;
@@ -260,7 +264,7 @@ fn arguments(attribute: TokenStream) -> Result<(HarmosPath, LitInt, Vec<Path>, V
                 ));
             }
             Meta::NameValue(named) if named.path.is_ident("interval_ms") => {
-                set_once(&mut interval, syn::parse2::<LitInt>(named.value.to_token_stream())?, named.span(), "interval_ms")?
+                set_once(&mut interval, named.value.clone(), named.span(), "interval_ms")?
             }
             other => {
                 return Err(Error::new(
@@ -278,10 +282,6 @@ fn arguments(attribute: TokenStream) -> Result<(HarmosPath, LitInt, Vec<Path>, V
              whoever leased it",
         ));
     };
-    if interval.base10_parse::<u64>()? == 0 {
-        return Err(Error::new(interval.span(), "an observer's interval is at least 1 millisecond"));
-    }
-
     let streams = streams.unwrap_or_default();
     let demand_keys = demand_keys.unwrap_or_default();
     let activation = activation.map(|value| value.value()).unwrap_or_else(|| "plugin".into());

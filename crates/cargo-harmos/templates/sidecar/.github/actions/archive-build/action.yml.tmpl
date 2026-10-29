@@ -1,0 +1,19 @@
+# Rendered by stkr project update from templates/ci/archive-build; sha256:e15cbda33c9089d2704ca5c4cc0c6634f1dd7fcad295c084b247b0ff95b7c085
+name: Archive / Build
+description: Archive / Build
+inputs:
+  command:
+    description: Command
+    required: true
+    default: ""
+outputs: {}
+runs:
+  using: composite
+  steps:
+  - shell: python
+    run: |-
+      import os, runpy
+      runpy.run_path(os.path.join(os.environ['GITHUB_ACTION_PATH'], 'run.py'), run_name='__main__')
+    env:
+      TRANSFER_OPERATION: pack
+      TRANSFER_COMMAND: ${{ inputs.command }}

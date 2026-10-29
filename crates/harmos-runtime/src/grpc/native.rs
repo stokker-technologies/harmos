@@ -71,6 +71,13 @@ impl super::Wire<Vec<u8>> for Raw {
         bytes.extend_from_slice(value);
         Ok(())
     }
+
+    fn encode_admitted(
+        value: &Vec<u8>, bytes: &mut Vec<u8>, limit: usize, admit: &mut dyn FnMut(usize) -> Result<(), Status>,
+    ) -> Result<(), Status> {
+        super::codec::encode_bytes(value, bytes, limit, admit)
+    }
+
     fn decode_admitted<C>(
         input: harmos_sdk::grpc::DecodeInput<'_>, admit: impl FnOnce(usize) -> Result<C, Status>,
     ) -> Result<(Vec<u8>, C), Status> {
@@ -91,6 +98,15 @@ impl super::Encode<Raw> for Output {
                 bytes.extend_from_slice(&self.bytes);
                 Ok(())
             }
+        }
+    }
+
+    fn write_admitted(&self, bytes: &mut Vec<u8>, limit: usize, admit: &mut dyn FnMut(usize) -> Result<(), Status>) -> Result<(), Status> {
+        match self.tag {
+            Some(tag) => super::envelope::delimited_admitted(tag, bytes, limit, admit, |bytes, admit| {
+                super::codec::encode_bytes(&self.bytes, bytes, limit, admit)
+            }),
+            None => super::codec::encode_bytes(&self.bytes, bytes, limit, admit),
         }
     }
 }
@@ -306,3 +322,59 @@ fn serving(error: harmos_sdk::ServingError) -> Status {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::grpc::{Encode, Wire};
+
+    #[test]
+    fn raw_encoding_admits_actual_workspace() {
+        let payload = vec![37; 32];
+        let mut bytes = Vec::new();
+        let mut peak = 0;
+        let mut admit = |required| {
+            peak = peak.max(required);
+            if required > 4096 { Err(Status::resource_exhausted("fixture credit")) } else { Ok(()) }
+        };
+        Raw::encode_admitted(&payload, &mut bytes, 65536, &mut admit).unwrap();
+        assert_eq!(bytes, payload);
+
+        for tag in [None, Some(1), Some(2)] {
+            let output = Output { bytes: payload.clone(), tag };
+            let mut expected = Vec::new();
+            output.write(&mut expected).unwrap();
+            bytes.clear();
+            output.write_admitted(&mut bytes, 65536, &mut admit).unwrap();
+            assert_eq!(bytes, expected);
+        }
+        assert!(peak < 4096);
+    }
+
+    #[test]
+    fn raw_growth_refused_before_allocation() {
+        let payload = vec![37; 65];
+        let mut bytes = Vec::with_capacity(32);
+        let capacity = bytes.capacity();
+        let mut admit = |required| {
+            if required > 64 { Err(Status::resource_exhausted("fixture credit")) } else { Ok(()) }
+        };
+        let error = Raw::encode_admitted(&payload, &mut bytes, 65536, &mut admit).unwrap_err();
+        assert_eq!(error.code(), tonic::Code::ResourceExhausted);
+        assert!(bytes.is_empty());
+        assert_eq!(bytes.capacity(), capacity);
+
+        for tag in [None, Some(1), Some(2)] {
+            let output = Output { bytes: payload.clone(), tag };
+            let error = output.write_admitted(&mut bytes, 65536, &mut admit).unwrap_err();
+            assert_eq!(error.code(), tonic::Code::ResourceExhausted);
+            assert!(bytes.is_empty());
+            assert_eq!(bytes.capacity(), capacity);
+        }
+
+        let error = Raw::encode_admitted(&payload, &mut bytes, 64, &mut |_| Ok(())).unwrap_err();
+        assert_eq!(error.code(), tonic::Code::ResourceExhausted);
+        assert!(bytes.is_empty());
+        assert_eq!(bytes.capacity(), capacity);
+    }
+}

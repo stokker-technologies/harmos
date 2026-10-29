@@ -58,7 +58,7 @@ SDK execution without the native host runtime. Operations use
 `async fn run(self, ctx: Context<'_, Self>) -> Result<Response<T>, Self::Error>`
 is its required method. Declare `resources` and `operations` on the operation;
 resolve them through `ctx.resource::<T>()` and `ctx.operation(request)`.
-`ctx.streams()` exposes derived endpoints. Use dotted IDs and `visibility = Shared`
+`ctx.streams()` exposes derived endpoints. Use dotted IDs and `visibility = Public`
 or `Host` when needed; the default is `Private`. Applications and plugins share
 `Lifecycle` with async prepare, initialize, stop and cleanup. Plugin lifecycle
 contexts are `harmos::sidecar::Supervisor` or `harmos::guest::kit::Context`.
@@ -92,21 +92,25 @@ The inspection path above is Cargo's default Linux target directory for the
 separate Schematic workspace. On other platforms or with a custom target
 directory, use the artifact path reported in `sidecar-build.json`.
 
-The [current release](https://github.com/stokker-technologies/harmos/releases/latest) provides raw
-`cargo-harmos-<version>-<Rust-target-triple>` executables (`.exe` on Windows).
-Download the matching asset, verify it against `SHA256SUMS`,
-rename it to `cargo-harmos` (`cargo-harmos.exe` on Windows), and place it on
-`PATH`. On Linux, make it executable. Run `cargo harmos --help` to check
-installation. Mise installation is verified against those same published bytes
-before release completion. Harmos library crates are published on crates.io;
-the Cargo tool ships as a release executable.
+### Tool Installation
 
-The release also declares `schematic-<version>-<platform>.zip` demo bundles for
+The [current release](https://github.com/stokker-technologies/harmos/releases/latest) provides
+`cargo-harmos-<version>-<Rust-target-triple>.tar.gz` on Unix and `.zip` on Windows.
+Each archive contains `cargo-harmos` (`cargo-harmos.exe` on Windows), LICENSE,
+README.md and generated CHANGELOG.md. Verify the archive against `SHA256SUMS`,
+extract it, and place the executable on `PATH`, preserving its executable bit on
+Unix. Run `cargo harmos --help` to check installation. Mise installation is
+verified against the archived binary before release completion. Harmos library
+crates are published on crates.io with generated CHANGELOG.md; the Cargo tool
+is distributed through release archives.
+
+CI packages retain `schematic-<version>-<platform>.zip` demo bundles for
 `linux-x86_64` and `windows-x86_64`. Extract the complete ZIP and run
 `schematic-cli` (`schematic-cli.exe` on Windows); `--guest` selects the bundled
 Wasm backend. Keep its `plugins/` directory beside the executable. Package
-checks run both backends from an isolated extraction. Release downloads include
-`SHA256SUMS` and `release.json`; test reports and fixtures remain CI artifacts.
+checks run both backends from an isolated extraction. Examples, test reports and
+fixtures remain source or CI artifacts. Release downloads include generated
+`CHANGELOG.md` and `SHA256SUMS`; the internal upload inventory is not a download.
 
 `package` consumes the existing build receipt and verifies every artifact and
 schema byte stamp before bundling. It never runs Cargo. Relocated archives use
@@ -345,8 +349,14 @@ Native `read_opened_file(file, range)` reads the supplied process-local handle,
 preserving its original inode even when its pathname is replaced. On Windows,
 the handle must permit a separate read open; exclusive handles are rejected so
 native reads can keep the caller's cursor independent without reopening by path.
-The shared
-`ReadSession` supports this reader, `follow_file`, `follow_production` and
+Keep a named or shareable delete-on-close temporary owner alive through native
+reads and captures; unlinking a temporary before reopening it can fail under
+Windows filesystem filters. `StorageManager::freeze_opened_file` creates a private
+named immutable copy exposing length and SHA-256. `FrozenFile::read` and
+`capture_frozen_file` retain that owner through readers, retries, cancellation
+and blocking I/O. Local filesystem errors include the step, path and native cause;
+opened-handle paths are resolved only for diagnostics.
+The storage manager also exposes `follow_file`, `follow_production` and
 `file_progress` alongside retained metadata. `capture_opened_file(file, target,
 range, consistency)` synchronously returns an `OpenedCapture` that owns the
 original handle and `StorageFile`. Its asynchronous `finish` retains setup,
@@ -362,7 +372,7 @@ changes but does not freeze concurrent writers into an atomic snapshot.
 `FollowFile` starts at `Beginning`, `End` or `At(offset)` and streams data with
 explicit truncation/replacement events. Staged-production observation uses the
 distinct `FollowProduction` operation. Native file slices and shared read batches
-retain their memory charge until their final owner is released.
+retain their backing allocations until their final owner is released.
 
 `ListDirectory` and `WatchDirectory` share a `DirectorySelection` containing the
 root, recursion flag and ordered include/exclude rules. Patterns match
@@ -378,8 +388,8 @@ apply an ordered transform plan, and apply row `offset`/`limit` to the final
 result. Delivery emits a schema, bounded Arrow record batches, and a final
 operation completion. Response `batch_rows` and `batch_bytes` bound each delivery
 batch; they do not truncate the query result. In process, the manager's reader
-yields native `QueryArrow` items whose shared Arrow buffers keep their storage
-charge through clones and slices. The `storage_query` operation, declared in
+yields native `QueryArrow` items whose shared Arrow buffers remain valid
+through clones and slices. The `storage_query` operation, declared in
 `harmos-operations`, carries the same items as Arrow IPC (`QueryOutput`), and the
 write operations take `DataBatch` values whose data is Arrow IPC; serve them with
 `harmos::builtin::storage_registration`.
@@ -387,7 +397,7 @@ write operations take `DataBatch` values whose data is Arrow IPC; serve them wit
 `ArrowSchema::from_ipc` and `ArrowBatch::from_ipc` consume encoded `Vec<u8>`
 buffers. `QueryArrow::output` and `TryFrom<QueryOutput>` consume their inputs;
 uniquely owned encoded buffers move through these conversions. Retained aliases
-continue to share their existing allocations and memory charges.
+continue to share their existing allocations.
 
 ```rust
 let mut reader = storage.query(harmos::storage::Query { at, source, transforms, slice }).await?;
@@ -402,15 +412,13 @@ Direct storage APIs take resource-owned inputs: `Query`, `FileRead`,
 construct these inputs from their wire requests; the storage engine does not
 depend on operation declarations.
 
-Every read shares the one read budget. Work that cannot fit while other queries
-hold memory waits for released capacity; work that can never fit the budget, even
-after splitting source pages down to one row, fails with `ResourceExhausted`
-instead of waiting on itself. A reader that already holds memory, including
-batches its consumer retains, may wait while another owner can release capacity.
-Growth fails with `ResourceExhausted` only when the waiting holders form a certain
-cycle: none could grow even if every owner outside that set released its bytes. Dropping a reader or an in-progress `next` cancels
-it and releases its query slot; batches already returned stay charged until
-they are dropped.
+Storage bounds active and pending query counts, pending write bytes/batches and
+serialized response pages through consumer-supplied settings. Readers wait for
+an active query slot within the pending-query limit. Dropping a reader or an
+in-progress `next` cancels its work and releases its query slot; returned batches
+remain valid until their owners are dropped. Storage does not reserve a shared
+read-memory pool or admit consumer conversion scratch. Consumers bound their
+own retained results and scratch allocations.
 
 A stream selection's `after` resumes at a stored position, as `RecordRead::after`
 does: only rows stored after it are read, in position order.
@@ -502,9 +510,10 @@ their `after` cursor, then newly accepted entries. File following uses the
 source/start contract above; staged producers use `FollowProduction`.
 
 Mutation receipts make retried file, schema and delete mutations idempotent within
-the retry window. The receipt ledger takes a fixed share of the read budget;
-when it is full, completed receipts are evicted oldest first, and a retry of an
-evicted receipt runs as a new mutation.
+the retry window. The receipt ledger has a bounded entry count; reclaimable
+completed receipts are evicted oldest first. Pending mutations and admitted
+callers retain their completion across replay-window expiry; fresh expired
+requests remain refused. A valid retry of an evicted identity runs as a new mutation.
 
 Typed stream, record and object writers acknowledge acceptance and durability
 separately for each atomic logical batch. A disconnected invocation may have
@@ -527,7 +536,7 @@ recovered sessions have the same bounded window. Token-only mutation
 producers retain bounded inactivity expiry because no native handle owns their
 lifetime. An unadopted native resume remains disconnected. Resume fences the old
 producer and clears the disconnected deadline. Finish, abort and storage shutdown
-still retire production; existing file-count and memory budgets remain enforced.
+still retire production; existing file-count and pending-write limits remain enforced.
 A viewer owns its subscription, while the original service owns production.
 
 One file owns each operation. Its definition division contains messages, the operation struct, policy, contract implementations and
@@ -564,7 +573,7 @@ const POLICY: harmos::OperationPolicy = crate::POLICY;
 pub struct Reading { pub value: f64 }
 
 #[harmos::operation(id = "temperature.read", response = Reading, policy = POLICY,
-    visibility = Shared, resources = [Device])]
+    visibility = Public, resources = [Device])]
 pub struct Read { pub channel: u32 }
 
 /* === Enums === */
@@ -641,8 +650,10 @@ mod runtime {
 
 The operations crate uses `harmos` with `default-features = false` and
 `runtime = ["harmos/runtime", "dep:device"]`. A unit operation struct is a unit request. `response` defaults to `()` and
-`visibility` to `Private`; `Shared` and `Host` are short visibility forms. The operation struct is the request message;
+`visibility` to `Private`; `Public` and `Host` are short visibility forms. The operation struct is the request message;
 its runtime implementation declares only `Error` and consuming `run` (plus optional error classification).
+Private operations cannot declare `grpc(...)`; use `Public` or `Host` for gRPC exposure.
+The macro rejects Private bindings at compile time, and runtime registration refuses them.
 
 For a platform-only operation, put `#[cfg(windows)]` on its `mod` declaration and its catalog variant. The catalog preserves
 variant attributes for both portable projections and runtime registration. Short built-ins may keep their gated implementation inline.
@@ -708,7 +719,7 @@ lifecycle owner closes the resources it acquired; overrides change execution loo
 plugin requirements. Explicit grants still belong to the plugin. There are three verification layers:
 
 - Compile: generated `Requires<T>` and `Invokes<T>` bounds reject undeclared resource and operation access.
-- Activation: the complete registration requires all resources and callee contracts. Cross-plugin calls require `Shared`, or `Host`
+- Activation: the complete registration requires all resources and callee contracts. Cross-plugin calls require `Public`, or `Host`
   for a host caller; missing targets and incompatible fingerprints are refused before execution.
 - Run: operation errors, deadlines and carrier faults remain fallible.
 
@@ -966,6 +977,17 @@ There is no explicit irreversibility marker.
 
 ## Plugin Source Layout
 
+Runtime-selected operation IDs bind an existing type through
+`operations::Registration::new(lane).operation::<Read>(id)?`, then
+`runtime.register_batch(batch).await?` or plugin `register_embedded_batch`.
+The operation type supplies its schema, policy, resources and handler; the chosen
+ID enters the fingerprint. Invoke it with `operations.submit_at::<Read>(id, request)`.
+Static catalog composition and ordinary collision refusal remain unchanged.
+
+The plugin owner `host` is admitted like any other owner. Its name confers no
+application authority or grant exemption. Qualified identity collisions remain
+refusals; application caller authority comes from the runtime context.
+
 Keep one `-sidecar` or `-guest` crate under `crates/`. Several plugins belong
 under `plugins/sidecars/<name>` and `plugins/guests/<name>`. Carrier crates use
 `publish = false`.
@@ -990,3 +1012,7 @@ Rust's orphan rule prevents a runtime crate from implementing Harmos's
 `Operation` for a type declared in a separate domain crate. Keep the operation
 types and their implementations in an operations crate with a `runtime`
 feature; shared models remain in domain.
+
+Observer `interval_ms` accepts constant `u64` expressions such as
+`interval_ms = policy::POLL_INTERVAL_MS`. The generated observer inventory
+rejects zero at compile time; the cadence remains part of the static declaration.

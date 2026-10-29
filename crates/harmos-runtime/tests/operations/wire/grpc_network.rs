@@ -727,7 +727,7 @@ async fn runtime_stops_listener() {
     assert!(call(channel, Some("Bearer alice")).await.is_err());
 }
 
-#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.download", response = Reply, output = Reply, policy = WHO_POLICY, grpc(package = "fixture", service = "Identity", method = "Download"))]
+#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.download", response = Reply, output = Reply, policy = WHO_POLICY, visibility = Public, grpc(package = "fixture", service = "Identity", method = "Download"))]
 struct NativeDownload {}
 impl harmos_runtime::Operation for NativeDownload {
     type Error = Error;
@@ -747,7 +747,7 @@ impl harmos_runtime::Operation for NativeDownload {
     }
 }
 
-#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.upload", response = Reply, input = Reply, policy = WHO_POLICY, grpc(package = "fixture", service = "Identity", method = "Upload"))]
+#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.upload", response = Reply, input = Reply, policy = WHO_POLICY, visibility = Public, grpc(package = "fixture", service = "Identity", method = "Upload"))]
 struct NativeUpload {}
 impl harmos_runtime::Operation for NativeUpload {
     type Error = Error;
@@ -771,7 +771,7 @@ impl harmos_runtime::Operation for NativeUpload {
     }
 }
 
-#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.exchange", response = Reply, input = Reply, output = Reply, policy = WHO_POLICY, grpc(package = "fixture", service = "Identity", method = "Exchange"))]
+#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.exchange", response = Reply, input = Reply, output = Reply, policy = WHO_POLICY, visibility = Public, grpc(package = "fixture", service = "Identity", method = "Exchange"))]
 struct NativeExchange {}
 impl harmos_runtime::Operation for NativeExchange {
     type Error = Error;
@@ -941,7 +941,7 @@ async fn configured_tls_serves() {
 #[tokio::test]
 async fn observes_cancel_deadline() {
     use harmos_runtime::grpc::OutputEnvelope;
-    #[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.hold", response = Reply, output = Reply, policy = WHO_POLICY, grpc(package = "fixture", service = "Identity", method = "Hold"))]
+    #[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.hold", response = Reply, output = Reply, policy = WHO_POLICY, visibility = Public, grpc(package = "fixture", service = "Identity", method = "Hold"))]
     struct NativeHold {}
     impl harmos_runtime::Operation for NativeHold {
         type Error = Error;

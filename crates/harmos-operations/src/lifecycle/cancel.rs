@@ -39,7 +39,7 @@ use harmos_domain::operations::instance::Id;
     id = "host.operations.cancel",
     response = super::InstanceState,
     policy = super::POLICY,
-    visibility = Shared,
+    visibility = Public,
     grpc(package = "harmos.host.v1", service = "Operations", method = "Cancel"),
 )]
 #[derive(Clone, Default, PartialEq)]

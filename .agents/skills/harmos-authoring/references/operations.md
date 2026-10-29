@@ -39,7 +39,7 @@ const POLICY: harmos::OperationPolicy = crate::POLICY;
 pub struct Reading { pub value: f64 }
 
 #[harmos::operation(id = "temperature.read", response = Reading, policy = POLICY,
-    visibility = Shared, resources = [Device])]
+    visibility = Public, resources = [Device])]
 pub struct Read { pub channel: u32 }
 
 /* === Enums === */
@@ -116,8 +116,10 @@ mod runtime {
 
 The operations crate uses `harmos` with `default-features = false` and
 `runtime = ["harmos/runtime", "dep:device"]`. A unit operation struct is a unit request. `response` defaults to `()` and
-`visibility` to `Private`; `Shared` and `Host` are short visibility forms. The operation struct is the request message;
+`visibility` to `Private`; `Public` and `Host` are short visibility forms. The operation struct is the request message;
 its runtime implementation declares only `Error` and consuming `run` (plus optional error classification).
+Private operations cannot declare `grpc(...)`; use `Public` or `Host` for gRPC exposure.
+The macro rejects Private bindings at compile time, and runtime registration refuses them.
 
 For a platform-only operation, put `#[cfg(windows)]` on its `mod` declaration and its catalog variant. The catalog preserves
 variant attributes for both portable projections and runtime registration. Short built-ins may keep their gated implementation inline.
@@ -173,13 +175,38 @@ catalog composition. Owner stop/cleanup closes resources after supervised drain.
 plugin requirements. Explicit grants still belong to the plugin. There are three verification layers:
 
 - Compile: generated `Requires<T>` and `Invokes<T>` bounds reject undeclared resource and operation access.
-- Activation: the complete registration requires all resources and callee contracts. Cross-plugin calls require `Shared`, or `Host`
+- Activation: the complete registration requires all resources and callee contracts. Cross-plugin calls require `Public`, or `Host`
   for a host caller; missing targets and incompatible fingerprints are refused before execution.
 - Run: operation errors, deadlines and carrier faults remain fallible.
 
 `input = Item` and `output = Item` derive `StreamEndpoints`: `()` for unary calls, `StreamInput<Item>`, `StreamOutput<Item>`,
 or their pair. Borrow endpoints with `ctx.streams() -> &Self::StreamEndpoints`; input receives serialize through an asynchronous mutex.
 Invocation builders accept `.endpoints(...)` and remain inert until `.start()` or `.run()`.
+
+For an ID computed from configuration, bind an existing executable operation type
+through the ordinary registration batch:
+
+```rust
+use harmos::operations::Registration;
+
+let id = format!("devices.{}.read", config.device_key);
+let batch = Registration::new(Lane::Interactive).operation::<Read>(&id)?;
+runtime.register_batch(batch).await?;
+let response = runtime.operation(Read { channel: 3 }).id(&id).run().await?;
+```
+
+The type supplies the schema, policy, resource requirements and implementation.
+The selected local ID participates in the contract fingerprint; ordinary ID,
+resource and duplicate checks still apply. Static catalogs remain unchanged.
+The invocation builder retains its retry, lane and stream endpoint options.
+Request grants retain their scopes and bind to the selected operation ID.
+Use `OperationDefinition::named::<Read>(&id)` for matching metadata or
+`WireDeclaration::of::<Read>().contract()?.with_id(&id)` for its wire contract.
+For startup, pass the batch to `setup.settings().with_registration(batch)`.
+Embedded plugins use `register_embedded_batch` / `reload_embedded_batch`, which
+derive inventory and bindings from that same batch. Scoped registrations use
+`scope.register_batch(batch)` or `bindings.register(batch)` during activation.
+No registration accepts an arbitrary runtime schema or handler.
 
 Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
 Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.

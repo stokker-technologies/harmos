@@ -39,7 +39,7 @@ product!(WatchDirectory { selection: Nested<DirectorySelection> => 1, include_ex
     response = DirectoryCompletion,
     policy = IO_POLICY,
     output = DirectoryEvent,
-    visibility = Shared,
+    visibility = Public,
     replay = ReplaySafety::Idempotent,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "WatchDirectory"))]
 #[derive(Clone, Debug, PartialEq, Eq)]

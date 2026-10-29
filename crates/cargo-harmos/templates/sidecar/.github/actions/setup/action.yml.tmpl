@@ -1,0 +1,171 @@
+# Rendered by stkr project update from templates/ci/setup; sha256:d20efe7a2583202a099eb0b660c16b7d8817957f9015c2898da96e5ba9a61aa0
+name: Setup
+description: Setup
+inputs:
+  platform:
+    description: Platform
+    required: true
+    default: ""
+  caches:
+    description: Caches
+    required: false
+    default: "{}"
+  bootstrap:
+    description: Bootstrap
+    required: false
+    default: "[]"
+  tools:
+    description: Tools
+    required: false
+    default: ""
+  cache-backend:
+    description: Cache-backend
+    required: false
+    default: ""
+  cache-mode:
+    description: Cache-mode
+    required: false
+    default: ""
+outputs:
+  bench_baselines-path:
+    description: Resolved bench_baselines path
+    value: ${{ steps.native.outputs.bench_baselines-path }}
+  bench_baselines-cache-hit:
+    description: Observed bench_baselines cache-hit
+    value: ${{ steps.bench_baselines.outputs.cache-hit }}
+  bench_baselines-cache-primary-key:
+    description: Observed bench_baselines cache-primary-key
+    value: ${{ steps.bench_baselines.outputs.cache-primary-key }}
+  bench_baselines-outcome:
+    description: Observed bench_baselines outcome
+    value: ${{ steps.bench_baselines.outcome }}
+  cargo_downloads-path:
+    description: Resolved cargo_downloads path
+    value: ${{ steps.native.outputs.cargo_downloads-path }}
+  cargo_downloads-cache-hit:
+    description: Observed cargo_downloads cache-hit
+    value: ${{ steps.cargo_downloads.outputs.cache-hit }}
+  cargo_downloads-cache-primary-key:
+    description: Observed cargo_downloads cache-primary-key
+    value: ${{ steps.cargo_downloads.outputs.cache-primary-key }}
+  cargo_downloads-outcome:
+    description: Observed cargo_downloads outcome
+    value: ${{ steps.cargo_downloads.outcome }}
+  mise-path:
+    description: Resolved mise path
+    value: ${{ steps.native.outputs.mise-path }}
+  mise-cache-hit:
+    description: Observed mise cache-hit
+    value: ${{ steps.mise.outputs.cache-hit }}
+  mise-cache-primary-key:
+    description: Observed mise cache-primary-key
+    value: ${{ steps.mise.outputs.cache-primary-key }}
+  mise-outcome:
+    description: Observed mise outcome
+    value: ${{ steps.mise.outcome }}
+  pnpm-path:
+    description: Resolved pnpm path
+    value: ${{ steps.native.outputs.pnpm-path }}
+  pnpm-cache-hit:
+    description: Observed pnpm cache-hit
+    value: ${{ steps.pnpm.outputs.cache-hit }}
+  pnpm-cache-primary-key:
+    description: Observed pnpm cache-primary-key
+    value: ${{ steps.pnpm.outputs.cache-primary-key }}
+  pnpm-outcome:
+    description: Observed pnpm outcome
+    value: ${{ steps.pnpm.outcome }}
+  sccache-path:
+    description: Resolved sccache path
+    value: ${{ steps.native.outputs.sccache-path }}
+  sccache-cache-hit:
+    description: Observed sccache cache-hit
+    value: ${{ steps.sccache.outputs.cache-hit }}
+  sccache-cache-primary-key:
+    description: Observed sccache cache-primary-key
+    value: ${{ steps.sccache.outputs.cache-primary-key }}
+  sccache-outcome:
+    description: Observed sccache outcome
+    value: ${{ steps.sccache.outcome }}
+  uv-path:
+    description: Resolved uv path
+    value: ${{ steps.native.outputs.uv-path }}
+  uv-cache-hit:
+    description: Observed uv cache-hit
+    value: ${{ steps.uv.outputs.cache-hit }}
+  uv-cache-primary-key:
+    description: Observed uv cache-primary-key
+    value: ${{ steps.uv.outputs.cache-primary-key }}
+  uv-outcome:
+    description: Observed uv outcome
+    value: ${{ steps.uv.outcome }}
+runs:
+  using: composite
+  steps:
+  - shell: python
+    run: |-
+      import os, runpy
+      runpy.run_path(os.path.join(os.environ['GITHUB_ACTION_PATH'], 'run.py'), run_name='__main__')
+    id: native
+    env:
+      SETUP_PLATFORM: ${{ inputs.platform }}
+      CACHE_PLAN: ${{ inputs.caches }}
+      SETUP_BOOTSTRAP: ${{ inputs.bootstrap }}
+      COMPILER_CACHE_BACKEND: ${{ inputs.cache-backend }}
+      COMPILER_CACHE_MODE: ${{ inputs.cache-mode }}
+  - id: bench_baselines
+    name: Cache / bench-baselines
+    if: steps.native.outputs.bench_baselines-path != ''
+    uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+    with:
+      path: ${{ steps.native.outputs.bench_baselines-path }}
+      key: ${{ steps.native.outputs.bench_baselines-key }}
+      restore-keys: ${{ steps.native.outputs.bench_baselines-restore-keys }}
+  - id: cargo_downloads
+    name: Cache / Cargo
+    if: steps.native.outputs.cargo_downloads-path != ''
+    uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+    with:
+      path: ${{ steps.native.outputs.cargo_downloads-path }}
+      key: ${{ steps.native.outputs.cargo_downloads-key }}
+      restore-keys: ${{ steps.native.outputs.cargo_downloads-restore-keys }}
+  - id: mise
+    name: Cache / Mise
+    if: steps.native.outputs.mise-path != ''
+    uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+    with:
+      path: ${{ steps.native.outputs.mise-path }}
+      key: ${{ steps.native.outputs.mise-key }}
+      restore-keys: ${{ steps.native.outputs.mise-restore-keys }}
+  - id: pnpm
+    name: Cache / PNPM
+    if: steps.native.outputs.pnpm-path != ''
+    uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+    with:
+      path: ${{ steps.native.outputs.pnpm-path }}
+      key: ${{ steps.native.outputs.pnpm-key }}
+      restore-keys: ${{ steps.native.outputs.pnpm-restore-keys }}
+  - id: sccache
+    name: Cache / Compiler
+    if: steps.native.outputs.sccache-path != ''
+    uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+    with:
+      path: ${{ steps.native.outputs.sccache-path }}
+      key: ${{ steps.native.outputs.sccache-key }}
+      restore-keys: ${{ steps.native.outputs.sccache-restore-keys }}
+  - id: uv
+    name: Cache / UV
+    if: steps.native.outputs.uv-path != ''
+    uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+    with:
+      path: ${{ steps.native.outputs.uv-path }}
+      key: ${{ steps.native.outputs.uv-key }}
+      restore-keys: ${{ steps.native.outputs.uv-restore-keys }}
+  - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+    env:
+      RUSTC_WRAPPER: ""
+    with:
+      install: true
+      install_args: ${{ inputs.tools }}
+      cache: false
+      mise_dir: ${{ env.MISE_DATA_DIR }}

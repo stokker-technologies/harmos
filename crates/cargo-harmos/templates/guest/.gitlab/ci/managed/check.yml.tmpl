@@ -1,674 +1,108 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:197c3a5f233561d60fc7faec4329aeb2f73fabbebfc3c5d5bd92237c206d4c85
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:dea6c783cdde65260c4d9a919370a6adb3cc1ce7469d4205a9fd0719cc2bec29
 Check / Repository:
-  stage: Check
-  tags:
-  - saas-linux-medium-amd64
-  timeout: 120 minutes
-  needs:
-  - job: Validated / Repository
-    artifacts: true
-    optional: true
-  script:
-  - mise run check:repository
-  rules:
-  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
-  - if: $CI_PIPELINE_SOURCE == "schedule"
-  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
-  variables:
-    MISE_ENABLE_TOOLS: >-
-      go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo,git-cliff
-  before_script:
-  - >-
-    if { { [ "$CI_COMMIT_BRANCH" = dev ] && { [ "$CI_PIPELINE_SOURCE" = push ] || [
-    "$CI_PIPELINE_SOURCE" = web ] || [ "$CI_PIPELINE_SOURCE" = api ] || [
-    "$CI_PIPELINE_SOURCE" = trigger ]; }; } || { [ "$CI_PIPELINE_SOURCE" = push ] && [ -n
-    "$CI_COMMIT_TAG" ]; }; } && [ "$validated" = true ]; then printf 'Reusing green review
-    pipeline %s\n' "$review_run"; exit 0; fi
-  - |-
-    set -eu
-    # === Setup === #
-    native_tools='tar zstd unzip zip'
-    case ",${MISE_ENABLE_TOOLS:-rust}," in
-        *,rust,*|*,cargo:*)
-            native_tools="$native_tools cc c++ make pkg-config"
-            compiler=1
-            ;;
-        *) compiler=0 ;;
-    esac
-    missing=''
-    for tool in $native_tools; do
-        if ! command -v "$tool" >/dev/null 2>&1; then missing="$missing $tool"; fi
-    done
-    case "$(tar --version 2>/dev/null || true)" in
-        'tar (GNU tar)'*) ;;
-        *) missing="$missing GNU-tar" ;;
-    esac
-    if [ "$compiler" -eq 1 ] && ! pkg-config --exists openssl 2>/dev/null; then
-        missing="$missing openssl-development"
-    fi
-    atomic=0
-    case ",${MISE_ENABLE_TOOLS:-rust,node}," in
-        *,node,*|*,npm:*)
-            atomic=1
-            if command -v ldconfig >/dev/null 2>&1; then
-                case "$(ldconfig -p 2>/dev/null || true)" in
-                    *libatomic.so.1*) atomic=0 ;;
-                esac
-            fi
-            if [ "$atomic" -eq 1 ]; then
-                for library in \
-                    /lib/libatomic.so.1 /lib64/libatomic.so.1 /usr/lib/libatomic.so.1 /usr/lib64/libatomic.so.1 \
-                    /lib/*/libatomic.so.1 /usr/lib/*/libatomic.so.1; do
-                    if test -r "$library"; then atomic=0; break; fi
-                done
-            fi
-            if [ "$atomic" -eq 1 ]; then missing="$missing libatomic.so.1"; fi
-            ;;
-    esac
-    install_prerequisites() {
-        set -- tar zstd unzip zip
-        if command -v apt-get >/dev/null 2>&1; then
-            if [ "$atomic" -eq 1 ]; then set -- "$@" libatomic1; fi
-            if [ "$compiler" -eq 1 ]; then set -- "$@" build-essential pkg-config libssl-dev; fi
-            if [ "$(id -u)" -eq 0 ]; then
-                apt-get update
-                apt-get install -y --no-install-recommends "$@"
-            else
-                sudo -n apt-get update
-                sudo -n apt-get install -y --no-install-recommends "$@"
-            fi
-        elif command -v apk >/dev/null 2>&1; then
-            if [ "$atomic" -eq 1 ]; then set -- "$@" libatomic; fi
-            if [ "$compiler" -eq 1 ]; then set -- "$@" build-base pkgconf openssl-dev; fi
-            if [ "$(id -u)" -eq 0 ]; then apk add --no-cache "$@"
-            else sudo -n apk add --no-cache "$@"; fi
-        else
-            printf 'Missing shared CI prerequisites:%s; provide them through the declared job bootstrap or pinned image.\n' "$missing" >&2
-            exit 1
-        fi
-    }
-    if [ -n "$missing" ]; then install_prerequisites; fi
-    # === Verification === #
-    case "$(tar --version)" in
-        'tar (GNU tar)'*) ;;
-        *) printf 'GNU tar is required.\n' >&2; exit 1 ;;
-    esac
-    zstd --version
-    # === Entry Point === #
-  - mise trust --yes
-  - mise install --yes
-Check / Python:
-  stage: Check
-  tags:
-  - saas-linux-medium-amd64
-  timeout: 120 minutes
-  needs:
-  - job: Validated / Repository
-    artifacts: true
-    optional: true
-  script:
-  - mise run check:python
-  rules:
-  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
-  - if: $CI_PIPELINE_SOURCE == "schedule"
-  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
-  variables:
-    MISE_ENABLE_TOOLS: >-
-      go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
-  before_script:
-  - >-
-    if { { [ "$CI_COMMIT_BRANCH" = dev ] && { [ "$CI_PIPELINE_SOURCE" = push ] || [
-    "$CI_PIPELINE_SOURCE" = web ] || [ "$CI_PIPELINE_SOURCE" = api ] || [
-    "$CI_PIPELINE_SOURCE" = trigger ]; }; } || { [ "$CI_PIPELINE_SOURCE" = push ] && [ -n
-    "$CI_COMMIT_TAG" ]; }; } && [ "$validated" = true ]; then printf 'Reusing green review
-    pipeline %s\n' "$review_run"; exit 0; fi
-  - |-
-    set -eu
-    # === Setup === #
-    native_tools='tar zstd unzip zip'
-    case ",${MISE_ENABLE_TOOLS:-rust}," in
-        *,rust,*|*,cargo:*)
-            native_tools="$native_tools cc c++ make pkg-config"
-            compiler=1
-            ;;
-        *) compiler=0 ;;
-    esac
-    missing=''
-    for tool in $native_tools; do
-        if ! command -v "$tool" >/dev/null 2>&1; then missing="$missing $tool"; fi
-    done
-    case "$(tar --version 2>/dev/null || true)" in
-        'tar (GNU tar)'*) ;;
-        *) missing="$missing GNU-tar" ;;
-    esac
-    if [ "$compiler" -eq 1 ] && ! pkg-config --exists openssl 2>/dev/null; then
-        missing="$missing openssl-development"
-    fi
-    atomic=0
-    case ",${MISE_ENABLE_TOOLS:-rust,node}," in
-        *,node,*|*,npm:*)
-            atomic=1
-            if command -v ldconfig >/dev/null 2>&1; then
-                case "$(ldconfig -p 2>/dev/null || true)" in
-                    *libatomic.so.1*) atomic=0 ;;
-                esac
-            fi
-            if [ "$atomic" -eq 1 ]; then
-                for library in \
-                    /lib/libatomic.so.1 /lib64/libatomic.so.1 /usr/lib/libatomic.so.1 /usr/lib64/libatomic.so.1 \
-                    /lib/*/libatomic.so.1 /usr/lib/*/libatomic.so.1; do
-                    if test -r "$library"; then atomic=0; break; fi
-                done
-            fi
-            if [ "$atomic" -eq 1 ]; then missing="$missing libatomic.so.1"; fi
-            ;;
-    esac
-    install_prerequisites() {
-        set -- tar zstd unzip zip
-        if command -v apt-get >/dev/null 2>&1; then
-            if [ "$atomic" -eq 1 ]; then set -- "$@" libatomic1; fi
-            if [ "$compiler" -eq 1 ]; then set -- "$@" build-essential pkg-config libssl-dev; fi
-            if [ "$(id -u)" -eq 0 ]; then
-                apt-get update
-                apt-get install -y --no-install-recommends "$@"
-            else
-                sudo -n apt-get update
-                sudo -n apt-get install -y --no-install-recommends "$@"
-            fi
-        elif command -v apk >/dev/null 2>&1; then
-            if [ "$atomic" -eq 1 ]; then set -- "$@" libatomic; fi
-            if [ "$compiler" -eq 1 ]; then set -- "$@" build-base pkgconf openssl-dev; fi
-            if [ "$(id -u)" -eq 0 ]; then apk add --no-cache "$@"
-            else sudo -n apk add --no-cache "$@"; fi
-        else
-            printf 'Missing shared CI prerequisites:%s; provide them through the declared job bootstrap or pinned image.\n' "$missing" >&2
-            exit 1
-        fi
-    }
-    if [ -n "$missing" ]; then install_prerequisites; fi
-    # === Verification === #
-    case "$(tar --version)" in
-        'tar (GNU tar)'*) ;;
-        *) printf 'GNU tar is required.\n' >&2; exit 1 ;;
-    esac
-    zstd --version
-    # === Entry Point === #
-  - mise trust --yes
-  - mise install --yes
-Check / Rust (linux):
-  stage: Check
-  tags:
-  - saas-linux-medium-amd64
-  timeout: 120 minutes
-  needs:
-  - job: Validated / Repository
-    artifacts: true
-    optional: true
-  script:
-  - mise run check:rust
-  rules:
-  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
-  - if: $CI_PIPELINE_SOURCE == "schedule"
-  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
-  variables:
-    MISE_ENABLE_TOOLS: >-
-      go,python,rust,uv,github:bnjbvr/cargo-machete,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
-  before_script:
-  - >-
-    if { { [ "$CI_COMMIT_BRANCH" = dev ] && { [ "$CI_PIPELINE_SOURCE" = push ] || [
-    "$CI_PIPELINE_SOURCE" = web ] || [ "$CI_PIPELINE_SOURCE" = api ] || [
-    "$CI_PIPELINE_SOURCE" = trigger ]; }; } || { [ "$CI_PIPELINE_SOURCE" = push ] && [ -n
-    "$CI_COMMIT_TAG" ]; }; } && [ "$validated" = true ]; then printf 'Reusing green review
-    pipeline %s\n' "$review_run"; exit 0; fi
-  - |-
-    set -eu
-    # === Setup === #
-    native_tools='tar zstd unzip zip'
-    case ",${MISE_ENABLE_TOOLS:-rust}," in
-        *,rust,*|*,cargo:*)
-            native_tools="$native_tools cc c++ make pkg-config"
-            compiler=1
-            ;;
-        *) compiler=0 ;;
-    esac
-    missing=''
-    for tool in $native_tools; do
-        if ! command -v "$tool" >/dev/null 2>&1; then missing="$missing $tool"; fi
-    done
-    case "$(tar --version 2>/dev/null || true)" in
-        'tar (GNU tar)'*) ;;
-        *) missing="$missing GNU-tar" ;;
-    esac
-    if [ "$compiler" -eq 1 ] && ! pkg-config --exists openssl 2>/dev/null; then
-        missing="$missing openssl-development"
-    fi
-    atomic=0
-    case ",${MISE_ENABLE_TOOLS:-rust,node}," in
-        *,node,*|*,npm:*)
-            atomic=1
-            if command -v ldconfig >/dev/null 2>&1; then
-                case "$(ldconfig -p 2>/dev/null || true)" in
-                    *libatomic.so.1*) atomic=0 ;;
-                esac
-            fi
-            if [ "$atomic" -eq 1 ]; then
-                for library in \
-                    /lib/libatomic.so.1 /lib64/libatomic.so.1 /usr/lib/libatomic.so.1 /usr/lib64/libatomic.so.1 \
-                    /lib/*/libatomic.so.1 /usr/lib/*/libatomic.so.1; do
-                    if test -r "$library"; then atomic=0; break; fi
-                done
-            fi
-            if [ "$atomic" -eq 1 ]; then missing="$missing libatomic.so.1"; fi
-            ;;
-    esac
-    install_prerequisites() {
-        set -- tar zstd unzip zip
-        if command -v apt-get >/dev/null 2>&1; then
-            if [ "$atomic" -eq 1 ]; then set -- "$@" libatomic1; fi
-            if [ "$compiler" -eq 1 ]; then set -- "$@" build-essential pkg-config libssl-dev; fi
-            if [ "$(id -u)" -eq 0 ]; then
-                apt-get update
-                apt-get install -y --no-install-recommends "$@"
-            else
-                sudo -n apt-get update
-                sudo -n apt-get install -y --no-install-recommends "$@"
-            fi
-        elif command -v apk >/dev/null 2>&1; then
-            if [ "$atomic" -eq 1 ]; then set -- "$@" libatomic; fi
-            if [ "$compiler" -eq 1 ]; then set -- "$@" build-base pkgconf openssl-dev; fi
-            if [ "$(id -u)" -eq 0 ]; then apk add --no-cache "$@"
-            else sudo -n apk add --no-cache "$@"; fi
-        else
-            printf 'Missing shared CI prerequisites:%s; provide them through the declared job bootstrap or pinned image.\n' "$missing" >&2
-            exit 1
-        fi
-    }
-    if [ -n "$missing" ]; then install_prerequisites; fi
-    # === Verification === #
-    case "$(tar --version)" in
-        'tar (GNU tar)'*) ;;
-        *) printf 'GNU tar is required.\n' >&2; exit 1 ;;
-    esac
-    zstd --version
-    # === Entry Point === #
-  - mise trust --yes
-  - mise install --yes
-Check / Rust (windows):
-  stage: Check
-  tags:
-  - saas-windows-medium-amd64
-  timeout: 120 minutes
-  needs:
-  - job: Validated / Repository
-    artifacts: true
-    optional: true
-  script:
-  - mise run check:rust
-  rules:
-  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
-  - if: $CI_PIPELINE_SOURCE == "schedule"
-  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
-  hooks:
-    pre_get_sources_script:
-    - |
-      $count = if ($env:GIT_CONFIG_COUNT) { $env:GIT_CONFIG_COUNT } else { '0' }
-      if ($count -notmatch '^\d+$' -or [int]$count -gt 1000) { throw 'Invalid inherited Git configuration count' }
-      [Environment]::SetEnvironmentVariable("GIT_CONFIG_KEY_$count", 'core.longpaths')
-      [Environment]::SetEnvironmentVariable("GIT_CONFIG_VALUE_$count", 'true')
-      $env:GIT_CONFIG_COUNT = ([int]$count + 1).ToString()
-      if ($env:GITHUB_ENV) {
-        foreach ($name in @('GIT_CONFIG_COUNT', "GIT_CONFIG_KEY_$count", "GIT_CONFIG_VALUE_$count")) {
-          "$name=$([Environment]::GetEnvironmentVariable($name))" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        }
-      }
-  inherit:
-    default:
-    - interruptible
-  before_script:
-  - >-
-    if ((($env:CI_COMMIT_BRANCH -eq 'dev' -and $env:CI_PIPELINE_SOURCE -in
-    @('push', 'web', 'api', 'trigger')) -or ($env:CI_PIPELINE_SOURCE -eq 'push' -and
-    $env:CI_COMMIT_TAG)) -and $env:validated -eq 'true') { Write-Host "Reusing green review
-    pipeline $env:review_run"; exit 0 }
-  - |
-    $count = if ($env:GIT_CONFIG_COUNT) { $env:GIT_CONFIG_COUNT } else { '0' }
-    if ($count -notmatch '^\d+$' -or [int]$count -gt 1000) { throw 'Invalid inherited Git configuration count' }
-    [Environment]::SetEnvironmentVariable("GIT_CONFIG_KEY_$count", 'core.longpaths')
-    [Environment]::SetEnvironmentVariable("GIT_CONFIG_VALUE_$count", 'true')
-    $env:GIT_CONFIG_COUNT = ([int]$count + 1).ToString()
-    if ($env:GITHUB_ENV) {
-      foreach ($name in @('GIT_CONFIG_COUNT', "GIT_CONFIG_KEY_$count", "GIT_CONFIG_VALUE_$count")) {
-        "$name=$([Environment]::GetEnvironmentVariable($name))" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      }
-    }
-  - |-
-    $ErrorActionPreference = 'Stop'
-    # === Setup === #
-    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-    if (!(Test-Path -LiteralPath $vswhere -PathType Leaf)) { throw 'The standard Windows image requires installed Visual Studio Build Tools' }
-    $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-    if ($LASTEXITCODE -ne 0 -or !$installation) { throw 'The standard Windows image requires installed Visual Studio C++ tools' }
-    Import-Module (Join-Path $installation 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
-    Enter-VsDevShell -VsInstallPath $installation -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
-    $compiler = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ 'cl.exe' } | Where-Object { (Test-Path -LiteralPath $_ -PathType Leaf) -and $_.StartsWith($installation, [StringComparison]::OrdinalIgnoreCase) }) | Select-Object -First 1
-    if (!$compiler -or !(Test-Path -LiteralPath (Join-Path (Split-Path -Parent $compiler) 'link.exe') -PathType Leaf)) { throw 'MSVC compiler and linker are required from the selected installation' }
-    $archiveRoot = Join-Path $PWD '.cache/bootstrap/zstd-1.5.7'
-    $archive = Join-Path $archiveRoot 'zstd.zip'
-    New-Item -ItemType Directory -Force $archiveRoot | Out-Null
-    $checksum = 'acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9'
-    if (!(Test-Path -LiteralPath $archive) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) {
-        Invoke-WebRequest 'https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip' -OutFile $archive
-    }
-    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) { throw 'Pinned zstd archive checksum mismatch' }
-    Expand-Archive -LiteralPath $archive -DestinationPath $archiveRoot -Force
-    $compressor = Join-Path $archiveRoot 'zstd-v1.5.7-win64/zstd.exe'
-    if (!(Test-Path -LiteralPath $compressor -PathType Leaf)) { throw 'Pinned zstd executable missing' }
-    $compressorRoot = Split-Path -Parent $compressor
-    $env:PATH = (Split-Path -Parent $compiler) + [IO.Path]::PathSeparator + $compressorRoot + [IO.Path]::PathSeparator + $env:PATH
-    # Real-Time Scanning Of Every Compiler Output Dominates Windows Build Time; Only Ephemeral Hosted Runners Are Reconfigured.
-    $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-    $elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    if ($env:RUNNER_ENVIRONMENT -eq 'github-hosted' -and $elevated -and (Get-Command Add-MpPreference -ErrorAction SilentlyContinue)) {
-        $workspace = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { $PWD.Path }
-        $rustup = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $HOME '.rustup' }
-        $cargo = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $HOME '.cargo' }
-        $exclusions = @($workspace, $env:CARGO_TARGET_DIR, $cargo, $rustup, $env:MISE_DATA_DIR, [IO.Path]::GetTempPath()) | Where-Object { $_ }
-        try {
-            Add-MpPreference -ExclusionPath $exclusions -ErrorAction Stop
-            Add-MpPreference -ExclusionProcess @('cargo.exe', 'rustc.exe', 'clippy-driver.exe', 'link.exe', 'cl.exe') -ErrorAction Stop
-            Write-Output "Defender exclusions: $($exclusions -join ', ')"
-        } catch {
-            Write-Output "Defender exclusions unavailable: $($_.Exception.Message)"
-        }
-    }
-    # === Verification === #
-    & $compressor --version
-    if ($LASTEXITCODE -ne 0) { throw 'Pinned zstd cannot execute' }
-    $selectedLink = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ 'link.exe' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }) | Select-Object -First 1
-    if ($selectedLink -ne (Join-Path (Split-Path -Parent $compiler) 'link.exe')) { throw 'MSVC linker precedence is required' }
-    # === Entry Point === #
-    $paths = @($env:PATH -split [IO.Path]::PathSeparator | ForEach-Object { $_.Trim('"') } | Where-Object { [IO.Path]::GetPathRoot($_).Length -ge 3 })
-    $candidates = @($paths | ForEach-Object { Join-Path $_ 'tar.exe' })
-    foreach ($git in @($paths | ForEach-Object { Join-Path $_ 'git.exe' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })) {
-      $root = Split-Path -Parent (Split-Path -Parent $git)
-      $candidates += Join-Path $root 'usr/bin/tar.exe'
-    }
-    $tar = $null
-    foreach ($candidate in @($candidates | Select-Object -Unique)) {
-      if ([IO.Path]::GetPathRoot($candidate).Length -lt 3 -or !(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
-      try {
-        $version = & $candidate --version 2>$null
-        if ($LASTEXITCODE -ne 0 -or "$version" -notmatch '^tar \(GNU tar\)') { continue }
-        $capabilities = & $candidate --help 2>$null
-        if ($LASTEXITCODE -ne 0 -or "$capabilities" -notmatch '--force-local' -or "$capabilities" -notmatch '--use-compress-program') { continue }
-        $tar = $candidate
-        break
-      } catch { continue }
-    }
-    if (!$tar) { throw 'GNU tar with force-local and external-compressor support is required from the standard Git image baseline' }
-    $env:PATH = (@((Split-Path -Parent $compiler), (Split-Path -Parent $tar), $compressorRoot) + @($env:PATH -split [IO.Path]::PathSeparator) | Select-Object -Unique) -join [IO.Path]::PathSeparator
-    if ($env:GITHUB_ENV) {
-      foreach ($name in @('PATH', 'INCLUDE', 'LIB', 'LIBPATH')) {
-        $value = [Environment]::GetEnvironmentVariable($name)
-        if ($null -ne $value) { "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
-      }
-    }
-  - |-
-    $ErrorActionPreference = 'Stop'
-    # === Setup === #
-    $root = Join-Path $PWD '.cache/bootstrap/mise-2026.10.17'
-    $archive = Join-Path $root 'mise.zip'
-    $checksum = '32bcfda5f72bf7cb189e18ba93c2798bffcb4a678fd004e3127780363f2d8c8c'
-    New-Item -ItemType Directory -Force $root | Out-Null
-    if (!(Test-Path -LiteralPath $archive) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) {
-        Invoke-WebRequest 'https://github.com/jdx/mise/releases/download/v2026.10.17/mise-v2026.10.17-windows-x64.zip' -OutFile $archive
-    }
-    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) { throw 'Pinned mise archive checksum mismatch' }
-    Expand-Archive -LiteralPath $archive -DestinationPath $root -Force
-    $mise = Join-Path $root 'mise/bin/mise.exe'
-    if (!(Test-Path -LiteralPath $mise -PathType Leaf)) { throw 'Pinned mise executable missing' }
-    $env:PATH = (Split-Path -Parent $mise) + [IO.Path]::PathSeparator + $env:PATH
-    # === Verification === #
-    & $mise --version
-    if ($LASTEXITCODE -ne 0) { throw 'Pinned mise cannot execute' }
-    # === Entry Point === #
-  - mise trust --yes
-  - mise install --yes
-  variables:
-    MISE_ENABLE_TOOLS: >-
-      go,python,rust,uv,github:bnjbvr/cargo-machete,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
-Validated / Repository:
   stage: Check
   tags:
   - saas-linux-medium-amd64
   timeout: 120 minutes
   needs: []
   script:
-  - |-
-    mise trust --yes && mise install python && mise exec -- python - <<'STKR_REVIEW' || { mkdir -p target/ci; printf 'validated=false\nreview_run=\nreview_profile=\n' >> "${GITHUB_OUTPUT:-target/ci/validated.env}"; }
-    # Standard Library Imports
-    import io
-    import json
-    import os
-    import re
-    import subprocess
-    import urllib.parse
-    import urllib.request
-    import zipfile
-    from datetime import datetime, timezone
-    from pathlib import Path
-    # Third Party Imports
-    # Local Imports
-    # Type Checking Imports
-    # === Public Exports === #
-    # === Constants === #
-    OID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
-    # === Types === #
-    # === Classes === #
-    class ProviderRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, req, fp, code, msg, headers, newurl):
-            redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
-            origin = urllib.parse.urlsplit(req.full_url)
-            destination = urllib.parse.urlsplit(newurl)
-            if destination.scheme != "https":
-                raise ValueError("insecure artifact redirect")
-            if redirected is not None and (origin.scheme, origin.netloc) != (destination.scheme, destination.netloc):
-                redirected.remove_header("PRIVATE-TOKEN")
-            return redirected
-    # === Public Functions === #
-    def command(*args):
-        return subprocess.run(
-            args, check=True, capture_output=True, text=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        ).stdout.strip()
-    def request(endpoint, *, binary=False):
-        if os.environ.get("GITHUB_ACTIONS"):
-            return json.loads(command("gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/{endpoint}"))
-        token = os.environ["RELEASE_TOKEN"]
-        if not token:
-            raise ValueError("provider token unavailable")
-        base = os.environ["CI_API_V4_URL"]
-        project = urllib.parse.quote(os.environ["CI_PROJECT_ID"], safe="")
-        native = urllib.request.Request(f"{base}/projects/{project}/{endpoint}", headers={"PRIVATE-TOKEN": token})
-        with urllib.request.build_opener(ProviderRedirect()).open(native, timeout=60) as response:
-            data = response.read()
-        return data if binary else json.loads(data)
-    def pages(endpoint, key=None):
-        values = []
-        for page in range(1, 101):
-            separator = "&" if "?" in endpoint else "?"
-            response = request(f"{endpoint}{separator}per_page=100&page={page}")
-            batch = response[key] if key else response
-            if not isinstance(batch, list):
-                raise ValueError("invalid provider page")
-            values.extend(batch)
-            if len(batch) < 100:
-                return values
-        raise ValueError("provider pagination limit")
-    def same_tree(head, tree):
-        if not isinstance(head, str) or OID.fullmatch(head) is None:
-            return False
-        command("git", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "origin", head)
-        return command("git", "rev-parse", "--verify", head + "^{tree}") == tree
-    def github_review_run(run, review):
-        if run.get("head_sha") != review["head"]["sha"]:
-            return False
-        associations = run.get("pull_requests")
-        if associations:
-            return any(pr.get("number") == review["number"] for pr in associations)
-        # GitHub Can Drop The Association After The Merged Source Branch Is Deleted.
-        repository = review["head"].get("repo", {}).get("id")
-        return (
-            associations == []
-            and isinstance(repository, int)
-            and repository > 0
-            and run.get("event") == "pull_request"
-            and run.get("head_branch") == review["head"]["ref"]
-            and run.get("head_repository", {}).get("id") == repository
-            and run.get("repository", {}).get("id") == review.get("base", {}).get("repo", {}).get("id")
-            and isinstance(run.get("repository", {}).get("id"), int)
-        )
-    def lookup():
-        sha = command("git", "rev-parse", "HEAD")
-        tree = command("git", "rev-parse", "HEAD^{tree}")
-        if OID.fullmatch(tree) is None:
-            raise ValueError("invalid checkout tree")
-        github = bool(os.environ.get("GITHUB_ACTIONS"))
-        if github:
-            reviews = [review for review in pages(f"commits/{sha}/pulls") if review.get("merged_at")
-                       and review.get("merge_commit_sha") == sha and review.get("base", {}).get("ref") == "dev"]
-        else:
-            reviews = [review for review in pages(f"repository/commits/{sha}/merge_requests") if review.get("state") == "merged"
-                       and sha in (review.get("merge_commit_sha"), review.get("squash_commit_sha")) and review.get("target_branch") == "dev"]
-        if len(reviews) != 1:
-            raise ValueError("no unambiguous merged review")
-        review = reviews[0]
-        head = review["head"]["sha"] if github else review["sha"]
-        branch = review["head"]["ref"] if github else review["source_branch"]
-        if not same_tree(head, tree):
-            raise ValueError("review tree differs")
-        profile = "release" if branch.startswith("release/v") and os.environ.get("REVIEW_RELEASE") == "true" else "dev"
-        tag = os.environ.get("GITHUB_REF", "").startswith("refs/tags/") or bool(os.environ.get("CI_COMMIT_TAG"))
-        if tag and profile != "release":
-            raise ValueError("tag requires release-profile evidence")
-        required = json.loads(os.environ.get("REVIEW_PACKAGES", "[]"))
-        preparation = (
-            os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
-            if github
-            else os.environ.get("CI_PIPELINE_SOURCE") in ("web", "api", "trigger")
-        )
-        if tag or preparation:
-            required += json.loads(os.environ.get("REVIEW_BUILDS", "[]"))
-        if github:
-            runs = pages(f"actions/workflows/ci.yml/runs?event=pull_request&head_sha={head}", "workflow_runs")
-            runs = [run for run in runs if github_review_run(run, review)]
-            run = max(runs, key=lambda item: item["id"])
-            if run.get("status") != "completed" or run.get("conclusion") != "success":
-                raise ValueError("review run is not green")
-            jobs = pages(f"actions/runs/{run['id']}/jobs?filter=latest", "jobs")
-            if not jobs or any(job.get("conclusion") not in ("success", "skipped") for job in jobs):
-                raise ValueError("review jobs are not green")
-            artifacts = pages(f"actions/runs/{run['id']}/artifacts", "artifacts")
-            for name in required:
-                matches = [artifact for artifact in artifacts if artifact.get("name") == name.replace("PROFILE", profile)]
-                if len(matches) != 1 or matches[0].get("expired") is not False:
-                    raise ValueError("review package unavailable")
-        else:
-            review = request(f"merge_requests/{review['iid']}")
-            run = review["head_pipeline"]
-            if run.get("sha") != head or run.get("status") != "success" or run.get("source") != "merge_request_event":
-                raise ValueError("review pipeline is not green")
-            jobs = pages(f"pipelines/{run['id']}/jobs?include_retried=false")
-            if any(job.get("name") == "Plan / Impact" for job in jobs):
-                bridges = [bridge for bridge in pages(f"pipelines/{run['id']}/bridges") if bridge.get("name") == "CI / Required"]
-                if len(bridges) != 1 or bridges[0].get("status") != "success":
-                    raise ValueError("review child gate is not green")
-                child = bridges[0].get("downstream_pipeline")
-                if not isinstance(child, dict) or child.get("sha") != head or child.get("status") != "success" or not isinstance(child.get("id"), int):
-                    raise ValueError("review child pipeline is not green for this exact revision")
-                run = child
-                jobs = pages(f"pipelines/{run['id']}/jobs?include_retried=false")
-            if not jobs or any(job.get("status") not in ("success", "skipped", "manual") for job in jobs):
-                raise ValueError("review jobs are not green")
-            for name in required:
-                matches = [job for job in jobs if job.get("name") == name]
-                if len(matches) != 1 or matches[0].get("status") != "success" or not matches[0].get("artifacts_file", {}).get("filename"):
-                    raise ValueError("review package unavailable")
-                expiry = matches[0].get("artifacts_expire_at")
-                if expiry and datetime.fromisoformat(expiry.replace("Z", "+00:00")) <= datetime.now(timezone.utc):
-                    raise ValueError("review package expired")
-        if not isinstance(run["id"], int) or run["id"] <= 0:
-            raise ValueError("invalid review run ID")
-        if tag and not any(job.get("name", "").endswith("Release / Rehearsal")
-                           and job.get("conclusion" if github else "status") == "success" for job in jobs):
-            raise ValueError("release review has no successful rehearsal")
-        protected = os.environ.get("GITHUB_REF_PROTECTED") == "true" or os.environ.get("CI_COMMIT_REF_PROTECTED") == "true"
-        version = branch.removeprefix("release/") if profile == "release" else f"dev.{run['id']}+{head[:8]}"
-        if re.fullmatch(r"(?:v\d+\.\d+\.\d+|dev\.\d+\+[0-9a-f]{8})", version) is None:
-            raise ValueError("invalid review version")
-        return {"validated": "true", "review_run": str(run["id"]), "review_profile": profile,
-                "review_sha": head, "review_version": version, "stable_release": str(bool(tag and protected)).lower()}
-    def restore():
-        if os.environ.get("validated") != "true":
-            return
-        run = os.environ["review_run"]
-        if not run.isdecimal():
-            raise ValueError("invalid review pipeline")
-        jobs = pages(f"pipelines/{run}/jobs?include_retried=false")
-        for name in json.loads(os.environ["REVIEW_PACKAGES"]) + json.loads(os.environ.get("REVIEW_BUILDS", "[]")):
-            matches = [job for job in jobs if job.get("name") == name and job.get("status") == "success"]
-            if len(matches) != 1:
-                raise ValueError("review package producer unavailable")
-            data = request(f"jobs/{matches[0]['id']}/artifacts", binary=True)
-            with zipfile.ZipFile(io.BytesIO(data)) as archive:
-                for member in archive.infolist():
-                    path = Path(member.filename)
-                    parent = member.is_dir() and member.filename in ("target/", "target/package/")
-                    if path.is_absolute() or ".." in path.parts or "\\" in member.orig_filename or (member.external_attr >> 16) & 0o170000 == 0o120000:
-                        raise ValueError("unsafe package archive path")
-                    if not parent and not member.filename.startswith(("target/package/", "target/ci/")):
-                        raise ValueError("unexpected package archive path")
-                archive.extractall()
-        print(f"Reusing packages from review pipeline {run}")
-    # === Private Functions === #
-    # === Entry Point === #
-    if __name__ == "__main__":
-        if os.environ.get("REVIEW_RESTORE") == "true":
-            restore()
-        else:
-            result = {"validated": "false", "review_run": "", "review_profile": "", "review_sha": "", "review_version": "", "stable_release": "false"}
-            try:
-                result = lookup()
-            except Exception as error:
-                # Never print provider responses, commands or credentials on lookup failure.
-                print(f"Review evidence unavailable ({type(error).__name__}); running the full pipeline")
-            if not os.environ.get("GITHUB_ACTIONS"):
-                version = os.environ.get("CI_COMMIT_TAG") or f"dev.{os.environ.get('CI_PIPELINE_ID', '')}+{os.environ.get('CI_COMMIT_SHORT_SHA', '')}"
-                result["DEPLOY_EXPECTED_VERSION"] = result.get("review_version") or version
-            output = os.environ.get("GITHUB_OUTPUT", "target/ci/validated.env")
-            Path(output).parent.mkdir(parents=True, exist_ok=True)
-            with open(output, "a", encoding="utf-8", newline="\n") as stream:
-                stream.write("".join(f"{key}={value}\n" for key, value in result.items()))
-            print(f"validated={result['validated']} review_run={result['review_run']}")
-    STKR_REVIEW
+  - mise run check:repository
   rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev"
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo,git-cliff
+Check / Python:
+  stage: Check
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 120 minutes
+  needs: []
+  script:
+  - mise run check:python
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev"
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+Check / Rust (unix):
+  stage: Check
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 120 minutes
+  needs: []
+  script:
+  - mise run check:rust
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev"
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      go,python,rust,uv,github:bnjbvr/cargo-machete,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
+Check / Rust (windows):
+  stage: Check
+  tags:
+  - saas-windows-medium-amd64
+  timeout: 120 minutes
+  needs: []
+  script:
+  - mise run check:rust
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev"
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  hooks:
+    pre_get_sources_script:
+    - git config --global core.longpaths true
+  inherit:
+    default:
+    - interruptible
+  before_script:
+  - >-
+    python .gitlab/actions/setup/run.py --platform windows --emit-shell |
+    Invoke-Expression
+  - mise trust --yes
+  - mise install --yes
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      go,python,rust,uv,github:bnjbvr/cargo-machete,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
+Review / Release:
+  stage: Check
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 120 minutes
+  needs: []
+  script:
+  - python3 .gitlab/actions/review-release/run.py
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ /^v[0-9]/
+    variables:
+      REVIEW_REQUIRED: "true"
   - if: >-
-      ($CI_PIPELINE_SOURCE =~ /^(push|web|api|trigger)$/ && $CI_COMMIT_BRANCH ==
-      "dev") || ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ /^v[0-9]/)
-  before_script: []
+      $CI_PIPELINE_SOURCE == "web" || ($CI_PIPELINE_SOURCE == "push" &&
+      $CI_COMMIT_TAG =~ /^v[0-9]/)
   environment:
     name: release
     action: verify
   variables:
     REVIEW_BUILDS: "[]"
-    REVIEW_RELEASE: "false"
-    REVIEW_PACKAGES: "[\"Package / Rust (linux)\",\"Package / Rust (windows)\"]"
+    REVIEW_RELEASE: "true"
+    REVIEW_PACKAGES: "[\"Package / Rust (unix)\",\"Package / Rust (windows)\"]"
   artifacts:
     expire_in: 7 days
     paths:
     - target/ci/validated.env
     reports:
       dotenv: target/ci/validated.env
+  before_script:
+  - python3 .gitlab/actions/setup/run.py --platform unix
+  - mise trust --yes
+  - mise install --yes
+  - >-
+    provider_environment="$(python3 .gitlab/actions/setup/run.py --glab-version
+    1.124.0 --emit-shell)" || exit $?; eval "$provider_environment"

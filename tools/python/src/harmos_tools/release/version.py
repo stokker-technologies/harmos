@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/version.py; sha256:06a5debc60988815776c0669e6bc3f2b2eb26820f38ce773d6a974d9b17ac0e3
+# Rendered by stkr project update from templates/python/release/version.py; sha256:440d86ab261594b07a2d3fe094777898d4809be647261f6232c71b60d6c84656
 # ***
 #
 # Harmos
@@ -61,7 +61,7 @@ def run(directory: Path, verb: str, *, value: str | None = None) -> None:
     pending = []
     for name in paths:
         path = policy.inside(directory, name)
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8", newline="")
         current = versions(text, name)
         if not current:
             raise policy.ToolError(f"no static version found: {name}")
@@ -69,9 +69,10 @@ def run(directory: Path, verb: str, *, value: str | None = None) -> None:
             raise policy.ToolError(f"{name}: versions {current} differ from {target}")
         if verb == "sync":
             if name.endswith(".json"):
+                newline = "\r\n" if "\r\n" in text else "\n"
                 document = json.loads(text)
                 document["version"] = target
-                text = json.dumps(document, indent=2) + "\n"
+                text = (json.dumps(document, indent=2) + "\n").replace("\n", newline)
             elif name.endswith(".toml"):
                 sections = re.split(r"(?m)(^\[.+?\]\s*$)", text)
                 for index in range(1, len(sections), 2):
@@ -97,7 +98,7 @@ def run(directory: Path, verb: str, *, value: str | None = None) -> None:
                 raise policy.ToolError(f"could not synchronize version: {name}")
             pending.append((path, text))
     for path, text in pending:
-        path.write_text(text, encoding="utf-8")
+        path.write_text(text, encoding="utf-8", newline="")
     sibling_pins(directory, verb, target)
 
 
@@ -114,9 +115,9 @@ def sibling_pins(directory: Path, verb: str, target: str) -> None:
     for manifest in sorted(manifests):
         if not manifest.is_relative_to(directory.resolve()):
             raise policy.ToolError("workspace manifest must stay inside the repository")
-        text = manifest.read_text(encoding="utf-8")
+        text = manifest.read_text(encoding="utf-8", newline="")
         document = tomllib.loads(text)
-        sections = re.split(r"(?m)(^\[[^\n]+\][ \t]*(?:#[^\n]*)?$)", text)
+        sections = re.split(r"(?m)(^\[[^\r\n]+\][ \t]*(?:#[^\r\n]*)?\r?$)", text)
         for index in range(1, len(sections), 2):
             header = sections[index].strip()
             if header.startswith("[["):
@@ -185,7 +186,7 @@ def sibling_pins(directory: Path, verb: str, target: str) -> None:
         pending.append((manifest, "".join(sections)))
     if verb == "sync":
         for path, text in pending:
-            path.write_text(text, encoding="utf-8")
+            path.write_text(text, encoding="utf-8", newline="")
 
 
 # === Private Functions === #

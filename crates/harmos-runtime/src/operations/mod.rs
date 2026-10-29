@@ -99,7 +99,8 @@ pub use native::{Native, NativeBindings, NativeError, NativeOperation};
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub use registration::Bindings;
 pub(crate) use registration::CatalogBinding;
-pub(crate) use registration::{Registration, RegistrationExt};
+pub use registration::Registration;
+pub(crate) use registration::RegistrationExt;
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub use registration::PluginRegistration;

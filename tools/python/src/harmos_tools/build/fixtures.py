@@ -38,7 +38,7 @@ TARGET = ROOT / "target"
 GENERATED = TARGET / "generated"
 SCHEMATIC = ROOT / "examples/schematic/Cargo.toml"
 GUESTS = {"schematic-guest": SCHEMATIC, "harmos-sandbox-guest": ROOT / "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"}
-LIBRARIES = ("harmos", "harmos_sidecar", "harmos_macros", "serde")
+LIBRARIES = ("harmos", "harmos_sdk", "harmos_sidecar", "harmos_macros", "serde")
 
 # === Types === #
 

@@ -38,6 +38,7 @@ use crate::{Error, Result};
 #[must_use = "an invocation runs only when start or run is awaited"]
 pub struct Invocation<O: OperationDeclaration, L: Lane, E: EndpointSet = ()> {
     target: Target,
+    id: Option<String>,
     request: O::Request,
     retry: Option<RetryPolicy>,
     lane: Option<L>,
@@ -61,6 +62,7 @@ impl<O: OperationDeclaration, L: Lane> Invocation<O, L> {
     pub(crate) fn new(operations: Manager, request: O::Request) -> Self {
         Self {
             target: Target::Host(operations),
+            id: None,
             request,
             retry: None,
             lane: None,
@@ -70,6 +72,11 @@ impl<O: OperationDeclaration, L: Lane> Invocation<O, L> {
 }
 
 impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
+    pub fn id(mut self, id: impl Into<String>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
     pub fn retry(mut self, policy: RetryPolicy) -> Self {
         self.retry = Some(policy);
         self
@@ -83,6 +90,7 @@ impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
     pub fn endpoints<F: EndpointSet>(self, endpoints: F) -> Invocation<O, L, F> {
         Invocation {
             target: self.target,
+            id: self.id,
             request: self.request,
             retry: self.retry,
             lane: self.lane,
@@ -105,7 +113,8 @@ impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             Target::Plugin(scope) => (scope.operation_manager()?, Source::Scope(scope)),
         };
-        operations.admit::<O, E>((request, self.endpoints), None, &[], &source, None)
+        let id = self.id.as_deref().unwrap_or(O::ID);
+        operations.admit_at::<O, E>(id, (request, self.endpoints), None, &[], &source, None)
     }
 
     pub async fn run(self) -> Result<Response<O::Response>> {
@@ -118,6 +127,7 @@ impl crate::plugin::PluginScope {
     pub fn operation<O: OperationDeclaration<Request = O>, L: Lane>(&self, request: O) -> Invocation<O, L> {
         Invocation {
             target: Target::Plugin(self.clone()),
+            id: None,
             request,
             retry: None,
             lane: None,
@@ -130,7 +140,7 @@ impl crate::plugin::PluginScope {
         self.register_batch(C::batch().lane(lane)).await
     }
 
-    pub(crate) async fn register_batch<L: Lane>(&self, mut registration: super::Registration<L>) -> Result<()> {
+    pub async fn register_batch<L: Lane>(&self, mut registration: super::Registration<L>) -> Result<()> {
         if !self.is_ready() {
             return Err(Error::Closing { domain: "plugin scope" });
         }
@@ -171,7 +181,7 @@ impl<A: crate::Application> crate::Runtime<A> {
         self.register_batch(C::batch().lane(lane)).await
     }
 
-    pub(crate) async fn register_batch(&self, mut registration: super::Registration<A::Lanes>) -> Result<()> {
+    pub async fn register_batch(&self, mut registration: super::Registration<A::Lanes>) -> Result<()> {
         let services = std::mem::take(&mut registration.batch.services);
         if services.is_empty() {
             return self.operations.register_batch(registration).await;
@@ -209,7 +219,7 @@ impl<A: crate::Application> crate::runtime::Handle<A> {
         self.register_batch(C::batch().lane(lane)).await
     }
 
-    pub(crate) async fn register_batch(&self, mut registration: super::Registration<A::Lanes>) -> Result<()> {
+    pub async fn register_batch(&self, mut registration: super::Registration<A::Lanes>) -> Result<()> {
         let services = std::mem::take(&mut registration.batch.services);
         if services.is_empty() {
             return self.operations.register_batch(registration).await;

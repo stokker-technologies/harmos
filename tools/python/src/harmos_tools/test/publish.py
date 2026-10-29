@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/publish.py; sha256:7cdb1207bce9664637ff9f08aaf4e393ef96690a28bd6e23ddfa90be0353148f
+# Rendered by stkr project update from templates/python/test/publish.py; sha256:b50dd33f50786c6e443065ff08fc8455f1bbb971c088f8110ef4d951c1da192b
 # ***
 #
 # Harmos
@@ -21,8 +21,10 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
+from ..process import spawn_flags
 from .. import temporary
 from ..build import storage
+from ..release import policy as release_policy
 from . import policy
 
 # Type Checking Imports
@@ -44,15 +46,13 @@ def commands(directory: Path, rust: bool, wheels: list[str], scratch: Path) -> l
         metadata = json.loads(
             subprocess.check_output(
                 ["cargo", "metadata", "--no-deps", "--format-version", "1"],
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                creationflags=spawn_flags(),
                 cwd=directory,
             )
         )
-        members = set(metadata["workspace_members"])
         command = ["cargo", "publish", "--dry-run", "--locked"]
-        for package in metadata["packages"]:
-            if package["id"] in members and package.get("publish") != []:
-                command.extend(["--package", package["name"]])
+        for package in release_policy.publishable(directory, metadata).values():
+            command.extend(["--package", package["name"]])
         if "--package" in command:
             commands.append(command)
     commands.extend(
@@ -92,7 +92,7 @@ def main() -> None:
                 stdin=sys.stdin,
                 stdout=sys.stdout,
                 stderr=sys.stderr,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                creationflags=spawn_flags(),
                 cwd=directory,
                 check=True,
                 env=environment,

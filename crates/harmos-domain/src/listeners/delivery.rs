@@ -218,7 +218,7 @@ impl<L: Listener> crate::operations::OperationDeclaration for Callback<L> {
     const ID: &'static str = L::CALLBACK;
     const POLICY: crate::operations::OperationPolicy = L::POLICY;
     // Every Listener Callback Is Shared: The Definition Refuses Any Other
-    const VISIBILITY: crate::operations::Visibility = crate::operations::Visibility::Shared;
+    const VISIBILITY: crate::operations::Visibility = crate::operations::Visibility::Public;
 }
 
 impl PostcardValue for Context {

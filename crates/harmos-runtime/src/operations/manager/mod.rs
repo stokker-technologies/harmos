@@ -271,7 +271,7 @@ impl<L: Lane> OperationManager<L> {
         self.register_batch(C::batch().lane(lane)).await
     }
 
-    pub(crate) async fn register_batch(&self, registration: crate::operations::Registration<L>) -> Result<()> {
+    pub async fn register_batch(&self, registration: crate::operations::Registration<L>) -> Result<()> {
         self.inner.register_native(registration)
     }
 

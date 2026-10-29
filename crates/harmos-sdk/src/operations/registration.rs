@@ -71,6 +71,9 @@ pub struct OperationFactory {
     pub definition: OperationDefinition,
     pub operations: &'static [WireDeclaration],
     declared: fn() -> OperationDefinition,
+    named: fn(&str) -> Result<OperationDefinition, ServingError>,
+    registered_id: Option<crate::Identifier>,
+    grant: fn(&str, Option<crate::plugin::Grant>) -> Option<crate::plugin::Grant>,
     builtin: bool,
     resources: &'static [Resource],
     contract: fn(&harmos_domain::config::SchemaSettings) -> Result<Contract, super::ContractError>,
@@ -180,6 +183,14 @@ impl RegistrationBatch {
         self.with::<O, O::Carrier>(O::RESOURCES)
     }
 
+    pub fn operation_named<O: Executable>(self, id: &str) -> Result<Self, ServingError> {
+        let mut batch = self.operation::<O>();
+        let factory = batch.operations.last_mut().expect("one appended operation");
+        factory.definition = (factory.named)(id)?;
+        factory.registered_id = Some(factory.definition.id.clone());
+        Ok(batch)
+    }
+
     #[doc(hidden)]
     pub fn carrier<D, O>(self) -> Self
     where
@@ -199,6 +210,9 @@ impl RegistrationBatch {
             operations: D::OPERATIONS,
             definition: D::definition(),
             declared: D::definition,
+            named: |id| OperationDefinition::named::<D>(id).map_err(ServingError::from),
+            registered_id: None,
+            grant: registered_grant::<D>,
             builtin: std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>(),
             contract: |settings| {
                 if std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>() {
@@ -352,7 +366,11 @@ impl OperationFactory {
         if !self.builtin {
             self.definition.validate().map_err(ServingError::from)?;
         }
-        if self.definition != (self.declared)() {
+        let declared = match &self.registered_id {
+            Some(id) => (self.named)(id.as_str())?,
+            None => (self.declared)(),
+        };
+        if self.definition != declared {
             return Err(ServingError::Catalog);
         }
         if !(self.endpoints_valid)() {
@@ -378,14 +396,22 @@ impl OperationFactory {
     }
 
     pub fn prepare_encoded(&self, resources: ResourceSet, payload: &[u8]) -> Result<PreparedNative, ServingError> {
-        (self.encoded)(resources, payload)
+        let mut prepared = (self.encoded)(resources, payload)?;
+        prepared.grant = self.grant(prepared.grant);
+        Ok(prepared)
     }
 
     #[cfg(all(feature = "grpc", feature = "streaming"))]
     pub fn prepare_grpc(
         &self, resources: ResourceSet, payload: &[u8], limits: super::WireStreamLimits,
     ) -> Result<PreparedNative, ServingError> {
-        (self.grpc)(resources, payload, limits)
+        let mut prepared = (self.grpc)(resources, payload, limits)?;
+        prepared.grant = self.grant(prepared.grant);
+        Ok(prepared)
+    }
+
+    pub fn grant(&self, grant: Option<crate::plugin::Grant>) -> Option<crate::plugin::Grant> {
+        (self.grant)(self.definition.id.as_str(), grant)
     }
     #[cfg(all(feature = "grpc", feature = "streaming"))]
     pub fn grpc_decoding_memory(&self, payload: &[u8]) -> Result<usize, crate::MessageError> {
@@ -403,7 +429,11 @@ impl OperationFactory {
     }
 
     pub fn contract_with_settings(&self, settings: &harmos_domain::config::SchemaSettings) -> Result<Contract, super::ContractError> {
-        (self.contract)(settings)
+        let contract = (self.contract)(settings)?;
+        match &self.registered_id {
+            Some(id) => contract.with_id(id.to_string()),
+            None => Ok(contract),
+        }
     }
 
     pub fn install(self, table: &mut WireTable) -> Result<(), ServingError> {
@@ -510,6 +540,15 @@ impl<S: Service> ServiceInstance for InitializedService<S> {
 
 /* === Private Functions === */
 
+pub(crate) fn registered_grant<D: OperationDeclaration>(id: &str, grant: Option<crate::plugin::Grant>) -> Option<crate::plugin::Grant> {
+    grant.map(|mut grant| {
+        if grant.operation() == D::ID && id != D::ID {
+            grant.operation = id.to_owned().into();
+        }
+        grant
+    })
+}
+
 fn service_error(error: impl std::error::Error + 'static) -> ServingError {
     ServingError::Handler(crate::Failure::originate(crate::operations::FailureKind::Permanent, &error, crate::failure::Origin::Plugin))
 }
@@ -562,6 +601,45 @@ mod tests {
         match future.as_mut().poll(&mut task) {
             std::task::Poll::Ready(Ok(value)) => value,
             _ => panic!("synchronous fixture must complete successfully"),
+        }
+    }
+
+    #[test]
+    fn named_factory_contract() {
+        let id = format!("fixture.device_{}", 7);
+        let batch = RegistrationBatch::new().operation_named::<Read>(&id).unwrap();
+        let factory = &batch.operations[0];
+        let definition = OperationDefinition::named::<Read>(&id).unwrap();
+        assert_eq!(factory.definition, definition);
+        assert_ne!(definition.fingerprint, Read::definition().fingerprint);
+        let contract = factory.contract().unwrap();
+        assert_eq!(contract.operation(), &definition);
+        assert_eq!(contract.schema(), WireDeclaration::of::<Read>().contract().unwrap().schema());
+        assert_eq!(contract.operation().policy, Read::POLICY);
+        let granted = factory.grant(Some(crate::plugin::Grant::of(Read::ID, "device"))).unwrap();
+        assert_eq!((granted.operation(), granted.scope()), (id.as_str(), Some("device")));
+        let foreign = crate::plugin::Grant::of("foreign.operation", "device");
+        assert_eq!(factory.grant(Some(foreign.clone())), Some(foreign));
+
+        let mut table = WireTable::new("fixture").unwrap();
+        table.provide_resource(std::sync::Arc::new(7_u64)).unwrap();
+        table.register(batch.clone()).unwrap();
+        table.validate_binding().unwrap();
+        table.validate(std::slice::from_ref(&definition)).unwrap();
+        assert!(table.register(batch.clone()).is_err());
+
+        let mut changed = factory.clone();
+        changed.definition.id = crate::Identifier::new("fixture.changed").unwrap();
+        assert!(changed.validate().is_err());
+        let mut changed = factory.clone();
+        changed.definition.fingerprint.0[0] ^= 1;
+        assert!(changed.validate().is_err());
+        let mut changed = factory.clone();
+        changed.definition.policy.timeout += Read::POLICY.attempt_timeout;
+        assert!(changed.validate().is_err());
+
+        for id in ["", "bad-name", "harmos.initialize"] {
+            assert!(RegistrationBatch::new().operation_named::<Read>(id).is_err());
         }
     }
 

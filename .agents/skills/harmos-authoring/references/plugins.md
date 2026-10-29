@@ -21,7 +21,9 @@ const CATALOGS: &'static [harmos::Catalog] = &[Operations::CATALOG];
 ```
 
 That slice drives both inert metadata inspection and executable binding. Keep
-feature selection on module and re-export declarations, never catalog variants. Inspection never
+backend selection on module and re-export declarations, keeping this portable
+plugin's catalog variants ungated. General application catalogs can instead
+declare platform-only operations as described in the operations reference. Inspection never
 runs prepare or initialize. Portable catalogs remain available without runtime
 execution dependencies.
 
@@ -37,6 +39,10 @@ The host authenticates advertisements and checks owner equality; plugins cannot
 choose a registration prefix. Advertisements carry local IDs, while routed
 frames carry already-qualified IDs, fingerprints and u64 generations. Transports
 validate those IDs without adding a prefix. Old version-only peers are refused.
+
+`host` is a valid plugin owner with ordinary admission and grant checks. That
+name grants no application caller authority; authority comes from the runtime
+context. Actual qualified operation and service identity collisions are refused.
 
 ## Lifecycle Responsibilities
 
@@ -57,13 +63,17 @@ ownership; dropping a handle does not settle asynchronous work.
 
 A plugin can require operations implemented by another registered provider.
 The host matches complete contracts, including fingerprints, schema, policy,
-visibility and replay behavior. Shared visibility and unambiguous selection
+visibility and replay behavior. Public visibility and unambiguous selection
 are required; explicit provider selection does not relax compatibility.
 
 Native observers do not declare a typed resources bundle. Their initialization
 receives `&ExecutionContext`, and callbacks receive `ObserverContext<'_, Host>`
 (with `Supervisor` as the default host type). Call `resource::<T>()` on that
 context to resolve an `Arc<T>`; resource lookup returns `Result<_, ResourceError>`.
+
+Observer `interval_ms` accepts a constant `u64` expression, including a policy
+constant or associated constant. The generated inventory evaluates it at compile
+time and rejects zero. Runtime configuration cannot change this static cadence.
 
 For genuine process isolation, a separate sidecar can host the product runtime
 while another plugin requires its contracts through the entry crate's default

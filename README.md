@@ -123,6 +123,12 @@ On Windows, run the corresponding executable under
 [published Harmos version](https://crates.io/crates/harmos) and the
 [Cargo features](crates/harmos/Cargo.toml) your application needs.
 
+The [release downloads](https://github.com/stokker-technologies/harmos/releases/latest)
+also provide `cargo-harmos` tool archives with README, LICENSE and generated
+CHANGELOG. See the [installation guide](docs/product-guide.md#tool-installation)
+for archive names and checksum verification. Schematic examples remain in source
+and CI packages.
+
 Harmos is pre-1.0; public APIs and plugin contracts can change. Keep application
 and plugin revisions aligned and review release notes before updating. Stored data
 and wire formats support only the current v1 shape; no migration is provided.

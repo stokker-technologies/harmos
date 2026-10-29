@@ -247,6 +247,20 @@ impl<A: Application> PluginHost<A> {
         self.embedded(definition, restart, C::batch().lane(lane), true).await
     }
 
+    pub async fn register_embedded_batch<L: Lane>(
+        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings,
+        registration: crate::operations::Registration<L>,
+    ) -> Result<()> {
+        self.embedded(definition, restart, registration, false).await
+    }
+
+    pub async fn reload_embedded_batch<L: Lane>(
+        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings,
+        registration: crate::operations::Registration<L>,
+    ) -> Result<()> {
+        self.embedded(definition, restart, registration, true).await
+    }
+
     async fn embedded<L: Lane>(
         &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings,
         registration: crate::operations::Registration<L>, replace: bool,

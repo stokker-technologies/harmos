@@ -41,6 +41,42 @@ use crate::fixtures;
 /* === Tests === */
 
 #[test]
+fn feature_catalog_compiles() {
+    let sdk = fixtures::library("harmos_sdk");
+    let dependencies = fixtures::dependencies();
+
+    let source = fixtures::manifest().join("tests/fixtures/feature_catalog.rs");
+    let directory = format!("harmos-cfg-catalog-{}", std::process::id());
+    let output = std::env::temp_dir().join(directory);
+    let rustc = std::env::var_os("RUSTC");
+    let rustc = rustc.unwrap_or("rustc".into());
+    fs::create_dir_all(&output).unwrap();
+
+    let executable = output.join(if cfg!(windows) { "feature_catalog.exe" } else { "feature_catalog" });
+    for features in [&[][..], &["--cfg", "feature=\"optional_operation\""][..]] {
+        let mut compiler = fixtures::command(&rustc);
+        compiler
+            .args(["--edition=2024", "--crate-type=bin", "--crate-name=feature_catalog"])
+            .arg(&source)
+            .arg("--extern")
+            .arg(format!("harmos={}", sdk.display()))
+            .arg("-L")
+            .arg(format!("dependency={}", dependencies.display()))
+            .arg("--out-dir")
+            .arg(&output)
+            .args(features);
+
+        let compiled = compiler.output().unwrap();
+        let diagnostic = String::from_utf8_lossy(&compiled.stderr);
+        assert!(compiled.status.success(), "catalog features {features:?} failed:\n{diagnostic}");
+
+        let executed = fixtures::command(&executable).status().unwrap();
+        assert!(executed.success(), "catalog features {features:?} inventory and registration failed");
+    }
+    fs::remove_dir_all(output).unwrap();
+}
+
+#[test]
 fn owner_ids_compile() {
     let harmos = fixtures::library("harmos");
     let dependencies = fixtures::dependencies();
@@ -193,5 +229,63 @@ fn authoring_refusals_compile() {
 
         assert!(!compiled.status.success(), "{fixture} unexpectedly compiled successfully");
         assert!(stderr.contains(expected), "{fixture} did not report `{expected}`:\n{stderr}");
+    }
+}
+
+#[test]
+fn grpc_visibility_compiles() {
+    let sdk = fixtures::library("harmos_sdk");
+    let dependencies = fixtures::dependencies();
+    let output = tempfile::tempdir().unwrap();
+    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    for (index, (visibility, accepted)) in [
+        ("", false),
+        ("visibility = Private,", false),
+        ("visibility = harmos::operations::Visibility::Private,", false),
+        ("visibility = PRIVATE,", false),
+        ("visibility = Public,", true),
+        ("visibility = Host,", true),
+        ("visibility = harmos::operations::Visibility::Public,", true),
+        ("visibility = PUBLIC,", true),
+        ("visibility = Shared,", false),
+        ("visibility = harmos::operations::Visibility::Shared,", false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let source = output.path().join(format!("visibility_{index}.rs"));
+        fs::write(
+            &source,
+            format!(
+                r#"
+#![allow(dead_code)]
+const PRIVATE: harmos::operations::Visibility = harmos::operations::Visibility::Private;
+const PUBLIC: harmos::operations::Visibility = harmos::operations::Visibility::Public;
+#[harmos::operation(harmos_path = ::harmos, id = "visibility.call",
+    policy = harmos::model::operations::lifecycle::POLICY, {visibility}
+    grpc(package = "visibility.v1", service = "Operations", method = "Call"))]
+struct Call;
+fn main() {{}}
+"#
+            ),
+        )
+        .unwrap();
+        let compiled = fixtures::command(&rustc)
+            .args(["--edition=2024", "--crate-type=bin", "--emit=metadata"])
+            .arg(&source)
+            .arg("--extern")
+            .arg(format!("harmos={}", sdk.display()))
+            .arg("-L")
+            .arg(format!("dependency={}", dependencies.display()))
+            .arg("--out-dir")
+            .arg(output.path())
+            .output()
+            .unwrap();
+        let diagnostic = String::from_utf8_lossy(&compiled.stderr);
+        assert_eq!(compiled.status.success(), accepted, "{visibility}:\n{diagnostic}");
+        if !accepted {
+            let expected = if visibility.contains("Shared") { "Shared" } else { "Private operations cannot declare a gRPC binding" };
+            assert!(diagnostic.contains(expected), "{diagnostic}");
+        }
     }
 }

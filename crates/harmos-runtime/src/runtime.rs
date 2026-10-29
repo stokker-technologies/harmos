@@ -506,7 +506,7 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub(crate) fn with_registration(&mut self, registration: crate::operations::Registration<A::Lanes>) -> &mut Self {
+    pub fn with_registration(&mut self, registration: crate::operations::Registration<A::Lanes>) -> &mut Self {
         let binding = crate::operations::CatalogBinding::new(registration);
         self.bind_operations(binding)
     }

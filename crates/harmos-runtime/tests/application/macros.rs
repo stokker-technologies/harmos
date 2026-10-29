@@ -654,7 +654,7 @@ mod unified_plugins {
         Row(RowListener),
     }
     #[harmos_runtime::operation(codec = manual, resources = [], id = "fixture.unified.heard", response = (),
-    policy = <RowListener as harmos_runtime::listeners::Listener>::POLICY, visibility = Shared)]
+    policy = <RowListener as harmos_runtime::listeners::Listener>::POLICY, visibility = Public)]
     #[derive(Clone)]
     struct RowCallback(harmos_runtime::listeners::Delivery<RowListener>);
 

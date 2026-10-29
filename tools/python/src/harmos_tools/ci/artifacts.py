@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/artifacts.py; sha256:efcd2ea4d5867d79116a3a2ceb922f6fdeed5a03166066b5abfece2e01de63eb
+# Rendered by stkr project update from templates/python/ci/artifacts.py; sha256:2aae4481cb0e5873564ef17648f901d8d4b86f80d35f8533ed8990bea97e56a4
 # ***
 #
 # Harmos
@@ -23,6 +23,7 @@ from pathlib import Path, PurePosixPath
 # Third Party Imports
 # Local Imports
 from ..build.paths import target
+from ..process import spawn_flags
 
 # Type Checking Imports
 
@@ -76,7 +77,7 @@ def pack(directory: Path, archive: Path, patterns: list[str], profile: str, nati
         stdin=sys.stdin,
         stdout=sys.stdout,
         stderr=sys.stderr,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
         check=True,
     )
 
@@ -88,7 +89,7 @@ def extract(directory: Path, archive: Path) -> None:
     with subprocess.Popen(
         ["zstd", "-dc", str(archive)],
         stdout=subprocess.PIPE,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
     ) as decompressor:
         if decompressor.stdout is None:
             raise RuntimeError("artifact decompressor has no output stream")
@@ -137,14 +138,14 @@ def _tar() -> str:
         [found, "--version"],
         capture_output=True,
         text=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
         check=True,
     ).stdout
     capabilities = subprocess.run(
         [found, "--help"],
         capture_output=True,
         text=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
         check=True,
     ).stdout
     if not version.startswith("tar (GNU tar)") or not all(option in capabilities for option in ("--force-local", "--use-compress-program")):

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/package/changelog.py; sha256:1f4cf3bf070f4eac56dbc8f95519f5c6a59b1b59c41d4ecbca62e5ae60c1dee1
+# Rendered by stkr project update from templates/python/package/changelog.py; sha256:c20acdc6315b0ab008ab1597d8d49146b102069f3f1b7d968b4d0ed1c4f03c93
 # ***
 #
 # Harmos
@@ -18,7 +18,6 @@ from contextlib import contextmanager
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from ..release import policy
 

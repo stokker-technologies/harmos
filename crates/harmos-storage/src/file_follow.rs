@@ -86,7 +86,9 @@ impl<C> StorageManager<C> {
         context
             .result(span, async {
                 let source = match request.source {
-                    FileSource::Local(path) => FileSource::Local(std::path::absolute(path).map_err(crate::local::io_error)?),
+                    FileSource::Local(path) => FileSource::Local(
+                        std::path::absolute(&path).map_err(|error| crate::local::io_error("resolve followed path", &path, error))?,
+                    ),
                     stored => stored,
                 };
 

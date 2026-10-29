@@ -93,6 +93,9 @@ pub enum ContractError {
     #[error("invalid or reserved gRPC binding name")]
     Grpc,
 
+    #[error("private operation `{id}` cannot declare a gRPC binding")]
+    PrivateGrpc { id: String },
+
     #[error("invalid wire operation metadata: {0}")]
     Operation(#[from] crate::Error),
 
@@ -255,6 +258,9 @@ impl Contract {
 
     pub fn with_grpc(mut self, binding: Option<super::Grpc>) -> Result<Self, ContractError> {
         if let Some(binding) = &binding {
+            if self.operation.visibility == super::Visibility::Private {
+                return Err(ContractError::PrivateGrpc { id: self.operation.id.to_string() });
+            }
             binding.validate()?;
         }
         self.grpc = binding;
@@ -342,6 +348,14 @@ impl Contract {
 
     pub fn operation(&self) -> &OperationDefinition {
         &self.operation
+    }
+
+    pub fn with_id(mut self, id: impl Into<String>) -> Result<Self, ContractError> {
+        self.operation.id = crate::Identifier::new(id.into()).map_err(crate::Error::from)?;
+        self.operation.validate()?;
+        self.fingerprint = self.computed_fingerprint()?;
+        self.operation.fingerprint = self.fingerprint;
+        Ok(self)
     }
 
     pub fn fingerprint(&self) -> crate::Fingerprint {
@@ -540,7 +554,7 @@ mod tests {
             for (pointer, replacement) in [
                 ("/operation/id", json!("harmos.forged")),
                 ("/operation/description", json!("forged SDK contract")),
-                ("/operation/visibility", json!("shared")),
+                ("/operation/visibility", json!("public")),
                 ("/operation/policy/attempt_timeout/secs", json!(0)),
                 ("/operation/policy/retries", json!(RetryPolicy::OnTransient { max_retries: 1, backoff })),
                 ("/fingerprint", json!("00".repeat(32))),

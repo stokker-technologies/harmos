@@ -13,17 +13,36 @@ The skills SHALL guide products using Harmos, including shipped consumer example
 
 ### Requirement: Product Ownership And Composition
 
-The guidance SHALL place product and interface crates under crates/, expose the domain independently through the entry crate, gate runtime exports behind runtime, and separate reusable declarations from implementations. Self-contained operations SHALL colocate declarations and handlers when no independent contract consumer exists.
+The guidance SHALL expose the domain independently through the entry crate and gate runtime exports behind runtime. Reusable operation types and implementations SHALL share an operations crate, with execution behind runtime and shared models in domain, respecting Rust's orphan rule. Self-contained operations SHALL colocate declarations and handlers when no independent contract consumer exists.
 
 #### Scenario: Composed Plugin
 
 - **WHEN** a plugin hosts reusable product execution
-- **THEN** it consumes the entry crate, advertises original domain contracts, binds compatible runtime handlers, shares initialized resources and owns lifecycle settlement
+- **THEN** it consumes the entry crate, advertises the original operation contracts, enables their compatible implementations, shares initialized resources and owns lifecycle settlement
+
+#### Scenario: Portable Plugin Inventory
+
+- **WHEN** a plugin supplies platform-specific implementations of the same operations
+- **THEN** it gates native implementation modules and retains one ungated catalog inventory across supported platforms
+
+#### Scenario: Platform-Only Application Operation
+
+- **WHEN** an application exposes an operation on only one platform
+- **THEN** matching module and catalog variant gates retain only that platform's portable declarations and executable registrations
 
 #### Scenario: Self-Contained Operation
 
 - **WHEN** an operation is private to a self-contained interface
 - **THEN** its declaration and handler share a vertical operation module without a mandatory local domain tree
+
+### Requirement: Consumer Workspace Membership
+
+The guidance SHALL place product crates and a single sidecar/guest under crates/, with multiple carrier plugins under plugins/sidecars/<name> and plugins/guests/<name> as publish = false workspace members.
+
+#### Scenario: Several Plugins
+
+- **WHEN** a product has multiple sidecar or guest crates
+- **THEN** its workspace includes the populated plugin paths alongside crates/* and each carrier declares publish = false
 
 ### Requirement: Accurate Boundaries And Examples
 

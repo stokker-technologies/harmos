@@ -156,7 +156,7 @@ impl Listener for Observed {
 }
 
 #[harmos_runtime::operation(codec = manual, resources = [Probe], id = "listener.observe", response = (),
-    policy = Observed::POLICY, visibility = Shared)]
+    policy = Observed::POLICY, visibility = Public)]
 #[derive(Clone)]
 struct Observing(Delivery<Observed>);
 

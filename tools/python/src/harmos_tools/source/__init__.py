@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/source/__init__.py; sha256:38559478dd89b73ade004043a28900ae420f5932a2e3300ab60e81ee420d0cad
+# Rendered by stkr project update from templates/python/source/__init__.py; sha256:2962b7ad40ebbe5ee937d668b4c9daa3f0862a2a27d22f9e3889f3b6598c3236
 # ***
 #
 # Harmos
@@ -16,8 +16,8 @@ import subprocess
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
+from ..process import spawn_flags
 
 # Type Checking Imports
 
@@ -42,7 +42,7 @@ def files(directory: Path, *patterns: str) -> list[str]:
         check=True,
         capture_output=True,
         text=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
     ).stdout
     return sorted({name for name in listing.split("\0") if name and maintained(Path(name)) and (directory / name).is_file()})
 

@@ -31,7 +31,7 @@
     id = "schematic.list.directories",
     response = Directories,
     policy = crate::POLICY,
-    visibility = Shared,
+    visibility = Public,
     grpc(package = "schematic.v1", service = "Schematic", method = "ListDirectories"),
 )]
 #[derive(Clone, Debug, PartialEq)]

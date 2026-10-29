@@ -37,7 +37,7 @@ use super::{Echoed, PROBE};
     id = "probe.echo",
     response = Echoed,
     policy = PROBE,
-    visibility = Shared,
+    visibility = Public,
 ))]
 #[cfg_attr(target_arch = "wasm32", harmos::guest::operation(
     harmos_path = ::harmos::guest,
@@ -46,7 +46,7 @@ use super::{Echoed, PROBE};
     id = "probe.echo",
     response = Echoed,
     policy = PROBE,
-    visibility = Shared,
+    visibility = Public,
 ))]
 #[derive(Clone, PartialEq)]
 

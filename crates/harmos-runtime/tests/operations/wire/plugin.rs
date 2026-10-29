@@ -45,7 +45,7 @@ type Backends = PluginBackend<Resources, Resources, Resources>;
 
 #[harmos_runtime::operation(resources = [SelectedOwner], id = "fixture.selected_provider",
     response = String,
-    visibility = Shared,
+    visibility = Public,
     policy = super::cases::EchoDeclaration::POLICY
 )]
 struct SelectedDeclaration {
@@ -54,6 +54,11 @@ struct SelectedDeclaration {
 
 struct SelectedOwner(&'static str);
 
+#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "fixture.discover",
+    response = Vec<u8>, policy = super::cases::EchoDeclaration::POLICY
+)]
+struct Discover;
+
 struct SelectedHost {
     operations: OperationManager<Lanes>,
     scopes: BTreeMap<String, PluginScope>,
@@ -61,14 +66,14 @@ struct SelectedHost {
 }
 
 // Shares The Compute Request, Which Stays In Process.
-#[harmos_runtime::operation(resources = [Owner, harmos_runtime::operations::HostContext], codec = manual, id = "test.shared",
+#[harmos_runtime::operation(resources = [Owner, harmos_runtime::operations::HostContext], codec = manual, id = "test.public",
     response = Response,
-    visibility = Shared,
+    visibility = Public,
     policy = Compute::POLICY,
-    key = |request: &Shared| Compute::key(&request.0),
+    key = |request: &Public| Compute::key(&request.0),
 )]
 #[derive(Clone)]
-struct Shared(Request);
+struct Public(Request);
 
 #[harmos_runtime::operation(resources = [CleanupOwner], id = "fixture.callback_cleanup",
     response = String,
@@ -104,6 +109,7 @@ struct Host {
     callers: BTreeMap<String, PluginCaller>,
     call_during_setup: bool,
     cleanup: Option<Arc<CleanupOwner>>,
+    discovery: bool,
 }
 
 struct Credit {
@@ -129,9 +135,9 @@ struct Running {
 
 /* === Implementations === */
 
-super::in_process!(Shared);
+super::in_process!(Public);
 
-impl harmos_runtime::MemorySize for Shared {
+impl harmos_runtime::MemorySize for Public {
     fn memory_size(&self) -> usize {
         self.0.memory_size()
     }
@@ -152,6 +158,18 @@ impl harmos_runtime::Operation for SelectedDeclaration {
         let resources = ctx.resource::<SelectedOwner>();
         let result: ::core::result::Result<String, Self::Error> = async move { Ok(format!("{}:{}", resources.0, self.value)) }.await;
         result.map(::core::convert::Into::into)
+    }
+}
+
+impl harmos_runtime::Operation for Discover {
+    type Error = harmos_operations::Error;
+
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<Vec<u8>>, Self::Error> {
+        use harmos_sdk::operations::access::Discovery;
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
+        let (entries, next) = host.discover(None, 256, 4 * 1024 * 1024).map_err(harmos_operations::Error::Access)?;
+        assert!(next.is_none());
+        Ok(entries.into())
     }
 }
 
@@ -197,7 +215,7 @@ impl PluginLifecycle for SelectedHost {
     }
 }
 
-impl harmos_runtime::Operation for Shared {
+impl harmos_runtime::Operation for Public {
     type Error = Failed;
 
     async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<Response>, Failed> {
@@ -258,7 +276,7 @@ impl PluginLifecycle for Host {
         if definition.id != "fixture" {
             if self.call_during_setup && definition.id == "client" {
                 // Source is staged; its declared provider was committed earlier.
-                assert_eq!(self.operations.caller(&caller)?.call::<Shared>(Shared(request())).await?.value, 7);
+                assert_eq!(self.operations.caller(&caller)?.call::<Public>(Public(request())).await?.value, 7);
             }
             return Ok(());
         }
@@ -273,7 +291,10 @@ impl PluginLifecycle for Host {
             if self.cleanup.is_some() {
                 bindings.operations::<crate::operations::Single<CleanupDeclaration>>(Lanes::Open)?;
             }
-            bindings.operations::<crate::operations::Single<Shared>>(Lanes::Serial)?;
+            if self.discovery {
+                bindings.operations::<crate::operations::Single<Discover>>(Lanes::Open)?;
+            }
+            bindings.operations::<crate::operations::Single<Public>>(Lanes::Serial)?;
             bindings.operations::<crate::operations::Single<Parent>>(Lanes::Serial)
         })?);
 
@@ -456,7 +477,7 @@ fn selected_candidate(provider: &str, first: bool) -> PluginDefinitions {
 fn candidate() -> PluginDefinitions {
     let mut operations = harmos_runtime::operations::Declarations::of::<Operations>().unwrap();
     operations.extend(harmos_runtime::operations::Declarations::of::<super::cases::Operations>().unwrap());
-    operations.push(harmos_runtime::operations::OperationDefinition::of::<Shared>().unwrap());
+    operations.push(harmos_runtime::operations::OperationDefinition::of::<Public>().unwrap());
     operations.push(harmos_runtime::operations::OperationDefinition::of::<Parent>().unwrap());
     PluginDefinitions::new(
         [PluginDefinition {
@@ -514,6 +535,7 @@ fn host(operations: OperationManager<Lanes>) -> Host {
         callers: BTreeMap::new(),
         call_during_setup: false,
         cleanup: None,
+        discovery: false,
     }
 }
 

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/layout.py; sha256:6211ca9865bfe9522e60e9172351b15126bc55f42cfc82a73c5955d6cc7bc343
+# Rendered by stkr project update from templates/python/release/layout.py; sha256:b065d2f63a6be709bb9bef8614e8904fa10cf2be6f59e159746471eb6e5e2f25
 # ***
 #
 # __PRODUCT_NAME__
@@ -11,6 +11,8 @@
 # === Imports === #
 
 # Standard Library Imports
+import hashlib
+import json
 import re
 import urllib.parse
 from pathlib import Path
@@ -131,6 +133,40 @@ def plugin_feed(settings: dict, tag: str, bundles: list[dict]) -> dict:
 def upload_manifest(directory: Path, root: Path, files: list[dict]) -> None:
     entries = [{**item, "path": (root / item["path"]).relative_to(directory).as_posix()} for item in files]
     policy.write_json(root / "upload.json", {"format_version": 1, "assets": entries})
+
+
+def uploads(directory: Path, *, staged: bool = False) -> list[dict]:
+    """Read The Exact Publication Inventory, Refusing Unsafe Names, Paths And Changed Bytes."""
+    path = policy.inside(directory, "target/release-assets/upload.json")
+    if not path.is_file() or path.is_symlink():
+        raise policy.ToolError("release upload.json manifest is missing or linked")
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict) or manifest.get("format_version") != 1 or not isinstance(manifest.get("assets"), list):
+        raise policy.ToolError("unsupported release upload manifest")
+    names = set()
+    for item in manifest["assets"]:
+        if not isinstance(item, dict) or set(item) != {"name", "path", "sha256", "size"}:
+            raise policy.ToolError("invalid release upload entry")
+        name, relative, digest, size = (item[key] for key in ("name", "path", "sha256", "size"))
+        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+", name) or name in {".", "..", "upload.json", "published.json"}:
+            raise policy.ToolError("unsafe release upload name")
+        if name.casefold() in names:
+            raise policy.ToolError("release upload names collide")
+        names.add(name.casefold())
+        if not isinstance(relative, str) or not re.fullmatch(r"target/release-assets/[A-Za-z0-9_-]+/" + re.escape(name), relative):
+            raise policy.ToolError("unsafe release upload path")
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest) or type(size) is not int or size < 0:
+            raise policy.ToolError("invalid release upload digest or size")
+        if staged:
+            source = policy.inside(directory, relative)
+            if not source.is_file() or source.is_symlink():
+                raise policy.ToolError(f"missing staged upload: {name}")
+            data = source.read_bytes()
+            if len(data) != size or hashlib.sha256(data).hexdigest() != digest:
+                raise policy.ToolError(f"staged upload changed: {name}")
+    if "sha256sums" not in names:
+        raise policy.ToolError("release upload manifest has no SHA256SUMS")
+    return manifest["assets"]
 
 
 # === Private Functions === #

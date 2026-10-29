@@ -70,7 +70,7 @@ pub struct Receipt {
 #[harmos::operation(resources = [Store],
     id = "benchmark.upload", response = Receipt, input = Batch,
     policy = crate::POLICY,
-    visibility = Shared,
+    visibility = Public,
     replay = harmos::operations::ReplaySafety::Idempotent,
 )]
 pub struct Upload {
@@ -80,7 +80,7 @@ pub struct Upload {
 #[harmos::operation(resources = [Store],
     id = "benchmark.download", response = Receipt, output = Batch,
     policy = crate::POLICY,
-    visibility = Shared,
+    visibility = Public,
     replay = harmos::operations::ReplaySafety::Unknown,
 )]
 pub struct Download {
@@ -90,7 +90,7 @@ pub struct Download {
 #[harmos::operation(resources = [Store],
     id = "benchmark.put", response = Receipt,
     policy = crate::POLICY,
-    visibility = Shared,
+    visibility = Public,
     replay = harmos::operations::ReplaySafety::Unknown,
 )]
 pub struct Put {
@@ -102,7 +102,7 @@ pub struct Put {
 #[harmos::operation(resources = [Store],
     id = "benchmark.take", response = Batch,
     policy = crate::POLICY,
-    visibility = Shared,
+    visibility = Public,
     replay = harmos::operations::ReplaySafety::Unknown,
 )]
 pub struct Take {
@@ -112,7 +112,7 @@ pub struct Take {
 #[harmos::operation(operations = [harmos::builtins::storage::HashFile],
     id = "benchmark.hash.file", response = harmos::domain::model::storage::FileHash,
     policy = crate::POLICY,
-    visibility = Shared,
+    visibility = Public,
     replay = harmos::operations::ReplaySafety::Idempotent,
 )]
 pub struct Hash {

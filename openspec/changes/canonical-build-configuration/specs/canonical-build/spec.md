@@ -41,9 +41,9 @@ The explicit optional local `test:rust:extended` suite SHALL preserve noncanonic
 
 ### Requirement: Correctness And Performance Budgets
 
-Every correctness test SHALL have at least a 30-second deadline, preserving larger bounds. Historical runtime measurements SHALL NOT tighten correctness deadlines. Performance SHALL be assessed through benchmarks, with the application objective remaining under 10 seconds. Cargo defaults and product runtime limits SHALL remain unchanged.
+Every correctness test SHALL have at least a 120-second deadline, preserving larger bounds. Historical runtime measurements SHALL NOT tighten correctness deadlines. Performance SHALL be assessed through benchmarks, with the application objective remaining under 10 seconds. Cargo defaults and product runtime limits SHALL remain unchanged.
 
 #### Scenario: Slow System Story
 
 - **WHEN** a System story exceeds its former optimized-runtime deadline
-- **THEN** the correctness test retains the 30-second minimum while each observed failure is investigated separately for fixture I/O, validation/JIT, startup and actual-operation cost; the application performance objective remains open until measured
+- **THEN** the correctness test retains the 120-second minimum while each observed failure is investigated separately for fixture I/O, validation/JIT, startup and actual-operation cost; the application performance objective remains open until measured

@@ -1,10 +1,14 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/references/workspace.md; sha256:d8d14d0f85350094e1cd7c43193864095a4c253fb455db5c24b6c30dd3c0fdc5 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/references/workspace.md; sha256:d3c99f459dd1ab6c66c0d5f036c7888d702e1c98ddb912181e6fd4e5be61043b -->
 
 # Consumer Workspace
 
 This is a recommended consumer layout, not a claim that an existing example
 already has these exact directories. Product crates and a single sidecar or guest live under `crates/`. Several plugins use
 `plugins/sidecars/<name>` and `plugins/guests/<name>`, each with `publish = false`. Keep only populated crates and modules.
+
+Include the populated plugin paths as Cargo workspace members alongside
+`crates/*`, for example `members = ["crates/*", "plugins/sidecars/*", "plugins/guests/*"]`.
+Omit a plugin glob when that directory has no crates.
 
 ```text
 product/

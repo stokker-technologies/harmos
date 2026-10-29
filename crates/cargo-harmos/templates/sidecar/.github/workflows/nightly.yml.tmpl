@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:a79d741773710e198100a9c309cd203aacd3b4532a6b5a5f04a2f9953b4d9ff6
+# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:4b7ab46042d7b6f6acb5e782e31347e192564f2c7d56c98cc4328b24fbbd3bcd
 name: CI / Nightly
 "on":
   schedule:
@@ -7,117 +7,1165 @@ name: CI / Nightly
   workflow_dispatch: {}
 permissions:
   contents: read
+env:
+  PROFILE: release
+  MISE_LOCKED: "1"
+  MISE_EXPERIMENTAL: "1"
+  CARGO_INCREMENTAL: "0"
+  CARGO_HOME: ${{ github.workspace }}/.cache/cargo
+  pnpm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 concurrency:
   group: nightly-${{ github.run_id }}
   cancel-in-progress: false
 jobs:
-  build_product_linux:
-    name: Build
-    uses: ./.github/workflows/managed-build-product-linux.yml
-    with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"build_product_linux\":120}"
-      pipeline: nightly
-    secrets: inherit
-  build_tests_linux:
-    name: Build
-    uses: ./.github/workflows/managed-build-tests-linux.yml
-    with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"build_tests_linux\":120}"
-      pipeline: nightly
-    secrets: inherit
-  build_product_windows:
-    name: Build
-    uses: ./.github/workflows/managed-build-product-windows.yml
-    with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"build_product_windows\":120}"
-      pipeline: nightly
-    secrets: inherit
-  build_tests_windows:
-    name: Build
-    uses: ./.github/workflows/managed-build-tests-windows.yml
-    with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"build_tests_windows\":120}"
-      pipeline: nightly
-    secrets: inherit
-  check:
-    name: Check
-    uses: ./.github/workflows/managed-check.yml
-    with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"check_python\":120,\"source\":120}"
-      pipeline: nightly
-    secrets: inherit
-  check_linux:
-    name: Check
-    uses: ./.github/workflows/managed-check-linux.yml
-    with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"check_rust_linux\":120}"
-      pipeline: nightly
-    secrets: inherit
-  check_windows:
-    name: Check
-    uses: ./.github/workflows/managed-check-windows.yml
-    with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"check_rust_windows\":120}"
-      pipeline: nightly
-    secrets: inherit
-  package_linux:
-    name: Package
-    uses: ./.github/workflows/managed-package-linux.yml
-    with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"package_rust_linux\":120}"
-      pipeline: nightly
-    secrets: inherit
+  source:
+    name: Check / Repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - id: setup
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        cache-backend: ""
+        cache-mode: ""
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        bootstrap: "[]"
+    - run: mise run check:repository
+    - uses: ./.github/actions/save-caches
+      if: >-
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.setup.outputs.cargo_downloads-cache-hit
+        != 'true'
+      with:
+        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup.outputs.cargo_downloads-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.setup.outputs.mise-cache-hit != 'true'
+      with:
+        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup.outputs.mise-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.setup.outputs.uv-cache-hit != 'true'
+      with:
+        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup.outputs.uv-path }}
+    - name: Cache Summary
+      if: always()
+      env:
+        CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      uses: ./.github/actions/save-caches
+      with:
+        summary-module: project_tools.ci.summary
+    env:
+      MISE_ENABLE_TOOLS: >-
+        go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo,git-cliff
+  check_python:
+    name: Check / Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - id: setup
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        cache-backend: ""
+        cache-mode: ""
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        bootstrap: "[]"
+    - run: mise run check:python
+    - uses: ./.github/actions/save-caches
+      if: >-
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.setup.outputs.cargo_downloads-cache-hit
+        != 'true'
+      with:
+        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup.outputs.cargo_downloads-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.setup.outputs.mise-cache-hit != 'true'
+      with:
+        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup.outputs.mise-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.setup.outputs.uv-cache-hit != 'true'
+      with:
+        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup.outputs.uv-path }}
+    - name: Cache Summary
+      if: always()
+      env:
+        CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      uses: ./.github/actions/save-caches
+      with:
+        summary-module: project_tools.ci.summary
+    env:
+      MISE_ENABLE_TOOLS: >-
+        go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+  validate_coverage_rust:
+    name: Test / Rust / Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - id: setup
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        cache-backend: ""
+        cache-mode: ""
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        bootstrap: "[]"
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: build-tests-${{ env.PROFILE }}-unix
+        path: target/ci
+    - name: Extract build:rust:tests / tests
+      uses: ./.github/actions/extract-build
+      with:
+        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"project_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+    - run: mise run test:rust:coverage --profile ${{ env.PROFILE }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: junit-coverage-${{ env.PROFILE }}-unix
+        path: target/tests/${{ env.PROFILE }}/*/coverage/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: ./.github/actions/save-caches
+      if: >-
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.setup.outputs.cargo_downloads-cache-hit
+        != 'true'
+      with:
+        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup.outputs.cargo_downloads-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.setup.outputs.mise-cache-hit != 'true'
+      with:
+        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup.outputs.mise-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.setup.outputs.uv-cache-hit != 'true'
+      with:
+        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup.outputs.uv-path }}
+    - name: Cache Summary
+      if: always()
+      env:
+        CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      uses: ./.github/actions/save-caches
+      with:
+        summary-module: project_tools.ci.summary
     needs:
-    - build_product_linux
-    - check
-    - check_linux
-  package_windows:
-    name: Package
-    uses: ./.github/workflows/managed-package-windows.yml
-    with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"package_rust_windows\":120}"
-      pipeline: nightly
-    secrets: inherit
+    - build_tests
+    env:
+      MISE_ENABLE_TOOLS: >-
+        go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
+      MISE_TASK_SKIP: build:rust:tests
+  build_product:
+    name: Build / Product (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.minutes }}
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - id: setup_unix
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        cache-backend: disk
+        cache-mode: >-
+          ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+          github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+          (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+          endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-build-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-build-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        bootstrap: "[]"
+      if: matrix.platform == 'unix' && (true) && (true)
+    - name: Product Build
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        project_tools.ci.build --profile ${{ env.PROFILE }} --output product --task build
+      if: matrix.platform == 'unix' && (true) && (true)
+    - name: Compile Release Product
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        project_tools.ci.build --profile release --output product --task build
+      if: matrix.platform == 'unix' && (true) && (env.PROFILE == 'dev')
+    - name: Archive product
+      uses: ./.github/actions/archive-build
+      with:
+        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"project_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f62696e222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6c6962222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f70726f64756374225d\"]"
+      if: matrix.platform == 'unix' && (true) && (true)
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-product-${{ env.PROFILE }}-unix
+        path: target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+      if: matrix.platform == 'unix' && (true) && (true)
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.mise-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.mise-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.sccache-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.sccache-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.sccache-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.uv-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.uv-path }}
+    - name: Cache Summary
+      if: matrix.platform == 'unix' && (true) && (always())
+      env:
+        CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_unix.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_unix.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_unix.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_unix.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      uses: ./.github/actions/save-caches
+      with:
+        summary-module: ""
+    - id: setup_windows
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        cache-backend: disk
+        cache-mode: >-
+          ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+          github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+          (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+          endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-build-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-build-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        bootstrap: "[]"
+      if: matrix.platform == 'windows' && (true) && (true)
+    - name: Product Build
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        project_tools.ci.build --profile ${{ env.PROFILE }} --output product --task build
+      if: matrix.platform == 'windows' && (true) && (true)
+    - name: Compile Release Product
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        project_tools.ci.build --profile release --output product --task build
+      if: matrix.platform == 'windows' && (true) && (env.PROFILE == 'dev')
+    - name: Archive product
+      uses: ./.github/actions/archive-build
+      with:
+        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"project_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f62696e222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6c6962222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f70726f64756374225d\"]"
+      if: matrix.platform == 'windows' && (true) && (true)
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-product-${{ env.PROFILE }}-windows
+        path: target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+      if: matrix.platform == 'windows' && (true) && (true)
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.mise-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.mise-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.sccache-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.sccache-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.sccache-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.uv-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.uv-path }}
+    - name: Cache Summary
+      if: matrix.platform == 'windows' && (true) && (always())
+      env:
+        CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_windows.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      uses: ./.github/actions/save-caches
+      with:
+        summary-module: ""
+    env:
+      MISE_ENABLE_TOOLS: >-
+        aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,python,rust,sccache,taplo,uv
+      COMPILER_CACHE_BACKEND: disk
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+      COMPILER_CACHE_MODE: >-
+        ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+        github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+        - unix
+        - windows
+        include:
+        - platform: unix
+          runner: ubuntu-latest
+          minutes: 120
+          container: ""
+        - platform: windows
+          runner: windows-latest
+          minutes: 120
+          container: ""
+  build_tests:
+    name: Build / Tests (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.minutes }}
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - id: setup_unix
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        cache-backend: disk
+        cache-mode: >-
+          ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+          github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+          (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+          endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-build-rust-tests-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-build-rust-tests-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        bootstrap: "[]"
+      if: matrix.platform == 'unix' && (true) && (true)
+    - name: Tests Build
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        project_tools.ci.build --profile ${{ env.PROFILE }} --output tests --task build:rust:tests
+      if: matrix.platform == 'unix' && (true) && (true)
+    - name: Archive tests
+      uses: ./.github/actions/archive-build
+      with:
+        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"project_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f617263686976652e7461722e7a7374222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f636f6d70696c65722e6a736f6e225d\"]"
+      if: matrix.platform == 'unix' && (true) && (true)
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-tests-${{ env.PROFILE }}-unix
+        path: target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+      if: matrix.platform == 'unix' && (true) && (true)
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.mise-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.mise-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.sccache-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.sccache-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.sccache-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.uv-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.uv-path }}
+    - name: Cache Summary
+      if: matrix.platform == 'unix' && (true) && (always())
+      env:
+        CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_unix.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_unix.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_unix.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_unix.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      uses: ./.github/actions/save-caches
+      with:
+        summary-module: ""
+    - id: setup_windows
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        cache-backend: disk
+        cache-mode: >-
+          ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+          github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+          (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+          endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-build-rust-tests-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-build-rust-tests-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        bootstrap: "[]"
+      if: matrix.platform == 'windows' && (true) && (true)
+    - name: Tests Build
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        project_tools.ci.build --profile ${{ env.PROFILE }} --output tests --task build:rust:tests
+      if: matrix.platform == 'windows' && (true) && (true)
+    - name: Archive tests
+      uses: ./.github/actions/archive-build
+      with:
+        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"project_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f617263686976652e7461722e7a7374222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f636f6d70696c65722e6a736f6e225d\"]"
+      if: matrix.platform == 'windows' && (true) && (true)
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-tests-${{ env.PROFILE }}-windows
+        path: target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+      if: matrix.platform == 'windows' && (true) && (true)
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.mise-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.mise-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.sccache-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.sccache-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.sccache-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.uv-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.uv-path }}
+    - name: Cache Summary
+      if: matrix.platform == 'windows' && (true) && (always())
+      env:
+        CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_windows.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      uses: ./.github/actions/save-caches
+      with:
+        summary-module: ""
+    env:
+      MISE_ENABLE_TOOLS: >-
+        aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,python,rust,sccache,taplo,uv
+      COMPILER_CACHE_BACKEND: disk
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+      COMPILER_CACHE_MODE: >-
+        ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+        github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+        - unix
+        - windows
+        include:
+        - platform: unix
+          runner: ubuntu-latest
+          minutes: 120
+          container: ""
+        - platform: windows
+          runner: windows-latest
+          minutes: 120
+          container: ""
+  check_rust:
+    name: Check / Rust (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.minutes }}
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - id: setup_unix
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        cache-backend: disk
+        cache-mode: >-
+          ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+          github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+          (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+          endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-check-rust-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-check-rust-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        bootstrap: "[]"
+      if: matrix.platform == 'unix' && (true) && (true)
+    - run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        project_tools.ci.build
+      env:
+        BUILD_SCRIPT: mise run check:rust
+      if: matrix.platform == 'unix' && (true) && (true)
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.mise-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.mise-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.sccache-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.sccache-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.sccache-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.uv-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.uv-path }}
+    - name: Cache Summary
+      if: matrix.platform == 'unix' && (true) && (always())
+      env:
+        CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_unix.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_unix.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_unix.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_unix.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      uses: ./.github/actions/save-caches
+      with:
+        summary-module: ""
+    - id: setup_windows
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        cache-backend: disk
+        cache-mode: >-
+          ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+          github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+          (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+          endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-check-rust-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-check-rust-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        bootstrap: "[]"
+      if: matrix.platform == 'windows' && (true) && (true)
+    - run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        project_tools.ci.build
+      env:
+        BUILD_SCRIPT: mise run check:rust
+      if: matrix.platform == 'windows' && (true) && (true)
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.mise-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.mise-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.sccache-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.sccache-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.sccache-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.uv-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.uv-path }}
+    - name: Cache Summary
+      if: matrix.platform == 'windows' && (true) && (always())
+      env:
+        CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_windows.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      uses: ./.github/actions/save-caches
+      with:
+        summary-module: ""
+    env:
+      MISE_ENABLE_TOOLS: >-
+        aqua:koalaman/shellcheck,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,python,rust,sccache,taplo,uv
+      COMPILER_CACHE_BACKEND: disk
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+      COMPILER_CACHE_MODE: >-
+        ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+        github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+        - unix
+        - windows
+        include:
+        - platform: unix
+          runner: ubuntu-latest
+          minutes: 120
+          container: ""
+        - platform: windows
+          runner: windows-latest
+          minutes: 120
+          container: ""
+  package_rust:
+    name: Package / Rust (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.minutes }}
     needs:
-    - build_product_windows
-    - check
-    - check_windows
-  test_linux:
-    name: Test
-    uses: ./.github/workflows/managed-test-linux.yml
-    with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"validate_test_rust_unit_linux\":120}"
-      pipeline: nightly
-    secrets: inherit
+    - build_product
+    - check_python
+    - check_rust
+    - source
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - id: setup_unix
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        cache-backend: ""
+        cache-mode: ""
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        bootstrap: "[]"
+      if: >-
+        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev'))) && (true)
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: build-product-${{ env.PROFILE }}-unix
+        path: target/ci
+      if: >-
+        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev'))) && (true)
+    - name: Extract build / product
+      uses: ./.github/actions/extract-build
+      with:
+        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"project_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      if: >-
+        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev'))) && (true)
+    - run: mise run package:rust --profile ${{ env.PROFILE }}
+      if: >-
+        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev'))) && (true)
+    - name: Archive package
+      uses: ./.github/actions/archive-build
+      with:
+        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"project_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f7061636b6167652f7b70726f66696c657d2f7b7461726765747d225d\"]"
+      if: >-
+        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev'))) && (true)
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: package-${{ env.PROFILE }}-rust-unix
+        path: target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+      if: >-
+        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev'))) && (true)
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev'))) && (success() && ((github.event_name == 'push'
+        && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev'))) && (success() && ((github.event_name == 'push'
+        && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.mise-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.mise-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev'))) && (success() && ((github.event_name == 'push'
+        && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.uv-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.uv-path }}
+    - name: Cache Summary
+      if: >-
+        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev'))) && (always())
+      env:
+        CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_unix.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_unix.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_unix.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      uses: ./.github/actions/save-caches
+      with:
+        summary-module: ""
+    - id: setup_windows
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        cache-backend: ""
+        cache-mode: ""
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        bootstrap: "[]"
+      if: >-
+        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
+        && github.ref == 'refs/heads/dev'))) && (true)
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: build-product-${{ env.PROFILE }}-windows
+        path: target/ci
+      if: >-
+        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
+        && github.ref == 'refs/heads/dev'))) && (true)
+    - name: Extract build / product
+      uses: ./.github/actions/extract-build
+      with:
+        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"project_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      if: >-
+        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
+        && github.ref == 'refs/heads/dev'))) && (true)
+    - run: mise run package:rust --profile ${{ env.PROFILE }}
+      if: >-
+        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
+        && github.ref == 'refs/heads/dev'))) && (true)
+    - name: Archive package
+      uses: ./.github/actions/archive-build
+      with:
+        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"project_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f7061636b6167652f7b70726f66696c657d2f7b7461726765747d225d\"]"
+      if: >-
+        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
+        && github.ref == 'refs/heads/dev'))) && (true)
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: package-${{ env.PROFILE }}-rust-windows
+        path: target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+      if: >-
+        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
+        && github.ref == 'refs/heads/dev'))) && (true)
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
+        && github.ref == 'refs/heads/dev'))) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
+        && github.ref == 'refs/heads/dev'))) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.mise-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.mise-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
+        && github.ref == 'refs/heads/dev'))) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.uv-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.uv-path }}
+    - name: Cache Summary
+      if: >-
+        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
+        && github.ref == 'refs/heads/dev'))) && (always())
+      env:
+        CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      uses: ./.github/actions/save-caches
+      with:
+        summary-module: ""
+    if: >-
+      ((true || github.event_name == 'pull_request' || startsWith(github.ref,
+      'refs/tags/v') || false || (github.event_name == 'push' && github.ref ==
+      'refs/heads/dev')))
+    env:
+      MISE_ENABLE_TOOLS: >-
+        go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+      MISE_TASK_SKIP: build
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+        - unix
+        - windows
+        include:
+        - platform: unix
+          runner: ubuntu-latest
+          minutes: 120
+          container: ""
+        - platform: windows
+          runner: windows-latest
+          minutes: 120
+          container: ""
+  validate_test_rust_unit:
+    name: Test / Rust / Unit (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.minutes }}
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - id: setup_unix
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        cache-backend: ""
+        cache-mode: ""
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        bootstrap: "[]"
+      if: matrix.platform == 'unix' && (true) && (true)
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: build-tests-${{ env.PROFILE }}-unix
+        path: target/ci
+      if: matrix.platform == 'unix' && (true) && (true)
+    - name: Extract build:rust:tests / tests
+      uses: ./.github/actions/extract-build
+      with:
+        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"project_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      if: matrix.platform == 'unix' && (true) && (true)
+    - run: mise run test:rust:unit --profile ${{ env.PROFILE }}
+      if: matrix.platform == 'unix' && (true) && (true)
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: matrix.platform == 'unix' && (true) && (always())
+      with:
+        name: junit-test_rust_unit-${{ env.PROFILE }}-unix
+        path: |-
+          target/tests/${{ env.PROFILE }}/*/unit-rust/
+          .stkr/traces/${{ env.PROFILE }}/*/unit-rust/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.mise-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.mise-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'unix' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_unix.outputs.uv-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup_unix.outputs.uv-path }}
+    - name: Cache Summary
+      if: matrix.platform == 'unix' && (true) && (always())
+      env:
+        CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_unix.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_unix.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_unix.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      uses: ./.github/actions/save-caches
+      with:
+        summary-module: ""
+    - id: setup_windows
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        cache-backend: ""
+        cache-mode: ""
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        bootstrap: "[]"
+      if: matrix.platform == 'windows' && (true) && (true)
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: build-tests-${{ env.PROFILE }}-windows
+        path: target/ci
+      if: matrix.platform == 'windows' && (true) && (true)
+    - name: Extract build:rust:tests / tests
+      uses: ./.github/actions/extract-build
+      with:
+        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"project_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      if: matrix.platform == 'windows' && (true) && (true)
+    - run: mise run test:rust:unit --profile ${{ env.PROFILE }}
+      if: matrix.platform == 'windows' && (true) && (true)
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: matrix.platform == 'windows' && (true) && (always())
+      with:
+        name: junit-test_rust_unit-${{ env.PROFILE }}-windows
+        path: |-
+          target/tests/${{ env.PROFILE }}/*/unit-rust/
+          .stkr/traces/${{ env.PROFILE }}/*/unit-rust/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.mise-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.mise-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && (true) && (success() && ((github.event_name ==
+        'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'pull_request' &&
+        startsWith(github.ref, 'refs/pull/') && endsWith(github.ref, '/merge'))) &&
+        steps.setup_windows.outputs.uv-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.uv-path }}
+    - name: Cache Summary
+      if: matrix.platform == 'windows' && (true) && (always())
+      env:
+        CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      uses: ./.github/actions/save-caches
+      with:
+        summary-module: ""
+    env:
+      MISE_ENABLE_TOOLS: >-
+        go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+      MISE_TASK_SKIP: build:rust:tests
     needs:
-    - build_tests_linux
-  test_windows:
-    name: Test
-    uses: ./.github/workflows/managed-test-windows.yml
-    with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"validate_test_rust_unit_windows\":120}"
-      pipeline: nightly
-    secrets: inherit
-    needs:
-    - build_tests_windows
-  test_nightly:
-    name: Test
-    uses: ./.github/workflows/managed-test-nightly.yml
-    with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"validate_coverage_rust\":120}"
-      pipeline: nightly
-    secrets: inherit
-    needs:
-    - build_tests_linux
+    - build_tests
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+        - unix
+        - windows
+        include:
+        - platform: unix
+          runner: ubuntu-latest
+          minutes: 120
+          container: ""
+        - platform: windows
+          runner: windows-latest
+          minutes: 120
+          container: ""
