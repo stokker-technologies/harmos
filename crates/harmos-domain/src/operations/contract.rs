@@ -344,6 +344,14 @@ impl Contract {
         &self.operation
     }
 
+    pub fn with_id(mut self, id: impl Into<String>) -> Result<Self, ContractError> {
+        self.operation.id = crate::Identifier::new(id.into()).map_err(crate::Error::from)?;
+        self.operation.validate()?;
+        self.fingerprint = self.computed_fingerprint()?;
+        self.operation.fingerprint = self.fingerprint;
+        Ok(self)
+    }
+
     pub fn fingerprint(&self) -> crate::Fingerprint {
         self.fingerprint
     }

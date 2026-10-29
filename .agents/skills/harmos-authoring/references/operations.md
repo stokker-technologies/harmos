@@ -181,6 +181,31 @@ plugin requirements. Explicit grants still belong to the plugin. There are three
 or their pair. Borrow endpoints with `ctx.streams() -> &Self::StreamEndpoints`; input receives serialize through an asynchronous mutex.
 Invocation builders accept `.endpoints(...)` and remain inert until `.start()` or `.run()`.
 
+For an ID computed from configuration, bind an existing executable operation type
+through the ordinary registration batch:
+
+```rust
+use harmos::operations::Registration;
+
+let id = format!("devices.{}.read", config.device_key);
+let batch = Registration::new(Lane::Interactive).operation::<Read>(&id)?;
+runtime.register_batch(batch).await?;
+let response = runtime.operation(Read { channel: 3 }).id(&id).run().await?;
+```
+
+The type supplies the schema, policy, resource requirements and implementation.
+The selected local ID participates in the contract fingerprint; ordinary ID,
+resource and duplicate checks still apply. Static catalogs remain unchanged.
+The invocation builder retains its retry, lane and stream endpoint options.
+Request grants retain their scopes and bind to the selected operation ID.
+Use `OperationDefinition::named::<Read>(&id)` for matching metadata or
+`WireDeclaration::of::<Read>().contract()?.with_id(&id)` for its wire contract.
+For startup, pass the batch to `setup.settings().with_registration(batch)`.
+Embedded plugins use `register_embedded_batch` / `reload_embedded_batch`, which
+derive inventory and bindings from that same batch. Scoped registrations use
+`scope.register_batch(batch)` or `bindings.register(batch)` during activation.
+No registration accepts an arbitrary runtime schema or handler.
+
 Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
 Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.
 Local operation IDs use dotted segments `segment(.segment)*`, each with that same grammar. The runtime prepends the owner once:

@@ -79,15 +79,15 @@ impl Operation for Cancel {
 - Per-attempt request clones copy byte payloads; large transfers belong in streams.
 - Feature unification can enable a facade `runtime` without the consumer `runtime`; gating on the consumer feature avoids that.
 
-- Schematic uses aggregated callees directly; duplicate explicit requirement catalogs are removed.
-- Generated messages derive Clone when absent so nested request messages support retry snapshots; manual codecs own Clone.
-- Declared native calls reuse the callee cache's erased response owner, preserving identity with direct invocations.
+- Guest roots re-export SDK `Operation`, `Context` and `Response`; plugin lifecycle context stays at `kit::Context`. Remote-only declarations need no local execution implementation.
+- Generated messages derive Clone when absent; manual codecs own Clone. Shared retry resources and erased response owners retain their existing ownership.
+- Sandbox schema, JSON and SHA-256 development/test optimization retains the unchanged fuel budget and matches schematic schema/JSON settings.
 
-- Guest roots re-export SDK `Operation`, `Context` and `Response`; plugin lifecycle context stays at `kit::Context`.
-- Remote-only declarations do not require execution when runtime is enabled. `OperationCatalog::batch` supplies generated
-  executable bindings; lifecycle setup owns public composition. `RegistrationBatch` remains an internal authoring mechanism.
-- Sandbox development/test builds optimize schema processing, JSON decoding and SHA-256 fingerprinting so full metadata validation
-  fits the unchanged Wasm fuel budget; schema and JSON settings match the schematic guest.
+## Runtime-Computed IDs (Owner Decision 2026-10-29)
+
+`Registration::new(lane).operation::<O>(id)?` binds an existing executable type. The existing batch supplies startup, runtime, scope and embedded-plugin registration; no arbitrary schemas/handlers or second binding mechanism.
+`OperationDefinition::named::<O>(id)` and `WireDeclaration::of::<O>().contract()?.with_id(id)` retain type-owned schema/policy and compute the fingerprint using the new local ID. Request grants retain scopes under that ID; foreign grants remain invalid. Factory validation rejects other mutations. Static catalog projections remain unchanged.
+`runtime.operation(request).id(id)` (including endpoints), `operations.submit_at::<O>(id, request)` and encoded calls use normal dispatch. Duplicate IDs, catalog collisions, missing resources and incompatible metadata retain ordinary atomic refusal.
 
 ## Runtime Follow-Up Triage
 

@@ -966,6 +966,13 @@ There is no explicit irreversibility marker.
 
 ## Plugin Source Layout
 
+Runtime-selected operation IDs bind an existing type through
+`operations::Registration::new(lane).operation::<Read>(id)?`, then
+`runtime.register_batch(batch).await?` or plugin `register_embedded_batch`.
+The operation type supplies its schema, policy, resources and handler; the chosen
+ID enters the fingerprint. Invoke it with `operations.submit_at::<Read>(id, request)`.
+Static catalog composition and ordinary collision refusal remain unchanged.
+
 Keep one `-sidecar` or `-guest` crate under `crates/`. Several plugins belong
 under `plugins/sidecars/<name>` and `plugins/guests/<name>`. Carrier crates use
 `publish = false`.
