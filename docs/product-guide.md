@@ -722,6 +722,22 @@ Local operation IDs use dotted segments `segment(.segment)*`, each with that sam
 `temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `host.operations.cancel`, `harmos.initialize`
 and `storage.append_file`. `codec = manual` preserves an explicitly authored message codec.
 
+Standard `HashMap<K, V>` and `BTreeMap<K, V>` work as message fields and
+complete operation payloads. Keys are `bool`, `u32`, `u64`, `i32`, `i64` or
+`String`; values are supported scalars, bytes or named messages. Encoding sorts
+keys, so equal contents have the same bytes, fingerprint and digest across
+container types, hash seeds and insertion orders. Decoding accepts unordered
+entries and rejects duplicate keys while retaining the existing work and depth limits.
+Container capacity and nested allocations participate in memory admission.
+Custom hashers implement `MemorySize`; their default state's reported allocation
+must bound the state constructed during decoding.
+
+Maps use the existing repeated entry-message wire shape: each entry has
+`key = 1` and `value = 2`; a root map wraps these in `entries = 1`.
+Generated protobuf contracts and schema projections expose entry lists,
+rather than native protobuf maps or JSON objects. Nested containers such as
+`HashMap<String, Vec<Row>>` remain unsupported; use a named message for the value.
+
 `Message` supplies encoding and decoding; `Portable` supplies structural fingerprints and payload digests. Retries run a clone
 of the original operation request. Large payloads belong in streams. The low-level `Carrier` lifecycle is used for carrier proxies
 and lifecycle controls; services retain their separate `Service` lifecycle.

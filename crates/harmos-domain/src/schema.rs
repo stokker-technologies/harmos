@@ -38,6 +38,7 @@ pub const MAX_NAME_BYTES: usize = 256;
 macro_rules! wrapper {
     ($($ty:ty => $kind:ident),* $(,)?) => {$(
         impl Described for $ty {
+            const FIELD_KIND: graph::Kind<declaration::Definition> = graph::Kind::$kind;
             const NAME: &'static str = concat!("harmos::", stringify!($ty));
             const FIELDS: &'static [graph::Field<declaration::Definition>] = &[graph::Field {
                 name: Cow::Borrowed("value"),
@@ -79,6 +80,8 @@ pub enum Error {
 
 // A Static Message Shape, Independent Of Payload Encoding Or Construction.
 pub trait Described: 'static {
+    const FIELD_KIND: graph::Kind<declaration::Definition> = graph::Kind::Message { definition: Self::DEFINITION };
+
     const NAME: &'static str;
     const FIELDS: &'static [graph::Field<declaration::Definition>];
     const MARKER: &'static [u8];

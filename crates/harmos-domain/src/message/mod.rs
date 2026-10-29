@@ -11,6 +11,8 @@
 
 pub(crate) mod allocation;
 mod identity;
+mod maps;
+pub use maps::Entry as MapEntry;
 pub mod postcard;
 
 pub use identity::{Digest, Fingerprint};
