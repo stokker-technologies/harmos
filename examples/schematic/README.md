@@ -21,6 +21,10 @@ and reopens it. Both backends produce the same shared results. The final line is
 Reopened: 2 symbols, 1 net, 3 route points
 ```
 
+Startup emits `schematic.plugin.initializing` and `schematic.plugin.ready` on
+stderr for both backends. Guest component compilation finishes before
+initialization starts; the readiness interval covers plugin initialization.
+
 ## Follow The Ownership
 
 | Directory | Owns |

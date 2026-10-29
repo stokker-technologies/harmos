@@ -59,15 +59,29 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     let checkpoint = runtime.operations.context().resource::<schematic_app::storage::Sidecar>().map_err(std::io::Error::other)?;
 
     // Choose A Backend For The Same Operations
-    let plugin = match guest {
-        Some(path) => Plugin::guest(&runtime, path).await,
-        None => Plugin::sidecar(&runtime, sidecar, directory).await,
-    };
+    let plugin = async {
+        // Component Compilation Precedes The Bounded Plugin Initialization.
+        let loaded = match guest {
+            Some(path) => {
+                let bytes = std::fs::read(path)?;
+                Some(schematic_app::services::guest::load(&runtime, &bytes)?)
+            }
+            None => None,
+        };
+        eprintln!("schematic.plugin.initializing");
+        let plugin = match loaded {
+            Some(loaded) => Plugin::guest(&runtime, loaded).await?,
+            None => Plugin::sidecar(&runtime, sidecar, directory).await?,
+        };
+        eprintln!("schematic.plugin.ready");
+        Ok::<_, crate::Error>(plugin)
+    }
+    .await;
     let plugin = match plugin {
         Ok(plugin) => plugin,
         Err(error) => {
             runtime.shutdown().await?;
-            return Err(error.into());
+            return Err(error);
         }
     };
 
