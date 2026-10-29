@@ -57,8 +57,8 @@ pub mod __private {
     pub extern crate serde_json;
     pub use harmos_domain::__private::CarrierContext;
     pub use harmos_domain::__private::{
-        MessageError, PostcardReader, PostcardValue, decoding_add, decoding_multiply, decoding_vector, operation_identity, owner_segment,
-        postcard_product, stream_identity,
+        MapEntry, MessageError, PostcardReader, PostcardValue, decoding_add, decoding_multiply, decoding_vector, operation_identity,
+        owner_segment, postcard_product, stream_identity,
     };
 
     pub use harmos_domain::inventory as PluginInventory;

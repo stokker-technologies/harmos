@@ -184,6 +184,39 @@ fn encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream, TokenS
         let inner = boxed(ty).ok_or_else(|| unsupported_box(ty))?;
         return Ok((true, message_kind(inner, harmos), quote!(#harmos::schema::Cardinality::Required)));
     }
+    if name == "HashMap" || name == "BTreeMap" {
+        let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+            return Err(unsupported(ty));
+        };
+        let types = arguments
+            .args
+            .iter()
+            .map(|argument| if let GenericArgument::Type(ty) = argument { Some(ty) } else { None })
+            .collect::<Option<Vec<_>>>()
+            .ok_or_else(|| unsupported(ty))?;
+        if types.len() != 2 && !(name == "HashMap" && types.len() == 3) {
+            return Err(unsupported(ty));
+        }
+        let key = types[0];
+        let value = types[1];
+        let key_name = type_name(key);
+        if !matches!(key_name.as_deref(), Some("bool" | "u32" | "u64" | "i32" | "i64" | "String")) {
+            return Err(Error::new(key.span(), "map keys must be bool, u32, u64, i32, i64 or String"));
+        }
+        encoding(value, harmos)?;
+        if matches!(type_name(value).as_deref(), Some("Option" | "HashMap" | "BTreeMap" | "Box" | "Rc" | "Arc"))
+            || (type_name(value).as_deref() == Some("Vec") && !is_bytes(value))
+        {
+            return Err(Error::new(value.span(), "map values must be supported scalars, bytes or named messages"));
+        }
+        return Ok((
+            false,
+            quote!(#harmos::schema::graph::Kind::Message {
+                definition: <#harmos::__private::MapEntry<#key, #value> as #harmos::schema::Described>::DEFINITION,
+            }),
+            quote!(#harmos::schema::Cardinality::Repeated),
+        ));
+    }
     if name == "Option" || name == "Vec" {
         let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
             return Err(unsupported(ty));
@@ -204,7 +237,7 @@ fn encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream, TokenS
         if matches!(inner_name.as_deref(), Some("Box" | "Rc" | "Arc")) {
             return Err(unsupported_box(ty));
         }
-        if matches!(inner_name.as_deref(), Some("Option" | "Vec")) {
+        if matches!(inner_name.as_deref(), Some("Option" | "Vec" | "HashMap" | "BTreeMap")) {
             return Err(unsupported(ty));
         }
         let scalar = scalar(inner_name.as_deref().unwrap_or(""));
@@ -274,6 +307,19 @@ fn message_kind(ty: &Type, harmos: &HarmosPath) -> TokenStream {
     })
 }
 
+fn type_name(ty: &Type) -> Option<String> {
+    let Type::Path(path) = ty else { return None };
+    path.path.segments.last().map(|segment| segment.ident.to_string())
+}
+
+fn is_bytes(ty: &Type) -> bool {
+    let Type::Path(path) = ty else { return false };
+    let Some(segment) = path.path.segments.last() else { return false };
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else { return false };
+    arguments.args.len() == 1
+        && matches!(arguments.args.first(), Some(GenericArgument::Type(inner)) if type_name(inner).as_deref() == Some("u8"))
+}
+
 fn scalar(name: &str) -> Option<TokenStream> {
     Some(match name {
         "bool" => quote!(Bool),
@@ -291,7 +337,7 @@ fn scalar(name: &str) -> Option<TokenStream> {
 fn unsupported(ty: &Type) -> Error {
     Error::new(
         ty.span(),
-        "unsupported message field: use bool/u32/u64/i32/i64/f32/f64/String, Vec<u8> bytes, a nested message, Box<T> of a nested message, Option<T>, or Vec<T> of supported scalars/messages; maps, aliases and recursive containers require an explicit message shape",
+        "unsupported message field: use bool/u32/u64/i32/i64/f32/f64/String, Vec<u8> bytes, a nested message, Box<T> of a nested message, Option<T>, or Vec<T> of supported scalars/messages; HashMap/BTreeMap with scalar keys and scalar/bytes/message values are supported; aliases and recursive containers require an explicit message shape",
     )
 }
 
@@ -313,6 +359,10 @@ fn common(ty: &Type) -> bool {
     if scalar(&name).is_some() || name == "u8" {
         return true;
     }
+    if name == "HashMap" || name == "BTreeMap" {
+        let PathArguments::AngleBracketed(arguments) = &segment.arguments else { return false };
+        return arguments.args.iter().take(2).all(|arg| matches!(arg, GenericArgument::Type(inner) if common(inner)));
+    }
     if name == "Vec" || name == "Option" {
         let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
             return false;
@@ -328,6 +378,24 @@ fn common(ty: &Type) -> bool {
 mod tests {
     use super::*;
     use proc_macro2::{Delimiter, Group};
+
+    #[test]
+    fn map_field_shapes() {
+        for ty in [quote!(HashMap<String, u64>), quote!(BTreeMap<bool, Vec<u8>>), quote!(std::collections::HashMap<i32, Row>)] {
+            assert!(expand(quote!(), quote!(struct Holder { values: #ty })).is_ok());
+        }
+        for ty in [
+            quote!(HashMap<f64, String>),
+            quote!(BTreeMap<String, Vec<String>>),
+            quote!(HashMap<String, Option<u32>>),
+            quote!(HashMap<String, BTreeMap<String, String>>),
+            quote!(HashMap<String>),
+            quote!(Option<HashMap<String, String>>),
+            quote!(Vec<BTreeMap<String, String>>),
+        ] {
+            assert!(expand(quote!(), quote!(struct Holder { values: #ty })).is_err());
+        }
+    }
 
     #[test]
     fn forwarded_field_shapes() {
