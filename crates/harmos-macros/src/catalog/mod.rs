@@ -240,7 +240,7 @@ fn behavior(
         let variant = &member.name;
         quote!(Self::#variant(definition) => #harmos::state::Transaction::records(definition, state, out),)
     });
-    let inverses = inverses(name, members, state);
+    let inverses = inverses(name, members, state, harmos);
 
     quote! {
         #declaration
@@ -309,23 +309,43 @@ fn aggregate(aggregated: &Ident, visibility: &syn::Visibility, members: &[Member
     }
 }
 
-fn inverses(name: &Ident, members: &[Member], state: &Path) -> TokenStream {
+fn inverses(name: &Ident, members: &[Member], state: &Path, harmos: &HarmosPath) -> TokenStream {
     let arms = members.iter().map(|member| {
         let variant = &member.name;
 
         quote! {
-            Self::#variant(definition) => definition.__harmos_inverse::<#state, Self>(before),
+            Self::#variant(definition) => {
+                definition.__harmos_check_inverse::<#state, Self>();
+                Probe(definition, before).inverse().map(#harmos::__private::Catalogued::<Self>::catalogued)
+            },
         }
     });
 
     quote! {
+        impl ::core::convert::From<#harmos::state::Never> for #name {
+            fn from(never: #harmos::state::Never) -> Self { match never {} }
+        }
         impl #name {
-
-
             fn __harmos_inverses(
                 change: &Self,
                 before: &#state,
             ) -> ::core::option::Option<Self> {
+                // Method Resolution Selects The Borrowed Fallback Only Without Invertible.
+                struct Probe<'a, T, S>(&'a T, &'a S);
+                trait Detect {
+                    type Inverse;
+                    fn inverse(self) -> ::core::option::Option<Self::Inverse>;
+                }
+                impl<T, S> Detect for &Probe<'_, T, S> {
+                    type Inverse = #harmos::state::Never;
+                    fn inverse(self) -> ::core::option::Option<Self::Inverse> { None }
+                }
+                impl<T: #harmos::state::Invertible<S>, S> Detect for Probe<'_, T, S> {
+                    type Inverse = T::Inverse;
+                    fn inverse(self) -> ::core::option::Option<Self::Inverse> {
+                        Some(#harmos::state::Invertible::inverse(self.0, self.1))
+                    }
+                }
                 match change { #(#arms)* }
             }
         }

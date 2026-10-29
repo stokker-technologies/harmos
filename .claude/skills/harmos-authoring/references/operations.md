@@ -1,10 +1,13 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/operations.md; sha256:805939cfb1dfc6162344012c0df5702f7f186fe2d997640fb5a2b0649172aca2 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/operations.md; sha256:4d49a16e7e51b9081b5d67a1151540404fe000d4cf38a3893b0338dfc64f7fae -->
 
 # Operations
 
 ## Vertical Authoring
 
-One file owns each operation. Its definition division contains messages, the operation struct, policy, contract implementations and
+One module owns each operation. A plugin uses `operations/<op>/mod.rs`; its
+platform implementations are adjacent `windows.rs` / `unix.rs` files with gates
+only on the `mod` declarations. A reusable operations crate may use one file
+for a platform-independent operation. Its definition division contains messages, the operation struct, policy, contract implementations and
 contract tests. The runtime division follows the definition's Tests section and contains its own complete skeleton, including runtime-only
 tests. Shared models remain in the product domain; resource libraries are optional execution dependencies.
 

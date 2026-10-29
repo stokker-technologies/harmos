@@ -80,7 +80,7 @@ pub mod __private {
     // Ungated on purpose: a hand-written contribution in a crate that compiles
     // no authoring attributes at all still resolves the same paths.
 
-    pub use crate::state::{Catalogued, Mutual};
+    pub use crate::state::{Catalogued, Mutual, Paired};
     pub use harmos_domain::__private::Answer;
 
     pub fn stream_definition<S: StreamRow>(id: &'static str, version: u32, window: usize) -> crate::streams::Definition {

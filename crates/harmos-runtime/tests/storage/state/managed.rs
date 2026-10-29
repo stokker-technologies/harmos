@@ -38,7 +38,7 @@ type Refusal = &'static str;
 
 struct Model;
 
-#[harmos_runtime::transaction(id = "managed.add", irreversible)]
+#[harmos_runtime::transaction(id = "managed.add")]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Add {
     amount: i64,

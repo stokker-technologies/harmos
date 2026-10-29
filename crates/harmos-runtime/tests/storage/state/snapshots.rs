@@ -44,7 +44,7 @@ struct Store {
 
 struct Model;
 
-#[harmos_runtime::transaction(id = "snapshot.add", irreversible)]
+#[harmos_runtime::transaction(id = "snapshot.add")]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Add {
     amount: i64,

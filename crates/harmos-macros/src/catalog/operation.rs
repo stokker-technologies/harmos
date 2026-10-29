@@ -133,7 +133,7 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
     });
     let grant = grant.map(|value| {
         quote! {
-            fn grant(request: &Self::Request) -> ::core::option::Option<#sdk::plugin::Grant> { (#value)(request) }
+            fn grant(request: &Self::Request) -> ::core::option::Option<#sdk::__private::PluginGrant> { (#value)(request) }
         }
     });
     let key = key.map(|value| {

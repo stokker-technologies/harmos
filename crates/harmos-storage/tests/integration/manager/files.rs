@@ -14,6 +14,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::future::Future;
 
 // Third Party Imports
 use sha2::{Digest, Sha256};
@@ -269,6 +270,65 @@ async fn budget_bounds_chunks() {
     }
     assert_eq!(file.length(), bytes.len() as u64);
     file.finish().await.unwrap();
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn retained_write_waits() {
+    let mut policy = config();
+    policy.request.max_pending_write_bytes = NonZeroUsize::new(4096).unwrap();
+    let f = Fixture::new(policy).await;
+    let full = vec![42; 4096];
+    let mut first = f.storage.create_file(metadata("full", &full)).await.unwrap();
+    let tail = b"retained";
+    let mut second = f.storage.produce_file(metadata("waiting", tail)).await.unwrap();
+    f.data.control.block_chunk.store(true, Ordering::SeqCst);
+    {
+        let append = first.write_all(full.clone());
+        tokio::pin!(append);
+        tokio::select! {
+            biased;
+            result = &mut append => panic!("the full-budget append must block: {result:?}"),
+            _ = f.data.control.chunk_entered.notified() => {}
+        }
+        assert_eq!(f.storage.status().pending_bytes, 4096);
+        let retained = second.write_retained_at(0, harmos_storage::FileChunk::new(tail.to_vec()));
+        tokio::pin!(retained);
+        assert!(std::future::poll_fn(|cx| std::task::Poll::Ready(retained.as_mut().poll(cx).is_pending())).await);
+        f.data.control.block_chunk.store(false, Ordering::SeqCst);
+        f.data.control.chunk_release.notify_one();
+        let (written, copied) = tokio::join!(append, retained);
+        written.unwrap();
+        copied.unwrap();
+    }
+    assert_eq!(first.length(), full.len() as u64);
+    assert_eq!(second.length(), tail.len() as u64);
+    first.finish().await.unwrap();
+    let reference = second.finish().await.unwrap();
+    let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
+    assert_eq!(reader.next().await.unwrap().unwrap().bytes(), tail);
+    drop(reader);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn retained_append_retries() {
+    let f = Fixture::new(config()).await;
+    let bytes = b"retained failed bytes";
+    let mut file = f.storage.produce_file(metadata("retained-retry", bytes)).await.unwrap();
+    *f.data.control.permanent_chunk_file.lock().unwrap() = Some("retained-retry".into());
+    assert!(file.write_retained_at(0, harmos_storage::FileChunk::new(bytes.to_vec())).await.is_err());
+    assert_eq!(file.length(), 0);
+    assert!(file.write_retained_at(1, harmos_storage::FileChunk::new(bytes.to_vec())).await.is_err());
+    assert!(file.write_retained_at(0, harmos_storage::FileChunk::new(b"changed bytes".to_vec())).await.is_err());
+    *f.data.control.permanent_chunk_file.lock().unwrap() = None;
+    let retried = file.retry_append().await.unwrap().unwrap();
+    assert_eq!(retried.as_slice(), bytes);
+    assert_eq!(*f.data.control.chunk_offsets.lock().unwrap(), [0, 0]);
+    let reference = file.finish().await.unwrap();
+    let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
+    assert_eq!(reader.next().await.unwrap().unwrap().bytes(), bytes);
+    drop(reader);
     f.finish().await;
 }
 
