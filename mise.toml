@@ -66,10 +66,12 @@ run = ["uv sync --locked --project tools/python --all-groups"]
 [tasks.format]
 description = "Format Every Language"
 usage = 'flag "--check"'
-depends = [
-  "format:rust{% if usage.check %} --check{% endif %}",
-  "format:python{% if usage.check %} --check{% endif %}",
-  "format:toml{% if usage.check %} --check{% endif %}",
+run = [
+  { tasks = [
+    "format:rust{% if usage.check %} --check{% endif %}",
+    "format:python{% if usage.check %} --check{% endif %}",
+    "format:toml{% if usage.check %} --check{% endif %}",
+  ] },
 ]
 
 [tasks."format:python"]
@@ -130,7 +132,7 @@ description = "Check Generated Python"
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python ty check target/generated/python/src",
-  "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml --extend-exclude _wire target/generated/python/src",
+  "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml --extend-exclude=_wire target/generated/python/src",
   "uv run --locked --no-sync --project tools/python python -c \"import sys, pkgutil, importlib; sys.path.insert(0, 'target/generated/python/src'); [importlib.import_module(m.name) for m in pkgutil.walk_packages(['target/generated/python/src'])]\"",
 ]
 
@@ -195,16 +197,18 @@ run = [
 description = "Test Every Layer"
 usage = 'flag "--profile <profile>" default="dev"'
 
-depends = ["test:rust --profile {{usage.profile}}"]
+run = [{ tasks = ["test:rust --profile {{usage.profile}}"] }]
 
 [tasks."test:rust"]
 description = "Test Rust"
 usage = 'flag "--profile <profile>" default="dev"'
-depends = [
-  "test:rust:unit --profile {{usage.profile}}",
-  "test:rust:integration --profile {{usage.profile}}",
-  "test:rust:acceptance --profile {{usage.profile}}",
-  "test:rust:system --profile {{usage.profile}}",
+run = [
+  { tasks = [
+    "test:rust:unit --profile {{usage.profile}}",
+    "test:rust:integration --profile {{usage.profile}}",
+    "test:rust:acceptance --profile {{usage.profile}}",
+    "test:rust:system --profile {{usage.profile}}",
+  ] },
 ]
 
 [tasks."test:rust:extended"]
@@ -276,10 +280,12 @@ usage = '''
 flag "--refresh-baseline"
 flag "--extended"
 '''
-depends = [
-  "bench:rust:unit{% if usage.extended %} --extended{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
-  "bench:rust:integration{% if usage.extended %} --extended{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
-  "bench:rust:system{% if usage.extended %} --extended{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
+run = [
+  { tasks = [
+    "bench:rust:unit{% if usage.extended %} --extended{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
+    "bench:rust:integration{% if usage.extended %} --extended{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
+    "bench:rust:system{% if usage.extended %} --extended{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
+  ] },
 ]
 
 [tasks."bench:rust:extended"]
@@ -321,7 +327,7 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.t
 [tasks.package]
 description = "Package Rust Artifacts"
 usage = 'flag "--profile <profile>" default="dev"'
-depends = ["package:rust --profile {{usage.profile}}"]
+run = [{ tasks = ["package:rust --profile {{usage.profile}}"] }]
 
 [tasks."package:rust"]
 description = "Package Rust"
@@ -371,7 +377,7 @@ description = "Publish Rust Crates"
 run = "uv run --locked --project tools/python python -m harmos_tools.release.run crates"
 
 [tasks."release:rehearse"]
-description = "Rehearse The Publication Chain On A Disposable Draft"
+description = "Rehearse Existing Release Packages Without Credentials"
 run = "uv run --locked --project tools/python python -m harmos_tools.release.run rehearse"
 
 [tasks."release:tag"]
