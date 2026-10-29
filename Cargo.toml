@@ -136,6 +136,12 @@ all = "warn"
 
 # === Profiles === #
 
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 # === Patches === #
 
 # === Other === #
