@@ -8,7 +8,7 @@
 
 <img src="https://stokkertechnologies.ch/logo.svg" height="256" alt="Stokker Technologies Mark">
 
-[Website](https://github.com/stokker-technologies/harmos) · [Getting Started](#quick-start) · [Tutorials](examples/schematic/README.md) · [Examples](examples/) · [Documentation](docs/product-guide.md)
+[Website](https://github.com/stokker-technologies/harmos) · [Getting Started](#quick-start) · [Tutorials](docs/schematic.md) · [Examples](docs/examples.md) · [Documentation](docs/product-guide.md)
 
 **Build stateful Rust applications with history, live data and plugins.**
 

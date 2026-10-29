@@ -4,7 +4,7 @@ Detailed composition, feature selection and runnable examples. Start with the [Q
 
 ## Examples
 
-The [Schematic Editor](../examples/schematic/README.md) is one application with two
+The [Schematic Editor](schematic.md) is one application with two
 plugin backends. Read the [walkthrough](../examples/schematic/cli/src/walkthrough.rs)
 from top to bottom: place two symbols, connect them, ask the plugin to validate
 and propose a route, apply the proposal as a host transaction, undo/redo, and
@@ -939,7 +939,8 @@ in its output. HTML rendering uses Plotters and does not require Gnuplot.
 
 ## Documentation
 
-- [Runnable Examples](../examples/) — application composition and plugin integration.
+- [Runnable Examples](examples.md) — application composition and plugin integration.
+- [Schematic Walkthrough](schematic.md) — the example application, its crates and backends.
 - [Public Rust API](../crates/harmos/src/lib.rs) — the SDK facade and module documentation.
 - [Cargo Features](../crates/harmos/Cargo.toml) — select the facilities your application needs.
 - [Storage Adapter](../examples/schematic/storage/) — own your persistence format.
