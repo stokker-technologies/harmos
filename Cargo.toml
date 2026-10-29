@@ -87,6 +87,7 @@ wit-component = { version = "=0.258.3", default-features = false }
 clap = { version = "4.6.7", default-features = false }
 
 # Filesystem
+globset = { version = "0.4.20", default-features = false }
 notify = { version = "8.2.1", default-features = false }
 same-file = { version = "1.0.6", default-features = false }
 tar = { version = "0.4.46", default-features = false }

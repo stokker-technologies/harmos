@@ -41,6 +41,7 @@ use harmos_domain::model::storage::{DirectoryCompletion, DirectoryEntry, Directo
 
 struct Selection {
     value: DirectorySelection,
+    rules: selection::Rules,
 }
 
 /* === Enums === */
@@ -80,7 +81,8 @@ async fn selection(mut value: DirectorySelection) -> Result<Arc<Selection>> {
     value.root =
         tokio::task::spawn_blocking(move || context.blocking(|| crate::local::validate_local_path(&path))).await.map_err(join_error)??;
 
-    Ok(Arc::new(Selection { value }))
+    let rules = selection::Rules::compile(&value.rules)?;
+    Ok(Arc::new(Selection { value, rules }))
 }
 
 fn relative(root: &Path, path: &Path, recursive: bool) -> Result<Option<String>> {
