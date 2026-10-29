@@ -90,6 +90,12 @@ impl harmos::Lifecycle for Sandbox {
         if plugin.config != "missing-resource" {
             setup.resource::<Owner>(Arc::clone(&plugin.owner));
         }
+        if plugin.config == "mismatch" {
+            let extra = harmos::guest::__private::RegistrationBatch::new()
+                .operation_named::<contract::EchoOperation>("unexpected")
+                .map_err(std::io::Error::other)?;
+            setup.settings().register(extra).map_err(std::io::Error::other)?;
+        }
         Ok(plugin)
     }
 

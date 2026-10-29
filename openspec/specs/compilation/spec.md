@@ -1,4 +1,9 @@
-## ADDED Requirements
+# Compilation Specification
+
+## Purpose
+Reduce dependency and compilation work while preserving supported Harmos behavior.
+
+## Requirements
 
 ### Requirement: Preserve Behavior While Reducing Compilation Work
 
