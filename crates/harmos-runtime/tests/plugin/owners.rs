@@ -29,23 +29,23 @@ use harmos_runtime::operations::{OperationDeclaration, Registration, WireDeclara
 
 /* === Type Aliases === */
 
-type SharedBackends = PluginBackend<SharedActivation, SharedActivation, SharedActivation>;
+type PublicBackends = PluginBackend<PublicActivation, PublicActivation, PublicActivation>;
 
 /* === Structs === */
 
-struct SharedHost {
+struct PublicHost {
     operations: OperationManager<Lanes>,
 }
 
 #[derive(Default)]
-struct SharedActivation {
+struct PublicActivation {
     endpoint: Option<PluginEndpoint>,
     registration: Option<PluginRegistration>,
 }
 
-#[harmos_runtime::operation(id = "owners.shared", visibility = Shared, policy = harmos_runtime::builtins::host::POLICY,
-    grant = |request: &RootShared| Some(harmos_domain::plugin::Grant::of("owners.shared", if request.restricted { "restricted" } else { "allowed" })))]
-struct RootShared {
+#[harmos_runtime::operation(id = "owners.public", visibility = Public, policy = harmos_runtime::builtins::host::POLICY,
+    grant = |request: &RootPublic| Some(harmos_domain::plugin::Grant::of("owners.public", if request.restricted { "restricted" } else { "allowed" })))]
+struct RootPublic {
     restricted: bool,
 }
 
@@ -55,8 +55,8 @@ struct RootHost;
 #[harmos_runtime::operation(id = "owners.private", policy = harmos_runtime::builtins::host::POLICY)]
 struct RootPrivate;
 
-#[harmos_runtime::operation(id = "owners.call", operations = [RootShared], policy = harmos_runtime::builtins::host::POLICY)]
-struct SharedCaller {
+#[harmos_runtime::operation(id = "owners.call", operations = [RootPublic], policy = harmos_runtime::builtins::host::POLICY)]
+struct PublicCaller {
     restricted: bool,
 }
 
@@ -72,21 +72,21 @@ struct PrivateCaller;
 
 /* === Implementations === */
 
-impl PluginLifecycle for SharedHost {
-    type Guest = SharedActivation;
-    type Sidecar = SharedActivation;
-    type Embedded = SharedActivation;
+impl PluginLifecycle for PublicHost {
+    type Guest = PublicActivation;
+    type Sidecar = PublicActivation;
+    type Embedded = PublicActivation;
 
     fn preflight(&mut self, candidate: &PluginDefinitions) -> Result<()> {
         for (_, required) in candidate.host_requirements() {
-            assert_eq!(required.contract, WireDeclaration::of::<RootShared>().contract().unwrap());
-            assert_eq!(required.grants, [harmos_domain::plugin::Grant::of("owners.shared", "allowed")]);
+            assert_eq!(required.contract, WireDeclaration::of::<RootPublic>().contract().unwrap());
+            assert_eq!(required.grants, [harmos_domain::plugin::Grant::of("owners.public", "allowed")]);
         }
         self.operations.validate_requirements(candidate)
     }
 
-    fn prepare(&mut self, _: &PluginDefinition) -> Result<SharedBackends> {
-        Ok(PluginBackend::Embedded(SharedActivation::default()))
+    fn prepare(&mut self, _: &PluginDefinition) -> Result<PublicBackends> {
+        Ok(PluginBackend::Embedded(PublicActivation::default()))
     }
 
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> Result<()> {
@@ -94,17 +94,17 @@ impl PluginLifecycle for SharedHost {
     }
 
     async fn start(
-        &mut self, definition: &PluginDefinition, router: &Router, _: &PluginLifecycleAuthority<'_>, backend: &mut SharedBackends,
+        &mut self, definition: &PluginDefinition, router: &Router, _: &PluginLifecycleAuthority<'_>, backend: &mut PublicBackends,
     ) -> Result<()> {
         let PluginBackend::Embedded(owned) = backend else { unreachable!() };
         owned.endpoint = Some(router.enter(&definition.id).unwrap());
         let scope = owned.endpoint.as_ref().unwrap().scope().unwrap();
         owned.registration =
-            Some(self.operations.stage_plugin(scope, |bindings| bindings.operations::<Operations<SharedCaller>>(Lanes::Open))?);
+            Some(self.operations.stage_plugin(scope, |bindings| bindings.operations::<Operations<PublicCaller>>(Lanes::Open))?);
         Ok(())
     }
 
-    async fn stop(_: &PluginDefinition, _: &PluginLifecycleAuthority<'_>, backend: &mut SharedBackends) -> Result<()> {
+    async fn stop(_: &PluginDefinition, _: &PluginLifecycleAuthority<'_>, backend: &mut PublicBackends) -> Result<()> {
         let PluginBackend::Embedded(owned) = backend else { unreachable!() };
         if let Some(registration) = &mut owned.registration {
             registration.shutdown().await?;
@@ -115,7 +115,7 @@ impl PluginLifecycle for SharedHost {
     }
 }
 
-impl harmos_runtime::Operation for RootShared {
+impl harmos_runtime::Operation for RootPublic {
     type Error = std::convert::Infallible;
     async fn run(self, _: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<()>, Self::Error> {
         Ok(().into())
@@ -136,10 +136,10 @@ impl harmos_runtime::Operation for RootPrivate {
     }
 }
 
-impl harmos_runtime::Operation for SharedCaller {
+impl harmos_runtime::Operation for PublicCaller {
     type Error = harmos_runtime::operations::InvocationError;
     async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<()>, Self::Error> {
-        ctx.operation(RootShared { restricted: self.restricted }).await
+        ctx.operation(RootPublic { restricted: self.restricted }).await
     }
 }
 
@@ -176,27 +176,27 @@ async fn host_owner_admission() {
         })
         .await
         .unwrap();
-        let root = Registration::new(Lanes::Open).operation::<RootShared>(RootShared::ID).unwrap();
+        let root = Registration::new(Lanes::Open).operation::<RootPublic>(RootPublic::ID).unwrap();
         runtime.register_batch(root).await.unwrap();
         let mut plugin = plan().ordered().iter().find(|definition| definition.id == "provider").unwrap().clone();
         plugin.id = owner.into();
         plugin.contributions = PluginContributions::default();
         plugin.contributions.required_contracts = Some(vec![Required {
-            contract: WireDeclaration::of::<RootShared>().contract().unwrap(),
-            grants: vec![harmos_domain::plugin::Grant::of("owners.shared", "allowed")],
+            contract: WireDeclaration::of::<RootPublic>().contract().unwrap(),
+            grants: vec![harmos_domain::plugin::Grant::of("owners.public", "allowed")],
         }]);
-        plugin.contributions.operations = vec![SharedCaller::definition()];
-        plugin.contributions.wire_contracts = vec![WireDeclaration::of::<SharedCaller>().contract().unwrap()];
+        plugin.contributions.operations = vec![PublicCaller::definition()];
+        plugin.contributions.wire_contracts = vec![WireDeclaration::of::<PublicCaller>().contract().unwrap()];
         let candidate = PluginDefinitions::new([plugin.clone()], []).unwrap();
         let mut manager = PluginManager::new(candidate).unwrap();
-        let mut host = SharedHost { operations: runtime.operations.clone() };
+        let mut host = PublicHost { operations: runtime.operations.clone() };
         manager.initialize(&mut host).await.unwrap();
 
-        let target = format!("{owner}.{}", SharedCaller::ID);
-        let request = harmos_runtime::Message::encode(&SharedCaller { restricted: false });
+        let target = format!("{owner}.{}", PublicCaller::ID);
+        let request = harmos_runtime::Message::encode(&PublicCaller { restricted: false });
         let bytes = runtime.operations.call_encoded(&target, request).await.unwrap();
         assert!(<() as harmos_runtime::Message>::decode(&bytes).is_ok());
-        let request = harmos_runtime::Message::encode(&SharedCaller { restricted: true });
+        let request = harmos_runtime::Message::encode(&PublicCaller { restricted: true });
         assert!(runtime.operations.call_encoded(&target, request).await.is_err());
         assert_eq!(manager.status(owner).unwrap().state, PluginState::Ready);
         assert!(PluginDefinitions::new([plugin.clone(), plugin], []).is_err());

@@ -189,7 +189,7 @@ impl Definition {
     pub fn new(id: Identifier, source: Source, callback: Contract) -> Result<Self, Error> {
         source.validate()?;
         let operation = callback.operation();
-        if operation.visibility != Visibility::Shared
+        if operation.visibility != Visibility::Public
             || operation.policy.retries != RetryPolicy::Never
             || operation.replay != ReplaySafety::Unknown
         {

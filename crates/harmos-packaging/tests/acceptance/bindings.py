@@ -593,7 +593,7 @@ def _contract() -> dict[str, Any]:
                     "attempt_timeout": {"secs": 1, "nanos": 0},
                     "retries": "never",
                 },
-                "visibility": "shared",
+                "visibility": "public",
                 "replay": "idempotent",
             },
             "fingerprint": "01" * 32,

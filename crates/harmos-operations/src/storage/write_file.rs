@@ -49,7 +49,7 @@ product!(WriteFile {
     response = FileReference,
     policy = IO_POLICY,
     input = FileBatch,
-    visibility = Shared,
+    visibility = Public,
     replay = ReplaySafety::Unknown,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "WriteFile"),
     grant = Self::grant_for,

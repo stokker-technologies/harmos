@@ -65,7 +65,7 @@ struct AttemptGuard(Arc<Counts>);
     policy = ReadDeclaration::POLICY,
     response = u32,
     input = u32,
-    grpc(package = "fixture.v1", service = "Native", method = "Upload"),
+    visibility = Public, grpc(package = "fixture.v1", service = "Native", method = "Upload"),
 )]
 pub(super) struct UploadDeclaration {
     pub(super) value: u32,
@@ -75,7 +75,7 @@ pub(super) struct UploadDeclaration {
     policy = ReadDeclaration::POLICY,
     response = u32,
     output = u32,
-    grpc(package = "fixture.v1", service = "Native", method = "Download"),
+    visibility = Public, grpc(package = "fixture.v1", service = "Native", method = "Download"),
 )]
 pub(super) struct DownloadDeclaration {
     pub(super) value: u32,
@@ -93,7 +93,7 @@ struct WrongShape {
     response = u32,
     input = u32,
     output = u32,
-    grpc(package = "fixture.v1", service = "Native", method = "Exchange"),
+    visibility = Public, grpc(package = "fixture.v1", service = "Native", method = "Exchange"),
 )]
 pub(super) struct ExchangeDeclaration {
     pub(super) value: u32,

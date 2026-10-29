@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/review-release; sha256:5cdb83df5b005b18edce23a9b6935cc7aec5305d985988800f0a584d820287bf
+# Rendered by stkr project update from templates/ci/review-release; sha256:a3c15316079b71dcab1d9dba8279b21c053f4799428033a62a49cb0998416977
 """Find A Green Review Of This Exact Tree And Restore Its Package Artifacts."""
 
 # === Imports === #
@@ -8,6 +8,7 @@ import io
 import json
 import os
 import re
+import runpy
 import subprocess
 import urllib.parse
 import urllib.request
@@ -22,6 +23,8 @@ from pathlib import Path
 # === Public Exports === #
 
 # === Constants === #
+
+spawn_flags = runpy.run_path(str(Path(__file__).resolve().parents[1] / "process.py"))["spawn_flags"]
 
 OID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 
@@ -46,9 +49,7 @@ class ProviderRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def command(*args):
-    return subprocess.run(
-        args, check=True, capture_output=True, text=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    ).stdout.strip()
+    return subprocess.run(args, check=True, capture_output=True, text=True, timeout=120, creationflags=spawn_flags()).stdout.strip()
 
 
 def request(endpoint, *, binary=False):

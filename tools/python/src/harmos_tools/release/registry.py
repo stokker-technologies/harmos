@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/registry.py; sha256:589f4ba4fab011f1b1fab928a83e0c8eb87e6726e1bd8ba277cf8a031401c88b
+# Rendered by stkr project update from templates/python/release/registry.py; sha256:710e4bde82f628ecd16ff9cc5d255e8f8d632a10c90a48256500cd2c402b9e82
 # ***
 #
 # Harmos
@@ -81,34 +81,23 @@ def publish_crates(directory: Path, *, sleep=time.sleep, clock=time.monotonic) -
 
 
 def rehearse_crates(directory: Path, *, skip_published: bool = True) -> None:
-    """Dry-Run Each Unpublished Crate Alone, In Publication Order, Seeing Only The Siblings Published Before It."""
-    storage.preflight(directory)
-    packages = publishable(directory)
-    target = Path(
-        json.loads(policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps"], capture=True))["target_directory"]
-    )
-    lock = directory / "Cargo.lock"
-    original = lock.read_bytes() if lock.is_file() else None
-    staged = []
-    with changelog.staged(directory, packages):
-        _rehearse_crates(directory, packages, target, lock, original, staged, skip_published=skip_published)
+    """Dry-Run Crates In Publication Order Without Publishing Credentials."""
+    with policy.credential_free(policy.policy(directory, "release")):
+        storage.preflight(directory)
+        packages = publishable(directory)
+        metadata = policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps"], capture=True)
+        target = Path(json.loads(metadata)["target_directory"])
+        lock = directory / "Cargo.lock"
+        original = lock.read_bytes() if lock.is_file() else None
+        staged = []
+        with changelog.staged(directory, packages):
+            _rehearse_crates(directory, packages, target, lock, original, staged, skip_published=skip_published)
 
 
 def publishable(directory: Path) -> dict:
     """Publishable Workspace Members By Name."""
     metadata = json.loads(policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps", "--locked"], capture=True))
-    members = set(metadata["workspace_members"])
-    packages = {package["name"]: package for package in metadata["packages"] if package["id"] in members and package.get("publish") != []}
-    for name, package in packages.items():
-        role = _interface_role(package)
-        if role:
-            manifest = Path(package.get("manifest_path", "Cargo.toml"))
-            manifest = manifest.relative_to(directory) if manifest.is_relative_to(directory) else manifest
-            raise policy.ToolError(
-                f"{manifest.as_posix()}: {name} is a {role} crate; CLI, GUI and Cargo subcommand crates ship as release executables and installers, "
-                "never to crates.io; declare publish = false"
-            )
-    return packages
+    return policy.publishable(directory, metadata)
 
 
 def crate_published(name: str, version: str | None = None) -> bool:
@@ -628,16 +617,6 @@ def _rehearse_crates(
         # The patches record themselves in the lock file; the rehearsal leaves the committed lock untouched.
         if original is not None:
             lock.write_bytes(original)
-
-
-def _interface_role(package: dict) -> str | None:
-    """CLI For A `-cli` Crate, Cargo Subcommand For `cargo-<name>`, GUI For A `-gui` Crate Or A Tauri Desktop Shell."""
-    if package["name"].endswith("-cli"):
-        return "CLI"
-    if package["name"].startswith("cargo-"):
-        return "Cargo subcommand"
-    tauri = any(item.get("name") == "tauri" and item.get("kind") is None for item in package.get("dependencies", []))
-    return "GUI" if package["name"].endswith("-gui") or tauri else None
 
 
 def _same_tree(directory: Path, head: str, merged: str) -> None:

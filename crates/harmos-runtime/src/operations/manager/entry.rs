@@ -182,7 +182,7 @@ impl Entry {
             let own = caller.owner() == self.owner.as_str()
                 && self.plugin.as_ref().is_some_and(|scope| scope.generation() == caller.generation());
             let dependency = !own
-                && self.definition.visibility == crate::operations::Visibility::Shared
+                && self.definition.visibility == crate::operations::Visibility::Public
                 && caller.allows_operation(self.owner.as_str(), self.contract.as_ref(), &self.definition.id, self.plugin.is_none());
             if !own && !dependency {
                 return Err(Error::OperationUnauthorized {

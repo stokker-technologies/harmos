@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:3ba9d16e9d790d00e17cd474b313593b1c57a42974aa677d950bfcb975918889
+# Rendered by stkr project update from templates/python/release/run.py; sha256:16403985765e7e00bc77f16ddf4dd3d87c496b4e207f9cceece67695e373298b
 # ***
 #
 # Harmos
@@ -11,6 +11,7 @@
 # === Imports === #
 
 # Standard Library Imports
+import argparse
 import base64
 import hashlib
 import json
@@ -22,7 +23,6 @@ import subprocess
 import sys
 import tomllib
 import urllib.parse
-from contextlib import contextmanager
 from functools import cache
 from pathlib import Path
 
@@ -51,6 +51,23 @@ ASSETS = "target/release-assets"
 SHARED = "any"
 # Both Registry Identities Belong To The Protected Native Release Workflow.
 RELEASE_WORKFLOW = "release.yml"
+VERBS = [
+    "prepare",
+    "review",
+    "dry",
+    "crates-dry",
+    "rehearse",
+    "identity",
+    "tag",
+    "crates",
+    "publish",
+    "python",
+    "finalize",
+    "verify",
+    "guard",
+    "assets",
+    "stage",
+]
 
 # === Types === #
 
@@ -451,9 +468,18 @@ def tag(directory: Path, settings: dict) -> None:
         print(f"{branch}: deleted after its squash")
 
 
-def rehearse(directory: Path, settings: dict) -> None:
-    """Verify Existing Release-Profile Packages Locally Without Publishing Credentials."""
-    with _credential_free(settings):
+def rehearse(directory: Path, settings: dict, *, target: str | None = None) -> None:
+    """Verify Selected Local Packages Or Every Hosted Target Without Publishing Credentials."""
+    hosted = continuous_integration()
+    if hosted and target not in (None, "all"):
+        raise policy.ToolError("hosted rehearsal requires all declared release targets")
+    target = target or ("all" if hosted else "native")
+    selected = native_target(settings) if target == "native" else target
+    if selected != "all":
+        if selected not in settings.get("targets", []):
+            raise policy.ToolError(f"undeclared release target: {selected}")
+        settings = {**settings, "targets": [selected]}
+    with policy.credential_free(settings):
         _refuse_overrides(directory)
         dry(directory, settings, profile="release", require_all=True)
         if _task_defined(directory, "release:publish:rust"):
@@ -487,13 +513,28 @@ def identity(directory: Path, settings: dict) -> None:
             print(f"warning: {registry_name} sees workflow {actual}, but the rendered guidance names {expected}")
 
 
-def run(directory: Path, verb: str) -> None:
+def main(arguments: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("verb", choices=VERBS)
+    parser.add_argument("--target", help="Rehearse native, one declared release target, or all targets; hosted runs require all.")
+    options = parser.parse_args(arguments)
+    try:
+        run(policy.root(), options.verb, target=options.target)
+    except (policy.ToolError, OSError, ValueError, KeyError, TypeError) as error:
+        print(f"release: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def run(directory: Path, verb: str, *, target: str | None = None) -> None:
+    if target is not None and verb != "rehearse":
+        raise policy.ToolError("--target is supported only by rehearsal")
     settings = policy.policy(directory, "release")
     operations = {
         "prepare": prepare,
         "review": review,
         "dry": dry,
-        "rehearse": rehearse,
+        "rehearse": lambda directory, settings: rehearse(directory, settings, target=target),
         "identity": identity,
         "crates-dry": lambda directory, settings: registry.rehearse_crates(directory, skip_published=False),
         "tag": tag,
@@ -554,24 +595,6 @@ def _tag_event(directory: Path, settings: dict, sha: str) -> dict | None:
     ):
         raise policy.ToolError("GitHub event is not the merged release review for this version and revision")
     return review
-
-
-@contextmanager
-def _credential_free(settings: dict):
-    declared = {name for lane in settings.get("package_signing", []) for name in lane.get("secrets", [])}
-    names = {name for name in os.environ if name.endswith(("_TOKEN", "_PASSWORD", "_SECRET")) or name in declared}
-    names.add("ACTIONS_ID_TOKEN_REQUEST_URL")
-    previous = {name: os.environ.pop(name) for name in names if name in os.environ}
-    profile = os.environ.get("RELEASE_PROFILE")
-    os.environ["RELEASE_PROFILE"] = "release"
-    try:
-        yield
-    finally:
-        os.environ.update(previous)
-        if profile is None:
-            os.environ.pop("RELEASE_PROFILE", None)
-        else:
-            os.environ["RELEASE_PROFILE"] = profile
 
 
 def _commit_review(directory: Path, settings: dict, branch: str, title: str) -> None:
@@ -760,26 +783,4 @@ def _task_defined(directory: Path, name: str) -> bool:
 # === Entry Point === #
 
 if __name__ == "__main__":
-    raise SystemExit(
-        policy.main(
-            "release",
-            [
-                "prepare",
-                "review",
-                "dry",
-                "crates-dry",
-                "rehearse",
-                "identity",
-                "tag",
-                "crates",
-                "publish",
-                "python",
-                "finalize",
-                "verify",
-                "guard",
-                "assets",
-                "stage",
-            ],
-            run,
-        )
-    )
+    raise SystemExit(main())

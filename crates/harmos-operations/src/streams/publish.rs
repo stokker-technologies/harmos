@@ -29,7 +29,7 @@ use harmos_sdk::operations::publication::PublicationAccess;
 
 harmos_domain::builtin_payload! {
     #[harmos::operation(harmos_path = crate, id = "host.publish", policy = crate::host::POLICY,
-        codec = manual, visibility = Shared, resources = [PublicationAccess])]
+        codec = manual, visibility = Public, resources = [PublicationAccess])]
     Publish,
     stream: String => (1, Kind::String, Required),
     schema: u32 => (2, Kind::U32, Required),

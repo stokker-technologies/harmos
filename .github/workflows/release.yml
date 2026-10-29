@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/release.yml; sha256:21910cd281f334a418bc1f5dea3f481322a0cb6cb66830222ea85a30b0f4b66a
+# Rendered by stkr project update from templates/ci/.github/workflows/release.yml; sha256:d877c2c921c806b665f14796956339d5a09df3f16670f3fea8aa33ec156f8087
 name: Release
 "on":
   workflow_dispatch: {}
@@ -40,7 +40,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"${{ env.MISE_DATA_DIR }}\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
     - run: mise run release:prepare
     - name: Check Runner Group Allowlist
@@ -62,9 +62,7 @@ jobs:
         != 'true'
       with:
         key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: |-
-          .cache/cargo/registry/
-          .cache/cargo/git/
+        path: ${{ steps.setup.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
         success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
@@ -73,7 +71,7 @@ jobs:
         endsWith(github.ref, '/merge'))) && steps.setup.outputs.mise-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ env.MISE_DATA_DIR }}
+        path: ${{ steps.setup.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
         success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
@@ -82,7 +80,7 @@ jobs:
         endsWith(github.ref, '/merge'))) && steps.setup.outputs.uv-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: .cache/uv/
+        path: ${{ steps.setup.outputs.uv-path }}
     - name: Cache Summary
       if: always()
       env:
@@ -117,7 +115,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"${{ env.MISE_DATA_DIR }}\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
     - id: crates
       uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18
@@ -142,9 +140,7 @@ jobs:
         != 'true'
       with:
         key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: |-
-          .cache/cargo/registry/
-          .cache/cargo/git/
+        path: ${{ steps.setup.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
         success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
@@ -153,7 +149,7 @@ jobs:
         endsWith(github.ref, '/merge'))) && steps.setup.outputs.mise-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ env.MISE_DATA_DIR }}
+        path: ${{ steps.setup.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
         success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
@@ -162,7 +158,7 @@ jobs:
         endsWith(github.ref, '/merge'))) && steps.setup.outputs.uv-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: .cache/uv/
+        path: ${{ steps.setup.outputs.uv-path }}
     - name: Cache Summary
       if: always()
       env:
@@ -212,7 +208,7 @@ jobs:
           github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
           (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
           endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"${{ env.MISE_DATA_DIR }}\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-release-publish-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-release-publish-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-release-publish-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-release-publish-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
@@ -264,9 +260,7 @@ jobs:
         != 'true'
       with:
         key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: |-
-          .cache/cargo/registry/
-          .cache/cargo/git/
+        path: ${{ steps.setup.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
         success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
@@ -275,7 +269,7 @@ jobs:
         endsWith(github.ref, '/merge'))) && steps.setup.outputs.mise-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ env.MISE_DATA_DIR }}
+        path: ${{ steps.setup.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
         success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
@@ -284,7 +278,7 @@ jobs:
         endsWith(github.ref, '/merge'))) && steps.setup.outputs.sccache-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
-        path: .cache/sccache/
+        path: ${{ steps.setup.outputs.sccache-path }}
     - uses: ./.github/actions/save-caches
       if: >-
         success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
@@ -293,7 +287,7 @@ jobs:
         endsWith(github.ref, '/merge'))) && steps.setup.outputs.uv-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: .cache/uv/
+        path: ${{ steps.setup.outputs.uv-path }}
     - name: Cache Summary
       if: always()
       env:
@@ -393,7 +387,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"${{ env.MISE_DATA_DIR }}\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: >-
         matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
@@ -446,9 +440,7 @@ jobs:
         steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.cargo_downloads-cache-primary-key }}
-        path: |-
-          .cache/cargo/registry/
-          .cache/cargo/git/
+        path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
         matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
@@ -460,7 +452,7 @@ jobs:
         != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.mise-cache-primary-key }}
-        path: ${{ env.MISE_DATA_DIR }}
+        path: ${{ steps.setup_unix.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
         matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
@@ -472,7 +464,7 @@ jobs:
         'true')
       with:
         key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
-        path: .cache/uv/
+        path: ${{ steps.setup_unix.outputs.uv-path }}
     - name: Cache Summary
       if: >-
         matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
@@ -489,7 +481,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"${{ env.MISE_DATA_DIR }}\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: >-
         matrix.platform == 'windows' && (always() && !contains(needs.*.result,
@@ -542,9 +534,7 @@ jobs:
         steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.cargo_downloads-cache-primary-key }}
-        path: |-
-          .cache/cargo/registry/
-          .cache/cargo/git/
+        path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
         matrix.platform == 'windows' && (always() && !contains(needs.*.result,
@@ -556,7 +546,7 @@ jobs:
         steps.setup_windows.outputs.mise-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.mise-cache-primary-key }}
-        path: ${{ env.MISE_DATA_DIR }}
+        path: ${{ steps.setup_windows.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
         matrix.platform == 'windows' && (always() && !contains(needs.*.result,
@@ -568,7 +558,7 @@ jobs:
         steps.setup_windows.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
-        path: .cache/uv/
+        path: ${{ steps.setup_windows.outputs.uv-path }}
     - name: Cache Summary
       if: >-
         matrix.platform == 'windows' && (always() && !contains(needs.*.result,

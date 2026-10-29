@@ -39,7 +39,7 @@ product!(ListDirectory { selection: Nested<DirectorySelection> => 1 });
     response = DirectoryCompletion,
     policy = IO_POLICY,
     output = DirectoryEntry,
-    visibility = Shared,
+    visibility = Public,
     replay = ReplaySafety::Idempotent,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "ListDirectory"))]
 #[derive(Clone, Debug, PartialEq, Eq)]

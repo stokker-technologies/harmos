@@ -43,7 +43,7 @@ pub struct Step {
 #[harmos_runtime::operation(id = "process.graph.read",
     policy = POLICY,
     response = Step,
-    visibility = Shared,
+    visibility = Public,
 )]
 #[derive(Clone, PartialEq)]
 pub struct ReadDeclaration {

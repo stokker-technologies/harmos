@@ -231,3 +231,61 @@ fn authoring_refusals_compile() {
         assert!(stderr.contains(expected), "{fixture} did not report `{expected}`:\n{stderr}");
     }
 }
+
+#[test]
+fn grpc_visibility_compiles() {
+    let sdk = fixtures::library("harmos_sdk");
+    let dependencies = fixtures::dependencies();
+    let output = tempfile::tempdir().unwrap();
+    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    for (index, (visibility, accepted)) in [
+        ("", false),
+        ("visibility = Private,", false),
+        ("visibility = harmos::operations::Visibility::Private,", false),
+        ("visibility = PRIVATE,", false),
+        ("visibility = Public,", true),
+        ("visibility = Host,", true),
+        ("visibility = harmos::operations::Visibility::Public,", true),
+        ("visibility = PUBLIC,", true),
+        ("visibility = Shared,", false),
+        ("visibility = harmos::operations::Visibility::Shared,", false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let source = output.path().join(format!("visibility_{index}.rs"));
+        fs::write(
+            &source,
+            format!(
+                r#"
+#![allow(dead_code)]
+const PRIVATE: harmos::operations::Visibility = harmos::operations::Visibility::Private;
+const PUBLIC: harmos::operations::Visibility = harmos::operations::Visibility::Public;
+#[harmos::operation(harmos_path = ::harmos, id = "visibility.call",
+    policy = harmos::model::operations::lifecycle::POLICY, {visibility}
+    grpc(package = "visibility.v1", service = "Operations", method = "Call"))]
+struct Call;
+fn main() {{}}
+"#
+            ),
+        )
+        .unwrap();
+        let compiled = fixtures::command(&rustc)
+            .args(["--edition=2024", "--crate-type=bin", "--emit=metadata"])
+            .arg(&source)
+            .arg("--extern")
+            .arg(format!("harmos={}", sdk.display()))
+            .arg("-L")
+            .arg(format!("dependency={}", dependencies.display()))
+            .arg("--out-dir")
+            .arg(output.path())
+            .output()
+            .unwrap();
+        let diagnostic = String::from_utf8_lossy(&compiled.stderr);
+        assert_eq!(compiled.status.success(), accepted, "{visibility}:\n{diagnostic}");
+        if !accepted {
+            let expected = if visibility.contains("Shared") { "Shared" } else { "Private operations cannot declare a gRPC binding" };
+            assert!(diagnostic.contains(expected), "{diagnostic}");
+        }
+    }
+}

@@ -117,7 +117,7 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
     let description = description.map(|value| quote!(const DESCRIPTION: &'static str = #value;));
     let visibility = visibility.map(|value| {
         let value = match &value {
-            Expr::Path(path) if path.path.is_ident("Shared") || path.path.is_ident("Host") || path.path.is_ident("Private") => {
+            Expr::Path(path) if path.path.is_ident("Public") || path.path.is_ident("Host") || path.path.is_ident("Private") => {
                 quote!(#sdk::operations::Visibility::#value)
             }
             _ => quote!(#value),
@@ -125,6 +125,15 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
         quote!(const VISIBILITY: #sdk::operations::Visibility = #value;)
     });
     let replay = replay.map(|value| quote!(const REPLAY: #sdk::operations::ReplaySafety = #value;));
+    let grpc_visibility = grpc.as_ref().map(|_| {
+        quote! {
+            #(#gates)*
+            const _: () = assert!(
+                !::core::matches!(<#name as #sdk::OperationDeclaration>::VISIBILITY, #sdk::operations::Visibility::Private),
+                "Private operations cannot declare a gRPC binding"
+            );
+        }
+    });
     let grpc = grpc.map(|(package, service, method)| {
         quote! {
             const GRPC: ::core::option::Option<#sdk::operations::Grpc> =
@@ -180,6 +189,7 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
     });
     Ok(quote! {
         #message
+        #grpc_visibility
 
         #(#gates)*
         const _: () = assert!(

@@ -43,7 +43,7 @@ product!(FollowBoundaries {
     response = StorageCursor,
     policy = super::STREAM_POLICY,
     output = Followed,
-    visibility = Shared,
+    visibility = Public,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "FollowRecords"),
     grant = Self::grant_for)]
 #[derive(Clone, Debug, PartialEq, Eq)]

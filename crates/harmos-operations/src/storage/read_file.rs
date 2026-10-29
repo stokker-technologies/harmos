@@ -51,7 +51,7 @@ product!(ReadFile {
     response = FileCompletion,
     policy = IO_POLICY,
     output = FileBatch,
-    visibility = Shared,
+    visibility = Public,
     replay = ReplaySafety::Idempotent,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "ReadFile"),
     grant = Self::grant_for,

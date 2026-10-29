@@ -239,7 +239,7 @@ impl Drop for AttemptGuard {
     }
 }
 #[harmos_runtime::operation(codec = manual, resources = [OwnerResource], id = <Heard<true> as Listener>::CALLBACK, response = (),
-    policy = <Heard<true> as Listener>::POLICY, visibility = Shared)]
+    policy = <Heard<true> as Listener>::POLICY, visibility = Public)]
 #[derive(Clone)]
 struct HearingFirst(Delivery<Heard<true>>);
 
@@ -298,7 +298,7 @@ impl harmos_runtime::Operation for HearingFirst {
     }
 }
 #[harmos_runtime::operation(codec = manual, resources = [OwnerResource], id = <Heard<false> as Listener>::CALLBACK, response = (),
-    policy = <Heard<false> as Listener>::POLICY, visibility = Shared)]
+    policy = <Heard<false> as Listener>::POLICY, visibility = Public)]
 #[derive(Clone)]
 struct HearingSecond(Delivery<Heard<false>>);
 

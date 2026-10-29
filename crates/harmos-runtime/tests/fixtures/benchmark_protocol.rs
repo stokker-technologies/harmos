@@ -36,7 +36,7 @@ use harmos_runtime::operations::RetryPolicy;
 pub struct Model;
 
 #[harmos_runtime::operation(resources = [], id = "benchmark.echo",  response = Payload,
-    visibility = Shared,
+    visibility = Public,
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30), attempt_timeout: Duration::from_secs(30),
         retries: RetryPolicy::Never,

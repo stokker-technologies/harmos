@@ -48,7 +48,7 @@ product!(FollowFile {
     response = FileCompletion,
     policy = IO_POLICY,
     output = FileEvent,
-    visibility = Shared,
+    visibility = Public,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "FollowFile"),
     grant = Self::grant_for,
 )]

@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/plugins.md; sha256:d32b95cadd1e8f2bfeb2ae2249b31de9fa02aa2543ba2dfb94cfc4ab781f7d62 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/plugins.md; sha256:8c6c2a8c332171f822101553993f086825b8d59f24d234ba8e4cdf5340376165 -->
 
 # Plugins And Carriers
 
@@ -23,7 +23,9 @@ const CATALOGS: &'static [harmos::Catalog] = &[Operations::CATALOG];
 ```
 
 That slice drives both inert metadata inspection and executable binding. Keep
-feature selection on module and re-export declarations, never catalog variants. Inspection never
+backend selection on module and re-export declarations, keeping this portable
+plugin's catalog variants ungated. General application catalogs can instead
+declare platform-only operations as described in the operations reference. Inspection never
 runs prepare or initialize. Portable catalogs remain available without runtime
 execution dependencies.
 
@@ -63,7 +65,7 @@ ownership; dropping a handle does not settle asynchronous work.
 
 A plugin can require operations implemented by another registered provider.
 The host matches complete contracts, including fingerprints, schema, policy,
-visibility and replay behavior. Shared visibility and unambiguous selection
+visibility and replay behavior. Public visibility and unambiguous selection
 are required; explicit provider selection does not relax compatibility.
 
 Native observers do not declare a typed resources bundle. Their initialization
