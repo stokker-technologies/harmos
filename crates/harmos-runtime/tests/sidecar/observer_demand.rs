@@ -17,7 +17,7 @@
 use std::convert::Infallible;
 use std::sync::{
     Arc, Mutex, Weak,
-    atomic::{AtomicUsize, Ordering::SeqCst},
+    atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst},
 };
 use std::time::Duration;
 // Third Party Imports
@@ -35,6 +35,7 @@ use harmos_runtime::sidecar::{
 
 const RECORD: DemandKey = DemandKey::new("fixture.record", "sample");
 const AUXILIARY: DemandKey = DemandKey::new("fixture", "auxiliary");
+const IDLE: DemandKey = DemandKey::new("fixture", "idle");
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
 static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Counts>>> = Mutex::new(std::collections::BTreeMap::new());
 
@@ -51,6 +52,8 @@ struct Counts {
     started: [AtomicUsize; 2],
     observed: [AtomicUsize; 2],
     stopped: [AtomicUsize; 2],
+    cleaned: [AtomicUsize; 2],
+    block_observe: AtomicBool,
     rejected: AtomicUsize,
     released: AtomicUsize,
     // Announces every counted step.
@@ -81,12 +84,15 @@ struct RecordOnly(Arc<Counts>);
 
 struct Mixed(Arc<Counts>);
 
+struct Idle(Arc<Counts>);
+
 /* === Enums === */
 
 #[harmos_domain::catalog]
 enum Observers {
     RecordOnly(RecordOnly),
     Mixed(Mixed),
+    Idle(Idle),
 }
 
 /* === Traits === */
@@ -213,6 +219,11 @@ impl Mixed {
         Ok(Self(resources.counts.clone()))
     }
     async fn observe(&mut self, ctx: &ObserverContext<'_, Publisher<Producer>>) -> Result<(), Infallible> {
+        if self.0.block_observe.load(SeqCst) {
+            self.0.observed[1].fetch_add(1, SeqCst);
+            self.0.progress.send_replace(());
+            std::future::pending::<()>().await;
+        }
         ctx.publish_on::<Row>(&Row { sample: 1 }).await.unwrap();
         ctx.resource::<Resources>().unwrap().counts.observed[1].fetch_add(1, SeqCst);
         ctx.resource::<Resources>().unwrap().counts.progress.send_replace(());
@@ -222,6 +233,40 @@ impl Mixed {
         self.0.stopped[1].fetch_add(1, SeqCst);
         self.0.progress.send_replace(());
 
+        Ok(())
+    }
+    async fn cleanup(&mut self) -> Result<(), Infallible> {
+        self.0.cleaned[1].fetch_add(1, SeqCst);
+        self.0.progress.send_replace(());
+        Ok(())
+    }
+}
+
+#[harmos_runtime::observer(id = "demand.idle", interval_ms = LIFECYCLE.timeout.as_millis() as u64 * 4, activation = "demand", demand_keys(IDLE))]
+impl Idle {
+    async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
+        let resources = context.resource::<Resources>().unwrap();
+        let counts = Arc::clone(&resources.counts);
+        counts.started[1].fetch_add(1, SeqCst);
+        counts.progress.send_replace(());
+        Ok(Self(counts))
+    }
+
+    async fn observe(&mut self, _: &ObserverContext<'_, Publisher<Producer>>) -> Result<(), Infallible> {
+        self.0.observed[1].fetch_add(1, SeqCst);
+        self.0.progress.send_replace(());
+        Ok(())
+    }
+
+    async fn stop(&mut self) -> Result<(), Infallible> {
+        self.0.stopped[1].fetch_add(1, SeqCst);
+        self.0.progress.send_replace(());
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> Result<(), Infallible> {
+        self.0.cleaned[1].fetch_add(1, SeqCst);
+        self.0.progress.send_replace(());
         Ok(())
     }
 }
@@ -340,4 +385,57 @@ fn catalog_keys_isolated() {
     assert_eq!(mixed.demand_keys, [RECORD.name(), AUXILIARY.name()]);
 }
 
+async fn release_suspended_observer(key: DemandKey, blocked_callback: bool) {
+    let counts = Arc::new(Counts::default());
+    counts.block_observe.store(blocked_callback, SeqCst);
+    let seed = Seed::new(&counts);
+    let capacity = std::num::NonZeroUsize::new(2).unwrap();
+    let source = harmos_sidecar::PluginNative::<Producer>::new(capacity).unwrap();
+    let configuration = serde_json::to_vec(&seed.id).unwrap();
+    let mut fixture = Managed::attach(source, configuration, Lanes::Open, capacity, vec![key.name()], std::convert::identity).await;
+
+    fixture.publication().await.unwrap();
+    fixture.initialize().await.unwrap();
+    let ready = fixture.ready();
+    ready.wait_for(|ready| *ready).await.unwrap();
+    let demands = fixture.demands();
+    let demand = demands.hold(&key.name()).unwrap();
+    let initialized = || counts.started[1].load(SeqCst) == 1;
+    until(&counts, initialized).await;
+    if blocked_callback {
+        let entered = || counts.observed[1].load(SeqCst) == 1;
+        until(&counts, entered).await;
+    }
+
+    drop(demand);
+    let settling = async {
+        let cleaned = || counts.cleaned[1].load(SeqCst) == 1;
+        until(&counts, cleaned).await;
+        let mut statuses = fixture.runtime.operations.watch_residents();
+        let stopped = statuses.wait_for(|values| {
+            let mut observers = values.values().filter(|status| status.kind == Kind::Observer);
+            let Some(observer) = observers.next() else { return false };
+            observer.lifecycle.phase() == OperationPhase::Stopped && observers.next().is_none()
+        });
+        stopped.await.unwrap();
+    };
+    tokio::time::timeout(LIFECYCLE.timeout, settling).await.expect("released observer settles within the lifecycle policy");
+    assert_eq!(counts.stopped[1].load(SeqCst), 1);
+    assert_eq!(counts.observed[1].load(SeqCst), usize::from(blocked_callback));
+
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
+    assert_eq!(counts.released.load(SeqCst), 1);
+}
+
 /* === Tests === */
+
+#[tokio::test]
+async fn released_demand_interrupts_blocked_callback() {
+    release_suspended_observer(AUXILIARY, true).await;
+}
+
+#[tokio::test]
+async fn released_demand_interrupts_tick_wait() {
+    release_suspended_observer(IDLE, false).await;
+}

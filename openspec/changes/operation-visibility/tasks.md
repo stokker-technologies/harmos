@@ -15,3 +15,10 @@ This worktree owns 1.1, 1.3, 1.4 and their 1.5 regressions: domain visibility/co
 ## 2. Delivery
 
 - [ ] 2.1 Ships in the next Harmos release; Dokime and HCL adopt the rename with the version pin.
+
+## Workflow Follow-Up
+
+- [x] 3.1 Triage released observer cancellation in `fix/observer-cancellation`. Propagation already exists: `crates/harmos-runtime/src/services/sidecar/observers.rs:222` cancels the invocation; `crates/harmos-sidecar/src/kit/observer/attachment.rs:164` interrupts its activation on attempt drop and `:233` selects interruption against observation.
+- [x] 3.2 Regress a suspended observer callback and an idle tick wait through real demand release, requiring settlement within the existing lifecycle policy and successful plugin/runtime shutdown. Evidence: `crates/harmos-runtime/tests/sidecar/observer_demand.rs:434` and `:439`; all four demand stories pass through a disposable focused harness importing the maintained tests. README/lifecycle claims remain accurate; no production behavior changed. Commit locally without pushing.
+- [ ] 3.3 Identify and repair the Dokime host-plugin run's reported 540-second release delay and subsequent `harmos.shutdown` Unavailable using its exact Harmos revision and callback/trace. Existing visibility implementation and release ownership remain unchanged.
+- [ ] 3.4 Complete the normal targeted runtime integration executable proof after its LLVM out-of-memory failure. Focused Clippy and the smaller diagnostic harness do not establish that the normal target compiled or ran.
