@@ -23,6 +23,7 @@ use std::path::Path;
 
 // Local Imports
 use crate::app::{Runtime, SchematicEditor};
+use harmos::guest::Loaded;
 
 /* === Constants === */
 
@@ -44,9 +45,7 @@ pub enum Plugin {
 /* === Implementations === */
 
 impl Plugin {
-    pub async fn guest(runtime: &Runtime, path: &Path) -> harmos::Result<Self> {
-        let bytes = std::fs::read(path).map_err(guest::failure)?;
-        let loaded = guest::load(runtime, &bytes).map_err(guest::failure)?;
+    pub async fn guest(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos::Result<Self> {
         guest::start(runtime, loaded).await?;
         Ok(Self::Guest { manager: runtime.plugin.clone() })
     }

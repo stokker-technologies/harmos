@@ -21,8 +21,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 // Local Imports
 use harmos::{
-    Application, DefinitionId, Runtime, Setup, StartupError, runtime::Catalog, runtime::Registration, state::DecodeError, state::Invert,
-    state::Kind, state::PrincipalId, state::Recorded, state::Transaction, storage::Payload,
+    Application, DefinitionId, Runtime, Setup, StartupError, runtime::Catalog, runtime::Registration, state::DecodeError,
+    state::Invertible, state::Kind, state::PrincipalId, state::Recorded, state::Transaction, storage::Payload,
 };
 use schematic_storage::Wire;
 
@@ -53,20 +53,20 @@ pub struct Withdraw {
     pub amount: i64,
 }
 
-#[harmos::transaction(id = "ledger.pay", irreversible)]
+#[harmos::transaction(id = "ledger.pay")]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Pay {
     pub effect: u64,
     pub amount: i64,
 }
 
-#[harmos::transaction(id = "ledger.bonus", irreversible)]
+#[harmos::transaction(id = "ledger.bonus")]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Bonus {
     pub amount: i64,
 }
 
-#[harmos::transaction(id = "ledger.explode", irreversible)]
+#[harmos::transaction(id = "ledger.explode")]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Explode;
 
@@ -138,8 +138,10 @@ impl Transaction<Ledger> for Deposit {
     }
 }
 
-impl Invert<Ledger> for Deposit {
-    fn invert(&self, _before: &Ledger) -> Withdraw {
+impl Invertible<Ledger> for Deposit {
+    type Inverse = Withdraw;
+
+    fn inverse(&self, _before: &Ledger) -> Withdraw {
         Withdraw { amount: self.amount }
     }
 }
@@ -160,8 +162,10 @@ impl Transaction<Ledger> for Withdraw {
     }
 }
 
-impl Invert<Ledger> for Withdraw {
-    fn invert(&self, _before: &Ledger) -> Deposit {
+impl Invertible<Ledger> for Withdraw {
+    type Inverse = Deposit;
+
+    fn inverse(&self, _before: &Ledger) -> Deposit {
         Deposit { amount: self.amount }
     }
 }

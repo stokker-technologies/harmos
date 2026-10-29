@@ -2,7 +2,10 @@
 
 ## Vertical Authoring
 
-One file owns each operation. Its definition division contains messages, the operation struct, policy, contract implementations and
+One module owns each operation. A plugin uses `operations/<op>/mod.rs`; its
+platform implementations are adjacent `windows.rs` / `unix.rs` files with gates
+only on the `mod` declarations. A reusable operations crate may use one file
+for a platform-independent operation. Its definition division contains messages, the operation struct, policy, contract implementations and
 contract tests. The runtime division follows the definition's Tests section and contains its own complete skeleton, including runtime-only
 tests. Shared models remain in the product domain; resource libraries are optional execution dependencies.
 

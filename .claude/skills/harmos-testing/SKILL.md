@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:890e1930f7656daa4c5ab0b3991182b27361de34713182852c953fec84e46f28 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:23a5d457e66afb9b533d182f0de12bf04f0941f5bb296596f4f44bbf362ef029 -->
 
 ---
 name: harmos-testing
@@ -14,7 +14,9 @@ repository fixture pipeline or company tooling is required.
 
 ## Select The Owner
 
-All product crates, including interfaces, live under `crates/`. For a reusable
+Product crates and single sidecar/guest carriers live under `crates/`. Several
+plugins use `plugins/sidecars/<name>` and `plugins/guests/<name>`, with
+`publish = false` on each carrier. For a reusable
 product, test portable contracts and configuration validation in `product-domain`
 and the operations crate without `runtime`; test execution through the operations
 crate with `runtime` and configured composition in `product-runtime`. Keep

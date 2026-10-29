@@ -296,14 +296,16 @@ async fn receive_control(mut reader: IoReader, incoming: mpsc::Sender<Received>,
     loop {
         match read(&mut reader, Role::Control).await? {
             Some(Packet::Credit(consumed)) => credit.returned(consumed)?,
+            // A Full Queue Backpressures The Control Pipe Without Losing Its Packet.
             Some(Packet::Cancellation { id, preceding }) => incoming
-                .try_send(Received {
+                .send(Received {
                     frame: Frame::Cancel { id },
                     consumption: None,
                     cancelled: false,
                     preceding: Some(preceding),
                 })
-                .map_err(|_| broken("bounded sidecar control receiver unavailable"))?,
+                .await
+                .map_err(|_| broken("sidecar control receiver closed"))?,
             Some(Packet::Frame(_)) => {
                 return Err(super::invalid("cancellation requires a data watermark"));
             }

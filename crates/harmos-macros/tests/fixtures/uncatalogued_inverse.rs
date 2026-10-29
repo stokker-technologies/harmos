@@ -59,8 +59,10 @@ impl harmos::state::Transaction<Sheet> for Place {
     fn apply(&self, _sheet: &mut Sheet) {}
 }
 
-impl harmos::state::Invert<Sheet> for Place {
-    fn invert(&self, _sheet: &Sheet) -> Remove {
+impl harmos::state::Invertible<Sheet> for Place {
+    type Inverse = Remove;
+
+    fn inverse(&self, _sheet: &Sheet) -> Self::Inverse {
         Remove
     }
 }
@@ -75,8 +77,10 @@ impl harmos::state::Transaction<Sheet> for Remove {
     fn apply(&self, _sheet: &mut Sheet) {}
 }
 
-impl harmos::state::Invert<Sheet> for Remove {
-    fn invert(&self, _sheet: &Sheet) -> Place {
+impl harmos::state::Invertible<Sheet> for Remove {
+    type Inverse = Place;
+
+    fn inverse(&self, _sheet: &Sheet) -> Self::Inverse {
         Place
     }
 }

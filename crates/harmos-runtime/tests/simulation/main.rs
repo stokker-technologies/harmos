@@ -44,8 +44,10 @@ mod atomic_records {
             state.0 += self.0;
         }
     }
-    impl harmos_runtime::state::Invert<State> for Add {
-        fn invert(&self, _: &State) -> Self {
+    impl harmos_runtime::state::Invertible<State> for Add {
+        type Inverse = Self;
+
+        fn inverse(&self, _: &State) -> Self::Inverse {
             Self(-self.0)
         }
     }

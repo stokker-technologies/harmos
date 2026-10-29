@@ -5,7 +5,8 @@
 A native plugin can retain a product runtime and supply its shared resources to
 the original operation factories. The operations crate holds vertical contracts
 and optional implementations; the runtime composes state and resource owners.
-Plugin-private operations use the same vertical layout. Expose those factories
+Plugin-private operations keep one definition in `operations/<op>/mod.rs`,
+with native implementations in adjacent `windows.rs` and `unix.rs`. Expose those factories
 without adding another forwarding operation or another local operation tree.
 
 ## Advertisement And Registration
@@ -20,7 +21,7 @@ const CATALOGS: &'static [harmos::Catalog] = &[Operations::CATALOG];
 ```
 
 That slice drives both inert metadata inspection and executable binding. Keep
-feature selection on the selected catalog types or members. Inspection never
+feature selection on module and re-export declarations, never catalog variants. Inspection never
 runs prepare or initialize. Portable catalogs remain available without runtime
 execution dependencies.
 

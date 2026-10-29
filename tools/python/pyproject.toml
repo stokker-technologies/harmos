@@ -7,11 +7,11 @@ requires-python = ">=3.13"
 dependencies = []
 
 [dependency-groups]
-test = ["build==1.6.1", "protobuf==7.36.2", "setuptools==84.0.0", "types-protobuf==7.35.1.20260906", "wheel==0.48.0"]
-dev = ["ruff==0.17.0", "ty==0.0.86", "hatchling==1.32.4"]
+test = ["build==1.6.1", "protobuf==7.36.2", "setuptools==84.2.1", "types-protobuf==7.35.1.20260906", "wheel==0.48.0"]
+dev = ["ruff==0.17.3", "ty==0.0.94", "hatchling==1.33.0"]
 
 [build-system]
-requires = ["hatchling==1.32.4"]
+requires = ["hatchling==1.33.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
