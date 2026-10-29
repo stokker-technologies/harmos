@@ -64,9 +64,7 @@ __pycache__/
 
 # BEGIN Stkr CI
 /.cache/
-/.mise/*
-!/.mise/locks/
-!/.mise/locks/**
+/.mise/
 # END Stkr CI
 
 # OpenSpec Changes And Specs Are Tracked; Uncomment To Keep Them Local.
