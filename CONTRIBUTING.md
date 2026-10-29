@@ -13,7 +13,7 @@ mise install --locked
 mise run prepare:tools
 ```
 
-Windows and Linux are supported. The [Schematic example](examples/schematic/README.md)
+Windows and Linux are supported. The [Schematic example](docs/schematic.md)
 is a complete application for understanding composition, plugins and storage.
 
 ## Development Workflow

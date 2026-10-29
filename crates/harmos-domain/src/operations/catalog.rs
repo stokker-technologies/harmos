@@ -108,15 +108,6 @@ impl Declarations {
         Self::from_projection(&C::ENTRIES)
     }
 
-    pub fn from_entries(entries: &[Entry]) -> Result<Vec<OperationDefinition>> {
-        let mut names = BTreeSet::new();
-        let mut definitions = Vec::with_capacity(entries.len());
-        for declaration in entries {
-            append(declaration, &mut names, &mut definitions)?;
-        }
-        Ok(definitions)
-    }
-
     pub fn from_tree(entries: &[Node<Entry>]) -> Result<Vec<OperationDefinition>> {
         let mut names = BTreeSet::new();
         let mut definitions = Vec::with_capacity(catalog::count(entries));

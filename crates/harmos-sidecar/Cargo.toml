@@ -132,7 +132,6 @@ tokio = { workspace = true, default-features = true, features = [
 [dev-dependencies]
 # Local
 harmos-macros = { path = "../harmos-macros" }
-schematic-operations = { path = "../../examples/schematic/operations" }
 
 # Git
 

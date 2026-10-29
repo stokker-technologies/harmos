@@ -200,10 +200,6 @@ impl harmos_runtime::Lifecycle for Producer {
         Ok(())
     }
 
-    async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         for index in 0..2 {
             assert_eq!(self.resources.counts.started[index].load(SeqCst), self.resources.counts.stopped[index].load(SeqCst));

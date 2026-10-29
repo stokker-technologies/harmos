@@ -176,17 +176,6 @@ pub fn extrema(values: &[f64], buckets: usize) -> Vec<usize> {
     kept
 }
 
-#[must_use]
-pub fn above_floor(values: &[f64], db_below_peak: f64) -> Vec<usize> {
-    let peak = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    if peak.is_nan() || peak <= 0.0 {
-        return Vec::new();
-    }
-
-    let floor = peak * 10.0_f64.powf(-db_below_peak / 20.0);
-    values.iter().enumerate().filter(|(_, value)| **value >= floor).map(|(index, _)| index).collect()
-}
-
 /* === Private Functions === */
 
 fn positive(at: f64) -> f64 {

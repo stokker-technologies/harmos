@@ -8,7 +8,7 @@
 
 <img src="https://stokkertechnologies.ch/logo.svg" height="256" alt="Stokker Technologies Mark">
 
-[Website](https://github.com/stokker-technologies/harmos) · [Getting Started](#quick-start) · [Tutorials](examples/schematic/README.md) · [Examples](examples/) · [Documentation](docs/product-guide.md)
+[Website](https://github.com/stokker-technologies/harmos) · [Getting Started](#quick-start) · [Tutorials](docs/schematic.md) · [Examples](docs/examples.md) · [Documentation](docs/product-guide.md)
 
 **Build stateful Rust applications with history, live data and plugins.**
 
@@ -46,7 +46,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **Native Sidecars** [`plugin-sidecar`]: Integrate supervised executables through typed contracts; native processes do not provide a Wasm sandbox.
 - **gRPC Interfaces** [`grpc`, `generate-proto`]: Expose typed operations and generate client contracts.
-- **Signal Processing** [`signal`, `signal-fft`]: Resample and summarize waveforms, with optional FFT analysis.
+- **Signal Processing** [`signal`, `signal-fft`]: Summarize and downsample waveforms, with an optional FFT.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 
 ## Interfaces

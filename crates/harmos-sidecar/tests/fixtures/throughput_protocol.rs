@@ -241,10 +241,6 @@ impl harmos_sdk::Lifecycle for TransportPlugin {
         Ok(())
     }
 
-    async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.resources.closing.send_replace(true);
         if self.retiring.is_none() {

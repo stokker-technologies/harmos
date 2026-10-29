@@ -7,9 +7,6 @@
  * ***
  */
 
-// Each Domain Keeps Its Original Support Namespace, So Shared Support Files Load Once Per Domain.
-#![allow(clippy::duplicate_mod, reason = "domains retain their own support namespaces under one binary")]
-
 extern crate harmos_runtime as harmos;
 
 /* === Modules === */
@@ -23,6 +20,8 @@ mod operations;
 #[cfg(feature = "plugin")]
 #[path = "../plugin/main.rs"]
 mod plugin;
+#[path = "../support/runtime_probe.rs"]
+mod probe;
 mod report;
 #[path = "../runtime/main.rs"]
 mod runtime;
@@ -40,6 +39,8 @@ mod state;
 mod storage;
 #[path = "../streams/main.rs"]
 mod streams;
+#[path = "../support/mod.rs"]
+mod support;
 
 /* === Re-Exports === */
 

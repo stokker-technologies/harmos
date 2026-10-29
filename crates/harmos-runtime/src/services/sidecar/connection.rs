@@ -103,14 +103,6 @@ impl Endpoint {
         Ok(())
     }
 
-    pub(crate) fn observer_outcome(&self) -> crate::Result<()> {
-        let outcome = self.observer_outcome.as_ref().and_then(|outcome| outcome.lock().expect("observer outcome is healthy").clone());
-        match outcome {
-            Some(source) => Err(crate::Error::TaskFailed { domain: "remote observer", source }),
-            None => Ok(()),
-        }
-    }
-
     pub(crate) fn capture_observe_contract(&self) -> crate::Result<()> {
         if !self.plugin.as_ref().is_some_and(|scope| scope.observe_contract().is_some()) {
             return Ok(());

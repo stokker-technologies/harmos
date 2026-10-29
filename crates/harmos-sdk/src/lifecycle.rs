@@ -49,9 +49,15 @@ pub trait Lifecycle: Sized + Send + 'static {
     type Context: Context;
 
     fn prepare(config: Self::Config, setup: &mut Setup<Self>) -> impl Future<Output = Result<Self, Self::Error>> + Send;
-    fn initialize(&mut self, context: &Self::Context) -> impl Future<Output = Result<(), Self::Error>> + Send;
-    fn stop(&mut self, context: &Self::Context) -> impl Future<Output = Result<(), Self::Error>> + Send;
-    fn cleanup(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    fn initialize(&mut self, _context: &Self::Context) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        async { Ok(()) }
+    }
+    fn stop(&mut self, _context: &Self::Context) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        async { Ok(()) }
+    }
+    fn cleanup(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        async { Ok(()) }
+    }
 }
 
 /* === Implementations === */

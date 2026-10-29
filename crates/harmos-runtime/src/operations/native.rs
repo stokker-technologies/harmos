@@ -826,10 +826,6 @@ impl Binding {
         self.native.endpoint.settle_observers().await
     }
 
-    pub(super) fn observer_outcome(&self) -> Result<()> {
-        self.native.endpoint.observer_outcome()
-    }
-
     pub(super) fn capture_observe_contract(&self) -> Result<()> {
         self.native.endpoint.capture_observe_contract()
     }

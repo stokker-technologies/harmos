@@ -53,9 +53,6 @@ impl harmos::Lifecycle for Plugin {
         Ok(Self)
     }
 
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> { Ok(()) }
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> { Ok(()) }
-    async fn cleanup(&mut self) -> Result<(), Self::Error> { Ok(()) }
 }
 
 #[harmos::sidecar::plugin(id = "setup_operations", requires = ())]

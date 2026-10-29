@@ -136,18 +136,6 @@ impl harmos_runtime::Lifecycle for Studio {
     async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
         Ok(Self)
     }
-
-    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 impl Application for Studio {
