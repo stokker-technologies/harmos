@@ -30,7 +30,6 @@
 
 /* === Enums === */
 
-// The regression half of facade_lanes_with_override.rs.
 #[facade::lanes]
 enum Lanes {
     #[default]

@@ -7,8 +7,6 @@
  * ***
  */
 
-// Plugin bundle errors
-
 /* === Modules === */
 
 /* === Re-Exports === */

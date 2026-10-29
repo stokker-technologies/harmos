@@ -7,8 +7,6 @@
  * ***
  */
 
-// Compose Storage Integration Stories
-
 /* === Modules === */
 
 mod directory;

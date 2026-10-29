@@ -7,8 +7,6 @@
  * ***
  */
 
-// CaptureFile Declaration.
-
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -83,8 +81,6 @@ impl MemorySize for CaptureFile {
 
 #[cfg(feature = "runtime")]
 mod execution {
-
-    // CaptureFile Runtime Handler.
 
     // Standard Library Imports
 

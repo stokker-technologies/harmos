@@ -7,8 +7,6 @@
  * ***
  */
 
-// HashFile Declaration.
-
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -77,8 +75,6 @@ impl MemorySize for HashFile {
 
 #[cfg(feature = "runtime")]
 mod execution {
-
-    // HashFile Runtime Handler.
 
     // Standard Library Imports
 

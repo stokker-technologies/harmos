@@ -430,7 +430,6 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
             }
             ready();
 
-            // Observe Once Per Declared Interval
             let opened = Instant::now();
             clock.reset();
             let mut tick = Tick { ordinal: 0, elapsed: Duration::ZERO };

@@ -7,8 +7,6 @@
  * ***
  */
 
-// Echo Operation Contract And Execution.
-
 /* === --- === Definition Module === --- === */
 
 /* === Modules === */
