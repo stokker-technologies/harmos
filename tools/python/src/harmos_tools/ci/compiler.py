@@ -109,6 +109,8 @@ def _configured(command: Sequence[str] | str, shell: str | None, *, statistics: 
         directory = Path(os.environ["SCCACHE_DIR"])
         directory.mkdir(parents=True, exist_ok=True)
         environment.update(SCCACHE_DIR=str(directory.resolve()), SCCACHE_LOCAL_RW_MODE=mode)
+        if size := os.environ.get("SCCACHE_CACHE_SIZE"):
+            environment["SCCACHE_CACHE_SIZE"] = size
     else:
         raise RuntimeError("sccache: a supported explicit backend is required")
     with tempfile.TemporaryDirectory(prefix="stkr-sccache-") as temporary:
