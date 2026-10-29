@@ -147,17 +147,22 @@ async fn sidecar_composition_walks() {
     let directory = tempfile::tempdir().unwrap();
     std::fs::create_dir(directory.path().join("boards")).unwrap();
     std::fs::write(directory.path().join("notes.txt"), b"not a directory").unwrap();
-    let mut executable = Executable::at(support::fixtures::artifact("schematic-sidecar")).unwrap().directory(directory.path());
+    let artifact = support::fixtures::artifact("schematic-sidecar");
+    let executable = Executable::at(artifact).unwrap();
+    let working_directory = directory.path();
+    let mut executable = executable.directory(working_directory);
     if let Some(directory) = std::env::var_os("STKR_TEST_REPORT_DIR") {
         executable = executable.variable("STKR_TEST_REPORT_DIR", directory);
     }
     assert_eq!(executable.declaration().id, PLUGIN);
     // Typed Native Calls Prepare Their Encoded Requests Within An Explicit Host Budget
     let runtime = Runtime::<Host>::launch_with((), (), |setup| {
-        setup.settings().operation_settings(harmos_runtime::operations::Settings {
-            preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()),
+        let preparation_bytes = NonZeroUsize::new(64 * 1024).unwrap();
+        let settings = harmos_runtime::operations::Settings {
+            preparation_bytes: Some(preparation_bytes),
             ..Default::default()
-        });
+        };
+        setup.settings().operation_settings(settings);
     })
     .await
     .unwrap();
@@ -203,7 +208,15 @@ async fn sidecar_composition_walks() {
     let mut progress = published.watch();
     let upload = runtime.operations.upload::<AnalyzeUpload>(AnalyzeUpload { title: "Held Upload".into() }, stream_settings()).unwrap();
     upload.send(snapshot()).await.unwrap();
-    let Item::Row(row) = progress.next().await.unwrap() else { panic!("the progress window lost a row") };
+    let (mut input, (), completion) = upload.split();
+    let next = tokio::select! {
+        next = progress.next() => next,
+        _ = completion.settle() => {
+            input.finish_input();
+            panic!("upload ended before progress: {:?}", completion.join().await);
+        },
+    };
+    let Item::Row(row) = next.unwrap() else { panic!("the progress window lost a row") };
     let row = <AnalysisProgress as harmos_runtime::Message>::decode(&row.value.payload).unwrap();
     assert_eq!((row.title.as_str(), row.checked), ("Held Upload", 1));
 
@@ -218,7 +231,8 @@ async fn sidecar_composition_walks() {
         futures_util::pin_mut!(next);
         assert!(futures_util::poll!(next).is_pending());
     }
-    upload.cancel_and_settle().await.unwrap();
+    completion.cancel_and_settle().await.unwrap();
+    drop(input);
     assert_eq!(exchange.next().await.unwrap().unwrap().text, "2 Symbols, 1 Connections");
     exchange.finish_input();
     assert!(exchange.next().await.unwrap().is_none());
@@ -233,6 +247,9 @@ async fn sidecar_composition_walks() {
     completed.send(snapshot()).await.unwrap();
     completed.finish_input();
     assert_eq!(completed.join().await.unwrap().checked, 1);
+    let Item::Row(row) = progress.next().await.unwrap() else { panic!("the progress window lost a row") };
+    let row = <AnalysisProgress as harmos_runtime::Message>::decode(&row.value.payload).unwrap();
+    assert_eq!((row.title.as_str(), row.checked), ("Completed Upload", 1));
     let mut invalid = runtime.operations.upload::<AnalyzeUpload>(AnalyzeUpload { title: String::new() }, stream_settings()).unwrap();
     invalid.finish_input();
     let error = invalid.join().await.unwrap_err();

@@ -183,7 +183,9 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.b
 description = "Build The Shared Test Archive And Fixtures"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
-run = ["uv run --locked --no-sync --project tools/python python -m harmos_tools.build.rust.tests --profile {{usage.profile}}"]
+run = [
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.rust.tests --profile {{usage.profile}} --features harmos-runtime/plugin-sidecar",
+]
 
 # === Dev === #
 

@@ -104,6 +104,8 @@ impl harmos_runtime::schema::Described for Consumption {
     const NAME: &'static str = <Delivery<Listener> as harmos_runtime::schema::Described>::NAME;
     const FIELDS: &'static [harmos_runtime::schema::Field] = <Delivery<Listener> as harmos_runtime::schema::Described>::FIELDS;
     const MARKER: &'static [u8] = <Delivery<Listener> as harmos_runtime::schema::Described>::MARKER;
+    const DEFINITION: harmos_runtime::schema::declaration::Definition =
+        <Delivery<Listener> as harmos_runtime::schema::Described>::DEFINITION;
 }
 
 #[harmos_runtime::listener(
