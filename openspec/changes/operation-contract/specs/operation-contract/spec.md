@@ -31,3 +31,14 @@ Registration SHALL bind an existing executable operation type under a runtime-co
 #### Scenario: Conflicting Registration
 - **WHEN** a batch repeats an ID or collides with an existing catalog entry from the same owner
 - **THEN** registration refuses atomically and leaves the original binding intact
+
+### Requirement: Ordinary Host Plugin Owner
+The plugin owner `host` SHALL have ordinary admission and grant checks. Its name SHALL neither be reserved nor confer application caller authority. Runtime authority SHALL come from the caller context; actual qualified identity collisions SHALL still be refused.
+
+#### Scenario: Host Owner Admission
+- **WHEN** a plugin named `host` registers and invokes a declared shared application operation
+- **THEN** it receives the same admission, duplicate and scope-grant checks as any other plugin owner
+
+#### Scenario: Owner Name Confers No Authority
+- **WHEN** a plugin named `host` declares a private or Host-only operation from another provider
+- **THEN** activation refuses it without granting authority from the name

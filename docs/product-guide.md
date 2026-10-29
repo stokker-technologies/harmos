@@ -973,6 +973,10 @@ The operation type supplies its schema, policy, resources and handler; the chose
 ID enters the fingerprint. Invoke it with `operations.submit_at::<Read>(id, request)`.
 Static catalog composition and ordinary collision refusal remain unchanged.
 
+The plugin owner `host` is admitted like any other owner. Its name confers no
+application authority or grant exemption. Qualified identity collisions remain
+refusals; application caller authority comes from the runtime context.
+
 Keep one `-sidecar` or `-guest` crate under `crates/`. Several plugins belong
 under `plugins/sidecars/<name>` and `plugins/guests/<name>`. Carrier crates use
 `publish = false`.

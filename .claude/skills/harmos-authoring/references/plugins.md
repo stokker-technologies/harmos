@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/plugins.md; sha256:c83d8e7339bc5ecce63e0bd18185caa45db5946d3094780d911fdf7a4ec6e2dd -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/plugins.md; sha256:d32b95cadd1e8f2bfeb2ae2249b31de9fa02aa2543ba2dfb94cfc4ab781f7d62 -->
 
 # Plugins And Carriers
 
@@ -39,6 +39,10 @@ The host authenticates advertisements and checks owner equality; plugins cannot
 choose a registration prefix. Advertisements carry local IDs, while routed
 frames carry already-qualified IDs, fingerprints and u64 generations. Transports
 validate those IDs without adding a prefix. Old version-only peers are refused.
+
+`host` is a valid plugin owner with ordinary admission and grant checks. That
+name grants no application caller authority; authority comes from the runtime
+context. Actual qualified operation and service identity collisions are refused.
 
 ## Lifecycle Responsibilities
 

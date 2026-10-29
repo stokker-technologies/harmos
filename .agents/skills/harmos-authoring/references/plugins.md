@@ -38,6 +38,10 @@ choose a registration prefix. Advertisements carry local IDs, while routed
 frames carry already-qualified IDs, fingerprints and u64 generations. Transports
 validate those IDs without adding a prefix. Old version-only peers are refused.
 
+`host` is a valid plugin owner with ordinary admission and grant checks. That
+name grants no application caller authority; authority comes from the runtime
+context. Actual qualified operation and service identity collisions are refused.
+
 ## Lifecycle Responsibilities
 
 The shared `Lifecycle` contract owns `Config`, `Error` and `Context`:

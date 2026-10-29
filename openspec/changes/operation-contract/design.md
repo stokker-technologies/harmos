@@ -78,7 +78,6 @@ impl Operation for Cancel {
 - Stateful carrier and lifecycle machinery retains the internal `Carrier` lifecycle; consumer `Operation` has only consuming `run`.
 - Per-attempt request clones copy byte payloads; large transfers belong in streams.
 - Feature unification can enable a facade `runtime` without the consumer `runtime`; gating on the consumer feature avoids that.
-
 - Guest roots re-export SDK `Operation`, `Context` and `Response`; plugin lifecycle context stays at `kit::Context`. Remote-only declarations need no local execution implementation.
 - Generated messages derive Clone when absent; manual codecs own Clone. Shared retry resources and erased response owners retain their existing ownership.
 - Sandbox schema, JSON and SHA-256 development/test optimization retains the unchanged fuel budget and matches schematic schema/JSON settings.
@@ -98,3 +97,4 @@ impl Operation for Cancel {
 - Plugin folders, declaration-only benchmark gates and operations-crate orphan guidance already landed in `ab85df55`.
 - Owner decision (2026-10-29): future-depth and sealing tasks close without source changes; reopen only for a failing reproducer or measured consumer budget miss.
 - Observer cadence keeps its static `u64` millisecond contract and accepts constant expressions; generated inventory rejects zero during const evaluation. No runtime cadence configuration is introduced.
+- Owner decision (2026-10-29): `host` is an ordinary plugin owner, never reserved or privileged. Admission, shared-call authorization and grants compare provider scope/generation and runtime caller authority, not the owner name. Actual identity collisions remain refusals.
