@@ -247,7 +247,7 @@ async fn exact_live_bindings() {
             error.source()
         };
     }
-    assert!(refused_catalog, "SDK initialization must refuse the actual missing binding: {error}");
+    assert!(refused_catalog, "SDK initialization must refuse the actual extra binding: {error}");
 
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));

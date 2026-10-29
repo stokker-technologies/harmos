@@ -16,7 +16,7 @@ The canonical-build-configuration decision supersedes the former line-tables-onl
 
 ## Dependency Constraints
 
-The current published upgrade candidates do not provide one guest family: Wasmtime 50 uses wasm-tools 0.261, wit-bindgen 0.63 uses 0.262, and wit-bindgen 0.62 uses 0.259. On 2026-10-29 the owner authorized testing the older aligned family, while reserving the final decisions on tasks 1.6 and 2.4. A guest async regression or loss of a security fix rejects the downgrade; retain only documentation commits in that case.
+The current published upgrade candidates do not provide one guest family: Wasmtime 50 uses wasm-tools 0.261, wit-bindgen 0.63 uses 0.262, and wit-bindgen 0.62 uses 0.259. On 2026-10-29 the owner approved adopting the older aligned family after root repairs for the failed required proofs. A lost upstream fix that cannot be preserved by adapting Harmos remains a stop condition.
 
 The experiment owns the root dependency declarations, all three Cargo locks, required guest/host API adaptations, and these design/task records. README review covers guest sandbox and async behavior claims. Proof is native Windows targeted guest/sidecar/plugin integration and async system selections, a focused workspace check, and identical cold-build/duplicate-count comparisons against the starting integration revision. No full lanes, umbrella check, CI simulation, benchmarks, pushes, other branches or sibling worktrees are authorized.
 
@@ -73,9 +73,11 @@ Candidate system results were guest SDK lifecycle 1 passed and runtime 26 passed
 
 After restoring the original manifest and all three locks, rebuilding the original wit-bindgen 0.63.0 fixtures, and running `mise run build:rust:focused -- test @selection --test system -- guest_contract::operations::exact_live_bindings --test-threads 1` against Wasmtime 50.0.0, the same guest test failed identically. Thus this failure is established on both families, not evidence of a newly introduced async regression. It remains a failed required proof; the native gRPC failures likewise remain unresolved and unwaived.
 
-Decision: do not commit the downgrade because every required proof must pass. Only this experiment's documentation is retained; all five dependency pins and three locks are restored, no Rust source or test is changed, and no push is authorized. Native Cargo cleanup removes only the experiment's cold compiler output; collected evidence is preserved separately. Tasks 1.6 and 2.4 remain unchecked. Owner question: retain the newer family (recommended until proof is green), or assign integration repairs for the three failing proofs and then retry the older family? Those repairs exceed dependency-alignment/source-breakage scope.
+Owner decision after the experiment: merge `feat/next-release`, repair the inert sandbox mismatch mode and reproduce/fix the two gRPC admission failures on the current family before alignment. The locked repair inventory is the sandbox fixture, its system assertion description, the raw gRPC encoder and inline deterministic admission tests, all three dependency locks, root pins, and this change's records. No assertion, budget or deadline may be weakened. Repairs and alignment are separate commits; tasks 1.6 and 2.4 close only after all required proof passes. No push is authorized.
 
 ## Harness Structure
+
+Repair 1.7 restores the sandbox's inert `"mismatch"` mode by staging a real extra handler during preparation. Production exact-catalog validation rejects it; the system test preserves its refusal condition and updates only the diagnostic description. The repaired story and SDK lifecycle smoke passed on Wasmtime 50.0.0 with freshly collected wit-bindgen 0.63.0 fixtures. No public API, deadline, budget, README claim or consumer-skill contract changes.
 
 The integration target declares no required features. It combines twelve domain roots, with plugin, sidecar and simulation domains conditional on features. Shared support source is included repeatedly under domain-local namespaces. The fixture dependency is schematic-domain; executable guest/sidecar artifacts are produced separately, not linked fixture crates to remove from this harness. A shared support namespace is a possible structural follow-up, not an authorized mechanical edit. The one-integration-binary policy remains in force.
 
