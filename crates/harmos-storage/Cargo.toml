@@ -20,7 +20,7 @@ version = { workspace = true }
 
 [features]
 default = []
-fft = ["dep:rustfft"]
+fft = []
 
 # === Dependencies === #
 
@@ -39,7 +39,6 @@ tracing = { workspace = true, default-features = true }
 # Utilities
 # Retry Windows Use Native Entropy Or Web Crypto On Browser WebAssembly.
 getrandom = { workspace = true, features = ["std", "wasm_js"] }
-rustfft = { workspace = true, default-features = true, optional = true }
 sha2 = { workspace = true, default-features = true }
 
 # Serialization
