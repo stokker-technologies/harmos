@@ -41,6 +41,42 @@ use crate::fixtures;
 /* === Tests === */
 
 #[test]
+fn feature_catalog_compiles() {
+    let sdk = fixtures::library("harmos_sdk");
+    let dependencies = fixtures::dependencies();
+
+    let source = fixtures::manifest().join("tests/fixtures/feature_catalog.rs");
+    let directory = format!("harmos-cfg-catalog-{}", std::process::id());
+    let output = std::env::temp_dir().join(directory);
+    let rustc = std::env::var_os("RUSTC");
+    let rustc = rustc.unwrap_or("rustc".into());
+    fs::create_dir_all(&output).unwrap();
+
+    let executable = output.join(if cfg!(windows) { "feature_catalog.exe" } else { "feature_catalog" });
+    for features in [&[][..], &["--cfg", "feature=\"optional_operation\""][..]] {
+        let mut compiler = fixtures::command(&rustc);
+        compiler
+            .args(["--edition=2024", "--crate-type=bin", "--crate-name=feature_catalog"])
+            .arg(&source)
+            .arg("--extern")
+            .arg(format!("harmos={}", sdk.display()))
+            .arg("-L")
+            .arg(format!("dependency={}", dependencies.display()))
+            .arg("--out-dir")
+            .arg(&output)
+            .args(features);
+
+        let compiled = compiler.output().unwrap();
+        let diagnostic = String::from_utf8_lossy(&compiled.stderr);
+        assert!(compiled.status.success(), "catalog features {features:?} failed:\n{diagnostic}");
+
+        let executed = fixtures::command(&executable).status().unwrap();
+        assert!(executed.success(), "catalog features {features:?} inventory and registration failed");
+    }
+    fs::remove_dir_all(output).unwrap();
+}
+
+#[test]
 fn owner_ids_compile() {
     let harmos = fixtures::library("harmos");
     let dependencies = fixtures::dependencies();
