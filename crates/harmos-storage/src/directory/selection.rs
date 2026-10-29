@@ -43,7 +43,7 @@ impl Rules {
         rules
             .iter()
             .map(|rule| {
-                let glob = GlobBuilder::new(&rule.pattern).literal_separator(true).backslash_escape(false).build();
+                let glob = GlobBuilder::new(&recursive(&rule.pattern)).literal_separator(true).backslash_escape(false).build();
                 let glob = glob.map_err(|_| Error::InvalidInput {
                     field: "directory rule",
                     reason: "pattern is not a valid glob",
@@ -62,6 +62,16 @@ impl Rules {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+/// Spells a `**` inside a segment (`**.json`, `logs**`) as an alternation that still crosses `/`;
+/// globset only treats a whole `**` segment as recursive.
+fn recursive(pattern: &str) -> String {
+    pattern
+        .split('/')
+        .map(|segment| if segment == "**" { segment.to_owned() } else { segment.replace("**", "{*,*/**/*}") })
+        .collect::<Vec<_>>()
+        .join("/")
+}
 
 /* === Tests === */
 
@@ -83,6 +93,11 @@ mod tests {
         assert!(matches("data/**/sample.*", "data/a/b/sample.bin"));
         assert!(!matches("data/*.json", "Data/a.json"));
         assert!(!matches("**/a.json", "a.json/extra"));
+        assert!(matches("**.json", "a.json"));
+        assert!(matches("**.json", "nested/deeper/a.json"));
+        assert!(matches("logs**", "logs"));
+        assert!(matches("logs**", "logs/a/b.txt"));
+        assert!(!matches("logs**", "other/logs"));
     }
 
     #[test]
