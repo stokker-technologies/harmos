@@ -96,7 +96,6 @@ harmos-sdk = { path = "../harmos-sdk", default-features = false, features = ["gr
 # Utilities
 
 # Serialization
-protoc-bin-vendored = { workspace = true }
 
 # Configuration
 

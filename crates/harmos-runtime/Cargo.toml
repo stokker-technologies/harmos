@@ -141,15 +141,8 @@ tracing-subscriber = { workspace = true }
 
 # Serialization
 arrow-array = { workspace = true }
-arrow-buffer = { workspace = true }
-arrow-data = { workspace = true }
-arrow-ipc = { workspace = true }
 arrow-schema = { workspace = true }
-arrow-select = { workspace = true }
-base64 = { workspace = true }
-flatbuffers = { workspace = true }
 prost = { workspace = true, features = ["derive"] }
-protoc-bin-vendored = { workspace = true }
 
 # Configuration
 
@@ -158,7 +151,6 @@ tar = { workspace = true }
 tempfile = { workspace = true, default-features = true }
 
 # Parsing
-syn = { workspace = true, default-features = true, features = ["visit"] }
 
 # Concurrency
 

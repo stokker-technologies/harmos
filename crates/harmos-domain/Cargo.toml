@@ -87,19 +87,16 @@ harmos-packaging = { path = "../harmos-packaging", features = ["generate-proto"]
 
 # Serialization
 prost-reflect = { workspace = true }
-protoc-bin-vendored = { workspace = true }
 
 # Configuration
 
 # Filesystem
-tempfile = { workspace = true }
 
 # Parsing
 
 # Concurrency
 
 # Async
-tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 
 # Networking
 
