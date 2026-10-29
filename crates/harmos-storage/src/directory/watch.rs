@@ -171,7 +171,7 @@ impl DirectoryWatcher {
                     if queued.event.paths.len() > self.inner.settings.filesystem.event_capacity.get() {
                         return Ok(Some(self.rescan()));
                     }
-                    let events = events(&self.selection.value, queued.event)?;
+                    let events = events(&self.selection, queued.event)?;
                     if events.iter().any(|event| matches!(event, DirectoryEvent::RescanRequired)) {
                         return Ok(Some(self.rescan()));
                     }
@@ -233,12 +233,12 @@ fn watch_error(error: notify::Error) -> Error {
     Error::backend("directory watch", crate::BackendFailure::Permanent, error)
 }
 
-fn selected_path(selection: &DirectorySelection, path: &Path) -> Result<Option<String>> {
-    let Some(path) = relative(&selection.root, path, selection.recursive)? else { return Ok(None) };
-    Ok(super::selection::selected(&path, &selection.rules).then_some(path))
+fn selected_path(selection: &Selection, path: &Path) -> Result<Option<String>> {
+    let Some(path) = relative(&selection.value.root, path, selection.value.recursive)? else { return Ok(None) };
+    Ok(selection.rules.selected(&path).then_some(path))
 }
 
-fn entry(selection: &DirectorySelection, path: &Path) -> Result<Option<DirectoryEntry>> {
+fn entry(selection: &Selection, path: &Path) -> Result<Option<DirectoryEntry>> {
     let Some(relative) = selected_path(selection, path)? else { return Ok(None) };
     let metadata = match std::fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
@@ -256,9 +256,9 @@ fn entry(selection: &DirectorySelection, path: &Path) -> Result<Option<Directory
     }))
 }
 
-fn events(selection: &DirectorySelection, event: Event) -> Result<Vec<DirectoryEvent>> {
+fn events(selection: &Selection, event: Event) -> Result<Vec<DirectoryEvent>> {
     let root_changed = matches!(event.kind, EventKind::Remove(_) | EventKind::Modify(ModifyKind::Name(_)))
-        && event.paths.iter().any(|path| path == &selection.root);
+        && event.paths.iter().any(|path| path == &selection.value.root);
     if event.need_rescan() || event.paths.is_empty() || root_changed {
         return Ok(vec![DirectoryEvent::RescanRequired]);
     }
@@ -340,10 +340,14 @@ mod tests {
     #[test]
     fn rename_rescan_projection() {
         let root = std::path::PathBuf::from("root");
-        let selection = DirectorySelection {
-            root: root.clone(),
-            recursive: true,
-            rules: vec![harmos_domain::model::storage::DirectoryRule { pattern: "**".into(), include: true }],
+        let rules = vec![harmos_domain::model::storage::DirectoryRule { pattern: "**".into(), include: true }];
+        let selection = Selection {
+            rules: super::selection::Rules::compile(&rules).unwrap(),
+            value: DirectorySelection {
+                root: root.clone(),
+                recursive: true,
+                rules,
+            },
         };
         let renamed =
             Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Both))).add_path(root.join("before")).add_path(root.join("after"));

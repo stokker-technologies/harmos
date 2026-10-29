@@ -190,7 +190,7 @@ impl Scan {
                 self.enter(&path)?;
             }
             let Some(path) = relative(&self.selection.value.root, &path, self.selection.value.recursive)? else { continue };
-            if !super::selection::selected(&path, &self.selection.value.rules) {
+            if !self.selection.rules.selected(&path) {
                 continue;
             }
             self.entries += 1;
