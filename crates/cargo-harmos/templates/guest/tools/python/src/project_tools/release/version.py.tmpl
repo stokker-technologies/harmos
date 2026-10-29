@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/version.py; sha256:5fcaf57934acf9635cafac8b26c4e4ac0747e9d596b3cc45c6a57c1b373d4fe8
+# Rendered by stkr project update from templates/python/release/version.py; sha256:d6fc6d5660711588d93a88f0d3809a386d44f3f379e1ed2e7528bffe543cc31d
 # ***
 #
 # __PRODUCT_NAME__
@@ -6,7 +6,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # ***
-
 """Check And Synchronize Declared Static Package Versions"""
 
 # === Imports === #
@@ -99,9 +98,108 @@ def run(directory: Path, verb: str, *, value: str | None = None) -> None:
             pending.append((path, text))
     for path, text in pending:
         path.write_text(text, encoding="utf-8")
+    sibling_pins(directory, verb, target)
+
+
+def sibling_pins(directory: Path, verb: str, target: str) -> None:
+    """Synchronize Exact Local Sibling Requirements, Including Renames And Target Tables."""
+    if not (directory / "Cargo.toml").is_file():
+        return
+    metadata = json.loads(policy.execute(directory, ["cargo", "metadata", "--no-deps", "--format-version", "1"], capture=True))
+    members = set(metadata["workspace_members"])
+    siblings = {item["name"]: Path(item["manifest_path"]).resolve() for item in metadata["packages"] if item["id"] in members}
+    manifests = set(siblings.values())
+    manifests.add((directory / "Cargo.toml").resolve())
+    pending = []
+    for manifest in sorted(manifests):
+        if not manifest.is_relative_to(directory.resolve()):
+            raise policy.ToolError("workspace manifest must stay inside the repository")
+        text = manifest.read_text(encoding="utf-8")
+        document = tomllib.loads(text)
+        sections = re.split(r"(?m)(^\[[^\n]+\][ \t]*(?:#[^\n]*)?$)", text)
+        for index in range(1, len(sections), 2):
+            header = sections[index].strip()
+            if header.startswith("[["):
+                continue
+            # Let TOML parse quoted target predicates and quoted dependency aliases.
+            keys = _table_keys(header)
+            table = document
+            for key in keys:
+                table = table[key]
+            inline = keys[-1] in {"dependencies", "dev-dependencies", "build-dependencies"}
+            separate = len(keys) > 1 and keys[-2] in {"dependencies", "dev-dependencies", "build-dependencies"}
+            if not inline and not separate:
+                continue
+            for alias, dependency in table.items() if inline else [(keys[-1], table)]:
+                literal = isinstance(dependency, str)
+                if literal:
+                    dependency = {"version": dependency}
+                if not isinstance(dependency, dict) or "git" in dependency or "registry" in dependency:
+                    continue
+                sibling = siblings.get(dependency.get("package", alias))
+                if "path" in dependency:
+                    sibling = (manifest.parent / dependency["path"] / "Cargo.toml").resolve()
+                pin = dependency.get("version", "")
+                if sibling not in manifests or not isinstance(pin, str) or not pin:
+                    continue
+                exact = pin.startswith("=")
+                if not exact and pin != policy.policy(directory, "version").get("value"):
+                    continue
+                expected = ("=" if exact else "") + target
+                if verb == "check" and exact and pin != expected:
+                    raise policy.ToolError(f"{manifest.relative_to(directory)}: sibling {alias} pin {pin} differs from {expected}")
+                if verb != "sync":
+                    continue
+                body = sections[index + 1]
+                alias_pattern = "(?:" + re.escape(alias) + '|"' + re.escape(alias) + '"|\\x27' + re.escape(alias) + r"\x27)"
+                if literal:
+                    pattern = r"(?m)^([ \t]*" + alias_pattern + r'\s*=\s*)["\x27][^"\x27]*["\x27]'
+                    body, count = re.subn(pattern, lambda match, expected=expected: match[1] + json.dumps(expected), body)
+                elif inline:
+                    pattern = (
+                        r"(?ms)^([ \t]*(?:"
+                        + re.escape(alias)
+                        + r'|"'
+                        + re.escape(alias)
+                        + r'"|\x27'
+                        + re.escape(alias)
+                        + r"\x27)\s*=\s*\{)(.*?)(\})"
+                    )
+
+                    def replace(match, expected=expected):
+                        updated = re.sub(
+                            r'(\bversion\s*=\s*)["\x27][^"\x27]*["\x27]', lambda value: value[1] + json.dumps(expected), match[2]
+                        )
+                        return match[1] + updated + match[3]
+
+                    body, count = re.subn(pattern, replace, body)
+                else:
+                    body, count = re.subn(
+                        r'(?m)^(version\s*=\s*)["\x27][^"\x27]*["\x27]',
+                        lambda match, expected=expected: match[1] + json.dumps(expected),
+                        body,
+                    )
+                if count != 1:
+                    raise policy.ToolError(f"could not synchronize sibling pin {alias} in {manifest}")
+                sections[index + 1] = body
+        pending.append((manifest, "".join(sections)))
+    if verb == "sync":
+        for path, text in pending:
+            path.write_text(text, encoding="utf-8")
 
 
 # === Private Functions === #
+
+
+def _table_keys(header: str) -> list[str]:
+    parsed = tomllib.loads(header + "\n__release_pin_marker__ = true")
+    keys = []
+    while "__release_pin_marker__" not in parsed:
+        key = next(iter(parsed))
+        keys.append(key)
+        parsed = parsed[key]
+    return keys
+
 
 # === Entry Point === #
 

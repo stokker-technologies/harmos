@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/registry.py; sha256:05a53d2eabc993f8ddd4111f8b6f462ccbd5f94445b28cf53fe2d3349dcb5382
+# Rendered by stkr project update from templates/python/release/registry.py; sha256:0430b11b716edf308545473e2e427fca63477791fd9aaa251b60d8fccb36c831
 # ***
 #
 # __PRODUCT_NAME__
@@ -6,7 +6,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # ***
-
 """Talk To The Release Provider And The Package Registries"""
 
 # === Imports === #
@@ -30,6 +29,7 @@ from typing import Any
 # Local Imports
 # isort: split
 from ..build import storage
+from ..package import changelog
 from . import policy
 
 # Type Checking Imports
@@ -71,37 +71,12 @@ class ProviderRedirect(urllib.request.HTTPRedirectHandler):
 def publish_crates(directory: Path, *, sleep=time.sleep, clock=time.monotonic) -> None:
     """Publish Workspace Crates One At A Time In Dependency Order, Resuming Past Published Versions."""
     storage.preflight(directory)
+    if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
+        raise policy.ToolError("crate publication requires clean source before generated CHANGELOG staging")
     packages = publishable(directory)
     deadline = clock() + RATE_BUDGET
-    for name in _publication_order(packages):
-        version = packages[name]["version"]
-        if crate_published(name, version):
-            print(f"{name} {version}: already published")
-            continue
-        while True:
-            result = subprocess.run(
-                ["cargo", "publish", "--locked", "--package", name],
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                cwd=directory,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                check=False,
-            )
-            output = (result.stdout or "") + (result.stderr or "")
-            if result.returncode == 0:
-                print(f"{name} {version}: published")
-                break
-            if "already exists" in output:
-                print(f"{name} {version}: already published")
-                break
-            if "429" not in output and "Too Many Requests" not in output:
-                raise policy.ToolError(f"cargo publish {name} failed with exit code {result.returncode}: {output}")
-            wait = _retry_after(output)
-            if clock() + wait > deadline:
-                raise policy.ToolError(f"{name} {version}: crates.io rate limit outlasted the publication budget")
-            print(f"{name} {version}: rate limited; retrying in {wait}s")
-            sleep(wait)
+    with changelog.staged(directory, packages):
+        _publish_crates(directory, packages, deadline, sleep=sleep, clock=clock)
 
 
 def rehearse_crates(directory: Path, *, skip_published: bool = True) -> None:
@@ -114,23 +89,8 @@ def rehearse_crates(directory: Path, *, skip_published: bool = True) -> None:
     lock = directory / "Cargo.lock"
     original = lock.read_bytes() if lock.is_file() else None
     staged = []
-    try:
-        for name in _publication_order(packages):
-            version = packages[name]["version"]
-            if skip_published and crate_published(name, version):
-                print(f"{name} {version}: already published; the real leaf skips it")
-                continue
-            # A sibling resolves from its packaged sources only once the real leaf would have published it, so a
-            # crate ordered before something its published manifest requires fails here, before any tag exists.
-            command = ["cargo", "publish", "--dry-run", "--package", name]
-            for sibling, release in staged:
-                command += ["--config", f'patch.crates-io.{sibling}.path="{(target / "package" / f"{sibling}-{release}").as_posix()}"']
-            policy.execute(directory, command)
-            staged.append((name, version))
-    finally:
-        # The patches record themselves in the lock file; the rehearsal leaves the committed lock untouched.
-        if original is not None:
-            lock.write_bytes(original)
+    with changelog.staged(directory, packages):
+        _rehearse_crates(directory, packages, target, lock, original, staged, skip_published=skip_published)
 
 
 def publishable(directory: Path) -> dict:
@@ -664,6 +624,60 @@ def remote_tag(settings: dict, tag: str) -> str | None:
 
 
 # === Private Functions === #
+
+
+def _publish_crates(directory: Path, packages: dict, deadline: float, *, sleep, clock) -> None:
+    for name in _publication_order(packages):
+        version = packages[name]["version"]
+        if crate_published(name, version):
+            print(f"{name} {version}: already published")
+            continue
+        while True:
+            result = subprocess.run(
+                ["cargo", "publish", "--locked", "--allow-dirty", "--package", name],
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            output = (result.stdout or "") + (result.stderr or "")
+            if result.returncode == 0:
+                print(f"{name} {version}: published")
+                break
+            if "already exists" in output:
+                print(f"{name} {version}: already published")
+                break
+            if "429" not in output and "Too Many Requests" not in output:
+                raise policy.ToolError(f"cargo publish {name} failed with exit code {result.returncode}: {output}")
+            wait = _retry_after(output)
+            if clock() + wait > deadline:
+                raise policy.ToolError(f"{name} {version}: crates.io rate limit outlasted the publication budget")
+            print(f"{name} {version}: rate limited; retrying in {wait}s")
+            sleep(wait)
+
+
+def _rehearse_crates(
+    directory: Path, packages: dict, target: Path, lock: Path, original: bytes | None, staged: list, *, skip_published: bool
+) -> None:
+    try:
+        for name in _publication_order(packages):
+            version = packages[name]["version"]
+            if skip_published and crate_published(name, version):
+                print(f"{name} {version}: already published; the real leaf skips it")
+                continue
+            # A sibling resolves from its packaged sources only once the real leaf would have published it, so a
+            # crate ordered before something its published manifest requires fails here, before any tag exists.
+            command = ["cargo", "publish", "--dry-run", "--allow-dirty", "--package", name]
+            for sibling, release in staged:
+                command += ["--config", f'patch.crates-io.{sibling}.path="{(target / "package" / f"{sibling}-{release}").as_posix()}"']
+            policy.execute(directory, command)
+            staged.append((name, version))
+    finally:
+        # The patches record themselves in the lock file; the rehearsal leaves the committed lock untouched.
+        if original is not None:
+            lock.write_bytes(original)
 
 
 def _interface_role(package: dict) -> str | None:

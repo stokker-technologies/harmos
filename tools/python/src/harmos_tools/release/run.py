@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:f3694b759445ba8e3b54b3914cd502ce6e11805862d9b5cd5cb2b2a7def40fc4
+# Rendered by stkr project update from templates/python/release/run.py; sha256:c77c20c65c8a4bc9fc0d6711b264ff5f47441ec57a4c236939d85e3a95eb29a2
 # ***
 #
 # Harmos
@@ -6,7 +6,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # ***
-
 """Prepare, Rehearse, Tag And Publish Releases From The Conventional Commit History"""
 
 # === Imports === #
@@ -32,7 +31,8 @@ from pathlib import Path
 from .. import temporary
 from ..package import run as packages
 from ..test import archive
-from . import policy, registry, screenshots, version
+from . import layout, policy, registry, screenshots, version
+from ..package.changelog import notes
 
 # Type Checking Imports
 
@@ -94,7 +94,8 @@ def assets(directory: Path, settings: dict, selected: str, tag: str, profile: st
     """The Declared Release Downloads Of One Target, From Its Existing Package Of The Profile."""
     profile = policy.profile() if profile is None else profile
     result = []
-    declared = settings.get("assets", []) + packages.packaged(directory, profile, selected)
+    tools = [{**item, "kind": "tool"} for item in packages.packaged(directory, profile, selected)]
+    declared = settings.get("assets", []) + tools
     for definition in declared:
         profiles = definition.get("profiles", ["dev", "release"])
         if (
@@ -113,14 +114,15 @@ def assets(directory: Path, settings: dict, selected: str, tag: str, profile: st
             continue
         relative = definition["path"].format(profile=profile, target=selected, product=settings["product"], version=tag[1:])
         source = policy.inside(directory, relative)
-        name = definition.get("name", source.name).format(product=settings["product"], version=tag[1:], target=selected)
-        if Path(name).name != name or name in {SUMS, STATE, ".", ".."} or "\\" in name or "\n" in name:
+        name = layout.asset_name(directory, settings, definition, selected, tag, source)
+        if name is None:
+            continue
+        reserved = {SUMS, STATE, "CHANGELOG.md", "plugins.json", "upload.json", ".", ".."}
+        if Path(name).name != name or name in reserved or "\\" in name or any(ord(character) < 32 for character in name):
             raise policy.ToolError(f"invalid release asset name: {name}")
         if not source.is_file() or source.is_symlink():
             raise policy.ToolError(f"missing regular release asset: {source}")
         result.append({"name": name, "path": relative, "target": selected})
-    if not result:
-        raise policy.ToolError(f"no release assets declared for {selected}")
     return result
 
 
@@ -130,31 +132,41 @@ def stage(directory: Path, settings: dict, tag: str, targets: list[str], profile
     root = _root(directory)
     # Only the staged targets and the shared checksums are replaced; another target's staging stays untouched.
     for owned in [*targets, SHARED]:
-        if (root / owned).exists():
-            shutil.rmtree(root / owned)
+        destination = policy.inside(root, owned)
+        if destination == root or destination.is_symlink():
+            raise policy.ToolError("unsafe release staging target")
+        if destination.exists():
+            shutil.rmtree(destination)
     files = []
+    plugins = layout.plugins(directory, settings, tag, targets, profile)
     for selected in targets:
         # Only the native target's executables can run here; other targets arrive verified by their Package jobs.
         if selected == _native():
             packages.verify(directory, profile, selected)
         (root / selected).mkdir(parents=True)
-        for asset in assets(directory, settings, selected, tag, profile, signed=signed):
+        declared = assets(directory, settings, selected, tag, profile, signed=signed)
+        declared.extend(item for item in plugins if item["target"] == selected)
+        for asset in declared:
             # Downloads publish side by side, so a name must be unique across every target.
-            if any(item["name"] == asset["name"] for item in files):
+            if any(item["name"].casefold() == asset["name"].casefold() for item in files):
                 raise policy.ToolError(f"release download names collide across targets: {asset['name']}")
             destination = policy.inside(root / selected, asset["name"])
             shutil.copyfile(policy.inside(directory, asset["path"]), destination)
             files.append(_describe(root, destination))
     (root / SHARED).mkdir(parents=True)
+    changelog = root / SHARED / "CHANGELOG.md"
+    changelog.write_text(notes(directory, tag), encoding="utf-8", newline="\n")
+    files.append(_describe(root, changelog))
+    if plugins:
+        digests = {item["name"]: item["sha256"] for item in files}
+        bundles = [{**item, "sha256": digests[item["name"]]} for item in plugins]
+        feed = root / SHARED / "plugins.json"
+        policy.write_json(feed, layout.plugin_feed(settings, tag, bundles))
+        files.append(_describe(root, feed))
     (root / SHARED / SUMS).write_text("".join(f"{item['sha256']}  {item['name']}\n" for item in files), encoding="utf-8")
-    return [*files, _describe(root, root / SHARED / SUMS)]
-
-
-def notes(directory: Path, tag: str, *, tagged: bool) -> str:
-    """Release Notes Rendered At Tag Time From The Conventional Commit History."""
-    command = ["git-cliff", "--strip", "header"]
-    command += ["--current"] if tagged else ["--unreleased", "--tag", tag]
-    return policy.execute(directory, command, capture=True).strip() + "\n"
+    files.append(_describe(root, root / SHARED / SUMS))
+    layout.upload_manifest(directory, root, files)
+    return files
 
 
 def planned_version(directory: Path, current: str) -> str:
@@ -180,7 +192,6 @@ def prepare(directory: Path, settings: dict) -> None:
     planned = planned_version(directory, current)
     if re.fullmatch(STABLE, planned) is None:
         raise policy.ToolError(f"the next version is not a stable version: {planned}")
-    _requirements(directory, current, planned)
     version.run(directory, "sync", value=planned)
     _policy_version(directory, planned)
     commands = settings.get("lock_commands")
@@ -570,6 +581,9 @@ def run(directory: Path, verb: str) -> None:
         "assets": lambda directory, settings: print(
             json.dumps(assets(directory, settings, native_target(settings), release_tag(directory), signed=not rehearsing()), indent=2)
         ),
+        "stage": lambda directory, settings: stage(
+            directory, settings, release_tag(directory), settings["targets"], signed=not rehearsing()
+        ),
     }
     operations[verb](directory, settings)
 
@@ -802,22 +816,6 @@ def _require_publication(directory: Path, settings: dict) -> None:
         print("warning: " + message)
 
 
-def _requirements(directory: Path, previous: str, planned: str) -> None:
-    """Move Path Dependency Requirements On Workspace Members To The Planned Version; Locks Follow In prepare."""
-    if previous == planned:
-        return
-    for name in _tracked(directory, "Cargo.toml", "*/Cargo.toml"):
-        path = directory / name
-        text = path.read_text(encoding="utf-8")
-        updated = re.sub(
-            r"\{[^{}\n]*\bpath\s*=[^{}\n]*\}",
-            lambda match: re.sub(r'(\bversion\s*=\s*")' + re.escape(previous) + '"', r"\g<1>" + planned + '"', match.group(0)),
-            text,
-        )
-        if updated != text:
-            path.write_text(updated, encoding="utf-8")
-
-
 def _revision(directory: Path) -> str:
     sha = archive.revision(directory)
     if not sha:
@@ -881,6 +879,7 @@ if __name__ == "__main__":
                 "verify",
                 "guard",
                 "assets",
+                "stage",
             ],
             run,
         )
