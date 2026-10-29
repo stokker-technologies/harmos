@@ -611,7 +611,6 @@ impl Registry {
             }
         }
 
-        // Start One Instance Over The Shared Resources
         let instance = super::handler::fresh_instance()?;
         let stopping = watch::channel(false).0;
         let index = self.shared.index.clone();
@@ -737,7 +736,7 @@ impl Registry {
                     Ok(()) => Error::NotReady { domain: "resident cleanup" },
                 });
             }
-            // Only observer retirement failures resurface at shutdown, as before.
+            // Only observer retirement failures resurface at shutdown.
             if let Err(source) = &outcome
                 && running.iter().any(|running| running.report.kind == Kind::Observer)
             {

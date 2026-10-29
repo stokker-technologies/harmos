@@ -67,8 +67,6 @@ macro_rules! builtin_payload {
 
 pub use builtin_payload as payload;
 
-// Keep Fixed Host Tags Independent Of Authored Field-Name Tags
-
 /* === Type Aliases === */
 
 /* === Structs === */
@@ -76,8 +74,6 @@ pub use builtin_payload as payload;
 /* === Enums === */
 
 /* === Traits === */
-
-// Field Memory Excludes Inline Storage Already Charged By The Payload
 
 /* === Implementations === */
 

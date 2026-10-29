@@ -7,8 +7,6 @@
  * ***
  */
 
-// Compose Runtime Integration Story Domains
-
 // Each Domain Keeps Its Original Support Namespace, So Shared Support Files Load Once Per Domain.
 #![allow(clippy::duplicate_mod, reason = "domains retain their own support namespaces under one binary")]
 

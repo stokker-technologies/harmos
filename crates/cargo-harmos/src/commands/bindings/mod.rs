@@ -7,8 +7,6 @@
  * ***
  */
 
-// Compose Producer Binding Commands.
-
 /* === Modules === */
 
 mod python;

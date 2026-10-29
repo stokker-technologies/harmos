@@ -7,8 +7,6 @@
  * ***
  */
 
-// FollowProduction Declaration.
-
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -43,6 +41,7 @@ product!(FollowProduction {
 
 /* === Structs === */
 
+// Follow An Existing Staged Production Without Reinterpreting Its Identity.
 #[harmos::operation(
     harmos_path = crate,
     resources = [StorageManager<ErasedCatalog>, GrantAccess],
@@ -85,8 +84,6 @@ impl MemorySize for FollowProduction {
 #[cfg(feature = "runtime")]
 mod execution {
     use super::*;
-
-    // Follow An Existing Staged Production Without Reinterpreting Its Identity.
 
     // Standard Library Imports
 

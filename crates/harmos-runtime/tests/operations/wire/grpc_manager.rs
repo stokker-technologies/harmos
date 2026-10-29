@@ -269,7 +269,7 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
     ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Authorization>> {
         use harmos_domain::plugin::Grant;
         use harmos_runtime::operations::authorization::{Authorization, Required};
-        // Reentrant Read Proves The Callback Does Not HoldDeclaration The Original Registry Lock.
+        // Reentrant Read Proves The Callback Does Not Hold The Original Registry Lock.
         assert_eq!(self.operations.upgrade().unwrap().owner(provider.definition.id.as_str())?, *provider.owner);
         assert!(provider.generation.value() > 0);
         assert!(!provider.plugin, "host registration cannot impersonate a plugin provider");

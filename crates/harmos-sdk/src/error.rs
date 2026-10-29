@@ -7,8 +7,6 @@
  * ***
  */
 
-// Plugin Lifecycle Errors
-
 /* === Modules === */
 
 /* === Re-Exports === */
