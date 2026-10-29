@@ -66,7 +66,7 @@ jobs:
         summary-module: ""
     env:
       MISE_ENABLE_TOOLS: >-
-        go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,npm:@fission-ai/openspec,taplo,git-cliff
+        go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo,git-cliff
     needs:
     - impact
     if: >-
@@ -615,7 +615,7 @@ jobs:
         summary-module: ""
     env:
       MISE_ENABLE_TOOLS: >-
-        aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,npm:@fission-ai/openspec,python,rust,sccache,taplo,uv
+        aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       SCCACHE_CACHE_SIZE: 2G
@@ -847,7 +847,7 @@ jobs:
         summary-module: ""
     env:
       MISE_ENABLE_TOOLS: >-
-        aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,npm:@fission-ai/openspec,python,rust,sccache,taplo,uv
+        aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       SCCACHE_CACHE_SIZE: 2G
@@ -1007,7 +1007,7 @@ jobs:
         summary-module: ""
     env:
       MISE_ENABLE_TOOLS: >-
-        aqua:koalaman/shellcheck,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,npm:@fission-ai/openspec,python,rust,sccache,taplo,uv
+        aqua:koalaman/shellcheck,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       SCCACHE_CACHE_SIZE: 2G
