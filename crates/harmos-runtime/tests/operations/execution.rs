@@ -62,14 +62,6 @@ impl harmos_runtime::Lifecycle for InitializingBank {
         context.resource::<AtomicUsize>().expect("the test registers its initialization counter").fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Error> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Error> {
-        Ok(())
-    }
 }
 
 /* === Public Functions === */

@@ -182,18 +182,6 @@ impl harmos_runtime::Lifecycle for Provider {
         setup.resource::<Runs>(plugin.runs.clone());
         Ok(plugin)
     }
-
-    async fn initialize(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 #[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "gated", requires = ())]

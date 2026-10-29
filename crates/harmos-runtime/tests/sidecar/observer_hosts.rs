@@ -145,10 +145,6 @@ impl harmos_runtime::Lifecycle for Bridge {
         Ok(())
     }
 
-    async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         assert_eq!(self.resources.state.initialized.load(Ordering::SeqCst), self.resources.state.stopped.load(Ordering::SeqCst));
         self.resources.state.cleaned.store(true, Ordering::SeqCst);

@@ -292,10 +292,6 @@ impl harmos_runtime::Lifecycle for Endpoint {
         Ok(())
     }
 
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.counts.cleaned.fetch_add(1, Ordering::SeqCst);
         Ok(())

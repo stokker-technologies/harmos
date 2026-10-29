@@ -125,14 +125,6 @@ impl harmos_runtime::Lifecycle for Receiver {
         Ok(plugin)
     }
 
-    async fn initialize(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         assert_eq!(self.probe.active.load(Ordering::SeqCst), 0);
         self.probe.cleaned.store(true, Ordering::SeqCst);

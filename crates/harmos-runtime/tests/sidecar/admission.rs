@@ -88,14 +88,6 @@ impl harmos_runtime::Lifecycle for Program {
         });
         Ok(())
     }
-
-    async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Refusal> {
-        Ok(())
-    }
 }
 
 #[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Witnesses Registration And Initialization Separately.",

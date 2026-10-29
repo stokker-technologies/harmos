@@ -76,15 +76,6 @@ impl harmos_runtime::Lifecycle for Model {
     async fn prepare(_: (), _setup: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
         Ok(Self)
     }
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 impl harmos_runtime::Application for Model {

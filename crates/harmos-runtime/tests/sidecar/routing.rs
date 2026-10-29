@@ -300,18 +300,6 @@ impl harmos_runtime::Lifecycle for ProviderEndpoint {
         setup.resource::<Provider>(plugin.resources.clone());
         Ok(plugin)
     }
-
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Refusal> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Refusal> {
-        Ok(())
-    }
 }
 
 #[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "provider", requires = ())]
@@ -334,18 +322,6 @@ impl harmos_runtime::Lifecycle for CallerEndpoint {
         setup.resource::<Forwarder>(plugin.resources.clone());
         Ok(plugin)
     }
-
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Refusal> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Refusal> {
-        Ok(())
-    }
 }
 
 #[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "caller", requires = DependentRequirements)]
@@ -367,18 +343,6 @@ impl harmos_runtime::Lifecycle for UnauthorizedEndpoint {
         let plugin = Self { resources: Arc::new(Forwarder) };
         setup.resource::<Forwarder>(plugin.resources.clone());
         Ok(plugin)
-    }
-
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Refusal> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Refusal> {
-        Ok(())
     }
 }
 
@@ -439,10 +403,6 @@ impl harmos_runtime::Lifecycle for Publishing {
         }
         Ok(())
     }
-
-    async fn cleanup(&mut self) -> Result<(), Refusal> {
-        Ok(())
-    }
 }
 
 #[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Publishes Before Its Generation Commits.", id = "caller", streams(MeterPulse), requires(harmos_operations::streams::Publish))]
@@ -478,10 +438,6 @@ impl harmos_runtime::Lifecycle for Dependent {
 
     async fn stop(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         context.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 22 }).await.expect("provider remains available through cleanup");
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Refusal> {
         Ok(())
     }
 }
