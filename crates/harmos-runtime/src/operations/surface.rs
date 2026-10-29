@@ -254,20 +254,7 @@ impl<L: Lane> harmos_sdk::operations::Host for super::OperationManager<L> {
     where
         S::Row: harmos_domain::Message,
     {
-        use harmos_domain::Message;
-        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::Publish {
-            stream: S::ID.to_owned(),
-            schema: S::VERSION,
-            sequence: None,
-            published_unix_micros: None,
-            context: None,
-            payload: row.encode(),
-            following: Vec::new(),
-        });
-        async move {
-            published.await?;
-            Ok(())
-        }
+        harmos_operations::streams::publish_on::<_, S>(self, row)
     }
 
     type Error = Error;
@@ -305,20 +292,7 @@ impl harmos_sdk::operations::Host for Manager {
     where
         S::Row: harmos_domain::Message,
     {
-        use harmos_domain::Message;
-        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::Publish {
-            stream: S::ID.to_owned(),
-            schema: S::VERSION,
-            sequence: None,
-            published_unix_micros: None,
-            context: None,
-            payload: row.encode(),
-            following: Vec::new(),
-        });
-        async move {
-            published.await?;
-            Ok(())
-        }
+        harmos_operations::streams::publish_on::<_, S>(self, row)
     }
 
     type Error = Error;
@@ -356,20 +330,7 @@ impl harmos_sdk::operations::Host for Context<'_> {
     where
         S::Row: harmos_domain::Message,
     {
-        use harmos_domain::Message;
-        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::Publish {
-            stream: S::ID.to_owned(),
-            schema: S::VERSION,
-            sequence: None,
-            published_unix_micros: None,
-            context: None,
-            payload: row.encode(),
-            following: Vec::new(),
-        });
-        async move {
-            published.await?;
-            Ok(())
-        }
+        harmos_operations::streams::publish_on::<_, S>(self, row)
     }
 
     type Error = Error;
