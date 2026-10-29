@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/summary.py; sha256:993a09d99ce95b01351eb08856a1011d8507f1ffa3e24d8ea080cae03098dbf0
+# Rendered by stkr project update from templates/python/ci/summary.py; sha256:1da62841e944ff7ce876f6cc5d4bb04ccfa34cf83b51c6ad6261e4565b7addd4
 # ***
 #
 # Harmos
@@ -85,7 +85,7 @@ def phase(name: str):
     try:
         yield
     finally:
-        if destination := os.environ.get("STKR_CI_PHASE_FILE"):
+        if destination := os.environ.get("BUILD_PHASE_FILE"):
             try:
                 with Path(destination).open("a", encoding="utf-8") as stream:
                     stream.write(json.dumps({"name": name, "seconds": time.monotonic() - started}) + "\n")
@@ -117,5 +117,5 @@ def phases(path: Path) -> dict[str, float]:
 # === Entry Point === #
 
 if __name__ == "__main__":
-    caches = json.loads(os.environ.get("STKR_CACHE_RESTORES", "{}"))
+    caches = json.loads(os.environ.get("CACHE_RESTORES", "{}"))
     render("Cache Summary", None, None, caches={name: {"Restore": status} for name, status in caches.items()})

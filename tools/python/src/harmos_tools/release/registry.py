@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/registry.py; sha256:1796a09d1969d816890ffd6275aa608ae5771349798b1dfe012e32faa211c921
+# Rendered by stkr project update from templates/python/release/registry.py; sha256:589f4ba4fab011f1b1fab928a83e0c8eb87e6726e1bd8ba277cf8a031401c88b
 # ***
 #
 # Harmos
@@ -27,6 +27,8 @@ from typing import Any
 
 # Third Party Imports
 # Local Imports
+from ..process import spawn_flags
+
 # isort: split
 from ..build import storage
 from ..package import changelog
@@ -42,7 +44,6 @@ from . import policy
 CRATES_INDEX = "https://index.crates.io"
 RATE_INTERVAL = 600
 RATE_BUDGET = 5400
-REHEARSAL = "rehearsal-"
 REHEARSAL_CHECK = "Release / Rehearsal"
 RELEASE_BRANCH = "release/"
 GITLAB_REHEARSAL_JOB = "Release / Rehearsal"
@@ -129,13 +130,13 @@ def crate_published(name: str, version: str | None = None) -> bool:
     return bool(entries) if version is None else any(entry.get("vers") == version for entry in entries)
 
 
-def python(directory: Path, settings: dict, *, rehearse: bool) -> None:
+def python(directory: Path, settings: dict, *, dry_run: bool) -> None:
     """Upload The Release Python Packages: PyPI For GitHub Products, The Project Registry On GitLab."""
     profile = policy.profile()
     selected = sorted(str(path.relative_to(directory)) for path in directory.glob(f"target/package/{profile}/*/python/*") if path.is_file())
     if not selected:
         raise policy.ToolError(f"release:publish:python has no {profile} Python packages")
-    if rehearse:
+    if dry_run:
         # Build and check only: uv validates every file without credentials or upload.
         policy.execute(directory, ["uv", "publish", "--dry-run", "--trusted-publishing", "never", *selected])
         return
@@ -197,14 +198,9 @@ def request(
             headers = {"Authorization": "Bearer " + token}
             url = base.rstrip("/").removesuffix("/v4") + "/graphql"
         else:
-            # Tagging and everything a rehearsal creates and deletes again need the release token.
-            rehearsal = method == "POST" and endpoint == "releases" and json.loads(data or b"{}").get("tag_name", "").startswith(REHEARSAL)
-            cleanup = method == "DELETE" and (
-                endpoint.startswith(("releases/" + REHEARSAL, "repository/tags/" + REHEARSAL, "repository/branches/release%2Fv"))
-                or re.fullmatch(r"packages/[0-9]+", endpoint) is not None
-            )
+            cleanup = method == "DELETE" and endpoint.startswith("repository/branches/release%2Fv")
             merging = method == "PUT" and re.fullmatch(r"merge_requests/[0-9]+/merge", endpoint) is not None
-            tagging = method == "POST" and endpoint in {"repository/tags", "repository/commits"} or rehearsal or cleanup or merging
+            tagging = method == "POST" and endpoint in {"repository/tags", "repository/commits"} or cleanup or merging
             if (
                 method != "GET"
                 and not tagging
@@ -213,7 +209,7 @@ def request(
                 raise policy.ToolError("GitLab release write endpoint is not allowed")
             if tagging:
                 if not token:
-                    raise policy.ToolError("GitLab tagging and rehearsals require the RELEASE_TOKEN release identity")
+                    raise policy.ToolError("GitLab tagging and release reviews require the RELEASE_TOKEN release identity")
                 headers = {"Authorization": "Bearer " + token}
             elif method == "GET":
                 if not token:
@@ -370,7 +366,7 @@ def require_tag(directory: Path, tag: str) -> None:
         sha = os.environ.get("GITHUB_SHA")
     else:
         allowed = (
-            os.environ.get("STKR_PIPELINE_SOURCE", os.environ.get("CI_PIPELINE_SOURCE")) == "push"
+            os.environ.get("PIPELINE_SOURCE", os.environ.get("CI_PIPELINE_SOURCE")) == "push"
             and os.environ.get("CI_COMMIT_TAG") == tag
             and os.environ.get("CI_COMMIT_REF_PROTECTED") == "true"
         )
@@ -383,11 +379,7 @@ def require_tag(directory: Path, tag: str) -> None:
         raise policy.ToolError("release tag SHA differs from checkout")
 
 
-def rehearsal_name(sha: str) -> str:
-    return REHEARSAL + sha[:12]
-
-
-def draft(settings: dict, tag: str, sha: str, body: str, *, rehearsal: bool) -> dict:
+def draft(settings: dict, tag: str, sha: str, body: str) -> dict:
     """The GitHub Draft For This Tag: Reused While Still A Draft, Never Replacing A Published Release."""
     releases = [item for item in pages(settings, "releases") if item["tag_name"] == tag]
     if len(releases) > 1:
@@ -400,7 +392,7 @@ def draft(settings: dict, tag: str, sha: str, body: str, *, rehearsal: bool) -> 
         settings,
         "releases",
         "POST",
-        {"tag_name": tag, "target_commitish": sha, "name": tag, "body": body, "draft": True, "prerelease": rehearsal},
+        {"tag_name": tag, "target_commitish": sha, "name": tag, "body": body, "draft": True, "prerelease": False},
     )
     if not isinstance(created, dict) or not created.get("draft") or created.get("tag_name") != tag:
         raise policy.ToolError("release draft was not created as a draft")
@@ -436,26 +428,6 @@ def upload_generic(settings: dict, package: str, tag: str, item: dict, data: byt
     return {"endpoint": endpoint, "link": {"name": item["name"], "url": f"{base}/projects/{project}/{endpoint}"}}
 
 
-def discard(settings: dict, name: str) -> int:
-    """Delete Every Draft Carrying The Rehearsal Name And Prove No Tag Object Exists For It."""
-    if not name.startswith(REHEARSAL):
-        raise policy.ToolError("discard deletes rehearsal drafts only")
-    removed = 0
-    for item in pages(settings, "releases"):
-        if item.get("tag_name") != name:
-            continue
-        if not item.get("draft"):
-            raise policy.ToolError(f"a published release carries the rehearsal name {name}; inspect it manually")
-        # A deletion answers 204 without a body.
-        request(settings, f"releases/{item['id']}", "DELETE")
-        if document(settings, f"releases/{item['id']}") is not None:
-            raise policy.ToolError(f"rehearsal draft {item['id']} survived deletion")
-        removed += 1
-    if document(settings, "git/ref/tags/" + urllib.parse.quote(name, safe="")) is not None:
-        raise policy.ToolError(f"a tag object named {name} exists; a rehearsal never creates tags")
-    return removed
-
-
 def verify_download(settings: dict, endpoint: str, item: dict) -> bytes:
     data = request(settings, endpoint, binary=True)
     if data is None or len(data) != item["size"] or hashlib.sha256(data).hexdigest() != item["sha256"]:
@@ -480,7 +452,7 @@ def verify_signatures(directory: Path, settings: dict, root: Path, names: list[s
             os.environ["RELEASE_ASSET_ROOT"] = previous
 
 
-def release_review(settings: dict, sha: str) -> dict | None:
+def release_review(settings: dict, sha: str, branch: str) -> dict | None:
     """The Merged Release Review Whose Merge Commit Is This Revision, If Any."""
     if settings["provider"] == "github":
         matches = [
@@ -489,7 +461,7 @@ def release_review(settings: dict, sha: str) -> dict | None:
             if item.get("merged_at")
             and item.get("merge_commit_sha") == sha
             and item.get("base", {}).get("ref") == "dev"
-            and item.get("head", {}).get("ref", "").startswith(RELEASE_BRANCH)
+            and item.get("head", {}).get("ref") == branch
         ]
         if len(matches) > 1:
             raise policy.ToolError("the revision identifies several merged release pull requests")
@@ -500,7 +472,7 @@ def release_review(settings: dict, sha: str) -> dict | None:
         if item.get("state") == "merged"
         and sha in {item.get("merge_commit_sha"), item.get("squash_commit_sha"), item.get("sha")}
         and item.get("target_branch") == "dev"
-        and item.get("source_branch", "").startswith(RELEASE_BRANCH)
+        and item.get("source_branch") == branch
     ]
     if len(matches) > 1:
         raise policy.ToolError("the revision identifies several merged release merge requests")
@@ -545,28 +517,6 @@ def rehearsed(directory: Path, settings: dict, review: dict, sha: str) -> None:
     if not jobs or any(job.get("status") != "success" for job in jobs):
         raise policy.ToolError(f"release MR !{review['number']} pipeline {pipeline['id']} has no successful {GITLAB_REHEARSAL_JOB} job")
     _same_tree(directory, head, sha)
-
-
-def discard_gitlab(settings: dict, name: str, package: str) -> int:
-    """Delete A GitLab Rehearsal: Its Release, The Tag The Release Created, And Its Generic Package Version."""
-    if not name.startswith(REHEARSAL):
-        raise policy.ToolError("discard deletes rehearsals only")
-    quoted = urllib.parse.quote(name, safe="")
-    removed = 0
-    if document(settings, "releases/" + quoted) is not None:
-        request(settings, "releases/" + quoted, "DELETE")
-        removed += 1
-    if document(settings, "repository/tags/" + quoted) is not None:
-        request(settings, "repository/tags/" + quoted, "DELETE")
-        removed += 1
-    query = f"packages?package_type=generic&package_name={urllib.parse.quote(package, safe='')}&package_version={quoted}"
-    for item in pages(settings, query):
-        if item.get("name") == package and item.get("version") == name:
-            request(settings, f"packages/{item['id']}", "DELETE")
-            removed += 1
-    if document(settings, "releases/" + quoted) is not None or document(settings, "repository/tags/" + quoted) is not None:
-        raise policy.ToolError(f"rehearsal {name} survived deletion; inspect it manually")
-    return removed
 
 
 def oidc_claims(url: str, token: str) -> dict:
@@ -635,7 +585,7 @@ def _publish_crates(directory: Path, packages: dict, deadline: float, *, sleep, 
         while True:
             result = subprocess.run(
                 ["cargo", "publish", "--locked", "--allow-dirty", "--package", name],
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                creationflags=spawn_flags(),
                 cwd=directory,
                 capture_output=True,
                 text=True,
@@ -701,7 +651,7 @@ def _same_tree(directory: Path, head: str, merged: str) -> None:
         try:
             output = subprocess.run(
                 command,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                creationflags=spawn_flags(),
                 cwd=directory,
                 env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
                 capture_output=True,

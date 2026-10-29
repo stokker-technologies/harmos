@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:93e1eb56f909f83f1a9c1818b9959fb5223da5a96882213d3fdba0270f05edeb
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:3ab099d66e11994e1f4a060312280e9632d9fa3df47471413b60a4d430d70606
 # === Settings === #
 
 [settings]
@@ -53,16 +53,14 @@ run = "uv sync --locked --project tools/python --all-groups"
 [tasks.format]
 description = "Format Every Language"
 usage = 'flag "--check"'
-depends = [
-  "format:toml {% if usage.check %}--check{% endif %}",
-  "format:rust {% if usage.check %}--check{% endif %}",
-  "format:python {% if usage.check %}--check{% endif %}",
+run = [
+  { tasks = ["format:toml {% if usage.check %}--check{% endif %}", "format:rust {% if usage.check %}--check{% endif %}", "format:python {% if usage.check %}--check{% endif %}"] },
 ]
 
 [tasks."format:python"]
 description = "Format Python"
 usage = 'flag "--check"'
-run = 'uv run --locked --project tools/python ruff format --force-exclude --exclude "**/.stkr/templates/**" "tools/python"{% if usage.check %} --check{% endif %}'
+run = 'uv run --locked --project tools/python ruff format --force-exclude --exclude="**/.stkr/templates/**" "tools/python"{% if usage.check %} --check{% endif %}'
 
 [tasks."format:rust"]
 description = "Format Rust"
@@ -83,8 +81,8 @@ depends = ["lint:rust", "lint:python"]
 [tasks."lint:python"]
 description = "Lint Python"
 run = [
-  'uv run --locked --project tools/python ruff check --force-exclude --exclude "**/.stkr/templates/**" "tools/python"',
-  'uv run --locked --project tools/python ty check --exclude "**/.stkr/templates/**" "tools/python"',
+  'uv run --locked --project tools/python ruff check --force-exclude --exclude="**/.stkr/templates/**" "tools/python"',
+  'uv run --locked --project tools/python ty check --exclude="**/.stkr/templates/**" "tools/python"',
 ]
 
 [tasks."lint:rust"]
@@ -158,13 +156,13 @@ run = "cargo harmos sidecar dev"
 description = "Test Every Layer"
 env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
-depends = ["test:rust --profile {{usage.profile}}"]
+run = [{ tasks = ["test:rust --profile {{usage.profile}}"] }]
 
 [tasks."test:rust"]
 description = "Test Rust"
 env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
-depends = ["test:rust:unit --profile {{usage.profile}}"]
+run = [{ tasks = ["test:rust:unit --profile {{usage.profile}}"] }]
 
 [tasks."test:rust:coverage"]
 description = "Measure Coverage Over Instrumented Lanes"
@@ -187,7 +185,7 @@ run = "uv run --locked --project tools/python python -m project_tools.test.run t
 [tasks.package]
 description = "Package Every Language"
 usage = 'flag "--profile <profile>" default="dev"'
-depends = ["package:rust --profile {{usage.profile}}"]
+run = [{ tasks = ["package:rust --profile {{usage.profile}}"] }]
 
 [tasks."package:rust"]
 description = "Package Rust"

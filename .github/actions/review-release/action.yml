@@ -1,0 +1,52 @@
+# Rendered by stkr project update from templates/ci/review-release; sha256:88f80e208a4d84bb9f7658ff6b91166eb61a260032bfcb57ad560990929422cf
+name: Review Release
+description: Review Release
+inputs:
+  required:
+    description: Required
+    required: false
+    default: ""
+  release:
+    description: Release
+    required: false
+    default: ""
+  packages:
+    description: Packages
+    required: false
+    default: "[]"
+  builds:
+    description: Builds
+    required: false
+    default: "[]"
+outputs:
+  validated:
+    description: validated
+    value: ${{ steps.review.outputs.validated }}
+  review_run:
+    description: review_run
+    value: ${{ steps.review.outputs.review_run }}
+  review_profile:
+    description: review_profile
+    value: ${{ steps.review.outputs.review_profile }}
+  review_sha:
+    description: review_sha
+    value: ${{ steps.review.outputs.review_sha }}
+  review_version:
+    description: review_version
+    value: ${{ steps.review.outputs.review_version }}
+  stable_release:
+    description: stable_release
+    value: ${{ steps.review.outputs.stable_release }}
+runs:
+  using: composite
+  steps:
+  - shell: python
+    run: |-
+      import os, runpy
+      runpy.run_path(os.path.join(os.environ['GITHUB_ACTION_PATH'], 'run.py'), run_name='__main__')
+    id: review
+    env:
+      REVIEW_REQUIRED: ${{ inputs.required }}
+      REVIEW_RELEASE: ${{ inputs.release }}
+      REVIEW_PACKAGES: ${{ inputs.packages }}
+      REVIEW_BUILDS: ${{ inputs.builds }}

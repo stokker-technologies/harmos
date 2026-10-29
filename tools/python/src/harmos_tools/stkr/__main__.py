@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/stkr/__main__.py; sha256:2faea3e4139b88790995c06f9cb88968c17e8d2050e2ebc9e4e0194b3b213181
+# Rendered by stkr project update from templates/python/stkr/__main__.py; sha256:53831cfc6c831efc8ab26165f0ab977e1bee39c2306be05c15fc7eccb15b6a5f
 # ***
 #
 # Harmos
@@ -27,6 +27,7 @@ from pathlib import Path
 # Third Party Imports
 
 # Local Imports
+from ..process import spawn_flags
 
 # Type Checking Imports
 
@@ -70,7 +71,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
         stdin=sys.stdin,
         stdout=sys.stdout,
         stderr=sys.stderr,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
     )
 
 

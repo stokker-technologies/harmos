@@ -1,0 +1,31 @@
+# Rendered by stkr project update from templates/ci/save-caches; sha256:c5433b174a05481426ab7f5eadc7a23a4c2ec70dfc3db50c935424cb7f33efb2
+name: Save Caches
+description: Save Caches
+inputs:
+  key:
+    description: Key
+    required: false
+    default: ""
+  path:
+    description: Path
+    required: false
+    default: ""
+  summary-module:
+    description: Summary-module
+    required: false
+    default: ""
+outputs: {}
+runs:
+  using: composite
+  steps:
+  - if: inputs.path != ''
+    uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+    with:
+      key: ${{ inputs.key }}
+      path: ${{ inputs.path }}
+  - shell: python
+    run: |-
+      import os, runpy
+      runpy.run_path(os.path.join(os.environ['GITHUB_ACTION_PATH'], 'run.py'), run_name='__main__')
+    env:
+      SUMMARY_MODULE: ${{ inputs.summary-module }}

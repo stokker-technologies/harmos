@@ -92,21 +92,25 @@ The inspection path above is Cargo's default Linux target directory for the
 separate Schematic workspace. On other platforms or with a custom target
 directory, use the artifact path reported in `sidecar-build.json`.
 
-The [current release](https://github.com/stokker-technologies/harmos/releases/latest) provides raw
-`cargo-harmos-<version>-<Rust-target-triple>` executables (`.exe` on Windows).
-Download the matching asset, verify it against `SHA256SUMS`,
-rename it to `cargo-harmos` (`cargo-harmos.exe` on Windows), and place it on
-`PATH`. On Linux, make it executable. Run `cargo harmos --help` to check
-installation. Mise installation is verified against those same published bytes
-before release completion. Harmos library crates are published on crates.io;
-the Cargo tool ships as a release executable.
+### Tool Installation
 
-The release also declares `schematic-<version>-<platform>.zip` demo bundles for
+The [current release](https://github.com/stokker-technologies/harmos/releases/latest) provides
+`cargo-harmos-<version>-<Rust-target-triple>.tar.gz` on Unix and `.zip` on Windows.
+Each archive contains `cargo-harmos` (`cargo-harmos.exe` on Windows), LICENSE,
+README.md and generated CHANGELOG.md. Verify the archive against `SHA256SUMS`,
+extract it, and place the executable on `PATH`, preserving its executable bit on
+Unix. Run `cargo harmos --help` to check installation. Mise installation is
+verified against the archived binary before release completion. Harmos library
+crates are published on crates.io with generated CHANGELOG.md; the Cargo tool
+is distributed through release archives.
+
+CI packages retain `schematic-<version>-<platform>.zip` demo bundles for
 `linux-x86_64` and `windows-x86_64`. Extract the complete ZIP and run
 `schematic-cli` (`schematic-cli.exe` on Windows); `--guest` selects the bundled
 Wasm backend. Keep its `plugins/` directory beside the executable. Package
-checks run both backends from an isolated extraction. Release downloads include
-`SHA256SUMS` and `release.json`; test reports and fixtures remain CI artifacts.
+checks run both backends from an isolated extraction. Examples, test reports and
+fixtures remain source or CI artifacts. Release downloads include generated
+`CHANGELOG.md` and `SHA256SUMS`; the internal upload inventory is not a download.
 
 `package` consumes the existing build receipt and verifies every artifact and
 schema byte stamp before bundling. It never runs Cargo. Relocated archives use

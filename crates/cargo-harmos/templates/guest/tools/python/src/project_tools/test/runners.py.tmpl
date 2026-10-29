@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/runners.py; sha256:9f1de41626b13ea6096b68b6bbb801eeda373733cae8f5c92d7f5ecd11abe8ec
+# Rendered by stkr project update from templates/python/test/runners.py; sha256:e46e1fbe732bd661975a5ba2529330792dadb0b921efddbc5706fd2649eb6688
 # ***
 #
 # __PRODUCT_NAME__
@@ -18,6 +18,7 @@ import subprocess
 
 # Third Party Imports
 # Local Imports
+from ..process import spawn_flags
 from ..release import policy
 from ..release.run import release_tag
 
@@ -74,7 +75,7 @@ def _pages(endpoint: str) -> list[dict]:
     return json.loads(
         subprocess.check_output(
             ["gh", "api", "--hostname", "github.com", "--paginate", "--slurp", endpoint],
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            creationflags=spawn_flags(),
         )
     )
 

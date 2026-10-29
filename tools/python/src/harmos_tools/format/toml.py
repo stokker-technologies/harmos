@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/format/toml.py; sha256:21e071f065677d8cc45c4b83841bc5219adbd5ac5b896eeba5d2df9f18a22f4a
+# Rendered by stkr project update from templates/python/format/toml.py; sha256:bae9006226362e4b80d7a0e11ed4d5f5db13baeffb97e16bac8502da536e1684
 # ***
 #
 # Harmos
@@ -19,6 +19,7 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
+from ..process import spawn_flags
 from ..source import files
 
 # Type Checking Imports
@@ -47,7 +48,7 @@ def main() -> None:
     subprocess.run(
         [*command, "--", *paths],
         check=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
         stdin=sys.stdin,
         stdout=sys.stdout,
         stderr=sys.stderr,
