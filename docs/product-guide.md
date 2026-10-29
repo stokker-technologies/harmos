@@ -352,8 +352,7 @@ named immutable copy exposing length and SHA-256. `FrozenFile::read` and
 `capture_frozen_file` retain that owner through readers, retries, cancellation
 and blocking I/O. Local filesystem errors include the step, path and native cause;
 opened-handle paths are resolved only for diagnostics.
-The shared
-`ReadSession` supports this reader, `follow_file`, `follow_production` and
+The storage manager also exposes `follow_file`, `follow_production` and
 `file_progress` alongside retained metadata. `capture_opened_file(file, target,
 range, consistency)` synchronously returns an `OpenedCapture` that owns the
 original handle and `StorageFile`. Its asynchronous `finish` retains setup,
@@ -369,7 +368,7 @@ changes but does not freeze concurrent writers into an atomic snapshot.
 `FollowFile` starts at `Beginning`, `End` or `At(offset)` and streams data with
 explicit truncation/replacement events. Staged-production observation uses the
 distinct `FollowProduction` operation. Native file slices and shared read batches
-retain their memory charge until their final owner is released.
+retain their backing allocations until their final owner is released.
 
 `ListDirectory` and `WatchDirectory` share a `DirectorySelection` containing the
 root, recursion flag and ordered include/exclude rules. Patterns match
@@ -385,8 +384,8 @@ apply an ordered transform plan, and apply row `offset`/`limit` to the final
 result. Delivery emits a schema, bounded Arrow record batches, and a final
 operation completion. Response `batch_rows` and `batch_bytes` bound each delivery
 batch; they do not truncate the query result. In process, the manager's reader
-yields native `QueryArrow` items whose shared Arrow buffers keep their storage
-charge through clones and slices. The `storage_query` operation, declared in
+yields native `QueryArrow` items whose shared Arrow buffers remain valid
+through clones and slices. The `storage_query` operation, declared in
 `harmos-operations`, carries the same items as Arrow IPC (`QueryOutput`), and the
 write operations take `DataBatch` values whose data is Arrow IPC; serve them with
 `harmos::builtin::storage_registration`.
@@ -394,7 +393,7 @@ write operations take `DataBatch` values whose data is Arrow IPC; serve them wit
 `ArrowSchema::from_ipc` and `ArrowBatch::from_ipc` consume encoded `Vec<u8>`
 buffers. `QueryArrow::output` and `TryFrom<QueryOutput>` consume their inputs;
 uniquely owned encoded buffers move through these conversions. Retained aliases
-continue to share their existing allocations and memory charges.
+continue to share their existing allocations.
 
 ```rust
 let mut reader = storage.query(harmos::storage::Query { at, source, transforms, slice }).await?;
@@ -409,15 +408,13 @@ Direct storage APIs take resource-owned inputs: `Query`, `FileRead`,
 construct these inputs from their wire requests; the storage engine does not
 depend on operation declarations.
 
-Every read shares the one read budget. Work that cannot fit while other queries
-hold memory waits for released capacity; work that can never fit the budget, even
-after splitting source pages down to one row, fails with `ResourceExhausted`
-instead of waiting on itself. A reader that already holds memory, including
-batches its consumer retains, may wait while another owner can release capacity.
-Growth fails with `ResourceExhausted` only when the waiting holders form a certain
-cycle: none could grow even if every owner outside that set released its bytes. Dropping a reader or an in-progress `next` cancels
-it and releases its query slot; batches already returned stay charged until
-they are dropped.
+Storage bounds active and pending query counts, pending write bytes/batches and
+serialized response pages through consumer-supplied settings. Readers wait for
+an active query slot within the pending-query limit. Dropping a reader or an
+in-progress `next` cancels its work and releases its query slot; returned batches
+remain valid until their owners are dropped. Storage does not reserve a shared
+read-memory pool or admit consumer conversion scratch. Consumers bound their
+own retained results and scratch allocations.
 
 A stream selection's `after` resumes at a stored position, as `RecordRead::after`
 does: only rows stored after it are read, in position order.
@@ -509,9 +506,10 @@ their `after` cursor, then newly accepted entries. File following uses the
 source/start contract above; staged producers use `FollowProduction`.
 
 Mutation receipts make retried file, schema and delete mutations idempotent within
-the retry window. The receipt ledger takes a fixed share of the read budget;
-when it is full, completed receipts are evicted oldest first, and a retry of an
-evicted receipt runs as a new mutation.
+the retry window. The receipt ledger has a bounded entry count; reclaimable
+completed receipts are evicted oldest first. Pending mutations and admitted
+callers retain their completion across replay-window expiry; fresh expired
+requests remain refused. A valid retry of an evicted identity runs as a new mutation.
 
 Typed stream, record and object writers acknowledge acceptance and durability
 separately for each atomic logical batch. A disconnected invocation may have
@@ -534,7 +532,7 @@ recovered sessions have the same bounded window. Token-only mutation
 producers retain bounded inactivity expiry because no native handle owns their
 lifetime. An unadopted native resume remains disconnected. Resume fences the old
 producer and clears the disconnected deadline. Finish, abort and storage shutdown
-still retire production; existing file-count and memory budgets remain enforced.
+still retire production; existing file-count and pending-write limits remain enforced.
 A viewer owns its subscription, while the original service owns production.
 
 One file owns each operation. Its definition division contains messages, the operation struct, policy, contract implementations and

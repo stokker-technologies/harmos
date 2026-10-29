@@ -15,7 +15,7 @@ Storage and carrier boundaries repeatedly copy owned payloads, encode disposable
 - Remove redundant byte accounting, payload copies and transport encoding buffers without changing wire compatibility.
 - Add consumer-configured bounded independent file I/O while preserving file order and cursor/durability barriers.
 
-- **BREAKING**: unify stored/local file reads, hashes, follows and captures; add shared directory listing/watching with ordered selection rules and bounded lifetime accounting. Expose the same operations to gRPC, sidecars and guests.
+- **BREAKING**: unify stored/local file reads, hashes, follows and captures; add shared directory listing/watching with ordered selection rules and ordinary shared data ownership. Expose the same operations to gRPC, sidecars and guests.
 - Compose filesystem and capture/replay/state settings, migrate all callers, and add applicable filesystem benchmarks to the one final measurement.
 
 ## Capabilities

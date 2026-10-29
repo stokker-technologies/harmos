@@ -22,31 +22,32 @@ Harmos SHALL expose a filesystem JSON storage backend using explicit settings, b
 
 ### Requirement: Owned Bounded Payload Handoffs
 
-Storage and carrier admission SHALL consume owned payloads without deep copying merely to cross a task or layer boundary. Inspection MAY borrow and retained retries/readers MAY share immutable storage. Memory charges SHALL survive the last retained owner.
+Storage and carrier admission SHALL consume owned payloads without deep copying merely to cross a task or layer boundary. Inspection MAY borrow and retained retries/readers MAY share immutable storage. Storage allocations SHALL remain valid through their last retained owner; storage SHALL NOT recreate the superseded allocation-claim mechanism.
 
 #### Scenario: Retained Attempt
 
 - **WHEN** an admitted write is attempted again or its caller is cancelled
-- **THEN** the pending owner retains the same immutable payload and required byte charge until terminal settlement
+- **THEN** the pending owner retains the same immutable payload until terminal settlement
 
 #### Scenario: Shared Read View
 
 - **WHEN** a read result or Arrow slice shares a backing allocation
-- **THEN** allocation ownership and its memory charge remain valid until the final view is released
+- **THEN** allocation ownership remains valid until the final view is released
 
-### Requirement: Charged Owned Projection
+### Requirement: Owned Projection
 
-ReadBatch SHALL support consuming projection of one or two unique owners while transferring all existing memory claims. It SHALL admit caller-bounded additional peak allocation before invoking conversion, account private owner and guard-vector growth, refuse aliases and avoid waiting while retaining the sources. It SHALL NOT automatically shrink independently shared claims or permit payload escape through callback errors or captures.
+ReadBatch SHALL support consuming projection of one or two unique owners and refuse retained aliases before invoking conversion. Consumers SHALL own their output and scratch allocation budgets.
 
-#### Scenario: Saturated Projection
+#### Scenario: Aliased Projection
 
-- **WHEN** a unique batch is projected while its read budget is saturated
-- **THEN** an allocation-free move with no owner growth SHALL proceed, while a conversion requiring unavailable additional bytes SHALL fail before invoking its callback
+- **WHEN** a typed or file batch has a retained alias and a caller requests consuming projection
+- **THEN** the move SHALL fail before invoking its conversion callback and preserve retained data
 
 #### Scenario: Projection Lifetime
 
 - **WHEN** a successful projection moves payload allocations into a new retained result
-- **THEN** existing and additional charges SHALL remain held through its last alias, and nested retained pages SHALL keep their own guards
+- **THEN** its ordinary shared owner SHALL keep those allocations valid through its last alias
+
 ### Requirement: Ordered Independent File Progress
 
 Storage SHALL support explicitly bounded independent file I/O while preserving per-file ordering, publication cursors and durability barriers.
@@ -83,16 +84,16 @@ Benchmarks SHALL separately identify storage, real sidecar, real guest and exter
 - **AND** it compares unary batches with streams using identical batch sizes and verifies ordering, counts and contents outside timing
 - **AND** the three datasets run concurrently on a reused host/plugin with isolated transfer IDs, using benchmark-feature endpoints in the shipped Schematic examples
 
-### Requirement: Composed Read Admission
+### Requirement: Bounded Query Admission
 
-Composed typed/Arrow queries, object/file reads, mutable metadata claims and retained collections SHALL share an explicit caller admission group without changing cursor or version semantics. Metadata growth SHALL be nonblocking and preserve existing ownership on refusal; Arrow/file DTO projections SHALL retain source claims, and IPC handoff SHALL preserve them until destination admission.
+Typed/Arrow queries, object/file reads and retained collections SHALL compose through StorageManager with ordinary shared ownership, explicit cursors and unchanged version semantics. Query concurrency and serialized queue/page limits SHALL remain consumer-configured; consumers SHALL bound their retained results and conversion scratch.
 
 #### Scenario: Retained Results Before Another Read
 
-- **WHEN** a session retains prior results and requests another page or point read
-- **THEN** admission includes all retained claims in that group across retries and refuses impossible growth instead of waiting for those same results to be dropped
+- **WHEN** a consumer retains prior results and requests another page or point read
+- **THEN** prior data SHALL remain valid independently of the next read without a shared read-pool reservation
 
 #### Scenario: Active Reader And Collection Lifetimes
 
-- **WHEN** a grouped reader cannot acquire an active query slot
-- **THEN** it fails immediately, and retained collection slots and child pages remain charged until their respective last owners drop
+- **WHEN** a reader waits for an active query slot
+- **THEN** the configured pending-query limit SHALL apply, cancellation SHALL release its slot, and previously returned pages SHALL remain valid through their last owners
