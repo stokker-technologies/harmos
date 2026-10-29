@@ -7,7 +7,7 @@
 [project]
 name = "Harmos"
 visibility = "public"
-platforms = ["linux", "windows"]
+platforms = ["unix", "windows"]
 
 # === === Languages === === #
 
@@ -29,7 +29,7 @@ exclude = ["main", "master", "dev", "develop", "release/**"]
 # === === CI === === #
 
 [ci.runners]
-linux = "ubuntu-24.04"
+unix = "ubuntu-24.04"
 windows = "windows-2022"
 
 # --- Impact --- #
