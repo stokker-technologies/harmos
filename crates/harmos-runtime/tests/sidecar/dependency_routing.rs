@@ -368,10 +368,15 @@ async fn cancellation_settles_handlers() {
     (provider.dropped.notified()).await;
     assert_eq!(runtime.operations.call::<Forward>(Forward { value: 9 }).await.unwrap().value, 9);
 
-    let timed = runtime.operations.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 0 }).await;
-    assert!(matches!(timed, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
+    let timed = runtime.operations.submit::<Amplifying>(Amplifying(AmplifyDeclaration { value: 0 })).await.unwrap();
+    provider.started.notified().await;
+    let timed = timed.await;
+    assert!(
+        matches!(timed, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))),
+        "expected timeout: {timed:?}"
+    );
     (provider.dropped.notified()).await;
-    assert_eq!(runtime.operations.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 10 }).await.unwrap().value, 10);
+    assert_eq!(runtime.operations.call::<Amplifying>(Amplifying(AmplifyDeclaration { value: 10 })).await.unwrap().value, 10);
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.shutdown().await.unwrap();
