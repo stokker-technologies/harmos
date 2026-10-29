@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:db30df84ba7095b03cce6804a7bcf13595818ce9fb020c32ead1b92099161477
+# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:dfa6db480fc4af13c366db1240d30a6b709125cc293ddcfa744e0ac1caeebba1
 name: CI / Nightly
 "on":
   schedule:
@@ -317,7 +317,7 @@ jobs:
       with:
         summary-module: harmos_tools.ci.summary
     env:
-      MISE_ENABLE_TOOLS: gh,git-cliff,glab,go,node,python,rust,sccache,uv
+      MISE_ENABLE_TOOLS: git-cliff,go,node,python,rust,sccache,uv
       MISE_TASK_SKIP: package:rust
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache

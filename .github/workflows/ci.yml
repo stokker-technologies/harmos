@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:0a515cc35576c42870002e0a8860e64b592bd2c823f5420926c44d941522b51d
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:7eb3a184a8809fefd26768b165b5e34670cc8176c4892cb94a9916221d5ba480
 name: CI
 "on":
   push:
@@ -270,7 +270,7 @@ jobs:
       with:
         summary-module: ""
     env:
-      MISE_ENABLE_TOOLS: gh,git-cliff,glab,go,node,python,rust,sccache,uv
+      MISE_ENABLE_TOOLS: git-cliff,go,node,python,rust,sccache,uv
       MISE_TASK_SKIP: package:rust
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
@@ -380,7 +380,7 @@ jobs:
       with:
         summary-module: ""
     env:
-      MISE_ENABLE_TOOLS: go,node,python,rust,uv,gh,git-cliff,glab
+      MISE_ENABLE_TOOLS: go,node,python,rust,uv,git-cliff
       MISE_TASK_SKIP: package:rust
     if: >-
       (always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,

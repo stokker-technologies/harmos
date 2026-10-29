@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/release.yml; sha256:fa66d3f527ecd305994f6977455df21ab1cabdb5a20b56f4b01518f59e95291c
+# Rendered by stkr project update from templates/ci/.github/workflows/release.yml; sha256:f2bca9650c42b35eb7cfc3c72f00d290fbacd5ca1dde076ce7d8baa832975954
 name: Release
 "on":
   workflow_dispatch: {}
@@ -89,7 +89,7 @@ jobs:
       with:
         summary-module: ""
     env:
-      MISE_ENABLE_TOOLS: go,node,python,rust,uv,gh,git-cliff,glab
+      MISE_ENABLE_TOOLS: go,node,python,rust,uv,git-cliff
       RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
       GH_TOKEN: ${{ github.token }}
       CRATES_BOOTSTRAP_AVAILABLE: ${{ secrets.CARGO_REGISTRY_TOKEN != '' }}
@@ -167,7 +167,7 @@ jobs:
       with:
         summary-module: ""
     env:
-      MISE_ENABLE_TOOLS: go,node,python,rust,uv,gh,git-cliff,glab
+      MISE_ENABLE_TOOLS: go,node,python,rust,uv,git-cliff
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       PROFILE: ${{ needs.validated.outputs.review_profile }}
       RELEASE_BUILD_RUN_ID: ${{ needs.validated.outputs.review_run }}
@@ -296,7 +296,7 @@ jobs:
       with:
         summary-module: ""
     env:
-      MISE_ENABLE_TOOLS: gh,git-cliff,glab,go,node,python,rust,sccache,uv
+      MISE_ENABLE_TOOLS: git-cliff,go,node,python,rust,sccache,uv
       MISE_TASK_SKIP: package:rust
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
@@ -570,7 +570,7 @@ jobs:
       with:
         summary-module: ""
     env:
-      MISE_ENABLE_TOOLS: go,node,python,rust,uv,gh,git-cliff,glab
+      MISE_ENABLE_TOOLS: go,node,python,rust,uv,git-cliff
       MISE_TASK_SKIP: package:rust
       PROFILE: ${{ needs.validated.outputs.review_profile }}
       RELEASE_BUILD_RUN_ID: ${{ needs.validated.outputs.review_run }}
