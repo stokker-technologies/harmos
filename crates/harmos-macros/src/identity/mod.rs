@@ -39,7 +39,7 @@ use crate::path::{self, HarmosPath};
 struct Declaration {
     id: Option<LitStr>,
     version: LitInt,
-    undo: Option<Undo>,
+    undo: Option<Path>,
     harmos: HarmosPath,
 }
 
@@ -49,11 +49,6 @@ struct Declaration {
 pub(crate) enum Sort {
     Transaction,
     Record,
-}
-
-enum Undo {
-    Inverse(Path),
-    Irreversible(Path),
 }
 
 /* === Traits === */
@@ -76,15 +71,6 @@ impl Sort {
     }
 }
 
-impl Undo {
-    fn span(&self) -> proc_macro2::Span {
-        match self {
-            Self::Inverse(inverse) => inverse.span(),
-            Self::Irreversible(marker) => marker.span(),
-        }
-    }
-}
-
 /* === Public Functions === */
 
 pub(crate) fn stamp(attribute: TokenStream, item: TokenStream, sort: Sort) -> TokenStream {
@@ -100,11 +86,10 @@ pub(crate) fn stamp(attribute: TokenStream, item: TokenStream, sort: Sort) -> To
 
 /* === Private Functions === */
 
-fn undoing(name: &Ident, undo: &Undo, harmos: &HarmosPath) -> TokenStream {
-    match undo {
-        Undo::Inverse(inverse) => quote! {
+fn undoing(name: &Ident, inverse: &Path, harmos: &HarmosPath) -> TokenStream {
+    quote! {
             #[automatically_derived]
-            impl #harmos::state::Undoable for #name {
+            impl #harmos::__private::Paired for #name {
                 type Inverse = #inverse;
             }
 
@@ -116,31 +101,21 @@ fn undoing(name: &Ident, undo: &Undo, harmos: &HarmosPath) -> TokenStream {
                 fn mutual<A, B: #harmos::__private::Mutual<A>>() {}
 
                 fn pairs() {
-                    mutual::<#name, <#inverse as #harmos::state::Undoable>::Inverse>();
+                    mutual::<#name, <#inverse as #harmos::__private::Paired>::Inverse>();
                 }
             };
 
             impl #name {
 
-                pub fn __harmos_inverse<S, C>(&self, before: &S) -> ::core::option::Option<C>
+                // The Described Body Names The Declared Inverse In Its Header,
+                // So A Body That Returns Another Change Does Not Compile.
+                pub fn __harmos_check_inverse<S, C>(&self)
                 where
-                    Self: #harmos::state::Invert<S>,
+                    Self: #harmos::state::Invertible<S, Inverse = #inverse>,
                     #inverse: #harmos::__private::Catalogued<C>,
                 {
-                    ::core::option::Option::Some(#harmos::__private::Catalogued::catalogued(
-                        #harmos::state::Invert::invert(self, before),
-                    ))
                 }
             }
-        },
-        Undo::Irreversible(_) => quote! {
-            impl #name {
-
-                pub fn __harmos_inverse<S, C>(&self, _before: &S) -> ::core::option::Option<C> {
-                    ::core::option::Option::None
-                }
-            }
-        },
     }
 }
 
@@ -152,24 +127,24 @@ fn expand(attribute: TokenStream, item: &TokenStream, sort: Sort) -> Result<Toke
 
     // `inverse = Self` is the change that is its own pair, and every check
     // below reads one type name, so the shorthand is resolved once here.
-    if let Some(Undo::Inverse(inverse)) = &mut declared.undo
+    if let Some(inverse) = &mut declared.undo
         && inverse.is_ident("Self")
     {
         *inverse = Path::from(name.clone());
-    }
-    if sort == Sort::Transaction && declared.undo.is_none() {
-        return Err(Error::new(
-            declared.version.span(),
-            "a transaction declares what undoes it: `inverse = …` names the change that takes \
-             it back, `inverse = Self` says it is its own, and `irreversible` says it cannot be \
-             taken back",
-        ));
     }
     let id = declared.id.as_ref().ok_or_else(|| Error::new(parsed.span(), "a definition requires id"))?;
     let harmos = &declared.harmos;
     let kind = sort.kind(harmos);
     let restore = restore();
-    let undoing = declared.undo.as_ref().map(|undo| undoing(name, undo, harmos)).unwrap_or_default();
+    let undoing = match (&declared.undo, sort) {
+        (Some(inverse), _) => undoing(name, inverse, harmos),
+        (None, Sort::Transaction) => quote! {
+            impl #name {
+                pub fn __harmos_check_inverse<S, C>(&self) {}
+            }
+        },
+        (None, Sort::Record) => TokenStream::new(),
+    };
 
     let record_marker = match sort {
         Sort::Record => quote! { impl #harmos::state::Record for #name {} },
@@ -226,7 +201,7 @@ fn declaration(attribute: TokenStream, sort: Sort) -> Result<Declaration, Error>
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute)?;
     let mut id = None;
     let version = LitInt::new("1", span);
-    let mut undo: Option<Undo> = None;
+    let mut undo: Option<Path> = None;
     let mut harmos_path: Option<Path> = None;
 
     for argument in &arguments {
@@ -239,12 +214,7 @@ fn declaration(attribute: TokenStream, sort: Sort) -> Result<Declaration, Error>
                 id = Some(syn::parse2::<LitStr>(named.value.to_token_stream())?);
             }
             Meta::NameValue(named) if named.path.is_ident("inverse") => {
-                answered(&undo, named.span())?;
-                undo = Some(Undo::Inverse(syn::parse2::<Path>(named.value.to_token_stream())?));
-            }
-            Meta::Path(marker) if marker.is_ident("irreversible") => {
-                answered(&undo, marker.span())?;
-                undo = Some(Undo::Irreversible(marker.clone()));
+                set_once(&mut undo, syn::parse2::<Path>(named.value.to_token_stream())?, named.span(), "inverse")?;
             }
             other => {
                 return Err(Error::new(
@@ -254,9 +224,7 @@ fn declaration(attribute: TokenStream, sort: Sort) -> Result<Declaration, Error>
                          declare `harmos_path = …`",
                         sort.noun(),
                         match sort {
-                            Sort::Transaction =>
-                                ", and answers the undo question with \
-                                                  `inverse = …` or `irreversible`",
+                            Sort::Transaction => ", and may declare `inverse = …`",
                             Sort::Record => "",
                         }
                     ),
@@ -289,17 +257,6 @@ fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &
     }
 
     Ok(())
-}
-
-fn answered(undo: &Option<Undo>, span: proc_macro2::Span) -> Result<(), Error> {
-    match undo {
-        Some(_) => Err(Error::new(
-            span,
-            "a change answers the undo question once: either it names the inverse that takes it \
-             back or it is `irreversible`",
-        )),
-        None => Ok(()),
-    }
 }
 
 fn named(item: &Item) -> Result<&Ident, Error> {

@@ -77,6 +77,24 @@ assembles managed state, transaction execution, storage and replay using those
 definitions. Harmos's state manager owns live state and managed history; the
 configured storage backend supplies journal and snapshot persistence.
 
+A transaction is reversible exactly when it implements `Invertible<S>`. Without
+that implementation the catalog treats it as an undo barrier. The optional
+`inverse = Self` or `inverse = Other` attribute checks the declared pair;
+`Invertible<S>::Inverse` must match that declaration:
+
+```rust
+#[harmos::transaction(id = "ledger.deposit", inverse = Withdraw)]
+pub struct Deposit { pub amount: i64 }
+
+impl Invertible<Ledger> for Deposit {
+    type Inverse = Withdraw;
+
+    fn inverse(&self, _before: &Ledger) -> Self::Inverse {
+        Withdraw { amount: self.amount }
+    }
+}
+```
+
 Keep evidence cursors distinct from state journal positions. Do not invent
 a parallel persistence or undo mechanism simply to expose another interface.
 Choose durability according to the backend's documented contract and verify

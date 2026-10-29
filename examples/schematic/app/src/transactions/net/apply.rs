@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::error::SchematicError;
 use crate::state::{NetId, Point, Schematic};
-use harmos::{state::Invert, state::Transaction};
+use harmos::{state::Invertible, state::Transaction};
 
 /* === Constants === */
 
@@ -60,8 +60,10 @@ impl Transaction<Schematic> for ApplyRoute {
     }
 }
 
-impl Invert<Schematic> for ApplyRoute {
-    fn invert(&self, before: &Schematic) -> Self {
+impl Invertible<Schematic> for ApplyRoute {
+    type Inverse = Self;
+
+    fn inverse(&self, before: &Schematic) -> Self::Inverse {
         Self {
             net: self.net,
             points: before.net(self.net).route.clone(),

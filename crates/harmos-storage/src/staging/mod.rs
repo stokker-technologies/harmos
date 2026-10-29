@@ -52,7 +52,7 @@ pub struct StorageFile {
     id: u64,
     progress: Arc<Mutex<Progress>>,
     session: Option<FileSession>,
-    append: Option<(u64, crate::FileChunk, u64)>,
+    append: Option<(u64, crate::FileChunk, Option<u64>)>,
 }
 
 struct CancelProduction {

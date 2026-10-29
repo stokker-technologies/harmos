@@ -32,7 +32,7 @@ use harmos::state::Transaction;
 
 /* === Structs === */
 
-#[harmos::transaction(id = "net.connect", irreversible)]
+#[harmos::transaction(id = "net.connect")]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ConnectPins {
     pub net: NetId,

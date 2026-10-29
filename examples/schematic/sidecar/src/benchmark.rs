@@ -7,6 +7,7 @@
  * ***
  */
 
+// Select The Sidecar Catalog And Its Resources.
 
 /* === Modules === */
 
@@ -17,22 +18,18 @@
 // Standard Library Imports
 
 // Third Party Imports
-use serde::{Deserialize, Serialize};
+
 // Local Imports
 
 /* === Constants === */
+
+pub(super) const CATALOG: harmos::Catalog = schematic_operations::transfer::Native::CATALOG;
 
 /* === Macros === */
 
 /* === Type Aliases === */
 
 /* === Structs === */
-
-#[harmos::transaction(id = "sheet.rename", )]
-#[derive(Deserialize, Serialize)]
-struct Rename {
-    to: String,
-}
 
 /* === Enums === */
 
@@ -42,8 +39,11 @@ struct Rename {
 
 /* === Public Functions === */
 
-/* === Private Functions === */
+pub(super) fn prepare(setup: &mut harmos::Setup<super::Plugin>) {
+    let transfer = std::sync::Arc::new(schematic_operations::transfer::Store::default());
+    setup.resource::<schematic_operations::transfer::Store>(transfer);
+}
 
-fn main() {}
+/* === Private Functions === */
 
 /* === Tests === */

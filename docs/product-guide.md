@@ -352,7 +352,11 @@ range, consistency)` synchronously returns an `OpenedCapture` that owns the
 original handle and `StorageFile`. Its asynchronous `finish` retains setup,
 copy progress and exact pending bytes across errors and caller cancellation.
 Existing producer prefixes are compared before a suffix is appended;
-`acknowledged()` reports completed copy progress. Stable capture detects source
+`acknowledged()` reports completed copy progress. `StorageFile::write_retained_at`
+refreshes pending-write accounting and awaits capacity using the same admission
+path as `write_all`. It retains the original chunk across failures and caller
+cancellation; `retry_append` resends its original offset and bytes without
+cancelling production. Stable capture detects source
 changes but does not freeze concurrent writers into an atomic snapshot.
 
 `FollowFile` starts at `Beginning`, `End` or `At(offset)` and streams data with
@@ -929,3 +933,39 @@ authorization, generation fencing and resource lifecycle ownership.
 Protocol, artifact, envelope, journal and schema formats are v1. Only current
 shapes are supported; there are no old-peer checks, historical shape converters,
 legacy decoders or journal upgrades.
+
+## Transaction Reversibility
+
+Implement `harmos::state::Invertible<S>` with `type Inverse` and
+`fn inverse(&self, before: &S) -> Self::Inverse` for a reversible transaction.
+The catalog infers an undo barrier when that implementation is absent.
+`#[harmos::transaction(id = "ledger.deposit", inverse = Withdraw)]` optionally
+checks that the inverse declaration matches the implementation and its mutual pair.
+There is no explicit irreversibility marker.
+
+## Plugin Source Layout
+
+Keep one `-sidecar` or `-guest` crate under `crates/`. Several plugins belong
+under `plugins/sidecars/<name>` and `plugins/guests/<name>`. Carrier crates use
+`publish = false`.
+
+Each operation has one portable definition in `operations/<op>/mod.rs`, with
+parallel `windows.rs` and `unix.rs` implementations declared there:
+
+```rust
+#[cfg(all(feature = "runtime", target_os = "windows"))]
+mod windows;
+#[cfg(all(feature = "runtime", unix))]
+mod unix;
+```
+
+Keep the request, response, identity and policy in that one definition. Gate
+module and re-export declarations only, never items or catalog variants. A
+plugin has one catalog, with no platform catalogs or backend traits. Its
+`Lifecycle::prepare(config, setup)` acquires resources through
+`setup.resource::<T>(value)`; `Plugin::CATALOGS` names the catalog's `CATALOG`.
+
+Rust's orphan rule prevents a runtime crate from implementing Harmos's
+`Operation` for a type declared in a separate domain crate. Keep the operation
+types and their implementations in an operations crate with a `runtime`
+feature; shared models remain in domain.

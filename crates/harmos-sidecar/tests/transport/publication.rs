@@ -14,20 +14,26 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::collections::BTreeSet;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 // Third Party Imports
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 // Local Imports
 use super::protocol::{Done, Sample, StartOperation, TransportPlugin};
-use harmos_operations::lifecycle::Initialize;
+use harmos_operations::lifecycle::{Initialize, Shutdown};
 use harmos_sdk::operations::{CHILD_METHOD, WireChildCall};
 use harmos_sidecar::operations::{OperationDeclaration, WIRE_METHOD, WireAnswer, WireCommand};
-use harmos_sidecar::transport::{Connection, Receiver, Sender};
+use harmos_sidecar::transport::{self, Connection, Packet, Receiver, Role, Sender};
 use harmos_sidecar::{Attach, Frame, Message, PluginNative, StreamSpec};
 
 /* === Constants === */
 
 const GENERATION: [u8; 32] = [2; 32];
+const CONCURRENT_CALLS: usize = 8;
+const CONTROL_BUFFER: usize = 1024;
 
 /* === Macros === */
 
@@ -51,6 +57,30 @@ struct Call {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+// Release The Whole Cancellation Burst Together, Independently Of Task Scheduling.
+async fn batch_cancellations(
+    mut input: impl AsyncRead + Unpin, mut output: impl AsyncWrite + Unpin, batching: Arc<AtomicBool>,
+) -> std::io::Result<()> {
+    let mut packets = Vec::new();
+    let mut count = 0;
+    while let Some(packet) = transport::read(&mut input, Role::Control).await? {
+        if batching.load(Ordering::Acquire) && matches!(packet, Packet::Cancellation { .. }) {
+            packets.extend(packet.encode()?);
+            count += 1;
+            if count < CONCURRENT_CALLS {
+                continue;
+            }
+            output.write_all(&packets).await?;
+            packets.clear();
+            batching.store(false, Ordering::Release);
+            continue;
+        }
+        transport::write(&mut output, &packet).await?;
+    }
+    assert!(packets.is_empty());
+    Ok(())
+}
 
 async fn receive(incoming: &mut Receiver) -> Frame {
     let received = incoming.receive().await.unwrap().unwrap();
@@ -235,3 +265,144 @@ async fn batches_split_contiguously() {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn cancellation_burst_settles() {
+    let native = PluginNative::<TransportPlugin>::new(NonZeroUsize::new(CONCURRENT_CALLS).unwrap()).unwrap();
+    let (write, read, control, _, mut ending) = native.attach().await.unwrap().into_parts();
+    let (control_read, control_write) = control.unwrap();
+    let (staging, staged) = tokio::io::duplex(CONTROL_BUFFER);
+    let batching = Arc::new(AtomicBool::new(false));
+    let forwarding = tokio::spawn(batch_cancellations(control_read, staging, batching.clone()));
+    let Connection {
+        sender: outgoing,
+        receiver: mut incoming,
+        mut driver,
+    } = Connection::new((read, write), (Box::new(staged), control_write));
+    let driving = tokio::spawn(async move { driver.run().await });
+    outgoing
+        .send(Frame::Call {
+            id: 1,
+            method: Frame::REGISTER.to_owned(),
+            params: "throughput_fixture".to_owned().encode().into(),
+        })
+        .await
+        .unwrap();
+    assert!(matches!(receive(&mut incoming).await, Frame::Answer { id: 1, .. }));
+    let initialization = Initialize {
+        config_json: b"null".to_vec(),
+        generation_context: GENERATION.to_vec(),
+        assignments: harmos_sdk::operations::AssignedOperation::encode(&[harmos_sdk::operations::AssignedOperation {
+            operation: "host.host.publish".into(),
+            fingerprint: <harmos_operations::streams::Publish as OperationDeclaration>::definition().fingerprint.0,
+            generation: 1,
+        }])
+        .unwrap(),
+    };
+    invoke::<Initialize>(&outgoing, &mut incoming, 2, initialization.encode()).await;
+
+    // Prepare Every Producer Before Any Can Issue Its Publication Call.
+    let invocations = 3..3 + CONCURRENT_CALLS as u64;
+    let start = StartOperation {
+        samples: 1,
+        payload_bytes: 1,
+        pace_bytes_per_second: 0,
+        batch: 1,
+    };
+    for id in invocations.clone() {
+        for command in [
+            WireCommand::Prepare {
+                invocation: id,
+                operation: format!("throughput_fixture.{}", StartOperation::ID),
+                fingerprint: <StartOperation as OperationDeclaration>::definition().fingerprint.0,
+                generation: 1,
+                payload: start.encode(),
+            },
+            WireCommand::Initialize { invocation: id, context: [1; 32] },
+        ] {
+            phase(&outgoing, &mut incoming, id, command).await;
+        }
+    }
+    for id in invocations.clone() {
+        let command = WireCommand::Attempt {
+            invocation: id,
+            context: [1; 32],
+            values: Vec::new(),
+        };
+        outgoing
+            .send(Frame::Call {
+                id,
+                method: WIRE_METHOD.into(),
+                params: command.encode().unwrap().into(),
+            })
+            .await
+            .unwrap();
+    }
+    let mut pending = BTreeSet::new();
+    let mut answered = BTreeSet::new();
+    while pending.len() < CONCURRENT_CALLS || answered.len() < CONCURRENT_CALLS {
+        match receive(&mut incoming).await {
+            Frame::Call { id, method, .. } => {
+                assert_eq!(method, CHILD_METHOD);
+                assert!(pending.insert(id));
+            }
+            Frame::Answer { id, result } => {
+                assert!(invocations.contains(&id));
+                assert!(matches!(WireAnswer::decode(&result).unwrap(), WireAnswer::Ready { .. }));
+                assert!(answered.insert(id));
+            }
+            other => panic!("unexpected producer frame {other:?}"),
+        }
+    }
+    for id in invocations.clone() {
+        phase(&outgoing, &mut incoming, id, WireCommand::Finalize { invocation: id }).await;
+    }
+
+    // Shutdown Joins The Producers And Cancels All Their Unanswered Calls.
+    let shutdown = invocations.end;
+    for command in [
+        WireCommand::Prepare {
+            invocation: shutdown,
+            operation: format!("throughput_fixture.{}", Shutdown::ID),
+            fingerprint: <Shutdown as OperationDeclaration>::definition().fingerprint.0,
+            generation: 1,
+            payload: Shutdown {}.encode(),
+        },
+        WireCommand::Initialize { invocation: shutdown, context: [1; 32] },
+    ] {
+        phase(&outgoing, &mut incoming, shutdown, command).await;
+    }
+    batching.store(true, Ordering::Release);
+    let command = WireCommand::Attempt {
+        invocation: shutdown,
+        context: [1; 32],
+        values: Vec::new(),
+    };
+    outgoing
+        .send(Frame::Call {
+            id: shutdown,
+            method: WIRE_METHOD.into(),
+            params: command.encode().unwrap().into(),
+        })
+        .await
+        .unwrap();
+    let mut settled = false;
+    while !pending.is_empty() || !settled {
+        match receive(&mut incoming).await {
+            Frame::Cancel { id } => assert!(pending.remove(&id), "each outstanding call is cancelled exactly once"),
+            Frame::Answer { id, result } => {
+                assert_eq!(id, shutdown);
+                assert!(matches!(WireAnswer::decode(&result).unwrap(), WireAnswer::Ready { .. }));
+                assert!(!settled);
+                settled = true;
+            }
+            other => panic!("unexpected shutdown frame {other:?}"),
+        }
+    }
+    // A Subsequent Phase Answer Proves The Same Connection Remains Usable.
+    phase(&outgoing, &mut incoming, shutdown, WireCommand::Finalize { invocation: shutdown }).await;
+    outgoing.close();
+    driving.await.unwrap().unwrap();
+    ending.as_mut().unwrap().settle().await.unwrap();
+    forwarding.await.unwrap().unwrap();
+}

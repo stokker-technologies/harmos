@@ -43,7 +43,9 @@ pub mod __private {
 
 /* === Re-Exports === */
 
+#[cfg(feature = "plugin-sidecar")]
 pub(crate) use codec::encode_bytes;
+
 pub use codec::{Codec, Encode, EncodeSettings, Encoder, Transcoded, Wire};
 
 pub use decoding::{DecodeSettings, Decoder};

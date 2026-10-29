@@ -57,82 +57,36 @@ impl StorageFile {
                 reason: "append requires a nonempty bounded batch",
             });
         }
-        if let Some((accepted, pending, ticket)) = &self.append {
+        if let Some((accepted, pending, _)) = &self.append {
             if *accepted != offset || pending.as_slice() != bytes.as_slice() {
                 return Err(Error::InvalidInput {
                     field: "file append",
                     reason: "retry differs from accepted bytes",
                 });
             }
-            let ticket = *ticket;
-            {
+        } else {
+            self.append = Some((offset, bytes.clone(), None));
+        }
+        let ticket = match self.append.as_ref().and_then(|(_, _, ticket)| *ticket) {
+            Some(ticket) => {
                 let mut state = self.manager.inner.state.lock().unwrap();
                 let failure = self.progress.lock().unwrap().failure.take();
                 if state.status.failure.as_ref().zip(failure.as_ref()).is_some_and(|(current, own)| Arc::ptr_eq(current, own)) {
                     state.status.failure = None;
                     state.retry = state.retry.wrapping_add(1);
                 }
-            }
-            self.manager.inner.notify();
-            self.wait(Await::Written(ticket)).await?;
-            self.append = None;
-            return Ok(());
-        }
-        let ticket = {
-            let mut state = self.manager.inner.state.lock().unwrap();
-            if state.status.closing || !state.ready || !state.status.running {
-                return Err(closed());
-            }
-            let file = state.files.get_mut(&self.id).ok_or_else(closed)?;
-            file.check_session(self.session.as_ref())?;
-            if file.length != offset {
-                return Err(Error::InvalidInput {
-                    field: "file offset",
-                    reason: "offset differs from acknowledged length",
-                });
-            }
-            if let Some(Command::Write(pending)) = &file.command {
-                if pending.as_slice() != bytes.as_slice() {
-                    return Err(Error::InvalidInput {
-                        field: "file append",
-                        reason: "retry differs from accepted bytes",
-                    });
-                }
-                let ticket = file.ticket;
-                let failure = file.progress.lock().unwrap().failure.take();
-                if state.status.failure.as_ref().zip(failure.as_ref()).is_some_and(|(current, own)| Arc::ptr_eq(current, own)) {
-                    state.status.failure = None;
-                    state.retry = state.retry.wrapping_add(1);
-                }
                 ticket
-            } else {
-                if file.command.is_some() || file.in_flight {
-                    return Err(Error::NotReady { domain: "file append" });
+            }
+            None => {
+                let admitted = self.queue_append(offset, &bytes, false).await;
+                if matches!(admitted, Err(Error::InvalidInput { .. })) {
+                    self.append = None;
                 }
-                admission(&state)?;
-                let available =
-                    self.manager.inner.settings.request.max_pending_write_bytes.get().saturating_sub(state.status.pending_bytes);
-                if (bytes.len() > available)
-                    || state.status.pending_batches >= self.manager.inner.settings.request.max_pending_write_batches.get()
-                {
-                    return Err(Error::ResourceExhausted { resource: "file append" });
-                }
-                let file = state.files.get_mut(&self.id).expect("selected file");
-                let length = offset.checked_add(bytes.len() as u64).ok_or_else(size_error)?;
-                if file.metadata.expected_length.is_some_and(|expected| length > expected) {
-                    return Err(Error::InvalidInput {
-                        field: "file length",
-                        reason: "append exceeds expected length",
-                    });
-                }
-                file.ticket = file.ticket.checked_add(1).ok_or_else(size_error)?;
-                file.context = crate::execution::Context::current();
-                file.queued = Some(tracing::debug_span!("storage.file.queue"));
-                file.command = Some(Command::Write(bytes.clone()));
-                file.ticket
+                let (_, ticket) = admitted?.expect("retained appends are nonempty");
+                self.append.as_mut().expect("the original chunk remains retained").2 = Some(ticket);
+                ticket
             }
         };
-        self.append = Some((offset, bytes, ticket));
         self.manager.inner.notify();
         self.wait(Await::Written(ticket)).await?;
         self.append = None;
@@ -153,48 +107,8 @@ impl StorageFile {
         };
         let mut offset = 0usize;
         loop {
-            let admitted = self
-                .manager
-                .inner
-                .admit_when(|state| {
-                    admission(state)?;
-                    state.collect();
-                    let bytes = &source.as_slice()[offset..];
-                    let available =
-                        self.manager.inner.settings.request.max_pending_write_bytes.get().saturating_sub(state.status.pending_bytes);
-                    let capacity = state.status.pending_batches < self.manager.inner.settings.request.max_pending_write_batches.get();
-                    let file = state.files.get_mut(&self.id).ok_or_else(closed)?;
-                    file.check_session(self.session.as_ref())?;
-                    if file.abandoned || file.command.is_some() {
-                        return Err(closed());
-                    }
-                    let total = file.length.checked_add(u64::try_from(bytes.len()).map_err(|_| size_error())?).ok_or_else(size_error)?;
-                    if file.metadata.expected_length.is_some_and(|expected| total > expected) {
-                        return Err(Error::InvalidInput {
-                            field: "file length",
-                            reason: "input exceeds expected length",
-                        });
-                    }
-                    if bytes.is_empty() {
-                        return Ok(Some(None));
-                    }
-                    if capacity && available != 0 {
-                        let limit = available;
-                        let count = bytes.len().min(limit).min(self.manager.inner.settings.response.batch_bytes.get());
-                        let chunk = source.slice(offset..offset + count);
-                        file.ticket = file.ticket.checked_add(1).ok_or_else(size_error)?;
-                        file.context = crate::execution::Context::current();
-                        file.queued = Some(tracing::debug_span!("storage.file.queue"));
-                        file.command = Some(Command::Write(chunk));
-                        let ticket = file.ticket;
-                        state.collect();
-                        Ok(Some(Some((count, ticket))))
-                    } else {
-                        self.manager.inner.relieve_pressure(state, 1, 1);
-                        Ok(None)
-                    }
-                })
-                .await?;
+            let remaining = source.slice(offset..source.len());
+            let admitted = self.queue_append(self.length(), &remaining, true).await?;
             let Some((count, ticket)) = admitted else {
                 cancel.armed = false;
                 return Ok(());
@@ -202,12 +116,84 @@ impl StorageFile {
             self.manager.inner.notify();
             self.wait(Await::Written(ticket)).await?;
             offset += count;
-            let length = source.len();
-            if offset == length {
+            if offset == source.len() {
                 cancel.armed = false;
                 return Ok(());
             }
         }
+    }
+
+    async fn queue_append(&self, offset: u64, bytes: &crate::FileChunk, partial: bool) -> Result<Option<(usize, u64)>> {
+        self.manager
+            .inner
+            .admit_when(|state| {
+                if state.status.closing || !state.ready || !state.status.running {
+                    return Err(closed());
+                }
+                state.collect();
+                let file = state.files.get_mut(&self.id).ok_or_else(closed)?;
+                file.check_session(self.session.as_ref())?;
+                if file.abandoned {
+                    return Err(closed());
+                }
+                if file.length != offset {
+                    return Err(Error::InvalidInput {
+                        field: "file offset",
+                        reason: "offset differs from acknowledged length",
+                    });
+                }
+                let total = offset.checked_add(u64::try_from(bytes.len()).map_err(|_| size_error())?).ok_or_else(size_error)?;
+                if file.metadata.expected_length.is_some_and(|expected| total > expected) {
+                    return Err(Error::InvalidInput {
+                        field: "file length",
+                        reason: "append exceeds expected length",
+                    });
+                }
+                if let Some(Command::Write(pending)) = &file.command {
+                    if pending.as_slice() != bytes.as_slice() {
+                        return Err(Error::InvalidInput {
+                            field: "file append",
+                            reason: "retry differs from accepted bytes",
+                        });
+                    }
+                    let ticket = file.ticket;
+                    let failure = file.progress.lock().unwrap().failure.take();
+                    if state.status.failure.as_ref().zip(failure.as_ref()).is_some_and(|(current, own)| Arc::ptr_eq(current, own)) {
+                        state.status.failure = None;
+                        state.retry = state.retry.wrapping_add(1);
+                    }
+                    return Ok(Some(Some((bytes.len(), ticket))));
+                }
+                if file.command.is_some() || file.in_flight {
+                    return Err(Error::NotReady { domain: "file append" });
+                }
+                admission(state)?;
+                if bytes.is_empty() {
+                    return Ok(Some(None));
+                }
+                let budget = self.manager.inner.settings.request.max_pending_write_bytes.get();
+                if !partial && bytes.len() > budget {
+                    return Err(Error::ResourceExhausted { resource: "file append" });
+                }
+                let available = budget.saturating_sub(state.status.pending_bytes);
+                let required = if partial { 1 } else { bytes.len() };
+                if available < required
+                    || state.status.pending_batches >= self.manager.inner.settings.request.max_pending_write_batches.get()
+                {
+                    self.manager.inner.relieve_pressure(state, required, 1);
+                    return Ok(None);
+                }
+                let count = bytes.len().min(available).min(self.manager.inner.settings.response.batch_bytes.get());
+                let file = state.files.get_mut(&self.id).expect("selected file");
+                file.ticket = file.ticket.checked_add(1).ok_or_else(size_error)?;
+                file.context = crate::execution::Context::current();
+                file.queued = Some(tracing::debug_span!("storage.file.queue"));
+                file.command = Some(Command::Write(bytes.slice(0..count)));
+                let ticket = file.ticket;
+                state.collect();
+                Ok(Some(Some((count, ticket))))
+            })
+            .await
     }
 
     #[tracing::instrument(name = "storage.staging.producer.finish", level = "debug", skip_all)]

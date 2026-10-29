@@ -141,14 +141,8 @@ fn authoring_refusals_compile() {
         ("duplicate_id.rs", "__HARMOS_STREAM_ID_70756c7365"),
         ("unregistered_row.rs", "Stream<Studio>"),
         ("non_serde_row.rs", "Serialize"),
-        // The four ways a declared inverse is refused, in the order an author
-        // meets them: saying nothing, saying something the other change does
-        // not say back, naming a change the catalog does not contain, and
-        // describing a reversal for a change declared irreversible.
-        ("unanswered_undo.rs", "a transaction declares what undoes it"),
         ("unpaired_inverse.rs", "the declared inverse of `Place` does not name `Place` back"),
         ("uncatalogued_inverse.rs", "the declared inverse `Remove` is not a member of `Change`"),
-        ("irreversible_body.rs", "`SendReport` declares no inverse"),
         // The default lane is the one every job that named no lane lands on,
         // so a catalog answers where exactly once and that lane is unbounded.
         ("capacitated_default_lane.rs", "the default lane is unbounded"),

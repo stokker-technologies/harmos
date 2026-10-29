@@ -9,6 +9,11 @@
 
 /* === Modules === */
 
+#[cfg(feature = "benchmark")]
+mod benchmark;
+#[cfg(not(feature = "benchmark"))]
+mod registration;
+
 /* === Re-Exports === */
 
 pub use std::io::Error;
@@ -22,12 +27,10 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
+#[cfg(feature = "benchmark")]
+use benchmark as registration;
 use harmos::operations::{OperationPolicy, StreamSettings, WireStreamLimits};
 use harmos::sidecar::Supervisor;
-#[cfg(not(feature = "benchmark"))]
-use schematic_operations::Native as Operations;
-#[cfg(feature = "benchmark")]
-use schematic_operations::transfer::Native as Operations;
 
 /* === Constants === */
 
@@ -38,9 +41,6 @@ use schematic_operations::transfer::Native as Operations;
 /* === Structs === */
 
 pub struct Plugin {
-    #[cfg(feature = "benchmark")]
-    transfer: Arc<schematic_operations::transfer::Store>,
-
     analysis: Arc<schematic_operations::resources::AnalysisResources>,
 }
 
@@ -62,17 +62,9 @@ impl harmos::Lifecycle for Plugin {
 
     async fn prepare(_: (), setup: &mut harmos::Setup<Self>) -> Result<Self, Error> {
         let analysis = Arc::new(schematic_operations::resources::AnalysisResources::default());
-        #[cfg(feature = "benchmark")]
-        let transfer = Arc::new(schematic_operations::transfer::Store::default());
-
-        let plugin = Self {
-            #[cfg(feature = "benchmark")]
-            transfer,
-            analysis,
-        };
+        let plugin = Self { analysis };
         setup.resource::<schematic_operations::resources::AnalysisResources>(Arc::clone(&plugin.analysis));
-        #[cfg(feature = "benchmark")]
-        setup.resource::<schematic_operations::transfer::Store>(Arc::clone(&plugin.transfer));
+        registration::prepare(setup);
         let direction = StreamSettings {
             items: NonZeroUsize::new(4).unwrap(),
             bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap(),
@@ -96,7 +88,7 @@ impl harmos::Lifecycle for Plugin {
 
 #[harmos::sidecar(id = "schematic_tools", requires = (), streams(schematic_domain::model::schematic::progress::AnalysisProgress))]
 impl harmos::Plugin for Plugin {
-    const CATALOGS: &'static [harmos::Catalog] = &[Operations::CATALOG];
+    const CATALOGS: &'static [harmos::Catalog] = &[registration::CATALOG];
 }
 
 /* === Public Functions === */

@@ -33,13 +33,58 @@ interface uses its default domain exports; a host enables its `runtime`
 feature. Domain and runtime can depend directly on their lower-level owners;
 this facade rule applies to interfaces, not every internal dependency.
 
+### Plugin Internal Structure
+
+Each operation has one definition in `operations/<op>/mod.rs`: its request,
+response, identity, policy and contract tests. Native platform implementations
+live beside it in `windows.rs` and `unix.rs`; gate only their declarations:
+
+```rust
+#[cfg(all(feature = "runtime", target_os = "windows"))]
+mod windows;
+#[cfg(all(feature = "runtime", unix))]
+mod unix;
+```
+
+```text
+src/
+├── lib.rs                # Lifecycle/Setup resources and Plugin::CATALOGS
+└── operations/
+    ├── mod.rs
+    ├── catalog.rs        # The plugin's one catalog
+    └── <op>/
+        ├── mod.rs        # The one portable definition and gated mod declarations
+        ├── windows.rs    # Native Operation implementation and its tests
+        └── unix.rs
+```
+
+Request and response types exist once and remain available without runtime.
+A platform-independent implementation can use a runtime-gated inline `mod runtime`
+in the same operation's `mod.rs`. Keep one catalog: no platform catalogs, backend
+traits, platform selection blocks, `#[path]` switches or unsupported stubs.
+Every catalog operation ships on each supported platform.
+
+`Lifecycle::prepare(config, setup)` acquires shared platform handles and inserts
+them once with `setup.resource::<T>(value)`. Plugin `const CATALOGS` names the
+catalog's `CATALOG`; the SDK binds it after validating setup. A WLAN client or
+D-Bus connection is an ordinary resource retained by its lifecycle owner.
+
+Gate only declarations: `mod` lines (including test and runtime modules) and
+`pub use` lines. Never gate functions, impls, structs, fields, statements or
+catalog variants. Spell native predicates `target_os = "windows"` and `unix`;
+use `target_os = "linux"` only for Linux-specific functionality.
+
 ## Operation Placement
 
 In a reusable product, use one file per operation for its request struct, response and runtime-gated `Operation` implementation in
 `<p>-operations/src/<concern>/<operation>.rs`. Its catalog supplies both
 `catalog() -> Vec<OperationDefinition>` and, with `runtime`, implements
 `operations::OperationCatalog` with an executable `CATALOG` descriptor. There is one
-operation tree. Shared models remain in the domain; resource crates remain
+operation tree. Rust's orphan rule prevents a runtime crate from implementing
+Harmos's `Operation` trait for operation types owned by a domain crate. When
+contracts and execution need separate dependency selections, put the operation
+types and their implementations in the same operations crate and gate execution
+behind its `runtime` feature. Shared models remain in the domain; resource crates remain
 optional lower-level dependencies. Application `Lifecycle::prepare` supplies resources through `Setup<Self>`
 and places each catalog on a declared lane. Plugin `const CATALOGS` is the single
 source for inert inventory and executable binding.
