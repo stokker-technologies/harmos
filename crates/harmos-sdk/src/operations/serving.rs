@@ -769,13 +769,6 @@ impl WireTable {
         Ok((retired_slots, retired_handlers, retired_services))
     }
 
-    pub async fn settle_ordinary(&mut self) -> Result<(), ServingError> {
-        self.close_ordinary().await?;
-        let retired = self.release_ordinary()?;
-        drop(retired);
-        Ok(())
-    }
-
     pub fn close(&mut self) -> Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + 'static>> {
         self.closed = true;
         let slots: Vec<_> = self.prepared.values().cloned().collect();

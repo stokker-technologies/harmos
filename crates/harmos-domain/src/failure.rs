@@ -173,12 +173,6 @@ impl Failure {
         self
     }
 
-    // The consumer adds the step frame that issued the request.
-    pub fn in_step(mut self, step: impl Into<String>) -> Self {
-        self.0.context.step.get_or_insert_with(|| step.into());
-        self
-    }
-
     pub fn without_diagnostics(mut self) -> Self {
         self.0.diagnostics = None;
         self

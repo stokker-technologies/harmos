@@ -181,29 +181,6 @@ impl crate::MemorySize for Schema {
 }
 
 impl Schema {
-    pub fn clone_memory_bytes(&self) -> Result<usize, Error> {
-        let mut bytes = self
-            .definitions
-            .len()
-            .checked_mul(size_of::<Vec<Field>>())
-            .and_then(|bytes| bytes.checked_add(size_of::<Self>()))
-            .ok_or(Error::Budget)?;
-        for fields in &self.definitions {
-            bytes = fields.len().checked_mul(size_of::<Field>()).and_then(|fields| bytes.checked_add(fields)).ok_or(Error::Budget)?;
-            for field in fields {
-                if let Cow::Owned(name) = &field.name {
-                    bytes = bytes.checked_add(name.len()).ok_or(Error::Budget)?;
-                }
-            }
-        }
-        Ok(bytes)
-    }
-
-    pub fn validation_memory_bytes(&self, settings: &SchemaSettings) -> Result<usize, Error> {
-        let preparation = self.preparation(settings)?;
-        preparation.bytes.checked_sub(crate::MemorySize::memory_size(self)).ok_or(Error::Budget)
-    }
-
     pub fn view(&self, root: usize) -> Result<View<'_>, Error> {
         if root >= self.definitions.len() {
             return Err(Error::Reference { definition: root });

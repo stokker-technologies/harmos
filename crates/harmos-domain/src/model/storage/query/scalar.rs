@@ -189,14 +189,6 @@ impl MemorySize for ScalarValue {
     }
 }
 
-impl Agg {
-    // Statistics answered from the ordered values, which hold scratch per
-    // accumulator; every other reduction runs in constant space.
-    pub fn retains_values(&self) -> bool {
-        matches!(self, Self::Of(kind) if !kind.mergeable())
-    }
-}
-
 impl From<Aggregate> for Agg {
     fn from(kind: Aggregate) -> Self {
         Self::Of(kind)
