@@ -17,13 +17,14 @@
 use std::convert::Infallible;
 use std::sync::{
     Arc, Mutex, Weak,
-    atomic::{AtomicUsize, Ordering::SeqCst},
+    atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst},
 };
 use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
 use super::operations::{Lanes, Managed};
+use harmos_runtime::operations::Host as _;
 use harmos_runtime::operations::OperationPhase;
 use harmos_runtime::operations::resident::{Key, Kind, Snapshot};
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
@@ -35,6 +36,7 @@ use harmos_runtime::sidecar::{
 
 const RECORD: DemandKey = DemandKey::new("fixture.record", "sample");
 const AUXILIARY: DemandKey = DemandKey::new("fixture", "auxiliary");
+const IDLE: DemandKey = DemandKey::new("fixture", "idle");
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
 static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Counts>>> = Mutex::new(std::collections::BTreeMap::new());
 
@@ -51,6 +53,11 @@ struct Counts {
     started: [AtomicUsize; 2],
     observed: [AtomicUsize; 2],
     stopped: [AtomicUsize; 2],
+    cleaned: [AtomicUsize; 2],
+    block_observe: AtomicBool,
+    collect_callback: AtomicBool,
+    collecting: AtomicUsize,
+    collected: AtomicUsize,
     rejected: AtomicUsize,
     released: AtomicUsize,
     // Announces every counted step.
@@ -81,12 +88,25 @@ struct RecordOnly(Arc<Counts>);
 
 struct Mixed(Arc<Counts>);
 
+struct Idle(Arc<Counts>);
+
+#[harmos_runtime::operation(id = "demand.collect", policy = COLLECTION, resources = [Resources], response = ())]
+struct Collect {}
+
+struct Collecting(Arc<Counts>);
+
 /* === Enums === */
 
 #[harmos_domain::catalog]
 enum Observers {
     RecordOnly(RecordOnly),
     Mixed(Mixed),
+    Idle(Idle),
+}
+
+#[harmos_runtime::catalog]
+enum Operations {
+    Collect(Collect),
 }
 
 /* === Traits === */
@@ -116,9 +136,35 @@ impl Drop for Resources {
     }
 }
 
+impl Drop for Collecting {
+    fn drop(&mut self) {
+        self.0.collected.fetch_add(1, SeqCst);
+        self.0.progress.send_replace(());
+    }
+}
+
+impl harmos_runtime::Operation for Collect {
+    type Error = Infallible;
+
+    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
+        let resources = context.resource::<Resources>();
+        let counts = Arc::clone(&resources.counts);
+        let _collecting = Collecting(Arc::clone(&counts));
+        counts.collecting.fetch_add(1, SeqCst);
+        counts.progress.send_replace(());
+        std::future::pending().await
+    }
+}
+
 const LIFECYCLE: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_millis(500),
+    retries: RetryPolicy::Never,
+};
+
+const COLLECTION: OperationPolicy = OperationPolicy {
+    timeout: LIFECYCLE.timeout.saturating_mul(4),
+    attempt_timeout: LIFECYCLE.timeout.saturating_mul(4),
     retries: RetryPolicy::Never,
 };
 
@@ -168,7 +214,7 @@ impl harmos_runtime::Lifecycle for Producer {
 
 #[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "demand_authoring", requires(harmos_operations::streams::Publish),  observers = Observers, streams(Row))]
 impl harmos_runtime::Plugin for Producer {
-    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[];
+    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[Operations::CATALOG];
 
     fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Supervisor>>> {
         Some(self.attachment.clone())
@@ -213,6 +259,14 @@ impl Mixed {
         Ok(Self(resources.counts.clone()))
     }
     async fn observe(&mut self, ctx: &ObserverContext<'_, Publisher<Producer>>) -> Result<(), Infallible> {
+        if self.0.collect_callback.load(SeqCst) {
+            ctx.host().supervisor().call::<Collect>(Collect {}).await.unwrap();
+        }
+        if self.0.block_observe.load(SeqCst) {
+            self.0.observed[1].fetch_add(1, SeqCst);
+            self.0.progress.send_replace(());
+            std::future::pending::<()>().await;
+        }
         ctx.publish_on::<Row>(&Row { sample: 1 }).await.unwrap();
         ctx.resource::<Resources>().unwrap().counts.observed[1].fetch_add(1, SeqCst);
         ctx.resource::<Resources>().unwrap().counts.progress.send_replace(());
@@ -222,6 +276,40 @@ impl Mixed {
         self.0.stopped[1].fetch_add(1, SeqCst);
         self.0.progress.send_replace(());
 
+        Ok(())
+    }
+    async fn cleanup(&mut self) -> Result<(), Infallible> {
+        self.0.cleaned[1].fetch_add(1, SeqCst);
+        self.0.progress.send_replace(());
+        Ok(())
+    }
+}
+
+#[harmos_runtime::observer(id = "demand.idle", interval_ms = LIFECYCLE.timeout.as_millis() as u64 * 4, activation = "demand", demand_keys(IDLE))]
+impl Idle {
+    async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
+        let resources = context.resource::<Resources>().unwrap();
+        let counts = Arc::clone(&resources.counts);
+        counts.started[1].fetch_add(1, SeqCst);
+        counts.progress.send_replace(());
+        Ok(Self(counts))
+    }
+
+    async fn observe(&mut self, _: &ObserverContext<'_, Publisher<Producer>>) -> Result<(), Infallible> {
+        self.0.observed[1].fetch_add(1, SeqCst);
+        self.0.progress.send_replace(());
+        Ok(())
+    }
+
+    async fn stop(&mut self) -> Result<(), Infallible> {
+        self.0.stopped[1].fetch_add(1, SeqCst);
+        self.0.progress.send_replace(());
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> Result<(), Infallible> {
+        self.0.cleaned[1].fetch_add(1, SeqCst);
+        self.0.progress.send_replace(());
         Ok(())
     }
 }
@@ -340,4 +428,105 @@ fn catalog_keys_isolated() {
     assert_eq!(mixed.demand_keys, [RECORD.name(), AUXILIARY.name()]);
 }
 
+async fn release_suspended_observer(key: DemandKey, blocked_callback: bool) {
+    let counts = Arc::new(Counts::default());
+    counts.block_observe.store(blocked_callback, SeqCst);
+    let seed = Seed::new(&counts);
+    let capacity = std::num::NonZeroUsize::new(2).unwrap();
+    let source = harmos_sidecar::PluginNative::<Producer>::new(capacity).unwrap();
+    let configuration = serde_json::to_vec(&seed.id).unwrap();
+    let mut fixture = Managed::attach(source, configuration, Lanes::Open, capacity, vec![key.name()], std::convert::identity).await;
+
+    fixture.publication().await.unwrap();
+    fixture.initialize().await.unwrap();
+    let ready = fixture.ready();
+    ready.wait_for(|ready| *ready).await.unwrap();
+    let demands = fixture.demands();
+    let demand = demands.hold(&key.name()).unwrap();
+    let initialized = || counts.started[1].load(SeqCst) == 1;
+    until(&counts, initialized).await;
+    if blocked_callback {
+        let entered = || counts.observed[1].load(SeqCst) == 1;
+        until(&counts, entered).await;
+    }
+
+    drop(demand);
+    let settling = async {
+        let cleaned = || counts.cleaned[1].load(SeqCst) == 1;
+        until(&counts, cleaned).await;
+        let mut statuses = fixture.runtime.operations.watch_residents();
+        let stopped = statuses.wait_for(|values| {
+            let mut observers = values.values().filter(|status| status.kind == Kind::Observer);
+            let Some(observer) = observers.next() else { return false };
+            observer.lifecycle.phase() == OperationPhase::Stopped && observers.next().is_none()
+        });
+        stopped.await.unwrap();
+    };
+    tokio::time::timeout(LIFECYCLE.timeout, settling).await.expect("released observer settles within the lifecycle policy");
+    assert_eq!(counts.stopped[1].load(SeqCst), 1);
+    assert_eq!(counts.observed[1].load(SeqCst), usize::from(blocked_callback));
+
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
+    assert_eq!(counts.released.load(SeqCst), 1);
+}
+
 /* === Tests === */
+
+#[tokio::test]
+async fn released_demand_interrupts_blocked_callback() {
+    release_suspended_observer(AUXILIARY, true).await;
+}
+
+#[tokio::test]
+async fn released_demand_interrupts_tick_wait() {
+    release_suspended_observer(IDLE, false).await;
+}
+
+#[tokio::test]
+async fn released_publication_interrupts_collect_and_retains_stopped_snapshot() {
+    let counts = Arc::new(Counts::default());
+    counts.collect_callback.store(true, SeqCst);
+    let seed = Seed::new(&counts);
+    let capacity = std::num::NonZeroUsize::new(2).unwrap();
+    let source = harmos_sidecar::PluginNative::<Producer>::new(capacity).unwrap();
+    let configuration = serde_json::to_vec(&seed.id).unwrap();
+    let mut fixture = Managed::attach(source, configuration, Lanes::Open, capacity, vec![], std::convert::identity).await;
+    fixture.publication().await.unwrap();
+    fixture.initialize().await.unwrap();
+    let ready = fixture.ready();
+    ready.wait_for(|ready| *ready).await.unwrap();
+    let before = observers(&fixture.runtime);
+    assert!(before.is_empty());
+
+    // A Viewer Holds An Unpolled Publication Watch, Like Dokime's Stream Lease.
+    let publication = fixture.runtime.streams.publication("demand.row", 1).unwrap();
+    let watching = Box::pin(publication.watch());
+    let collecting = || counts.collecting.load(SeqCst) == 1;
+    tokio::time::timeout(LIFECYCLE.timeout, until(&counts, collecting)).await.expect("observer enters its collect call");
+    let running = observers(&fixture.runtime);
+    assert_eq!(running.len(), 1);
+    let key = running.into_keys().next().unwrap();
+    assert_eq!(key.definition, "demand.mixed");
+
+    drop(watching);
+    let mut residents = fixture.runtime.operations.watch_residents();
+    let settling = residents.wait_for(|values| {
+        let Some(status) = values.get(&key) else { return false };
+        status.lifecycle.phase() == OperationPhase::Stopped
+    });
+    let stopped = tokio::time::timeout(LIFECYCLE.timeout, settling).await.expect("publication release settles within policy").unwrap();
+    assert_eq!(stopped[&key].leases, 0);
+    assert!(stopped[&key].lifecycle.cleanup_failure().is_none());
+    drop(stopped);
+    assert_eq!(counts.stopped[1].load(SeqCst), 1);
+    assert_eq!(counts.cleaned[1].load(SeqCst), 1);
+    assert_eq!(counts.collected.load(SeqCst), 1);
+
+    // Resident History Remains Until Scope Retirement, Even After Physical Stop.
+    assert!(residents.borrow().contains_key(&key));
+    fixture.shutdown().await.unwrap();
+    assert!(!residents.borrow().contains_key(&key));
+    fixture.runtime.shutdown().await.unwrap();
+    assert_eq!(counts.released.load(SeqCst), 1);
+}
