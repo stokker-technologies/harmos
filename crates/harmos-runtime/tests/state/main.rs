@@ -11,8 +11,7 @@
 
 #[path = "../state/managed.rs"]
 mod managed;
-#[path = "../support/mod.rs"]
-mod support;
+use crate::support;
 
 #[path = "capture.rs"]
 mod capture;

@@ -9,6 +9,7 @@
 
 /* === Modules === */
 
+#[allow(clippy::duplicate_mod, reason = "the minimal app binds each domain's own `super::Lanes`")]
 #[path = "../support/app/minimal.rs"]
 mod app;
 #[path = "../services/lifecycle.rs"]
@@ -24,8 +25,7 @@ mod scopes;
 #[path = "../services/shutdown.rs"]
 mod shutdown;
 
-#[path = "../support/mod.rs"]
-mod support;
+use crate::support;
 
 /* === Re-Exports === */
 

@@ -14,8 +14,7 @@
 mod inverses;
 #[path = "../support/simulation.rs"]
 mod oracle;
-#[path = "../support/mod.rs"]
-mod support;
+use crate::support;
 mod atomic_records {
     use super::*;
     use serde::{Deserialize, Serialize};

@@ -12,8 +12,7 @@
 #[path = "composition.rs"]
 mod composition;
 
-#[path = "../support/mod.rs"]
-mod support;
+use crate::support;
 
 #[path = "../sidecar/admission.rs"]
 mod admission;

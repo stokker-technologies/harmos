@@ -13,8 +13,7 @@
 mod app;
 #[path = "../support/operations_fixture.rs"]
 mod fixture;
-#[path = "../support/mod.rs"]
-mod support;
+use crate::support;
 use fixture::*;
 #[path = "../operations/admission.rs"]
 mod admission;
@@ -36,8 +35,7 @@ mod middleware;
 mod outcomes;
 #[path = "../operations/policy.rs"]
 mod policy;
-#[path = "../support/runtime_probe.rs"]
-mod probe;
+use crate::probe;
 #[path = "../operations/resources.rs"]
 mod resources;
 #[path = "../operations/scoped.rs"]
