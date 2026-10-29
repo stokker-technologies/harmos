@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/compiler.py; sha256:7788148874dc58dda7cfc7d9764f41ac8bf01aaf01faeafe73508d3674acfeaa
+# Rendered by stkr project update from templates/python/ci/compiler.py; sha256:ba4f729109c9063f62880366674bbad64c0835c187c97892edb9e98151f5e6bb
 # ***
 #
 # Harmos
@@ -11,7 +11,6 @@
 # === Imports === #
 
 # Standard Library Imports
-import collections
 import json
 import os
 import queue
@@ -26,6 +25,7 @@ from pathlib import Path
 # Third Party Imports
 
 # Local Imports
+from ..process import spawn_flags
 
 # Type Checking Imports
 
@@ -36,23 +36,31 @@ from pathlib import Path
 
 # The JSON Statistics And Startup Log Shapes Parsed Here Are Verified Against This Release Series.
 SERIES = "0.19."
-# Native Server Lines Retained For Failure Diagnostics.
-TAIL = 40
-# Environment Values Never Printed In Diagnostics.
-SECRETS = (
-    "ACTIONS_RUNTIME_TOKEN",
-    "ACTIONS_RESULTS_URL",
-    "ACTIONS_CACHE_URL",
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "AWS_SESSION_TOKEN",
-    "STKR_SCCACHE_BUCKET",
-    "STKR_SCCACHE_ENDPOINT",
+PHASES = frozenset(
+    {
+        "configuration",
+        "process launch",
+        "startup exit",
+        "readiness timeout",
+        "backend verification",
+        "command launch",
+        "unexpected server exit",
+        "statistics",
+        "cache operation",
+        "cache write",
+        "server cleanup",
+        "server output",
+    }
 )
 
 # === Types === #
 
 # === Classes === #
+
+
+class CacheError(RuntimeError):
+    """A Cache Failure Whose Safe Native Diagnostic Has Already Been Printed."""
+
 
 # === Public Functions === #
 
@@ -64,29 +72,42 @@ def run(
     statistics: dict | None = None,
 ) -> int:
     """Require The Declared Backend And Clean Up Only Our Process."""
-    backend = os.environ.get("STKR_SCCACHE_BACKEND")
+    try:
+        return _configured(command, shell, statistics=statistics)
+    except CacheError:
+        raise
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        _report("configuration", error=error)
+        raise CacheError("sccache: backend configuration failed") from None
+
+
+# === Private Functions === #
+
+
+def _configured(command: Sequence[str] | str, shell: str | None, *, statistics: dict | None = None) -> int:
+    backend = os.environ.get("COMPILER_CACHE_BACKEND")
     environment = {key: value for key, value in os.environ.items() if not key.startswith("SCCACHE_")}
     mode = os.environ.get(
-        "STKR_SCCACHE_MODE",
-        "READ_WRITE" if os.environ.get("STKR_CACHE_POLICY") == "pull-push" else "READ_ONLY",
+        "COMPILER_CACHE_MODE",
+        "READ_WRITE" if os.environ.get("CACHE_POLICY") == "pull-push" else "READ_ONLY",
     )
     if mode not in {"READ_ONLY", "READ_WRITE"}:
         raise RuntimeError("sccache: invalid backend access mode")
     if backend == "s3":
-        if not os.environ.get("STKR_SCCACHE_BUCKET") or not os.environ.get("STKR_SCCACHE_REGION"):
+        if not os.environ.get("SCCACHE_BUCKET") or not os.environ.get("SCCACHE_REGION"):
             raise RuntimeError("sccache: S3 bucket and region are required")
         environment.update(
-            SCCACHE_BUCKET=os.environ["STKR_SCCACHE_BUCKET"],
-            SCCACHE_REGION=os.environ["STKR_SCCACHE_REGION"],
+            SCCACHE_BUCKET=os.environ["SCCACHE_BUCKET"],
+            SCCACHE_REGION=os.environ["SCCACHE_REGION"],
             SCCACHE_S3_RW_MODE=mode,
             SCCACHE_S3_KEY_PREFIX="stkr-v5/" + os.environ.get("CI_PROJECT_PATH_SLUG", "project") + "/",
         )
-        if endpoint := os.environ.get("STKR_SCCACHE_ENDPOINT"):
+        if endpoint := os.environ.get("SCCACHE_ENDPOINT"):
             environment["SCCACHE_ENDPOINT"] = endpoint
     elif backend == "disk":
-        if not os.environ.get("STKR_SCCACHE_DIR"):
+        if not os.environ.get("SCCACHE_DIR"):
             raise RuntimeError("sccache: an explicit disk cache directory is required")
-        directory = Path(os.environ["STKR_SCCACHE_DIR"])
+        directory = Path(os.environ["SCCACHE_DIR"])
         directory.mkdir(parents=True, exist_ok=True)
         environment.update(SCCACHE_DIR=str(directory.resolve()), SCCACHE_LOCAL_RW_MODE=mode)
     else:
@@ -102,9 +123,6 @@ def run(
         return _execute(command, shell, environment, backend, statistics=statistics)
 
 
-# === Private Functions === #
-
-
 def _execute(
     command: Sequence[str] | str,
     shell: str | None,
@@ -114,13 +132,8 @@ def _execute(
     statistics: dict | None = None,
 ) -> int:
     endpoint: queue.Queue[str] = queue.Queue(maxsize=1)
+    print("Build: Compiler Cache Startup", flush=True)
     write_errors = dict.fromkeys(("AlreadyExists", "PermissionDenied", "RateLimited", "Unexpected", "Unknown"), 0)
-    samples: dict[str, str] = {}
-    tail: collections.deque[str] = collections.deque(maxlen=TAIL)
-    # Native Debug Re-Runs (RUNNER_DEBUG) Or The Explicit Switch Add The Arguments Of Every Missed Compilation.
-    diagnostics = "1" in (os.environ.get("STKR_SCCACHE_DIAGNOSTICS"), os.environ.get("RUNNER_DEBUG"))
-    keys: dict[str, str] = {}
-    arguments: dict[str, str] = {}
     server_environment = environment | {
         "SCCACHE_START_SERVER": "1",
         "SCCACHE_NO_DAEMON": "1",
@@ -129,44 +142,36 @@ def _execute(
         "SCCACHE_IDLE_TIMEOUT": "0",
     }
     # The Server Logs Its Port Only After Backend Readiness And Binding Port 0.
-    with subprocess.Popen(
-        ["sccache"],
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        env=server_environment,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        encoding="utf-8",
-        errors="replace",
-    ) as server:
+    try:
+        server = subprocess.Popen(
+            ["sccache"],
+            creationflags=spawn_flags(),
+            env=server_environment,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError as error:
+        _report("process launch", error=error)
+        raise CacheError("sccache: server launch failed") from None
+
+    with server:
 
         def read_endpoint() -> None:
-            assert server.stderr is not None
-            for line in server.stderr:
-                if category := _write_error(line):
-                    write_errors[category] += 1
-                    samples.setdefault(category, line.partition("Error executing cache write: ")[2].strip()[:300])
-                match = re.search(r"server started, listening on 127\.0\.0\.1:([1-9][0-9]*)\s*$", line)
-                if match and endpoint.empty():
-                    endpoint.put(match[1])
-                if re.search(r"\b(WARN|ERROR)\b", line[:80]):
-                    tail.append(line.rstrip())
-                # Each Miss Prints Its Output And Hash Key, So Keys That Change Between Runs Of One Tree Are Visible.
-                compilation = re.search(r"\[([^\]]+)\]: (Hash key: (\S+)|get_cached_or_compile: (.*)|Cache (miss|hit|none) in )", line)
-                if compilation is None:
-                    continue
-                output, key, command, outcome = compilation[1], compilation[3], compilation[4], compilation[5]
-                if key:
-                    keys[output] = key
-                elif command:
-                    arguments[output] = command.rstrip()
-                else:
-                    key, command = keys.pop(output, "unavailable"), arguments.pop(output, "unavailable")
-                    if outcome == "miss":
-                        print(f"sccache miss: {output} key={key}", flush=True)
-                        if diagnostics:
-                            print("sccache miss arguments: " + _redact(command), flush=True)
-            if endpoint.empty():
-                endpoint.put("")
+            try:
+                assert server.stderr is not None
+                for line in server.stderr:
+                    if category := _write_error(line):
+                        write_errors[category] += 1
+                    match = re.search(r"server started, listening on 127\.0\.0\.1:([1-9][0-9]*)\s*$", line)
+                    if match and endpoint.empty():
+                        endpoint.put(match[1])
+            except (OSError, ValueError) as error:
+                _report("server output", error=error)
+            finally:
+                if endpoint.empty():
+                    endpoint.put("")
 
         reader = threading.Thread(target=read_endpoint, daemon=True)
         reader.start()
@@ -174,12 +179,12 @@ def _execute(
             try:
                 port = endpoint.get(timeout=60)
             except queue.Empty:
-                _report("server startup", ["sccache"], None, tail)
-                raise RuntimeError("sccache: backend readiness timed out; check the declared storage access") from None
+                _report("readiness timeout")
+                raise CacheError("sccache: backend readiness timed out") from None
             if not port or server.poll() is not None:
                 reader.join(timeout=1)
-                _report("server startup", ["sccache"], server.poll(), tail)
-                raise RuntimeError("sccache: backend startup failed; check the declared storage access")
+                _report("startup exit", server.poll())
+                raise CacheError("sccache: backend startup failed")
             child_environment = environment | {
                 "SCCACHE_SERVER_PORT": port,
                 "RUSTC_WRAPPER": "sccache",
@@ -195,7 +200,7 @@ def _execute(
                 try:
                     readiness = subprocess.run(
                         verification,
-                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                        creationflags=spawn_flags(),
                         env=child_environment,
                         capture_output=True,
                         text=True,
@@ -204,14 +209,17 @@ def _execute(
                     )
                     information = json.loads(readiness.stdout)
                     scheme = "Local disk:" if backend == "disk" else "s3,"
-                    if not information.get("cache_location", "").startswith(scheme):
-                        raise ValueError(f"unexpected cache location scheme; expected {scheme.rstrip(',:')}")
-                    if not str(information.get("version", "")).startswith(SERIES):
-                        raise ValueError(f"unsupported version {information.get('version')!r}; expected {SERIES}x")
+                    if not isinstance(information, dict) or not isinstance(information.get("cache_location"), str):
+                        raise ValueError("invalid backend statistics")
+                    if not information["cache_location"].startswith(scheme):
+                        raise ValueError("unexpected cache location scheme")
+                    version = information.get("version")
+                    if not isinstance(version, str) or re.fullmatch(re.escape(SERIES) + r"[0-9]+", version) is None:
+                        raise ValueError("unsupported cache version")
                 except (OSError, ValueError, subprocess.SubprocessError) as error:
                     output = error if isinstance(error, subprocess.CalledProcessError) else readiness
-                    _report("backend verification", verification, getattr(output, "returncode", None), tail, error, output)
-                    raise RuntimeError("sccache: pinned backend verification failed; refusing implicit storage fallback") from None
+                    _report("backend verification", getattr(output, "returncode", None), error)
+                    raise CacheError("sccache: pinned backend verification failed; refusing implicit storage fallback") from None
             if isinstance(command, str):
                 shell = shell or ("pwsh" if os.name == "nt" else "bash")
                 command = (
@@ -234,32 +242,40 @@ def _execute(
                         command,
                     ]
                 )
-            with subprocess.Popen(
-                command,
-                stdin=sys.stdin,
-                stdout=sys.stdout,
-                stderr=sys.stderr,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                env=child_environment,
-            ) as child:
+            try:
+                child = subprocess.Popen(
+                    command,
+                    stdin=sys.stdin,
+                    stdout=sys.stdout,
+                    stderr=sys.stderr,
+                    creationflags=spawn_flags(),
+                    env=child_environment,
+                )
+            except OSError as error:
+                _report("command launch", error=error)
+                raise CacheError("sccache: compiler command launch failed") from None
+            with child:
                 try:
                     while child.poll() is None:
                         if server.poll() is not None:
                             child.terminate()
                             reader.join(timeout=1)
-                            _report("server", ["sccache"], server.poll(), tail)
-                            raise RuntimeError("sccache: owned compiler cache server exited during the command")
+                            _report("unexpected server exit", server.poll())
+                            raise CacheError("sccache: owned compiler cache server exited during the command")
                         try:
-                            return child.wait(timeout=0.2)
+                            child.wait(timeout=0.2)
                         except subprocess.TimeoutExpired:
                             continue
+                    if server.poll() is not None:
+                        _report("unexpected server exit", server.poll())
+                        raise CacheError("sccache: owned compiler cache server exited during the command")
                     return child.returncode
                 finally:
                     if server.poll() is None:
                         try:
                             result = subprocess.run(
                                 ["sccache", "--show-stats", "--stats-format", "json"],
-                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                                creationflags=spawn_flags(),
                                 env=child_environment,
                                 stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE,
@@ -268,73 +284,68 @@ def _execute(
                                 check=True,
                                 timeout=10,
                             )
+                            measured = _statistics(json.loads(result.stdout))
+                            if any(measured.get(key) for key in ("cache_errors", "cache_read_errors", "cache_write_errors")):
+                                _report("cache operation")
                             if statistics is not None:
-                                statistics.update(_statistics(json.loads(result.stdout)))
+                                statistics.update(measured)
                         except (
                             OSError,
                             ValueError,
                             TypeError,
                             subprocess.SubprocessError,
-                        ):
-                            pass
+                        ) as error:
+                            _report("statistics", getattr(error, "returncode", None), error)
         finally:
             # The Process Handle Is Ours; Never Issue Stop-Server Against A Reused Endpoint.
-            if server.poll() is None:
-                server.terminate()
             try:
-                server.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                server.kill()
-                server.wait(timeout=10)
+                if server.poll() is None:
+                    server.terminate()
+                try:
+                    server.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait(timeout=10)
+            except (OSError, subprocess.SubprocessError) as error:
+                _report("server cleanup", getattr(error, "returncode", None), error)
+                raise CacheError("sccache: owned server cleanup failed") from None
             reader.join(timeout=1)
-            # One Redacted Native Reason Per Category Makes Dropped Cache Writes Actionable.
-            for category, sample in samples.items():
-                print(f"sccache write errors: {category} x{write_errors[category]}: {_redact(sample)}", flush=True)
+            for category, count in write_errors.items():
+                if count:
+                    _report("cache write")
+                    print(f"sccache write errors: {category} x{count}", file=sys.stderr, flush=True)
             if statistics is not None:
                 statistics.update({f"write_error_{category}": count for category, count in write_errors.items()})
 
 
 def _report(
-    stage: str,
-    command: Sequence[str],
-    status: int | None,
-    tail: Sequence[str],
+    phase: str,
+    status: int | None = None,
     error: BaseException | None = None,
-    output: object = None,
 ) -> None:
-    """Print The Failed Native Command, Its Tool Version And Redacted Native Output Beside The Fixed Verdict."""
+    """Emit Only Fixed Classifications And Validated Native Version And Error Codes."""
     try:
-        version = subprocess.run(
+        result = subprocess.run(
             ["sccache", "--version"],
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            creationflags=spawn_flags(),
             capture_output=True,
             text=True,
+            errors="replace",
             check=False,
             timeout=10,
-        ).stdout.strip()
+        )
+        version = re.fullmatch(r"sccache ([0-9]+\.[0-9]+\.[0-9]+)\s*", result.stdout) if result.returncode == 0 else None
     except (OSError, subprocess.SubprocessError):
-        version = "sccache (version unavailable)"
-    lines = [f"{version or 'sccache (version unavailable)'}: {stage} failed", f"command: {' '.join(command)}"]
-    if status is not None:
-        lines.append(f"exit status: {status}")
-    if error is not None and not isinstance(error, subprocess.CalledProcessError):
-        lines.append(f"error: {type(error).__name__}: {error}")
-    for name in ("stdout", "stderr"):
-        if text := (getattr(output, name, None) or "").strip():
-            lines.append(f"{name}:")
-            lines.extend("  " + line for line in text.splitlines()[-TAIL:])
-    if tail:
-        lines.append("server log:")
-        lines.extend("  " + line for line in tail)
-    print("\n".join(_redact(line) for line in lines), file=sys.stderr, flush=True)
-
-
-def _redact(text: str) -> str:
-    """Remove Credentials And Backend Endpoints From Native Diagnostics."""
-    for name in SECRETS:
-        if (value := os.environ.get(name)) and len(value) > 3:
-            text = text.replace(value, "***")
-    return re.sub(r"\b[a-z][a-z0-9+.-]*://\S+", "<url>", text)
+        version = None
+    phase = phase if phase in PHASES else "unknown phase"
+    tool = f"sccache {version[1]}" if version else "sccache (version unavailable)"
+    code = status if type(status) is int else "unavailable"
+    lines = [f"{tool}: {phase} failed", f"native exit code: {code}"]
+    for name in ("winerror", "errno"):
+        code = getattr(error, name, None)
+        if type(code) is int:
+            lines.append(f"native {name}: {code}")
+    print("\n".join(lines), file=sys.stderr, flush=True)
 
 
 def _write_error(line: str) -> str | None:

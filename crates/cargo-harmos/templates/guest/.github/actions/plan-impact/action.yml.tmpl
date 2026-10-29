@@ -1,0 +1,27 @@
+# Rendered by stkr project update from templates/ci/plan-impact; sha256:8592ba0ca1b3d451e45d59789f47a8978373ccaeed29424cbb09d59e62d29097
+name: Plan Impact
+description: Plan Impact
+inputs:
+  plan:
+    description: Plan
+    required: true
+    default: ""
+  target:
+    description: Target
+    required: false
+    default: ""
+outputs:
+  jobs:
+    description: Selected logical jobs
+    value: ${{ steps.impact.outputs.jobs }}
+runs:
+  using: composite
+  steps:
+  - shell: python
+    run: |-
+      import os, runpy
+      runpy.run_path(os.path.join(os.environ['GITHUB_ACTION_PATH'], 'run.py'), run_name='__main__')
+    id: impact
+    env:
+      IMPACT_PLAN: ${{ inputs.plan }}
+      IMPACT_TARGET: ${{ inputs.target }}

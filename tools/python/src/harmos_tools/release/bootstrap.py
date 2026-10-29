@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/bootstrap.py; sha256:b9ee0a2bde335e3f67cae927645759dfdd5ef9329ab861ea6e067148d6fce3df
+# Rendered by stkr project update from templates/python/release/bootstrap.py; sha256:9ffcc0d27073330b94ecc9f39033c696abe89a819c69952885025e6429cbb4e3
 # ***
 #
 # Harmos
@@ -25,6 +25,8 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
+from ..process import spawn_flags
+
 # isort: split
 from . import policy
 
@@ -157,7 +159,7 @@ def verify_stkr(directory: Path, executable: Path, version: str) -> None:
     try:
         result = subprocess.run(
             [str(executable), "--version"],
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            creationflags=spawn_flags(),
             cwd=directory,
             text=True,
             capture_output=True,

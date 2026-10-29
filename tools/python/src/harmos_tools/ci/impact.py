@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/impact.py; sha256:4f6b526abb9ac5c869786e5ff588c42916de7cf07c1d3b19caf8587a6841669d
+# Rendered by stkr project update from templates/python/ci/impact.py; sha256:33fee493790ff23a0a302e6c5d3b8c832717c18509f4e5c6f9a1ffc802ffd24d
 # ***
 #
 # Harmos
@@ -20,6 +20,7 @@ from pathlib import Path
 # Third Party Imports
 
 # Local Imports
+from ..process import spawn_flags
 
 # Type Checking Imports
 
@@ -42,7 +43,7 @@ def changed_paths(target: str, root: Path | None = None) -> set[str] | None:
         return subprocess.check_output(
             ["git", *arguments],
             cwd=root,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            creationflags=spawn_flags(),
             stderr=subprocess.DEVNULL,
             timeout=30,
         ).decode("utf-8")
@@ -100,7 +101,7 @@ def selection(root: Path, plan: dict, target: str = "origin/dev") -> set[str]:
 
 def main(plan: dict) -> None:
     """Native Providers Supply The Target Context; Missing Context Selects Full Proof."""
-    target = os.environ.get("STKR_IMPACT_TARGET")
+    target = os.environ.get("IMPACT_TARGET")
     paths = changed_paths(target) if target else None
     selected = select(plan, paths)
     if "document" in plan:
@@ -134,7 +135,7 @@ def main(plan: dict) -> None:
                 gate["image"] = image
             document["CI / No Jobs"] = gate
         # Original Event Rules Remain Meaningful Inside The Native Child Pipeline.
-        text = json.dumps(document).replace("CI_PIPELINE_SOURCE", "STKR_PIPELINE_SOURCE")
+        text = json.dumps(document).replace("CI_PIPELINE_SOURCE", "PIPELINE_SOURCE")
         destination = Path("target/ci/impact-child.yml")
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(text + "\n", encoding="utf-8")

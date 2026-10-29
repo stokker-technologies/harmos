@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/build.py; sha256:5d2d1ef3175fb4cf1d51bf5b7fcdbefe451f749d5bb4e1212d5f1923274a70f0
+# Rendered by stkr project update from templates/python/ci/build.py; sha256:e390bb3876ae3c233eb08ae8370193d15d83f98e51099a3d303d43855a0c608e
 # ***
 #
 # Harmos
@@ -23,6 +23,7 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
+from ..process import spawn_flags
 from . import compiler, summary
 
 # Type Checking Imports
@@ -51,15 +52,15 @@ def run(task: str, output: str, profile: str) -> int:
     if output == "bench":
         return _run(command, OUTPUTS[output])
     # Check / Rust Runs lint:rust Over The Product And Tests Selections; These Producers Only Compile.
-    previous = os.environ.get("STKR_CI_CHECK_CLIPPY")
-    os.environ["STKR_CI_CHECK_CLIPPY"] = "1"
+    previous = os.environ.get("CHECK_CLIPPY")
+    os.environ["CHECK_CLIPPY"] = "1"
     try:
         return _run(command, OUTPUTS[output])
     finally:
         if previous is None:
-            os.environ.pop("STKR_CI_CHECK_CLIPPY", None)
+            os.environ.pop("CHECK_CLIPPY", None)
         else:
-            os.environ["STKR_CI_CHECK_CLIPPY"] = previous
+            os.environ["CHECK_CLIPPY"] = previous
 
 
 def main() -> int:
@@ -76,15 +77,13 @@ def main() -> int:
                 parser.error("--task requires --output and --profile")
             return run(options.task, options.output, options.profile)
         script = (
-            bytes.fromhex(options.internal_script).decode("utf-8")
-            if options.internal_script is not None
-            else os.environ["_STKR_CI_BUILD_SCRIPT"]
+            bytes.fromhex(options.internal_script).decode("utf-8") if options.internal_script is not None else os.environ["BUILD_SCRIPT"]
         )
         return _run(script, "Task Build", options.shell)
-    except (OSError, ValueError, KeyError, RuntimeError) as error:
+    except (OSError, ValueError, KeyError, RuntimeError):
         parser.exit(
             1,
-            f"build: {type(error).__name__}: {error}; the native command diagnostics precede this line\n",
+            "build: execution failed; check task arguments or preceding safe native diagnostics\n",
         )
 
 
@@ -94,15 +93,15 @@ def main() -> int:
 def _run(command: Sequence[str] | str, label: str, shell: str | None = None) -> int:
     started = time.monotonic()
     statistics = {}
-    backend = os.environ.get("STKR_SCCACHE_BACKEND")
+    backend = os.environ.get("COMPILER_CACHE_BACKEND")
     mode = os.environ.get(
-        "STKR_SCCACHE_MODE",
-        "READ_WRITE" if os.environ.get("STKR_CACHE_POLICY") == "pull-push" else "READ_ONLY",
+        "COMPILER_CACHE_MODE",
+        "READ_WRITE" if os.environ.get("CACHE_POLICY") == "pull-push" else "READ_ONLY",
     )
     phase_store = tempfile.TemporaryDirectory(prefix="stkr-build-phases-")
     phase_file = Path(phase_store.name) / "phases.jsonl"
-    previous_phase_file = os.environ.get("STKR_CI_PHASE_FILE")
-    os.environ["STKR_CI_PHASE_FILE"] = str(phase_file)
+    previous_phase_file = os.environ.get("BUILD_PHASE_FILE")
+    os.environ["BUILD_PHASE_FILE"] = str(phase_file)
     status = 1
     print(f"{label}: starting", flush=True)
     try:
@@ -136,7 +135,7 @@ def _run(command: Sequence[str] | str, label: str, shell: str | None = None) -> 
                 stdin=sys.stdin,
                 stdout=sys.stdout,
                 stderr=sys.stderr,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                creationflags=spawn_flags(),
                 check=False,
             ).returncode
         return status
@@ -146,19 +145,19 @@ def _run(command: Sequence[str] | str, label: str, shell: str | None = None) -> 
             measured = summary.phases(phase_file)
         finally:
             if previous_phase_file is None:
-                os.environ.pop("STKR_CI_PHASE_FILE", None)
+                os.environ.pop("BUILD_PHASE_FILE", None)
             else:
-                os.environ["STKR_CI_PHASE_FILE"] = previous_phase_file
+                os.environ["BUILD_PHASE_FILE"] = previous_phase_file
             try:
                 phase_store.cleanup()
             except OSError:
                 print("Phase telemetry cleanup unavailable", flush=True)
         print(
-            "STKR_BUILD_STATISTICS "
+            "BUILD_STATISTICS "
             + json.dumps(
                 {
-                    "backend": backend,
-                    "mode": mode,
+                    "backend": backend if backend in {None, "disk", "s3"} else "unsupported",
+                    "mode": mode if mode in {"READ_ONLY", "READ_WRITE"} else "unsupported",
                     "status": status,
                     "statistics": {key: value for key, value in statistics.items() if value is None or type(value) is int},
                     "phases": measured,
