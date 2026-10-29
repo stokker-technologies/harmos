@@ -40,7 +40,6 @@ grpc = [
   "generate-proto",
   "dep:tonic-reflection",
   "dep:http-body",
-  "dep:heck",
   "dep:bytes",
   "dep:tonic",
   "dep:prost-reflect",
@@ -80,7 +79,6 @@ tracing = { workspace = true, default-features = true }
 bytes = { workspace = true, optional = true }
 # Retry Windows Use Native Entropy Or Web Crypto On Browser WebAssembly.
 getrandom = { workspace = true, features = ["std", "wasm_js"] }
-heck = { workspace = true, optional = true }
 petgraph = { workspace = true, default-features = true, optional = true }
 semver = { workspace = true, default-features = true, optional = true }
 sha2 = { workspace = true, default-features = true }

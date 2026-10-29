@@ -21,7 +21,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
 // Local Imports
 use harmos_domain::Message;
-use harmos_sdk::operations::{CHILD_METHOD, CallValue, OperationDeclaration, WIRE_METHOD, WireAnswer, WireChildCall, WireCommand};
+use harmos_sdk::operations::{CHILD_METHOD, CallValue, OperationDeclaration, WIRE_METHOD, WireChildCall, WireCommand};
 
 /* === Constants === */
 
@@ -180,15 +180,6 @@ impl Frame {
     /// Tests the routed Prepare or empty-values child bound; not an arbitrary child context.
     pub fn request_fits<O: OperationDeclaration>(request: &O::Request) -> bool {
         Self::request_encoded_len::<O>(request) <= Self::LIMIT
-    }
-
-    pub fn reply_encoded_len<O: OperationDeclaration>(reply: &O::Response) -> usize {
-        let payload = WireAnswer::ready_encoded_len(reply.encoded_size()).unwrap_or(usize::MAX);
-        answer_encoded_len(u64::MAX, payload)
-    }
-
-    pub fn reply_fits<O: OperationDeclaration>(reply: &O::Response) -> bool {
-        Self::reply_encoded_len::<O>(reply) <= Self::LIMIT
     }
 
     pub fn encoded_len(&self) -> usize {
@@ -369,7 +360,7 @@ mod tests {
 
     #[test]
     fn typed_sizes_match() {
-        use harmos_domain::model::storage::files::{ByteRange, FileCompletion, FileSource};
+        use harmos_domain::model::storage::files::{ByteRange, FileSource};
         use harmos_operations::storage::ReadFile;
         let request = ReadFile {
             source: FileSource::Local("data/測定.bin".into()),
@@ -379,12 +370,7 @@ mod tests {
             Frame::request_encoded_len::<ReadFile>(&request),
             Frame::request_payload_encoded_len(ReadFile::ID, request.encode().len())
         );
-        let reply = FileCompletion { bytes: u64::MAX };
-        let envelope = WireAnswer::Ready { payload: reply.encode() }.encode().unwrap();
-        let frame = Frame::Answer { id: u64::MAX, result: envelope.into() };
-        assert_eq!(Frame::reply_encoded_len::<ReadFile>(&reply), frame.encoded_len());
         assert!(Frame::request_fits::<ReadFile>(&request));
-        assert!(Frame::reply_fits::<ReadFile>(&reply));
     }
 
     #[test]

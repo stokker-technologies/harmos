@@ -301,11 +301,6 @@ impl WireCommand {
 }
 
 impl WireAnswer {
-    /// Counts the versioned Ready envelope without encoding or allocating its payload.
-    pub fn ready_encoded_len(payload: usize) -> Result<usize, WireCodecError> {
-        payload_size(Envelope::Ready { payload: &[] }, payload)
-    }
-
     pub fn encode(&self) -> Result<Vec<u8>, WireCodecError> {
         let envelope = match self {
             Self::Ready { payload } => Envelope::Ready { payload },
@@ -520,14 +515,11 @@ mod tests {
                 operation,
                 fingerprint: [255; 32],
                 generation: invocation,
-                payload: payload.clone(),
+                payload,
             };
             assert_eq!(command.encode().unwrap().len(), expected);
-            let expected = WireAnswer::ready_encoded_len(size).unwrap();
-            assert_eq!(WireAnswer::Ready { payload }.encode().unwrap().len(), expected);
         }
         assert!(WireCommand::prepare_encoded_len(0, "op", [255; 32], u64::MAX, usize::MAX).is_err());
-        assert!(WireAnswer::ready_encoded_len(usize::MAX).is_err());
     }
 
     #[test]

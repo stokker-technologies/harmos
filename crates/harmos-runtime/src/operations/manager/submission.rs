@@ -65,12 +65,6 @@ impl Manager {
         self.admit::<O, ()>((request.into(), ()), None, &[], &Source::Host, Some(cause))
     }
 
-    pub async fn call_caused<O: OperationDeclaration>(
-        &self, request: O::Request, cause: Position,
-    ) -> Result<crate::operations::Response<O::Response>> {
-        self.submit_caused::<O>(request, cause)?.await
-    }
-
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(in crate::operations) fn submit_by<O: OperationDeclaration, P: Send + 'static>(
         &self, input: (crate::operations::binding::Request<O::Request>, P), source: &Source,

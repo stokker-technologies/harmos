@@ -76,10 +76,6 @@ pub(super) fn create_dir_all(path: &Path) -> io::Result<()> {
     }
 }
 
-pub(super) fn move_directory(source: &Path, destination: &Path) -> io::Result<()> {
-    move_file(source, destination, false)
-}
-
 pub(super) fn install(source: &Path, destination: &Path) -> io::Result<()> {
     move_file(source, destination, false)
 }
