@@ -7,20 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "dependency_admission.rs"]
 mod dependency_admission;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::lifecycle::{GuestOperations, Lifecycle, Resources};
 use super::sandbox::{EchoOperation, Echoed, ProviderEchoOperation};
 use super::{Bank, GuestLanes, component_error, retire_failed_guest, runtime};
@@ -29,16 +18,10 @@ use harmos_runtime::operations::Host as _;
 use harmos_runtime::operations::{OperationDeclaration, OperationPolicy};
 use harmos_sidecar::Attach;
 
-/* === Constants === */
-
 const NATIVE_CAPACITY: usize = 64;
 static NEXT_NATIVE_SEED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 static NATIVE_SEEDS: std::sync::Mutex<std::collections::BTreeMap<u64, std::sync::Weak<ProviderOwner>>> =
     std::sync::Mutex::new(std::collections::BTreeMap::new());
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 type NativeResident = harmos_runtime::sidecar::Supervised<
     Bank,
@@ -47,8 +30,6 @@ type NativeResident = harmos_runtime::sidecar::Supervised<
 >;
 type GuestResources = Resources;
 type DependencyBackends = harmos_runtime::plugin::PluginBackend<GuestResources, NativeResources, ProviderResources>;
-
-/* === Structs === */
 
 #[derive(Default)]
 struct ProviderOwner {
@@ -114,8 +95,6 @@ struct DependencyHost {
     provider: std::sync::Arc<ProviderOwner>,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 enum ProviderOperations {
     EchoOperation(ProviderRead),
@@ -130,10 +109,6 @@ enum ForwardOperations {
 enum NativeRequirements {
     EchoOperation(EchoOperation),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[harmos_runtime::operation(codec = manual, resources = [ProviderOwner], id = ProviderEchoOperation::ID, response = Echoed,
     policy = ProviderEchoOperation::POLICY, visibility = Public)]
@@ -476,10 +451,6 @@ impl harmos_runtime::plugin::PluginLifecycle for DependencyHost {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn native_provider() -> harmos_sidecar::PluginNative<NativeProviderPlugin> {
     harmos_sidecar::PluginNative::new(std::num::NonZeroUsize::new(NATIVE_CAPACITY).unwrap()).unwrap()
 }
@@ -546,5 +517,3 @@ async fn native_dependency_candidate(
     }
     PluginDefinitions::new(definitions, []).unwrap()
 }
-
-/* === Tests === */

@@ -9,26 +9,6 @@
 
 // Watch And Rebuild Guest Artifacts Through Shared Harmos APIs.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(clap::Args)]
 pub struct Arguments {
     #[command(flatten)]
@@ -38,14 +18,6 @@ pub struct Arguments {
     debounce_ms: u64,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 pub fn run(arguments: Arguments, cancellation: &harmos_packaging::BuildCancellation) -> Result<(), harmos_packaging::Error> {
     let json = arguments.build.json;
     let settings = arguments.build.settings(harmos_packaging::config::BuildBackend::Guest);
@@ -54,7 +26,3 @@ pub fn run(arguments: Arguments, cancellation: &harmos_packaging::BuildCancellat
     };
     harmos_packaging::dev(&settings, policy, cancellation, |event| crate::output::dev(event, json))
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

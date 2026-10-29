@@ -7,33 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::UNKNOWN;
-
-/* === Constants === */
 
 #[cfg(target_arch = "wasm32")]
 static CHILD: fn(Vec<u8>) -> Child = |payload| Box::pin(super::plugin::__bindings::harmos::guest::operation_context::child(payload));
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 #[cfg(target_arch = "wasm32")]
 type Child =
     std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, super::plugin::__bindings::harmos::guest::capabilities::Refusal>>>>;
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub struct Context {
@@ -42,12 +23,6 @@ pub struct Context {
     pub(super) assignments: harmos_sdk::operations::OperationAssignments,
     pub(super) call: std::sync::Arc<crate::operations::CallContext>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_sdk::lifecycle::Context for Context {
     type Configuration = harmos_sdk::__private::WireTable;
@@ -87,14 +62,8 @@ impl Context {
     }
 }
 
-/* === Public Functions === */
-
 pub(super) fn retain() {
     // Keep The Fixed Async Import Even For An Empty Selected Catalog
     #[cfg(target_arch = "wasm32")]
     std::hint::black_box(&CHILD);
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

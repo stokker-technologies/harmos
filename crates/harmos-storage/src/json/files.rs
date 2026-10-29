@@ -9,13 +9,6 @@
 
 // Independent Native File Staging, Publication And Bounded Reads.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     collections::BTreeMap,
     fs::{self, File, OpenOptions},
@@ -28,22 +21,12 @@ use std::{
     },
 };
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
-// Local Imports
 use super::format;
 use crate::{FileCheckpoint, FileMetadata, FilePhase, FileReference, FileSession, Result, StagedFile, StorageCursor, StoreHistory};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(super) struct Files {
     pub root: PathBuf,
@@ -69,12 +52,6 @@ pub(super) struct Reader {
     pub reference: FileReference,
     file: File,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Files {
     pub fn new(root: PathBuf, history: StoreHistory, maximum: usize) -> Self {
@@ -369,8 +346,6 @@ impl Reader {
     }
 }
 
-/* === Public Functions === */
-
 pub(super) fn key(id: &crate::Identifier) -> String {
     format::hex(&Sha256::digest(id.as_str().as_bytes()))
 }
@@ -395,7 +370,3 @@ pub(super) fn verify(path: &Path, length: u64, expected: [u8; 32]) -> Result<()>
     }
     Ok(())
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

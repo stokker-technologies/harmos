@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod codec;
 mod configuration;
 mod owned;
@@ -17,44 +15,31 @@ pub(crate) mod protobuf;
 #[cfg(feature = "streaming")]
 mod streams;
 
-/* === Re-Exports === */
-
 pub use codec::WireCodecError;
 #[cfg(feature = "streaming")]
 pub use streams::{WireEndpoints, WireStreamLimits, WireStreams};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, Weak};
 use std::task::{Poll, Waker};
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
 use tracing::Instrument;
-// Local Imports
+
 use super::{Contract, ContractError, ExecutionContext, FailureKind, OperationDefinition, RegistrationBatch, StartupError};
 use crate::QualifiedId;
-
-/* === Constants === */
 
 pub const WIRE_METHOD: &str = "harmos.operation.v2";
 
 pub const CHILD_METHOD: &str = "harmos.operation.child.v2";
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Answer<'a> = Pin<Box<dyn Future<Output = Result<Vec<u8>, ServingError>> + Send + 'a>>;
 type Finished<'a> = Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + 'a>>;
 type Finalization<S> = Pin<Box<dyn Future<Output = (S, Result<(), ServingError>)> + Send + 'static>>;
 type Prepare = Box<dyn Fn(Vec<u8>, bool) -> Result<Box<dyn Prepared>, ServingError> + Send + Sync>;
-
-/* === Structs === */
 
 struct Contextual<F: std::future::Future> {
     future: Option<std::pin::Pin<Box<F>>>,
@@ -154,8 +139,6 @@ struct Route {
     contract: Option<Contract>,
     prepare: Prepare,
 }
-
-/* === Enums === */
 
 // Answers: `Join` the child's response payload, `Status` and `Cancel` an
 // encoded instance state, `Release` and `Detach` an empty payload.
@@ -290,8 +273,6 @@ pub enum ServingError {
     Native(#[source] std::sync::Arc<dyn std::error::Error + Send + Sync>),
 }
 
-/* === Traits === */
-
 trait InContext: std::future::Future + Sized {
     fn in_context(self, dispatcher: tracing::Dispatch) -> Contextual<Self> {
         Contextual { future: Some(Box::pin(self)), dispatcher }
@@ -316,8 +297,6 @@ trait Prepared: Send {
     fn attempt<'a>(&'a mut self, context: &'a ExecutionContext) -> Answer<'a>;
     fn finalize(&mut self) -> Finished<'_>;
 }
-
-/* === Implementations === */
 
 impl<F: std::future::Future> InContext for F {}
 
@@ -1003,8 +982,6 @@ impl ServingError {
     }
 }
 
-/* === Public Functions === */
-
 // A Prepare answer is empty when the request needs no grant, else the grant as JSON.
 pub fn encode_prepared_grant(grant: Option<&crate::plugin::Grant>) -> Vec<u8> {
     grant.map_or_else(Vec::new, |grant| serde_json::to_vec(grant).expect("a grant serializes to JSON"))
@@ -1016,8 +993,6 @@ pub fn decode_prepared_grant(payload: &[u8]) -> Result<Option<crate::plugin::Gra
     }
     serde_json::from_slice(payload).map(Some)
 }
-
-/* === Private Functions === */
 
 fn command_identity(command: &WireCommand) -> (u64, &'static str) {
     match command {
@@ -1052,8 +1027,6 @@ async fn guarded<T>(future: impl Future<Output = Result<T, ServingError>>) -> Re
     })
     .await
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::{
     Arc,
@@ -21,21 +14,11 @@ use std::sync::{
 };
 use std::time::Duration;
 
-// Third Party Imports
 use tokio::sync::Notify;
 
-// Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::{OperationOutcome, OperationPhase, RetryPolicy, Settings};
 use harmos_runtime::{Error, Refusal, Runtime};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // The Hold Request Carries A Shared Notification, So It Stays In Process.
 #[harmos_runtime::operation(resources = [Counts], codec = manual, response = (),
@@ -62,16 +45,10 @@ struct Counts {
     drops: AtomicUsize,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 enum Operations {
     HoldContractDeclaration(HoldContractDeclaration),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 super::in_process!(HoldContractDeclaration);
 
@@ -101,10 +78,6 @@ impl Drop for AttemptGuard {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn runtime(counts: Arc<Counts>) -> Runtime<App> {
     Runtime::<App>::launch_with((), (), |setup| {
         setup.resource::<Counts>(counts);
@@ -124,8 +97,6 @@ fn request(blocked: bool) -> HoldContractDeclaration {
         started: Arc::new(Notify::new()),
     }
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn queue_refuses_construction() {

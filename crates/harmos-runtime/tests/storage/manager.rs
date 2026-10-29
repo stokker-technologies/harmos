@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "manager/mutations.rs"]
 mod mutations;
 #[path = "manager/production.rs"]
@@ -16,36 +14,12 @@ mod production;
 #[path = "manager/recovery.rs"]
 mod recovery;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-// Third Party Imports
-// Local Imports
+
 use super::{Fixture, config};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::FileMetadata;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn metadata(name: &str) -> FileMetadata {
     FileMetadata {
@@ -56,8 +30,6 @@ fn metadata(name: &str) -> FileMetadata {
         expected_sha256: None,
     }
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn resume_continues_offset() {

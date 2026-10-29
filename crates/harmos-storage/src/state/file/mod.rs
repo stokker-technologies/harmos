@@ -9,17 +9,10 @@
 
 // Durable JSON State Backend
 
-/* === Modules === */
-
 mod files;
 mod format;
 mod journal;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     fs::{File, OpenOptions},
     num::NonZeroUsize,
@@ -29,22 +22,14 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-// Third Party Imports
+
 use tokio::sync::Mutex;
-// Local Imports
+
 use super::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StateBackend, StorageStateSettings};
 use crate::storage::{ReadLimits, RecoveryPosition, StorageBatch, StorageFuture, StoreHistory};
 use crate::{BackendFailure, Error, Result};
 use files::JournalOpener;
 use journal::StateLog;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct FileBackend {
     root: PathBuf,
@@ -55,12 +40,6 @@ pub struct FileBackend {
 }
 
 struct CancelOpen(Arc<AtomicBool>);
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Drop for CancelOpen {
     fn drop(&mut self) {
@@ -300,12 +279,6 @@ impl StateBackend for FileBackend {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn task(error: tokio::task::JoinError) -> Error {
     Error::backend("state file task", BackendFailure::Permanent, error)
 }
-
-/* === Tests === */

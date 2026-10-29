@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     convert::Infallible,
     future::Future,
@@ -21,21 +14,11 @@ use std::{
     task::{Context, Poll},
 };
 
-// Third Party Imports
 use tonic::{body::Body, codegen::http};
 
-// Local Imports
 use super::server;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub(crate) type Handler = fn(server::Authority, server::Settings, http::Request<Body>) -> server::HttpFuture;
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub(super) struct Router {
@@ -43,12 +26,6 @@ pub(super) struct Router {
     settings: server::Settings,
     calls: server::Calls,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Router {
     pub(super) fn new(operations: crate::operations::Manager, settings: server::Settings) -> Result<Self, tonic::Status> {
@@ -93,8 +70,6 @@ where
     }
 }
 
-/* === Public Functions === */
-
 // The gRPC handler of one declaration, selected by the directions it streams.
 #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 pub(crate) fn handler<O: crate::operations::OperationDeclaration>() -> Handler {
@@ -106,7 +81,3 @@ pub(crate) fn handler<O: crate::operations::OperationDeclaration>() -> Handler {
         (true, true) => server::exchange::<O, super::Transcoded>,
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

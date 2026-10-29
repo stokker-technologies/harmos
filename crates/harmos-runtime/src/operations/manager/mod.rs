@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod admission;
 mod cache;
 mod construction;
@@ -27,20 +25,15 @@ mod discovery;
 
 mod residents;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::Any;
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{
     Arc, Mutex, Weak,
     atomic::{AtomicBool, AtomicU8, Ordering},
 };
-// Third Party Imports
+
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-// Local Imports
+
 use super::admission::{Admission, Lanes};
 use super::binding::Typed;
 use super::caller::{Identity, Origin, Source};
@@ -54,17 +47,9 @@ use crate::supervision::executor;
 use crate::supervision::instance::Instance;
 use crate::{Error, Identifier, Result, operations::Lane, operations::Scope, state::Position};
 
-/* === Constants === */
-
 const DEFAULT_CACHE_CAPACITY: usize = 64;
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type CachedResponse = harmos_sdk::__private::ErasedResponse;
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub struct OperationManager<L: Lane> {
@@ -190,8 +175,6 @@ struct Cached {
     response: CachedResponse,
 }
 
-/* === Enums === */
-
 #[repr(u8)]
 enum Retirement {
     Retained,
@@ -199,10 +182,6 @@ enum Retirement {
     Explicit,
     Runtime,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Manager {
     pub(crate) fn resources(&self) -> &harmos_sdk::__private::ResourceSet {
@@ -291,10 +270,6 @@ impl<L: Lane> std::ops::Deref for OperationManager<L> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 fn grant_allowed(required: Option<&harmos_domain::inventory::contracts::Required>, grant: Option<&harmos_domain::plugin::Grant>) -> bool {
     match grant {
@@ -310,5 +285,3 @@ async fn settle(entry: &Entry) -> Result<()> {
     }
     Ok(())
 }
-
-/* === Tests === */

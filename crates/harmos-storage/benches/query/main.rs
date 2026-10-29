@@ -9,20 +9,11 @@
 
 // Benchmark Exact Scalar Order Statistics
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
-// Third Party Imports
 use criterion::{BenchmarkId, Criterion};
 
-// Local Imports
 use harmos_storage::{
     Aggregate,
     query::{
@@ -30,24 +21,6 @@ use harmos_storage::{
         scalar::{Agg, ScalarValue},
     },
 };
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn main() {
     let mut criterion = Criterion::default().configure_from_args();
@@ -99,5 +72,3 @@ fn main() {
     group.finish();
     criterion.final_summary();
 }
-
-/* === Tests === */

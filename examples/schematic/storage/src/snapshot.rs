@@ -7,29 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io;
 use std::sync::Arc;
-// Third Party Imports
 
-// Local Imports
 use harmos::{Application, state::Entry, state::Position, state::Recorded, storage::JournalConsumer};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Sink<A> = Box<dyn FnMut(&<A as Application>::State, Position) -> io::Result<()> + Send>;
-
-/* === Structs === */
 
 pub struct Snapshot<A: Application> {
     replica: A::State,
@@ -41,12 +24,6 @@ pub struct Snapshot<A: Application> {
     halted: bool,
     write: Sink<A>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> Snapshot<A> {
     pub fn folding(origin: A::State, at: Position, write: impl FnMut(&A::State, Position) -> io::Result<()> + Send + 'static) -> Self {
@@ -112,9 +89,3 @@ impl<A: Application> JournalConsumer<A> for Snapshot<A> {
         self.durable
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

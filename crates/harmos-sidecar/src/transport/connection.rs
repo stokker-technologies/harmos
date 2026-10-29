@@ -7,44 +7,29 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::sync::{mpsc, watch};
-// Local Imports
+
 use super::credit::{MINIMUM, WINDOW};
 use super::{Consumption, Credit, Packet, ReceiveCredit, Reservation, Role, read, read_data, write, write_with};
 use crate::Frame;
-
-/* === Constants === */
 
 const OUTGOING_DATA: usize = 8;
 const CONTROL: usize = 4;
 const EARLY_CANCELLATIONS: usize = 256;
 const INCOMING_DATA: usize = WINDOW / MINIMUM + 1;
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type Io = (Box<dyn AsyncRead + Send + Unpin>, Box<dyn AsyncWrite + Send + Unpin>);
 type Outcome = Result<(), Arc<io::Error>>;
 type IoReader = Box<dyn AsyncRead + Send + Unpin>;
 type IoWriter = Box<dyn AsyncWrite + Send + Unpin>;
 type DriverFuture = Pin<Box<dyn Future<Output = Outcome> + Send>>;
-
-/* === Structs === */
 
 pub struct Connection {
     pub sender: Sender,
@@ -93,12 +78,6 @@ struct State {
     stopped: watch::Sender<bool>,
     failure: Mutex<Option<Arc<io::Error>>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Connection {
     pub fn new(data: Io, control: Io) -> Self {
@@ -264,10 +243,6 @@ impl State {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn stopped(mut receiver: watch::Receiver<bool>) {
     while !*receiver.borrow_and_update() {
         if receiver.changed().await.is_err() {
@@ -352,5 +327,3 @@ async fn send_control(mut writer: IoWriter, mut outgoing: mpsc::Receiver<Packet>
 fn broken(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::BrokenPipe, message)
 }
-
-/* === Tests === */

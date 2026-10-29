@@ -7,31 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::task::{Context, Poll};
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::Runtime;
 use crate::storage::StorageManager;
 use crate::{Application, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 type StartupFuture<A> = Pin<Box<dyn Future<Output = std::result::Result<Runtime<A>, super::Incompatible>> + Send>>;
 type CleanupFuture = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
@@ -40,8 +27,6 @@ type InitializeFuture = Pin<Box<dyn Future<Output = std::result::Result<(), Box<
 type Initialize<A> = Box<dyn FnOnce(super::Handle<A>) -> InitializeFuture + Send>;
 pub(super) type Reconciliation<A> =
     Box<dyn FnOnce(super::StateManager<A>, StorageManager<crate::storage::ErasedCatalog>) -> ReconcileFuture + Send>;
-
-/* === Structs === */
 
 pub(super) struct Initializer<A: Application> {
     pub(super) timeout: Duration,
@@ -85,8 +70,6 @@ pub(super) struct Boot<A: Application> {
     cleanup: BootstrapCleanup,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BootstrapStatus {
     Starting,
@@ -95,10 +78,6 @@ pub enum BootstrapStatus {
     Settled,
     HandedOff,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> Startup<A> {
     pub(super) fn new(builder: super::Builder<A>, storage: Option<StorageManager<crate::storage::ErasedCatalog>>) -> Self {
@@ -431,13 +410,7 @@ impl<A: Application> Drop for Boot<A> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn physically_settled<A: Application>(runtime: &Runtime<A>) -> bool {
     let stopping = runtime.stopping.lock().expect("runtime transition is healthy");
     matches!(&*stopping, super::Stopping::Closing { outcome, .. } if outcome.get().is_some())
 }
-
-/* === Tests === */

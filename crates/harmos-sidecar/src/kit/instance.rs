@@ -11,32 +11,14 @@
 // A submitted child stays owned by the calling attempt; its handle drives it
 // through child controls and releases it when dropped unsettled.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::marker::PhantomData;
 
-// Third Party Imports
-
-// Local Imports
 use super::{CallError, Supervisor};
 use harmos_domain::operations::instance::{Id, Status};
 use harmos_domain::{Message, StreamSpec};
 use harmos_operations::lifecycle::InstanceState;
 use harmos_sdk::operations::{CallContext, ContextError, ContextValue, Host, Instance, OperationDeclaration, Response, WireChildAction};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[must_use = "dropping an unsettled operation instance requests its cancellation"]
 pub struct OperationInstance<O> {
@@ -45,12 +27,6 @@ pub struct OperationInstance<O> {
     released: bool,
     _operation: PhantomData<fn() -> O>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<O: OperationDeclaration> OperationInstance<O> {
     pub fn id(&self) -> Id {
@@ -169,10 +145,6 @@ impl Host for Supervisor {
     // Sequence and timestamp each row as the stream publisher does.
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn decode_response<O: OperationDeclaration>(bytes: &[u8]) -> Result<Response<O::Response>, CallError> {
     let response = O::Response::decode(bytes).map_err(|error| CallError::Malformed {
         method: O::ID,
@@ -189,5 +161,3 @@ fn decode_status(bytes: &[u8]) -> Result<Status, CallError> {
     let state = InstanceState::decode(bytes).map_err(|error| malformed(error.to_string()))?;
     Status::try_from(&state).map_err(|error| malformed(error.to_string()))
 }
-
-/* === Tests === */

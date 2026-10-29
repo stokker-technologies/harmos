@@ -9,36 +9,7 @@
 
 // Await Native Resident Status Events Without A Polling Timer.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 // Await The Resident Status Change The Story Names; The Lane Deadline Ends A Hang.
 pub(super) async fn service_status(
@@ -54,5 +25,3 @@ pub(super) async fn service_status(
         .expect("the runtime keeps the status sender open");
     snapshot.get(&key).and_then(|item| item.health.clone()).expect("the awaited status is present")
 }
-
-/* === Tests === */

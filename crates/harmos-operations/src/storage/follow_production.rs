@@ -7,17 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::IO_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, Unsigned, product};
@@ -28,18 +17,10 @@ use harmos_sdk::operations::access::GrantAccess;
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(FollowProduction {
     file: Nested<StagedFile> => 1,
     offset: Unsigned => 2,
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // Follow An Existing Staged Production Without Reinterpreting Its Identity.
 #[harmos::operation(
@@ -61,12 +42,6 @@ pub struct FollowProduction {
     pub offset: u64,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl FollowProduction {
     fn grant_for(request: &FollowProduction) -> Option<harmos_domain::plugin::Grant> {
         Some(harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, request.file.id.as_str().to_owned()))
@@ -85,11 +60,6 @@ impl MemorySize for FollowProduction {
 mod execution {
     use super::*;
 
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
     use crate::storage::IO_TIMEOUT;
     use crate::{Error, Result};
     use harmos_sdk::operations::{Operation, OperationDeclaration};
@@ -123,9 +93,3 @@ mod execution {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

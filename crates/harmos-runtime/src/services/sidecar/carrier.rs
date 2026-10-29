@@ -7,31 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
-// Third Party Imports
+
 use tokio::task::JoinHandle;
-// Local Imports
+
 use super::Arrival;
 use crate::supervision::executor;
 use harmos_sidecar::attach::{End, Ending};
 use harmos_sidecar::{Frame, transport};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct DrivenEnd {
     sender: transport::Sender,
@@ -40,8 +25,6 @@ struct DrivenEnd {
     failure: Option<String>,
 }
 
-/* === Enums === */
-
 pub(super) enum Connecting {
     Unavailable,
     Binary(transport::Sender, transport::Receiver),
@@ -49,10 +32,6 @@ pub(super) enum Connecting {
 
 pub(super) struct Sender(transport::Sender);
 pub(super) struct Receiver(transport::Receiver);
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Connecting {
     pub fn new(data: transport::Io, control: Option<transport::Io>, ending: Option<Ending>) -> (Self, Option<Ending>) {
@@ -121,9 +100,3 @@ impl Drop for DrivenEnd {
         self.sender.close();
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

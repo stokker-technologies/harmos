@@ -7,49 +7,24 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
     mpsc,
 };
 use std::thread;
-// Third Party Imports
+
 use tokio::sync::oneshot;
-// Local Imports
+
 use super::observer::spawn;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 struct Dropped(Arc<AtomicBool>);
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Drop for Dropped {
     fn drop(&mut self) {
         self.0.store(true, Ordering::SeqCst);
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn blocking_preserves_runtimes() {
@@ -101,5 +76,3 @@ async fn panic_preserves_sibling() {
     assert!(failed.await.unwrap_err().is_panic());
     healthy.await.unwrap();
 }
-
-/* === Tests === */

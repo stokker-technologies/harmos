@@ -8,9 +8,6 @@
 
 """Consume Generated Python Packages, One Scene Per Acceptance Story"""
 
-# === Imports === #
-
-# Standard Library Imports
 import copy
 import importlib
 import json
@@ -26,24 +23,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-# Third Party Imports
 from google.protobuf import descriptor_pool, json_format
 from google.protobuf.descriptor import Descriptor, FieldDescriptor
 from google.protobuf.message import Message
-
-# Local Imports
-
-# Type Checking Imports
-
-# === Public Exports === #
-
-# === Constants === #
-
-# === Types === #
-
-# === Classes === #
-
-# === Public Functions === #
 
 
 def wire(target: Path, alpha: Path, beta: Path) -> None:
@@ -315,8 +297,6 @@ def aggregate(source: Path) -> None:
     built.aggregates.add().Percentile.rank = 99
     sys.stdout.buffer.write(built.SerializeToString())
 
-
-# === Private Functions === #
 
 INSTALLED = """
 import importlib, json, sys
@@ -627,8 +607,6 @@ def _contract() -> dict[str, Any]:
         }
     )
 
-
-# === Entry Point === #
 
 if __name__ == "__main__":
     scene, *paths = sys.argv[1:]

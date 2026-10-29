@@ -7,40 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
 mod owner;
-
-/* === Re-Exports === */
 
 pub use crate::error::Error;
 pub use harmos_domain::plugin::*;
 pub use owner::{Owner, Table};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use crate::operations::{ServingError, WireTable};
 use harmos_domain::model::operations::lifecycle;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait Context: crate::lifecycle::Context<Configuration = WireTable> {
     fn assign_operations(&self, bytes: &[u8]) -> Result<(), ServingError>;
@@ -67,8 +45,6 @@ pub trait Attachment<C>: Send + Sync + 'static {
     fn quiesce(&self) -> Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + '_>>;
 }
 
-/* === Implementations === */
-
 impl crate::lifecycle::Context for () {
     type Configuration = WireTable;
 }
@@ -79,9 +55,3 @@ impl Context for () {
     }
     fn with_generation(&self, _: [u8; 32]) -> Self {}
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

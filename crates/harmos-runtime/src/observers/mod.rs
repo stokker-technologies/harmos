@@ -15,14 +15,10 @@
 // activation: in process over an authored observer, or remotely through a
 // sidecar's observe control.
 
-/* === Modules === */
-
 mod driver;
 
 #[cfg(feature = "plugin-sidecar")]
 mod native;
-
-/* === Re-Exports === */
 
 pub use crate::operations::resident::Staged as ObserverRegistration;
 pub use driver::ObserverActivation;
@@ -33,26 +29,13 @@ pub(crate) use driver::ChildSettlement;
 #[cfg(feature = "plugin-sidecar")]
 pub(crate) use native::Native;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use crate::{Error, Result};
 use harmos_domain::inventory::StreamDeclaration;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct ObserverDefinition {
@@ -62,22 +45,12 @@ pub struct ObserverDefinition {
     pub demand_keys: Vec<String>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub trait ObserverBackend: Send + Sync + 'static {
     fn definition(&self) -> crate::Result<ObserverDefinition>;
     fn run(
         &self, resources: Arc<harmos_sdk::ExecutionContext>, activation: ObserverActivation,
     ) -> impl Future<Output = crate::Result<()>> + Send;
 }
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 pub(crate) fn validate(definition: &ObserverDefinition) -> Result<()> {
     if definition.id.trim().is_empty() || definition.id.chars().any(char::is_control) {
@@ -111,5 +84,3 @@ pub(crate) fn validate(definition: &ObserverDefinition) -> Result<()> {
     }
     Ok(())
 }
-
-/* === Tests === */

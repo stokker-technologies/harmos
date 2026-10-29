@@ -7,19 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-// Third Party Imports
 
-// Local Imports
 use super::{FileMetadata, FileReference};
 
 use crate::model::storage::StorageCursor;
@@ -27,10 +18,6 @@ use crate::model::storage::position::codec::{decode_bounded, encode_bounded};
 use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
 use crate::{Error, MessageError, Result};
-
-/* === Constants === */
-
-/* === Macros === */
 
 crate::model::storage::codec::product!(super::FileSession {
     history: crate::model::storage::codec::Nested<crate::model::storage::StoreHistory> => 1,
@@ -47,22 +34,12 @@ crate::model::storage::codec::product!(super::FileProgress {
     phase: Phase => 2,
 });
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 // Wire Values: Zero Producing, One Finished, Two Abandoned.
 struct Phase;
 
 // Native Paths May Be Non-Unicode; Transport Decoding Requires Portable UTF-8.
 pub struct LocalPath;
 pub struct Digest;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl crate::model::storage::codec::Value for Digest {
     const NAME: &'static str = concat!(module_path!(), "::Digest");
@@ -274,9 +251,3 @@ impl Described for FileReference {
         { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
     >(Self::NAME, Self::FIELDS);
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

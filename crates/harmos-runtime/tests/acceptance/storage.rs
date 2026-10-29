@@ -9,40 +9,9 @@
 
 // Compile Exported Storage Operation Contracts
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::fixtures;
 use harmos_operations::storage::Storage;
 use harmos_runtime::operations::Contracts;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[test]
 fn grpc_descriptors_compile() {

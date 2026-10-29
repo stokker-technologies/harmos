@@ -6,16 +6,9 @@
  *
  * ***
  */
-/* === Modules === */
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
 use arrow_array::{ArrayRef, Float64Array, RecordBatch, UInt32Array};
 use arrow_schema::{DataType, Field, Schema};
 use criterion::{BenchmarkId, Criterion, Throughput};
@@ -28,24 +21,7 @@ use harmos_runtime::storage::query::transform::{
     project::Projection,
 };
 
-// Local Imports
 use super::waveforms;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn run(criterion: &mut Criterion, _: &tokio::runtime::Runtime) {
     let mut group = criterion.benchmark_group("storage/transforms");
@@ -124,6 +100,3 @@ pub fn run(criterion: &mut Criterion, _: &tokio::runtime::Runtime) {
     }
     group.finish();
 }
-/* === Private Functions === */
-
-/* === Tests === */

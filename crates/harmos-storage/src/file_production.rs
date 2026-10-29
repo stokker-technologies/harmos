@@ -7,28 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::{ErasedCatalog, FileBatch, FilePhase, FileProgress, StagedFile, StorageManager};
 use crate::FileReadBatch;
 use crate::{Error, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct ProductionFollower {
     context: crate::execution::Context,
@@ -38,12 +23,6 @@ pub struct ProductionFollower {
     progress: FileProgress,
     changed: watch::Receiver<u64>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.file_production.follow_production", level = "debug", skip_all)]
@@ -166,9 +145,3 @@ impl Drop for ProductionFollower {
         tracing::debug!(file = %self.file.id, offset = self.offset, reason = "viewer disconnected", "file following stopped");
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

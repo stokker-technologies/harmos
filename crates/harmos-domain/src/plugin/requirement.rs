@@ -7,27 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use crate::catalog::{Member, Visitor};
 use crate::operations::{OperationDeclaration, WireDeclaration};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // Permission to call one operation. An operation whose request names a channel,
 // stream or source resolves it to `scope`; any other operation is granted by
@@ -47,12 +32,6 @@ pub struct Requirement {
 }
 
 pub struct Requirements;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Requirement {
     pub const fn of<O: OperationDeclaration>(grants: &'static [Grant]) -> Self {
@@ -104,8 +83,6 @@ where
     const ENTRY: Requirement = Requirement::of::<M>(&[]);
 }
 
-/* === Public Functions === */
-
 // Upper Bound Includes Duplicates; Unused Nodes Are Empty Nested Projections.
 pub const fn callee_count(nodes: &[crate::catalog::Node<&'static [WireDeclaration]>]) -> usize {
     let mut count = 0;
@@ -130,8 +107,6 @@ pub const fn aggregate<const N: usize>(
     append_callees(callees, provided, &mut output, &mut cursor);
     output
 }
-
-/* === Private Functions === */
 
 const fn same(left: &str, right: &str) -> bool {
     let left = left.as_bytes();
@@ -209,5 +184,3 @@ const fn append_callees(
         index += 1;
     }
 }
-
-/* === Tests === */

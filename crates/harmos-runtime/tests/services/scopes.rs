@@ -7,32 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering::SeqCst},
 };
-// Third Party Imports
+
 use tokio::sync::Notify;
-// Local Imports
+
 use super::{Bank, Ledger, Runtime, assembly};
 use harmos_runtime::operations::OperationManager;
 use harmos_runtime::services::ServiceDefinition;
 use harmos_runtime::{Error, services::ServiceContext, services::ServiceStatus};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Default)]
 struct Resources {
@@ -41,16 +26,6 @@ struct Resources {
     stopping: Notify,
     cleanup: Notify,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn register(manager: &OperationManager<<Bank as harmos_runtime::Application>::Lanes>, resources: Arc<Resources>) {
     manager
@@ -379,5 +354,3 @@ async fn factory_panic_reported() {
     ));
     assert!(matches!(runtime.shutdown().await, Err(Error::TaskFailed { .. })));
 }
-
-/* === Tests === */

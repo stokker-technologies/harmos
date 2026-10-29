@@ -9,31 +9,14 @@
 
 // Immutable Paged Query Tables For Derived Evidence
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
 
-// Local Imports
 use super::spill::{Builder, Pages, Spool};
 use super::transform::{Transform, TransformExecution, invalid};
 use crate::Result;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 /// Immutable Derived Rows, Retained As Bounded Arrow Pages Or Private Spill Files.
 #[derive(Clone)]
@@ -51,12 +34,6 @@ pub struct TableWriter {
 pub struct TableReader {
     pages: Pages,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl TableWriter {
     pub fn new(schema: Arc<Schema>) -> Result<Self> {
@@ -111,12 +88,6 @@ impl TableReader {
         self.pages.next()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

@@ -9,8 +9,6 @@
 
 // Walk The Host Alone, With The Stamped Guest, And With The Stamped Sidecar
 
-/* === Modules === */
-
 #[path = "../../../harmos-storage/tests/support/storage.rs"]
 mod backend;
 #[path = "../support/storage_fixture.rs"]
@@ -33,34 +31,4 @@ mod operations {
     pub(crate) use super::support::Lanes;
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
 extern crate harmos_runtime as harmos;
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

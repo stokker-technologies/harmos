@@ -7,45 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "../../../harmos-runtime/tests/support/fixtures.rs"]
 mod fixtures;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
-// Third Party Imports
+
 use serde_json::{Value, json};
-
-// Local Imports
-
-/* === Constants === */
 
 const PREFIX: &[u8] = b"\0HARMOS:ARTIFACT:V1:";
 
 const OWNED: [&str; 5] = ["contracts", "contributions", "publications", "listeners", "observers"];
 
 const SHARED: [&str; 3] = ["schematic.analyze", "schematic.route", "schematic.validate"];
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn fragments(bytes: &[u8]) -> impl Iterator<Item = Value> + '_ {
     bytes.windows(PREFIX.len()).enumerate().filter_map(move |(index, value)| {
@@ -110,8 +83,6 @@ fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>, required: 
     assert_eq!(streams, published.iter().map(|id| (*id).to_owned()).collect(), "{facility} published streams");
     assert_eq!(identity(bytes, "observers")["observers"], json!([]));
 }
-
-/* === Tests === */
 
 #[test]
 fn artifacts_embed_metadata() {

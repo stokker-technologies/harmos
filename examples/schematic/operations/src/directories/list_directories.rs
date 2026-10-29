@@ -7,26 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[harmos::operation(
     id = "schematic.list.directories",
     response = Directories,
@@ -42,12 +22,6 @@ pub struct ListDirectories {}
 pub struct Directories {
     pub directories: Vec<String>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[cfg(feature = "runtime")]
 impl harmos::Operation for ListDirectories {
@@ -67,9 +41,3 @@ impl harmos::Operation for ListDirectories {
         Ok(Directories { directories }.into())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

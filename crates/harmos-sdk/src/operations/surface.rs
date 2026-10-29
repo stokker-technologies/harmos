@@ -12,39 +12,17 @@
 // over the Wasm imports. Storage and other host services are reached as
 // declared operations through `call` and `submit`, never as per-kit methods.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{any::Any, future::Future, sync::Arc};
 
-// Third Party Imports
-
-// Local Imports
 use super::instance::Instance;
 use super::{CallContext, ContextError, ContextValue, OperationDeclaration, Response};
 use crate::{Message, StreamSpec};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // Native Ownership Is Never Part Of A Serialized Operation Declaration.
 #[derive(Clone)]
 pub struct RequestClaims {
     owner: Arc<dyn Any + Send + Sync>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 // The Carrier Host Preserves Authorization For Child Calls.
 pub trait Host: Send + Sync + Sized {
@@ -83,8 +61,6 @@ pub trait Host: Send + Sync + Sized {
     }
 }
 
-/* === Implementations === */
-
 impl RequestClaims {
     pub fn retain(owner: Arc<dyn Any + Send + Sync>) -> Self {
         Self { owner }
@@ -94,9 +70,3 @@ impl RequestClaims {
         self.owner.downcast_ref()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

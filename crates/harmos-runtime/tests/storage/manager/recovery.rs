@@ -7,39 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-// Third Party Imports
-// Local Imports
+
 use super::metadata;
 use crate::storage::{Bank, Data, Fixture, Ledger, Recovery, Runtime, catalog, config};
 use harmos_runtime::storage::{StagedFile, StorageBackends, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 // Copy A Crash Image Without Letting The Original Manager's Close Save Its Tail.
 fn crash_image(source: &Fixture) -> Arc<Data> {
@@ -97,8 +71,6 @@ pub(super) async fn restart(source: &Fixture) -> Fixture {
     storage.start(&runtime).await.unwrap();
     Fixture { runtime, storage, data, recovery }
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn restart_resumes_prefix() {

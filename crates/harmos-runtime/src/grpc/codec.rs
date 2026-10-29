@@ -7,18 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use crate::config::EncodeSettings;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::{marker::PhantomData, sync::Arc};
 
-// Third Party Imports
 use bytes::BufMut;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tonic::{
@@ -26,20 +18,11 @@ use tonic::{
     codec::{BufferSettings, EncodeBuf},
 };
 
-// Local Imports
 use super::envelope::{delimited, delimited_admitted};
 use super::{DecodeSettings, Decoder, Event};
 use crate::{MemorySize, MessageError, operations::StreamItem};
 use harmos_domain::Portable;
 use harmos_sdk::grpc::DecodeInput;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Codec<W, D, E> {
     decoder: Decoder<W, D>,
@@ -57,10 +40,6 @@ pub struct Encoder<W, E> {
 }
 
 pub struct Transcoded;
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait Wire<T>: Send + Sync + 'static {
     fn encode(value: &T, bytes: &mut Vec<u8>) -> Result<(), MessageError>;
@@ -86,8 +65,6 @@ pub trait Encode<W>: Send + 'static {
         cooperative(bytes, limit, admit, |bytes| self.write(bytes))
     }
 }
-
-/* === Implementations === */
 
 impl EncodeSettings {
     pub(super) fn validate(&self) -> Result<(), Status> {
@@ -253,10 +230,6 @@ impl<W: Send + 'static, E: Encode<W>> tonic::codec::Encoder for Encoder<W, E> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn retain(preparation: &Option<Arc<Semaphore>>, claim: &mut Option<OwnedSemaphorePermit>, required: usize) -> Result<(), Status> {
     let Some(preparation) = preparation else {
         return Ok(());
@@ -321,8 +294,6 @@ pub(super) fn reserve(bytes: &mut Vec<u8>, length: usize, admit: &mut dyn FnMut(
         .map_err(|_| Status::resource_exhausted("gRPC encoding allocation failed"))?;
     admit(bytes.capacity())
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

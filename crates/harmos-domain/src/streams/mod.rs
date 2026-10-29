@@ -7,24 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::{Any, TypeId};
 use std::hash::Hash;
 use std::sync::Arc;
-// Third Party Imports
+
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
 
 macro_rules! prefix {
     (($($whole:ident),+) selects ($($taken:ident),+) at ($($at:tt),+)) => {
@@ -60,10 +48,6 @@ prefix!((A, B, C, D) selects (A, B, C) at (0, 1, 2));
 
 prefix!((A, B, C, D) selects (A, B, C, D) at (0, 1, 2, 3));
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(Clone, Debug)]
 // A declaration is a value an application *states*; only the host core reads
 // what it states. In an authoring build there is no host core, so these fields
@@ -89,10 +73,6 @@ pub struct BatchDefinition {
     fields: &'static [&'static str],
     measure: fn(&dyn Any, &mut dyn FnMut(f64)),
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait StreamRow: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {
     const ID: &'static str;
@@ -141,8 +121,6 @@ pub trait Batched: 'static {
 
     fn measure(&self, visit: &mut dyn FnMut(f64));
 }
-
-/* === Implementations === */
 
 impl Definition {
     pub fn row(&self) -> TypeId {
@@ -236,9 +214,3 @@ impl BatchDefinition {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

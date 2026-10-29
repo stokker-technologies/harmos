@@ -7,21 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
-// Third Party Imports
+
 use futures_core::Stream;
 use tokio::sync::{RwLock, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tracing::Instrument;
-// Local Imports
+
 use super::ManagedState;
 use super::transaction::TransactionError;
 use super::writer::{Admission, Direction, Refusal, Request};
@@ -31,14 +24,6 @@ use super::{
     writer,
 };
 use crate::Application;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(crate) struct TrackedState<A: Application> {
     pub(crate) state: RwLock<At<A::State>>,
@@ -73,12 +58,6 @@ pub struct StateManager<A: Application> {
 pub(crate) struct Feed<A: Application> {
     pub(super) tracked: Arc<TrackedState<A>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> TrackedState<A> {
     pub(super) fn unavailable<E>(&self) -> Error<E> {
@@ -467,15 +446,9 @@ impl<A: Application> Clone for StateManager<A> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn preparation<E>(error: PreparationError) -> Error<E> {
     match error {
         PreparationError::CaptureFailed => Error::CaptureFailed,
         error => Error::Preparation(error),
     }
 }
-
-/* === Tests === */

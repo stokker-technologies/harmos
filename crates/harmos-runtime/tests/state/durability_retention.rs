@@ -7,38 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use support::{Bank, Change, Ledger, booted, deposit, ledger};
-// Local Imports
+
 use super::support;
 use harmos_runtime::{Error, state::Origin, state::Position, storage::Source};
 use support::journal::{Journal, Store};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn pruned_copy_recovers() {
@@ -69,5 +42,3 @@ async fn pruned_copy_recovers() {
     assert!(matches!(recovered.state.state().at(Origin::initial(Ledger::default()), first.position).await, Err(Error::BeneathHorizon)));
     recovered.shutdown().await.unwrap();
 }
-
-/* === Tests === */

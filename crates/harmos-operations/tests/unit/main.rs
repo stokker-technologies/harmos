@@ -9,38 +9,6 @@
 
 // Verify Built-In Catalog Identity And Reserved Lifecycle Contracts.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
-
 #[test]
 fn builtin_inventory() {
     let definitions = harmos_operations::Builtins::catalog();

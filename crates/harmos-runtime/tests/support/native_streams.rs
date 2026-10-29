@@ -7,42 +7,25 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "native_streams/plugin.rs"]
 mod plugin;
 
-/* === Re-Exports === */
-
 pub use plugin::{Acknowledged, Payload};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-// Third Party Imports
 use sha2::{Digest, Sha256};
 
-// Local Imports
 use harmos_runtime::operations::OperationDeclaration;
 use harmos_runtime::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
 use harmos_runtime::sidecar::{Attach, Executable, Notice, Supervised};
 use harmos_runtime::{Message, Runtime, services::ServiceContext, services::ServiceStatus};
 use plugin::Receiver;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Resident<T> = Supervised<Model, T, fn(&ServiceContext<Model>, Notice)>;
 type Managed<T> = harmos_runtime::sidecar::Managed<Model, T, fn(&ServiceContext<Model>, Notice), Lanes>;
 type Constructor<T> = fn(Resident<T>, PluginDefinition, Lanes, NonZeroUsize, NonZeroUsize) -> harmos_runtime::Result<Managed<T>>;
-
-/* === Structs === */
 
 pub struct Model;
 
@@ -50,8 +33,6 @@ pub struct Fixture {
     pub runtime: Runtime<Model>,
     _lease: harmos_runtime::operations::Running<harmos_runtime::operations::resident::Activation>,
 }
-
-/* === Enums === */
 
 #[harmos_runtime::streams]
 pub enum Streams {
@@ -63,10 +44,6 @@ pub enum Lanes {
     #[default]
     Open,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();
@@ -184,10 +161,4 @@ impl Fixture {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn notices(_: &ServiceContext<Model>, _: Notice) {}
-
-/* === Tests === */

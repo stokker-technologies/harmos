@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "../transport/capacity.rs"]
 #[allow(dead_code, reason = "shared with the benchmark of the same domain")]
 pub mod capacity;
@@ -20,33 +18,3 @@ mod measurement;
 pub mod protocol;
 #[path = "../transport/publication.rs"]
 mod publication;
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

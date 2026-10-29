@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[cfg(unix)]
 mod unix;
 
@@ -17,36 +15,21 @@ mod unix;
 #[allow(unsafe_code)]
 mod windows;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
 };
-// Third Party Imports
+
 use tempfile::NamedTempFile;
-// Local Imports
+
 #[cfg(unix)]
 use unix as platform;
 
 #[cfg(windows)]
 use windows as platform;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 struct Staging(PathBuf);
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfirmError<E> {
@@ -56,10 +39,6 @@ pub enum ConfirmError<E> {
     #[error(transparent)]
     Checkpoint(E),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Staging {
     fn file(directory: &Path) -> io::Result<(Self, File)> {
@@ -74,8 +53,6 @@ impl Drop for Staging {
         let _ = fs::remove_file(&self.0);
     }
 }
-
-/* === Public Functions === */
 
 pub fn create_dir_all(path: &Path) -> crate::filesystem::Result<()> {
     platform::create_dir_all(path).map_err(|error| crate::filesystem::Error::publication("create directory", path, error))
@@ -148,8 +125,6 @@ pub fn write(path: &Path, bytes: &[u8]) -> crate::filesystem::Result<()> {
     write_document(path, bytes).map_err(|error| crate::filesystem::Error::publication("write document", path, error))
 }
 
-/* === Private Functions === */
-
 fn confirm_error<E>(path: &Path, error: io::Error) -> ConfirmError<E> {
     let error = crate::filesystem::Error::publication("confirm file durability", path, error);
     ConfirmError::Filesystem(error)
@@ -173,8 +148,6 @@ fn sync_file(path: &Path) -> io::Result<()> {
 fn parent(path: &Path) -> &Path {
     path.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(Path::new("."))
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

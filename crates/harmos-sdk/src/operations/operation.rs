@@ -7,21 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::{TypeId, type_name};
 use std::future::Future;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 #[cfg(feature = "streaming")]
 use super::Stream;
 use super::calls::{Calls, InvocationError, Target};
@@ -29,14 +19,6 @@ use super::{
     CallContext, Carrier, EndpointSet, Executable, ExecutionContext, FailureKind, Invokes, NoStream, OperationDeclaration, Requires,
     Response,
 };
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // One Execution Resource An Operation Declares With `resources = [..]`.
 #[derive(Clone, Copy, Debug)]
@@ -55,10 +37,6 @@ pub struct Context<'a, O: Streams> {
 // The Carrier Behind Every Authored Operation; Each Attempt Runs A Clone Of
 // The Request So A Retry Keeps The Original.
 pub struct Authored<O>(PhantomData<fn() -> O>);
-
-/* === Enums === */
-
-/* === Traits === */
 
 // An Operation Whose Struct Is Its Request Message.
 pub trait Operation: OperationDeclaration<Request = Self> + crate::Portable + Streams + Dependent + Clone + Send + 'static {
@@ -84,8 +62,6 @@ pub trait Streams {
 pub trait Shape {
     type StreamEndpoints: EndpointSet;
 }
-
-/* === Implementations === */
 
 impl Resource {
     pub const fn of<T: Send + Sync + 'static>() -> Self {
@@ -189,12 +165,6 @@ impl<T: crate::Portable> Shape for (NoStream, Stream<T>) {
 impl<I: crate::Portable, T: crate::Portable> Shape for (Stream<I>, Stream<T>) {
     type StreamEndpoints = (super::StreamInput<I>, super::StreamOutput<T>);
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

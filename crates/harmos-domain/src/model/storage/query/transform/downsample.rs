@@ -7,31 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::FieldPath;
 use crate::MemorySize;
 use crate::model::storage::codec::{Code, Index, Nested, Optional, coded, product};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(Downsample { max_rows: Index => 1, algorithm: Code<Algorithm> => 2, value: Optional<Nested<FieldPath>> => 3, axis: Optional<Nested<FieldPath>> => 4 });
 coded!(Algorithm { Decimate, Extrema, Lttb, LttbLog });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct Downsample {
@@ -41,8 +22,6 @@ pub struct Downsample {
     pub axis: Option<FieldPath>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Algorithm {
     Decimate,
@@ -51,10 +30,6 @@ pub enum Algorithm {
     LttbLog,
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl MemorySize for Downsample {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
@@ -62,9 +37,3 @@ impl MemorySize for Downsample {
             + self.axis.memory_size().saturating_sub(std::mem::size_of_val(&self.axis))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,34 +7,7 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 #[tracing::instrument(name = "storage.staging.perform.perform", level = "debug", skip_all)]
 pub(crate) async fn perform(inner: &Arc<crate::manager::Inner>, action: &FileAction) -> Result<FileCompleted> {
@@ -114,7 +87,3 @@ pub(crate) async fn perform(inner: &Arc<crate::manager::Inner>, action: &FileAct
         FileAction::Refuse { .. } => Err(size_error()),
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

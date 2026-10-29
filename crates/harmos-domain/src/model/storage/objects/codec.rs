@@ -7,25 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::{ObjectEntry, ObjectReceipt, ObjectVersionToken};
 use crate::MessageError;
 use crate::model::storage::codec::{Bytes, Nested, Value, product};
 use crate::model::storage::{ObjectKey, ObjectValue, SchemaKey, StorageCursor};
-
-/* === Constants === */
-
-/* === Macros === */
 
 product!(ObjectValue {
     schema: Nested<SchemaKey> => 1,
@@ -42,19 +27,9 @@ product!(ObjectReceipt {
     version: Nested<ObjectVersionToken> => 2,
 });
 
-/* === Type Aliases === */
-
 type Result<T> = std::result::Result<T, MessageError>;
 
-/* === Structs === */
-
 pub struct Key;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Value for Key {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(Key));
@@ -89,9 +64,3 @@ impl crate::__private::PostcardValue for ObjectKey {
         Self::from_owned(Box::<str>::from(text).into_string()).map_err(|_| MessageError::borrowed("empty object key"))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

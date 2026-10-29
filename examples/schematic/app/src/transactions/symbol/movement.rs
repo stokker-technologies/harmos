@@ -7,29 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 
-// Local Imports
 use crate::error::SchematicError;
 use crate::state::{Point, Schematic, SymbolId};
 use harmos::{state::Invertible, state::Transaction};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::transaction(id = "symbol.move",  inverse = Self)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -37,12 +19,6 @@ pub struct MoveSymbol {
     pub symbol: SymbolId,
     pub to: Point,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Transaction<Schematic> for MoveSymbol {
     type Error = SchematicError;
@@ -66,9 +42,3 @@ impl Invertible<Schematic> for MoveSymbol {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

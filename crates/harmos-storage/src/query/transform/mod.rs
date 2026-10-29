@@ -7,16 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod aggregate;
 pub mod downsample;
 pub mod filter;
 pub mod histogram;
 pub mod project;
 pub mod sort;
-
-/* === Re-Exports === */
 
 pub use aggregate::AggregateExecution;
 pub use downsample::DownsampleExecution;
@@ -26,12 +22,8 @@ pub use histogram::HistogramExecution;
 pub use project::ProjectExecution;
 pub use sort::SortExecution;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
 use arrow_array::{
     Array, ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, Int64Array, NullArray,
     RecordBatch, StringArray, StructArray, TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
@@ -39,20 +31,7 @@ use arrow_array::{
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use harmos_domain::model::storage::query::scalar::{ExactNumber, ScalarValue};
 
-// Local Imports
 use crate::{Error, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait FieldPathExecution {
     fn field(&self, schema: &Schema) -> Result<Field>;
@@ -67,8 +46,6 @@ pub trait TransformExecution {
 
     fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 }
-
-/* === Implementations === */
 
 impl FieldPathExecution for FieldPath {
     fn field(&self, schema: &Schema) -> Result<Field> {
@@ -144,10 +121,6 @@ impl TransformExecution for Transform {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 pub(crate) fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "storage query transform", reason }
@@ -354,5 +327,3 @@ pub(super) fn values_array(data_type: &DataType, values: &[ScalarValue]) -> Resu
         _ => return Err(invalid("unsupported scalar output type")),
     })
 }
-
-/* === Tests === */

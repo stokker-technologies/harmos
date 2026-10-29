@@ -7,34 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use wasm_encoder::reencode::{Reencode, ReencodeComponent};
 use wit_component::ComponentEncoder;
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Shipping;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Reencode for Shipping {
     type Error = std::convert::Infallible;
@@ -60,8 +36,6 @@ impl ReencodeComponent for Shipping {
     }
 }
 
-/* === Public Functions === */
-
 pub fn componentize(module: &[u8]) -> Result<Vec<u8>, String> {
     ComponentEncoder::default()
         .module(module)
@@ -70,8 +44,6 @@ pub fn componentize(module: &[u8]) -> Result<Vec<u8>, String> {
         .encode()
         .map_err(|error| format!("{error:#}"))
 }
-
-/* === Private Functions === */
 
 pub(super) fn strip_debug(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let parser = wasmparser::Parser::new(0);
@@ -84,8 +56,6 @@ pub(super) fn strip_debug(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Shipping.parse_core_module(&mut module, parser, bytes).map_err(|error| error.to_string())?;
     Ok(module.finish())
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

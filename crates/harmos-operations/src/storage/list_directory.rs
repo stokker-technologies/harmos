@@ -7,15 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-// Third Party Imports
-// Local Imports
 use super::IO_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
@@ -24,15 +15,7 @@ use harmos_domain::operations::ReplaySafety;
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(ListDirectory { selection: Nested<DirectorySelection> => 1 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
     id = "storage.list_directory",
@@ -47,12 +30,6 @@ pub struct ListDirectory {
     pub selection: DirectorySelection,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl MemorySize for ListDirectory {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.selection.memory_size().saturating_sub(std::mem::size_of_val(&self.selection)))
@@ -62,9 +39,6 @@ impl MemorySize for ListDirectory {
 #[cfg(feature = "runtime")]
 mod execution {
 
-    // Standard Library Imports
-    // Third Party Imports
-    // Local Imports
     use crate::{Error, Result};
     use harmos_domain::model::storage::DirectoryCompletion;
     use harmos_sdk::operations::{Operation, Response};
@@ -92,9 +66,3 @@ mod execution {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

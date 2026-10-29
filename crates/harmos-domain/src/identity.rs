@@ -7,33 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use crate::message::{Digest, Fingerprint};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::fmt;
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
-
-// Local Imports
-
-/* === Constants === */
 
 // The Shared Owner And Local Operation Segment Alphabet.
 pub const SEGMENT_INITIAL: &str = "abcdefghijklmnopqrstuvwxyz";
 pub const SEGMENT_EXTRA: &str = "0123456789_";
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -55,16 +37,10 @@ pub struct Requirement {
     pub version: semver::VersionReq,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 // The Stable Identity And Semantic Version Of A Declared Definition.
 pub trait Identified {
     fn definition() -> (DefinitionId, u32);
 }
-
-/* === Implementations === */
 
 impl QualifiedId {
     pub fn parse(value: &str) -> Result<Self, IdentityError> {
@@ -127,8 +103,6 @@ impl fmt::Display for DefinitionId {
         formatter.write_str(&self.0)
     }
 }
-
-/* === Public Functions === */
 
 pub const fn segment(value: &str) -> bool {
     let bytes = value.as_bytes();
@@ -222,8 +196,6 @@ pub const fn stream_subset(name: &str) -> bool {
     true
 }
 
-/* === Private Functions === */
-
 const fn contains(alphabet: &str, byte: u8) -> bool {
     let bytes = alphabet.as_bytes();
     let mut index = 0;
@@ -263,8 +235,6 @@ const fn stream_local_bytes(bytes: &[u8], start: usize, end: usize) -> bool {
     }
     true
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

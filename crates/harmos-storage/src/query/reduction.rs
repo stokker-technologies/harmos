@@ -9,22 +9,13 @@
 
 // Exact Paged Reductions Over Private Spill Files
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::sync::Arc;
 
-// Third Party Imports
 use arrow_array::{Array, Float64Array, RecordBatch};
 
-// Local Imports
 use super::scalar::ScalarValue;
 use super::spill::{Builder, Spool, io};
 use super::transform::downsample::{Algorithm, Downsample, number};
@@ -35,16 +26,8 @@ use super::transform::{
 };
 use crate::Result;
 
-/* === Constants === */
-
 const COORDINATES: usize = 4096;
 const COORDINATE_CACHE_BYTES: usize = 32 * 1024 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Coordinates {
     file: Option<File>,
@@ -57,12 +40,6 @@ struct Selection {
     file: File,
     last: Option<usize>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Coordinates {
     fn get(&mut self, index: usize) -> Result<(f64, f64)> {
@@ -122,8 +99,6 @@ impl Selection {
     }
 }
 
-/* === Public Functions === */
-
 pub(super) fn transform(input: Spool, plan: &Transform, check: &mut impl FnMut() -> Result<()>) -> Result<Spool> {
     match plan {
         Transform::Sort(plan) => super::ordering::sort(input, plan, check),
@@ -152,8 +127,6 @@ pub(super) fn transform(input: Spool, plan: &Transform, check: &mut impl FnMut()
         }
     }
 }
-
-/* === Private Functions === */
 
 fn normalized(value: ScalarValue) -> ScalarValue {
     if matches!(&value, ScalarValue::Float(value) if !value.is_finite()) { ScalarValue::Null } else { value }
@@ -405,8 +378,6 @@ fn read_index(reader: &mut impl Read) -> Result<Option<usize>> {
     reader.read_exact(&mut bytes[1..]).map_err(io)?;
     usize::try_from(u64::from_le_bytes(bytes)).map(Some).map_err(|_| invalid("selected row exceeds platform size"))
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

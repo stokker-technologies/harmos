@@ -7,26 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 // The streaming, mergeable reduction: count, sum, extremes, mean and spread
 // kept in constant space, so partial summaries of disjoint runs merge into the
 // summary of their union. Non-finite values are skipped, the same values
@@ -40,12 +20,6 @@ pub struct Summary {
     highest: f64,
     deviations: f64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Default for Summary {
     fn default() -> Self {
@@ -179,12 +153,6 @@ impl Summary {
         Some(self.mean()?.hypot(self.std()?))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

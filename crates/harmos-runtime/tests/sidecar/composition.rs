@@ -9,38 +9,7 @@
 
 // Exercise Supervision, Metadata And Teardown Over The In-Process Native Carrier.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[tokio::test]
 async fn declared_publication_enters() {
@@ -631,8 +600,6 @@ async fn graceful_stop_joins() {
     fixture.shutdown().await.unwrap();
     fixture.runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */
 
 fn assert_transport_refusal(error: harmos_runtime::Error, code: i64, detail: &str) {
     let harmos_runtime::Error::OperationFailed { source, .. } = error else {

@@ -7,35 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, Weak};
-// Third Party Imports
 
-// Local Imports
 use super::{Attachment, Context as PluginContext, Error, Plugin};
 use crate::Setup;
 use crate::operations::{Contract, ExecutionContext, ServingError, StartupError, WireTable};
 use harmos_domain::model::operations::lifecycle;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type Table = Arc<Mutex<WireTable>>;
 type Transition<P> = Pin<Box<dyn Future<Output = Completed<P>> + Send>>;
-
-/* === Structs === */
 
 pub struct Owner<P: Plugin> {
     slot: Arc<Mutex<Slot<P>>>,
@@ -100,8 +83,6 @@ struct Completed<P: Plugin> {
     cleanup_finished: bool,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase {
     Empty,
@@ -110,10 +91,6 @@ enum Phase {
     Stopping,
     Closed,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<P: Plugin> Owner<P> {
     pub fn new(owner: &str, contracts: Vec<Contract>, capacity: NonZeroUsize) -> Result<(Arc<Self>, Table), Error<P>> {
@@ -473,10 +450,6 @@ impl<P: Plugin> State<P> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn prepare<P: Plugin>(
     config: P::Config, configuration: WireTable, context: P::Context, contracts: Arc<[Contract]>,
     observers: Arc<[crate::inventory::observers::Declaration]>, assignments: Vec<u8>,
@@ -567,8 +540,6 @@ async fn guarded<P: Plugin, T>(future: impl Future<Output = Result<T, Error<P>>>
     })
     .await
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

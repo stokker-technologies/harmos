@@ -7,37 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::Ordering;
-// Third Party Imports
+
 use support::{Bank, Ledger, Payouts, booted, deposit, ledger, pay};
-// Local Imports
+
 use super::support;
 use support::journal::{Journal, Store};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn unacked_item_redelivered() {
@@ -74,5 +49,3 @@ async fn unacked_item_redelivered() {
     assert_eq!(checkpoint.load(Ordering::Acquire), 3);
     assert_eq!(restored.payouts, vec![1, 7], "pending work is durable state, so recovery rebuilt it with everything else");
 }
-
-/* === Tests === */

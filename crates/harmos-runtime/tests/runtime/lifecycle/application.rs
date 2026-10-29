@@ -9,37 +9,20 @@
 
 // Shared Application Lifecycle And Aggregate Setup Validation.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-// Third Party Imports
 use tokio::sync::Notify;
 
-// Local Imports
 use harmos_runtime::operations::{Capacity, Lane, LaneSet};
 use harmos_runtime::{Application, Lifecycle, Runtime, Setup, Startup, StartupError};
-
-/* === Constants === */
 
 const POLICY: harmos_runtime::OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(1),
     attempt_timeout: Duration::from_secs(1),
     retries: harmos_runtime::RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Default)]
 struct Counter {
@@ -88,8 +71,6 @@ struct PreparingConfig {
 
 struct Preparing;
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
     Prepare,
@@ -116,10 +97,6 @@ enum Operations {
 enum MissingOperations {
     Missing(Missing),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Lane for Lanes {
     fn catalog() -> LaneSet {
@@ -254,12 +231,6 @@ impl Drop for PendingGuard {
         self.0.events.lock().unwrap().push(Phase::Drain);
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[tokio::test]
 async fn lifecycle_with_overrides() {

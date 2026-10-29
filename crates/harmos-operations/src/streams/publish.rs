@@ -7,25 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_domain::model::operations::publication::FollowingRow;
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 #[cfg(feature = "runtime")]
 use harmos_sdk::operations::publication::PublicationAccess;
-
-/* === Constants === */
-
-/* === Macros === */
 
 harmos_domain::builtin_payload! {
     #[harmos::operation(harmos_path = crate, id = "host.publish", policy = crate::host::POLICY,
@@ -39,16 +24,6 @@ harmos_domain::builtin_payload! {
     payload: Vec<u8> => (6, Kind::Bytes, Required),
     following: Vec<FollowingRow> => (7, Kind::Message { definition: FollowingRow::DEFINITION }, Repeated),
 }
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[cfg(feature = "runtime")]
 impl crate::Operation for Publish {
@@ -70,9 +45,3 @@ impl crate::Operation for Publish {
         Ok(().into())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

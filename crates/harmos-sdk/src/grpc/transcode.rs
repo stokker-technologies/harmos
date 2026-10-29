@@ -17,30 +17,13 @@
 // index followed by that variant's fields. Floats are default only at positive
 // zero, so negative zero keeps its sign across the wire.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use prost::encoding::{WireType, encode_varint};
-// Local Imports
+
 use super::input::{DecodeField, DecodeInput, DecodeScalar, DecodeValue};
 use harmos_domain::__private::{PostcardReader as Reader, PostcardValue, decoding_add, decoding_multiply};
 use harmos_domain::MessageError;
 use harmos_domain::schema::Cardinality;
 use harmos_domain::schema::declaration::{Definition, Field, Kind};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Output<'a, 'payload> {
     bytes: Option<&'a mut Vec<u8>>,
@@ -64,17 +47,11 @@ struct FieldSpan<'payload> {
     input: Reader<'payload>,
 }
 
-/* === Enums === */
-
 enum Number {
     Varint(u64),
     Bits32(u32),
     Bits64(u64),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<'a, 'payload> Output<'a, 'payload> {
     fn counting() -> Self {
@@ -196,8 +173,6 @@ impl Number {
     }
 }
 
-/* === Public Functions === */
-
 pub fn encode_admitted(
     definition: &Definition, postcard: &[u8], bytes: &mut Vec<u8>, retained: usize,
     admit: &mut dyn FnMut(usize) -> Result<(), MessageError>,
@@ -252,8 +227,6 @@ pub fn decode(definition: &Definition, input: DecodeInput<'_>) -> Result<Vec<u8>
     decode_message(definition, input, &mut bytes)?;
     Ok(bytes)
 }
-
-/* === Private Functions === */
 
 fn oneof(fields: &[Field]) -> bool {
     !fields.is_empty() && fields.iter().all(|field| field.cardinality == Cardinality::Variant)
@@ -649,8 +622,6 @@ fn default(kind: &Kind, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     }
     Ok(())
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

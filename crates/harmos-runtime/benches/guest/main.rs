@@ -9,48 +9,20 @@
 
 // Measure Startup And Commands In The Real Schematic Wasm Component.
 
-/* === Modules === */
-
 #[path = "../sidecar/fixture.rs"]
 mod fixture;
 
 #[path = "../sidecar/transfers.rs"]
 mod transfers;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
 extern crate harmos_runtime as harmos;
 
-// Standard Library Imports
 use std::time::Duration;
 
-// Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
 
 criterion::criterion_group!(benches, benchmarks);
 criterion::criterion_main!(benches);
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn benchmarks(criterion: &mut Criterion) {
     let executor = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
@@ -96,5 +68,3 @@ fn benchmarks(criterion: &mut Criterion) {
     transfers::run(&executor, "guest", &fixture);
     executor.block_on(fixture.finish());
 }
-
-/* === Tests === */

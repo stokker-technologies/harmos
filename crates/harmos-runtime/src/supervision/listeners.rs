@@ -7,33 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::Any;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::Poll;
-// Third Party Imports
+
 use tokio::sync::{Mutex as AsyncMutex, watch};
-// Local Imports
+
 use super::Task;
 use crate::operations::EncodedInvocation;
 use crate::plugin::PluginScope;
 use crate::{Error, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(crate) struct Listener {
     scope: PluginScope,
@@ -52,12 +37,6 @@ struct Pending {
     // Same Original Source Allocation, Held Through Physical Settlement
     _source: Arc<dyn Any + Send + Sync>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Listener {
     pub(crate) fn spawn<F>(scope: &PluginScope, run: impl FnOnce(Arc<Delivery>, watch::Receiver<bool>) -> F + Send + 'static) -> Self
@@ -162,9 +141,3 @@ impl Delivery {
         Ok(true)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

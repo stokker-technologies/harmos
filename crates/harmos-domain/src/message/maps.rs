@@ -9,30 +9,17 @@
 
 // Deterministic Standard Maps With Finite Entry Schemas And Bounded Decoding.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{BuildHasher, BuildHasherDefault, Hash, RandomState};
 use std::marker::PhantomData;
 use std::mem::size_of;
-// Third Party Imports
 
-// Local Imports
 use super::postcard::{Reader, Value};
 use super::{MemorySize, MessageError, btree_map_memory, decoding_add};
 use crate::schema::declaration::{Definition, Name};
 use crate::schema::graph::{Field, Kind};
 use crate::schema::{Cardinality, Described};
-
-/* === Constants === */
-
-/* === Macros === */
 
 macro_rules! keys {
     ($($ty:ty),* $(,)?) => { $(impl Key for $ty {})* };
@@ -59,22 +46,12 @@ macro_rules! map_schema {
 map_schema!(BTreeMap);
 map_schema!(HashMap, S);
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 // Schema-Only Entries Have The Same Bytes As Consecutive Key And Value Payloads.
 pub struct Entry<K, V>(PhantomData<(K, V)>);
 struct Shape<K, V>(PhantomData<(K, V)>);
 
-/* === Enums === */
-
-/* === Traits === */
-
 // Protobuf-Compatible Keys Also Have A Stable Total Ordering.
 pub trait Key: Value + MemorySize + Described + Ord + Hash {}
-
-/* === Implementations === */
 
 impl MemorySize for RandomState {
     const INLINE_ONLY: bool = true;
@@ -216,10 +193,6 @@ impl<K: MemorySize, V: MemorySize, S: MemorySize> MemorySize for HashMap<K, V, S
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn count(input: &mut Reader<'_>) -> Result<usize, MessageError> {
     let count: usize = input.value()?;
     input.claim(count)?;
@@ -260,5 +233,3 @@ fn table_memory<K, V>(capacity: usize) -> usize {
         .and_then(|bytes| bytes.checked_add(16 + std::mem::align_of::<(K, V)>()))
         .unwrap_or(usize::MAX)
 }
-
-/* === Tests === */

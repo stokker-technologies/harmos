@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod admissions;
 
 pub mod aggregate;
@@ -50,8 +48,6 @@ pub mod state;
 mod worker;
 pub mod writes;
 
-/* === Re-Exports === */
-
 pub use backend::{BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture};
 pub use batch::{FileChunk, StorageBatch};
 pub use config::{StorageAccumulatorSettings, StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings};
@@ -86,38 +82,12 @@ pub use staging::checkpoint::FileSave;
 pub use worker::Worker;
 pub use writes::StorageSchema;
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 #[cfg(test)]
 extern crate harmos_domain as harmos;
 extern crate self as harmos_storage;
 
-// Local Imports
 // Internal Paths Refer To This Crate's One Canonical Engine Namespace.
 use crate as storage;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 #[allow(dead_code, reason = "capacity invariants use the shared in-memory storage backends")]

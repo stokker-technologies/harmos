@@ -7,12 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
 use super::backend::{Data, Recovery, history, storage_settings};
 use super::waveforms::{Experiment, Objects};
 use harmos_storage::Identifier;
@@ -27,20 +21,6 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 // Journaled Storage Holding Two Durable Revisions Of One Object.
 struct Revisions {
     _directory: tempfile::TempDir,
@@ -52,12 +32,6 @@ struct Revisions {
     durable: StorageCursor,
     schema: SchemaKey,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Revisions {
     async fn new() -> Self {
@@ -105,10 +79,6 @@ impl Revisions {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn labels<C>(
     storage: &StorageManager<C>, at: &StorageCursor, schema: &SchemaKey, versions: ObjectVersions,
 ) -> harmos_storage::Result<Vec<String>> {
@@ -139,8 +109,6 @@ async fn labels<C>(
     }
     Ok(labels)
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn reads_pin_cursor() {

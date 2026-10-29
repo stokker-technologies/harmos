@@ -9,22 +9,10 @@
 
 // Explicit Storage Configuration
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
-
-// Local Imports
-
-/* === Constants === */
 
 // Persistence Cadence And Batching Are Private Storage Algorithm Choices.
 pub(super) const FLUSH_INTERVAL: Duration = Duration::from_millis(100);
@@ -51,12 +39,6 @@ pub(super) const MUTATION_RETENTION: Duration = Duration::from_secs(300);
 // Then Spill To Disk Within The Existing 128 MiB Algorithm Workspace Target.
 pub(super) const SCAN_ROWS: NonZeroUsize = NonZeroUsize::new(16_384).unwrap();
 pub(super) const SCAN_BYTES: usize = 8 * 1024 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -98,12 +80,6 @@ pub struct StorageAccumulatorSettings {
     pub memory_bytes: usize,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl Default for StorageAccumulatorSettings {
     fn default() -> Self {
         Self { memory_bytes: 64 * 1024 }
@@ -143,12 +119,6 @@ impl StorageSettings {
         NonZeroUsize::new(SCAN_BYTES).unwrap()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

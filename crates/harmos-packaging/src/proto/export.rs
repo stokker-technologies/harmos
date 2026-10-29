@@ -7,20 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt::Write as _,
     path::{Path, PathBuf},
 };
 
-// Third Party Imports
 use prost_reflect::{
     DescriptorPool,
     prost::Message as _,
@@ -30,19 +22,10 @@ use prost_reflect::{
     },
 };
 
-// Local Imports
 use harmos_domain::operations::Contract;
-
-/* === Constants === */
 
 const MAX_METHODS: usize = 4096;
 const MAX_DESCRIPTOR_BYTES: usize = 16 * 1024 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Artifacts {
     files: BTreeMap<String, String>,
@@ -62,7 +45,6 @@ struct Catalog {
 struct MetadataWriter(Vec<u8>);
 
 struct ContractVisitor;
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExportError {
@@ -90,10 +72,6 @@ pub enum ExportError {
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl std::io::Write for MetadataWriter {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
@@ -262,10 +240,6 @@ impl Artifacts {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn bounded_contracts<'de, D: serde::Deserializer<'de>>(input: D) -> Result<Vec<Contract>, D::Error> {
     input.deserialize_seq(ContractVisitor)
 }
@@ -390,5 +364,3 @@ fn field_source(field: &FieldDescriptorProto, label: &str, indent: &str, output:
     writeln!(output, "{indent}{label}{kind} {} = {}{option};", field.name(), field.number()).expect("String writer");
     Ok(())
 }
-
-/* === Tests === */

@@ -7,38 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
-
 use harmos_runtime::simulation::SimulatedRuntime;
 use harmos_runtime::{
     Application, DefinitionId, Identified, Runtime, runtime::Catalog, runtime::Registration, state::PrincipalId, state::Transaction,

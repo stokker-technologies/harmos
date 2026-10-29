@@ -7,43 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
-// Third Party Imports
 use tracing::Instrument;
 use tracing_perfetto_file::{FlushGuard, PerfettoLayer};
 use tracing_subscriber::Layer;
 use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -81,5 +53,3 @@ fn instrumented(metadata: &tracing::Metadata<'_>) -> bool {
     let prefixes = ["operations.", "state.", "storage.", "streams.", "carrier.", "grpc.", "guest.", "sidecar.", "system.story"];
     prefixes.iter().any(|prefix| metadata.name().starts_with(prefix))
 }
-
-/* === Tests === */

@@ -7,23 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::{self, Write};
 use std::sync::Arc;
-// Third Party Imports
+
 use serde::{
     Deserialize, Serialize, Serializer,
     de::DeserializeOwned,
     ser::{SerializeSeq, SerializeStruct},
 };
-// Local Imports
+
 use super::snapshot::{Restored, SnapshotPolicy};
 use crate::state::{Metadata, Tail, UndoEntry, Undos, dispatch::Dispatch};
 use crate::storage::SchemaKey;
@@ -32,14 +25,6 @@ use crate::{
     state::Kind, state::Position, state::Prepared, state::PrincipalId, state::Receipt, state::Recorded, state::RequestKey,
     storage::Payload,
 };
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -98,12 +83,6 @@ struct Bounded {
     bytes: Vec<u8>,
     limit: usize,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<T: CatalogCodec> Serialize for Body<'_, T> {
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
@@ -179,8 +158,6 @@ impl Write for Bounded {
         Ok(())
     }
 }
-
-/* === Public Functions === */
 
 pub(super) fn encode<A: Application>(
     policy: &SnapshotPolicy, state: &At<A::State>, undos: &Undos<A>, tail: &Tail<A>, receipts: &HashMap<RequestKey, Receipt>,
@@ -290,8 +267,6 @@ where
     })
 }
 
-/* === Private Functions === */
-
 fn transaction<A: Application>(
     value: &Prepared, catalog: &Dispatch<A, Payload<A>>,
 ) -> std::result::Result<crate::operations::Response<A::Transaction>, Incompatible> {
@@ -333,8 +308,6 @@ fn trim<A: Application>(tail: &mut VecDeque<Arc<Entry<Recorded<A>>>>, limit: usi
         }
     }
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

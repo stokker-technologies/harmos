@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod other {
     use harmos_runtime::{Application, DefinitionId, state::Kind, state::Recorded, storage::Payload};
     use serde::{Deserializer, Serializer};
@@ -95,38 +93,13 @@ mod other {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use support::{Bank, Ledger, Noted, booted, deposit, ledger, withdraw};
-// Local Imports
+
 use super::support;
 use harmos_runtime::{DefinitionId, Runtime, state::Kind, state::Position, state::Recorded, state::Transaction};
 use support::journal::{Journal, Store, Wire};
 
-/* === Constants === */
-
 const VARIANTS: [&str; 9] = ["Deposit", "Withdraw", "Pay", "Explode", "Noted", "Paid", "Took", "Put", "Remark"];
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn payload_own_shape() {
@@ -225,5 +198,3 @@ async fn decode_matches_recovery() {
 
     assert_eq!(live_state, recovery_state, "the same envelope payload reaches the same generated restore path");
 }
-
-/* === Tests === */

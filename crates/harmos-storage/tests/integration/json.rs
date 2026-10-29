@@ -9,40 +9,12 @@
 
 // Verify Durable Typed Replay And Exclusive JSON Root Ownership.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     num::{NonZeroU32, NonZeroUsize},
     path::Path,
 };
 
-// Third Party Imports
-
-// Local Imports
 use harmos_storage::{query::RecordSelection, *};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn backend(root: &Path) -> JsonStorage {
     let history = StoreHistory {
@@ -72,8 +44,6 @@ fn record(history: &StoreHistory, sequence: u64) -> StoredRecord {
         payload: vec![sequence as u8],
     }
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn typed_replay() {

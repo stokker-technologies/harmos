@@ -7,24 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::{RecordInput, StoredRecord, StoredRow, StreamInput};
 use crate::model::storage::codec::{Bytes, Id, Nested, Optional, Time, Unsigned, Version, product};
 use crate::model::storage::{SchemaKey, StorageCursor};
-
-/* === Constants === */
-
-/* === Macros === */
 
 product!(SchemaKey { id: Id => 1, version: Version => 2, payload_encoding: Encoding => 3 });
 product!(RecordInput {
@@ -55,17 +40,7 @@ product!(StoredRow<Vec<u8>> {
     sequence: Unsigned => 3,
 });
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 struct Encoding;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl crate::model::storage::codec::Value for Encoding {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(Encoding));
@@ -88,15 +63,9 @@ impl crate::model::storage::codec::Value for Encoding {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn encoding(value: u64) -> Result<crate::model::storage::PayloadEncoding, crate::MessageError> {
     match value {
         1 => Ok(crate::model::storage::PayloadEncoding::PostcardV1),
         _ => Err(crate::MessageError::borrowed("unknown persisted payload encoding")),
     }
 }
-
-/* === Tests === */

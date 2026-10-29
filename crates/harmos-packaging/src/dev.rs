@@ -9,22 +9,13 @@
 
 // Coalesce Relevant Source Changes Into Serialized, Recoverable Plugin Builds.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-// Third Party Imports
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 
-// Local Imports
 use super::metadata::{Inputs, Metadata};
 use super::{
     Build, BuildCancellation, Error,
@@ -32,26 +23,10 @@ use super::{
 };
 use crate::config::{BuildSettings, DevSettings};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
 pub enum DevEvent {
     Started { attempt: u64 },
     Finished { attempt: u64, result: Result<Build, Error> },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn dev(
     settings: &BuildSettings, policy: DevSettings, cancellation: &BuildCancellation, mut report: impl FnMut(DevEvent) -> Result<(), Error>,
@@ -139,8 +114,6 @@ pub fn dev(
     }
 }
 
-/* === Private Functions === */
-
 fn configure(watcher: &mut impl Watcher, watched: &mut BTreeSet<PathBuf>, inputs: &Inputs) -> Result<(), Error> {
     // Watch Source Directories Without Recursively Entering Generated Trees.
     let mut selected = BTreeSet::new();
@@ -185,5 +158,3 @@ fn configure(watcher: &mut impl Watcher, watched: &mut BTreeSet<PathBuf>, inputs
     *watched = selected;
     Ok(())
 }
-
-/* === Tests === */

@@ -7,36 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{fs::OpenOptions, io::Write, num::NonZeroUsize};
-// Third Party Imports
-// Local Imports
+
 use harmos_runtime::storage::state::{RecoveryEntry, RecoverySnapshot, StateBackend, StorageStateSettings, file::FileBackend};
 use harmos_runtime::storage::{ReadLimits, RecoveryPosition, StorageCursor};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn unsupported_header(history: &harmos_runtime::storage::StoreHistory) -> Vec<u8> {
     use sha2::Digest;
@@ -53,8 +27,6 @@ fn unsupported_header(history: &harmos_runtime::storage::StoreHistory) -> Vec<u8
     let hex = digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
     [b"{\"value\":".as_slice(), &json, b",\"sha256\":\"", hex.as_bytes(), b"\"}\n"].concat()
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn checkpoint_survives_reopen() {

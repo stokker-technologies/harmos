@@ -7,7 +7,6 @@
  * ***
  */
 
-/* === Modules === */
 
 #[cfg(feature = "optional_operation")]
 mod optional {
@@ -23,17 +22,6 @@ mod optional {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
 
 const POLICY: harmos::OperationPolicy = harmos::OperationPolicy {
     timeout: std::time::Duration::MAX,
@@ -41,16 +29,10 @@ const POLICY: harmos::OperationPolicy = harmos::OperationPolicy {
     retries: harmos::RetryPolicy::Never,
 };
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::operation(harmos_path = ::harmos, id = "fixture.always", policy = POLICY)]
 struct Read;
 
-/* === Enums === */
 
 #[harmos::catalog(harmos_path = ::harmos)]
 enum Operations {
@@ -60,9 +42,6 @@ enum Operations {
     Optional(optional::Read),
 }
 
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos::Operation for Read {
     type Error = std::convert::Infallible;
@@ -72,9 +51,6 @@ impl harmos::Operation for Read {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn main() {
     let definitions = Operations::catalog();
@@ -91,5 +67,3 @@ fn main() {
         assert_eq!(definitions[1].id.as_str(), "fixture.optional");
     }
 }
-
-/* === Tests === */

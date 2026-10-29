@@ -7,34 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use tokio::sync::{Semaphore, SemaphorePermit, mpsc, oneshot};
-// Local Imports
+
 use crate::Frame;
 use harmos_domain::Message;
 use harmos_domain::operations::instance::Id;
 use harmos_sdk::operations::{CHILD_METHOD, OperationDeclaration, WireChildAction, WireChildControl};
 
-/* === Constants === */
-
 const PENDING_CALLS: usize = 256;
 // One Batched Call Claims No More Host Preparation Than One Maximal Row.
 const PUBLICATION_BATCH_BYTES: usize = 1024 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct PendingCalls {
     state: Mutex<PendingState>,
@@ -65,8 +50,6 @@ pub struct Supervisor {
     call: Arc<harmos_domain::operations::CallContext>,
     clock: fn() -> Option<i64>,
 }
-
-/* === Enums === */
 
 pub(crate) enum Outgoing {
     Frame(Frame),
@@ -118,10 +101,6 @@ pub enum PublicationError {
     #[error("the publication requires {encoded} bytes; the frame limit is {limit}")]
     Oversized { encoded: usize, limit: usize },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 // A handler that returns a host refusal forwards its failure unchanged rather
 // than flattening the call error's own line into a new cause.
@@ -610,10 +589,6 @@ impl Supervisor {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn refused_line(code: i64, failure: &harmos_domain::Failure) -> String {
     match failure.context().operation() {
         Some(operation) => format!("operation `{operation}` failed"),
@@ -627,8 +602,6 @@ pub(super) fn published_at() -> Option<i64> {
         Err(error) => i64::try_from(error.duration().as_micros()).ok().and_then(i64::checked_neg),
     }
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

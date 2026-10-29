@@ -8,42 +8,19 @@
  */
 
 #![allow(dead_code)]
-/* === Modules === */
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-// Third Party Imports
-
-// Local Imports
 use harmos_runtime::{Application, state::Entry, state::Position, state::Recorded, storage::JournalConsumer};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub(crate) type Watched = (Arc<AtomicU64>, Arc<std::sync::Mutex<Vec<Position>>>);
-
-/* === Structs === */
 
 pub(crate) struct Mirror {
     checkpoint: Arc<AtomicU64>,
     seen: Arc<std::sync::Mutex<Vec<Position>>>,
     ceiling: Option<Position>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Mirror {
     pub(crate) fn new() -> (Self, Watched) {
@@ -82,9 +59,3 @@ impl<A: Application> JournalConsumer<A> for Mirror {
         reached
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

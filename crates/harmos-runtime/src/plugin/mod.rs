@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod host;
 
 mod backend;
@@ -20,8 +18,6 @@ mod reload;
 mod router;
 mod scope;
 mod status;
-
-/* === Re-Exports === */
 
 pub use backend::PluginBackend;
 pub use definition::{PluginArtifact, PluginContributions, PluginDefinition, PluginDefinitionError, PluginKind};
@@ -43,22 +39,11 @@ pub use router::{DispatchError, PluginCaller, PluginEndpoint, Router};
 pub use scope::PluginScope;
 pub use status::{PluginFailureClass, PluginGeneration, PluginState, PluginStatus};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
-// Third Party Imports
+
 use semver::{Version, VersionReq};
-// Local Imports
+
 use reload::ReloadImpact;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PluginGraph {
@@ -73,8 +58,6 @@ pub struct OperationProvider {
     pub operation: crate::Identifier,
     pub provider: String,
 }
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -113,10 +96,6 @@ pub enum Error {
     #[error("artifact dependency cycle reaches `{artifact}`")]
     Cycle { artifact: String },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl PluginGraph {
     pub fn resolve(artifacts: impl IntoIterator<Item = PluginDefinition>) -> Result<Self, Error> {
@@ -295,9 +274,3 @@ impl PluginGraph {
         &self.required_providers[owner]
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

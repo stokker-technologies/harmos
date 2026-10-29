@@ -7,20 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io::{self, Write};
 use std::ops::Bound;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-// Third Party Imports
+
 use serde::Serialize;
-// Local Imports
+
 use super::{Entry, Manager};
 use crate::operations::Contract;
 use crate::operations::caller::Source;
@@ -28,17 +21,9 @@ use crate::{Error, Identifier, Result};
 use harmos_domain::plugin::Grant;
 use harmos_operations::host::{Catalog, CatalogPage};
 
-/* === Constants === */
-
 const CURSOR_BYTES: usize = 4 * 1024 * 1024;
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type ProviderEntry = (String, String, Arc<Entry>);
-
-/* === Structs === */
 
 #[derive(Serialize)]
 struct Metadata<'a> {
@@ -54,12 +39,6 @@ struct Bounded {
     bytes: Vec<u8>,
     limit: usize,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Write for Bounded {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
@@ -217,9 +196,3 @@ impl Manager {
         Ok(None)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

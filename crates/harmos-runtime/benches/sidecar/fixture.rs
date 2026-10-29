@@ -9,13 +9,6 @@
 
 // Compose The Same Schematic Commands Across Real Carrier Boundaries.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 #[cfg(feature = "plugin-guest")]
 use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
@@ -23,22 +16,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-// Third Party Imports
-
-// Local Imports
 use harmos_runtime::Runtime;
 use harmos_runtime::storage::*;
 use schematic_domain::model::Snapshot;
 use schematic_operations::schematic::{propose, validate};
 use sha2::{Digest, Sha256};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Model {
     storage: Option<StorageManager>,
@@ -51,17 +33,11 @@ pub struct Fixture {
     _storage_root: tempfile::TempDir,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::lanes]
 pub enum Lanes {
     #[default]
     Open,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();
@@ -180,8 +156,6 @@ impl Fixture {
     }
 }
 
-/* === Public Functions === */
-
 pub fn verify_route(answer: &propose::Route) {
     assert_eq!(
         answer.points,
@@ -213,8 +187,6 @@ pub fn artifact(name: &str) -> PathBuf {
     let relative = stamp["metadata"]["artifacts"][name].as_str().unwrap_or_else(|| panic!("missing bench artifact {name}"));
     fixtures.join(relative)
 }
-
-/* === Private Functions === */
 
 async fn runtime() -> (Runtime<Model>, StorageManager, tempfile::TempDir, Duration) {
     let started = Instant::now();
@@ -290,5 +262,3 @@ fn plugin_settings() -> harmos_runtime::config::PluginSettings {
 fn nz(value: usize) -> NonZeroUsize {
     NonZeroUsize::new(value).unwrap()
 }
-
-/* === Tests === */

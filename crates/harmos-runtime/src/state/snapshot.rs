@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{HashMap, VecDeque};
 use std::future::{Future, poll_fn};
 use std::num::{NonZeroU64, NonZeroUsize};
@@ -24,9 +17,9 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 use std::task::Poll;
-// Third Party Imports
+
 use serde::{Serialize, de::DeserializeOwned};
-// Local Imports
+
 use super::snapshot_codec;
 use crate::state::{Tail, TrackedState, Undos, dispatch::Dispatch};
 use crate::storage::{SchemaKey, StorageManager};
@@ -35,17 +28,9 @@ use crate::{
     state::RequestKey, storage::Payload,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Encoding<A> =
     fn(&SnapshotPolicy, &At<<A as Application>::State>, &Undos<A>, &Tail<A>, &HashMap<RequestKey, Receipt>) -> Result<Vec<u8>>;
 type Decoding<A> = fn(&[u8], &SnapshotPolicy, &Dispatch<A, Payload<A>>, usize) -> std::result::Result<Restored<A>, Incompatible>;
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct SnapshotPolicy {
@@ -67,12 +52,6 @@ pub(crate) struct Restored<A: Application> {
     pub(crate) receipts: HashMap<RequestKey, Receipt>,
     pub(crate) tail: VecDeque<Arc<Entry<Recorded<A>>>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> Snapshots<A> {
     pub(crate) fn new(policy: SnapshotPolicy) -> Self
@@ -153,9 +132,3 @@ impl<A: Application> Snapshots<A> {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

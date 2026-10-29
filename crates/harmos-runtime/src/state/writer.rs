@@ -7,22 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::HashMap;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::{mpsc, oneshot, watch};
 use tracing::Instrument;
-// Local Imports
+
 use super::entry::{CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt, RequestKey, Timestamp};
 use super::envelope::Recorded;
 use super::history::{Focus, Reversals, Undos};
@@ -33,15 +26,7 @@ use super::{Context, TrackedState};
 use crate::supervision::executor::InContext;
 use crate::{Application, state::At};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub(crate) type QueuedRequest<A> = (Request<A>, crate::supervision::executor::SpanContext);
-
-/* === Structs === */
 
 #[derive(Clone)]
 struct Unsealed {
@@ -52,8 +37,6 @@ struct Unsealed {
     link: Option<Link>,
     at: Timestamp,
 }
-
-/* === Enums === */
 
 pub(crate) enum Request<A: Application> {
     Commit {
@@ -100,10 +83,6 @@ pub(crate) enum Refusal<A: Application> {
     Nothing,
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl Direction {
     fn link(self, original: Position) -> Link {
         match self {
@@ -138,8 +117,6 @@ impl Unsealed {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) async fn run<A: Application>(
     mut requests: mpsc::Receiver<QueuedRequest<A>>, tracked: Arc<TrackedState<A>>, stored: watch::Sender<Position>, inverses: Inverting<A>,
     mut undos: Undos<A>, mut capture: Option<super::capture::Capture<A>>,
@@ -151,8 +128,6 @@ pub(crate) async fn run<A: Application>(
         capture.finish().await;
     }
 }
-
-/* === Private Functions === */
 
 async fn run_admissions<A: Application>(
     requests: &mut mpsc::Receiver<QueuedRequest<A>>, tracked: &Arc<TrackedState<A>>, stored: &watch::Sender<Position>,
@@ -642,5 +617,3 @@ async fn reserve<'a, A: Application>(
 fn context_fits(context: &Context, key: Option<&RequestKey>) -> bool {
     context.principal.as_ref().is_none_or(|id| id.as_str().len() <= 1024) && key.is_none_or(|key| key.as_str().len() <= 1024)
 }
-
-/* === Tests === */

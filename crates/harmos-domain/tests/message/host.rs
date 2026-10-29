@@ -7,28 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use harmos_domain::MemorySize;
 use harmos_operations::streams::{FollowingRow, Publish};
 use harmos_sdk::grpc::{self, DecodeInput, prost};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // The Previous Wire Schema Is An Independent Compatibility Oracle
 #[derive(Clone, PartialEq, prost::Message)]
@@ -83,16 +64,6 @@ struct BatchedRow {
     published_delta_micros: Option<i64>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn roundtrip<T: harmos_domain::Message + harmos_domain::schema::Described + MemorySize + std::fmt::Debug + PartialEq>(value: T) {
     let encoded = crate::encode(&value);
     let bound = grpc::prepare::<T>(DecodeInput::new(&encoded)).map(|prepared| prepared.memory()).unwrap();
@@ -103,8 +74,6 @@ fn roundtrip<T: harmos_domain::Message + harmos_domain::schema::Described + Memo
     grpc::encode(&(value), &mut appended).unwrap();
     assert_eq!(&appended[1..], encoded);
 }
-
-/* === Tests === */
 
 #[test]
 fn publication_keeps_tags() {

@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{
@@ -22,23 +15,13 @@ use std::sync::{
 };
 use std::task::Poll;
 
-// Third Party Imports
 use tokio::sync::{Mutex, watch};
 
-// Local Imports
 use super::ServingError;
 use crate::operations::{EndpointSet, StreamInput, StreamOutput, StreamSettings, streaming};
 use crate::{MemorySize, Message};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Pending<'a, T> = Pin<Box<dyn Future<Output = Result<T, ServingError>> + Send + 'a>>;
-
-/* === Structs === */
 
 #[derive(Clone, Copy)]
 pub struct WireStreamLimits {
@@ -73,8 +56,6 @@ pub(crate) struct Attempt {
     ended: bool,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase {
     Waiting,
@@ -83,8 +64,6 @@ enum Phase {
     Interrupted,
     Closed,
 }
-
-/* === Traits === */
 
 pub trait WireEndpoints: EndpointSet + Sized {
     fn empty() -> Option<Self> {
@@ -110,8 +89,6 @@ trait Encoder: Send + Sync {
     fn receive<'a>(&'a self, streams: &'a WireStreams, epoch: u64) -> Pending<'a, Option<Vec<u8>>>;
     fn transferred(&self) -> bool;
 }
-
-/* === Implementations === */
 
 impl WireEndpoints for () {
     fn empty() -> Option<Self> {
@@ -417,10 +394,6 @@ impl<T: Message + MemorySize + Send + 'static> Encoder for Receiving<T> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn encode<T: Message + 'static>(
     item: &T, #[cfg(feature = "grpc")] codec: Option<super::protobuf::ItemCodec>,
 ) -> Result<Vec<u8>, ServingError> {
@@ -437,5 +410,3 @@ fn encode<T: Message + 'static>(
     }
     Ok(item.encode())
 }
-
-/* === Tests === */

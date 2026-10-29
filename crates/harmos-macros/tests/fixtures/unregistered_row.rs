@@ -8,26 +8,8 @@
  */
 
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use harmos::{Application, state::Never, streams::StreamManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct State;
 
@@ -36,7 +18,6 @@ struct Studio;
 #[derive(Clone)]
 struct OutsideTheCatalog;
 
-/* === Enums === */
 
 #[harmos::lanes]
 enum Lanes {
@@ -44,9 +25,6 @@ enum Lanes {
     Open,
 }
 
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Application for Studio {
     type Lanes = Lanes;
@@ -56,14 +34,9 @@ impl Application for Studio {
     type Streams = ();
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn publish(streams: &StreamManager<Studio>) {
     streams.publish(OutsideTheCatalog);
 }
 
 fn main() {}
-
-/* === Tests === */

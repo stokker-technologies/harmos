@@ -7,29 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
-// Third Party Imports
 
-// Local Imports
 use harmos_domain::journal::Position;
 use harmos_domain::listeners::{Context, Delivery};
 use harmos_domain::message;
 use harmos_sdk::grpc::{self, DecodeInput, prost};
 
-/* === Constants === */
-
 #[global_allocator]
 static ALLOCATOR: Tracking = Tracking;
-
-/* === Macros === */
 
 thread_local! {
     static MEASURING: Cell<bool> = const { Cell::new(false) };
@@ -55,10 +42,6 @@ layer!(Third, Second);
 layer!(Fourth, Third);
 
 layer!(Fifth, Fourth);
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Tracking;
 
@@ -112,8 +95,6 @@ struct BoxedLeaf {
     row: Box<Leaf>,
 }
 
-/* === Enums === */
-
 #[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 enum BoxedChoice {
@@ -127,10 +108,6 @@ enum Choice {
     Selected(Fifth),
     Empty,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_domain::listeners::Listener for Selections {
     type Row = Selection;
@@ -180,10 +157,6 @@ impl Drop for MeasurementGuard {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn account(released: usize, allocated: usize) {
     if !MEASURING.get() {
         return;
@@ -224,8 +197,6 @@ fn selection() -> Selection {
         rows: vec![nested(), nested()],
     }
 }
-
-/* === Tests === */
 
 // Transcoding may use intermediate buffers, but encoding retains only its output.
 #[test]

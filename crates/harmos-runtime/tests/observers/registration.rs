@@ -7,36 +7,7 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn backend(id: &'static str) -> Backend {
     Backend { id, mode: Mode::Cooperative }
@@ -202,5 +173,3 @@ async fn foreign_closed_shutdown() {
     assert!(observers(manager).is_empty());
     other.shutdown().await.unwrap();
 }
-
-/* === Tests === */

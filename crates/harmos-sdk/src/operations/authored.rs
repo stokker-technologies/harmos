@@ -7,31 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 
-// Third Party Imports
-
-// Local Imports
 use super::{ExecutionContext, FailureKind, OperationDeclaration};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait EndpointSet: Send + Sized + 'static {
     fn empty() -> Option<Self> {
@@ -112,8 +90,6 @@ pub trait Executable: OperationDeclaration {
     const RESOURCES: &'static [super::Resource] = &[];
 }
 
-/* === Implementations === */
-
 impl EndpointSet for () {
     fn empty() -> Option<Self> {
         Some(())
@@ -138,9 +114,3 @@ impl<I: InputEndpoint, O: OutputEndpoint> EndpointSet for (I, O) {
         (Some(std::any::TypeId::of::<I::Item>()), Some(std::any::TypeId::of::<O::Item>()))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

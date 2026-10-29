@@ -7,34 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use tokio::sync::watch;
-// Local Imports
+
 use crate::state::{Inverting, Undos, dispatch::Dispatch, replay};
 use crate::storage::{ReadLimits, RecoveryPosition, StorageManager};
 use crate::{
     Application, runtime::Incompatible, state::At, state::Entry, state::Envelope, state::Kind, state::Position, state::Prepared,
     state::Receipt, state::RecordCatalog, state::Recorded, state::RequestKey, state::StateManager, state::SystemFact, storage::Payload,
 };
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -51,16 +36,10 @@ pub(crate) struct Recovered<A: Application> {
     pub(crate) receipts: HashMap<RequestKey, Receipt>,
 }
 
-/* === Enums === */
-
 enum RecoveryJson<'a> {
     Value(serde_json::Value),
     Raw(&'a RawValue),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl RecoveryJson<'_> {
     fn transaction<T>(&self, decode: impl FnOnce(&[u8]) -> T) -> std::result::Result<T, serde_json::Error> {
@@ -202,8 +181,6 @@ impl<P> Group<P> {
     }
 }
 
-/* === Public Functions === */
-
 pub(super) fn decode<A: Application>(
     envelope: Envelope<serde_json::Value>, catalog: &Dispatch<A, Payload<A>>,
 ) -> std::result::Result<Option<Envelope<Payload<A>>>, Incompatible> {
@@ -227,8 +204,6 @@ pub(super) fn decode<A: Application>(
         catalog,
     )
 }
-
-/* === Private Functions === */
 
 fn decode_payload<A: Application>(
     envelope: Envelope<&RawValue>, catalog: &Dispatch<A, Payload<A>>,
@@ -302,8 +277,6 @@ fn decode_json<A: Application>(
         },
     }))
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

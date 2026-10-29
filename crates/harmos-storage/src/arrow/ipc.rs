@@ -9,40 +9,17 @@
 
 // Storage Arrow Query Contract
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io::Cursor;
 use std::sync::Arc;
-// Third Party Imports
+
 use arrow_array::RecordBatch;
 use arrow_ipc::reader::StreamReader;
 use arrow_ipc::writer::{IpcWriteOptions, StreamWriter};
 use arrow_ipc::{MessageHeader, Type, root_as_message_with_opts};
 use arrow_schema::Schema;
-// Local Imports
+
 use super::{MAX_DEPTH, MAX_FIELDS, invalid, validate_schema};
 use crate::Result;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(super) fn encode(schema: &Schema, batch: Option<&RecordBatch>) -> Result<Vec<u8>> {
     let options = IpcWriteOptions::default();
@@ -153,8 +130,6 @@ pub(super) fn preflight(bytes: &[u8], batch: bool) -> Result<()> {
     Ok(())
 }
 
-/* === Private Functions === */
-
 fn inspect_field(field: arrow_ipc::Field<'_>, depth: usize, fields: &mut usize) -> Result<()> {
     *fields = fields.checked_add(1).ok_or_else(|| invalid("IPC field count overflow"))?;
     if depth > MAX_DEPTH || *fields > MAX_FIELDS || field.dictionary().is_some() {
@@ -211,5 +186,3 @@ fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32> {
     *offset = end;
     Ok(u32::from_le_bytes(value.try_into().expect("four-byte IPC prefix")))
 }
-
-/* === Tests === */

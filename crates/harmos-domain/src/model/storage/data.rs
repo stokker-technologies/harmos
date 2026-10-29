@@ -7,31 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod codec;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::SystemTime as Timestamp;
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 
-// Local Imports
 use crate::model::storage::{SchemaKey, StorageCursor};
 use crate::{Identifier, MemorySize};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecordInput {
@@ -89,12 +72,6 @@ pub struct StreamWrite<'a> {
     pub sequence: u64,
     pub record: RecordWrite<'a>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl MemorySize for RecordInput {
     fn memory_size(&self) -> usize {
@@ -170,9 +147,3 @@ impl<T: MemorySize> MemorySize for StoredRow<T> {
             .saturating_add(self.record.memory_size().saturating_sub(std::mem::size_of::<StoredRecord<T>>()))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

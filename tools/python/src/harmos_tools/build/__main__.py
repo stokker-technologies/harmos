@@ -9,9 +9,6 @@
 
 """Build Canonical Shipping Products"""
 
-# === Imports === #
-
-# Standard Library Imports
 import argparse
 import json
 import os
@@ -20,25 +17,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Third Party Imports
 
-# Local Imports
 from .. import temporary
 from . import cargo, fixtures, paths
 from .fixtures import ROOT, TARGET, SCHEMATIC
-
-# Type Checking Imports
-
-
-# === Public Exports === #
-
-# === Constants === #
-
-# === Types === #
-
-# === Classes === #
-
-# === Public Functions === #
 
 
 def main() -> None:
@@ -139,10 +121,6 @@ def product(profile: str, scratch: Path) -> None:
     }
     (examples / "catalog.json").write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
 
-
-# === Private Functions === #
-
-# === Entry Point === #
 
 if __name__ == "__main__":
     main()

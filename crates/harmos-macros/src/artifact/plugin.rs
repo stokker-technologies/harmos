@@ -7,32 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
 use syn::parse::{ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Error, Expr, Ident, ItemImpl, LitStr, Meta, Path, PathArguments, Token, Type};
-// Local Imports
+
 use super::set_once;
 use crate::path::{self, HarmosPath};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Declaration {
     id: LitStr,
@@ -52,18 +35,10 @@ struct Listed {
     scopes: Vec<LitStr>,
 }
 
-/* === Enums === */
-
 enum Required {
     Catalog(Box<Type>),
     Listed(Vec<Listed>),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream {
     match expand(attribute, &item) {
@@ -74,8 +49,6 @@ pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream 
         }
     }
 }
-
-/* === Private Functions === */
 
 fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
     let span = attribute.span();
@@ -499,5 +472,3 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         };
     })
 }
-
-/* === Tests === */

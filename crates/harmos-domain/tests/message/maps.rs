@@ -9,31 +9,14 @@
 
 // Portable Map Fields And Root Payloads Across Their Codec Boundaries.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
 use std::hash::{BuildHasher, BuildHasherDefault, DefaultHasher};
-// Third Party Imports
 
-// Local Imports
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::{Cardinality, Described, graph::Schema};
 use harmos_domain::{MemorySize, Message, Portable, message};
 use harmos_sdk::grpc::{self, DecodeInput};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
@@ -71,12 +54,6 @@ struct OwnedHasher {
     state: Vec<u8>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl Default for OwnedHasher {
     fn default() -> Self {
         Self { state: vec![0; 128] }
@@ -96,10 +73,6 @@ impl MemorySize for OwnedHasher {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn roundtrip<T: Portable + PartialEq + Debug>(value: &T) {
     let bytes = Message::encode(value);
     assert_eq!(value.encoded_size(), bytes.len());
@@ -118,8 +91,6 @@ fn roundtrip<T: Portable + PartialEq + Debug>(value: &T) {
     let validator = harmos_domain::schema::Validator::from_schema(&schema, &settings).unwrap();
     validator.validate(&Message::encode(value)).unwrap();
 }
-
-/* === Tests === */
 
 #[test]
 fn map_order_is_canonical() {

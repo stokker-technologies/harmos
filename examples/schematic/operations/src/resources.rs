@@ -7,37 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::{AtomicU64, Ordering};
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct AnalysisResources {
     pub(crate) analysis: tokio::sync::Semaphore,
     progress_sequence: AtomicU64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Default for AnalysisResources {
     fn default() -> Self {
@@ -57,9 +32,3 @@ impl AnalysisResources {
         Ok(previous + 1)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

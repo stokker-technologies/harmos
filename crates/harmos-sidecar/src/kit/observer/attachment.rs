@@ -13,35 +13,20 @@
 // its own, and the invocation's cleanup stops and cleans it up once the host
 // cancels it.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
-// Third Party Imports
+
 use tokio::sync::oneshot;
-// Local Imports
+
 use super::{Activity, Instance, ObserverError, ObserverHost};
 use crate::{Refusal, Supervisor};
 use harmos_domain::observers::Control;
 use harmos_sdk::__private::{RegistrationBatch, WireTable};
 use harmos_sdk::operations::{Carrier, ExecutionContext, ServingError};
 use harmos_sdk::plugin::Attachment;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct ObserverAttachment<H = Supervisor> {
     resources: OnceLock<Arc<ExecutionContext>>,
@@ -65,12 +50,6 @@ struct Running {
     failed: Option<oneshot::Receiver<ObserverError>>,
     returned: Option<oneshot::Receiver<Activity>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<H: ObserverHost> ObserverAttachment<H> {
     pub fn new(instances: Vec<Instance<H>>, grants: &[harmos_domain::inventory::publications::Entry]) -> Result<Arc<Self>, Refusal> {
@@ -261,9 +240,3 @@ impl Running {
         (activity, failure)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

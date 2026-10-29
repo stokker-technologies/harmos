@@ -7,25 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::Duration;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -34,8 +18,6 @@ pub struct OperationPolicy {
     pub attempt_timeout: Duration,
     pub retries: RetryPolicy,
 }
-
-/* === Enums === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
@@ -91,10 +73,6 @@ pub enum PolicyError {
     #[error("retry delays must be positive and ordered (initial {initial:?}, maximum {maximum:?})")]
     Backoff { initial: Duration, maximum: Duration },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl OperationPolicy {
     pub fn validate(self) -> Result<(), PolicyError> {
@@ -174,13 +152,7 @@ impl Backoff {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 // Every caller bounds nanos by a representable Duration before this conversion.
 fn from_nanos(nanos: u128) -> Duration {
     Duration::new((nanos / 1_000_000_000) as u64, (nanos % 1_000_000_000) as u32)
 }
-
-/* === Tests === */

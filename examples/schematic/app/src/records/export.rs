@@ -7,27 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fmt;
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::record(id = "export.completed")]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -36,17 +18,11 @@ pub struct ExportCompleted {
     pub symbols: u32,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum ExportFormat {
     Svg,
     Netlist,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl fmt::Display for ExportFormat {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -56,9 +32,3 @@ impl fmt::Display for ExportFormat {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

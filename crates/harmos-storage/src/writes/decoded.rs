@@ -7,28 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::DataBatch;
 use crate::Result;
 use crate::arrow::ArrowBatch;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // A Write Batch Whose Arrow IPC Data Has Been Decoded For Admission.
 pub struct DecodedBatch {
@@ -36,12 +17,6 @@ pub struct DecodedBatch {
     pub schema: crate::storage::SchemaKey,
     pub data: ArrowBatch,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl DecodedBatch {
     pub fn of(batch: DataBatch) -> Result<Self> {
@@ -52,9 +27,3 @@ impl DecodedBatch {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

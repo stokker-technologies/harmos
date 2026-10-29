@@ -8,31 +8,13 @@
  */
 
 #![allow(dead_code)]
-/* === Modules === */
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use harmos_runtime::state::{Invertible, Transaction};
 use harmos_runtime::{Application, DefinitionId, state::Kind};
-
-/* === Constants === */
 
 pub(crate) const RENAME: (Kind, &str, u32) = (Kind::Transaction, "sheet.rename", 1);
 
 pub(crate) const EXPORTED: (Kind, &str, u32) = (Kind::Record, "sheet.exported", 1);
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Sheet {
@@ -47,8 +29,6 @@ pub(crate) struct Rename {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Editor;
-
-/* === Enums === */
 
 #[harmos_runtime::lanes]
 pub enum Lanes {
@@ -85,10 +65,6 @@ pub(crate) enum Change {
 pub(crate) enum Note {
     Exported,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Transaction<Sheet> for Rename {
     type Error = Refusal;
@@ -195,8 +171,6 @@ impl harmos_runtime::state::RecordCatalog for Note {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn rename(title: &str) -> Change {
     Change::Rename(Rename { to: title.to_owned() })
 }
@@ -211,7 +185,3 @@ pub(crate) fn inverses(change: &Change, sheet: &Sheet) -> Option<Change> {
         Change::Seal | Change::Explode => None,
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,7 +7,6 @@
  * ***
  */
 
-/* === Modules === */
 
 pub mod __harmos {
     pub use harmos::{
@@ -23,26 +22,10 @@ pub mod __harmos {
     pub use harmos::{builtins, catalog, guest, listeners, model, operations, plugin, schema, sidecar, streams};
 }
 
-/* === Re-Exports === */
 
 pub use harmos::{catalog, lanes, listener, message, observer, operation, plugin, stream};
 pub use serde::*;
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::stream(id = "reading", window = 8)]
 #[harmos::message]
@@ -50,15 +33,3 @@ pub use serde::*;
 pub struct Reading {
     pub value: u32,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

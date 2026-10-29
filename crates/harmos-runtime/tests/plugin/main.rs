@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "../plugin/activation.rs"]
 mod activation;
 #[path = "../plugin/owners.rs"]
@@ -17,36 +15,6 @@ mod owners;
 mod reload;
 #[path = "../plugin/retirement.rs"]
 mod retirement;
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 use harmos_runtime::operations::{
     Bindings, OperationDefinition as Definition, OperationManager, OperationPolicy, PluginRegistration, RetryPolicy, Visibility,

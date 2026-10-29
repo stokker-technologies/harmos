@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     collections::BTreeMap,
     future::Future,
@@ -26,7 +19,6 @@ use std::{
     task::{Context, Poll},
 };
 
-// Third Party Imports
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     net::{TcpListener, TcpStream},
@@ -35,24 +27,15 @@ use tokio::{
 };
 use tonic::transport::server::{Connected, TcpConnectInfo};
 
-// Local Imports
 use super::{inbound::Inbound, manager::Settings, middleware::Middleware};
 use crate::operations::resident::Activation;
 use crate::operations::{Manager, RestartPolicy, Running};
 use crate::services::{Resident, ServiceContext, ServiceDefinition};
 use crate::{Application, Error, Result};
 
-/* === Constants === */
-
 const SERVICE: &str = "harmos.grpc";
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Pending<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
-
-/* === Structs === */
 
 pub(super) struct Resources {
     settings: Settings,
@@ -96,10 +79,6 @@ struct Connection {
     _permit: OwnedSemaphorePermit,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub(super) trait Host: Send + Sync {
     fn attach(&self, resources: Arc<Resources>) -> Pending<'_, (u64, SocketAddr)>;
     fn detach(&self, generation: u64) -> Pending<'_, ()>;
@@ -109,8 +88,6 @@ pub(super) trait Host: Send + Sync {
     fn shutdown(&self) -> Pending<'_, ()>;
     fn local_addr(&self) -> Option<SocketAddr>;
 }
-
-/* === Implementations === */
 
 impl Resources {
     pub(super) fn new(settings: Settings, routes: tonic::service::Routes, middleware: Vec<Arc<dyn Middleware>>) -> Self {
@@ -435,15 +412,9 @@ impl AsyncWrite for Connection {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn failure(source: impl std::error::Error + Send + Sync + 'static) -> Error {
     Error::TaskFailed {
         domain: "gRPC listener",
         source: Arc::new(source),
     }
 }
-
-/* === Tests === */

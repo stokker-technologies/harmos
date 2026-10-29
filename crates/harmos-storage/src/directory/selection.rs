@@ -9,34 +9,12 @@
 
 // Ordered Slash-Relative Directory Selection
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-// Third Party Imports
 use globset::{GlobBuilder, GlobMatcher};
-// Local Imports
+
 use crate::{Error, Result};
 use harmos_domain::model::storage::DirectoryRule;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 pub(super) struct Rules(Vec<(GlobMatcher, bool)>);
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Rules {
     pub(super) fn compile(rules: &[DirectoryRule]) -> Result<Self> {
@@ -58,12 +36,6 @@ impl Rules {
         self.0.iter().rev().find(|(glob, _)| glob.is_match(path)).is_some_and(|(_, include)| *include)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

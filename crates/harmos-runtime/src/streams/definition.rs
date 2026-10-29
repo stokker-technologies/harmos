@@ -7,38 +7,22 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex, RwLock, Weak};
-// Third Party Imports
+
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::sync::watch;
-// Local Imports
+
 use super::demand::Holding;
 use super::window::{Row, Window};
 use crate::streams::{BatchDefinition, Definition, StreamCatalog, StreamRow};
 use crate::{Application, state::Position, storage::Cursor};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub(super) type Windows = HashMap<Arc<str>, HashMap<u32, Arc<Wired>>>;
-
-/* === Structs === */
 
 pub(crate) struct Delivery {
     pub(crate) rows: Vec<(Cursor, Definition, Position, Row)>,
@@ -70,8 +54,6 @@ pub(crate) struct Table {
     pub(super) listeners: Mutex<BTreeMap<String, Arc<super::listeners::Listening>>>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum Refused {
     #[error("two stream definitions share the id \"{0}\"")]
@@ -83,8 +65,6 @@ pub(crate) enum Refused {
     #[error("a stream consumer selected the undeclared stream \"{0}\"")]
     UndeclaredSelection(Arc<str>),
 }
-
-/* === Traits === */
 
 pub trait Stream<A: Application>: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {
     const ID: &'static str;
@@ -111,8 +91,6 @@ pub trait Stream<A: Application>: Clone + Send + Sync + Serialize + DeserializeO
             .presentation(Self::metadata(), Self::row_metadata())
     }
 }
-
-/* === Implementations === */
 
 impl<A, S> Stream<A> for S
 where
@@ -295,10 +273,6 @@ impl Wired {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn visible(wires: impl IntoIterator<Item = Arc<Wired>>) -> Vec<Arc<Wired>> {
     let wires = wires.into_iter();
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
@@ -316,5 +290,3 @@ fn visible(wires: impl IntoIterator<Item = Arc<Wired>>) -> Vec<Arc<Wired>> {
     };
     wires.collect()
 }
-
-/* === Tests === */

@@ -7,43 +7,20 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io::Write;
 use std::path::Path;
 use std::time::{Duration, Instant};
-// Third Party Imports
+
 use criterion::{BenchmarkId, Criterion, Throughput};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::{ByteRange, CaptureConsistency, FileMetadata, FileSource, FollowStart};
 use harmos_runtime::storage::{FileCapture, FileFollow, FileRead};
 use sha2::{Digest, Sha256};
-// Local Imports
-use super::fixture::Fixture;
 
-/* === Constants === */
+use super::fixture::Fixture;
 
 const FILE_BYTES: usize = 30 * 1024 * 1024;
 const CHUNK_BYTES: usize = 1024 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
     let directory = tempfile::tempdir().unwrap();
@@ -165,8 +142,6 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
     group.finish();
 }
 
-/* === Private Functions === */
-
 fn range() -> ByteRange {
     ByteRange { offset: 0, limit: None }
 }
@@ -192,5 +167,3 @@ fn source(path: &Path) -> [u8; 32] {
     file.sync_all().unwrap();
     hash.finalize().into()
 }
-
-/* === Tests === */

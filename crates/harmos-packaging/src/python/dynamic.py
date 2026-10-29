@@ -8,30 +8,20 @@
 
 """Project Live Finite Operation Contracts Into Private Protobuf Classes"""
 
-# === Imports === #
-
-# Standard Library Imports
 import json
 import re
 from collections.abc import Mapping
 from typing import Any
 
-# Third Party Imports
 from google.protobuf import descriptor_pb2 as pb
 from google.protobuf.descriptor_pool import DescriptorPool
 from google.protobuf.message import Message
 from google.protobuf.message_factory import GetMessageClass
 
-# Local Imports
 from .operation import Mode, Operation, owner_segment
-
-# Type Checking Imports
-
-# === Public Exports === #
 
 __all__ = ["from_contract"]
 
-# === Constants === #
 
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z_0-9]*\Z")
 RESERVED_FIELDS = frozenset(
@@ -71,12 +61,6 @@ SCALARS = {
     "string": pb.FieldDescriptorProto.TYPE_STRING,
     "bytes": pb.FieldDescriptorProto.TYPE_BYTES,
 }
-
-# === Types === #
-
-# === Classes === #
-
-# === Public Functions === #
 
 
 def from_contract(
@@ -371,9 +355,6 @@ def from_contract(
     )
 
 
-# === Private Functions === #
-
-
 def _row(index: int, root: int) -> str:
     return f"Row{0 if index == root else index + 1 if index < root else index}"
 
@@ -399,9 +380,6 @@ def _envelope(
             oneof_index=0,
         )
     return f"{file.package}.{name}"
-
-
-# === Entry Point === #
 
 
 def _field_name(name: str) -> str:

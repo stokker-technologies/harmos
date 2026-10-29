@@ -9,32 +9,14 @@
 
 // Bounded Disk FFT Workspace
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io::{Read, Seek, SeekFrom, Write};
 
-// Third Party Imports
-
-// Local Imports
 use super::bounded::{Buffer, transform};
 use crate::signal::{Error, Result};
-
-/* === Constants === */
 
 const PAGE_VALUES: usize = 4096;
 const PAGE_BYTES: usize = PAGE_VALUES * 16;
 const CACHE_PAGES: usize = 4;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 /// Temporary Complex Samples With A Fixed 256 KiB Page Cache.
 pub struct FftBuffer {
@@ -50,12 +32,6 @@ struct Page {
     dirty: bool,
     touched: u64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl FftBuffer {
     pub fn new(length: usize) -> Result<Self> {
@@ -158,12 +134,6 @@ impl Buffer for FftBuffer {
         self.set(index, value)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

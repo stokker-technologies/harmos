@@ -7,17 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
-// Third Party Imports
+
 use tokio::sync::OwnedSemaphorePermit;
-// Local Imports
+
 use super::OperationInstanceId;
 use super::admission::Admission;
 use super::caller::{Origin, Source};
@@ -25,12 +18,6 @@ use super::execution::{Body, Prepared};
 use super::manager::Entry;
 use crate::Result;
 use crate::operations::OperationDeclaration;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 type Prepare<O, P> = dyn Fn(
         (Request<<O as OperationDeclaration>::Request>, P),
@@ -44,8 +31,6 @@ type Prepare<O, P> = dyn Fn(
     ) -> Result<Prepared<super::Response<<O as OperationDeclaration>::Response>>>
     + Send
     + Sync;
-
-/* === Structs === */
 
 pub(super) struct Request<T> {
     pub(super) value: T,
@@ -61,12 +46,6 @@ pub(super) struct Request<T> {
 pub(super) struct Typed<O: OperationDeclaration, P = ()> {
     pub(super) prepare: Box<Prepare<O, P>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<T> From<T> for Request<T> {
     fn from(value: T) -> Self {
@@ -105,8 +84,6 @@ impl<T> Request<T> {
     }
 }
 
-/* === Public Functions === */
-
 pub(super) fn prepared<O>(entry: &Entry, id: OperationInstanceId, body: Box<dyn Body<O>>) -> Prepared<O> {
     Prepared {
         body,
@@ -118,7 +95,3 @@ pub(super) fn prepared<O>(entry: &Entry, id: OperationInstanceId, body: Box<dyn 
         middleware: None,
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

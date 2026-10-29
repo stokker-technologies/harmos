@@ -9,35 +9,16 @@
 
 // Stored Stream And Object Identities The Paged Catalog Lists.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use super::{ObjectKey, SchemaKey, StorageCursor};
 use crate::{Identifier, MemorySize};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IdentitySelection {
     pub kind: IdentityKind,
     pub schema: Option<Identifier>,
 }
-
-/* === Enums === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -52,10 +33,6 @@ pub enum StoredIdentity {
     Stream { schema: SchemaKey, scope: Option<Identifier>, item: Identifier, stream: Identifier, first: StorageCursor },
     Object { schema: SchemaKey, key: ObjectKey, first: StorageCursor },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl MemorySize for IdentitySelection {
     fn memory_size(&self) -> usize {
@@ -105,9 +82,3 @@ impl IdentitySelection {
         identity.kind() == self.kind && self.schema.as_ref().is_none_or(|schema| schema == &identity.schema().id)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

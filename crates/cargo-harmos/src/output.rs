@@ -9,34 +9,6 @@
 
 // Render Prepared Build Results And Development Outcomes.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 pub fn build(build: &harmos_packaging::Build, json: bool) -> Result<(), harmos_packaging::Error> {
     if json {
         println!("{}", serde_json::to_string_pretty(build)?);
@@ -76,7 +48,3 @@ pub fn dev(event: harmos_packaging::DevEvent, json: bool) -> Result<(), harmos_p
     }
     Ok(())
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,28 +7,7 @@
  * ***
  */
 
-/* === --- === Definition Module === --- === */
-
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::{Duration, Echoed, OperationPolicy, RetryPolicy};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(harmos_path = ::harmos_domain, id = "probe.spin", response = Echoed, policy = OperationPolicy {
         timeout: Duration::from_secs(600),
@@ -44,49 +23,11 @@ use super::{Duration, Echoed, OperationPolicy, RetryPolicy};
 
 pub struct SpinOperation {}
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
-
-/* === --- === Runtime Module === --- === */
-
 #[cfg(target_arch = "wasm32")]
 mod runtime {
-    /* === Modules === */
 
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
     use super::{Echoed, SpinOperation};
     use harmos::guest::OperationRefusal;
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
 
     impl harmos::guest::Operation for SpinOperation {
         type Error = OperationRefusal;
@@ -105,10 +46,4 @@ mod runtime {
             result.map(Into::into)
         }
     }
-
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
 }

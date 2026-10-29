@@ -9,26 +9,6 @@
 
 // Report One Exit Policy For Packaging And Binding Commands.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-// Third Party Imports
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
@@ -37,10 +17,6 @@ pub enum Error {
     #[error(transparent)]
     Bindings(#[from] harmos_packaging::python::Error),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Error {
     pub fn exit_code(&self) -> u8 {
@@ -66,9 +42,3 @@ impl Error {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

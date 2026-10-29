@@ -8,7 +8,6 @@
  */
 
 #![allow(dead_code)]
-/* === Modules === */
 
 mod app;
 pub mod fixtures;
@@ -76,32 +75,23 @@ mod feeds {
     }
 }
 
-/* === Re-Exports === */
-
 #[allow(unused_imports, reason = "each integration-test binary compiles only the fixture slice it needs")]
 pub use self::{
     app::{booted, runtime, runtime_from, streaming},
     feeds::{Capture, Probe, Pulse, Reading, Run},
 };
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-// Third Party Imports
 
-// Local Imports
 use harmos_runtime::{
     Application, DefinitionId, Runtime, runtime::Catalog, runtime::Incompatible, runtime::Registration, state::DecodeError, state::Entry,
     state::Envelope, state::Invertible, state::Kind, state::Position, state::PrincipalId, state::Recorded, state::Transaction,
     storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source, streams::Definition,
 };
-
-/* === Constants === */
 
 pub const HOUSE: Account = Account(0);
 
@@ -117,13 +107,7 @@ pub const EXPLODE: (Kind, &str, u32) = (Kind::Transaction, "ledger.explode", 1);
 
 pub const NOTED: (Kind, &str, u32) = (Kind::Record, "ledger.noted", 1);
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type Stored = Arc<Mutex<Vec<Arc<Entry<Recorded<Bank>>>>>>;
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct Account(pub u8);
@@ -165,8 +149,6 @@ pub struct Copied {
     entries: Stored,
     resume: Position,
 }
-
-/* === Enums === */
 
 #[harmos_runtime::lanes]
 pub enum Lanes {
@@ -210,10 +192,6 @@ pub enum Change {
 pub enum Fact {
     Noted(Noted),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Ledger {
     pub fn balance(&self, account: Account) -> i64 {
@@ -498,8 +476,6 @@ impl harmos_runtime::state::RecordCatalog for Fact {
 
 impl harmos_runtime::state::TransactionCatalog<Ledger> for Change {}
 
-/* === Public Functions === */
-
 pub fn catalog() -> impl Registration<Bank> {
     Definitions([DEPOSIT, WITHDRAW, FREEZE, EXPLODE, NOTED].map(|(kind, id, version)| (kind, DefinitionId::new(id), version)).into())
 }
@@ -570,8 +546,6 @@ pub async fn quietly<T>(act: impl Future<Output = T>) -> T {
     outcome
 }
 
-/* === Private Functions === */
-
 fn inverses(change: &Change, ledger: &Ledger) -> Option<Change> {
     match change {
         Change::Deposit(change) => Some(change.inverse(ledger).into()),
@@ -628,5 +602,3 @@ fn stored(entry: &Entry<Recorded<Bank>>) -> Envelope<Payload<Bank>> {
         },
     }
 }
-
-/* === Tests === */

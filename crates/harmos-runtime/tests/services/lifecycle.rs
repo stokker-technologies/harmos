@@ -7,35 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
-// Third Party Imports
 use tokio::sync::{Notify, Semaphore, watch};
 
-// Local Imports
 use super::app::App;
 use harmos_runtime::operations::{OperationOutcome, OperationPhase, OperationStatus};
 use harmos_runtime::services::ServiceDefinition;
 use harmos_runtime::{Runtime, services::Resident, services::ServiceContext};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Trace {
     factories: AtomicUsize,
@@ -51,17 +34,11 @@ struct Trace {
 
 struct Worker(Arc<Trace>);
 
-/* === Enums === */
-
 #[derive(Clone, Copy)]
 enum Mode {
     Complete,
     Retry,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Resident<App> for Worker {
     type Error = std::io::Error;
@@ -97,10 +74,6 @@ impl Drop for Worker {
         self.0.drops.fetch_add(1, Ordering::SeqCst);
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn trace(mode: Mode, block_cleanup: bool, fail_cleanup: bool) -> Arc<Trace> {
     Arc::new(Trace {
@@ -155,8 +128,6 @@ async fn runtime(
 async fn observed(receiver: &mut watch::Receiver<OperationStatus>, wanted: impl Fn(&OperationStatus) -> bool) -> OperationStatus {
     receiver.wait_for(wanted).await.unwrap().clone()
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn queued_cancel_unstarted() {

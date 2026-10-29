@@ -9,37 +9,8 @@
 
 // Embed The Authored And Hub-Rendered Starter Assets.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").ok_or("missing package root")?);
@@ -94,5 +65,3 @@ fn collect_entry(root: &Path, entry: std::fs::DirEntry, output: &mut Vec<PathBuf
     output.push(relative.to_owned());
     Ok(())
 }
-
-/* === Tests === */

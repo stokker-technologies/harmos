@@ -7,17 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::IO_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
@@ -26,18 +15,10 @@ use harmos_domain::operations::ReplaySafety;
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(HashFile {
     source: Nested<FileSource> => 1,
     range: Nested<ByteRange> => 2,
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
     id = "storage.hash_file",
@@ -52,12 +33,6 @@ pub struct HashFile {
     pub source: FileSource,
     pub range: ByteRange,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl HashFile {
     fn grant_for(request: &HashFile) -> Option<harmos_domain::plugin::Grant> {
@@ -76,11 +51,6 @@ impl MemorySize for HashFile {
 #[cfg(feature = "runtime")]
 mod execution {
 
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
     use crate::{Error, Result};
     use harmos_domain::model::storage::files::FileHash;
     use harmos_sdk::operations::Operation;
@@ -106,9 +76,3 @@ mod execution {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

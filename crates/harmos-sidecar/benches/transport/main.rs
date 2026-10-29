@@ -7,24 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "../../tests/transport/capacity.rs"]
 mod capacity;
 
 #[path = "../../tests/fixtures/throughput_protocol.rs"]
 mod protocol;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
-// Third Party Imports
+
 use tokio::io::{duplex, split};
-// Local Imports
+
 use capacity::{Case, MIB, Observation, Settings, WARMUP_MIB};
 use harmos_operations::lifecycle::{Initialize, Shutdown};
 use harmos_sidecar::Message;
@@ -33,8 +26,6 @@ use harmos_sidecar::transport;
 use harmos_sidecar::{Attach, Executable, Frame, serve_plugin_channels};
 use harmos_sidecar::{Publication, StreamSpec};
 use protocol::{Done, EchoOperation, Sample, StartOperation, TransportPlugin};
-
-/* === Constants === */
 
 const LATENCY_SAMPLES: u64 = 200;
 const BATCH_ROWS: u32 = 100;
@@ -65,17 +56,11 @@ const CASES: [Case; 4] = [
     },
 ];
 
-/* === Macros === */
-
 criterion::criterion_group!(benches, benchmarks);
 
 criterion::criterion_main!(benches);
 
-/* === Type Aliases === */
-
 type Sender = transport::Sender;
-
-/* === Structs === */
 
 struct Receiver(transport::Receiver);
 #[derive(Default)]
@@ -83,12 +68,6 @@ struct Reception {
     decode: bool,
     sequence: u64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Receiver {
     async fn receive(&mut self) -> std::io::Result<Option<Frame>> {
@@ -115,10 +94,6 @@ impl Reception {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn in_memory_transport_profile() {
     fn io(stream: tokio::io::DuplexStream) -> transport::Io {
@@ -545,5 +520,3 @@ fn benchmarks(c: &mut criterion::Criterion) {
     // The Capacity Sweep Already Owns Warmup And Repeated Trials Per Workload.
     runtime.block_on(child_process_capacity());
 }
-
-/* === Tests === */

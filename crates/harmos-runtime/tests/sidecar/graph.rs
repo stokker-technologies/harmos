@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "../support/process_graph_contract.rs"]
 mod contract;
 
@@ -18,11 +16,6 @@ mod provider;
 #[path = "../fixtures/process_client.rs"]
 mod client;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
@@ -30,11 +23,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::task::{Context, Poll};
-// Third Party Imports
+
 use contract::{POLICY, Step};
 use tokio::io::{AsyncRead, ReadBuf};
 use tokio::sync::Notify;
-// Local Imports
+
 use super::{HostLanes, assembly, operations, service_status};
 use crate::sidecar::support::Bank;
 use crate::sidecar::witness::Witness;
@@ -43,10 +36,6 @@ use harmos_runtime::operations::OperationPolicy;
 use harmos_runtime::sidecar::{Attach, Attached, Notice, Refusal, Supervised, Supervisor};
 use harmos_runtime::{Message, Runtime, services::ServiceContext, services::ServiceStatus};
 use harmos_sidecar::attach::{End, Ending};
-
-/* === Constants === */
-
-/* === Macros === */
 
 macro_rules! forwarded {
     ($self:ident, $method:ident) => {
@@ -58,11 +47,7 @@ macro_rules! forwarded {
     };
 }
 
-/* === Type Aliases === */
-
 type Wait = Pin<Box<dyn Future<Output = ()> + Send>>;
-
-/* === Structs === */
 
 #[derive(Default)]
 struct Gate {
@@ -110,18 +95,12 @@ struct Fixture {
     independent: Arc<Gate>,
 }
 
-/* === Enums === */
-
 #[derive(Clone)]
 enum Source {
     Provider(harmos_sidecar::PluginNative<provider::Provider>),
     Client(harmos_sidecar::PluginNative<client::Client>),
     Independent(harmos_sidecar::PluginNative<Independent>),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_operations::lifecycle::Policy for Independent {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
@@ -366,10 +345,6 @@ impl Fixture {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn notices(_: &ServiceContext<Bank>, _: Notice) {}
 
 #[tokio::test]
@@ -534,5 +509,3 @@ async fn dependency_precedes_admission() {
     assert_eq!(provider.count("read-started-2"), 1);
     fixture.settled();
 }
-
-/* === Tests === */

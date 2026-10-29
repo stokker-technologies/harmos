@@ -9,34 +9,20 @@
 
 // Storage Arrow Query Contract
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_domain::model::storage::query::transform::aggregate::{Aggregate, Measure};
 
-/* === Imports === */
-
 use crate::storage::query::transform::FieldPathExecution;
-// Standard Library Imports
+
 use std::cmp::Ordering;
 use std::sync::Arc;
-// Third Party Imports
+
 use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Field, Schema};
-// Local Imports
+
 use super::{exact_type, invalid, numeric_type, scalar_type, values_array};
 use crate::Result;
 use crate::storage::query::accumulate::Accumulator;
 use harmos_domain::model::storage::query::scalar::{Agg, ScalarValue};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Groups {
     plan: Aggregate,
@@ -50,10 +36,6 @@ struct Group {
     accumulators: Vec<Accumulator>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub trait AggregateExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
@@ -61,8 +43,6 @@ pub trait AggregateExecution {
 
     fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 }
-
-/* === Implementations === */
 
 impl AggregateExecution for Aggregate {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
@@ -203,10 +183,6 @@ impl Groups {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn new_group(plan: &Aggregate, keys: Vec<ScalarValue>) -> Group {
     Group {
         keys,
@@ -230,5 +206,3 @@ fn normalized(value: ScalarValue) -> ScalarValue {
         value => value,
     }
 }
-
-/* === Tests === */

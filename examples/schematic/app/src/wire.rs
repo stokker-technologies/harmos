@@ -7,37 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::{Deserializer, Serializer};
 
-// Local Imports
 use crate::app::SchematicEditor;
 use crate::records::Records;
 use crate::transactions::Transactions;
 use harmos::{DefinitionId, state::Kind, state::Recorded, storage::Payload};
 use schematic_storage::Wire;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Wire for SchematicEditor {
     fn identify(value: &Recorded<Self>) -> (DefinitionId, u32) {
@@ -75,9 +51,3 @@ impl Wire for SchematicEditor {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

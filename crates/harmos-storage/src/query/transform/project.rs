@@ -7,43 +7,23 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_domain::model::storage::query::transform::project::{Project, Projection};
 
-/* === Imports === */
-
 use crate::storage::query::transform::FieldPathExecution;
-// Standard Library Imports
+
 use std::sync::Arc;
-// Third Party Imports
+
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
-// Local Imports
+
 use super::{FieldPath, invalid};
 use crate::Result;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait ProjectExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
     fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 }
-
-/* === Implementations === */
 
 impl ProjectExecution for Project {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
@@ -89,9 +69,3 @@ impl ProjectExecution for Project {
         RecordBatch::try_new(schema, columns).map_err(|_| invalid("projected batch is invalid"))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,20 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::Any;
 use std::future::Future;
 use std::pin::Pin;
 
-// Third Party Imports
-
-// Local Imports
 use super::{
     Carrier, Contract, Executable, ExecutionContext, OperationDeclaration, OperationDefinition, Resource, ResourceSet, ServingError,
     WireDeclaration, WireTable,
@@ -28,19 +18,11 @@ use super::{
 use crate::services::Service;
 use crate::{Message, ServicePolicy};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, ServingError>> + Send + 'a>>;
 type Install = fn(&mut WireTable, ResourceSet, Contract) -> Result<(), ServingError>;
 type InitializeService = fn(ExecutionContext) -> ServiceFuture<'static, Box<dyn ServiceInstance>>;
 type PrepareNative = fn(ResourceSet, Box<dyn Any + Send>, Box<dyn Any + Send>) -> Result<Box<dyn NativeInstance>, ServingError>;
 type PrepareEncoded = fn(ResourceSet, &[u8]) -> Result<PreparedNative, ServingError>;
-
-/* === Structs === */
 
 #[derive(Clone, Copy)]
 pub struct Catalog {
@@ -121,10 +103,6 @@ struct NativeOperation<O: Carrier> {
     epoch: u64,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub trait OperationCatalog: 'static {
     const CATALOG: Catalog;
 
@@ -146,8 +124,6 @@ pub trait NativeInstance: Send {
     fn cleanup(&mut self) -> ServiceFuture<'_, ()>;
     fn transferred(&self) -> bool;
 }
-
-/* === Implementations === */
 
 impl Catalog {
     pub const fn of<C: OperationCatalog>(
@@ -536,10 +512,6 @@ impl<S: Service> ServiceInstance for InitializedService<S> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 pub(crate) fn registered_grant<D: OperationDeclaration>(id: &str, grant: Option<crate::plugin::Grant>) -> Option<crate::plugin::Grant> {
     grant.map(|mut grant| {
         if grant.operation() == D::ID && id != D::ID {
@@ -556,8 +528,6 @@ fn service_error(error: impl std::error::Error + 'static) -> ServingError {
 fn operation_error<O: Carrier>(error: O::Error) -> ServingError {
     ServingError::Native(std::sync::Arc::new(error))
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

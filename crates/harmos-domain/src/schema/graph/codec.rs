@@ -7,27 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::mem::size_of;
-// Third Party Imports
 
-// Local Imports
 use super::{Field, Kind, Schema};
 use crate::config::SchemaSettings;
 use crate::message::{MessageError, PostcardReader, PostcardValue, decoding_vector};
 use crate::schema::declaration::{self, Definition};
 use crate::schema::{Cardinality, Described, MAX_NAME_BYTES};
-
-/* === Constants === */
-
-/* === Macros === */
 
 macro_rules! shape {
     ($ty:ty, $name:literal, $fields:expr) => {
@@ -65,11 +52,7 @@ shape!(
     ]
 );
 
-/* === Type Aliases === */
-
 type Result<T> = std::result::Result<T, MessageError>;
-
-/* === Structs === */
 
 struct DefinitionShape;
 struct FieldShape;
@@ -87,12 +70,6 @@ struct Budget {
     work: usize,
     settings: SchemaSettings,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Budget {
     fn new() -> Self {
@@ -298,10 +275,6 @@ impl PostcardValue for Schema {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 const fn described(name: &'static str, tag: u32, kind: declaration::Kind, cardinality: Cardinality) -> Field<Definition> {
     Field {
         name: Cow::Borrowed(name),
@@ -331,5 +304,3 @@ fn postcard_node<'a>(input: &mut PostcardReader<'a>) -> Result<Node<'a>> {
 fn invalid() -> MessageError {
     MessageError::borrowed("invalid finite schema graph or preparation allowance")
 }
-
-/* === Tests === */

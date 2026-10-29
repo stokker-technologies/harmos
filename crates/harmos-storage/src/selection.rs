@@ -9,23 +9,14 @@
 
 // Stored Entry Kinds Shared By Scans And Live Subscriptions
 
-/* === Modules === */
-
 mod sealed {
     pub trait Sealed {}
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::SystemTime;
 
-// Third Party Imports
 use serde::Serialize;
 
-// Local Imports
 use super::backend::{BackendSnapshot, ScanPage, StorageBackend};
 use super::manager::Operation;
 use super::query::{FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection};
@@ -33,19 +24,7 @@ use super::{FileReference, ObjectEntry, StorageCursor, StorageFuture, StorageSch
 use crate::Identifier;
 use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 pub struct Queued<'a>(&'a Operation);
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait Entry: Clone + Serialize + Send + Sync + 'static + sealed::Sealed {
     type Selection: Send + Sync;
@@ -62,8 +41,6 @@ pub trait Entry: Clone + Serialize + Send + Sync + 'static + sealed::Sealed {
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a Self::Selection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>>;
 }
-
-/* === Implementations === */
 
 impl<'a> Queued<'a> {
     pub(super) fn new(operation: &'a Operation) -> Self {
@@ -255,10 +232,6 @@ impl Entry for StoredIdentity {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn optional(expected: &Option<Identifier>, actual: Option<&Identifier>) -> bool {
     expected.as_ref().is_none_or(|expected| Some(expected) == actual)
 }
@@ -270,5 +243,3 @@ fn within(start: Option<SystemTime>, end: Option<SystemTime>, time: Option<Syste
         _ => true,
     }
 }
-
-/* === Tests === */

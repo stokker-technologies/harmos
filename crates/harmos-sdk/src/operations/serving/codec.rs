@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod payload {
     use serde::{Deserialize, Deserializer, Serializer};
 
@@ -21,27 +19,12 @@ mod payload {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::{Deserialize, Serialize};
-// Local Imports
-use super::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
 
-/* === Constants === */
+use super::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
 
 const VERSION: u8 = 1;
 pub(super) const LIMIT: usize = 16 * 1024 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Serialize, Deserialize)]
 struct Value<'a> {
@@ -50,8 +33,6 @@ struct Value<'a> {
     #[serde(borrow, with = "payload")]
     payload: &'a [u8],
 }
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum WireCodecError {
@@ -167,10 +148,6 @@ enum Envelope<'a> {
         action: WireChildAction,
     },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl WireCommand {
     /// Counts the versioned Prepare envelope without encoding or allocating its payload.
@@ -428,10 +405,6 @@ impl WireChild {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn check_values(values: &[super::super::CallValue]) -> Result<(), WireCodecError> {
     let bytes = values.iter().map(|value| value.key.len().saturating_add(value.payload.len())).fold(0usize, usize::saturating_add);
     if values.len() > super::super::PORTABLE_VALUES || bytes > super::super::PORTABLE_BYTES {
@@ -493,8 +466,6 @@ fn decode(bytes: &[u8]) -> Result<Envelope<'_>, WireCodecError> {
     }
     Ok(envelope)
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

@@ -11,23 +11,16 @@
 // Before Replacement. Failures Spend Restart Credit; Sustained Health Refills
 // Credit. Panics, Exhausted Credit And Missed Stop Deadlines Deactivate The Service.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::task::Poll;
 use std::time::Duration;
-// Third Party Imports
+
 use serde::Serialize;
 use tokio::sync::watch;
-// Local Imports
+
 use super::runner::{Cleanup, ErasedResident, Failure};
 use super::{ServiceDefinition, ServiceExit, ServiceStatus};
 use crate::operations::resident::{Outcome, Report};
@@ -35,16 +28,8 @@ use crate::operations::{Manager, OperationPhase, RestartPolicy};
 use crate::supervision::executor;
 use crate::{Application, Error, Result, state::FactSource, state::SystemFact};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type HealthWait = Pin<Box<dyn Future<Output = ()> + Send>>;
 type Answer = std::result::Result<std::result::Result<(), Failure>, ServiceExit>;
-
-/* === Structs === */
 
 struct Health {
     credit: usize,
@@ -58,8 +43,6 @@ struct Deactivation<'a> {
     history: &'a [String],
 }
 
-/* === Enums === */
-
 enum AttemptEvent<T> {
     Completed(T),
     Ready,
@@ -71,10 +54,6 @@ enum Settled {
     Restart,
     Stopped,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Health {
     fn under(restart: RestartPolicy) -> Self {
@@ -90,8 +69,6 @@ impl Health {
         self.failures = 0;
     }
 }
-
-/* === Public Functions === */
 
 pub(super) async fn run<A: Application>(
     definition: &ServiceDefinition, resident: &mut dyn ErasedResident<A>, cleanup: &Cleanup<A>, report: &Report, operations: &Manager,
@@ -139,8 +116,6 @@ pub(super) async fn run<A: Application>(
 
     stop(resident, cleanup, report).await
 }
-
-/* === Private Functions === */
 
 async fn supervise<F>(
     attempt: F, readiness: &mut watch::Receiver<bool>, health: &mut Health, restart: RestartPolicy, report: &Report,
@@ -348,5 +323,3 @@ fn describe(cause: &ServiceExit) -> String {
         ServiceExit::StopTimedOut => "stop deadline exceeded".to_owned(),
     }
 }
-
-/* === Tests === */

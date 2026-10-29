@@ -7,25 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::Duration;
-// Third Party Imports
-// Local Imports
+
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(super) struct Session {
     execution: crate::execution::Execution,
@@ -34,12 +18,6 @@ pub(super) struct Session {
     deadline: Option<tokio::time::Instant>,
     pub(super) reason: &'static str,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Session {
     pub(super) fn new(execution: crate::execution::Execution) -> Self {
@@ -268,9 +246,3 @@ impl State {
             .min()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

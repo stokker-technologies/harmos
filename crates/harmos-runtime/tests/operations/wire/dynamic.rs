@@ -7,35 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::time::Duration;
-// Third Party Imports
-// Local Imports
+
 use harmos_runtime::grpc::dynamic::{Event, Operation};
 use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy, WireDeclaration};
 use harmos_sdk::grpc::{self, DecodeInput};
-
-/* === Constants === */
 
 const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(1),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_runtime::message]
 #[derive(Debug, PartialEq)]
@@ -63,18 +47,6 @@ struct ExchangeDeclaration {
     wide: u64,
     optional: Option<u32>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[test]
 fn dynamic_wire_interop() {

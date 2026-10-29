@@ -9,46 +9,15 @@
 
 // Protocol Export Ownership Stories
 
-/* === Modules === */
-
 #[allow(dead_code, reason = "shared inert contracts also serve compiler acceptance")]
 #[path = "../support/proto_contracts.rs"]
 mod contracts;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use prost_reflect::DescriptorPool;
-
-// Local Imports
 
 use contracts::{Portable, Routes};
 use harmos_domain::operations::Contracts;
 use harmos_packaging::proto::{self, Artifacts};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[test]
 fn export_removes_retired() {

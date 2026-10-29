@@ -9,35 +9,18 @@
 
 """Build Benchmarks And Their Matching Schematic Carrier Fixtures."""
 
-# === Imports === #
-
-# Standard Library Imports
 import argparse
 import json
 import os
 from pathlib import Path
 
-# Third Party Imports
 
-# Local Imports
 from .. import temporary
 from ..test import archive
 from . import bench, fixtures, paths
 
-# Type Checking Imports
-
-
-# === Public Exports === #
-
-# === Constants === #
 
 FEATURES = "harmos-runtime/plugin-sidecar,harmos-runtime/plugin-guest,harmos-runtime/grpc"
-
-# === Types === #
-
-# === Classes === #
-
-# === Public Functions === #
 
 
 def build(extra: list[str]) -> Path:
@@ -74,10 +57,6 @@ def main() -> None:
     extra = options.extra[1:] if options.extra[:1] == ["--"] else options.extra
     print(build(extra))
 
-
-# === Private Functions === #
-
-# === Entry Point === #
 
 if __name__ == "__main__":
     main()

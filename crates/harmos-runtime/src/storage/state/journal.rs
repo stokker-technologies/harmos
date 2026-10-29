@@ -7,34 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-// Third Party Imports
-// Local Imports
 use super::Permit;
 use crate::state::recovery::Group;
 use crate::storage::StorageManager;
 use crate::storage::manager::encoded_size;
 use crate::{Result, state::Kind};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(target = "harmos::storage", name = "storage.reserve_group", level = "debug", skip_all)]
@@ -55,9 +32,3 @@ impl<C> StorageManager<C> {
         Ok(permit)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

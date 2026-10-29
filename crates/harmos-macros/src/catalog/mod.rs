@@ -7,36 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
 pub(crate) mod lanes;
 pub(crate) mod operation;
 pub(crate) mod streams;
 pub(crate) mod typed;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::parse::Parser;
 use syn::spanned::Spanned;
 use syn::{Error, Ident, ItemEnum, Meta, Path, Token, Type, punctuated::Punctuated};
-// Local Imports
+
 use crate::identity::Sort;
 use crate::path::{self, HarmosPath};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Closing {
     state: Option<Path>,
@@ -49,14 +32,6 @@ struct Member {
     definition: Type,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 pub(crate) fn close(attribute: TokenStream, item: TokenStream, sort: Sort) -> TokenStream {
     match expand(attribute, item.clone(), sort) {
         Ok(closed) => closed,
@@ -67,8 +42,6 @@ pub(crate) fn close(attribute: TokenStream, item: TokenStream, sort: Sort) -> To
         }
     }
 }
-
-/* === Private Functions === */
 
 fn expand(attribute: TokenStream, item: TokenStream, sort: Sort) -> Result<TokenStream, Error> {
     let closing = closing(attribute)?;
@@ -466,5 +439,3 @@ fn members(catalog: &ItemEnum) -> Result<Vec<Member>, Error> {
 
     Ok(members)
 }
-
-/* === Tests === */

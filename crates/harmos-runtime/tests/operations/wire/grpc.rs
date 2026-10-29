@@ -7,38 +7,21 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
-// Third Party Imports
 use futures_util::StreamExt;
 use tokio::sync::Semaphore;
 
-// Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::Runtime;
 use harmos_runtime::grpc::Event;
 use harmos_runtime::operations::RetryPolicy;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Request = ProduceDeclaration;
-
-/* === Structs === */
 
 #[harmos_runtime::operation(resources = [Trace], id = "grpc.produce",
     response = u32,
@@ -84,12 +67,6 @@ impl harmos_runtime::operations::middleware::Middleware for Observe {
     }
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl harmos_runtime::Operation for ProduceDeclaration {
     type Error = std::io::Error;
     async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u32>, Self::Error> {
@@ -126,10 +103,6 @@ impl Drop for AttemptGuard {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace {
         attempting: Semaphore::new(0),
@@ -165,8 +138,6 @@ fn channel(items: usize) -> (harmos_runtime::operations::StreamOutput<u32>, harm
     })
     .unwrap()
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn items_precede_settled() {

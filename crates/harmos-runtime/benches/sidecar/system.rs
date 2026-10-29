@@ -7,47 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
 mod commands;
 mod fixture;
 #[path = "../../tests/support/native_streams.rs"]
 mod native;
 mod transfers;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
 extern crate harmos_runtime as harmos;
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
 
 criterion::criterion_group!(benches, benchmarks);
 
 criterion::criterion_main!(benches);
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn benchmarks(c: &mut criterion::Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
@@ -92,5 +62,3 @@ async fn transfer(fixture: &native::Fixture, sequence: &mut u64, size: usize) {
     assert_eq!(acknowledged.rows, *sequence);
     assert_eq!(acknowledged.bytes, *sequence * size as u64);
 }
-
-/* === Tests === */

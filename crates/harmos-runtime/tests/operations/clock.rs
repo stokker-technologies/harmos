@@ -7,31 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-// Third Party Imports
-
-// Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::Runtime;
 use harmos_runtime::operations::RetryPolicy;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], response = Measured,
     id = "clock.measure",
@@ -52,16 +34,10 @@ struct Measured {
     wall_nanos: u64,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 enum Operations {
     MeasureContractDeclaration(MeasureContractDeclaration),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::operations::Operation for MeasureContractDeclaration {
     type Error = std::convert::Infallible;
@@ -83,10 +59,6 @@ impl harmos_runtime::operations::Operation for MeasureContractDeclaration {
         result.map(::core::convert::Into::into)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn nanos(duration: Duration) -> u64 {
     u64::try_from(duration.as_nanos()).expect("measured waits fit in u64 nanoseconds")
@@ -114,8 +86,6 @@ fn bypasses(directory: &Path, found: &mut Vec<String>) {
         }
     }
 }
-
-/* === Tests === */
 
 #[test]
 fn sources_avoid_tokio() {

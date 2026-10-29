@@ -9,30 +9,11 @@
 
 // Native Streaming Analysis Over A Sequence Of Schematic Snapshots.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
 #[cfg(feature = "runtime")]
 use harmos::MemorySize;
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 #[cfg(feature = "runtime")]
 use crate::resources::AnalysisResources;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::operation(resources = [AnalysisResources], operations = [harmos::builtins::streams::Publish],
     id = "schematic.analyze.upload", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
@@ -56,12 +37,6 @@ pub struct AnalyzeUpload {
 pub struct AnalyzeExchange {
     pub title: String,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[cfg(feature = "runtime")]
 impl harmos::Operation for AnalyzeUpload {
@@ -149,9 +124,3 @@ impl harmos::Operation for AnalyzeExchange {
         Ok(super::analyze::Analysis { checked }.into())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,17 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
@@ -26,18 +15,10 @@ use harmos_domain::operations::ReplaySafety;
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(CreateFile {
     mutation: Nested<MutationId> => 1,
     metadata: Nested<FileMetadata> => 2,
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // Open A Producing File Session For New Metadata.
 #[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
@@ -52,12 +33,6 @@ pub struct CreateFile {
     pub metadata: FileMetadata,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl MemorySize for CreateFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
@@ -68,12 +43,6 @@ impl MemorySize for CreateFile {
 
 #[cfg(feature = "runtime")]
 mod execution {
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
 
     use harmos_sdk::operations::Operation;
     use harmos_storage::FileProducer;
@@ -97,9 +66,3 @@ mod execution {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

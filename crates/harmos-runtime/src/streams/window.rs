@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::Any;
 use std::collections::VecDeque;
 use std::future::Future;
@@ -23,23 +16,15 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll};
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::demand::Holding;
 use crate::{state::At, state::Position};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 pub(crate) type Row = Arc<dyn Any + Send + Sync>;
 
 type Step = Pin<Box<dyn Future<Output = (Parts, Turn)> + Send>>;
-
-/* === Structs === */
 
 pub(crate) struct Window {
     ring: RwLock<Ring>,
@@ -102,8 +87,6 @@ struct Following<S> {
     marker: PhantomData<fn() -> S>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Item<S> {
     Row(At<S>),
@@ -126,10 +109,6 @@ enum Turn {
     Advanced(Advanced),
     Ended,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Window {
     pub(crate) fn wired(capacity: usize, floor: Position, sequence: Arc<AtomicU64>, pump: watch::Sender<()>) -> Self {
@@ -563,8 +542,6 @@ impl<S: Clone + 'static> futures_core::Stream for Following<S> {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn following<S: Clone + 'static>(
     window: Arc<Window>, closed: Arc<AtomicBool>, held: Holding,
 ) -> impl futures_core::Stream<Item = Item<S>> + Send + Unpin {
@@ -583,8 +560,6 @@ pub(crate) fn following<S: Clone + 'static>(
         marker: PhantomData,
     }
 }
-
-/* === Private Functions === */
 
 fn reaches_beneath(start: Bound<Position>, floor: Position) -> bool {
     match start {
@@ -623,5 +598,3 @@ async fn turn(mut parts: Parts) -> (Parts, Turn) {
         }
     }
 }
-
-/* === Tests === */

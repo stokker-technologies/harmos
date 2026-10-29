@@ -7,29 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::ops::{Deref, Range};
 use std::sync::Arc;
 
-// Third Party Imports
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
-// Local Imports
+
 use harmos_domain::Message;
 use harmos_sdk::operations::{CHILD_METHOD, CallValue, OperationDeclaration, WIRE_METHOD, WireChildCall, WireCommand};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Default)]
 pub struct FramePayload {
@@ -55,8 +39,6 @@ pub struct Publication {
     pub payload: Vec<u8>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Frame {
     Call { id: u64, method: String, params: FramePayload },
@@ -65,10 +47,6 @@ pub enum Frame {
     Answer { id: u64, result: FramePayload },
     Refusal { id: u64, refusal: harmos_domain::Refusal },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl FramePayload {
     pub fn as_slice(&self) -> &[u8] {
@@ -232,8 +210,6 @@ impl Frame {
     }
 }
 
-/* === Public Functions === */
-
 // Postcard Length Of A Publication Without Its Following Rows Field.
 #[cfg(feature = "kit")]
 pub(crate) fn publication_encoded_len(
@@ -257,8 +233,6 @@ pub(crate) fn varint_len(value: u64) -> usize {
     ((64 - value.leading_zeros()).max(1) as usize).div_ceil(7)
 }
 
-/* === Private Functions === */
-
 fn call_encoded_len(id: u64, method: &str, payload_len: usize) -> usize {
     2usize.saturating_add(varint_len(id)).saturating_add(binary_bytes_len(method.len())).saturating_add(binary_bytes_len(payload_len))
 }
@@ -280,8 +254,6 @@ fn zigzag_len(value: i64) -> usize {
 fn binary_bytes_len(length: usize) -> usize {
     varint_len(length as u64).saturating_add(length)
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

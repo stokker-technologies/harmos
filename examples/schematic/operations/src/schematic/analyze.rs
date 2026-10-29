@@ -7,27 +7,8 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 #[cfg(feature = "runtime")]
 use harmos::MemorySize;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::message]
 #[derive(Clone, Debug, PartialEq)]
@@ -55,12 +36,6 @@ pub struct Analysis {
     pub checked: u32,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 #[cfg(feature = "runtime")]
 impl harmos::Operation for AnalyzeSchematic {
     type Error = crate::Error;
@@ -79,9 +54,3 @@ impl harmos::Operation for AnalyzeSchematic {
         Ok(Analysis { checked: 3 }.into())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,32 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
 use sha2::{Digest, Sha256};
 
-// Local Imports
 use super::config::MAX_MUTATIONS;
 use super::manager::{Inner, State, Target};
 use super::receipts::ReceiptState;
 use super::{MutationId, MutationReceipt, MutationValue, StagedFile, StorageManager};
 use crate::{Error, Identifier, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(super) struct Deletion {
     pub(super) work: Arc<DeleteWork>,
@@ -46,12 +29,6 @@ pub(super) struct DeleteWork {
     pub(super) file: StagedFile,
     receipt: crate::StorageBatch<MutationReceipt>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Drop for DeleteWork {
     fn drop(&mut self) {
@@ -243,10 +220,6 @@ impl DeleteWork {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn fingerprint(file: &StagedFile) -> [u8; 32] {
     let mut hash = Sha256::new();
     hash.update(b"storage.delete_file:v1\0");
@@ -262,5 +235,3 @@ fn invalid(reason: &'static str) -> Error {
 fn exhausted() -> Error {
     Error::ResourceExhausted { resource: "file deletion requests" }
 }
-
-/* === Tests === */

@@ -7,33 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_domain::model::services::policy::{RestartPolicy, ServicePolicy};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 
-// Third Party Imports
-
-// Local Imports
 use crate::operations::ExecutionContext;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait Service: Send + Sized + 'static {
     type Error: std::error::Error + Send + Sync + 'static;
@@ -48,11 +26,3 @@ pub trait Service: Send + Sized + 'static {
         async { Ok(()) }
     }
 }
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

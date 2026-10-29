@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     future::Future,
     num::NonZeroUsize,
@@ -24,19 +17,13 @@ use std::{
     time::Duration,
 };
 
-// Third Party Imports
 use tokio::sync::Notify;
 
-// Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::{
     Backoff, CacheKey, Jitter, OperationPolicy, RetryPolicy, StreamInput, StreamOutput, StreamSettings, stream,
 };
 use harmos_runtime::{Error, Runtime};
-
-/* === Constants === */
-
-/* === Macros === */
 
 macro_rules! operation {
     ($name:ident, $id:literal, $retry:literal, $cache:literal) => {
@@ -77,11 +64,7 @@ operation!(ForwardDeclaration, "endpoints.forward", false, false);
 operation!(RetryDeclaration, "endpoints.retry", true, false);
 operation!(CachedDeclaration, "endpoints.cache", false, true);
 
-/* === Type Aliases === */
-
 type StreamEndpoints = (StreamInput<u32>, StreamOutput<u32>);
-
-/* === Structs === */
 
 #[derive(Default)]
 struct Trace {
@@ -108,12 +91,6 @@ struct ParentDeclaration {
     endpoints: Arc<Mutex<Option<StreamEndpoints>>>,
     charged: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 crate::operations::in_process!(ParentDeclaration);
 
@@ -165,10 +142,6 @@ impl Drop for AttemptGuard {
         self.0.dropped.fetch_add(1, Ordering::SeqCst);
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn channel() -> (StreamOutput<u32>, StreamInput<u32>) {
     stream(StreamSettings {
@@ -244,8 +217,6 @@ async fn admitted_items(codec: &mut SlowCodec, frames: u32) -> usize {
     assert!(refusal.as_ref().is_none_or(|status| status.code() == tonic::Code::ResourceExhausted), "{refusal:?}");
     held.len()
 }
-
-/* === Tests === */
 
 #[cfg(feature = "grpc")]
 #[tokio::test]

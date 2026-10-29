@@ -9,18 +9,11 @@
 
 // Storage Query Operation Story
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
-// Third Party Imports
+
 use arrow_array::{StringArray, StructArray, UInt64Array};
-// Local Imports
+
 use super::super::{Bank, Data, Ledger, Recovery, catalog, history};
 use super::{Fixture, Lanes, config};
 use harmos_operations::storage::Query;
@@ -37,20 +30,6 @@ use harmos_runtime::storage::{
     ObjectKey, ObjectRetention, PayloadEncoding, RecordInput, SchemaKey, StorageBackends, StorageManager, StoredObject,
 };
 use harmos_runtime::{DefinitionId, Identified, Identifier, Message, Runtime};
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_runtime::message]
 struct Reading {
@@ -74,18 +53,12 @@ struct Third {
     value: u64,
 }
 
-/* === Enums === */
-
 #[harmos_domain::catalog]
 enum Objects {
     First(First),
     Second(Second),
     Third(Third),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 macro_rules! object {
     ($ty:ty, $name:literal) => {
@@ -106,8 +79,6 @@ macro_rules! object {
 object!(First, "test.query.first");
 object!(Second, "test.query.second");
 object!(Third, "test.query.third");
-
-/* === Public Functions === */
 
 #[tokio::test]
 async fn query_operation_batches() {
@@ -246,8 +217,6 @@ async fn query_operation_batches() {
     fixture.finish().await;
 }
 
-/* === Private Functions === */
-
 #[tokio::test]
 async fn query_heterogeneous_projection() {
     let storage = StorageManager::<Objects>::new(
@@ -357,8 +326,6 @@ async fn query_heterogeneous_projection() {
     storage.close().await.unwrap();
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn ipc_admission_retains() {

@@ -7,30 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-// Third Party Imports
 use prost::encoding::{WireType, encode_key, encode_varint};
-// Local Imports
+
 use harmos_domain::{MemorySize, MessageError, message, schema::Described};
 use harmos_sdk::grpc::{self, DecodeInput, prost};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 // A Consumer Domain Alias Must Never Bind Generated Codec Signatures
 #[allow(dead_code, reason = "consumer alias remains a macro name-resolution fixture")]
 type Result<T> = ::std::result::Result<T, MessageError>;
-
-/* === Structs === */
 
 // Manual Codec Without Default Or Prost Message
 #[derive(Clone, Debug, PartialEq)]
@@ -66,8 +50,6 @@ struct Secret {
     secrets_json: String,
 }
 
-/* === Enums === */
-
 #[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 enum Choice {
@@ -81,10 +63,6 @@ enum RedactedChoice {
     Selected { row: Native },
     Empty,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl std::fmt::Debug for Secret {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -119,10 +97,6 @@ impl Described for Native {
     >(Self::NAME, Self::FIELDS);
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn frame(tag: u32, payload: &[u8], bytes: &mut Vec<u8>) {
     encode_key(tag, WireType::LengthDelimited, bytes);
     encode_varint(payload.len() as u64, bytes);
@@ -132,8 +106,6 @@ fn frame(tag: u32, payload: &[u8], bytes: &mut Vec<u8>) {
 fn native(value: u64) -> Native {
     Native { value, payload: vec![1, 255] }
 }
-
-/* === Tests === */
 
 #[test]
 fn custom_codec_default() {

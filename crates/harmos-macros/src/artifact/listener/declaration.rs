@@ -7,40 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Error, Fields, ItemStruct, LitInt, LitStr, Meta, Token, Type};
-// Local Imports
+
 use crate::artifact::set_once;
 use crate::path::{self, HarmosPath};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
     let declaration: ItemStruct = syn::parse2(item)?;
@@ -148,7 +123,3 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
         }
     })
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

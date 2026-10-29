@@ -7,16 +7,8 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
-// Third Party Imports
-// Local Imports
+
 use super::manager::{Domain, Operation};
 use super::{
     ObjectCatalog, ObjectEntry, ObjectPoint, ObjectReceipt, ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken, StorageManager,
@@ -26,14 +18,6 @@ use crate::Result;
 use harmos_domain::catalog::Contains;
 use harmos_domain::model::storage::catalog::{decode_admitted, object_schema};
 use harmos_domain::model::storage::object_key;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct ObjectGroup<'a, C> {
     manager: &'a StorageManager<C>,
@@ -45,12 +29,6 @@ pub struct ObjectGroup<'a, C> {
     objects: Vec<ObjectEntry>,
     receipts: Vec<ObjectReceipt>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C: ObjectCatalog> ObjectGroup<'_, C> {
     pub fn write<T: StoredObject>(&mut self, value: &T) -> Result<()>
@@ -238,12 +216,6 @@ impl<C> StorageManager<C> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 pub(super) fn invalid(reason: &'static str) -> crate::Error {
     harmos_domain::model::storage::invalid(reason).into()
 }
-
-/* === Tests === */

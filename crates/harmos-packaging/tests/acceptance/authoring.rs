@@ -9,32 +9,15 @@
 
 // Compile And Test Each Generated Starter Against Staged Offline Inputs.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 
-// Third Party Imports
 use serde_json::Value;
 
-// Local Imports
 use super::fixtures;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Watching {
     child: Option<Child>,
@@ -47,12 +30,6 @@ struct Project {
     directory: tempfile::TempDir,
     root: PathBuf,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Project {
     fn new(kind: &str) -> Self {
@@ -223,10 +200,6 @@ impl Drop for Project {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 #[cfg(unix)]
 fn interrupt(pid: u32) {
     let _ = Command::new("kill").args(["-INT", &pid.to_string()]).status();
@@ -342,8 +315,6 @@ fn dev_rebuilds(kind: &str) {
 fn succeeded(output: &Output) {
     assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
 }
-
-/* === Tests === */
 
 #[test]
 fn sidecar_starter_works() {

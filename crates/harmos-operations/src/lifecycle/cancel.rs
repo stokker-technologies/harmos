@@ -7,31 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 #[cfg(feature = "runtime")]
 use harmos_sdk::operations::instances::InstanceAccess;
 
 #[cfg(feature = "runtime")]
 use crate::{Error, Operation, Response};
 use harmos_domain::operations::instance::Id;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::operation(
     harmos_path = crate,
@@ -46,12 +27,6 @@ use harmos_domain::operations::instance::Id;
 pub struct Cancel {
     pub instance: u64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Cancel {
     pub fn of(instance: Id) -> Self {
@@ -71,9 +46,3 @@ impl Operation for Cancel {
         Ok(super::InstanceState::from(instance.status()).into())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

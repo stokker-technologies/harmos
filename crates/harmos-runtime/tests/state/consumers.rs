@@ -7,33 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use support::{Bank, Copied, Ledger, Pulse, booted, catalog, deposit, ledger, pulse, streams, withdraw};
-// Local Imports
+
 use crate::state::support;
 use harmos_runtime::{
     Runtime, runtime::Incompatible, state::Entry, state::Position, state::Recorded, storage::Batch, storage::Cursor,
     storage::JournalConsumer, storage::Recovery, storage::Source, storage::StreamConsumer,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Asked = Arc<Mutex<Vec<&'static str>>>;
-
-/* === Structs === */
 
 struct Recorder {
     asked: Asked,
@@ -54,12 +39,6 @@ struct Tape {
 struct Networked {
     inner: Copied,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Recorder {
     fn new() -> (Self, Asked) {
@@ -155,10 +134,6 @@ impl Source<Bank> for Networked {
         self.inner.load().await
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn drain_precedes_flush() {
@@ -272,5 +247,3 @@ async fn recording(tape: Tape) -> Runtime<Bank> {
     .await
     .expect("the catalog and attachment are honorable")
 }
-
-/* === Tests === */

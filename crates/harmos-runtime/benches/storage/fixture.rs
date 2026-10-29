@@ -7,29 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use harmos_runtime::Runtime;
 use harmos_runtime::storage::*;
 use harmos_storage::json::{JsonStorage, JsonStorageSettings};
 
-// Local Imports
 use super::{Model, State};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Fixture {
     pub settings: StorageSettings,
@@ -37,11 +19,6 @@ pub struct Fixture {
     pub storage: StorageManager,
     pub runtime: Runtime<Model>,
 }
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Fixture {
     pub async fn new() -> Self {
@@ -67,7 +44,6 @@ impl Fixture {
         self.runtime.shutdown().await.unwrap();
     }
 }
-/* === Public Functions === */
 
 pub fn settings() -> StorageSettings {
     StorageSettings {
@@ -105,7 +81,3 @@ pub fn backends(root: &std::path::Path) -> StorageBackends {
         max_checkpoint_bytes: super::nonzero(64 * 1024 * 1024),
     })
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

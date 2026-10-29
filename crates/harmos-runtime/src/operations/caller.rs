@@ -7,18 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use std::sync::{Arc, Weak};
-// Third Party Imports
 
-// Local Imports
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use super::manager::Entry;
 
@@ -34,14 +25,6 @@ use crate::plugin::{PluginCaller, PluginGeneration, PluginScope};
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use crate::operations::OperationDeclaration;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 #[derive(Clone)]
@@ -74,8 +57,6 @@ pub(super) struct LifecycleLoan {
     shutdown: Weak<Entry>,
     control: Weak<crate::supervision::instance::Instance>,
 }
-
-/* === Enums === */
 
 #[derive(Clone)]
 pub(super) enum Source {
@@ -119,10 +100,6 @@ pub(super) enum Identity {
         generation: PluginGeneration,
     },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl Manager {
@@ -324,9 +301,3 @@ impl Origin {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

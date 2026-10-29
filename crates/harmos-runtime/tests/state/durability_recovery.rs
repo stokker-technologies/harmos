@@ -7,43 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use support::{Bank, Ledger, Noted, alice, booted, deposit, ledger, withdraw};
-// Local Imports
+
 use super::support;
 use harmos_runtime::state::{Kind, Position};
 use support::journal::{Journal, Snapshot, Store, frame};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Saved {
     at: Position,
     state: Ledger,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn restart_recovers_history() {
@@ -298,5 +273,3 @@ async fn seeded(copy: &Store) {
     }
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

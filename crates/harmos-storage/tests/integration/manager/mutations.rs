@@ -9,41 +9,22 @@
 
 // Verify Admitted Mutation Completion Across Retry Expiry
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::cell::Cell;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-// Third Party Imports
 use tokio::sync::Notify;
 use tokio::time::Instant;
 
-// Local Imports
 use super::backend::{Control, Data, Recovery, history};
 use super::fixture::{Fixture, config, pending, start};
 use harmos_storage::execution::{Execution, Sleep};
 use harmos_storage::{FileMetadata, FileSession, Identifier, MutationId, MutationValue, StagedFile, StorageBackends, StorageManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
 thread_local! {
     static ELAPSED: Cell<Duration> = const { Cell::new(Duration::ZERO) };
 }
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Clone, Copy, Debug)]
 enum Work {
@@ -53,10 +34,6 @@ enum Work {
     Abandon,
     Delete,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Work {
     fn gate(self, control: &Control) -> (&AtomicBool, &Notify, &Notify) {
@@ -85,10 +62,6 @@ impl Work {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn now() -> Instant {
     Instant::now() + ELAPSED.with(Cell::get)
@@ -141,8 +114,6 @@ fn identity(storage: &StorageManager, key: &str) -> MutationId {
     let key = Identifier::new(key).unwrap();
     MutationId { window, key }
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn admitted_create_completes() {

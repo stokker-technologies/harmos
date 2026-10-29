@@ -7,25 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[facade::message(harmos_path = ::facade::__harmos)]
 #[derive(Clone, Debug)]
@@ -89,7 +70,6 @@ struct RuntimeResource;
 )]
 struct ExportAgain;
 
-/* === Enums === */
 
 #[facade::__harmos::runtime::catalog(harmos_path = ::facade::__harmos)]
 enum Operations {
@@ -107,9 +87,6 @@ enum NestedOperations {
     Operations(Operations),
 }
 
-/* === Traits === */
-
-/* === Implementations === */
 
 #[cfg(feature = "runtime")]
 impl facade::__harmos::Operation for Export {
@@ -133,9 +110,6 @@ impl facade::__harmos::Operation for ExportAgain {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn main() {
     let entries = NestedOperations::catalog();
@@ -144,5 +118,3 @@ fn main() {
     #[cfg(feature = "runtime")]
     let _ = <NestedOperations as facade::__harmos::OperationCatalog>::batch();
 }
-
-/* === Tests === */

@@ -9,46 +9,24 @@
 
 // Checksummed JSON Lines For State Persistence
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io::{BufRead, Write};
-// Third Party Imports
+
 use serde::{Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
-// Local Imports
-use crate::{BackendFailure, Error, Result};
 
-/* === Constants === */
+use crate::{BackendFailure, Error, Result};
 
 const PREFIX: &[u8] = b"{\"value\":";
 const TRAILER: &[u8] = b",\"sha256\":\"";
 const END: &[u8] = b"\"}\n";
 // Envelope Bytes Around One Value, Newline Included.
 pub(super) const OVERHEAD: usize = PREFIX.len() + TRAILER.len() + 64 + END.len();
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 pub(super) enum Read<T> {
     End,
     Incomplete,
     Value(T),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(super) fn encode<T: Serialize>(value: &T, maximum: usize) -> Result<Vec<u8>> {
     let json = serde_json::to_vec(value).map_err(json)?;
@@ -117,8 +95,6 @@ fn decode<T: DeserializeOwned>(line: &[u8]) -> Result<Read<T>> {
         .map_err(|error| Error::backend("decode state record", BackendFailure::Corrupt, error))
 }
 
-/* === Private Functions === */
-
 fn hex(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),
@@ -142,8 +118,6 @@ pub(super) fn corrupt(reason: &'static str) -> Error {
 pub(super) fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "state file", reason }
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

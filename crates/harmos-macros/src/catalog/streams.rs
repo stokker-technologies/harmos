@@ -7,43 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Error, ItemEnum, Meta, Path, Token, Type};
-// Local Imports
+
 use crate::path::{self, HarmosPath};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Member {
     definition: Type,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(crate) fn close(attribute: TokenStream, item: TokenStream) -> TokenStream {
     match expand(attribute, item.clone()) {
@@ -55,8 +30,6 @@ pub(crate) fn close(attribute: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 }
-
-/* === Private Functions === */
 
 fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
     let harmos = harmos_path(attribute)?;
@@ -161,5 +134,3 @@ fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &
 
     Ok(())
 }
-
-/* === Tests === */

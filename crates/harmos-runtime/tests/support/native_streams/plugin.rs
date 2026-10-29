@@ -7,39 +7,22 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 
-// Local Imports
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery};
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::sidecar::{Refusal, Supervisor};
-
-/* === Constants === */
 
 const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(120),
     attempt_timeout: Duration::from_secs(120),
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_runtime::stream(id = "consumption.payload", window = 16)]
 #[harmos_runtime::message]
@@ -116,8 +99,6 @@ impl harmos_runtime::schema::Described for Consumption {
 )]
 pub struct Listener;
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 pub enum Callbacks {
     Consume(Consumption),
@@ -128,10 +109,6 @@ pub enum Callbacks {
 pub enum Listeners {
     Listener(Listener),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_operations::lifecycle::Policy for Receiver {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
@@ -202,9 +179,3 @@ impl harmos_runtime::Operation for ProgressDeclaration {
         result.map(::core::convert::Into::into)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

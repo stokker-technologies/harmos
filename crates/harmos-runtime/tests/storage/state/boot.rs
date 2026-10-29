@@ -7,33 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::Notify;
-// Local Imports
+
 use super::{CleanupCapture, closed, incompatible};
 use crate::storage::{Bank, Data, Ledger, Recovery as Backend, Runtime, StorageBackends, StorageManager, catalog, config, history, write};
 use harmos_runtime::{
     runtime::Incompatible, services::ServiceContext, state::Entry, state::Position, state::Recorded, storage::JournalConsumer,
     storage::Recovery, storage::Source,
 };
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Default)]
 struct Gate {
@@ -52,12 +37,6 @@ struct Probe {
     panic_flush: bool,
     write_drain: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Probe {
     fn new() -> Self {
@@ -121,10 +100,6 @@ impl Source<Bank> for Probe {
         Ok(Recovery::default())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn storage_precedes_recovery() {
@@ -581,5 +556,3 @@ async fn cancelled_init_settles() {
     closed(&probe.storage, cleanup.get()).await;
     assert_eq!(probe.data.control.closes.load(Ordering::SeqCst), 1);
 }
-
-/* === Tests === */

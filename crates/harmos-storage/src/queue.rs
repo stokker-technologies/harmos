@@ -7,39 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::VecDeque;
 use std::sync::Arc;
-// Third Party Imports
 
-// Local Imports
 use super::manager::{Domain, Pending};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Default)]
 pub(super) struct PendingQueue {
     entries: VecDeque<Arc<Pending>>,
     bytes: usize,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl PendingQueue {
     pub(super) fn push_back(&mut self, entry: Arc<Pending>) {
@@ -86,9 +63,3 @@ impl PendingQueue {
         });
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

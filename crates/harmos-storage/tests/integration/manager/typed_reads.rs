@@ -9,44 +9,16 @@
 
 // Typed Historical Reads, Public Scalar Folds And Concurrent Snapshot Reads
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-// Third Party Imports
-
-// Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};
 use super::waveforms::{self, Experiment, Objects, Sample};
 use harmos_storage::Error;
 use harmos_storage::Query;
 use harmos_storage::query::{ObjectVersions, RecordSelection, RowSlice, Source};
 use harmos_storage::{ObjectRead, ObjectReceipt, ObjectVersion, RecordRead, StorageBackends, StorageManager, StorageSettings};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn manager(settings: StorageSettings) -> (StorageManager<Objects>, Arc<Data<Objects>>) {
     let data = Arc::new(Data::<Objects>::with_catalog(history()));
@@ -303,8 +275,6 @@ async fn snapshot_reads_concurrent() {
     closing.await.unwrap();
     assert_eq!(data.control.closes.load(Ordering::SeqCst), 1);
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn collection_retains() {

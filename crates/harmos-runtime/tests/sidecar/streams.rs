@@ -7,21 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 #[cfg(feature = "grpc")]
 use std::time::Duration;
 use std::{
     num::NonZeroUsize,
     sync::{Arc, atomic::Ordering},
 };
-// Third Party Imports
-// Local Imports
+
 use super::{Counts, ReadDeclaration};
 #[cfg(feature = "grpc")]
 use super::{Lanes, Managed, source};
@@ -29,10 +21,6 @@ use super::{Lanes, Managed, source};
 use harmos_runtime::grpc::{Codec, InputEnvelope, OutputEnvelope};
 use harmos_runtime::operations::{StreamSettings, WireStreamLimits};
 use harmos_sdk::__private::WireTable;
-
-/* === Constants === */
-
-/* === Macros === */
 
 macro_rules! serving {
     ($declaration:ident, $request:ident, $ports:ident, $run:block) => {
@@ -53,13 +41,7 @@ macro_rules! serving {
     };
 }
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 struct AttemptGuard(Arc<Counts>);
-
-/* === Enums === */
 
 #[harmos_runtime::operation(resources = [Counts], id = "device.upload",
     policy = ReadDeclaration::POLICY,
@@ -108,10 +90,6 @@ pub(super) enum Operations {
 
 // Runtime-Error Endpoints Use The Plugin's Constant Catalog
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl Drop for AttemptGuard {
     fn drop(&mut self) {
         self.0.finished.fetch_add(1, Ordering::SeqCst);
@@ -140,8 +118,6 @@ serving!(ExchangeDeclaration, request, ports, {
     Ok(total)
 });
 
-/* === Public Functions === */
-
 pub(super) fn configure(table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
     let direction = StreamSettings {
         items: NonZeroUsize::MIN,
@@ -150,8 +126,6 @@ pub(super) fn configure(table: &mut WireTable) -> Result<(), harmos_runtime::ope
     let limits = WireStreamLimits { input: direction, output: direction };
     table.stream_limits(limits)
 }
-
-/* === Private Functions === */
 
 #[cfg(feature = "grpc")]
 fn opening<R: Send + Sync + 'static>(
@@ -163,8 +137,6 @@ fn opening<R: Send + Sync + 'static>(
         harmos_runtime::operations::Response::new(InputEnvelope::Item(7)),
     ])
 }
-
-/* === Tests === */
 
 #[cfg(feature = "grpc")]
 #[tokio::test]

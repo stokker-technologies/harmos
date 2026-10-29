@@ -7,24 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::Duration;
-// Third Party Imports
+
 use semver::Version;
 use serde::Deserialize;
-// Local Imports
+
 use super::contributions::{self, Section};
 use super::{contracts, listeners, observers, publications};
 use crate::operations::{Contract, OperationDefinition};
 use crate::{FRAGMENT_LIMIT, ScanError, StreamDeclaration};
-
-/* === Constants === */
 
 const OWNED: [&str; 14] = [
     "capabilities",
@@ -42,12 +33,6 @@ const OWNED: [&str; 14] = [
     "sidecar",
     "subscribe",
 ];
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Declaration {
@@ -71,8 +56,6 @@ pub struct RestartPolicy {
     pub backoff_base_ms: u64,
     pub backoff_cap_ms: u64,
 }
-
-/* === Enums === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Facility {
@@ -152,10 +135,6 @@ enum Fragment {
     Publications(publications::NamedManifest),
     Schema { name: String, fields: Vec<crate::schema::declaration::Field<String>> },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Facility {
     pub const fn as_str(self) -> &'static str {
@@ -323,10 +302,6 @@ impl From<ScanError> for DeclarationError {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn restart(policies: Vec<(String, String, RestartPolicy)>, owner: &str) -> Result<Option<RestartPolicy>, DeclarationError> {
     let mut selected = policies.into_iter().filter(|(facility, candidate, _)| facility == "sidecar" && candidate == owner);
     let Some((_, _, policy)) = selected.next() else {
@@ -338,5 +313,3 @@ fn restart(policies: Vec<(String, String, RestartPolicy)>, owner: &str) -> Resul
     policy.validate()?;
     Ok(Some(policy))
 }
-
-/* === Tests === */

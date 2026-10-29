@@ -7,29 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::{Any, TypeId, type_name};
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
-// Third Party Imports
-
-// Local Imports
 use super::CallContext;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Default)]
 pub struct ResourceSet {
@@ -54,8 +36,6 @@ pub struct OperationAssignments {
     entries: Arc<OnceLock<Vec<AssignedOperation>>>,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum ResourceError {
     #[error("resource `{name}` is already present")]
@@ -64,10 +44,6 @@ pub enum ResourceError {
     #[error("resource `{name}` is missing")]
     Missing { name: &'static str },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl ResourceSet {
     pub fn new() -> Self {
@@ -164,12 +140,6 @@ impl OperationAssignments {
         Ok(entry)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

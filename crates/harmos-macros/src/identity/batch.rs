@@ -7,36 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::{Error, Item, LitInt, LitStr, Meta, Token, Type, parse::Parser, punctuated::Punctuated, spanned::Spanned};
-// Local Imports
+
 use crate::path::HarmosPath;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(super) fn samples(list: &syn::MetaList) -> Result<LitInt, Error> {
     let mut samples = None;
@@ -130,7 +105,3 @@ pub(super) fn expand(item: &mut Item, samples: Option<&LitInt>, harmos: &HarmosP
         }
     })
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

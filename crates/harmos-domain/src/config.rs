@@ -7,25 +7,7 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::{Serialize, de::DeserializeOwned};
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug)]
 pub struct SchemaSettings {
@@ -39,8 +21,6 @@ pub struct StreamSettings {
     pub bytes: std::num::NonZeroUsize,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("artifact configuration could not be encoded: {0}")]
@@ -49,10 +29,6 @@ pub enum ConfigError {
     #[error("artifact configuration could not be decoded: {0}")]
     Decode(serde_json::Error),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Default for SchemaSettings {
     fn default() -> Self {
@@ -63,8 +39,6 @@ impl Default for SchemaSettings {
         }
     }
 }
-
-/* === Public Functions === */
 
 pub fn decode_config<C: DeserializeOwned>(bytes: &[u8]) -> Result<C, ConfigError> {
     serde_json::from_slice(bytes).map_err(ConfigError::Decode)
@@ -77,7 +51,3 @@ pub fn validate_config(bytes: &[u8]) -> Result<(), ConfigError> {
 pub fn encode_config<C: Serialize>(config: &C) -> Result<Vec<u8>, ConfigError> {
     serde_json::to_vec(config).map_err(ConfigError::Encode)
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

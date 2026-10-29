@@ -7,22 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::convert::Infallible;
 use std::sync::{
     Arc, Mutex, Weak,
     atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst},
 };
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use super::operations::{Lanes, Managed};
 use harmos_runtime::operations::Host as _;
 use harmos_runtime::operations::OperationPhase;
@@ -32,19 +23,11 @@ use harmos_runtime::sidecar::{
     Attach, DemandKey, ObserverAttachment, ObserverContext, PublicationError, PublishError, Publisher, Supervisor,
 };
 
-/* === Constants === */
-
 const RECORD: DemandKey = DemandKey::new("fixture.record", "sample");
 const AUXILIARY: DemandKey = DemandKey::new("fixture", "auxiliary");
 const IDLE: DemandKey = DemandKey::new("fixture", "idle");
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
 static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Counts>>> = Mutex::new(std::collections::BTreeMap::new());
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Default)]
 struct Counts {
@@ -95,8 +78,6 @@ struct Collect {}
 
 struct Collecting(Arc<Counts>);
 
-/* === Enums === */
-
 #[harmos_domain::catalog]
 enum Observers {
     RecordOnly(RecordOnly),
@@ -108,10 +89,6 @@ enum Observers {
 enum Operations {
     Collect(Collect),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Seed {
     fn new(counts: &Arc<Counts>) -> Self {
@@ -310,10 +287,6 @@ impl Idle {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn observers(runtime: &harmos_runtime::Runtime<crate::sidecar::support::Bank>) -> std::collections::BTreeMap<Key, Snapshot> {
     runtime.operations.residents().into_iter().filter(|(_, status)| status.kind == Kind::Observer).collect()
 }
@@ -466,8 +439,6 @@ async fn release_suspended_observer(key: DemandKey, blocked_callback: bool) {
     fixture.runtime.shutdown().await.unwrap();
     assert_eq!(counts.released.load(SeqCst), 1);
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn released_demand_interrupts_blocked_callback() {

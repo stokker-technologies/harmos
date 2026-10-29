@@ -9,36 +9,13 @@
 
 // Storage Arrow Query Contract
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
-// Third Party Imports
+
 use arrow_array::RecordBatch;
 use arrow_data::ArrayData;
-// Local Imports
+
 use super::invalid;
 use crate::Result;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(super) fn resident_bytes(batch: &RecordBatch) -> Result<usize> {
     let mut seen = BTreeMap::new();
@@ -48,8 +25,6 @@ pub(super) fn resident_bytes(batch: &RecordBatch) -> Result<usize> {
     }
     Ok(bytes)
 }
-
-/* === Private Functions === */
 
 fn count(data: &ArrayData, seen: &mut BTreeMap<usize, usize>, bytes: &mut usize) -> Result<()> {
     *bytes = bytes.checked_add(std::mem::size_of::<ArrayData>()).ok_or_else(|| invalid("Arrow resident size overflow"))?;
@@ -70,5 +45,3 @@ fn count(data: &ArrayData, seen: &mut BTreeMap<usize, usize>, bytes: &mut usize)
     }
     Ok(())
 }
-
-/* === Tests === */

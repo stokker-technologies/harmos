@@ -7,39 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
 pub(crate) mod contribution;
 pub(crate) mod listener;
 pub(crate) mod observer;
 pub(crate) mod plugin;
 pub(crate) mod restart;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use syn::{Error, LitStr};
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(crate) fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &str) -> Result<(), Error> {
     if place.replace(value).is_some() {
@@ -83,8 +57,6 @@ pub(crate) fn documentation(attributes: &[syn::Attribute]) -> String {
     paragraphs.join("\n")
 }
 
-/* === Private Functions === */
-
 fn documented(attribute: &syn::Attribute) -> Option<String> {
     let syn::Meta::NameValue(named) = &attribute.meta else {
         return None;
@@ -105,5 +77,3 @@ fn documented(attribute: &syn::Attribute) -> Option<String> {
 fn version_argument(span: proc_macro2::Span) -> Error {
     Error::new(span, "remove `version`: executable versions come from Cargo package.version")
 }
-
-/* === Tests === */

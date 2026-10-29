@@ -7,33 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_domain::operations::instance::*;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 
-// Third Party Imports
-
-// Local Imports
 use super::{OperationDeclaration, Response};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
 
 // One submitted operation. Dropping an unsettled instance requests its
 // cancellation; `detach` hands the instance to the host and keeps it running.
@@ -57,11 +35,3 @@ pub trait Instance<O: OperationDeclaration>: Send + Sized {
 
     fn detach(self) -> Id;
 }
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,20 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::result::Result;
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use crate::config::{LaunchConfig, Settings};
 use crate::document::Document;
 use crate::error::Error;
@@ -30,12 +20,6 @@ use crate::storage;
 use crate::streams::Streams;
 use crate::transactions::Transactions;
 use harmos::prelude::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 pub type Origin = harmos::state::Origin<Schematic>;
 
@@ -48,17 +32,9 @@ pub type StreamManager = harmos::streams::StreamManager<SchematicEditor>;
 #[cfg(feature = "simulation")]
 pub type Simulated = harmos::simulation::SimulatedRuntime<SchematicEditor>;
 
-/* === Structs === */
-
 pub struct SchematicEditor {
     checkpoint: Option<Arc<schematic_storage::Sidecar>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Lifecycle for SchematicEditor {
     type Config = Option<LaunchConfig>;
@@ -100,8 +76,6 @@ impl Application for SchematicEditor {
     type Lanes = crate::lanes::Lanes;
 }
 
-/* === Public Functions === */
-
 #[tracing::instrument(
     level = "debug",
     skip_all,
@@ -122,7 +96,3 @@ pub async fn launch(document: Document, config: &Settings) -> Result<Runtime, Er
 pub fn simulate(origin: impl Into<Origin>, seed: u64) -> Result<Simulated, harmos::StartupError> {
     Runtime::simulate(origin, None, seed)
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

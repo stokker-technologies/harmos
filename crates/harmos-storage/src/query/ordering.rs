@@ -9,41 +9,16 @@
 
 // Stable Bounded External Row Ordering
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::cmp::Ordering;
 
-// Third Party Imports
 use arrow_array::RecordBatch;
 
-// Local Imports
 use super::accumulate::sort_values;
 use super::scalar::ScalarValue;
 use super::spill::{Builder, Cursor, Rows, Spool};
 use super::transform::sort::Sort;
 use super::transform::{FieldPathExecution, invalid};
 use crate::Result;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(super) fn sort(input: Spool, plan: &Sort, check: &mut impl FnMut() -> Result<()>) -> Result<Spool> {
     let mut key = |batch: &RecordBatch, row| plan.keys.iter().map(|key| key.field.value(batch, row)).collect::<Result<Vec<_>>>();
@@ -89,8 +64,6 @@ pub(super) fn ordered<K>(
         None => Builder::new(input.schema.clone())?.finish(),
     }
 }
-
-/* === Private Functions === */
 
 fn sorted_run<K>(
     input: &Spool, batch: &RecordBatch, key: &mut impl FnMut(&RecordBatch, usize) -> Result<K>,
@@ -181,5 +154,3 @@ fn compare(plan: &Sort, left: &[ScalarValue], right: &[ScalarValue]) -> Result<O
     }
     Ok(Ordering::Equal)
 }
-
-/* === Tests === */

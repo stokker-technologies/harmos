@@ -7,19 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::Notify;
-// Local Imports
+
 use super::{
     Lanes, assembly, service_status,
     support::{Bank, Noted},
@@ -27,14 +20,6 @@ use super::{
 use super::{Ledger, Runtime};
 use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Error, Refusal, services::ServiceExit, services::ServiceStatus, state::Position};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Sequence {
     events: Arc<Mutex<Vec<&'static str>>>,
@@ -64,8 +49,6 @@ struct Owned(Arc<Cleanup>);
 struct PhysicalStop(Arc<Cleanup>);
 struct StopWait(Arc<Cleanup>);
 
-/* === Enums === */
-
 #[harmos_runtime::operation(resources = [Sequence], response = (),
         id = "shutdown.ordered",
         policy = harmos_runtime::OperationPolicy {
@@ -82,10 +65,6 @@ struct OrderedContractDeclaration {
 enum Operations {
     OrderedContractDeclaration(OrderedContractDeclaration),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::Operation for OrderedContractDeclaration {
     type Error = std::convert::Infallible;
@@ -180,10 +159,6 @@ impl Drop for Dropped {
         self.0.store(true, Ordering::SeqCst);
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn service_stop_observer() {
@@ -575,5 +550,3 @@ async fn domains_outlives_clones() {
     );
     assert_eq!(runtime.shutdown().await.unwrap(), Position::ORIGIN, "a repeat stop reports the frontier the first one observed");
 }
-
-/* === Tests === */

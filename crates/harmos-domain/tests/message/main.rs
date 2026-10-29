@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod aggregate;
 mod allocation;
 mod boxed;
@@ -19,25 +17,8 @@ mod host;
 mod maps;
 mod native;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use harmos_domain::{MemorySize, Message, message};
 use harmos_sdk::grpc::{self, DecodeInput, prost};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
@@ -107,8 +88,6 @@ struct Choices {
     history: Vec<Choice>,
 }
 
-/* === Enums === */
-
 #[message(harmos_path = ::harmos_domain)]
 #[derive(Debug, PartialEq)]
 enum Choice {
@@ -147,14 +126,6 @@ enum SingleVariant {
     Named { r#type: String },
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 // Encode A Fixture Through The Shared Transport Adapter.
 fn encode<T: harmos_domain::Message + harmos_domain::schema::Described>(value: &T) -> Vec<u8> {
     let mut bytes = Vec::new();
@@ -176,8 +147,6 @@ fn schema_descriptor(definition: harmos_domain::schema::declaration::Definition)
     let graph = harmos_domain::schema::graph::Schema::from_declaration(definition, &settings).unwrap();
     harmos_packaging::proto::reflection::descriptor_schema(&graph, "harmos.stream", &settings).unwrap()
 }
-
-/* === Tests === */
 
 #[test]
 fn names_never_shadow() {

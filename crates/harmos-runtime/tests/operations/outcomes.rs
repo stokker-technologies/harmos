@@ -7,22 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
-// Third Party Imports
-
-// Local Imports
 use super::{
     Lanes,
     app::App,
@@ -31,16 +21,8 @@ use super::{
 use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime, state::FactSource, state::Position, state::SystemFact};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Exported<T> = Result<T, Failed>;
 type Answered<T, E = Failed> = Result<T, E>;
-
-/* === Structs === */
 
 #[derive(Default)]
 struct Counts {
@@ -49,8 +31,6 @@ struct Counts {
 }
 
 struct AttemptGuard(Arc<Counts>);
-
-/* === Enums === */
 
 #[harmos_runtime::message]
 #[derive(Clone, Copy)]
@@ -106,10 +86,6 @@ enum Operations {
     ParentContractDeclaration(ParentContractDeclaration),
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl harmos_runtime::Operation for ComputeContractDeclaration {
     type Error = Failed;
 
@@ -158,10 +134,6 @@ impl harmos_runtime::operations::Operation for ParentContractDeclaration {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn runtime() -> (Runtime<App>, Arc<Counts>) {
     let counts = Arc::new(Counts::default());
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
@@ -173,8 +145,6 @@ async fn runtime() -> (Runtime<App>, Arc<Counts>) {
     runtime.operations.register::<super::Single<ParentContractDeclaration>>(Lanes::Serial).await.unwrap();
     (runtime, counts)
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn aliases_preserve_values() {

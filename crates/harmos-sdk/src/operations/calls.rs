@@ -7,34 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::{Any, TypeId};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use super::response::ErasedResponse;
 use super::{CacheKey, OperationDeclaration, OperationDefinition, Response};
 use crate::{Message, MessageError};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type CallFuture<'a> = Pin<Box<dyn Future<Output = Result<ErasedResponse, InvocationError>> + Send + 'a>>;
-
-/* === Structs === */
 
 // The Carrier Caller Of One Attempt, Inserted Into Its Execution Snapshot.
 #[derive(Clone)]
@@ -54,8 +36,6 @@ pub struct Target {
     pub key: fn(&(dyn Any + Send)) -> Option<CacheKey>,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum InvocationError {
     #[error("operation `{operation}` cannot be invoked from this carrier")]
@@ -68,14 +48,10 @@ pub enum InvocationError {
     Failed { operation: &'static str, source: Arc<dyn std::error::Error + Send + Sync> },
 }
 
-/* === Traits === */
-
 // Carriers Route A Declared Child Operation With The Calling Attempt's Metadata.
 pub trait Caller: Send + Sync + 'static {
     fn call(&self, target: Target, request: Box<dyn Any + Send>) -> CallFuture<'_>;
 }
-
-/* === Implementations === */
 
 impl Target {
     pub fn of<T: OperationDeclaration>() -> Self {
@@ -99,13 +75,7 @@ impl InvocationError {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn decode<T: OperationDeclaration>(bytes: &[u8]) -> Result<ErasedResponse, MessageError> {
     let response = T::Response::decode(bytes)?;
     Ok(Response::new(response).into_erased())
 }
-
-/* === Tests === */

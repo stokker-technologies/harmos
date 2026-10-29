@@ -7,32 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod codec;
 pub mod read;
 
-/* === Re-Exports === */
-
 pub use read::{ByteRange, CaptureConsistency, FileBatch, FileCompletion, FileEvent, FileHash, FileSource, FollowStart};
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use crate::model::storage::{StorageCursor, StoreHistory};
 use crate::{Identifier, MemorySize};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -74,8 +57,6 @@ pub struct FileProgress {
     pub phase: FilePhase,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u64)]
 pub enum FilePhase {
@@ -83,10 +64,6 @@ pub enum FilePhase {
     Finished = 1,
     Abandoned = 2,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl MemorySize for FileMetadata {
     fn memory_size(&self) -> usize {
@@ -126,9 +103,3 @@ impl MemorySize for FileProgress {
         std::mem::size_of::<Self>()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,29 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use tokio::sync::{Notify, mpsc};
-// Local Imports
+
 use super::{Observing, pending};
 use harmos_runtime::sidecar::{ActivationId, Instance, ObserverContext, ObserverError};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type ObservedIdentity = (&'static str, ActivationId, u64);
-
-/* === Structs === */
 
 #[derive(Clone)]
 struct Resources {
@@ -52,8 +37,6 @@ struct Watch(Resources);
 
 struct Callback(Resources);
 
-/* === Enums === */
-
 #[derive(Clone, Copy)]
 enum Behavior {
     FailFirst,
@@ -69,10 +52,6 @@ enum Event {
     Stopping,
     Stopped,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[harmos_runtime::observer(id = "execution.watch", interval_ms = 5)]
 impl Watch {
@@ -157,10 +136,6 @@ impl NeverStarts {
         panic!("an uninitialized observer cannot run");
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn declaration() -> Instance<Host> {
     Instance::<Host>::of::<Watch>().with_context(|host| host.token)
@@ -360,5 +335,3 @@ async fn concurrent_activation_ids() {
     left.shutdown().await.unwrap();
     right.shutdown().await.unwrap();
 }
-
-/* === Tests === */

@@ -8,31 +8,21 @@
  */
 
 #![allow(dead_code, unused_imports)]
-/* === Modules === */
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 pub(crate) use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
 pub(crate) use std::time::Duration;
-// Third Party Imports
+
 pub(crate) use tokio::sync::Notify;
-// Local Imports
+
 use super::support;
 pub(crate) use harmos_runtime::operations::{
     Backoff, CacheKey, Context, FailureKind, Jitter, OperationDeclaration, OperationInstanceId, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 pub(crate) use harmos_runtime::{Error, Refusal, Runtime};
 pub(crate) use support::{Bank, Ledger, catalog};
-
-/* === Constants === */
-
-/* === Macros === */
 
 // In-Process Fixture Values Carry Shared Notifications, So They Never Cross A
 // Process Boundary: Their Codec Refuses And Encoding Them Is A Defect.
@@ -67,11 +57,7 @@ macro_rules! in_process {
 }
 pub(crate) use in_process;
 
-/* === Type Aliases === */
-
 pub(crate) type Request = Compute;
-
-/* === Structs === */
 
 // Requests Clone Shared Gates; Responses Retain Their Owned Value.
 
@@ -135,8 +121,6 @@ pub(crate) struct Owner {
 
 pub(crate) struct ParentOwner;
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 pub(crate) enum Operations {
     Compute(Compute),
@@ -161,10 +145,6 @@ pub(crate) enum Failed {
     #[error(transparent)]
     Invocation(#[from] harmos_runtime::operations::InvocationError),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 in_process!(Compute, Slow, Parent, Response);
 
@@ -278,10 +258,6 @@ impl harmos_runtime::Operation for Parent {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 pub(crate) async fn runtime() -> Runtime<Bank> {
     runtime_with(|_| {}).await
 }
@@ -323,5 +299,3 @@ pub(crate) fn request() -> Request {
         gate: None,
     }
 }
-
-/* === Tests === */

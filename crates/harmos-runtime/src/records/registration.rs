@@ -7,35 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
-// Third Party Imports
 
-// Local Imports
 use crate::schema::{Validator, graph::Schema};
 use crate::storage::{ErasedCatalog, SchemaKey, StorageManager};
 use crate::{Error, MemorySize, Result};
-
-/* === Constants === */
 
 const DEFINITIONS: usize = 64;
 const REGISTRY_BYTES: usize = 8 * 1024 * 1024;
 const NAME_BYTES: usize = 1024;
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Key = (String, u32);
-
-/* === Structs === */
 
 #[derive(Debug)]
 pub struct Definition {
@@ -79,12 +62,6 @@ pub(super) struct Pending {
     pub(super) definition: Arc<Definition>,
     committed: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Definition {
     pub fn owner(&self) -> &str {
@@ -305,12 +282,6 @@ impl Drop for Pending {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn limit() -> Error {
     Error::ResourceExhausted { resource: "record schema registry" }
 }
-
-/* === Tests === */

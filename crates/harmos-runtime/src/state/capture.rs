@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -21,20 +14,12 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-// Third Party Imports
+
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
 use tracing::Instrument;
-// Local Imports
+
 use crate::supervision::executor::InContext;
 use crate::{Application, state::Entry, state::Position, state::PreparationError, state::Receipt, state::Recorded, state::RequestKey};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug)]
 pub struct CaptureLimits {
@@ -73,8 +58,6 @@ struct Failure {
     clean: bool,
 }
 
-/* === Enums === */
-
 pub(crate) enum Declaration<A: Application> {
     Callback(CallbackDeclaration<A>),
     Managed {
@@ -112,8 +95,6 @@ pub enum CaptureError {
     InvalidLimits,
 }
 
-/* === Traits === */
-
 pub trait JournalCapture<A: Application>: Send + 'static {
     fn capture(
         &mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, frontier: Position,
@@ -125,8 +106,6 @@ pub(crate) trait Capturing<A: Application>: Send {
         &mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, frontier: Position,
     ) -> Pin<Box<dyn Future<Output = Result<(), CaptureError>> + Send + '_>>;
 }
-
-/* === Implementations === */
 
 impl<A: Application, C: JournalCapture<A>> Capturing<A> for C {
     fn capture(
@@ -351,9 +330,3 @@ impl<A: Application> Capture<A> {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

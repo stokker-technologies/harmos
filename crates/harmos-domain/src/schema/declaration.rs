@@ -9,26 +9,17 @@
 
 // Static Shared Type Declarations And Inert Metadata
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::fmt;
 use std::mem::size_of;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use super::graph::{self, Error, Schema};
 use super::{Cardinality, MAX_NAME_BYTES};
 use crate::config::SchemaSettings;
 use crate::inventory::{digits, number, quoted, quoted_len, write};
-
-/* === Constants === */
 
 const HEADER: &[u8] = b"{\"kind\":\"schema\",\"name\":";
 const FIELDS: &[u8] = b",\"fields\":[";
@@ -38,14 +29,8 @@ const KIND: &[u8] = b",\"kind\":{\"type\":";
 const REFERENCE: &[u8] = b",\"definition\":";
 const CARDINALITY: &[u8] = b"},\"cardinality\":";
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type Field<R = Definition> = graph::Field<R>;
 pub type Kind<R = Definition> = graph::Kind<R>;
-
-/* === Structs === */
 
 #[derive(Clone, Copy)]
 pub struct Definition {
@@ -78,17 +63,11 @@ struct Plan {
     remaining_work: usize,
 }
 
-/* === Enums === */
-
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Fragment {
     Schema { name: String, fields: Vec<Field<String>> },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl PartialEq for Definition {
     fn eq(&self, other: &Self) -> bool {
@@ -288,8 +267,6 @@ impl Plan {
     }
 }
 
-/* === Public Functions === */
-
 pub fn markers(root: Definition, settings: &SchemaSettings) -> Result<Vec<&'static [u8]>, Error> {
     markers_many([root], settings)
 }
@@ -381,8 +358,6 @@ pub const fn encode_buffer<const N: usize>(name: &str, fields: &[Field<Definitio
     assert!(cursor == encoded_len(name, fields));
     output
 }
-
-/* === Private Functions === */
 
 fn fields<T: super::Described + ?Sized>() -> &'static [Field<Definition>] {
     T::FIELDS
@@ -522,5 +497,3 @@ const fn cardinality_name(cardinality: Cardinality) -> &'static str {
         Cardinality::Variant => "variant",
     }
 }
-
-/* === Tests === */

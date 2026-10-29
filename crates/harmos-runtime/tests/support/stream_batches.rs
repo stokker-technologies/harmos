@@ -7,26 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use harmos_runtime::{Application, Runtime, state::Never, streams::BatchItem};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Probe;
 
@@ -58,8 +41,6 @@ struct Grouped {
     other: f64,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::lanes]
 pub enum Lanes {
     #[default]
@@ -82,10 +63,6 @@ enum Catalog {
     Grouped(Grouped),
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl harmos_runtime::Lifecycle for Probe {
     type Config = ();
     type Error = std::convert::Infallible;
@@ -103,8 +80,6 @@ impl Application for Probe {
     type Record = ();
     type Streams = Catalog;
 }
-
-/* === Public Functions === */
 
 pub async fn raw_and_summary_delivery() {
     let runtime = runtime().await;
@@ -171,8 +146,6 @@ pub async fn summary_cost() {
     runtime.shutdown().await.unwrap();
 }
 
-/* === Private Functions === */
-
 async fn runtime() -> Runtime<Probe> {
     Runtime::<Probe>::launch_with((), (), |setup| {
         setup.settings().register(Catalog::catalog());
@@ -180,5 +153,3 @@ async fn runtime() -> Runtime<Probe> {
     .await
     .unwrap()
 }
-
-/* === Tests === */

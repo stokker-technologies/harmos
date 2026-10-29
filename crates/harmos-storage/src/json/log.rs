@@ -9,13 +9,6 @@
 
 // Typed Durable Segments With Streaming Replay And Cursor Pins.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     collections::BTreeMap,
     fs::{self, File, OpenOptions},
@@ -24,25 +17,15 @@ use std::{
     sync::Arc,
 };
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 
-// Local Imports
 use super::{config::JsonStorageSettings, format};
 use crate::{
     BackendSnapshot, FileReference, MemorySize, ObjectEntry, Result, ScanPage, StorageBatch, StorageCursor, StorageSchema, StoreHistory,
     StoredIdentity, StoredRecord, StoredRow,
 };
 
-/* === Constants === */
-
 const READ_BUFFER: usize = 256 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(super) struct Log {
     pub root: PathBuf,
@@ -73,10 +56,6 @@ struct Segment {
     path: PathBuf,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub(super) trait Row: MemorySize + Sized + Send + Sync + PartialEq + 'static {
     const KIND: &'static str;
     fn position(&self) -> &StorageCursor;
@@ -89,8 +68,6 @@ pub(super) trait Row: MemorySize + Sized + Send + Sync + PartialEq + 'static {
         false
     }
 }
-
-/* === Implementations === */
 
 impl Log {
     pub fn open(settings: &JsonStorageSettings, history: StoreHistory) -> Result<Self> {
@@ -444,10 +421,6 @@ impl Row for FileReference {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 pub(super) fn exhausted() -> crate::Error {
     crate::Error::ResourceExhausted { resource: "JSON read memory" }
 }
@@ -517,5 +490,3 @@ fn remember(identities: &mut BTreeMap<String, StoredIdentity>, identity: StoredI
     }
     Ok(())
 }
-
-/* === Tests === */

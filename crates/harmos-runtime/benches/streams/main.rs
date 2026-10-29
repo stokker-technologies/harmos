@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "../../tests/support/allocation.rs"]
 pub mod allocation;
 
@@ -19,37 +17,9 @@ pub mod batches;
 #[path = "../../tests/support/native_streams.rs"]
 mod native;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
 extern crate harmos_runtime as harmos;
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
 criterion::criterion_group!(benches, benchmarks);
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn benchmarks(c: &mut criterion::Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
@@ -153,5 +123,3 @@ fn sustained(seconds: u64, executable: Option<&std::path::Path>) {
         );
     }
 }
-
-/* === Tests === */

@@ -7,26 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
 mod clock;
 mod entropy;
 pub(crate) mod executor;
 
-/* === Re-Exports === */
-
 pub use entropy::entropy;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use tokio::sync::broadcast;
-// Local Imports
+
 use crate::{
     Application, DefinitionId, Error, Identified, Runtime, Setup, StartupError, runtime::Catalog, runtime::Incompatible,
     runtime::Registration, services::Resident, services::ServiceContext, state::At, state::Entry, state::Envelope, state::Focus,
@@ -34,17 +27,9 @@ use crate::{
     storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source, streams::Stream,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Inverting<A> = fn(&<A as Application>::Transaction, &<A as Application>::State) -> Option<<A as Application>::Transaction>;
 type Configure<A> = Arc<dyn Fn(&mut Setup<A>) + Send + Sync>;
 type UndoResult<A> = Result<Receipt, Error<<<A as Application>::Transaction as Transaction<<A as Application>::State>>::Error>>;
-
-/* === Structs === */
 
 pub struct SimulatedRuntime<A>
 where
@@ -116,8 +101,6 @@ struct MemorySource<A: Application> {
     strict: bool,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum SimError {
     #[error("the simulated runtime is not running")]
@@ -129,10 +112,6 @@ pub enum SimError {
     #[error("service `{0}` has no running attempt to receive the fault")]
     ServiceStopped(String),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<S: fmt::Debug> fmt::Display for Divergence<S> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -594,10 +573,6 @@ where
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn stored<A>(entry: &Entry<Recorded<A>>, identities: &BTreeMap<Position, Stamp>, strict: bool) -> Result<Envelope<Payload<A>>, Incompatible>
 where
     A: Application,
@@ -638,5 +613,3 @@ where
         },
     })
 }
-
-/* === Tests === */

@@ -7,16 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "grpc_network.rs"]
 mod grpc_network;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     convert::Infallible,
     future::Future,
@@ -27,22 +20,18 @@ use std::{
     time::Duration,
 };
 
-// Third Party Imports
 use tonic::{
     body::Body,
     codegen::{Service, http},
     server::NamedService,
 };
 
-// Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::{Enter, Invocation, Middleware, Observation};
 use harmos_runtime::grpc::{Codec, DecodeSettings, EncodeSettings};
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy, StreamSettings};
 use harmos_runtime::{Error, Runtime};
-
-/* === Constants === */
 
 const WHO_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
@@ -55,12 +44,6 @@ const REJECTION_DETAILS: &[u8] = &[
     108, 101, 97, 112, 105, 115, 46, 99, 111, 109, 47, 102, 105, 120, 116, 117, 114, 101, 46, 82, 101, 106, 101, 99, 116, 105, 111, 110,
     18, 8, 10, 6, 97, 98, 115, 101, 110, 116,
 ];
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Principal(String);
 #[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "grpc.guarded",
@@ -119,8 +102,6 @@ struct Trace(Arc<Mutex<Vec<tonic::Code>>>);
 
 struct HoldingGuard(Arc<Behavior>);
 
-/* === Enums === */
-
 #[derive(Clone, Copy)]
 enum FailureBehavior {
     Reject,
@@ -132,10 +113,6 @@ struct Behavior {
     uploading: Option<Arc<tokio::sync::Notify>>,
     stopped: Option<Arc<tokio::sync::Semaphore>>,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Behavior {
     fn read() -> Self {
@@ -493,10 +470,6 @@ impl harmos_runtime::Operation for HoldDeclaration {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn authored_rejection() -> tonic::Status {
     let mut metadata = tonic::metadata::MetadataMap::new();
     metadata.insert("x-fixture-rejection", "absent".parse().unwrap());
@@ -738,5 +711,3 @@ async fn failures<F: Future<Output = ()>>(
     runtime.shutdown().await.unwrap();
     [unary, streaming, upload, exchange]
 }
-
-/* === Tests === */

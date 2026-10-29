@@ -9,31 +9,13 @@
 
 // Native File Batches Share Their Original Allocation Through Every View.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Borrow;
 use std::num::NonZeroUsize;
 use std::ops::Range;
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use crate::{Error, FileBatch, MemorySize, ReadBatch, Result};
 use harmos_domain::model::storage::files::FileEvent;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub struct FileReadBatch {
@@ -47,12 +29,6 @@ pub struct FileReadSlice {
 }
 
 pub type FileReadEvent = ReadBatch<FileEvent>;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl FileReadEvent {
     pub fn event(&self) -> &FileEvent {
@@ -137,8 +113,6 @@ impl std::fmt::Debug for FileReadBatch {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn batch_limit(ceiling: usize, offset: u64, remaining: u64, event: bool) -> Result<NonZeroUsize> {
     let mut count = ceiling.min(usize::try_from(remaining).unwrap_or(usize::MAX));
     loop {
@@ -154,8 +128,6 @@ pub(crate) fn batch_limit(ceiling: usize, offset: u64, remaining: u64, event: bo
     }
 }
 
-/* === Private Functions === */
-
 fn varint(mut value: u64) -> usize {
     let mut bytes = 1;
     while value >= 128 {
@@ -164,5 +136,3 @@ fn varint(mut value: u64) -> usize {
     }
     bytes
 }
-
-/* === Tests === */

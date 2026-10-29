@@ -7,15 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
 mod cancel;
 mod initialize;
 mod shutdown;
 mod status;
 mod watch;
-
-/* === Re-Exports === */
 
 pub use cancel::Cancel;
 pub use harmos_domain::model::operations::lifecycle::*;
@@ -26,16 +22,6 @@ pub use initialize::Initialize;
 pub use shutdown::Shutdown;
 pub use status::{InstanceState, Status};
 pub use watch::Watch;
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
 
 pub const POLICY: harmos_domain::OperationPolicy = harmos_domain::OperationPolicy {
     timeout: std::time::Duration::from_secs(30),
@@ -48,26 +34,12 @@ const WATCH_POLICY: harmos_domain::OperationPolicy = harmos_domain::OperationPol
     ..POLICY
 };
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
 #[harmos::catalog(harmos_path = crate)]
 pub enum Lifecycle {
     Status(Status),
     Cancel(Cancel),
     Watch(Watch),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 #[cfg(feature = "lifecycle")]
 pub fn bind<P: harmos_sdk::Plugin>(
@@ -92,7 +64,3 @@ pub fn bind<P: harmos_sdk::Plugin>(
         .install_lifecycle::<Shutdown, shutdown::Control>(dependencies, shutdown)
         .map_err(|error| harmos_sdk::plugin::Error::Serving(std::sync::Arc::new(error)))
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,37 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_domain::model::storage::query::transform::filter::{Clause, Compare, Condition, Filter, Term};
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
 use harmos_domain::model::storage::query::scalar::ScalarValue;
 
-// Local Imports
 use super::{invalid, scalar_type, take};
 use crate::Result;
 use crate::storage::query::transform::FieldPathExecution;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait FilterExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
@@ -46,8 +24,6 @@ pub trait FilterExecution {
 
     fn select(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<Vec<u64>>;
 }
-
-/* === Implementations === */
 
 impl FilterExecution for Filter {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
@@ -162,10 +138,6 @@ impl FilterExecution for Filter {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn compare(value: &ScalarValue, op: Compare, expected: &ScalarValue) -> Result<bool> {
     let order = value.compare(expected)?;
     Ok(match op {
@@ -177,5 +149,3 @@ fn compare(value: &ScalarValue, op: Compare, expected: &ScalarValue) -> Result<b
         Compare::Ge => !order.is_lt(),
     })
 }
-
-/* === Tests === */

@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod connection;
 mod consumption;
 mod credit;
@@ -24,37 +22,22 @@ mod payload {
     }
 }
 
-/* === Re-Exports === */
-
 pub use connection::{Connection, Driver, Io, Received, Receiver, Sender};
 pub use consumption::{Consumption, ReceiveCredit};
 pub use credit::{Credit, Reservation};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::io::{self, IoSlice};
 use std::ops::Range;
 use std::sync::Arc;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-// Local Imports
-use crate::{Frame, FramePayload};
 
-/* === Constants === */
+use crate::{Frame, FramePayload};
 
 const VERSION: u8 = 1;
 const CONTROL_LIMIT: usize = 64;
 const COALESCE_BYTES: usize = 64 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Role {
@@ -103,10 +86,6 @@ enum Body<'a> {
         consumed: u64,
     },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Role {
     fn limit(self) -> usize {
@@ -213,8 +192,6 @@ impl Packet {
     }
 }
 
-/* === Public Functions === */
-
 #[tracing::instrument(target = "harmos::carrier", name = "sidecar.frame.read", level = "trace", skip_all, fields(channel = ?channel))]
 pub async fn read<R: AsyncRead + Unpin>(reader: &mut R, channel: Role) -> io::Result<Option<Packet>> {
     let Some(length) = read_length(reader, channel).await? else {
@@ -240,8 +217,6 @@ pub async fn read_data<R: AsyncRead + Unpin>(reader: &mut R, credit: &Arc<Receiv
 pub async fn write<W: AsyncWrite + Unpin>(writer: &mut W, packet: &Packet) -> io::Result<()> {
     write_with(writer, packet, &mut Vec::new()).await
 }
-
-/* === Private Functions === */
 
 fn payload_range(bytes: &[u8], payload: &[u8]) -> io::Result<Range<usize>> {
     if payload.is_empty() {
@@ -326,8 +301,6 @@ async fn read_length<R: AsyncRead + Unpin>(reader: &mut R, channel: Role) -> io:
 fn invalid(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error)
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

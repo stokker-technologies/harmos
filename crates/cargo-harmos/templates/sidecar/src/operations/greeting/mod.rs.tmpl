@@ -9,70 +9,20 @@
 
 // Greeting Contracts And Their Optional Execution.
 
-/* === --- === Definition Module === --- === */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 #[harmos::operation(resources = [], id = "greeting.greet", response = crate::domain::model::greeting::Greeting, policy = super::POLICY)]
 pub struct Greet {
     pub name: String,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
-
-/* === --- === Runtime Module === --- === */
 
 #[cfg(feature = "runtime")]
 mod runtime {
-    /* === Modules === */
 
-    /* === Re-Exports === */
-
-    /* === Imports === */
 
     use super::Greet;
     use crate::domain::model::greeting::Greeting;
 
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
 
     impl harmos::Operation for Greet {
         type Error = std::io::Error;
@@ -82,9 +32,5 @@ mod runtime {
         }
     }
 
-    /* === Public Functions === */
 
-    /* === Private Functions === */
-
-    /* === Tests === */
 }

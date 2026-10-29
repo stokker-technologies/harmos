@@ -7,16 +7,8 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
 
-// Third Party Imports
 use heck::{ToSnakeCase, ToUpperCamelCase};
 use prost_reflect::{
     DescriptorPool, ServiceDescriptor,
@@ -27,20 +19,9 @@ use prost_reflect::{
     },
 };
 
-// Local Imports
 use super::reflection;
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::operations::Contract;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum DescriptorError {
@@ -59,12 +40,6 @@ pub enum DescriptorError {
     #[error(transparent)]
     Descriptor(#[from] prost_reflect::DescriptorError),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> Result<ServiceDescriptor, DescriptorError> {
     if !identifier(name) || !package.split('.').all(identifier) {
@@ -156,8 +131,6 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
     Ok(pool.get_service_by_name(&format!("{package}.{name}")).expect("validated service was inserted"))
 }
 
-/* === Private Functions === */
-
 fn identifier(value: &str) -> bool {
     let mut bytes = value.bytes();
     bytes.next().is_some_and(|first| first.is_ascii_alphabetic() || first == b'_')
@@ -189,5 +162,3 @@ fn envelope(file: &mut FileDescriptorProto, name: &str, alternatives: [(&str, St
     });
     format!(".{}.{name}", file.package.as_deref().expect("service package is explicit"))
 }
-
-/* === Tests === */

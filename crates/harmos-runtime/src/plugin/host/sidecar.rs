@@ -9,19 +9,9 @@
 
 // Drive Native SDK Lifecycle Behind The Shared Runtime Plugin Owner.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-// Third Party Imports
-
-// Local Imports
 use super::{Execution, Factory, LifecycleFuture, PluginHost};
 use crate::catalog::Catalog;
 use crate::config::PluginSidecarSettings;
@@ -31,23 +21,9 @@ use crate::services::{RuntimeDriver, ServiceContext};
 use crate::sidecar::{Executable, Notice, Supervised};
 use crate::{Application, Error, Result};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 struct Native<A: Application, L> {
     driver: RuntimeDriver<A, L>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<A: Application> PluginHost<A> {
     pub async fn register_sidecar<C>(&self, executable: Executable, settings: PluginSidecarSettings, lane: impl Lane) -> Result<()>
@@ -146,10 +122,6 @@ where
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn diagnostics<A: Application>(_: &ServiceContext<A>, notice: Notice) {
     if let Notice::Logged { line } = notice {
         tracing::debug!(target: "harmos::plugin::sidecar", %line, "native plugin output");
@@ -162,5 +134,3 @@ fn failed(owner: &str, source: impl std::error::Error + Send + Sync + 'static) -
         source: Arc::new(source),
     }
 }
-
-/* === Tests === */

@@ -7,33 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{Arc, Mutex, Once, Weak};
 
-// Third Party Imports
 use tokio::sync::watch;
 use tokio::time::Instant;
 use tracing::Instrument;
 
-// Local Imports
 use super::cleanup::{Cleanup, Finalize, Resource};
 use super::executor;
 use crate::Error;
 use crate::supervision::executor::InContext;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct Status {
@@ -66,8 +49,6 @@ struct Dependency {
     provider: Arc<Instance>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
     Queued,
@@ -90,13 +71,9 @@ pub enum Outcome {
     Unavailable,
 }
 
-/* === Traits === */
-
 trait Settlement: Send + Sync {
     fn settle(&self) -> Finalize<'_>;
 }
-
-/* === Implementations === */
 
 impl Status {
     pub fn phase(&self) -> Phase {
@@ -495,9 +472,3 @@ impl Drop for Dependency {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

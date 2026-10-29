@@ -7,30 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::str::Utf8Error;
 use std::sync::Arc;
-// Third Party Imports
+
 use prost::encoding::{WireType, decode_key, decode_varint};
-// Local Imports
+
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::{Cardinality, graph};
 
-/* === Constants === */
-
 const DEPTH: usize = 32;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct Validator {
@@ -44,8 +29,6 @@ struct Checked {
     repeated: bool,
     kind: Wire,
 }
-
-/* === Enums === */
 
 #[derive(Debug)]
 enum Wire {
@@ -71,10 +54,6 @@ pub enum PayloadError {
     #[error("invalid protobuf payload: {0}")]
     Malformed(&'static str),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Validator {
     // Reuse The Checked Definitions For Another Root Without Recompiling Them.
@@ -219,10 +198,6 @@ impl Wire {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn take<'a>(bytes: &mut &'a [u8], length: usize) -> Result<&'a [u8], PayloadError> {
     if length > bytes.len() {
         return Err(malformed("truncated protobuf field"));
@@ -277,5 +252,3 @@ fn skip(tag: u32, wire: WireType, bytes: &mut &[u8], depth: usize) -> Result<(),
 fn malformed(message: &'static str) -> PayloadError {
     PayloadError::Malformed(message)
 }
-
-/* === Tests === */

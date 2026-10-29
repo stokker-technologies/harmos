@@ -7,36 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
 mod declaration;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::quote;
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream {
     match declaration::expand(attribute, item.clone()) {
@@ -47,7 +21,3 @@ pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream 
         }
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

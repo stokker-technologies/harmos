@@ -9,29 +9,9 @@
 
 // Message And SDK Envelope Codec Workloads
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
 criterion::criterion_group!(benches, benchmarks);
 
 criterion::criterion_main!(benches);
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_sdk::message(harmos_path = ::harmos_sdk)]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -39,16 +19,6 @@ struct Payload {
     sequence: u64,
     bytes: Vec<u8>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn benchmarks(c: &mut criterion::Criterion) {
     use harmos_sdk::Message;
@@ -85,5 +55,3 @@ fn benchmarks(c: &mut criterion::Criterion) {
     }
     codec.finish();
 }
-
-/* === Tests === */

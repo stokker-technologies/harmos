@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 use crate::support;
 
 #[path = "../streams/allocation.rs"]
@@ -44,38 +42,19 @@ mod colliding {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use harmos_runtime::{
     Runtime, state::At, state::Position, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::BeneathWindow,
     streams::Definition, streams::Item, streams::Stream, streams::StreamManager,
 };
 use support::{Bank, Ledger, Pulse, Reading, deposit, pulse, streaming, streams};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 struct Selecting;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl StreamConsumer<Bank> for Selecting {
     fn resume(&self) -> Cursor {
@@ -90,10 +69,6 @@ impl StreamConsumer<Bank> for Selecting {
         batch.reaches()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin)) -> Option<Item<S>> {
     std::future::poll_fn(|context| Pin::new(&mut *watching).poll_next(context)).await
@@ -409,5 +384,3 @@ fn registration_takes_definitions(catalog: [Definition; 2], streams: &StreamMana
     let _ = catalog;
     let _ = streams;
 }
-
-/* === Tests === */

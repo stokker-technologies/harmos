@@ -9,39 +9,10 @@
 
 // Inspect Guest Component World And Inventory
 
-/* === Modules === */
-
 #[path = "../../../harmos-runtime/tests/support/fixtures.rs"]
 mod fixtures;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use harmos_domain::inventory::{Declaration, Facility};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn world(component: &[u8]) -> String {
     let decoded = wit_component::decode(component).expect("the fixture is a real component");
@@ -58,8 +29,6 @@ fn world(component: &[u8]) -> String {
 fn digest(world: &str) -> u64 {
     world.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3))
 }
-
-/* === Tests === */
 
 #[test]
 fn world_hash_unchanged() {

@@ -7,28 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::convert::Infallible;
-// Third Party Imports
 
-// Local Imports
 use crate::state::envelope::DefinitionId;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Never {}
@@ -44,8 +25,6 @@ pub enum DecodeError {
     #[error("the payload did not decode as {id} version {version}")]
     Malformed { id: DefinitionId, version: u32 },
 }
-
-/* === Traits === */
 
 pub trait Transaction<S> {
     type Error;
@@ -108,8 +87,6 @@ pub trait Catalogued<C>: Sized {
     fn catalogued(self) -> C;
 }
 
-/* === Implementations === */
-
 impl<S> TransactionCatalog<S> for Never {}
 
 impl super::record::CatalogCodec for Never {
@@ -151,9 +128,3 @@ impl<C, T: Into<C>> Catalogued<C> for T {
         self.into()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

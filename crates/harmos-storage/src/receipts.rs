@@ -7,34 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 use tokio::time::Instant;
 
-// Local Imports
 use super::config::MUTATION_RETENTION;
 use super::{FileProducer, MutationId, MutationWindow, StorageManager, StoreHistory};
 use crate::{Error, Identifier, MemorySize, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -67,8 +50,6 @@ struct Entry {
 
 pub(super) struct Completion(Arc<()>);
 
-/* === Enums === */
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MutationValue {
@@ -85,10 +66,6 @@ pub(super) enum ReceiptState {
     Pending,
     Complete(MutationValue),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Entry {
     fn reclaimable(&self) -> bool {
@@ -477,10 +454,6 @@ impl MemorySize for MutationReceipt {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn epoch() -> Result<Identifier> {
     let mut bytes = [0u8; 16];
     getrandom::fill(&mut bytes).map_err(|source| Error::OperationFailed {
@@ -509,8 +482,6 @@ fn expired() -> Error {
         reason: "retry window expired or unknown; reconcile state before issuing new work",
     }
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

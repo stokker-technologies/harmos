@@ -7,32 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use crate::state::{NetId, SymbolId};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 pub type LaunchError = Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum SchematicError {
@@ -87,13 +66,3 @@ pub enum Error {
     #[error(transparent)]
     Startup(#[from] harmos::StartupError),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

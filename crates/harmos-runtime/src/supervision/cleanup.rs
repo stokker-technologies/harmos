@@ -7,35 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
-// Third Party Imports
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::task::JoinHandle;
 
-// Local Imports
 use super::executor;
 use crate::Error;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub(crate) type Outcome = Result<(), Arc<Error>>;
 pub(crate) type Finalize<'a> = Pin<Box<dyn Future<Output = Outcome> + Send + 'a>>;
-
-/* === Structs === */
 
 pub(crate) struct Cleanup<R: Resource> {
     original: Arc<Mutex<Option<R>>>,
@@ -47,21 +30,15 @@ pub(crate) struct Owned<R> {
     original: Arc<Mutex<Option<R>>>,
 }
 
-/* === Enums === */
-
 enum Join {
     Ready,
     Running(JoinHandle<Outcome>),
     Settled,
 }
 
-/* === Traits === */
-
 pub(crate) trait Resource: Send + 'static {
     fn finalize(&mut self) -> Finalize<'_>;
 }
-
-/* === Implementations === */
 
 impl Resource for Box<dyn Resource> {
     fn finalize(&mut self) -> Finalize<'_> {
@@ -146,9 +123,3 @@ impl<R> Drop for Owned<R> {
         *original = Some(resource);
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

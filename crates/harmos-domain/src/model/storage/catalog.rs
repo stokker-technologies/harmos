@@ -7,33 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fmt;
 use std::num::{NonZeroU32, NonZeroUsize};
-// Third Party Imports
-// Local Imports
+
 use crate::catalog::{Catalog, Contains, Member, Projection, Visitor};
 use crate::model::storage::{ObjectRetention, ObjectValue, SchemaKey, check_length, invalid, object_key};
 use crate::{Error, Identified, Identifier, MemorySize, Result, schema};
-
-/* === Constants === */
 
 const MAX_DEFINITIONS: usize = 4096;
 const MAX_IDENTITY_BYTES: usize = 1024;
 
 const VALIDATION_BYTES: usize = 8 * 1024 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug)]
 pub struct ObjectDefinition {
@@ -51,10 +35,6 @@ struct KeyMatch<'a> {
     expected: &'a str,
     offset: usize,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait StoredObject: Identified + schema::Described + crate::Message + MemorySize + 'static {
     type Key: fmt::Display + ?Sized;
@@ -176,8 +156,6 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
     }
 }
 
-/* === Implementations === */
-
 impl ObjectDefinition {
     pub fn retention(&self) -> ObjectRetention {
         self.retention
@@ -231,8 +209,6 @@ impl fmt::Write for KeyMatch<'_> {
     }
 }
 
-/* === Public Functions === */
-
 pub fn definition<C: ObjectCatalog>(key: &SchemaKey) -> Result<ObjectDefinition> {
     let mut found = None;
     C::definitions().try_for_each(|entry| {
@@ -273,8 +249,6 @@ pub fn decode_admitted<T: StoredObject>(value: &ObjectValue, schema: &SchemaKey)
     Ok(decoded)
 }
 
-/* === Private Functions === */
-
 fn decode<T: StoredObject>(value: &ObjectValue, max_payload_bytes: NonZeroUsize) -> Result<T> {
     check_length(value.payload.len(), max_payload_bytes)?;
     check_length(value.item.as_str().len(), max_payload_bytes)?;
@@ -308,5 +282,3 @@ fn verify_admitted<T: StoredObject>(value: &ObjectValue, payload: NonZeroUsize, 
 fn verification_limit() -> Error {
     Error::ResourceExhausted { resource: "storage object verification" }
 }
-
-/* === Tests === */

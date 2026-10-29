@@ -8,37 +8,12 @@
  */
 
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 // The mirror of synchronous initialization: an instance releases what it holds by
 // awaiting it, so a synchronous `stop` is refused where it is written.
 
 
 pub struct Level;
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[harmos::observer(interval_ms = 100)]
 impl Level {
@@ -53,10 +28,5 @@ impl Level {
     fn stop(&mut self) -> Result<(), String> { Ok(()) }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn main() {}
-
-/* === Tests === */

@@ -7,20 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::sync::{Arc, Weak};
 
-// Third Party Imports
 use tokio::sync::OwnedSemaphorePermit;
 
-// Local Imports
 use super::admission::Admission;
 use super::binding::Typed;
 use super::caller::Source;
@@ -32,15 +23,7 @@ use crate::operations::OperationDeclaration;
 use crate::supervision::instance::{Instance, Phase};
 use crate::{Error, Result, operations::Scope};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Payload<D> = <D as OperationDeclaration>::Response;
-
-/* === Structs === */
 
 struct Physical {
     instance: Box<dyn harmos_sdk::operations::NativeInstance>,
@@ -70,12 +53,6 @@ struct Owned {
     _admission: Admission,
     _preparation: Option<OwnedSemaphorePermit>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Physical {
     async fn finish(&mut self, name: &str, control: &Weak<Instance>) -> Result<()> {
@@ -193,8 +170,6 @@ impl Finalizer for Owned {
     }
 }
 
-/* === Public Functions === */
-
 pub(super) fn factory<D: OperationDeclaration, P: Send + 'static>(
     operations: &Manager, entry: &Entry, factory: harmos_sdk::operations::OperationFactory,
 ) -> Typed<D, P> {
@@ -290,8 +265,6 @@ pub(super) fn factory_projected<D: OperationDeclaration, P: Send + 'static>(
     }
 }
 
-/* === Private Functions === */
-
 fn execution_context(context: Context<'_>) -> Result<harmos_sdk::ExecutionContext> {
     let mut dependencies = harmos_sdk::__private::ResourceSet::new();
     dependencies.insert(Arc::new(harmos_sdk::operations::Calls(Arc::new(context.owned())))).map_err(|source| Error::OperationFailed {
@@ -345,5 +318,3 @@ async fn guarded<O>(operation: &str, future: impl Future<Output = std::result::R
     })
     .await
 }
-
-/* === Tests === */

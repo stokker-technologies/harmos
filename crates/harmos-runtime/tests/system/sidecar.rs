@@ -7,19 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 
-// Third Party Imports
 use futures_util::StreamExt;
 
-// Local Imports
 use crate::support;
 use harmos_runtime::Runtime;
 use harmos_runtime::config::{PluginSettings, PluginSidecarSettings};
@@ -31,31 +22,17 @@ use schematic_domain::model::schematic::progress::AnalysisProgress;
 use schematic_domain::model::{Connection, Point, Snapshot};
 use schematic_operations::{AnalyzeExchange, AnalyzeUpload, ListDirectories, Native, ProposeRoute};
 
-/* === Constants === */
-
 const PLUGIN: &str = "schematic_tools";
 const ENV_SCENE: &str = "HARMOS_SIDECAR_ENV_SCENE";
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 // The Host Declares No Stream: The Sidecar Owns Its Progress Stream And The Host Only Watches It.
 struct Host;
-
-/* === Enums === */
 
 #[harmos_runtime::lanes]
 enum Lanes {
     #[default]
     Open,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::Lifecycle for Host {
     type Config = ();
@@ -74,10 +51,6 @@ impl harmos_runtime::Application for Host {
     type Record = ();
     type Streams = ();
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn snapshot() -> Snapshot {
     Snapshot {
@@ -103,8 +76,6 @@ fn plugin_settings() -> PluginSidecarSettings {
         ..Default::default()
     }
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn sidecar_composition_walks() {

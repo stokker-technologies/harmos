@@ -7,20 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "dependency_routing.rs"]
 mod dependency_routing;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
 use harmos_runtime::operations::Host as _;
 use harmos_runtime::operations::{Declarations, NativeError, PluginRegistration, PluginSdkRegistration};
@@ -28,12 +17,8 @@ use harmos_runtime::plugin::{
     PluginBackend, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginManager, PluginTransition, Requirement, Router,
 };
 
-/* === Constants === */
-
 static NEXT_PROVIDER_SEED: AtomicUsize = AtomicUsize::new(1);
 static PROVIDER_SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<Provider>>> = Mutex::new(std::collections::BTreeMap::new());
-
-/* === Macros === */
 
 macro_rules! forward {
     ($name:ident, $id:literal, [$($callee:ty),*]) => {
@@ -60,13 +45,9 @@ forward!(Forward, "caller.forward", [AmplifyDeclaration]);
 
 forward!(UnauthorizedForward, "unauthorized.forward", []);
 
-/* === Type Aliases === */
-
 type NoticeHandler = Box<dyn Fn(&ServiceContext<Bank>, Notice) + Send + Sync>;
 type Resident = Supervised<Bank, Attachment, NoticeHandler>;
 type Backends = PluginBackend<(), Resources, ()>;
-
-/* === Structs === */
 
 struct Dependent {
     notify: bool,
@@ -235,8 +216,6 @@ impl harmos_runtime::schema::Described for Amplifying {
 
 struct RetryGuard(Arc<Provider>);
 
-/* === Enums === */
-
 enum PublicationStart {
     Commit,
     Refuse,
@@ -268,10 +247,6 @@ enum CallerOperations {
 enum UnauthorizedOperations {
     Forward(UnauthorizedForward),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Drop for ProviderSeed {
     fn drop(&mut self) {
@@ -780,9 +755,3 @@ impl PluginLifecycle for Host {
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

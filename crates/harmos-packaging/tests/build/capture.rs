@@ -9,34 +9,17 @@
 
 // Refuse Incomplete Or Ambiguous Cargo Streams Before Packaging.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::io::Cursor;
 use std::path::Path;
 
-// Third Party Imports
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-// Local Imports
 use harmos_packaging::config::{BuildBackend, BuildProfile, BuildSettings};
 use harmos_packaging::{Build, Error};
 
-/* === Constants === */
-
 const PRODUCER: &str = "path+file:///plugin#schematic-sidecar@0.1.0";
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Captured {
     messages: String,
@@ -45,17 +28,11 @@ struct Captured {
     settings: BuildSettings,
 }
 
-/* === Enums === */
-
 enum ReceiptSurface {
     Messages,
     Metadata,
     Profile,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Captured {
     fn new(messages: &[Value], selected: BTreeMap<String, String>) -> Self {
@@ -113,10 +90,6 @@ impl Captured {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn digest(bytes: &[u8]) -> String {
     Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -143,8 +116,6 @@ fn fixture() -> (tempfile::TempDir, std::path::PathBuf) {
     std::fs::copy(std::env::current_exe().unwrap(), &path).unwrap();
     (directory, path)
 }
-
-/* === Tests === */
 
 #[test]
 fn test_harnesses_excluded() {

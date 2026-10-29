@@ -9,21 +9,9 @@
 
 // Portable Schema And Content Identity Values
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fmt;
-// Third Party Imports
+
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
 
 macro_rules! identity {
     ($ty:ident) => {
@@ -64,27 +52,11 @@ macro_rules! identity {
 identity!(Fingerprint);
 identity!(Digest);
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Fingerprint(pub [u8; 32]);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Digest(pub [u8; 32]);
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

@@ -9,38 +9,7 @@
 
 // Exercise Dependency Authority And Publication Transaction Boundaries.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 fn candidate(host: &Host, lifecycle: bool, unauthorized: bool, publishing: bool, configuration: bool) -> PluginDefinitions {
     let mut owners = vec![("provider", vec![]), ("caller", vec!["provider"])];
@@ -600,5 +569,3 @@ async fn capacity_precedes_encoding() {
         runtime.shutdown().await.unwrap();
     }
 }
-
-/* === Tests === */

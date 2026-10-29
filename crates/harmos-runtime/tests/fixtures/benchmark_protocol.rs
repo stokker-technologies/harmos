@@ -9,29 +9,11 @@
 
 // Share The External gRPC Benchmark Contract With Its Fixture Server.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::convert::Infallible;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
-// Third Party Imports
-
-// Local Imports
 use harmos_runtime::operations::RetryPolicy;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Model;
 
@@ -52,8 +34,6 @@ pub struct Payload {
     pub bytes: Vec<u8>,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::lanes]
 pub enum Lanes {
     #[default]
@@ -64,10 +44,6 @@ pub enum Lanes {
 pub enum Operations {
     Echo(EchoDeclaration),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();
@@ -95,8 +71,6 @@ impl harmos_runtime::operations::Operation for EchoDeclaration {
         Ok(Payload { bytes }.into())
     }
 }
-
-/* === Public Functions === */
 
 pub fn wire_settings() -> harmos_runtime::grpc::server::Settings {
     let bytes = nz(16 * 1024 * 1024);
@@ -133,10 +107,6 @@ pub fn settings() -> harmos_runtime::grpc::Settings {
     }
 }
 
-/* === Private Functions === */
-
 fn nz(value: usize) -> NonZeroUsize {
     NonZeroUsize::new(value).unwrap()
 }
-
-/* === Tests === */

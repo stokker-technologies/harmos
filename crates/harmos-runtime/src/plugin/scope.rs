@@ -7,28 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::PluginGeneration;
 use crate::{Error, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct PluginScope {
@@ -58,8 +43,6 @@ pub struct PluginScope {
     native: Arc<Mutex<Weak<crate::services::NativeEndpoint>>>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
     Staged {
@@ -75,10 +58,6 @@ enum Phase {
         committed: bool,
     },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl PluginScope {
     pub(crate) fn same_activation(&self, other: &Self) -> bool {
@@ -710,12 +689,6 @@ impl PluginScope {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

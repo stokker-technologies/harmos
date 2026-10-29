@@ -7,36 +7,7 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use harmos_sidecar::Executable;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn refused(path: impl AsRef<std::path::Path>, why: &str) -> String {
     match Executable::at(path) {
@@ -44,8 +15,6 @@ fn refused(path: impl AsRef<std::path::Path>, why: &str) -> String {
         Err(refusal) => refusal.to_string(),
     }
 }
-
-/* === Tests === */
 
 #[test]
 fn invalid_path_refused() {

@@ -9,31 +9,13 @@
 
 // Storage Arrow Query Contract
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::SystemTime;
 
-// Third Party Imports
-
-// Local Imports
 use crate::model::storage::ArrowIpc;
 use crate::model::storage::codec::{Code, Id, Nested, Optional, Time, Unsigned, coded, product, variants};
 use crate::model::storage::objects::Key;
 use crate::model::storage::{ObjectKey, SchemaKey, StorageCursor};
 use crate::{Identifier, MemorySize, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RowSlice {
@@ -86,8 +68,6 @@ pub struct QueryCompletion {
     pub rows: u64,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ObjectVersions {
     Latest,
@@ -108,10 +88,6 @@ pub enum QueryOutput {
     Schema(ArrowIpc),
     Batch(ArrowIpc),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl ObjectSelection {
     pub fn follows_revisions(&self) -> bool {
@@ -227,10 +203,6 @@ impl MemorySize for QueryOutput {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn window(start: Option<SystemTime>, end: Option<SystemTime>) -> Result<()> {
     match (start, end) {
         (None, None) => Ok(()),
@@ -238,5 +210,3 @@ fn window(start: Option<SystemTime>, end: Option<SystemTime>) -> Result<()> {
         _ => Err(crate::model::storage::query::transform::invalid("source window requires increasing start and end")),
     }
 }
-
-/* === Tests === */

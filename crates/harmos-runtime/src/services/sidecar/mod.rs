@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod carrier;
 mod cleanup;
 mod configuration;
@@ -21,25 +19,20 @@ mod managed;
 mod observers;
 mod physical;
 
-/* === Re-Exports === */
-
 pub(crate) use connection::Endpoint;
 pub(crate) use managed::RuntimeDriver;
 pub use managed::{Managed, ManagedError};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::Poll;
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::io::{AsyncRead, BufReader};
 use tokio::sync::{mpsc, oneshot};
-// Local Imports
+
 use super::{Resident, ServiceContext};
 use crate::operations::children::{CHILD_REQUESTS, Children};
 use crate::streams::{Demand, StreamManager};
@@ -49,21 +42,13 @@ use carrier::{Receiver as CarrierReceiver, Sender as CarrierSender};
 use harmos_domain::Message;
 use harmos_sidecar::{Attach, Attached, Frame, Registration, UNKNOWN};
 
-/* === Constants === */
-
 const SETTLING: Duration = Duration::from_secs(5);
 
 const ARRIVALS: usize = 64;
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Ingest<A> = Arc<dyn Fn(&ServiceContext<A>, &ManagedPublication) -> Result<(), String> + Send + Sync + 'static>;
 
 type Delivery = Pin<Box<dyn Future<Output = Result<ManagedPublication, crate::streams::StreamPublicationError>> + Send>>;
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub struct DemandSource {
@@ -188,8 +173,6 @@ struct Exchange<'a, A: Application, H> {
     child_scopes: &'a mut BTreeMap<u64, Children>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Debug)]
 pub enum Notice {
     Logged { line: String },
@@ -242,10 +225,6 @@ enum Absorbed {
     Ended,
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl SidecarError {
     // A refusal the host raises itself, before any plugin answered.
     pub(crate) fn refused(code: i64, message: impl Into<String>) -> Self {
@@ -262,10 +241,6 @@ impl Notice {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn normalized_observers(
     mut declarations: Vec<harmos_sidecar::inventory::observers::Declaration>,
@@ -499,5 +474,3 @@ async fn diagnostic(read: Box<dyn AsyncRead + Send + Unpin>, arrivals: mpsc::Sen
         }
     }
 }
-
-/* === Tests === */

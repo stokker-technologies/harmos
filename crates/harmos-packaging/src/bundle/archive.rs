@@ -7,41 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::ops::Range;
-// Third Party Imports
-// Local Imports
+
 use super::{Error, Facility, Limits, Manifest, invalid};
 use crate::digest;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Contents = BTreeMap<String, Range<usize>>;
-
-/* === Structs === */
 
 struct Bounded {
     bytes: Vec<u8>,
     limit: usize,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Write for Bounded {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
@@ -55,8 +33,6 @@ impl Write for Bounded {
         Ok(())
     }
 }
-
-/* === Public Functions === */
 
 pub(super) fn path(path: &str) -> Result<(), Error> {
     // A deliberately small USTAR/Windows/Unix intersection: no extensions or
@@ -204,8 +180,6 @@ pub(super) fn staging(parent: &std::path::Path) -> io::Result<tempfile::TempDir>
     builder.tempdir_in(parent)
 }
 
-/* === Private Functions === */
-
 fn append(builder: &mut tar::Builder<Bounded>, path: &str, bytes: &[u8], executable: bool) -> Result<(), Error> {
     let mut header = tar::Header::new_ustar();
     header.set_path(path)?;
@@ -232,5 +206,3 @@ fn entry_range(entry: &tar::Entry<'_, &[u8]>, archive_len: usize, limit: usize) 
     let end = start.checked_add(size).filter(|end| *end <= archive_len).ok_or_else(|| invalid("truncated file"))?;
     Ok(start..end)
 }
-
-/* === Tests === */

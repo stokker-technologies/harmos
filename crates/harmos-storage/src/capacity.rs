@@ -7,30 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use tokio::time::Instant;
 
-// Local Imports
 use super::manager::{Inner, State};
 use crate::{Error, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 pub(super) enum Refusal {
     Exceeded(&'static str),
@@ -43,10 +23,6 @@ pub(super) enum Attempt<T> {
     Refuse(Refusal),
     Wait,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Refusal {
     pub(super) fn into_error(self) -> Error {
@@ -93,8 +69,6 @@ impl Inner {
     }
 }
 
-/* === Public Functions === */
-
 pub(super) fn admitting(state: &State, write: bool) -> Result<()> {
     if state.status.closing {
         return Err(Error::Closing { domain: "storage" });
@@ -107,7 +81,3 @@ pub(super) fn admitting(state: &State, write: bool) -> Result<()> {
     }
     Ok(())
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

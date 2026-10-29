@@ -7,41 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 
-// Third Party Imports
-
-// Local Imports
 use super::{Fixture, Lanes, config};
 use harmos_operations::storage::{FollowProduction, ReadFile};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::files::FileBatch as FileBytes;
 use harmos_runtime::storage::{FileMetadata, FilePhase, StagedFile};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, harmos_operations::storage::FollowProduction) {
     let fixture = Fixture::new(config()).await;
@@ -75,8 +47,6 @@ fn limits() -> harmos_runtime::operations::StreamSettings {
         bytes: NonZeroUsize::new(1024).unwrap(),
     }
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn read_file_streams() {

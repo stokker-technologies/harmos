@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod admission;
 mod arrow;
 mod encoding;
@@ -19,24 +17,17 @@ mod state;
 mod status;
 mod writes;
 
-/* === Re-Exports === */
-
 pub use encoding::encoded_size;
 pub(crate) use encoding::recovery_encoded_bound;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
-// Third Party Imports
 use serde::Serialize;
 use tokio::sync::watch;
 
-// Local Imports
 use super::admissions::Mutation;
 use super::capacity::{Attempt, Refusal};
 use super::config::{IO_TIMEOUT, MUTATION_RETENTION};
@@ -52,15 +43,7 @@ use crate::execution::Execution;
 use crate::{Error, Identifier, Result};
 use harmos_domain::model::storage::{RecordInput, RecordWrite, StreamInput};
 
-/* === Constants === */
-
 const WORKER_NAME: &str = "harmos-storage";
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct StorageMetrics {
@@ -178,8 +161,6 @@ struct WriteWaiter {
     measurement: bool,
 }
 
-/* === Enums === */
-
 enum Admitted {
     Replayed(u64),
     Reserved(u64, u64, u64),
@@ -203,8 +184,6 @@ pub(super) enum Operation {
     Snapshot(StorageBatch<RecoverySnapshot>),
 }
 
-/* === Traits === */
-
 pub(crate) trait RecordWriteBytes {
     fn encoded_bytes(&self, history: &super::StoreHistory) -> Result<usize>;
 }
@@ -212,8 +191,6 @@ pub(crate) trait RecordWriteBytes {
 pub trait WorkerOwner: Send + Sync {
     fn stop(&self) -> StorageFuture<'_, ()>;
 }
-
-/* === Implementations === */
 
 impl Pending {
     pub(super) fn new(
@@ -332,9 +309,3 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

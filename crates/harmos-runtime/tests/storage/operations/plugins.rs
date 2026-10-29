@@ -7,19 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
-// Third Party Imports
 
-// Local Imports
 use super::{Fixture, Lanes, config};
 use harmos_operations::storage::{Query, WriteRecords};
 use harmos_runtime::Aggregate;
@@ -41,26 +32,12 @@ use harmos_runtime::storage::SchemaKey;
 use harmos_runtime::storage::writes::WriteReceipt;
 use harmos_runtime::{Error, Identifier, Result};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Backends = PluginBackend<(), (), Option<PluginEndpoint>>;
-
-/* === Structs === */
 
 struct Host {
     operations: OperationManager<Lanes>,
     callers: BTreeMap<String, PluginCaller>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl PluginLifecycle for Host {
     type Guest = ();
@@ -97,10 +74,6 @@ impl PluginLifecycle for Host {
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn required<O>(grants: Vec<Grant>) -> Required
 where
@@ -168,8 +141,6 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
     }
     fixture.storage.flush().await.unwrap();
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn write_grants_enforced() {

@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[allow(clippy::duplicate_mod, reason = "the minimal app binds each domain's own `super::Lanes`")]
 #[path = "../support/app/minimal.rs"]
 mod app;
@@ -27,31 +25,16 @@ mod shutdown;
 
 use crate::support;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::{Barrier, Notify};
-// Local Imports
+
 use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Error, Runtime, services::ServiceContext, services::ServiceStatus};
 use support::{Bank, Ledger, catalog};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[harmos_runtime::operation(resources = [], response = u64,
         id = "service.ping",
@@ -70,10 +53,6 @@ enum Operations {
 
 use support::Lanes;
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl harmos_runtime::operations::Operation for PingContractDeclaration {
     type Error = std::convert::Infallible;
 
@@ -82,10 +61,6 @@ impl harmos_runtime::operations::Operation for PingContractDeclaration {
         result.map(::core::convert::Into::into)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn service_status(
     mut services: tokio::sync::watch::Receiver<
@@ -297,5 +272,3 @@ async fn concurrent_shutdowns_join() {
     );
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

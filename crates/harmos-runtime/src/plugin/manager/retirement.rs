@@ -7,36 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-// Third Party Imports
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::{Notify, broadcast, watch};
 
-// Local Imports
 use super::{CleanupOwner, PluginEvent, PluginEventKind, PluginGeneration, PluginState, Router};
 use crate::Error;
 use crate::supervision::cleanup::{Cleanup, Finalize, Resource};
 use crate::supervision::dependencies;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Outcomes = Arc<Mutex<BTreeMap<String, Result<(), Arc<Error>>>>>;
 pub(super) type Notice = Arc<dyn Fn(PluginState) + Send + Sync>;
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub(super) struct Owner {
@@ -81,8 +64,6 @@ pub(super) struct Closing {
     pub revision: u64,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Debug)]
 pub enum PluginCleanupStatus {
     Waiting,
@@ -90,10 +71,6 @@ pub enum PluginCleanupStatus {
     Failed(Arc<Error>),
     Settled,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Resource for Driver {
     fn finalize(&mut self) -> Finalize<'_> {
@@ -272,9 +249,3 @@ impl Resource for Closing {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

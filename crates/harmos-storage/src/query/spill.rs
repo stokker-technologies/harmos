@@ -9,27 +9,16 @@
 
 // Private Paged Arrow Spill Ownership
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fs::File;
 use std::sync::Arc;
 
-// Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_ipc::{reader::StreamReader, writer::StreamWriter};
 use arrow_schema::Schema;
 use tempfile::NamedTempFile;
 
-// Local Imports
 use super::transform::invalid;
 use crate::{BackendFailure, Error, Result};
-
-/* === Constants === */
 
 pub(super) const PAGE_ROWS: usize = 16_384;
 // Leave Room For Two Merge Inputs, Compact Output, IPC Buffers And Conversions.
@@ -37,12 +26,6 @@ const WORKSPACE_BYTES: usize = 128 * 1024 * 1024;
 pub(super) const PAGE_BYTES: usize = WORKSPACE_BYTES / 16;
 // A Million Two-Column Samples Fit Without IPC; Larger Inputs Spill As Before.
 const CACHE_BYTES: usize = WORKSPACE_BYTES / 4;
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub(super) struct Spool {
@@ -87,16 +70,10 @@ pub(super) struct Pages {
     reader: Reader,
 }
 
-/* === Enums === */
-
 pub(super) enum Reader {
     Memory { batches: Arc<Vec<RecordBatch>>, next: usize },
     Disk(Box<StreamReader<File>>),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Builder {
     pub fn new(schema: Arc<Schema>) -> Result<Self> {
@@ -303,15 +280,9 @@ impl Pages {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 pub(super) fn io(error: std::io::Error) -> Error {
     Error::backend("query spill I/O", BackendFailure::Transient, error)
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

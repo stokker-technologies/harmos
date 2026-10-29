@@ -7,33 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
 mod timestamp;
-
-/* === Re-Exports === */
 
 pub use timestamp::Time;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use crate::__private::{PostcardReader, PostcardValue};
 use crate::schema::declaration::{self, Field, Kind};
 use crate::schema::{Cardinality, Described};
 use crate::{Identifier, MemorySize, MessageError};
-
-/* === Constants === */
-
-/* === Macros === */
 
 #[doc(hidden)]
 #[macro_export]
@@ -190,11 +176,7 @@ macro_rules! storage_coded {
 }
 pub use storage_coded as coded;
 
-/* === Type Aliases === */
-
 type Result<T, E = MessageError> = std::result::Result<T, E>;
-
-/* === Structs === */
 
 pub struct Repeated<T>(PhantomData<fn() -> T>);
 pub struct Nested<T>(PhantomData<fn() -> T>);
@@ -216,10 +198,6 @@ pub struct WideNonZero;
 pub struct WideSigned;
 pub struct Wrap<A>(PhantomData<fn() -> A>);
 pub struct Many<A>(PhantomData<fn() -> A>);
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait Native: PostcardValue + MemorySize + Described {}
 impl<T: PostcardValue + MemorySize + Described> Native for T {}
@@ -253,8 +231,6 @@ pub trait Value: 'static {
     fn postcard_memory(input: &mut PostcardReader<'_>) -> Result<usize>;
     fn postcard_read(input: &mut PostcardReader<'_>) -> Result<Self::Native>;
 }
-
-/* === Implementations === */
 
 impl<T: Native> Value for Repeated<T> {
     const NAME: &'static str = declaration::Name::new(concat!(module_path!(), "::", stringify!(Repeated)), &[T::NAME]).as_str();
@@ -578,9 +554,3 @@ impl<A: Value> Value for Many<A> {
         Ok(values)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

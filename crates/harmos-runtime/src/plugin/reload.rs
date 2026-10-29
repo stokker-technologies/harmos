@@ -7,38 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
-// Third Party Imports
 
-// Local Imports
 use super::{Error, PluginDefinition, PluginGraph};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct ReloadImpact {
     stopping: Vec<PluginDefinition>,
     starting: Vec<PluginDefinition>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl PluginGraph {
     pub(super) fn reload(&self, next: Self, changed: impl IntoIterator<Item = String>) -> Result<ReloadImpact, Error> {
@@ -91,12 +68,6 @@ impl ReloadImpact {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn by_id(plan: &PluginGraph) -> BTreeMap<&str, &PluginDefinition> {
     plan.ordered().iter().map(|artifact| (artifact.id.as_str(), artifact)).collect()
 }
-
-/* === Tests === */

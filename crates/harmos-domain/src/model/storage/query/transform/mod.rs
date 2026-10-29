@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod aggregate;
 pub mod downsample;
 pub mod filter;
@@ -16,21 +14,8 @@ pub mod histogram;
 pub mod project;
 pub mod sort;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use crate::MemorySize;
 use crate::model::storage::codec::{Many, Nested, Text, product, variants};
-
-/* === Constants === */
-
-/* === Macros === */
 
 product!(FieldPath { fields: Many<Text> => 1 });
 variants!(Transform {
@@ -42,16 +27,10 @@ variants!(Transform {
     5, 6, "sort": Self::Sort(value) => { value: Nested<sort::Sort> => 1 } => Self::Sort(value);
 });
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FieldPath {
     pub fields: Vec<String>,
 }
-
-/* === Enums === */
 
 #[derive(Clone, Debug)]
 pub enum Transform {
@@ -62,10 +41,6 @@ pub enum Transform {
     Downsample(downsample::Downsample),
     Sort(sort::Sort),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl From<&str> for FieldPath {
     fn from(name: &str) -> Self {
@@ -98,12 +73,6 @@ impl MemorySize for Transform {
     }
 }
 
-/* === Public Functions === */
-
 pub fn invalid(reason: &'static str) -> crate::Error {
     crate::Error::InvalidInput { field: "storage query transform", reason }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

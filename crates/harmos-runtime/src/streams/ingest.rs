@@ -7,27 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // The cursor each live feed has taken in. A plugin publication never evicts
 // a row past the slowest feed, and a sidecar publication waits for it.
@@ -42,12 +26,6 @@ pub(crate) struct Intake {
     ingest: Arc<Ingest>,
     id: u64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Ingest {
     pub(crate) fn new() -> Self {
@@ -98,9 +76,3 @@ impl Drop for Intake {
         });
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -9,36 +9,21 @@
 
 // Bounded Depth-First Enumeration With Retained Entry Ownership
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fs::{self, ReadDir};
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use tokio::task::JoinHandle;
-// Local Imports
+
 use super::{DirectoryCompletion, DirectoryEntry, Selection, item, join_error, relative, selection};
 use crate::manager::Inner;
 use crate::{Error, ReadBatch, Result};
 use harmos_domain::model::storage::DirectorySelection;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Scanned = DirectoryEntry;
 type Pending = JoinHandle<Result<Option<Scanned>>>;
-
-/* === Structs === */
 
 pub struct DirectoryReader {
     context: crate::execution::Context,
@@ -63,12 +48,6 @@ struct Frame {
     directory: ReadDir,
     _path: PathBuf,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl DirectoryReader {
     pub(super) async fn new(inner: Arc<Inner>, value: DirectorySelection) -> Result<Self> {
@@ -203,9 +182,3 @@ impl Scan {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

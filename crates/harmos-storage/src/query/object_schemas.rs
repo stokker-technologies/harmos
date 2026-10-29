@@ -9,20 +9,14 @@
 
 // Selected Object Schema Normalization
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
 use crate::storage::query::transform::ProjectExecution;
-// Standard Library Imports
+
 use std::sync::Arc;
-// Third Party Imports
+
 use arrow_array::{RecordBatch, make_array};
 use arrow_data::ArrayData;
 use arrow_schema::{DataType, Field, Schema};
-// Local Imports
+
 use super::ObjectSelection;
 use super::reader::schema_at;
 use super::transform::{Transform, project::Project};
@@ -33,31 +27,11 @@ use crate::storage::snapshot::Snapshot;
 use crate::storage::{ObjectEntry, SchemaKey, StorageSchema};
 use crate::{Error, Result};
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 pub(super) struct NormalizedObjects {
     schemas: Vec<StorageSchema>,
     projection: Option<Project>,
     output: Arc<Schema>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl NormalizedObjects {
     #[tracing::instrument(name = "storage.query.object_schemas.resolve", level = "trace", skip_all)]
@@ -154,10 +128,6 @@ impl NormalizedObjects {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn canonical_schema(schema: &Schema) -> Schema {
     Schema::new_with_metadata(schema.fields().iter().map(|field| canonical_field(field)).collect::<Vec<_>>(), schema.metadata().clone())
 }
@@ -209,5 +179,3 @@ fn retarget(data: ArrayData, data_type: &DataType) -> Result<ArrayData> {
 fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "object query", reason }
 }
-
-/* === Tests === */

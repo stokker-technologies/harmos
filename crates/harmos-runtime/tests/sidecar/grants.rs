@@ -9,27 +9,16 @@
 
 // Enforce Request Grants For External Callers Across Sidecar And In-Process Bindings
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use super::operations::{Lanes, Managed};
 use harmos_domain::plugin::Grant;
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::Invocation;
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_sidecar::{Refusal, Supervisor};
-
-/* === Constants === */
 
 const ALLOWED: &str = "fixture.remote.allowed";
 const REFUSED: &str = "fixture.remote.refused";
@@ -40,12 +29,6 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
 };
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
 static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Runs>>> = Mutex::new(std::collections::BTreeMap::new());
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Default)]
 struct Runs(AtomicUsize);
@@ -96,8 +79,6 @@ struct LocalFetchDeclaration {
     value: u32,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 enum Gated {
     Fetch(RemoteFetchDeclaration),
@@ -107,10 +88,6 @@ enum Gated {
 enum LocalOperations {
     Fetch(LocalFetchDeclaration),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Seed {
     fn new(runs: &Arc<Runs>) -> Self {
@@ -209,10 +186,6 @@ impl harmos_runtime::Operation for LocalFetchDeclaration {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 // Value 20 needs the held scope, 21 one nobody holds, 22 the held scope on
 // another operation, anything else no grant.
 fn scoped(operation: &'static str, value: u32) -> Option<Grant> {
@@ -305,7 +278,5 @@ async fn external_request_grants() {
     fixture.shutdown().await.unwrap();
     fixture.runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */
 
 fn notices(_: &harmos_runtime::services::ServiceContext<super::Bank>, _: harmos_runtime::sidecar::Notice) {}

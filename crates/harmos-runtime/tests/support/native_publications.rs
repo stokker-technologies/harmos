@@ -7,27 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 
-// Local Imports
 use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_runtime::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
 use harmos_runtime::sidecar::{Attach, Notice, Refusal, Supervised, Supervisor};
 use harmos_runtime::{Message, Runtime, services::ServiceContext, services::ServiceStatus};
-
-/* === Constants === */
 
 const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(60),
@@ -35,14 +24,8 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     retries: RetryPolicy::Never,
 };
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Source = harmos_sidecar::PluginNative<Producer>;
 type Resident = Supervised<Model, Source, fn(&ServiceContext<Model>, Notice)>;
-
-/* === Structs === */
 
 pub struct Model;
 
@@ -77,8 +60,6 @@ pub struct Timings {
 
 pub struct Producer;
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 enum HostPublications {
     Publish(harmos_operations::streams::Publish),
@@ -94,10 +75,6 @@ pub enum Lanes {
     #[default]
     Open,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();
@@ -260,10 +237,4 @@ impl Fixture {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn notices(_: &ServiceContext<Model>, _: Notice) {}
-
-/* === Tests === */

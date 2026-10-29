@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod feeds {
     use serde::{Deserialize, Serialize};
 
@@ -43,24 +41,15 @@ mod feeds {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
-// Third Party Imports
 
-// Local Imports
 use feeds::{Narrow, Waveform, Wide};
 use harmos_runtime::{Application, Runtime, state::At, state::Never, streams::Item, streams::Stream};
-
-/* === Constants === */
 
 const PHASES: [(u64, Duration); 7] = [
     (1_024, Duration::from_millis(2)),
@@ -77,22 +66,14 @@ const ROWS: u64 = 43_008;
 #[global_allocator]
 static ALLOCATOR: Counting = Counting;
 
-/* === Macros === */
-
 thread_local! {
         static MEASURING: Cell<bool> = const { Cell::new(false) };
         static ALLOCATIONS: Cell<u64> = const { Cell::new(0) };
 }
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 struct Probe;
 
 struct Counting;
-
-/* === Enums === */
 
 #[harmos_runtime::lanes]
 pub enum Lanes {
@@ -108,10 +89,6 @@ pub enum Lanes {
     #[lane(unbounded)]
     Unbounded,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::Lifecycle for Probe {
     type Config = ();
@@ -154,8 +131,6 @@ unsafe impl GlobalAlloc for Counting {
         unsafe { System.alloc_zeroed(layout) }
     }
 }
-
-/* === Public Functions === */
 
 pub async fn streams_r004_publish_cost_is_independent_of_the_window_size() {
     let runtime = measured_runtime().await;
@@ -282,8 +257,6 @@ pub async fn streams_ac006_concurrent_waveform_measurement() {
     runtime.shutdown().await.unwrap();
 }
 
-/* === Private Functions === */
-
 fn measured<S: Stream<Probe>>(runtime: &Runtime<Probe>, row: fn(u64) -> S, count: u64) -> u64 {
     ALLOCATIONS.with(|allocations| allocations.set(0));
     MEASURING.with(|measuring| measuring.set(true));
@@ -314,5 +287,3 @@ async fn measured_runtime() -> Runtime<Probe> {
 async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin)) -> Option<Item<S>> {
     std::future::poll_fn(|context| Pin::new(&mut *watching).poll_next(context)).await
 }
-
-/* === Tests === */

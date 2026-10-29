@@ -9,36 +9,21 @@
 
 // Native Subscription Precedes Enumeration; Overflow Requires An Explicit Rescan
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-// Third Party Imports
+
 use notify::event::{ModifyKind, RenameMode};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::{Notify, mpsc};
-// Local Imports
+
 use super::{DirectoryEntry, DirectoryEvent, DirectoryReader, Selection, item, relative, selection};
 use crate::manager::Inner;
 use crate::{Error, ReadBatch, Result};
 use harmos_domain::model::storage::DirectorySelection;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct DirectoryWatcher {
     context: crate::execution::Context,
@@ -59,12 +44,6 @@ pub struct DirectoryWatcher {
 struct Queued {
     event: Event,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl DirectoryWatcher {
     pub(super) async fn new(inner: Arc<Inner>, value: DirectorySelection, include_existing: bool) -> Result<Self> {
@@ -214,10 +193,6 @@ impl Drop for DirectoryWatcher {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn deliver<T>(outgoing: &mpsc::Sender<T>, value: T, overflow: &AtomicBool, changed: &Notify) {
     if outgoing.try_send(value).is_err() {
         signal(overflow, changed);
@@ -315,8 +290,6 @@ fn events(selection: &Selection, event: Event) -> Result<Vec<DirectoryEvent>> {
     }
     Ok(result)
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

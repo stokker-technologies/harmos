@@ -7,25 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::FieldPath;
 use crate::MemorySize;
 use crate::model::storage::codec::{Code, Flag, Nested, Repeated, coded, product, variants};
 use crate::model::storage::query::scalar::ScalarValue;
-
-/* === Constants === */
-
-/* === Macros === */
 
 product!(Filter { clauses: Repeated<Clause> => 1 });
 product!(Clause { terms: Repeated<Term> => 1 });
@@ -36,10 +21,6 @@ variants!(Condition {
     1, 2, "in": Self::In { values } => { values: Repeated<ScalarValue> => 1 } => Self::In { values };
     2, 3, "is_null": Self::IsNull => {} => Self::IsNull;
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct Filter {
@@ -56,8 +37,6 @@ pub struct Term {
     pub negate: bool,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Compare {
     Eq,
@@ -73,10 +52,6 @@ pub enum Condition {
     In { values: Vec<ScalarValue> },
     IsNull,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl MemorySize for Filter {
     fn memory_size(&self) -> usize {
@@ -105,9 +80,3 @@ impl MemorySize for Condition {
             }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

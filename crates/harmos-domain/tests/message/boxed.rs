@@ -9,8 +9,6 @@
 
 // Boxed Message Fields Against Their Plain Twins
 
-/* === Modules === */
-
 // Plain Nested Messages Own The Reference Wire Shape
 mod plain {
     use super::Leaf;
@@ -53,28 +51,13 @@ mod heap {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fmt::Debug;
-// Third Party Imports
 
-// Local Imports
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::graph::Schema;
 use harmos_domain::schema::{Described, Kind};
 use harmos_domain::{MemorySize, Message, message};
 use harmos_sdk::grpc::{self, DecodeInput, prost};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -83,12 +66,6 @@ pub struct Leaf {
     payload: Vec<u8>,
     label: String,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl From<heap::Holder> for plain::Holder {
     fn from(value: heap::Holder) -> Self {
@@ -105,8 +82,6 @@ impl From<heap::Choice> for plain::Choice {
         }
     }
 }
-
-/* === Public Functions === */
 
 #[test]
 fn boxed_descriptors_match() {
@@ -203,8 +178,6 @@ fn boxed_refuses_malformed() {
         assert!(<heap::Holder as Message>::decoding_memory(bytes).is_err());
     }
 }
-
-/* === Private Functions === */
 
 fn holders() -> (plain::Holder, heap::Holder) {
     let row = Leaf {
@@ -323,5 +296,3 @@ fn deep_group() -> Vec<u8> {
     prost::encoding::bytes::encode(tag::<plain::Holder>("row"), &row, &mut bytes);
     bytes
 }
-
-/* === Tests === */

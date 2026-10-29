@@ -7,32 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::lane::Admission;
 use crate::operations::OperationInstanceId;
 use crate::operations::instances::{Instances, Reservation};
 use crate::state::Position;
 use crate::supervision::instance::{Instance, Phase, Status};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy)]
 pub struct Scope<'a> {
@@ -57,12 +42,6 @@ pub(crate) struct Child {
     settled: watch::Receiver<Status>,
     control: Arc<Instance>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<'a> Scope<'a> {
     pub(crate) fn owned(&self) -> ScopeCore {
@@ -180,9 +159,3 @@ impl Child {
         Self { settled, control }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

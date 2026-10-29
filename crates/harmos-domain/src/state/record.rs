@@ -7,29 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-// Local Imports
+
 use super::envelope::{DefinitionId, FactSource, SystemFact};
 use crate::Identified;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type PreparedMembers = Vec<(Option<SystemFact>, Prepared)>;
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -45,8 +28,6 @@ pub struct Records {
     bytes: usize,
     refusal: Option<PreparationError>,
 }
-
-/* === Enums === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum PreparationError {
@@ -66,8 +47,6 @@ pub enum PreparationError {
     Identity,
 }
 
-/* === Traits === */
-
 pub trait Record: Identified + Serialize {}
 
 pub trait RecordProjection<R> {
@@ -82,8 +61,6 @@ pub trait CatalogCodec {
 pub trait RecordCatalog: CatalogCodec + Sized {
     fn restore(id: &DefinitionId, version: u32, payload: &serde_json::Value) -> Result<Option<Self>, serde_json::Error>;
 }
-
-/* === Implementations === */
 
 impl<R> RecordProjection<R> for R {
     fn project(&self) -> Option<&R> {
@@ -256,9 +233,3 @@ impl Records {
         Ok((prepared, out.members))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

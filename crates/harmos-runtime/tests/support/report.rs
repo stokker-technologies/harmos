@@ -9,31 +9,13 @@
 
 // Retain Native System Story Traces Through Settlement And Unwinding
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-// Third Party Imports
 use tracing_perfetto_file::{FlushGuard, PerfettoLayer};
 use tracing_subscriber::Layer;
 use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::layer::SubscriberExt;
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[must_use = "keep the report alive until the story's work settles"]
 pub struct Report {
@@ -46,12 +28,6 @@ struct Collector {
     guard: Arc<FlushGuard>,
     dispatch: tracing::Dispatch,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Drop for Report {
     fn drop(&mut self) {
@@ -77,8 +53,6 @@ impl Drop for Report {
         panic!("the native system trace could not be retained: {error}");
     }
 }
-
-/* === Public Functions === */
 
 pub fn system() -> Report {
     let directory = std::env::var_os("STKR_TEST_REPORT_DIR").map(PathBuf::from);
@@ -113,8 +87,6 @@ pub(crate) fn instrumented(metadata: &tracing::Metadata<'_>) -> bool {
     prefixes.iter().any(|prefix| metadata.name().starts_with(prefix))
 }
 
-/* === Private Functions === */
-
 fn initialize(directory: &Path) -> Collector {
     std::fs::create_dir_all(directory).expect("the system trace directory is writable");
     let process = std::process::id();
@@ -141,5 +113,3 @@ fn initialize(directory: &Path) -> Collector {
     tracing::dispatcher::set_global_default(dispatch.clone()).expect("the system process installs one trace subscriber");
     Collector { guard: Arc::new(guard), dispatch }
 }
-
-/* === Tests === */

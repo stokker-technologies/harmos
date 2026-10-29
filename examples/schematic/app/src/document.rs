@@ -7,34 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 
-// Local Imports
 use crate::app::{Origin, SchematicEditor};
 use crate::error::DocumentError;
 use crate::state::Schematic;
 use harmos::state::Position;
 use schematic_storage::{Jsonl, Sidecar};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Artifact {
@@ -50,12 +33,6 @@ pub struct Document {
     position: Position,
     journal: PathBuf,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Document {
     pub fn new(path: impl AsRef<Path>) -> Self {
@@ -120,12 +97,6 @@ impl Document {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn journal_of(path: &Path) -> PathBuf {
     path.with_extension("jsonl")
 }
-
-/* === Tests === */

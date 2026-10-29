@@ -7,29 +7,7 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type Result<T> = std::result::Result<T, Error>;
-
-/* === Structs === */
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -87,10 +65,6 @@ pub enum BackendFailure {
     Unsupported,
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl Error {
     pub fn backend_failure(&self) -> Option<BackendFailure> {
         match self {
@@ -108,9 +82,3 @@ impl Error {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

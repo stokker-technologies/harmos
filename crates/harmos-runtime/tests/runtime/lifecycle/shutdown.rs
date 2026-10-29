@@ -7,47 +7,18 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::pin::pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-// Third Party Imports
 use tokio::sync::Notify;
 
-// Local Imports
 use crate::runtime::boot::catalog;
 use crate::runtime::probe::{Editor, Sheet};
 use harmos_runtime::state::{Entry, Position, Recorded};
 use harmos_runtime::storage::JournalConsumer;
 use harmos_runtime::{Error, Runtime};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 struct HeldDrain {
     attempts: Arc<AtomicUsize>,

@@ -7,35 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{future::Future, io, sync::mpsc, thread};
-// Third Party Imports
+
 use tokio::{runtime::Builder, sync::oneshot, task::JoinHandle};
 use tracing::Instrument;
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Contextual<F: std::future::Future> {
     future: Option<std::pin::Pin<Box<F>>>,
     dispatcher: tracing::Dispatch,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 trait InContext: std::future::Future + Sized {
     fn in_context(self, dispatcher: tracing::Dispatch) -> Contextual<Self> {
@@ -46,8 +26,6 @@ trait InContext: std::future::Future + Sized {
         self.in_context(tracing::dispatcher::get_default(Clone::clone))
     }
 }
-
-/* === Implementations === */
 
 impl<F: std::future::Future> InContext for F {}
 
@@ -66,8 +44,6 @@ impl<F: std::future::Future> Drop for Contextual<F> {
         tracing::dispatcher::with_default(&self.dispatcher, || drop(self.future.take()));
     }
 }
-
-/* === Public Functions === */
 
 pub fn spawn(name: String, work: impl Future<Output = ()> + Send + 'static) -> io::Result<JoinHandle<()>> {
     let work = work.instrument(tracing::Span::current()).in_current_context();
@@ -96,7 +72,3 @@ pub fn spawn(name: String, work: impl Future<Output = ()> + Send + 'static) -> i
 
     ready.recv().map_err(io::Error::other)?
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

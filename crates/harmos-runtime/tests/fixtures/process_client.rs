@@ -7,31 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
-// Third Party Imports
 
-// Local Imports
 use super::contract;
 use crate::sidecar::witness::Witness;
 use contract::{POLICY, ProbeDeclaration, ReadDeclaration, Readings, Step};
 use harmos_runtime::operations::Host as _;
 use harmos_runtime::operations::OperationPolicy;
 use harmos_runtime::sidecar::{Refusal, Supervisor};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(crate) struct Client {
     resources: Arc<Witness>,
@@ -72,16 +55,10 @@ struct AttemptGuard {
     resources: Arc<Witness>,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 enum Handlers {
     Probe(Probing),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_operations::lifecycle::Policy for Client {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
@@ -156,9 +133,3 @@ impl Drop for AttemptGuard {
         self.resources.mark("probe-finalized");
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

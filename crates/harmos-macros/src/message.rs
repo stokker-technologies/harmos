@@ -7,40 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
 mod composition;
 mod enumeration;
 mod postcard;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
-// Third Party Imports
+
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::{Error, Fields, GenericArgument, Meta, PathArguments, Token, Type, parse::Parser, punctuated::Punctuated, spanned::Spanned};
-// Local Imports
+
 use crate::path::{self, HarmosPath};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(crate) fn declare(attributes: TokenStream, item: TokenStream) -> TokenStream {
     expand(attributes, item).unwrap_or_else(Error::into_compile_error)
@@ -151,8 +128,6 @@ pub(crate) fn portable(item: &syn::Item, harmos: &HarmosPath) -> bool {
         && item.generics.params.is_empty()
         && item.fields.iter().all(|field| common(&field.ty) && encoding(&field.ty, harmos).is_ok())
 }
-
-/* === Private Functions === */
 
 fn described(name: &syn::Ident, fields: TokenStream, extra: TokenStream, harmos: &HarmosPath) -> TokenStream {
     quote! {
@@ -371,8 +346,6 @@ fn common(ty: &Type) -> bool {
     }
     false
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

@@ -7,15 +7,8 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use crate::config::GrpcSettings as Settings;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     collections::BTreeSet,
     convert::Infallible,
@@ -23,24 +16,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-// Third Party Imports
 use tonic::{
     body::Body,
     codegen::{Service, http},
     server::NamedService,
 };
 
-// Local Imports
 use super::{listener, middleware::Middleware};
 use crate::{Application, Error, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub struct GrpcManager {
@@ -62,12 +45,6 @@ struct State {
     middleware: Vec<Arc<dyn Middleware>>,
     closed: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl GrpcManager {
     pub(crate) fn new<A: Application>(operations: &crate::operations::Manager) -> Self {
@@ -223,9 +200,3 @@ impl State {
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

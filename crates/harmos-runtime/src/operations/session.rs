@@ -7,21 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
 
-// Third Party Imports
-
-// Local Imports
 use super::{
     Manager, OperationGeneration, OperationInstanceId, OperationStatus, Running, StreamInput, StreamItem, StreamOutput, StreamSettings,
     stream,
@@ -31,12 +21,6 @@ use crate::supervision::instance::{Instance, Phase};
 use crate::{Error, Refusal, Result};
 use harmos_domain::MemorySize;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 pub type Upload<O> = Session<O, SessionInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>, ()>;
 pub type Download<O> = Session<O, (), SessionOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>>;
 pub type Exchange<O> = Session<
@@ -44,8 +28,6 @@ pub type Exchange<O> = Session<
     SessionInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>,
     SessionOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>,
 >;
-
-/* === Structs === */
 
 #[must_use = "dropping a streaming session requests cancellation"]
 pub struct Session<O: OperationDeclaration, I = (), R = ()> {
@@ -78,12 +60,6 @@ struct Ends {
     input: AtomicBool,
     output: AtomicBool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<O: OperationDeclaration, I, R> Session<O, I, R> {
     pub fn id(&self) -> OperationInstanceId {
@@ -318,10 +294,6 @@ impl super::Caller {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn upload<O: crate::operations::OperationDeclaration>(
     request: O::Request, settings: StreamSettings,
     submit: impl FnOnce(
@@ -419,5 +391,3 @@ async fn ended(control: &Instance) -> Error {
         }
     }
 }
-
-/* === Tests === */

@@ -7,30 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Borrow;
 use std::ops::Deref;
 use std::sync::Arc;
-// Third Party Imports
-// Local Imports
+
 use crate::MemorySize;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /// A retained collection of original typed row pages.
 pub type ReadPages<T> = ReadBatch<Vec<ReadBatch<Vec<T>>>>;
-
-/* === Structs === */
 
 pub struct ReadBatch<T> {
     inner: Arc<ReadOwner<T>>,
@@ -39,12 +23,6 @@ pub struct ReadBatch<T> {
 struct ReadOwner<T> {
     value: T,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<T> ReadBatch<T> {
     pub fn new(value: T) -> Self {
@@ -133,12 +111,6 @@ impl<T: MemorySize> MemorySize for ReadBatch<T> {
             .saturating_add(self.inner.value.memory_size().saturating_sub(std::mem::size_of::<T>()))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

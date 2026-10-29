@@ -9,20 +9,10 @@
 
 // Live Storage Subscriptions
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-// Third Party Imports
-
-// Local Imports
 use super::backend::{ReadLimits, ScanPage};
 use super::capacity::{Attempt, Refusal};
 use super::config::SCAN_ROWS;
@@ -33,15 +23,7 @@ use super::snapshot::Snapshot;
 use super::{StorageCursor, StorageManager};
 use crate::{Error, Result};
 
-/* === Constants === */
-
 static NEXT_FOLLOWER: AtomicU64 = AtomicU64::new(1);
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Follower<T: Entry> {
     context: crate::execution::Context,
@@ -63,17 +45,11 @@ pub(super) struct Following {
     failure: Option<Failure>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy)]
 enum Failure {
     Gap { requested: u64, available: u64 },
     Closed,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.follow.follow", level = "debug", skip_all)]
@@ -285,10 +261,6 @@ impl State {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 // Whether A Matching Queued Entry Follows The Subscription Cursor. Queue
 // Entries Without A Match Advance The Cursor So They Can Be Retired.
 fn find<T: Entry>(state: &mut State, id: u64, selection: &T::Selection) -> Result<bool> {
@@ -353,5 +325,3 @@ fn copy<T: Entry>(state: &mut State, id: u64, selection: &T::Selection, bytes: N
     state.collect();
     Ok((entries, encoded))
 }
-
-/* === Tests === */

@@ -7,23 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "plugin_activation.rs"]
 mod plugin_activation;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-// Third Party Imports
 
-// Local Imports
 use super::cases::Text;
 use super::{Compute, Failed, Lanes, Operations, Owner, Parent, ParentOwner, Request, Response, request};
 use harmos_runtime::operations::{OperationDeclaration, PluginRegistration, WireDeclaration};
@@ -33,15 +24,7 @@ use harmos_runtime::plugin::{
 };
 use harmos_runtime::{Error, Message, Result, operations::OperationManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Backends = PluginBackend<Resources, Resources, Resources>;
-
-/* === Structs === */
 
 #[harmos_runtime::operation(resources = [SelectedOwner], id = "fixture.selected_provider",
     response = String,
@@ -128,12 +111,6 @@ struct Running {
     gate: Arc<tokio::sync::Notify>,
     invocation: harmos_runtime::operations::Running<Compute>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 super::in_process!(Public);
 
@@ -410,10 +387,6 @@ impl Running {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn runtime() -> harmos_runtime::Runtime<super::Bank> {
     runtime_with(|_| {}).await
 }
@@ -544,5 +517,3 @@ fn candidate_with_cleanup() -> PluginDefinitions {
     definition.contributions.operations.push(harmos_runtime::operations::OperationDefinition::of::<CleanupDeclaration>().unwrap());
     PluginDefinitions::new([definition], []).unwrap()
 }
-
-/* === Tests === */

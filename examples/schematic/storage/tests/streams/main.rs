@@ -7,30 +7,13 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "../support/mod.rs"]
 mod support;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io::Write;
-// Third Party Imports
 
-// Local Imports
 use harmos::storage::StreamConsumer;
 use schematic_storage::streams::{JsonlStreams, read_rows};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Model;
 
@@ -46,8 +29,6 @@ struct Columns {
     gap_missed: Option<u64>,
 }
 
-/* === Enums === */
-
 #[harmos::lanes]
 pub enum TestLanes {
     #[default]
@@ -58,10 +39,6 @@ pub enum TestLanes {
 enum Feeds {
     Reading(Reading),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos::Lifecycle for Model {
     type Config = ();
@@ -80,10 +57,6 @@ impl harmos::Application for Model {
     type Streams = Feeds;
     type Lanes = TestLanes;
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[test]
 fn contract_scenario() {
@@ -181,5 +154,3 @@ fn contract_scenario() {
         }
     }
 }
-
-/* === Tests === */

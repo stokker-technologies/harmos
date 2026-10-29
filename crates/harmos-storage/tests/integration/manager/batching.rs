@@ -7,41 +7,25 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-// Third Party Imports
+
 use tracing::instrument::WithSubscriber;
 use tracing::{Instrument, Subscriber};
 use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::{Layer, Registry};
 
-// Local Imports
 use super::{Fixture, config, record, schema, write};
 use harmos_storage::Identifier;
 use harmos_storage::StreamInput;
 use harmos_storage::schema::Cardinality;
 use harmos_storage::schema::graph::{Field, Kind};
 use harmos_storage::state::StateBackend;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Default)]
 struct Capture(Arc<Mutex<Captured>>, Arc<tokio::sync::Notify>);
@@ -66,16 +50,10 @@ struct CapturedSpan {
 
 struct Fields<'a>(&'a mut BTreeMap<String, String>);
 
-/* === Enums === */
-
 enum FlushGate {
     Write,
     Receipt,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl tracing::field::Visit for Fields<'_> {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
@@ -133,10 +111,6 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for Capture {
         self.1.notify_one();
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test(start_paused = true)]
 async fn storage_trace_handoffs() {
@@ -712,8 +686,6 @@ async fn schema_decoding_bounded() {
     }
     f.finish().await;
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn raw_reads_retained() {

@@ -7,34 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_storage::ErasedCatalog;
 pub(crate) use harmos_storage::encoded_size;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{Arc, Mutex};
 
-// Third Party Imports
-
-// Local Imports
 use super::{StorageBackends, StorageSettings};
 use crate::operations::{Manager, resident::Lease};
 use crate::services::{Once, Resident, ServiceContext, ServiceDefinition};
 use crate::supervision::executor;
 use crate::{Application, Error, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct StorageManager<C = ()> {
     engine: harmos_storage::StorageManager<C>,
@@ -45,12 +27,6 @@ struct Worker(harmos_storage::Worker);
 struct Owner {
     leases: Mutex<Vec<Lease>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> Clone for StorageManager<C> {
     fn clone(&self) -> Self {
@@ -144,9 +120,3 @@ impl harmos_storage::WorkerOwner for Owner {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

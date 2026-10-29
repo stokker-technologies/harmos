@@ -7,41 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Error, Expr, FnArg, GenericArgument, LitStr, Meta, Path, PathArguments, Token, Type};
-// Local Imports
+
 use super::contribution::{asynchronous, block, borrowed, declared, parameter, required, returned};
 use super::set_once;
 use crate::path::{self, HarmosPath};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream {
     match expand(attribute, &item) {
@@ -52,8 +27,6 @@ pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream 
         }
     }
 }
-
-/* === Private Functions === */
 
 fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Error> {
     let (harmos, interval, streams, demand_keys, activation, description, id) = arguments(attribute)?;
@@ -294,5 +267,3 @@ fn arguments(attribute: TokenStream) -> Result<(HarmosPath, Expr, Vec<Path>, Vec
 
     Ok((HarmosPath::resolve(harmos_path), interval, streams, demand_keys, activation, description, id))
 }
-
-/* === Tests === */

@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod sheet {
     use harmos_runtime::{state::Invertible, state::Transaction};
     use serde::{Deserialize, Serialize};
@@ -734,36 +732,11 @@ mod unified_plugins {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
-// Third Party Imports
 
-// Local Imports
 use self::sheet::{Change, Erase, Fact, Noted, Rename, Sheet, Studio, Untitled};
 use crate::application::support;
 use harmos_runtime::{Error, Runtime, runtime::Registration, state::Focus, state::Kind, state::Position, state::Transaction};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn product_commits_refuses() {
@@ -941,5 +914,3 @@ async fn studio() -> Runtime<Studio> {
 async fn title(runtime: &Runtime<Studio>) -> String {
     runtime.state.state().read(|sheet| sheet.title.clone()).await.expect("reads are open").value
 }
-
-/* === Tests === */

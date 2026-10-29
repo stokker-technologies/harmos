@@ -7,18 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::sync::{Arc, atomic::Ordering};
-// Third Party Imports
 
-// Local Imports
 use super::{CleanupCapture, closed};
 use crate::storage::support::{Change, Fact, HOUSE, Noted, deposit};
 use crate::storage::{Bank, Data, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history, schema};
@@ -27,15 +18,7 @@ use harmos_runtime::storage::state::RecoverySnapshot;
 use harmos_runtime::storage::{ReadLimits, StorageSettings};
 use harmos_runtime::{Runtime, state::Focus, state::Position, state::PrincipalId, state::RequestKey};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Refusal = &'static str;
-
-/* === Structs === */
 
 struct Store {
     data: Arc<Data>,
@@ -56,8 +39,6 @@ struct Seen {
     before: i64,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::transactions(state = i64, error = Refusal)]
 #[derive(Clone)]
 enum Transactions {
@@ -69,10 +50,6 @@ enum Transactions {
 enum Records {
     Seen(Seen),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Store {
     fn new() -> Self {
@@ -131,10 +108,6 @@ impl harmos_runtime::state::Transaction<i64> for Add {
         *state += self.amount;
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn limits() -> ReadLimits {
     ReadLimits {
@@ -678,5 +651,3 @@ async fn snapshot_releases_unused() {
     runtime.shutdown().await.unwrap();
     assert!(!store.snapshot().payload.is_empty());
 }
-
-/* === Tests === */

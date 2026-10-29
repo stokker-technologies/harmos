@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::future::Future;
@@ -21,11 +14,11 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-// Third Party Imports
+
 use futures_core::Stream;
 use tokio::sync::{mpsc, oneshot, watch};
 use tracing::Instrument;
-// Local Imports
+
 use super::TrackedState;
 use super::entry::{At, Entry, Link, Position, PrincipalId};
 use super::envelope::{Envelope, Recorded};
@@ -35,19 +28,11 @@ use crate::Application;
 use crate::error::Error;
 use crate::supervision::executor::InContext;
 
-/* === Constants === */
-
 const SHARED_PAGE_BYTES: usize = 8 * 1024 * 1024;
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 type Predicate<A> = Arc<dyn Fn(&<A as Application>::Transaction) -> bool + Send + Sync>;
 
 type Step<A, X> = Pin<Box<dyn Future<Output = (Parts<A>, Result<Vec<Entry<X>>, Error>)> + Send>>;
-
-/* === Structs === */
 
 pub struct Origin<S> {
     pub value: S,
@@ -104,8 +89,6 @@ struct Watching<A: Application, X> {
     done: bool,
 }
 
-/* === Enums === */
-
 pub(crate) enum ReadRequest<A: Application> {
     Entries {
         trace: crate::supervision::executor::SpanContext,
@@ -121,8 +104,6 @@ pub(crate) enum ReadRequest<A: Application> {
     },
 }
 
-/* === Traits === */
-
 pub(crate) trait ReplayPayload<A: Application>: Sized {
     fn prepared(&self) -> Option<crate::state::Prepared> {
         None
@@ -133,8 +114,6 @@ pub(crate) trait ReplayPayload<A: Application>: Sized {
         envelope: Envelope<Self>, catalog: Option<&Dispatch<A, Self>>, state: &mut A::State,
     ) -> Result<Option<Recorded<A>>, DecodeError>;
 }
-
-/* === Implementations === */
 
 impl<S> Origin<S> {
     pub fn initial(value: S) -> Self {
@@ -496,8 +475,6 @@ where
     }
 }
 
-/* === Public Functions === */
-
 #[tracing::instrument(target = "harmos::state", name = "state.replay", level = "debug", skip_all)]
 pub(crate) fn replay<A, W>(
     catalog: Option<&Dispatch<A, W>>, recorded: Vec<Envelope<W>>, state: &mut At<A::State>, undos: &mut Undos<A>, inverses: Inverting<A>,
@@ -561,8 +538,6 @@ where
     }
 }
 
-/* === Private Functions === */
-
 async fn next<A, X>(mut parts: Parts<A>) -> (Parts<A>, Result<Vec<Entry<X>>, Error>)
 where
     A: Application,
@@ -593,8 +568,6 @@ where
         }
     }
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

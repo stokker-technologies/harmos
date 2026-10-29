@@ -7,29 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 
-// Local Imports
 use crate::error::SchematicError;
 use crate::state::{NetId, Point, Schematic};
 use harmos::{state::Invertible, state::Transaction};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::transaction(id = "net.route",  inverse = Self)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -37,12 +19,6 @@ pub struct ApplyRoute {
     pub net: NetId,
     pub points: Vec<Point>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Transaction<Schematic> for ApplyRoute {
     type Error = SchematicError;
@@ -70,9 +46,3 @@ impl Invertible<Schematic> for ApplyRoute {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

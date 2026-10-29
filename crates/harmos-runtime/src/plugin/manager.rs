@@ -7,23 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
 mod retirement;
-
-/* === Re-Exports === */
 
 pub use retirement::{PluginCleanup, PluginCleanupStatus};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::sync::{Arc, Mutex};
-// Third Party Imports
+
 use tokio::sync::{broadcast, watch};
-// Local Imports
+
 use super::{
     DispatchError, PluginBackend, PluginCaller, PluginDefinition, PluginDefinitions, PluginEvent, PluginEventKind, PluginEvents,
     PluginFailureClass, PluginGeneration, PluginGraph, PluginKind, PluginScope, PluginState, PluginStatus, ReloadImpact, Router,
@@ -31,19 +24,11 @@ use super::{
 use crate::supervision::cleanup::{Cleanup, Finalize, Resource};
 use crate::{Error, Result};
 
-/* === Constants === */
-
 const EVENTS: usize = 64;
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 type Observer = dyn Fn(&str, Option<PluginStatus>) + Send + Sync;
 type CleanupOwner = Arc<Cleanup<Box<dyn Resource>>>;
 type Stop<G, S, E> = for<'a> fn(&'a PluginDefinition, &'a PluginScope, &'a mut PluginBackend<G, S, E>) -> Finalize<'a>;
-
-/* === Structs === */
 
 pub struct PluginManager<G, S, E> {
     definitions: BTreeMap<String, PluginDefinition>,
@@ -107,8 +92,6 @@ pub struct PluginCleanupFailure {
     pub error: Error,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PluginLifecyclePhase {
     Initialize,
@@ -156,8 +139,6 @@ pub enum PluginFailure {
     },
 }
 
-/* === Traits === */
-
 pub trait PluginLifecycle {
     type Guest: Send + 'static;
     type Sidecar: Send + 'static;
@@ -185,8 +166,6 @@ pub trait PluginLifecycle {
         backend: &mut PluginBackend<Self::Guest, Self::Sidecar, Self::Embedded>,
     ) -> impl Future<Output = Result<()>> + Send;
 }
-
-/* === Implementations === */
 
 impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> Resource for Retiring<G, S, E> {
     fn finalize(&mut self) -> Finalize<'_> {
@@ -992,10 +971,6 @@ impl<G, S, E> Drop for PluginManager<G, S, E> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
 fn remote_failure(failure: crate::operations::FailureKind) -> PluginFailureClass {
     match failure {
@@ -1081,5 +1056,3 @@ fn affected(impact: &ReloadImpact) -> Vec<PluginDefinition> {
     }
     definitions.into_values().collect()
 }
-
-/* === Tests === */

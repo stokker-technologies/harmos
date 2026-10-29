@@ -7,29 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
 
-// Local Imports
 use crate::error::SchematicError;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
@@ -79,8 +62,6 @@ pub struct Schematic {
     pub nets: BTreeMap<NetId, Net>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub enum Rotation {
     #[default]
@@ -90,10 +71,6 @@ pub enum Rotation {
     Half,
     ThreeQuarter,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Point {
     pub const fn new(x: i32, y: i32) -> Self {
@@ -197,9 +174,3 @@ impl Schematic {
         self.nets.get_mut(&net).expect("check refuses a change naming a net that does not exist")
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,22 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
 use std::task::{Context, Poll};
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::OwnedSemaphorePermit;
-// Local Imports
+
 use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::{Manager, OperationInstanceId};
@@ -30,16 +23,8 @@ use crate::operations::OperationDeclaration;
 use crate::supervision::executor;
 use crate::{Error, Refusal, Result, operations::Scope};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Outcome = Pin<Box<dyn Future<Output = Result<Vec<u8>>> + Send>>;
 pub(super) type Dispatch = fn(&Manager, Submission, Source, Option<Parent<'_>>, EncodedInput) -> Result<EncodedInvocation>;
-
-/* === Structs === */
 
 struct Encoded;
 
@@ -74,12 +59,6 @@ pub struct EncodedInvocation {
     pub(super) outcome: Outcome,
     pub(crate) control: Arc<crate::supervision::instance::Instance>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl OperationDeclaration for Encoded {
     type Request = Vec<u8>;
@@ -388,8 +367,6 @@ impl super::Context<'_> {
     }
 }
 
-/* === Public Functions === */
-
 pub(super) fn dispatch_native(
     operations: &Manager, mut submission: Submission, source: Source, parent: Option<Parent<'_>>, input: EncodedInput,
 ) -> Result<EncodedInvocation> {
@@ -469,10 +446,6 @@ pub(super) fn budget(timeout: Duration, submitted: tokio::time::Instant) -> Resu
     }
     Ok(())
 }
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

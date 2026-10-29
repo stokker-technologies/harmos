@@ -8,9 +8,6 @@
 
 """Prepare Only The Project Fixture Inputs Consumed By The Selected Rust Lane"""
 
-# === Imports === #
-
-# Standard Library Imports
 import argparse
 import json
 import os
@@ -20,23 +17,9 @@ import sys
 import tomllib
 from pathlib import Path
 
-# Third Party Imports
 
-# Local Imports
 from ..build.fixtures import ROOT
 from ..build import paths
-
-# Type Checking Imports
-
-# === Public Exports === #
-
-# === Constants === #
-
-# === Types === #
-
-# === Classes === #
-
-# === Public Functions === #
 
 
 def main(arguments: list[str] | None = None) -> None:
@@ -103,17 +86,12 @@ def main(arguments: list[str] | None = None) -> None:
         path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
-# === Private Functions === #
-
-
 def _input(fixtures: Path, relative: str) -> Path:
     path = (fixtures / relative).resolve()
     if not path.is_relative_to(fixtures.parent.resolve()):
         sys.exit(f"fixture input escapes its profile and native target: {relative}")
     return path
 
-
-# === Entry Point === #
 
 if __name__ == "__main__":
     main()

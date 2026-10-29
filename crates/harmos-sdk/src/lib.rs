@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 mod error;
 pub mod lifecycle;
 pub mod setup;
@@ -30,8 +28,6 @@ pub mod __private {
     pub use harmos_domain::__private::*;
 }
 
-/* === Re-Exports === */
-
 pub use harmos_domain::*;
 pub use lifecycle::Lifecycle;
 pub use operations::{
@@ -45,31 +41,4 @@ pub use setup::Setup;
 #[cfg(feature = "derive")]
 pub use harmos_macros::{runtime_catalog as catalog, runtime_operation as operation};
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 extern crate self as harmos;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

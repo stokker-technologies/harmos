@@ -7,37 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use support::{Change, Refusal, VAULT, alice, bob, deposit, deposit_to, ledger, runtime, withdraw};
-// Local Imports
+
 use crate::state::support;
 use harmos_runtime::{Error, state::At, state::Focus, state::Position, state::Reversals};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn conflicting_undo_refused() {
@@ -198,5 +171,3 @@ async fn available(runtime: &harmos_runtime::Runtime<support::Bank>, scope: Focu
 fn only(account: support::Account) -> Focus<support::Bank> {
     Focus::matching(move |change: &Change| support::account(change) == Some(account))
 }
-
-/* === Tests === */

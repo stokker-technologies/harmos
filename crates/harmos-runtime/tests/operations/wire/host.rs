@@ -7,20 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-// Third Party Imports
 
-// Local Imports
 use super::Lanes;
 use super::cases::Text;
 use harmos_domain::inventory::contracts::Required;
@@ -32,15 +23,7 @@ use harmos_runtime::plugin::{
 };
 use harmos_runtime::{Error, Message, Result, operations::OperationManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Backends = PluginBackend<Resources, Resources, Resources>;
-
-/* === Structs === */
 
 #[harmos_runtime::operation(resources = [Owner], id = "fixture.host_control",
     response = String,
@@ -77,16 +60,10 @@ struct Host {
     callers: BTreeMap<String, PluginCaller>,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 enum Controls {
     ControlDeclaration(ControlDeclaration),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[harmos_runtime::operation(codec = manual, resources = [CoreOwner, harmos_runtime::operations::HostContext], id = "host.publish", response = (),
     policy = <harmos_operations::streams::Publish as OperationDeclaration>::POLICY, visibility = Public)]
@@ -221,10 +198,6 @@ impl PluginLifecycle for Host {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn definitions(revision: &str) -> PluginDefinitions {
     let provider = PluginDefinition {
         id: "provider".into(),
@@ -276,8 +249,6 @@ async fn runtime_with_resources(
     })
     .await
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn host_requirements_route() {

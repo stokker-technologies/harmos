@@ -7,51 +7,27 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
-// Third Party Imports
-
-// Local Imports
 use super::Ledger;
 use super::{assembly, service_status, support::Bank};
 use harmos_runtime::{
     Runtime, services::Resident, services::ServiceExit, services::ServiceStatus, state::FactSource, state::Position, state::SystemFact,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 struct MutableAdapter {
     attempts: usize,
     exits: tokio::sync::mpsc::UnboundedReceiver<AdapterExit>,
 }
 
-/* === Enums === */
-
 enum AdapterExit {
     Environmental,
     Application,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Resident<Bank> for MutableAdapter {
     type Error = std::io::Error;
@@ -72,10 +48,6 @@ impl Resident<Bank> for MutableAdapter {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn work_facts(runtime: &Runtime<Bank>) -> Vec<SystemFact> {
     runtime
         .state
@@ -86,8 +58,6 @@ async fn work_facts(runtime: &Runtime<Bank>) -> Vec<SystemFact> {
         .filter(|fact| matches!(fact.source, FactSource::Work(_)))
         .collect()
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn never_restart_preserves_failure() {

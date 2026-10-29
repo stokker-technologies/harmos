@@ -9,35 +9,17 @@
 
 // Externally Supplied Runtime, Storage, Transport And Tooling Settings.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use harmos_domain::config::*;
 
-/* === Imports === */
-
-// Standard Library Imports
 #[cfg(feature = "plugin-guest")]
 use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
 #[cfg(any(feature = "grpc", feature = "plugin"))]
 use std::time::Duration;
 
-// Third Party Imports
-
-// Local Imports
 pub use crate::storage::config::{StorageRequestSettings, StorageResponseSettings, StorageSettings};
 pub use crate::storage::state::StorageStateSettings;
 use crate::{Error, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[cfg(feature = "grpc")]
 #[derive(Clone, Copy, Debug)]
@@ -135,12 +117,6 @@ pub struct PluginGuestSettings {
     pub tables: NonZeroUsize,
     pub instances: NonZeroUsize,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[cfg(feature = "plugin")]
 impl Default for PluginRestartSettings {
@@ -301,9 +277,3 @@ impl Default for OperationSettings {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

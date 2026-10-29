@@ -7,42 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::UNIX_EPOCH;
 
-// Third Party Imports
 use sha2::{Digest, Sha256};
 
-// Local Imports
 use super::{RecordInput, RecordWrite, StorageCursor, StorageManager};
 use crate::storage::MutationId;
 use crate::{Error, Identifier, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy)]
 pub(super) struct Mutation<'a> {
     pub(super) id: &'a MutationId,
     pub(super) fingerprint: [u8; 32],
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.admissions.write_schema_once", level = "debug", skip_all)]
@@ -76,10 +53,6 @@ impl<C> StorageManager<C> {
         .await
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 // Called After Shared Schema Preflight Has Bounded The Finite Definition Table.
 pub(super) fn schema_mutation<'a>(
@@ -171,5 +144,3 @@ fn hash_record(hash: &mut Sha256, record: &RecordWrite<'_>) {
     }
     part(hash, record.payload);
 }
-
-/* === Tests === */

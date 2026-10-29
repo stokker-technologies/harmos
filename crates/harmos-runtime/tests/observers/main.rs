@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[cfg(feature = "plugin-sidecar")]
 #[path = "../observers/execution.rs"]
 mod execution;
@@ -28,19 +26,14 @@ mod registration;
 mod pending;
 use crate::support;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::Semaphore;
-// Local Imports
+
 use harmos_runtime::observers::{ObserverActivation, ObserverBackend, ObserverDefinition};
 use harmos_runtime::operations::resident::{Activation, Definition, Key, Kind};
 use harmos_runtime::operations::{OperationManager, OperationOutcome, OperationPhase, Running};
@@ -48,8 +41,6 @@ use harmos_runtime::operations::{OperationManager, OperationOutcome, OperationPh
 use harmos_runtime::sidecar::{ActivationId, Activity, ObserverError};
 use harmos_runtime::{Error, Runtime};
 use support::{Bank, Ledger, catalog};
-
-/* === Constants === */
 
 const STARTING: &[OperationPhase] = &[OperationPhase::Queued, OperationPhase::Initializing];
 
@@ -59,13 +50,7 @@ const STOPPING: &[OperationPhase] = &[OperationPhase::Stopping, OperationPhase::
 
 const STOPPED: &[OperationPhase] = &[OperationPhase::Stopped];
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Lease = Running<Activation>;
-
-/* === Structs === */
 
 struct FinalPublication(harmos_runtime::state::StateManager<Bank>);
 
@@ -102,8 +87,6 @@ struct Observing {
     activity: Option<Activity>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy)]
 enum Mode {
     Cooperative,
@@ -111,10 +94,6 @@ enum Mode {
     Failed,
     Panicked,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Control {
     fn new() -> Arc<Self> {
@@ -284,10 +263,6 @@ impl Drop for Observing {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[cfg(feature = "plugin-sidecar")]
 fn observer_context<T: Send + Sync + 'static>(value: Arc<T>) -> Arc<harmos_sdk::ExecutionContext> {
@@ -688,5 +663,3 @@ async fn closing_preserves_failure() {
     assert!(matches!(runtime.shutdown().await, Err(Error::TaskFailed { domain: "observer", .. })));
     assert!(runtime.operations.resident(&key).unwrap().failure.is_some());
 }
-
-/* === Tests === */

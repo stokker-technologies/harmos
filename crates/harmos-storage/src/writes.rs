@@ -7,33 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod convert;
 mod decoded;
-
-/* === Re-Exports === */
 
 pub use decoded::DecodedBatch;
 pub use harmos_domain::model::storage::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
-// Third Party Imports
-// Local Imports
+
 use super::{SchemaKey, StorageCursor};
 use crate::MemorySize;
 use crate::schema::graph::Schema;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StorageSchema {
@@ -41,12 +25,6 @@ pub struct StorageSchema {
     pub key: SchemaKey,
     pub schema: Arc<Schema>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl MemorySize for StorageSchema {
     fn memory_size(&self) -> usize {
@@ -62,9 +40,3 @@ impl StorageSchema {
         Self { position, key, schema: schema.into() }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

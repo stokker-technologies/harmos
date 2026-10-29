@@ -7,34 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-// Third Party Imports
 
-// Local Imports
 use super::{CleanupCapture, closed};
 use crate::storage::support::{Change, Fact, HOUSE, Noted, deposit};
 use crate::storage::{Bank, Data, Ledger, Recovery, Runtime, StorageBackends, StorageManager, catalog, config, history};
 use harmos_runtime::storage::{ReadLimits, StorageSettings};
 use harmos_runtime::{state::Focus, state::Position, state::PrincipalId, state::RequestKey};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Refusal = &'static str;
-
-/* === Structs === */
 
 struct Model;
 
@@ -55,8 +38,6 @@ struct Store {
     recovery: Arc<Recovery>,
 }
 
-/* === Enums === */
-
 #[harmos_runtime::transactions(state = i64, error = Refusal)]
 #[derive(Clone)]
 enum Transactions {
@@ -68,10 +49,6 @@ enum Transactions {
 enum Records {
     Seen(Seen),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[harmos_runtime::lanes]
 pub enum ModelLanes {
@@ -146,10 +123,6 @@ impl Store {
         .unwrap()
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn limits() -> ReadLimits {
     ReadLimits {
@@ -627,5 +600,3 @@ async fn commits_skip_save() {
         assert_eq!(storage.status().pending_bytes, 0);
     }
 }
-
-/* === Tests === */

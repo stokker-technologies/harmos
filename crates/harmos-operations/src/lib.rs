@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[cfg(feature = "runtime")]
 mod error;
 pub mod host;
@@ -27,8 +25,6 @@ pub mod __private {
     pub use harmos_sdk::__private::RegistrationBatch;
 }
 
-/* === Re-Exports === */
-
 #[cfg(feature = "runtime")]
 pub use error::Error;
 pub use harmos_domain::*;
@@ -41,18 +37,10 @@ pub use lifecycle::Lifecycle;
 pub use storage::Storage;
 pub use streams::Streams;
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 extern crate self as harmos;
 
-// Local Imports
 #[cfg(feature = "runtime")]
 use harmos_sdk::__private::RegistrationBatch;
-
-/* === Constants === */
 
 #[cfg(feature = "runtime")]
 static BUILTIN_DECLARATIONS: [catalog::Node<operations::WireDeclaration>; 6] = [
@@ -72,22 +60,10 @@ static BUILTIN_CALLEES: [catalog::Node<&'static [operations::WireDeclaration]>; 
     catalog::Node::Nested(Streams::CATALOG.callees),
 ];
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 #[cfg(feature = "runtime")]
 pub type Result<T> = std::result::Result<T, Error>;
 
-/* === Structs === */
-
 pub struct Builtins;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Builtins {
     pub fn catalog() -> Vec<harmos_domain::OperationDefinition> {
@@ -116,9 +92,3 @@ impl harmos_sdk::operations::OperationCatalog for Builtins {
         batch
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

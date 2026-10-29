@@ -7,36 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::spanned::Spanned;
 use syn::{Error, FnArg, ImplItem, ImplItemFn, ItemImpl, ReturnType, Type};
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub(crate) fn block(item: TokenStream, verb: &str) -> Result<ItemImpl, Error> {
     let block: ItemImpl = syn::parse2(item)?;
@@ -99,7 +73,3 @@ pub(crate) fn borrowed(declared: &Type, what: &str) -> Result<Type, Error> {
         other => Err(Error::new(other.span(), format!("{what} is borrowed: write `&{}`", other.to_token_stream()))),
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

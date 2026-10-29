@@ -7,29 +7,20 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "operation_lifecycle.rs"]
 mod operation_lifecycle;
 
 #[path = "streams.rs"]
 mod streams;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
-// Third Party Imports
 use tokio::sync::Notify;
 
-// Local Imports
 use super::assembly;
 use crate::sidecar::support::Bank;
 use harmos_runtime::operations::Host as _;
@@ -43,22 +34,14 @@ use harmos_runtime::sidecar::{Attach, Attached, Notice, Supervised};
 
 use super::SampleProjection;
 
-/* === Constants === */
-
 const CAPACITY: usize = 2;
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
 static SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<Counts>>> = Mutex::new(std::collections::BTreeMap::new());
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 type RetirementGate = Arc<Mutex<Option<(Arc<Notify>, Arc<Notify>)>>>;
 type Source = Advertised<harmos_sidecar::PluginNative<Endpoint>>;
 pub(crate) type Resident<A> = Supervised<Bank, A, fn(&ServiceContext<Bank>, Notice)>;
 type Backends<A> = PluginBackend<(), Backend<A>, ()>;
-
-/* === Structs === */
 
 #[derive(Default)]
 struct Counts {
@@ -169,8 +152,6 @@ pub(crate) struct Managed<A: Attach> {
 
 pub(crate) struct Calling(pub(crate) harmos_runtime::operations::EncodedInvocation);
 
-/* === Enums === */
-
 pub(crate) use super::support::Lanes;
 
 #[harmos_runtime::catalog]
@@ -181,10 +162,6 @@ enum Operations {
     Download(streams::DownloadDeclaration),
     Exchange(streams::ExchangeDeclaration),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Drop for Seed {
     fn drop(&mut self) {
@@ -669,8 +646,6 @@ impl<S: Attach> Attach for Advertised<S> {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn inspected<A: Attach>(source: &A, configuration: Vec<u8>) -> PluginDefinitions {
     PluginDefinitions::new([definition(source, configuration)], []).unwrap()
 }
@@ -694,8 +669,6 @@ pub(crate) fn definition<A: Attach>(source: &A, configuration: Vec<u8>) -> Plugi
         },
     }
 }
-
-/* === Private Functions === */
 
 fn notices(_: &ServiceContext<Bank>, _: Notice) {}
 
@@ -768,5 +741,3 @@ fn source(counts: Arc<Counts>) -> Source {
         seed: Arc::new(Seed { id }),
     }
 }
-
-/* === Tests === */

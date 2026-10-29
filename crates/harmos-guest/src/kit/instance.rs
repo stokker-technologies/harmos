@@ -11,19 +11,9 @@
 // Unary operations support submit with status, cancel and join; streaming
 // sessions are not available to guests yet.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::marker::PhantomData;
 
-// Third Party Imports
-
-// Local Imports
 use super::UNKNOWN;
 use super::context::Context;
 use crate::OperationRefusal;
@@ -35,14 +25,6 @@ use harmos_sdk::operations::{
     WireChildControl,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[must_use = "dropping an unsettled operation instance requests its cancellation"]
 pub struct OperationInstance<O> {
     host: Context,
@@ -50,12 +32,6 @@ pub struct OperationInstance<O> {
     released: bool,
     _operation: PhantomData<fn() -> O>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Context {
     async fn child(&self, payload: Vec<u8>) -> Result<Vec<u8>, OperationRefusal> {
@@ -252,9 +228,3 @@ impl Host for Context {
         Ok(Response::new(response))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

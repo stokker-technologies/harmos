@@ -7,17 +7,8 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
-// Third Party Imports
 
-// Local Imports
 #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 use super::Binding;
 use super::Manager;
@@ -41,15 +32,7 @@ use crate::plugin::PluginScope;
 use crate::Error;
 use crate::{Result, operations::Lane};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type BindCatalog = dyn Fn(&Manager) -> Result<()> + Send + Sync;
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub struct Registration<L: Lane> {
@@ -84,15 +67,9 @@ pub struct PluginRegistration {
     entries: Vec<Arc<Entry>>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub(crate) trait RegistrationExt {
     fn lane<L: Lane>(self, lane: L) -> Registration<L>;
 }
-
-/* === Implementations === */
 
 impl<L: Lane> Registration<L> {
     pub fn new(lane: L) -> Self {
@@ -321,9 +298,3 @@ impl Drop for PluginRegistration {
         // reservation prunes settled tombstones; runtime shutdown drains all.
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

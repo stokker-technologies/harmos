@@ -9,34 +9,13 @@
 
 // Shared Application And Plugin Lifecycle
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use crate::setup::{ApplicationConfiguration, SetupConfiguration};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 
-// Third Party Imports
 use serde::de::DeserializeOwned;
 
-// Local Imports
 use crate::setup::Setup;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
 
 pub trait Context: Clone + Send + Sync + 'static {
     #[doc(hidden)]
@@ -59,11 +38,3 @@ pub trait Lifecycle: Sized + Send + 'static {
         async { Ok(()) }
     }
 }
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

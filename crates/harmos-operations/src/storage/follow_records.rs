@@ -7,16 +7,8 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
-// Third Party Imports
-// Local Imports
+
 use harmos_domain::model::storage::codec::{Nested, Optional, product};
 use harmos_domain::model::storage::{RecordSelection, StorageCursor, StoredRecord};
 use harmos_domain::schema::declaration::{Field, Kind};
@@ -25,18 +17,10 @@ use harmos_domain::{MemorySize, MessageError};
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(FollowBoundaries {
     saved: Nested<StorageCursor> => 1,
     accepted: Nested<StorageCursor> => 2,
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
     id = "storage.follow_records",
@@ -58,17 +42,11 @@ pub struct FollowBoundaries {
     pub accepted: StorageCursor,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum Followed {
     Boundaries(FollowBoundaries),
     Record(StoredRecord),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 product!(FollowRecords {
     after: Optional<Nested<StorageCursor>> => 1,
@@ -185,12 +163,6 @@ impl Followed {
 mod execution {
     use super::*;
 
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-
     use harmos_sdk::operations::Operation;
 
     use harmos_storage::{StorageCursor, StoredRecord};
@@ -222,9 +194,3 @@ mod execution {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

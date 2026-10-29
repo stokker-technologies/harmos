@@ -9,33 +9,16 @@
 
 // Retain Every Partial Startup Owner Through Cleanup Retry
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 
-// Third Party Imports
 use tokio::sync::Notify;
 
-// Local Imports
 use crate::runtime::probe::Editor;
 use crate::storage::fixture::{Data, Recovery, StorageBackends, StorageManager, config, history};
 use harmos_runtime::runtime::{BootstrapCleanup, BootstrapStatus};
 use harmos_runtime::services::ServiceContext;
 use harmos_runtime::{Application, Lifecycle, Runtime, Setup, Startup, StartupError};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Default)]
 struct Probe {
@@ -59,8 +42,6 @@ struct App(Arc<Probe>);
 struct InitializingApp(Arc<Probe>);
 struct State(Arc<Probe>);
 
-/* === Enums === */
-
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 enum Failure {
     #[error("controlled initialization failure")]
@@ -69,10 +50,6 @@ enum Failure {
     #[error("controlled stop failure")]
     Stop,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Application for App {
     type Lanes = <Editor as Application>::Lanes;
@@ -166,12 +143,6 @@ impl Drop for State {
         self.0.state_released.notify_one();
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[tokio::test]
 async fn partial_cleanup_retry() {

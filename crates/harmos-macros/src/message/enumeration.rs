@@ -7,37 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
-// Third Party Imports
+
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
 use syn::{Error, Fields, ItemEnum, spanned::Spanned};
-// Local Imports
+
 use super::{encoding, tag};
 use crate::path::HarmosPath;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 // A Message Enum Is A Oneof: Each Variant Selects One Payload Shape Whose Fields
 // Are The Variant's Fields. Payload Shapes Are Unit Markers Carrying Only Their
@@ -186,7 +163,3 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool, s
         };
     })
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

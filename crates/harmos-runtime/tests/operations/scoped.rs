@@ -7,40 +7,23 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
-// Third Party Imports
 use tokio::sync::Notify;
 
-// Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Runtime, operations::Lane};
-
-/* === Constants === */
 
 const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Trace {
     lane: &'static str,
@@ -55,8 +38,6 @@ struct Trace {
 struct FreeGuard {
     trace: Arc<Trace>,
 }
-
-/* === Enums === */
 
 #[harmos_runtime::message]
 enum Mode {
@@ -87,10 +68,6 @@ enum Operations {
     BoundContractDeclaration(BoundContractDeclaration),
     FreeContractDeclaration(FreeContractDeclaration),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos_runtime::Operation for ParentContractDeclaration {
     type Error = Error;
@@ -172,10 +149,6 @@ impl Drop for FreeGuard {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace {
         lane: parent_lane.name(),
@@ -196,8 +169,6 @@ async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
     runtime.operations.register::<super::Single<FreeContractDeclaration>>(Lanes::Open).await.unwrap();
     (runtime, trace)
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn ancestor_cycles_rejected() {

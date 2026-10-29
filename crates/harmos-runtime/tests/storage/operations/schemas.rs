@@ -7,17 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::num::{NonZeroU32, NonZeroUsize};
 
-// Third Party Imports
 use harmos_operations::storage::Query;
 use harmos_runtime::Identifier;
 use harmos_runtime::schema::Cardinality;
@@ -25,26 +17,7 @@ use harmos_runtime::schema::graph::{Field, Kind, Schema};
 use harmos_runtime::storage::query::{QueryArrow, RowSlice, SchemaSelection, Source};
 use harmos_runtime::storage::{MutationId, SchemaInput, SchemaKey};
 
-// Local Imports
 use super::{Fixture, Lanes, config};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn schema(name: &str) -> SchemaInput {
     SchemaInput::new(
@@ -95,8 +68,6 @@ async fn setup() -> Fixture {
     f.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     f
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn schema_registry_roundtrip() {

@@ -7,27 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
-// Third Party Imports
 
-// Local Imports
 use super::{Error, Host, Registration};
 use crate::{Application, Runtime, state::Never};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Collection;
 
@@ -41,12 +24,6 @@ struct Cleanup {
     runtime: Option<Runtime<Collection>>,
     executor: tokio::runtime::Handle,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl crate::Lifecycle for Collection {
     type Config = ();
@@ -78,8 +55,6 @@ impl Drop for Cleanup {
         }
     }
 }
-
-/* === Public Functions === */
 
 // Validate a guest's catalog registrations, sorted by namespace: at most 256
 // distinct artifact namespaces with nonzero schemas, 16 MiB in total.
@@ -130,10 +105,6 @@ pub async fn registrations(bytes: &[u8]) -> Result<Vec<Registration>, Error> {
     result
 }
 
-/* === Private Functions === */
-
 fn invalid(message: &str) -> Error {
     Error::Guest { message: message.to_owned() }
 }
-
-/* === Tests === */

@@ -9,29 +9,10 @@
 
 // Plugin Owner Admission And Authority
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
 use harmos_runtime::operations::{OperationDeclaration, Registration, WireDeclaration};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type PublicBackends = PluginBackend<PublicActivation, PublicActivation, PublicActivation>;
-
-/* === Structs === */
 
 struct PublicHost {
     operations: OperationManager<Lanes>,
@@ -65,12 +46,6 @@ struct RestrictedCaller;
 
 #[harmos_runtime::operation(id = "owners.private_call", operations = [RootPrivate], policy = harmos_runtime::builtins::host::POLICY)]
 struct PrivateCaller;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl PluginLifecycle for PublicHost {
     type Guest = PublicActivation;
@@ -156,12 +131,6 @@ impl harmos_runtime::Operation for PrivateCaller {
         Ok(().into())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[tokio::test]
 async fn host_owner_admission() {

@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod optional {
     use super::*;
 
@@ -21,23 +19,9 @@ pub mod optional {
     }
 }
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::{Duration, SystemTime as Timestamp, UNIX_EPOCH};
-// Third Party Imports
+
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -48,12 +32,6 @@ pub struct Wire {
     #[serde(default, skip_serializing_if = "is_false")]
     pub(crate) before_epoch: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl From<Timestamp> for Wire {
     fn from(value: Timestamp) -> Self {
@@ -89,12 +67,6 @@ impl Wire {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn is_false(value: &bool) -> bool {
     !*value
 }
-
-/* === Tests === */

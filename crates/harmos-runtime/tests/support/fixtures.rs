@@ -10,39 +10,13 @@
 // Locate The Fixtures The One Build Stamped And The Package Binaries Nextest Exposes
 #![allow(dead_code)]
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::OnceLock;
 
-// Third Party Imports
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn command(program: impl AsRef<OsStr>) -> Command {
     let command = Command::new(program);
@@ -149,8 +123,6 @@ pub fn protoc() -> PathBuf {
     package.join("bin").join(executable)
 }
 
-/* === Private Functions === */
-
 fn directory() -> PathBuf {
     if let Some(path) = std::env::var_os("HARMOS_FOCUSED_FIXTURES") {
         let path = PathBuf::from(path);
@@ -208,5 +180,3 @@ fn resolve(path: &str) -> PathBuf {
     let path = PathBuf::from(path);
     if path.is_absolute() { path } else { directory().join(path) }
 }
-
-/* === Tests === */

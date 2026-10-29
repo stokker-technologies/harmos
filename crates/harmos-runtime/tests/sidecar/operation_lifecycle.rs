@@ -9,38 +9,7 @@
 
 // Exercise Authored Operation Admission, Child Ownership And Cleanup.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[tokio::test]
 async fn catalog_mismatch_refused() {
@@ -245,5 +214,3 @@ async fn grpc_original_owner() {
     fixture.runtime.shutdown().await.unwrap();
     assert_eq!(counts.cleaned.load(Ordering::SeqCst), 1);
 }
-
-/* === Tests === */

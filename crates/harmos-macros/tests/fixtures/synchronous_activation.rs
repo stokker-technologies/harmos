@@ -8,37 +8,12 @@
  */
 
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 // An observer's instance opens by awaiting whatever it opens, so a synchronous
 // `initialize` is refused where it is written rather than at the trait boundary.
 
 
 pub struct Level;
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 #[harmos::observer(interval_ms = 100)]
 impl Level {
@@ -51,10 +26,5 @@ impl Level {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn main() {}
-
-/* === Tests === */

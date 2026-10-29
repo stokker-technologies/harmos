@@ -9,31 +9,16 @@
 
 // Generate A Pure Python Producer Package From Verified Contract Artifacts.
 
-/* === Modules === */
-
 mod package;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
 };
-// Third Party Imports
+
 use semver::Version;
-// Local Imports
+
 use crate::proto::{Artifacts, ExportError};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Catalog<'a> {
     pub contracts: &'a [harmos_domain::operations::Contract],
@@ -52,8 +37,6 @@ pub struct Settings {
     // An Empty Selection Exports Every Contract; Every Selected Contract Must Have gRPC.
     pub operations: Vec<String>,
 }
-
-/* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -94,10 +77,6 @@ pub enum Error {
     Io(#[from] std::io::Error),
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl Settings {
     fn validate(&self) -> Result<(), Error> {
         if !identifier(&self.module) || self.module.starts_with('_') {
@@ -119,8 +98,6 @@ impl Settings {
         Ok(())
     }
 }
-
-/* === Public Functions === */
 
 // Export Standard Protobuf Classes, Stubs And Typed Descriptors Into A New Package Root.
 //
@@ -159,8 +136,6 @@ pub fn generate(catalog: Catalog<'_>, output: &Path) -> Result<PathBuf, Error> {
     let artifacts = Artifacts::new(&selected)?;
     package::export(&artifacts, &selected, settings, output, protoc)
 }
-
-/* === Private Functions === */
 
 fn identifier(value: &str) -> bool {
     let mut bytes = value.bytes();
@@ -231,5 +206,3 @@ fn python_version(version: &Version) -> Result<String, Error> {
     }
     Ok(result)
 }
-
-/* === Tests === */

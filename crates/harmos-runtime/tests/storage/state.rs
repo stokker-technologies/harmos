@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "state/admission.rs"]
 mod admission;
 #[path = "state/boot.rs"]
@@ -25,24 +23,6 @@ mod managed;
 mod reconcile;
 #[path = "state/snapshots.rs"]
 mod snapshots;
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Default)]
 struct CleanupCapture(std::sync::Arc<std::sync::OnceLock<harmos_runtime::runtime::BootstrapCleanup>>);
@@ -64,21 +44,9 @@ fn incompatible(error: harmos_runtime::StartupError) -> harmos_runtime::runtime:
     }
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 // A Dropped Boot Joins Its Cleanup Before Storage Reports Closed.
 async fn closed(storage: &harmos_runtime::storage::StorageManager, cleanup: &harmos_runtime::runtime::BootstrapCleanup) {
     cleanup.wait().await.unwrap();
     let status = storage.status();
     assert!(status.closed && !status.running);
 }
-
-/* === Tests === */

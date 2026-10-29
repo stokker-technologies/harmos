@@ -8,34 +8,19 @@
 
 """Typed Operation Descriptors And Structural Transport Boundaries"""
 
-# === Imports === #
-
-# Standard Library Imports
 import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-# Third Party Imports
 from google.protobuf.message import Message
-
-# Local Imports
-
-# Type Checking Imports
-
-# === Public Exports === #
-
-# === Constants === #
 
 # Supplied From The Domain Identity Alphabet During Export.
 OWNER_INITIAL = "__HARMOS_OWNER_INITIAL__"
 OWNER_EXTRA = "__HARMOS_OWNER_EXTRA__"
 
-# === Types === #
 
 Mode = Literal["unary", "client_stream", "server_stream", "bidi"]
-
-# === Classes === #
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,9 +97,6 @@ class Invoker(Protocol):
     ) -> ResponseStream[Response, Output]: ...
 
 
-# === Public Functions === #
-
-
 def owner_segment(value: str) -> bool:
     return (
         bool(value)
@@ -124,8 +106,3 @@ def owner_segment(value: str) -> bool:
             for character in value[1:]
         )
     )
-
-
-# === Private Functions === #
-
-# === Entry Point === #

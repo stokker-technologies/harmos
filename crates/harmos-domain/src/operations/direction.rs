@@ -10,40 +10,18 @@
 // One Stream Direction Of An Operation: `Stream<T>` Carries Items Of `T`;
 // `NoStream` Is The Uninhabited Item Of A Direction The Operation Does Not Use.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::any::TypeId;
 use std::marker::PhantomData;
 
-// Third Party Imports
-
-// Local Imports
 use crate::schema::Described;
 use crate::schema::declaration::Definition;
 use crate::schema::graph::Field;
 use crate::{MemorySize, MessageError};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 pub struct Stream<T>(PhantomData<fn() -> T>);
-
-/* === Enums === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NoStream {}
-
-/* === Traits === */
 
 pub trait Direction: Send + Sync + 'static {
     type Item: crate::Portable;
@@ -57,8 +35,6 @@ pub trait Direction: Send + Sync + 'static {
         Self::STREAMED.then(TypeId::of::<Self::Item>)
     }
 }
-
-/* === Implementations === */
 
 impl<T: crate::Portable> Direction for Stream<T> {
     type Item = T;
@@ -99,17 +75,11 @@ impl crate::__private::PostcardValue for NoStream {
     }
 }
 
-/* === Public Functions === */
-
 // The Item Types An Operation Streams, Input Then Output.
 pub fn item_types<O: super::OperationDeclaration>() -> (Option<TypeId>, Option<TypeId>) {
     (<O::Input as Direction>::item_type(), <O::Output as Direction>::item_type())
 }
 
-/* === Private Functions === */
-
 fn absent() -> MessageError {
     MessageError::borrowed("the operation streams no items in this direction")
 }
-
-/* === Tests === */

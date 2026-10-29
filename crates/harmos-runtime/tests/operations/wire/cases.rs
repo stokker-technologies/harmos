@@ -7,23 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{Arc, atomic::Ordering};
 use std::time::Duration;
-// Third Party Imports
 
-// Local Imports
 use super::{Failed, Lanes, Owner};
 use harmos_runtime::operations::{Backoff, CacheKey, FailureKind, Jitter, OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Message, Refusal};
-
-/* === Constants === */
 
 const ECHO_POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
@@ -47,8 +36,6 @@ const CODEC_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
 
 thread_local! {
     static DECODE_HOOK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
@@ -119,10 +106,6 @@ macro_rules! scripted_codec {
     )*};
 }
 
-/* === Type Aliases === */
-
-/* === Structs === */
-
 #[harmos_runtime::operation(resources = [Owner, harmos_runtime::operations::HostContext], id = "fixture.echo",
     response = String,
     visibility = Public,
@@ -187,8 +170,6 @@ pub(super) struct Text {
 
 pub(super) struct Destination(pub &'static str);
 
-/* === Enums === */
-
 #[harmos_runtime::catalog]
 pub(super) enum Leaves {
     EchoDeclaration(EchoDeclaration),
@@ -211,10 +192,6 @@ pub(super) enum Operations {
     #[nested]
     Group(Group),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl From<String> for Text {
     fn from(value: String) -> Self {
@@ -363,10 +340,6 @@ impl harmos_runtime::Operation for DetachedDeclaration {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn runtime_with_owner(owner: Arc<Owner>) -> harmos_runtime::Runtime<crate::operations::support::Bank> {
     crate::operations::fixture::runtime_with(|setup| {
         setup.overrides(|setup| {
@@ -492,5 +465,3 @@ async fn cancellation_joins_child() {
     assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

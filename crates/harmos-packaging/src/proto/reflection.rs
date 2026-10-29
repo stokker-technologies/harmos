@@ -7,20 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 pub use prost_reflect::{DynamicMessage, MessageDescriptor, ReflectMessage, Value};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::mem::size_of;
 
-// Third Party Imports
 use prost_reflect::{
     DescriptorPool,
     prost_types::{
@@ -28,11 +20,9 @@ use prost_reflect::{
         field_descriptor_proto::{Label, Type},
     },
 };
-// Local Imports
+
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::{Cardinality, graph};
-
-/* === Constants === */
 
 const RESERVED_FIELDS: &[&str] = &[
     "ByteSize",
@@ -59,14 +49,6 @@ const RESERVED_FIELDS: &[&str] = &[
     "WhichOneof",
 ];
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("invalid protobuf package name")]
@@ -78,12 +60,6 @@ pub enum Error {
     #[error(transparent)]
     Descriptor(#[from] prost_reflect::DescriptorError),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn descriptor_schema(schema: &graph::Schema, package: &str, settings: &SchemaSettings) -> Result<MessageDescriptor, Error> {
     descriptor_root(schema, schema.root, package, settings)
@@ -145,8 +121,6 @@ pub fn descriptor_root(schema: &graph::Schema, root: usize, package: &str, setti
     })?;
     Ok(pool.get_message_by_name(&format!("{package}.Row0")).expect("the root descriptor was inserted"))
 }
-
-/* === Private Functions === */
 
 fn descriptor_memory_bytes(schema: &graph::Schema, package: &str) -> Result<usize, graph::Error> {
     // Account For The Input Protos, Pool Copies, Names And Lookup Tables Before Export.
@@ -259,5 +233,3 @@ fn row_name(definition: usize, root: usize) -> String {
     };
     format!("Row{index}")
 }
-
-/* === Tests === */

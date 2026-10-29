@@ -7,32 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
-// Third Party Imports
+
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot, watch};
-// Local Imports
+
 use super::{Arrival, Children, Request, SidecarError};
 use crate::operations::{Contract, OperationDefinition, WIRE_METHOD, WireAnswer, WireCommand};
 use harmos_sidecar::Frame;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(crate) struct Endpoint {
     provider: Option<Arc<crate::supervision::instance::Instance>>,
@@ -50,12 +35,6 @@ pub(crate) struct Endpoint {
     initialized: watch::Sender<bool>,
     ended: watch::Receiver<bool>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Endpoint {
     pub(super) fn new(
@@ -331,9 +310,3 @@ impl Endpoint {
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

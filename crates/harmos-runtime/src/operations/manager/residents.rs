@@ -11,18 +11,11 @@
 // services, activating them over shared resources, reporting their instances
 // and retiring them in the runtime's shutdown order.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::Arc;
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use super::super::caller::Identity;
 use super::super::handler::Outcome;
 use super::super::resident::{self, Activation, Definition, Key, Kind, Lease, Snapshot};
@@ -31,20 +24,6 @@ use super::Manager;
 use crate::observers::{Backend, ObserverBackend, ObserverRegistration};
 use crate::services::{Resident, ServiceDefinition};
 use crate::{Application, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Manager {
     pub(crate) fn stage_services(
@@ -336,9 +315,3 @@ impl Manager {
         self.resident.cleanup_pending(|kind, internal| kind == Kind::Service && (infrastructure || !internal))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

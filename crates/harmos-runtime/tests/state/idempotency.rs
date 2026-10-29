@@ -7,37 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use support::{Change, HOUSE, balance, deposit, runtime};
-// Local Imports
+
 use crate::state::support;
 use harmos_runtime::{state::Entry, state::Position, state::RequestKey};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 #[tokio::test]
 async fn keyed_retry_dedupes() {
@@ -71,5 +44,3 @@ async fn distinct_keys_commit() {
 async fn history(runtime: &harmos_runtime::Runtime<support::Bank>) -> Vec<Entry<Change>> {
     runtime.state.query::<Change>(Position::ORIGIN).await.map(|entry| entry.expect("the tail holds the whole history")).collect()
 }
-
-/* === Tests === */

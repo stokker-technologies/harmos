@@ -9,31 +9,14 @@
 
 // Resolve The Selected Cargo Graph And Its Local Build Inputs Once.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-// Third Party Imports
 use serde::Deserialize;
 
-// Local Imports
 use super::{BuildCancellation, Error, process::Process};
 use crate::config::BuildSettings;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Deserialize)]
 pub(super) struct Metadata {
@@ -71,12 +54,6 @@ pub(super) struct Inputs {
     pub(super) files: BTreeSet<PathBuf>,
     pub(super) excluded: BTreeSet<PathBuf>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Metadata {
     pub(super) fn read(settings: &BuildSettings, cancellation: &BuildCancellation) -> Result<Self, Error> {
@@ -197,10 +174,6 @@ impl Inputs {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 // Cargo Creates A Missing Output Directory Atomically Through A Sibling Named After It Plus Six Random Characters
 fn staging_sibling(root: &Path, path: &Path) -> bool {
     let (Some(parent), Some(name)) = (root.parent(), root.file_name().and_then(|name| name.to_str())) else {
@@ -215,8 +188,6 @@ fn staging_sibling(root: &Path, path: &Path) -> bool {
         .and_then(|first| first.strip_prefix(name))
         .is_some_and(|suffix| suffix.len() == 6 && suffix.bytes().all(|byte| byte.is_ascii_alphanumeric()))
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

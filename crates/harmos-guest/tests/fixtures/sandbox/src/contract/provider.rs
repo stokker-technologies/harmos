@@ -7,28 +7,7 @@
  * ***
  */
 
-/* === --- === Definition Module === --- === */
-
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::{Duration, Echoed, OperationPolicy, RetryPolicy};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(harmos_path = ::harmos_domain, id = "provider.echo", response = Echoed, policy = OperationPolicy {
         timeout: Duration::from_millis(100),
@@ -45,15 +24,3 @@ use super::{Duration, Echoed, OperationPolicy, RetryPolicy};
 pub struct ProviderEchoOperation {
     pub say: String,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

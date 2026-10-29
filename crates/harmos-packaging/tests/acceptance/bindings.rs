@@ -11,13 +11,6 @@
 // Interpreter. Prerequisite: `uv sync --locked --project tools/python --group test`
 // provisions the root `.venv` with protobuf, build and ty.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fs;
@@ -25,9 +18,6 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-// Third Party Imports
-
-// Local Imports
 use crate::fixtures;
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::operations::{Codec, Contract, Contracts, Grpc, OperationPolicy, RetryPolicy};
@@ -42,8 +32,6 @@ use harmos_packaging::{
 };
 use harmos_sdk::grpc::{self, DecodeInput};
 
-/* === Constants === */
-
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: std::time::Duration::from_secs(1),
     attempt_timeout: std::time::Duration::from_secs(1),
@@ -55,12 +43,6 @@ const AGGREGATE_SNAPSHOT: &str = include_str!("fixtures/aggregate-bindings.pyi.s
 
 // A Wide Schema Shared With The Domain's Graph Stories
 const CHECKPOINT: &str = include_str!("../../../harmos-domain/tests/fixtures/checkpoint-schema.json");
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos_domain::message]
 struct Payload {
@@ -135,8 +117,6 @@ struct Exported {
     beta: PathBuf,
 }
 
-/* === Enums === */
-
 #[harmos_domain::catalog]
 enum Routes {
     Read(ReadOperation),
@@ -144,14 +124,6 @@ enum Routes {
     Upload(UploadOperation),
     Download(DownloadOperation),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 // Four Streaming Shapes Plus A Wide, A Recursive And A Reserved-Name Schema
 fn contracts() -> Vec<Contract> {
@@ -314,8 +286,6 @@ fn both(name: &str, exported: &Exported, input: &[u8]) -> Vec<Vec<u8>> {
 
     [false, true].into_iter().map(|pure| scene(name, &arguments, pure, input)).collect()
 }
-
-/* === Tests === */
 
 #[test]
 fn export_refuses_invalid() {

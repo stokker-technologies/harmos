@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod access;
 mod authored;
 mod calls;
@@ -26,8 +24,6 @@ mod startup;
 #[cfg(feature = "streaming")]
 pub mod streaming;
 mod surface;
-
-/* === Re-Exports === */
 
 #[doc(hidden)]
 pub use authored::Carrier;
@@ -54,31 +50,3 @@ pub use startup::StartupError;
 #[cfg(feature = "streaming")]
 pub use streaming::{Error as StreamError, StreamInput, StreamItem, StreamOutput, StreamPermit, StreamSettings, stream};
 pub use surface::{Host, RequestClaims};
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

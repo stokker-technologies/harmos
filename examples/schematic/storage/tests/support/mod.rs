@@ -8,31 +8,17 @@
  */
 
 #![allow(dead_code)]
-/* === Modules === */
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fmt;
 use std::path::PathBuf;
-// Third Party Imports
+
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-// Local Imports
+
 use harmos::{
     Application, DefinitionId, Runtime, Setup, StartupError, runtime::Catalog, runtime::Registration, state::DecodeError,
     state::Invertible, state::Kind, state::PrincipalId, state::Recorded, state::Transaction, storage::Payload,
 };
 use schematic_storage::Wire;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Ledger {
@@ -80,8 +66,6 @@ pub struct Bank;
 #[derive(Clone)]
 struct Definitions(Vec<(Kind, DefinitionId, u32)>);
 
-/* === Enums === */
-
 #[harmos::lanes]
 pub enum TestLanes {
     #[default]
@@ -109,10 +93,6 @@ pub enum Change {
 pub enum Fact {
     Noted(Noted),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl fmt::Display for Refusal {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -278,8 +258,6 @@ impl Registration<Bank> for Definitions {
     }
 }
 
-/* === Public Functions === */
-
 pub fn catalog() -> impl Registration<Bank> {
     Definitions(definitions_of::<Bank>(Change::catalog()).into_iter().chain(definitions_of::<Bank>(Fact::catalog())).collect())
 }
@@ -325,8 +303,6 @@ pub fn scratch(name: &str) -> PathBuf {
     directory
 }
 
-/* === Private Functions === */
-
 fn definitions_of<A: Application>(catalog: impl Registration<A>) -> Vec<(Kind, DefinitionId, u32)> {
     match catalog.register() {
         Catalog::Transactions { definitions, .. } => definitions,
@@ -335,5 +311,3 @@ fn definitions_of<A: Application>(catalog: impl Registration<A>) -> Vec<(Kind, D
         }
     }
 }
-
-/* === Tests === */

@@ -7,26 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use crate::Metadata;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -40,10 +23,6 @@ pub struct StreamField {
     pub unit: Option<String>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub trait RowMetadata {
     const ROW_METADATA_JSON: &'static str = "[]";
 
@@ -51,11 +30,3 @@ pub trait RowMetadata {
         serde_json::from_str(Self::ROW_METADATA_JSON).expect("macro-generated row metadata is valid")
     }
 }
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

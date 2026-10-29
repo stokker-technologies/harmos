@@ -7,8 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
 #[path = "file_backend.rs"]
 mod file_backend;
 #[path = "read_backend.rs"]
@@ -17,36 +15,21 @@ mod read_backend;
 mod settings;
 pub use settings::storage_settings;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-// Third Party Imports
 use tokio::sync::Notify;
 
-// Local Imports
 use harmos_domain::catalog::Projection;
 use harmos_storage::query::{FileSelection, ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection, StreamSelection};
 use harmos_storage::state::*;
 use harmos_storage::*;
 use harmos_storage::{BackendFailure, Error, Identifier, MemorySize, Result};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type AcceptedRead = (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Receiver<()>);
-
-/* === Structs === */
 
 #[derive(Default)]
 pub struct Control {
@@ -205,12 +188,6 @@ pub struct Recovery {
     pub snapshot: Mutex<Option<RecoverySnapshot>>,
     pending_snapshot: Mutex<Option<RecoverySnapshot>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Control {
     // Hold A Gated Read Inside The Backend, Recording How Many Overlap.
@@ -731,16 +708,12 @@ impl StateBackend for Recovery {
     }
 }
 
-/* === Public Functions === */
-
 pub fn history() -> StoreHistory {
     StoreHistory {
         store: Identifier::new("test-store").unwrap(),
         epoch: Identifier::new("test-epoch").unwrap(),
     }
 }
-
-/* === Private Functions === */
 
 fn failure(kind: BackendFailure) -> Error {
     Error::backend("test backend", kind, std::io::Error::new(std::io::ErrorKind::PermissionDenied, "injected failure"))
@@ -790,5 +763,3 @@ fn upsert_release(releases: &mut Vec<Release>, release: Release) {
         releases.push(release);
     }
 }
-
-/* === Tests === */

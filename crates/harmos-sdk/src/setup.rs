@@ -9,38 +9,16 @@
 
 // Lifecycle Preparation And Role-Specific Configuration
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use crate::Lifecycle;
 use crate::lifecycle::Context;
 use crate::operations::{OperationCatalog, StartupError};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub struct Setup<L: Lifecycle> {
     configuration: <L::Context as Context>::Configuration,
     replacing: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 #[doc(hidden)]
 pub trait SetupConfiguration: Send + 'static {
@@ -56,8 +34,6 @@ pub trait ApplicationConfiguration: SetupConfiguration {
     fn lane(&mut self, lane: Self::Lane, settings: Self::LaneSettings);
     fn operations<C: OperationCatalog>(&mut self, lane: Self::Lane);
 }
-
-/* === Implementations === */
 
 impl<L: Lifecycle> Setup<L> {
     #[doc(hidden)]
@@ -111,9 +87,3 @@ where
         self
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

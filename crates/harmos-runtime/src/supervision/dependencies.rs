@@ -7,29 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet};
 
-// Third Party Imports
 use petgraph::algo::toposort;
 use petgraph::graph::DiGraph;
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Graph<K> {
@@ -45,17 +27,11 @@ pub(crate) struct Retirement<K> {
     running: BTreeSet<K>,
 }
 
-/* === Enums === */
-
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Invalid<K> {
     Missing { owner: K, dependency: K },
     Cycle { owner: K },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl<K: Clone + Ord> Graph<K> {
     pub(crate) fn new(dependencies: BTreeMap<K, BTreeSet<K>>) -> Result<Self, Invalid<K>> {
@@ -155,9 +131,3 @@ impl<K: Clone + Ord> Retirement<K> {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

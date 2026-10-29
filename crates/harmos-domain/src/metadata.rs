@@ -7,29 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
 mod codec;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{collections::BTreeMap, fmt};
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-// Local Imports
+
 use crate::{MemorySize, Value};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
@@ -56,8 +41,6 @@ pub struct Metadata {
     pub updated_at: Option<OffsetDateTime>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum IdentifierError {
     #[error("identifier must not be empty")]
@@ -69,10 +52,6 @@ pub enum IdentifierError {
     #[error("identifier may contain only ASCII letters, numbers, '.', '_', or '-'")]
     InvalidCharacter,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl MemorySize for Metadata {
     fn memory_size(&self) -> usize {
@@ -173,8 +152,6 @@ impl Metadata {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) const fn validate_identifier(value: &str) -> Result<(), IdentifierError> {
     let bytes = value.as_bytes();
     if bytes.is_empty() {
@@ -193,8 +170,6 @@ pub(crate) const fn validate_identifier(value: &str) -> Result<(), IdentifierErr
     Ok(())
 }
 
-/* === Private Functions === */
-
 fn unique_tags<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
     let tags = Vec::<String>::deserialize(deserializer)?;
     let mut unique = Vec::new();
@@ -207,5 +182,3 @@ fn unique_tags<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<
 
     Ok(unique)
 }
-
-/* === Tests === */

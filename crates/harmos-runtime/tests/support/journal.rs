@@ -12,36 +12,22 @@
 // synced, and whatever a crash left in a copy's batch never reaches it.
 
 #![allow(dead_code)]
-/* === Modules === */
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::io;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, MutexGuard};
-// Third Party Imports
+
 use serde::{Deserializer, Serializer};
-// Local Imports
+
 use harmos_runtime::{
     Application, DefinitionId, Error, runtime::Incompatible, state::Entry, state::Envelope, state::Kind, state::Position, state::Prepared,
     state::Recorded, state::SystemFact, storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Member = Envelope<serde_json::Value>;
 
 type Sink<A> = Box<dyn FnMut(&<A as Application>::State, Position) -> io::Result<()> + Send>;
-
-/* === Structs === */
 
 #[derive(Clone, Default)]
 pub struct Store(Arc<Mutex<Frames>>);
@@ -73,10 +59,6 @@ pub struct Snapshot<A: Application> {
     write: Sink<A>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 pub trait Wire: Application + Sized {
     fn identify(value: &Recorded<Self>) -> (DefinitionId, u32);
 
@@ -86,8 +68,6 @@ pub trait Wire: Application + Sized {
         kind: Kind, id: &DefinitionId, version: u32, payload: D,
     ) -> Result<Option<Payload<Self>>, D::Error>;
 }
-
-/* === Implementations === */
 
 impl Store {
     pub fn lines(&self) -> Vec<String> {
@@ -441,8 +421,6 @@ impl<A: Application> JournalConsumer<A> for Snapshot<A> {
     }
 }
 
-/* === Public Functions === */
-
 pub fn frame(position: u64, kind: Kind, id: &str, version: u32, payload: serde_json::Value) -> String {
     let member = serde_json::json!({
         "position": position,
@@ -462,8 +440,6 @@ pub fn frame(position: u64, kind: Kind, id: &str, version: u32, payload: serde_j
 
     serde_json::to_string(&[member]).expect("a frame is JSON")
 }
-
-/* === Private Functions === */
 
 fn members(line: &[u8]) -> Result<Vec<Member>, String> {
     let group: Vec<Member> = serde_json::from_slice(line).map_err(|error| error.to_string())?;
@@ -529,5 +505,3 @@ fn envelope<P>(member: Member, payload: P) -> Envelope<P> {
         payload,
     }
 }
-
-/* === Tests === */

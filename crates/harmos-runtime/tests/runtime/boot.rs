@@ -7,30 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use crate::runtime::probe::{Change, EXPORTED, Editor, Note, RENAME, Sheet, inverses, named, rename};
 use harmos_runtime::state::{CorrelationId, DecodeError, Entry, Envelope, Focus, Kind, Link, Position, PrincipalId, Recorded, Timestamp};
 use harmos_runtime::storage::{JournalConsumer, Payload, Recovery, Source};
 use harmos_runtime::{DefinitionId, Runtime, runtime::Catalog, runtime::Incompatible, runtime::Registration};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone)]
 struct Definitions(Vec<(Kind, DefinitionId, u32)>);
@@ -39,12 +21,6 @@ struct Replaying {
     recorded: Vec<Envelope<Payload<Editor>>>,
     resume: Position,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Registration<Editor> for Definitions {
     fn register(self) -> Catalog<Editor> {
@@ -86,13 +62,9 @@ impl Source<Editor> for Replaying {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn catalog() -> impl Registration<Editor> {
     Definitions([named(RENAME), named(EXPORTED)].into())
 }
-
-/* === Private Functions === */
 
 fn alice() -> PrincipalId {
     PrincipalId::new("alice")
@@ -141,8 +113,6 @@ fn recovering(recorded: Vec<Envelope<Payload<Editor>>>) -> Replaying {
 async fn title(runtime: &Runtime<Editor>) -> String {
     runtime.state.state().read(|sheet| sheet.title.clone()).await.expect("reads are open").value
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn boot_preserves_origin() {

@@ -7,17 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
@@ -26,18 +15,10 @@ use harmos_domain::operations::ReplaySafety;
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(DeleteFile {
     mutation: Nested<MutationId> => 1,
     file: Nested<StagedFile> => 2,
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // Delete A Staged File, Exactly Once Per Mutation.
 #[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
@@ -52,12 +33,6 @@ pub struct DeleteFile {
     pub file: StagedFile,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl MemorySize for DeleteFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
@@ -68,12 +43,6 @@ impl MemorySize for DeleteFile {
 
 #[cfg(feature = "runtime")]
 mod execution {
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
 
     use harmos_sdk::operations::Operation;
 
@@ -97,9 +66,3 @@ mod execution {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -9,28 +9,10 @@
 
 // Package Stamped Build Outputs Without Launching Cargo.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io::Read as _;
 use std::path::PathBuf;
 
-// Third Party Imports
-
-// Local Imports
 use harmos_packaging::{Build, BuildCancellation, Error, config::BuildBackend};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(clap::Args)]
 pub struct Arguments {
@@ -49,14 +31,6 @@ pub struct Arguments {
     #[arg(long)]
     json: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn run(arguments: Arguments, backend: BuildBackend, cancellation: &BuildCancellation) -> Result<(), Error> {
     let file = std::fs::File::open(&arguments.build_json)?;
@@ -82,7 +56,3 @@ pub fn run(arguments: Arguments, backend: BuildBackend, cancellation: &BuildCanc
     }
     Ok(())
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

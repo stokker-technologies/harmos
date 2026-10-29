@@ -9,15 +9,11 @@
 
 // Resident Services Use Independent Restart Credit And Bounded Stop Deadlines.
 
-/* === Modules === */
-
 mod restart;
 mod runner;
 
 #[cfg(feature = "plugin-sidecar")]
 mod sidecar;
-
-/* === Re-Exports === */
 
 pub(crate) use runner::{Once, Typed};
 
@@ -29,24 +25,19 @@ pub(crate) use sidecar::RuntimeDriver;
 #[cfg(feature = "plugin-sidecar")]
 pub use sidecar::{DemandLease, DemandSource, Managed, ManagedError, Notice, SidecarError, Supervised};
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
-// Third Party Imports
+
 use tokio::sync::watch;
-// Local Imports
+
 use crate::ServicePolicy;
 use crate::operations::{
     Backoff, CallContext, ContextError, ContextValue, Jitter, Manager, OperationDeclaration, Response, RestartPolicy, Running,
 };
 use crate::supervision::executor;
 use crate::{Application, Error, Result, state::StateManager, streams::StreamManager};
-
-/* === Constants === */
 
 // Three Restart Credits Refill After Sustained Health.
 pub const POLICY: ServicePolicy = ServicePolicy {
@@ -61,10 +52,6 @@ pub const POLICY: ServicePolicy = ServicePolicy {
         },
     },
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 pub(crate) type ServiceRunner =
     fn(ServiceDefinition, harmos_sdk::operations::ServiceFactory, ServiceOwner) -> Arc<dyn crate::operations::resident::Runner>;
@@ -86,8 +73,6 @@ pub(crate) fn authored_runner<A: Application>(
         owner: owner.clone(),
     }))
 }
-
-/* === Structs === */
 
 #[derive(Clone, Debug)]
 pub struct ServiceDefinition {
@@ -130,8 +115,6 @@ pub struct ServiceContext<A: Application> {
     deactivation: Arc<std::sync::atomic::AtomicBool>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ServiceExit {
     #[error("application: {0}")]
@@ -157,8 +140,6 @@ pub enum ServiceStatus {
     Inactive { cause: ServiceExit, history: Vec<String> },
 }
 
-/* === Traits === */
-
 // A resident runs until stopped. Each run is stopped and cleaned up before the
 // next restart or before the instance stops.
 pub trait Resident<A: Application>: Send + 'static {
@@ -172,8 +153,6 @@ pub trait Resident<A: Application>: Send + 'static {
 
     fn cleanup(&mut self) -> impl Future<Output = std::result::Result<(), Self::Error>> + Send;
 }
-
-/* === Implementations === */
 
 impl ServiceManager {
     pub(crate) fn new(operations: Manager) -> Self {
@@ -475,10 +454,6 @@ where
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 pub(crate) fn validate(definition: &ServiceDefinition) -> Result<()> {
     if definition.id.is_empty() {
         return Err(Error::InvalidInput {
@@ -488,8 +463,6 @@ pub(crate) fn validate(definition: &ServiceDefinition) -> Result<()> {
     }
     definition.policy.validate().map_err(|source| Error::OperationDeclaration { source: source.into() })
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

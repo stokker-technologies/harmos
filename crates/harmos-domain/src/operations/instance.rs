@@ -11,28 +11,10 @@
 // Every host binding reports the same status projection; the in-process
 // manager keeps its richer status alongside it.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fmt;
 use std::str::FromStr;
 
-// Third Party Imports
 use serde::{Deserialize, Serialize};
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -45,8 +27,6 @@ pub struct Status {
     pub cancellation_requested: bool,
     pub attempt: u32,
 }
-
-/* === Enums === */
 
 // Resident phases are reserved for long-running declarations; request-scoped
 // operations never report them.
@@ -80,10 +60,6 @@ pub struct ParseError {
     kind: &'static str,
     value: String,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Id {
     pub const fn new(value: u64) -> Self {
@@ -174,9 +150,3 @@ impl FromStr for Outcome {
         Ok(outcome)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

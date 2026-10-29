@@ -7,39 +7,22 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::future::Future;
 use std::io;
 use std::os::windows::io::AsRawHandle;
 use std::pin::Pin;
 use std::task::{Context, Poll, ready};
 
-// Third Party Imports
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 use tokio::process::Command;
 use windows_sys::Win32::System::Pipes::GetNamedPipeClientProcessId;
 
-// Local Imports
 use crate::transport::Io;
-
-/* === Constants === */
 
 const VARIABLE: &str = "HARMOS_CONTROL_V2";
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Connection = Pin<Box<dyn Future<Output = io::Result<NamedPipeServer>> + Send>>;
-
-/* === Structs === */
 
 pub(super) struct Prepared(NamedPipeServer);
 
@@ -47,17 +30,11 @@ struct Pipe {
     state: State,
 }
 
-/* === Enums === */
-
 enum State {
     Connecting(Connection),
     Connected(NamedPipeServer),
     Failed(io::ErrorKind, String),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Prepared {
     pub(super) fn io(self, child: u32) -> Io {
@@ -109,8 +86,6 @@ impl AsyncWrite for Pipe {
     }
 }
 
-/* === Public Functions === */
-
 pub(super) fn prepare(command: &mut Command) -> io::Result<Prepared> {
     let mut entropy = [0; 32];
     getrandom::fill(&mut entropy).map_err(io::Error::other)?;
@@ -156,8 +131,6 @@ pub(crate) fn inherited() -> io::Result<Option<Io>> {
     Ok(Some((Box::new(read), Box::new(write))))
 }
 
-/* === Private Functions === */
-
 fn name(identity: &str) -> String {
     format!(r"\\.\pipe\harmos-control-{}", identity.replace(':', "-"))
 }
@@ -174,5 +147,3 @@ fn verify_child(pipe: &NamedPipeServer, expected: u32) -> io::Result<()> {
     }
     Ok(())
 }
-
-/* === Tests === */

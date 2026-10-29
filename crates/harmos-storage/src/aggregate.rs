@@ -7,35 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use crate::signal::{Series, Summary};
 
-// Local Imports
 use harmos_domain::Aggregate;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 // Answers one member of the contract vocabulary from the signal math. The
 // kernels live in the sibling `signal` module; these functions connect them to
@@ -65,7 +39,3 @@ pub fn of_summary(summary: &Summary, kind: Aggregate) -> Option<f64> {
         Aggregate::Median | Aggregate::Percentile(_) => None,
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

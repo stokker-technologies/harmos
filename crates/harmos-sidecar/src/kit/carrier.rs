@@ -7,33 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io;
-// Third Party Imports
-// Local Imports
+
 use crate::{Frame, transport};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(super) struct Arrival {
     pub frame: Frame,
     pub cancelled: bool,
     pub consumption: Option<transport::Consumption>,
 }
-
-/* === Enums === */
 
 pub(super) enum Failure {
     Invalid(String),
@@ -48,10 +30,6 @@ pub(super) enum Input {
 pub(super) enum Sender {
     Binary(transport::Sender),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Input {
     pub async fn receive(&mut self) -> io::Result<Option<Arrival>> {
@@ -80,9 +58,3 @@ impl Sender {
         output.close();
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,39 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
-// Third Party Imports
 
-// Local Imports
 use super::{PluginDefinition, PluginFailure, PluginGraph};
 use crate::Result;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PluginDefinitions {
     pub(super) graph: PluginGraph,
     pub(super) rebuilt: BTreeSet<String>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl PluginDefinitions {
     pub fn new(definitions: impl IntoIterator<Item = PluginDefinition>, rebuilt: impl IntoIterator<Item = String>) -> Result<Self> {
@@ -82,9 +59,3 @@ impl PluginDefinitions {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

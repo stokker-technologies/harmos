@@ -7,23 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
-// Third Party Imports
+
 use serde::Deserialize;
-// Local Imports
+
 use super::{StreamDeclaration, digits, quoted, quoted_len, write};
 use crate::config::SchemaSettings;
 use crate::schema::declaration::{Definition, Named};
 use crate::schema::graph::Schema;
-
-/* === Constants === */
 
 const HEAD: &[u8] = b"\0HARMOS:ARTIFACT:V1:{\"kind\":\"publications\",\"facility\":";
 const OWNER: &[u8] = b",\"owner\":";
@@ -37,12 +28,6 @@ const ROW: &[u8] = b",\"row\":";
 const TAIL: &[u8] = b"]}\0";
 const METADATA_ID: &[u8] = b"{\"identifier\":";
 const METADATA_LABEL: &[u8] = b",\"label\":";
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Copy)]
 pub struct Entry {
@@ -84,8 +69,6 @@ pub struct NamedManifest {
     pub streams: Vec<NamedStream>,
 }
 
-/* === Enums === */
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("publication inventory requires a guest or sidecar facility and a valid owner segment")]
@@ -126,8 +109,6 @@ pub enum Error {
     },
 }
 
-/* === Traits === */
-
 pub trait StreamSpec {
     type Row;
     const ID: &'static str;
@@ -148,8 +129,6 @@ pub trait StreamSpec {
         serde_json::from_str(Self::ROW_METADATA_JSON).expect("macro-generated row metadata is valid")
     }
 }
-
-/* === Implementations === */
 
 impl NamedManifest {
     pub fn resolve(self, declarations: &[Named], settings: &mut SchemaSettings) -> Result<Manifest, Error> {
@@ -215,8 +194,6 @@ impl Entry {
         }
     }
 }
-
-/* === Public Functions === */
 
 pub const fn merge<const N: usize>(named: &[Entry], sampled: &[Entry]) -> [Entry; N] {
     let mut merged = [Entry {
@@ -454,8 +431,6 @@ pub(crate) const fn same_bytes(left: &str, right: &str) -> bool {
     true
 }
 
-/* === Private Functions === */
-
 const fn metadata_len(entry: &Entry) -> usize {
     if entry.metadata_json.is_empty() {
         METADATA_ID.len() + quoted_len(entry.id) + METADATA_LABEL.len() + quoted_len(entry.id) + 1
@@ -475,5 +450,3 @@ const fn metadata_into<const N: usize>(output: &mut [u8; N], cursor: &mut usize,
         write(output, cursor, entry.metadata_json.as_bytes());
     }
 }
-
-/* === Tests === */

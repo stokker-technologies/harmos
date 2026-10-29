@@ -7,34 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Semaphore, mpsc};
-// Local Imports
+
 use harmos_runtime::{
     Application, Error, Runtime, state::CaptureError, state::CaptureLimits, state::Entry, state::FactSource, state::Focus,
     state::JournalCapture, state::Position, state::PreparationError, state::PrincipalId, state::Recorded, state::Records,
     state::SystemFact, state::Transaction,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Refusal = &'static str;
 type Group = (Vec<Arc<Entry<Recorded<Model>>>>, Position);
-
-/* === Structs === */
 
 #[harmos_runtime::record(id = "capture.observed")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -54,8 +39,6 @@ struct Consumer {
 
 struct Panics;
 
-/* === Enums === */
-
 #[harmos_runtime::transactions(state = i64, error = Refusal)]
 #[derive(Clone, Debug)]
 enum Changes {
@@ -67,10 +50,6 @@ enum Changes {
 enum Facts {
     Observed(Observed),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Transaction<i64> for Add {
     type Error = &'static str;
@@ -129,10 +108,6 @@ impl JournalCapture<Model> for Panics {
         panic!("capture worker failed");
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 async fn open(pending: u32, max: u32, fail: bool, tail: usize) -> (Runtime<Model>, mpsc::UnboundedReceiver<Group>, Arc<Semaphore>) {
     let (offered, observed) = mpsc::unbounded_channel();
@@ -338,5 +313,3 @@ async fn panic_fails_capture() {
         "a panicking capture worker is a capture failure the journal keeps"
     );
 }
-
-/* === Tests === */

@@ -7,19 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::path::Path;
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 use crate::app::Runtime;
 use crate::lanes::Lanes;
 use harmos::config::PluginSidecarSettings;
@@ -27,23 +17,7 @@ use harmos::sidecar::Executable;
 use harmos::{Error, Result};
 use schematic_operations::Native;
 
-/* === Constants === */
-
 pub const NAME: &str = "schematic_tools";
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<()> {
     let program = std::fs::canonicalize(path).map_err(failed)?;
@@ -63,13 +37,9 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<(
     runtime.plugin.initialize().await
 }
 
-/* === Private Functions === */
-
 fn failed(source: impl std::error::Error + Send + Sync + 'static) -> Error {
     Error::OperationFailed {
         operation: NAME.into(),
         source: Arc::new(source),
     }
 }
-
-/* === Tests === */

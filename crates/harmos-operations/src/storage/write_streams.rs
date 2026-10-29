@@ -7,17 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::IO_POLICY;
 use harmos_domain::Identifier;
 use harmos_domain::MemorySize;
@@ -29,17 +18,9 @@ use harmos_sdk::operations::access::GrantAccess;
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(WriteStreams {
     scope: Optional<Id> => 1,
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // Admit Streamed Arrow Batches Of Stream Rows Into One Optional Scope.
 #[harmos::operation(
@@ -60,12 +41,6 @@ pub struct WriteStreams {
     pub scope: Option<Identifier>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl MemorySize for WriteStreams {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.scope.memory_size().saturating_sub(std::mem::size_of_val(&self.scope)))
@@ -77,9 +52,6 @@ mod execution {
     use super::*;
     use crate::storage::exchange::{WriteKind, exchange};
 
-    // Standard Library Imports
-    // Third Party Imports
-    // Local Imports
     use crate::{Error, Result};
     use harmos_sdk::operations::{Operation, OperationDeclaration};
     use harmos_storage::writes::WriteCompletion;
@@ -103,9 +75,3 @@ mod execution {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

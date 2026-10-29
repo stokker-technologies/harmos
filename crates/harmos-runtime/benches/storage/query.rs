@@ -6,16 +6,9 @@
  *
  * ***
  */
-/* === Modules === */
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
-// Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
 use harmos_runtime::storage::Query;
 use harmos_runtime::storage::query::transform::{
@@ -24,24 +17,7 @@ use harmos_runtime::storage::query::transform::{
 };
 use harmos_runtime::storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
 
-// Local Imports
 use super::{fixture::Fixture, waveforms};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
     let mut group = criterion.benchmark_group("storage/query");
@@ -132,6 +108,3 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
     }
     group.finish();
 }
-/* === Private Functions === */
-
-/* === Tests === */

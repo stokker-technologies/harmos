@@ -9,19 +9,9 @@
 
 // Run The Same Editing And Persistence Story With Either Plugin Backend.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeSet;
 use std::path::Path;
 
-// Third Party Imports
-
-// Local Imports
 use crate::Result;
 use harmos::{state::Focus, state::PrincipalId};
 use schematic_app::domain::model;
@@ -30,22 +20,6 @@ use schematic_app::state::{NetId, NetName, PinRef, Point, Rotation, SymbolId};
 use schematic_app::transactions::net::{ApplyRoute, ConnectPins};
 use schematic_app::transactions::symbol::{MoveSymbol, PlaceSymbol};
 use schematic_app::{app, config::Settings, document::Document, services::Plugin};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 #[tracing::instrument(level = "debug", skip_all)]
 pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advanced: bool) -> Result<()> {
@@ -109,8 +83,6 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     );
     Ok(())
 }
-
-/* === Private Functions === */
 
 async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()> {
     let principal = PrincipalId::new("designer");
@@ -182,5 +154,3 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
     }
     Ok(())
 }
-
-/* === Tests === */

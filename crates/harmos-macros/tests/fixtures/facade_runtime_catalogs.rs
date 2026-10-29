@@ -7,22 +7,13 @@
  * ***
  */
 
-/* === Modules === */
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::convert::Infallible;
 use std::time::Duration;
 
-// Third Party Imports
 
-// Local Imports
 use harmos::{Lifecycle, Operation};
 
-/* === Constants === */
 
 const POLICY: harmos::OperationPolicy = harmos::OperationPolicy {
     timeout: Duration::from_secs(2),
@@ -30,11 +21,6 @@ const POLICY: harmos::OperationPolicy = harmos::OperationPolicy {
     retries: harmos::RetryPolicy::Never,
 };
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::sidecar::operation(id = "fixture.sidecar", response = (), policy = POLICY)]
 struct SidecarOperation;
@@ -49,7 +35,6 @@ struct Plugin;
 
 struct GuestPlugin;
 
-/* === Enums === */
 
 #[harmos::sidecar::catalog]
 enum SidecarCatalog {
@@ -66,9 +51,6 @@ enum ApplicationCatalog {
     Application(ApplicationOperation),
 }
 
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Operation for SidecarOperation {
     type Error = Infallible;
@@ -136,9 +118,6 @@ impl harmos::Plugin for GuestPlugin {
     const CATALOGS: &'static [harmos::operations::Catalog] = &[];
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 fn main() {
     assert_eq!(SidecarCatalog::CATALOG.declarations.len(), 1);
@@ -157,5 +136,3 @@ fn main() {
     let guest = harmos::domain::inventory::Declaration::inspect(&guest, harmos::domain::inventory::Facility::Guest).unwrap();
     assert!(guest.operations.is_empty());
 }
-
-/* === Tests === */

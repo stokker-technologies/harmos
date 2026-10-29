@@ -7,39 +7,15 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::time::SystemTime;
 
-// Third Party Imports
-
-// Local Imports
 use super::Value;
 use crate::MessageError;
 use crate::model::storage::time::Wire;
 use crate::schema::{Cardinality, Field, Kind};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 pub struct Time;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Value for Time {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(Time));
@@ -108,9 +84,3 @@ const FIELDS: &[Field] = &[
         cardinality: Cardinality::Required,
     },
 ];
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -9,44 +9,21 @@
 
 // Decode Validated Payload Events Into Arrow Columns
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::Arc;
 
-// Third Party Imports
 use arrow_array::{ArrayRef, ListArray, StructArray, builder::*};
 use arrow_buffer::{NullBuffer, OffsetBuffer, ScalarBuffer};
 use arrow_schema::{DataType, FieldRef, Fields};
 
-// Local Imports
 use super::invalid;
 use crate::Result;
 use crate::schema::{Event, PathElement, Scalar};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
 
 pub(super) enum Column {
     Scalar(Box<dyn ArrayBuilder>),
     Struct { fields: Fields, children: Vec<Column>, valid: Vec<bool> },
     List { field: FieldRef, child: Box<Column>, offsets: Vec<i32>, valid: Vec<bool> },
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Column {
     pub fn new(kind: &DataType, capacity: usize) -> Self {
@@ -183,9 +160,3 @@ impl Column {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

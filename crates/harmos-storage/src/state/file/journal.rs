@@ -9,36 +9,22 @@
 
 // State Journal Replay And Checkpoint Compaction
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::fs::File;
 use std::io::{BufReader, Read as _, Seek, SeekFrom, Write};
 use std::path::Path;
-// Third Party Imports
+
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use super::files::{Files, JournalOpener};
 use super::format::{self, Read, corrupt, invalid, io};
 use crate::storage::state::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StorageStateSettings};
 use crate::storage::{ReadLimits, RecoveryPosition, StoreHistory};
 use crate::{BackendFailure, Error, Result};
 
-/* === Constants === */
-
 // The Development Format Has One Baseline.
 const VERSION: u32 = 1;
 // Headers Hold Only A Position, So Their Bound Is Harmos-Owned.
 const HEADER_BYTES: usize = 4096;
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 pub(super) struct StateLog {
     files: Files,
@@ -61,12 +47,6 @@ struct Header {
     version: u32,
     after: RecoveryPosition,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl StateLog {
     #[tracing::instrument(name = "storage.state.file.open", level = "debug", skip_all)]
@@ -414,10 +394,6 @@ impl StateLog {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn header(reader: &mut BufReader<File>, history: &StoreHistory) -> Result<Header> {
     let Read::Value(header) = format::read::<Header>(reader, HEADER_BYTES)? else {
         return Err(corrupt("state journal header is incomplete"));
@@ -436,8 +412,6 @@ fn header(reader: &mut BufReader<File>, history: &StoreHistory) -> Result<Header
 fn conflict(reason: &'static str) -> Error {
     Error::backend("write state file", BackendFailure::Conflict, std::io::Error::new(std::io::ErrorKind::InvalidData, reason))
 }
-
-/* === Tests === */
 
 #[cfg(test)]
 mod tests {

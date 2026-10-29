@@ -7,25 +7,16 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-// Third Party Imports
+
 use time::OffsetDateTime;
-// Local Imports
+
 use super::Value;
 use crate::message::{PostcardReader as Reader, PostcardValue, decoding_add, decoding_multiply};
 use crate::schema::declaration::{Definition, Field, Kind};
 use crate::schema::{Cardinality, Described};
 use crate::{MessageError, btree_map_memory};
-
-/* === Constants === */
 
 pub const VALUE_DEPTH: usize = 4;
 
@@ -43,8 +34,6 @@ const OBJECT: u32 = 8;
 pub(crate) const TIMESTAMP_DEFINITION: Definition = Timestamp::DEFINITION;
 pub(crate) const VALUE_FIELDS: &[Field] = Value4::FIELDS;
 pub(crate) const ENTRY_DEFINITION: Definition = Entry4::DEFINITION;
-
-/* === Macros === */
 
 macro_rules! shape {
     ($name:ident, $fields:expr) => {
@@ -101,16 +90,6 @@ level!(Value1, Entry1, Array1, Object1, Value0);
 level!(Value2, Entry2, Array2, Object2, Value1);
 level!(Value3, Entry3, Array3, Object3, Value2);
 level!(Value4, Entry4, Array4, Object4, Value3);
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Described for Value {
     const NAME: &'static str = "harmos::Value";
@@ -185,10 +164,6 @@ impl PostcardValue for Value {
         read_at(input, VALUE_DEPTH)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 const fn field(name: &'static str, tag: u32, kind: Kind, cardinality: Cardinality) -> Field {
     Field {
@@ -370,5 +345,3 @@ fn read_at(input: &mut Reader<'_>, depth: usize) -> Result<Value, MessageError> 
         })
     })
 }
-
-/* === Tests === */

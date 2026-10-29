@@ -7,42 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 
-// Third Party Imports
 use tokio::process::Command;
 
-// Local Imports
 use crate::transport::Io;
-
-/* === Constants === */
 
 const DESCRIPTOR: i32 = 198;
 const VARIABLE: &str = "HARMOS_CONTROL_V2";
 const VALUE: &str = "unix-fd:198";
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 #[allow(unsafe_code)]
 pub(super) fn prepare(command: &mut Command) -> io::Result<Io> {
@@ -85,8 +60,6 @@ pub(crate) fn inherited() -> io::Result<Option<Io>> {
     io(stream).map(Some)
 }
 
-/* === Private Functions === */
-
 #[allow(unsafe_code)]
 fn duplicate(descriptor: i32, minimum: i32) -> io::Result<OwnedFd> {
     // SAFETY: fcntl Validates The Input; On Success It Returns A New Exclusively Owned FD.
@@ -102,5 +75,3 @@ fn io(stream: UnixStream) -> io::Result<Io> {
     let (read, write) = tokio::net::UnixStream::from_std(stream)?.into_split();
     Ok((Box::new(read), Box::new(write)))
 }
-
-/* === Tests === */

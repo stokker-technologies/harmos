@@ -9,36 +9,18 @@
 
 """Build The Independent Rust Test Archive And Fixtures"""
 
-# === Imports === #
-
-# Standard Library Imports
 import argparse
 import os
 import shutil
 import stat
 from pathlib import Path
 
-# Third Party Imports
 
-# Local Imports
 from ... import temporary
 from ...test import archive
 from .. import fixtures as staging
 from .. import cargo, paths
 from ..fixtures import ROOT, TARGET, GUESTS
-
-# Type Checking Imports
-
-
-# === Public Exports === #
-
-# === Constants === #
-
-# === Types === #
-
-# === Classes === #
-
-# === Public Functions === #
 
 
 def main() -> None:
@@ -96,10 +78,6 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
         },
     )
 
-
-# === Private Functions === #
-
-# === Entry Point === #
 
 if __name__ == "__main__":
     main()

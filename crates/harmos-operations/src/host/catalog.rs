@@ -7,21 +7,12 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 #[cfg(feature = "runtime")]
 use std::{num::NonZeroUsize, sync::Arc};
 
-// Third Party Imports
 #[cfg(feature = "runtime")]
 use serde::Serialize;
 
-// Local Imports
 #[cfg(feature = "runtime")]
 use crate::{Error, Operation, Response};
 use harmos_domain::model::storage::codec::{Bytes, Code, Id, Index, Optional, Text, coded, product};
@@ -34,10 +25,6 @@ use harmos_storage::{
     ErasedCatalog, IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(Catalog {
     kind: Code<CatalogKind> => 1,
     schema: Optional<Id> => 2,
@@ -49,10 +36,6 @@ product!(Catalog {
 product!(CatalogPage { entries: Bytes => 1, next: Optional<Text> => 2 });
 
 coded!(CatalogKind { Operations, Schemas, Streams, Objects });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[harmos::operation(
     harmos_path = crate,
@@ -83,8 +66,6 @@ pub struct CatalogPage {
     pub next: Option<String>,
 }
 
-/* === Enums === */
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CatalogKind {
     #[default]
@@ -94,10 +75,6 @@ pub enum CatalogKind {
     Streams,
     Objects,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Catalog {
     // Stored Data Follows The Storage Read Grant Grammar; Operation Discovery
@@ -129,12 +106,6 @@ impl MemorySize for CatalogPage {
         std::mem::size_of::<Self>().saturating_add(self.entries.capacity()).saturating_add(self.next.as_ref().map_or(0, String::capacity))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
 
 #[cfg(feature = "runtime")]
 type Result<T> = std::result::Result<T, Error>;

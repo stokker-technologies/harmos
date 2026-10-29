@@ -7,17 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::IO_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
@@ -28,17 +17,9 @@ use harmos_sdk::operations::access::GrantAccess;
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
-/* === Constants === */
-
-/* === Macros === */
-
 product!(WriteFile {
     metadata: Nested<FileMetadata> => 1,
 });
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 // Write One Finished File From Streamed Batches.
 #[harmos::operation(
@@ -59,12 +40,6 @@ pub struct WriteFile {
     pub metadata: FileMetadata,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 impl WriteFile {
     fn grant_for(request: &WriteFile) -> Option<harmos_domain::plugin::Grant> {
         Some(harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, request.metadata.id.as_str().to_owned()))
@@ -81,9 +56,6 @@ impl MemorySize for WriteFile {
 mod execution {
     use super::*;
 
-    // Standard Library Imports
-    // Third Party Imports
-    // Local Imports
     use crate::{Error, Result};
     use harmos_sdk::operations::{Operation, OperationDeclaration};
     use harmos_storage::FileReference;
@@ -132,9 +104,3 @@ mod execution {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

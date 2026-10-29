@@ -9,35 +9,18 @@
 
 // Select Artifacts And Schema Outputs From One Successful Cargo Invocation.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-// Third Party Imports
 use crate::digest;
 use serde::Deserialize;
 
-// Local Imports
 use super::{BuildCancellation, Error, metadata::Metadata, process::Process};
 use crate::config::{BuildBackend, BuildProfile, BuildSettings};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type BuildMessages = (Vec<Artifact>, BTreeSet<(String, PathBuf)>);
-
-/* === Structs === */
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -129,12 +112,6 @@ struct Target {
     name: String,
     kind: Vec<String>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Artifact {
     // Stamp An Existing Cargo Output Without Launching A Compiler.
@@ -252,8 +229,6 @@ impl Build {
         Ok(())
     }
 }
-
-/* === Public Functions === */
 
 pub fn build(settings: &BuildSettings) -> Result<Build, Error> {
     build_with_cancellation(settings, &BuildCancellation::default())
@@ -452,8 +427,6 @@ fn finish_build(
         schemas,
     })
 }
-
-/* === Private Functions === */
 
 fn native_shipping_bytes(path: &Path, cancellation: &BuildCancellation) -> Result<Vec<u8>, Error> {
     let mut rustc = Command::new("rustc");
@@ -693,5 +666,3 @@ fn read_messages(reader: impl BufRead, selected: &BTreeMap<String, String>) -> R
     artifacts.dedup_by(|left, right| left.producer == right.producer && left.name == right.name && left.path == right.path);
     Ok((artifacts, outputs))
 }
-
-/* === Tests === */

@@ -7,34 +7,17 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
-// Third Party Imports
 use tokio::sync::Notify;
 
-// Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 struct Trace {
     attempts: AtomicUsize,
@@ -44,8 +27,6 @@ struct Trace {
 }
 
 struct ChildGuard(Arc<Trace>);
-
-/* === Enums === */
 
 #[harmos_runtime::message]
 enum Exit {
@@ -98,10 +79,6 @@ enum Operations {
     ChildContractDeclaration(ChildContractDeclaration),
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
 impl harmos_runtime::Operation for ParentContractDeclaration {
     type Error = Failed;
 
@@ -150,10 +127,6 @@ impl Drop for ChildGuard {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace {
         attempts: AtomicUsize::new(0),
@@ -170,8 +143,6 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     runtime.operations.register::<super::Single<ChildContractDeclaration>>(Lanes::Open).await.unwrap();
     (runtime, trace)
 }
-
-/* === Tests === */
 
 #[tokio::test(start_paused = true)]
 async fn parent_joins_child() {

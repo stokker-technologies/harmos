@@ -7,23 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Poll;
 
-// Third Party Imports
 use futures_util::{StreamExt, stream::FuturesUnordered};
 
-// Local Imports
 use super::batching::{Batch, write_data};
 use super::manager::{Domain, Inner, Operation, Pending, Target};
 use super::snapshot::SnapshotAction;
@@ -31,16 +22,8 @@ use super::staging::{FileAction, FileCompleted};
 use super::{RecoveryPosition, StorageManager};
 use crate::{BackendFailure, Error, Result};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Attempt =
     Pin<Box<dyn Future<Output = (Action, usize, Option<u64>, u64, Option<crate::execution::Context>, Result<Completed>)> + Send>>;
-
-/* === Structs === */
 
 pub struct Worker(pub(crate) StorageManager<crate::storage::ErasedCatalog>);
 
@@ -52,8 +35,6 @@ struct Failed {
     attempts: usize,
     retry_at: Option<tokio::time::Instant>,
 }
-
-/* === Enums === */
 
 enum Action {
     Write(Arc<Pending>, Option<Batch>),
@@ -73,10 +54,6 @@ enum Completed {
     Recovery(RecoveryPosition),
     Pruned(bool),
 }
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Worker {
     #[tracing::instrument(name = "storage.worker.cleanup", level = "debug", skip_all)]
@@ -577,10 +554,6 @@ impl Operation {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 #[tracing::instrument(name = "storage.worker.perform", level = "debug", skip_all)]
 async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
     match action {
@@ -696,5 +669,3 @@ fn transient(error: &Error) -> bool {
         _ => false,
     }
 }
-
-/* === Tests === */

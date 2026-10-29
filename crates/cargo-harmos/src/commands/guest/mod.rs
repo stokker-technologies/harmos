@@ -7,36 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
 mod build;
 mod dev;
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(clap::Args)]
 pub struct Arguments {
     #[command(subcommand)]
     command: Command,
 }
-
-/* === Enums === */
 
 #[derive(clap::Subcommand)]
 enum Command {
@@ -53,12 +31,6 @@ enum Command {
     Dev(dev::Arguments),
 }
 
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 pub fn run(arguments: Arguments, cancellation: &harmos_packaging::BuildCancellation) -> Result<(), harmos_packaging::Error> {
     match arguments.command {
         Command::Inspect(arguments) => super::inspect::run(arguments),
@@ -67,7 +39,3 @@ pub fn run(arguments: Arguments, cancellation: &harmos_packaging::BuildCancellat
         Command::Dev(arguments) => dev::run(arguments, cancellation),
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

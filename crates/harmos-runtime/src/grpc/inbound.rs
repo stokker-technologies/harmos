@@ -7,13 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::{
     convert::Infallible,
     future::Future,
@@ -23,7 +16,6 @@ use std::{
     time::Duration,
 };
 
-// Third Party Imports
 use tokio::sync::watch;
 use tonic::{
     Code, Status,
@@ -33,21 +25,12 @@ use tonic::{
 };
 use tracing::Instrument;
 
-// Local Imports
 use super::middleware::{Middleware, Session};
 use crate::operations::CallContext;
 use crate::supervision::executor::InContext;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 type Response = http::Response<Body>;
 type Shutdown = Pin<Box<dyn Future<Output = ()> + Send>>;
-
-/* === Structs === */
 
 #[derive(Clone)]
 pub(super) struct Inbound {
@@ -70,12 +53,6 @@ struct Observed {
     stopping: Shutdown,
     ended: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Service<http::Request<Body>> for Inbound {
     type Response = Response;
@@ -226,10 +203,6 @@ impl http_body::Body for Observed {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 fn trailers(status: Status) -> http_body::Frame<bytes::Bytes> {
     let mut headers = http::HeaderMap::new();
     status.add_header(&mut headers).expect("static transport status is valid metadata");
@@ -268,5 +241,3 @@ fn request_timeout(headers: &http::HeaderMap, maximum: Duration) -> Result<Durat
     };
     Ok(duration.min(maximum))
 }
-
-/* === Tests === */

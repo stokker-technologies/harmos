@@ -7,28 +7,11 @@
  * ***
  */
 
-/* === Modules === */
-
 pub mod codec;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use serde::{Deserialize, Serialize};
-// Local Imports
+
 use crate::{Error, Identifier, MemorySize, Result};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -50,12 +33,6 @@ pub struct RecoveryPosition {
     pub history: StoreHistory,
     pub sequence: u64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl MemorySize for StoreHistory {
     fn memory_size(&self) -> usize {
@@ -90,9 +67,3 @@ impl RecoveryPosition {
         Ok(self.sequence >= other.sequence)
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

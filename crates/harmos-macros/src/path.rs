@@ -7,38 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::spanned::Spanned;
 use syn::{Error, Meta, Path};
-// Local Imports
-
-/* === Constants === */
 
 pub(crate) const KEY: &str = "harmos_path";
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 pub(crate) struct HarmosPath(Path, bool);
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl HarmosPath {
     pub(crate) fn catalog() -> Self {
@@ -74,8 +50,6 @@ impl ToTokens for HarmosPath {
     }
 }
 
-/* === Public Functions === */
-
 pub(crate) fn declared(meta: &Meta) -> Option<Result<Path, Error>> {
     let Meta::NameValue(named) = meta else {
         return None;
@@ -88,7 +62,3 @@ pub(crate) fn declared(meta: &Meta) -> Option<Result<Path, Error>> {
         Error::new(named.value.span(), format!("`{KEY}` names the crate path generated code resolves harmos through: {error}"))
     }))
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

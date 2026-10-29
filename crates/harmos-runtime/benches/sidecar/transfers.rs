@@ -9,39 +9,14 @@
 
 // Symmetric Typed Transfers Across Real Native And Wasm Carrier Boundaries.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 
-// Third Party Imports
 use criterion::{BenchmarkId, Criterion, SamplingMode, Throughput};
 
-// Local Imports
 use super::fixture::Fixture;
 use harmos_runtime::operations::StreamSettings;
 use schematic_operations::transfer::{Batch, Download, Put, Receipt, Record, Sample, Take, Upload};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 pub fn run(executor: &tokio::runtime::Runtime, carrier: &str, fixture: &Fixture) {
     std::thread::scope(|threads| {
@@ -53,8 +28,6 @@ pub fn run(executor: &tokio::runtime::Runtime, carrier: &str, fixture: &Fixture)
         }
     });
 }
-
-/* === Private Functions === */
 
 fn dataset_bench(
     criterion: &mut Criterion, executor: &tokio::runtime::Runtime, carrier: &str, fixture: &Fixture, kind: &str, count: usize,
@@ -224,5 +197,3 @@ fn verify(batches: Vec<Batch>, kind: &str, count: usize) {
     }
     assert_eq!(checked, count);
 }
-
-/* === Tests === */

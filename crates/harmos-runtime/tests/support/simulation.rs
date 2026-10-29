@@ -9,35 +9,9 @@
 
 // Share The Deterministic Script Between Stories And Benchmarks
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
 use super::support::{Bank, DEPOSIT, Deposit, NOTED, Noted, alice, pulse};
 use harmos_runtime::{DefinitionId, Identified};
 use harmos_runtime::{Setup, simulation::SimulatedRuntime};
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl Identified for Deposit {
     fn definition() -> (DefinitionId, u32) {
@@ -50,8 +24,6 @@ impl Identified for Noted {
         (DefinitionId::new(NOTED.1), NOTED.2)
     }
 }
-
-/* === Public Functions === */
 
 pub(crate) fn configure(setup: &mut Setup<Bank>) {
     setup.settings().simulated_service("adapter", resident);
@@ -75,12 +47,8 @@ pub(crate) fn scripted(mut sim: SimulatedRuntime<Bank>) -> SimulatedRuntime<Bank
     sim
 }
 
-/* === Private Functions === */
-
 async fn resident(mut context: harmos_runtime::services::ServiceContext<Bank>) -> Result<(), std::io::Error> {
     context.ready();
     context.stopping().await;
     Ok(())
 }
-
-/* === Tests === */

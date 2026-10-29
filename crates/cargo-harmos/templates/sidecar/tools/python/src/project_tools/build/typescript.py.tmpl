@@ -8,27 +8,11 @@
 
 """Build Packageable Products Without Test Harnesses Or Fixtures"""
 
-# === Imports === #
 
-# Standard Library Imports
 import argparse
 from pathlib import Path
 
-# Third Party Imports
-# Local Imports
 from . import paths
-
-# Type Checking Imports
-
-# === Public Exports === #
-
-# === Constants === #
-
-# === Types === #
-
-# === Classes === #
-
-# === Public Functions === #
 
 
 def main() -> None:
@@ -44,10 +28,6 @@ def main() -> None:
     destination = paths.output(directory, "build", options.profile, options.target)
     paths.replace(directory, project / "dist", destination / "web")
 
-
-# === Private Functions === #
-
-# === Entry Point === #
 
 if __name__ == "__main__":
     main()

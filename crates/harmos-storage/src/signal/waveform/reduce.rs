@@ -7,34 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 #[must_use]
 pub fn lttb(x: &[f64], y: &[f64], count: usize) -> Vec<usize> {
     let length = x.len().min(y.len());
@@ -176,8 +148,6 @@ pub fn extrema(values: &[f64], buckets: usize) -> Vec<usize> {
     kept
 }
 
-/* === Private Functions === */
-
 fn positive(at: f64) -> f64 {
     at.max(f64::MIN_POSITIVE)
 }
@@ -197,8 +167,6 @@ fn mean_of(x: &[f64], y: &[f64], range: std::ops::Range<usize>) -> Option<(f64, 
 
     Some((sum_x / count as f64, sum_y / count as f64))
 }
-
-/* === Tests === */
 
 #[test]
 fn decimation_indices_preserve_uniform_stride_and_empty_cases() {

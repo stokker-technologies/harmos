@@ -7,48 +7,24 @@
  * ***
  */
 
-/* === Modules === */
-
 #[cfg(feature = "benchmark")]
 mod benchmark;
 #[cfg(not(feature = "benchmark"))]
 mod registration;
 
-/* === Re-Exports === */
-
 pub use std::io::Error;
 
-/* === Imports === */
-
-// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-// Third Party Imports
-
-// Local Imports
 #[cfg(feature = "benchmark")]
 use benchmark as registration;
 use harmos::operations::{OperationPolicy, StreamSettings, WireStreamLimits};
 use harmos::sidecar::Supervisor;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 pub struct Plugin {
     analysis: Arc<schematic_operations::resources::AnalysisResources>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 impl harmos::builtins::lifecycle::Policy for Plugin {
     const INITIALIZATION_POLICY: OperationPolicy = schematic_operations::POLICY;
@@ -78,9 +54,3 @@ impl harmos::Lifecycle for Plugin {
 impl harmos::Plugin for Plugin {
     const CATALOGS: &'static [harmos::Catalog] = &[registration::CATALOG];
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
