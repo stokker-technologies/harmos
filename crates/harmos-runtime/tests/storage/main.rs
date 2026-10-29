@@ -23,8 +23,7 @@ mod operations;
 mod runtime;
 #[path = "../storage/state.rs"]
 mod state;
-#[path = "../support/mod.rs"]
-mod support;
+use crate::support;
 #[path = "../../../harmos-storage/tests/support/waveforms.rs"]
 #[allow(dead_code, reason = "shared with the benchmark of the same domain")]
 mod waveforms;

@@ -26,8 +26,7 @@ mod registration;
 
 #[path = "../support/pending.rs"]
 mod pending;
-#[path = "../support/mod.rs"]
-mod support;
+use crate::support;
 
 /* === Re-Exports === */
 
