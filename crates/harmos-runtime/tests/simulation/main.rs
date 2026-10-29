@@ -68,18 +68,6 @@ mod atomic_records {
         async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
             Ok(Self)
         }
-
-        async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-            Ok(())
-        }
-
-        async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-            Ok(())
-        }
-
-        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
-            Ok(())
-        }
     }
 
     impl Application for Model {
@@ -311,18 +299,6 @@ impl harmos_runtime::Lifecycle for Divergent {
     async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
         Ok(Self)
     }
-
-    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 impl Application for Divergent {
@@ -395,15 +371,6 @@ impl harmos_runtime::Lifecycle for Idle {
     type Error = Infallible;
     async fn prepare(_: (), _: &mut Setup<Self>) -> Result<Self, Infallible> {
         Ok(Self)
-    }
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Infallible> {
-        Ok(())
-    }
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Infallible> {
-        Ok(())
-    }
-    async fn cleanup(&mut self) -> Result<(), Infallible> {
-        Ok(())
     }
 }
 

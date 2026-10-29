@@ -354,18 +354,6 @@ impl harmos_runtime::Lifecycle for Joinable {
     async fn prepare(_: (), _setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
         Ok(Self)
     }
-
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 #[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "joined", requires = ())]
@@ -392,14 +380,6 @@ impl harmos_runtime::Lifecycle for Gauge {
         };
         setup.resource::<GaugeResources>(plugin.resources.clone());
         Ok(plugin)
-    }
-
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
     }
 
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -615,18 +595,6 @@ impl harmos_runtime::Lifecycle for Meter {
         let plugin = Self { resources: Arc::new(MeterHandler) };
         setup.resource::<MeterHandler>(plugin.resources.clone());
         Ok(plugin)
-    }
-
-    async fn initialize(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        Ok(())
     }
 }
 

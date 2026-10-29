@@ -148,18 +148,6 @@ impl harmos_runtime::Lifecycle for Receiver {
         setup.resource::<State>(plugin.state.clone());
         Ok(plugin)
     }
-
-    async fn initialize(&mut self, _: &Supervisor) -> std::result::Result<(), Refusal> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Supervisor) -> std::result::Result<(), Refusal> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> std::result::Result<(), Refusal> {
-        Ok(())
-    }
 }
 
 #[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Consumes Host Stream Rows And Acknowledges Verified Payload Bytes.", id = "consumption", requires = (), listeners = Listeners)]

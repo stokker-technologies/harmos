@@ -311,14 +311,6 @@ impl harmos_runtime::Lifecycle for Ticking {
         self.resources.release.notified().await;
         Ok(())
     }
-
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 #[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Observer Demand During SDK Initialization.", id = "ticking", requires(harmos_operations::streams::Publish),
@@ -372,14 +364,6 @@ impl harmos_runtime::Lifecycle for Twins {
             .publish_on_context::<Left>(&support::pulse(11), Some("execution-b"))
             .await
             .map_err(harmos_sidecar::Refusal::from)?;
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -486,14 +470,6 @@ impl harmos_runtime::Lifecycle for Batches {
         publish(raw(stamped_id, 4, Some(TIMED_BASE), Vec::new())).await.map_err(harmos_sidecar::Refusal::from)?;
         Ok(())
     }
-
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 #[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Publishes Ordered Row Batches.", id = "batches", requires(harmos_operations::streams::Publish), observers = (), streams(BatchedRows, RawRows, TimedRows, ClockedRows, StampedRows))]
@@ -566,10 +542,6 @@ impl harmos_runtime::Lifecycle for SampledTwins {
 
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         self.resources.counts.initialized.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
 
@@ -673,18 +645,6 @@ impl harmos_runtime::Lifecycle for MultiStream {
         let attachment = harmos_sidecar::ObserverAttachment::from_catalog::<MultiObservers>(Self::STREAMS)?;
         Ok(Self { attachment })
     }
-
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 #[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "One Observer Publishing Two Rows.", id = "multi_stream", requires(harmos_operations::streams::Publish),
@@ -741,18 +701,6 @@ impl harmos_runtime::Lifecycle for Flood {
         let plugin = Self { resources, attachment };
         setup.resource::<super::witness::Witness>(plugin.resources.clone());
         Ok(plugin)
-    }
-
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        Ok(())
     }
 }
 

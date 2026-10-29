@@ -687,8 +687,6 @@ impl harmos::Lifecycle for Product {
         Ok(Self { device })
     }
 
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> { Ok(()) }
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> { Ok(()) }
     async fn cleanup(&mut self) -> Result<(), Self::Error> { self.device.close().await }
 }
 

@@ -64,9 +64,6 @@ impl harmos::Lifecycle for Bridge {
     type Error = std::convert::Infallible;
 
     async fn prepare(_: (), _: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> { Ok(Self) }
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> { Ok(()) }
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> { Ok(()) }
-    async fn cleanup(&mut self) -> Result<(), Self::Error> { Ok(()) }
 }
 
 #[harmos::sidecar::plugin(id = "missing_output", requires = (), observers = Observers, restart = "never")]

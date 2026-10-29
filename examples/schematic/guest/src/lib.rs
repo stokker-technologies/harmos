@@ -75,18 +75,6 @@ impl harmos::Lifecycle for Plugin {
         setup.settings().stream_limits(WireStreamLimits { input: direction, output: direction }).map_err(Error::other)?;
         Ok(plugin)
     }
-
-    async fn initialize(&mut self, _: &Context) -> Result<(), Error> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Context) -> Result<(), Error> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Error> {
-        Ok(())
-    }
 }
 
 #[harmos::guest(id = "schematic_tools", requires = ())]
