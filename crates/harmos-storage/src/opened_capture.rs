@@ -70,7 +70,7 @@ struct State {
     observed: Option<(u64, std::time::SystemTime)>,
     sealed: bool,
     finished: Option<FileReference>,
-    _frozen: Option<crate::FrozenFile>,
+    frozen: Option<crate::FrozenFile>,
 }
 
 /* === Enums === */
@@ -114,7 +114,7 @@ impl<C> StorageManager<C> {
         if Arc::ptr_eq(&self.inner, &source.session.inner) {
             state.session = source.session.clone();
         }
-        state._frozen = Some(source);
+        state.frozen = Some(source);
         Ok(capture)
     }
 
@@ -143,7 +143,7 @@ impl<C> StorageManager<C> {
                 observed: None,
                 sealed: false,
                 finished: None,
-                _frozen: None,
+                frozen: None,
             }),
             pending: Mutex::new(None),
             acknowledged: None,
@@ -283,8 +283,12 @@ impl State {
                     }
                     range.limit = Some(length);
                 }
-                let file = self.file.try_clone().map_err(crate::local::io_error)?;
-                let mut reader = self.session.read_opened_file(file, range).await?;
+                let file = self.file.try_clone().map_err(|error| {
+                    let path = crate::local::opened_path(&self.file);
+                    crate::local::io_error("clone capture source", &path, error)
+                })?;
+                let frozen = self.frozen.as_ref().map(|source| Arc::clone(&source.backing));
+                let mut reader = self.session.open_file_handle(file, range, frozen).await?;
                 self.remaining_prefix = self.offset;
                 if let Request::Synchronize(length) | Request::FinishAt(length) = self.request {
                     let observation = reader.observation().expect("opened capture reads its original handle");

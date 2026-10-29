@@ -83,3 +83,7 @@
 ## Workflow Follow-Up
 
 - Finish/archive the specification only after tracked work and required proof are complete; retire workspace only through canonical housekeeping.
+
+## Workflow Follow-Up
+
+- All implementation items were already checked at handoff. Native source review confirms shared typed writes in harmos-storage/src/backend.rs and bounded file scheduling in staging/state.rs:103; targeted file, directory, projection and query proof passes. Ownership guidance and deltas now reflect the superseding claim-free storage design. Task 4.4 remains the integration owner's delivery obligation.

@@ -40,14 +40,14 @@ use crate::{ByteRange, Result, StorageManager};
 /// A private immutable copy of an opened file range, retained independently of its source.
 #[derive(Clone)]
 pub struct FrozenFile {
-    backing: Arc<Backing>,
+    pub(crate) backing: Arc<Backing>,
     length: u64,
     sha256: [u8; 32],
     pub(crate) session: StorageManager<crate::ErasedCatalog>,
 }
 
-struct Backing {
-    file: Mutex<File>,
+pub(crate) struct Backing {
+    file: Mutex<tempfile::NamedTempFile>,
 }
 
 /* === Enums === */
@@ -69,11 +69,12 @@ impl FrozenFile {
     /// The reader owns its file handle and remains valid after this snapshot is dropped.
     pub async fn read(&self, range: ByteRange) -> Result<crate::FileReader> {
         let file = self.opened_file()?;
-        self.session.read_opened_file(file, range).await
+        self.session.open_file_handle(file, range, Some(Arc::clone(&self.backing))).await
     }
 
     pub(crate) fn opened_file(&self) -> Result<File> {
-        self.backing.file.lock().unwrap().try_clone().map_err(io_error)
+        let file = self.backing.file.lock().unwrap();
+        file.as_file().try_clone().map_err(|error| io_error("clone frozen file", file.path(), error))
     }
 }
 
@@ -83,7 +84,11 @@ impl<C> StorageManager<C> {
     /// On Windows, `source` must allow a separate read open; exclusive handles are refused.
     pub async fn freeze_opened_file(&self, source: File, range: ByteRange) -> Result<FrozenFile> {
         let backing = tokio::task::spawn_blocking(move || {
-            let file = tempfile::NamedTempFile::new().map_err(io_error)?.into_file();
+            // Keep The Name Until All Frozen Readers And Captures Release Their Owner.
+            // Reopening An Unlinked Temporary Can Be Denied By Windows Filesystem Filters.
+            let directory = std::env::temp_dir();
+            let file =
+                tempfile::NamedTempFile::new_in(&directory).map_err(|error| io_error("create frozen temporary", &directory, error))?;
             Ok::<_, crate::Error>(Arc::new(Backing { file: Mutex::new(file) }))
         })
         .await
@@ -93,9 +98,12 @@ impl<C> StorageManager<C> {
         while let Some(batch) = reader.next().await? {
             digest.update(batch.bytes());
             let target = Arc::clone(&backing);
-            tokio::task::spawn_blocking(move || target.file.lock().unwrap().write_all(batch.bytes()).map_err(io_error))
-                .await
-                .map_err(task_error)??;
+            tokio::task::spawn_blocking(move || {
+                let mut file = target.file.lock().unwrap();
+                file.write_all(batch.bytes()).map_err(|error| io_error("write frozen temporary", file.path(), error))
+            })
+            .await
+            .map_err(task_error)??;
         }
         let completion = reader.completion()?;
         if range.limit.is_some_and(|length| length != completion.bytes) {

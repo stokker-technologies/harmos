@@ -152,7 +152,7 @@ impl Drop for DirectoryReader {
 impl Scan {
     fn enter(&mut self, path: &Path) -> Result<()> {
         let path = crate::local::validate_local_path(path)?;
-        let directory = fs::read_dir(&path).map_err(crate::local::io_error)?;
+        let directory = fs::read_dir(&path).map_err(|error| crate::local::io_error("open directory", &path, error))?;
         self.stack.push(Frame { directory, _path: path });
         Ok(())
     }
@@ -170,7 +170,7 @@ impl Scan {
                 self.stack.pop();
                 continue;
             };
-            let entry = entry.map_err(crate::local::io_error)?;
+            let entry = entry.map_err(|error| crate::local::io_error("read directory entry", &frame._path, error))?;
             self.visited = self.visited.checked_add(1).ok_or(Error::ResourceExhausted { resource: "directory entries" })?;
             if self.visited > self.inner.settings.filesystem.max_entries.get() {
                 return Err(Error::ResourceExhausted { resource: "directory entries" });
@@ -181,7 +181,7 @@ impl Scan {
             let metadata = match fs::symlink_metadata(&path) {
                 Ok(metadata) => metadata,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(error) => return Err(crate::local::io_error(error)),
+                Err(error) => return Err(crate::local::io_error("inspect directory entry", &path, error)),
             };
             if crate::local::linked(&metadata) {
                 continue;

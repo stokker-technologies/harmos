@@ -13,3 +13,7 @@
 - [ ] 2.3 Verify required hosted checks and protected integration, preserving auto-merge and the retained day-long drop worktree.
 
 - [ ] 2.4 Deliver the canonical release-tooling correction through a protected dev review and the next version calculated by Prepare; verify its required hosted Dry, rehearsal, Tag, registries, immutable assets and both native installer checks without replacing v0.1.3.
+
+## Workflow Follow-Up
+
+- Storage triage found no remaining source task: receipts.rs:137 preserves admitted completion identity, receipts.rs:222 reclaims only eligible entries, and the five manager/mutations.rs fixtures pass on native Windows. Tasks 2.1-2.4 remain delivery obligations; this worker never pushes or runs full lanes.
