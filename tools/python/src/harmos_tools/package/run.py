@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/package/run.py; sha256:de689a46a40ea213351928a202e494bbc9fc1fbf43e4998805b7cf6c0abca3d7
+# Rendered by stkr project update from templates/python/package/run.py; sha256:0adba5934d1dc06d5cdbacb8bcc32592dd25862da4f64b32d2903438c1c4fd6f
 # ***
 #
 # Harmos
@@ -198,7 +198,10 @@ def binary_bytes(source: Path, name: str) -> bytes:
         matches = [entry for entry in archive.getmembers() if entry.name == name]
         if len(matches) != 1 or not matches[0].isfile() or not matches[0].mode & 0o111:
             raise policy.ToolError("tool archive must contain one executable regular binary")
-        with archive.extractfile(matches[0]) as stream:
+        stream = archive.extractfile(matches[0])
+        if stream is None:
+            raise policy.ToolError("tool archive binary has no file content")
+        with stream:
             return stream.read()
 
 
