@@ -88,7 +88,7 @@ The [operations guide](.agents/skills/harmos-authoring/references/operations.md)
 shows one operation file where the request implements consuming execution with declared resources and child operations.
 
 Portable messages support standard Rust maps with deterministic key ordering
-and bounded decoding. The [message guide](docs/product-guide.md)
+and bounded decoding, plus root optional payloads that preserve value presence. The [message guide](docs/product-guide.md)
 describes their repeated key/value entry representation.
 
 Structured operation and storage tracing supports performance investigation;

@@ -39,8 +39,10 @@ No application, instrument, hardware or product suite is executed by this work.
 
 ## Consumer Adoption
 
-Remote dev and registry 0.1.12 expose incompatible runtime and dependency
-contracts despite sharing a package version. Patching only the portable crates
-into the registry SDK is also incompatible. Consumer validation requires either
-a release-compatible backport or adoption of the current development API.
-That selection and root optional-payload support remain owner decisions.
+Use this development worktree as the local path override; do not backport to
+the published API. Merge newer remote dev changes into this worktree.
+Migrate affected consumer assembly and dependent APIs to the selected tree.
+
+Root Option<T> uses an optional value/tag 1 field with T's scalar or message
+kind, preserving None versus Some(default) through Postcard and protobuf.
+Existing nested optional fields keep their current encoding.

@@ -99,6 +99,18 @@ impl Described for () {
     const MARKER: &'static [u8] = &declaration::encode::<{ declaration::encoded_len(Self::NAME, Self::FIELDS) }>(Self::NAME, Self::FIELDS);
 }
 
+impl<T: Described> Described for Option<T> {
+    const NAME: &'static str = declaration::Name::new("harmos::Optional", &[T::NAME]).as_str();
+    const FIELDS: &'static [graph::Field<declaration::Definition>] = &[graph::Field {
+        name: Cow::Borrowed("value"),
+        tag: 1,
+        kind: T::FIELD_KIND,
+        cardinality: Cardinality::Optional,
+    }];
+    const MARKER: &'static [u8] =
+        declaration::encode_buffer::<2048>(Self::NAME, Self::FIELDS).split_at(declaration::encoded_len(Self::NAME, Self::FIELDS)).0;
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */

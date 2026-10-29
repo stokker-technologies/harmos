@@ -738,6 +738,11 @@ Generated protobuf contracts and schema projections expose entry lists,
 rather than native protobuf maps or JSON objects. Nested containers such as
 `HashMap<String, Vec<Row>>` remain unsupported; use a named message for the value.
 
+Root `Option<T>` payloads use an optional `value = 1` field. `None` and
+`Some(default)` keep their distinct presence in both Postcard and protobuf.
+The contained type can be a scalar, bytes, a named message or another described
+root container; existing optional message fields retain their current shape.
+
 `Message` supplies encoding and decoding; `Portable` supplies structural fingerprints and payload digests. Retries run a clone
 of the original operation request. Large payloads belong in streams. The low-level `Carrier` lifecycle is used for carrier proxies
 and lifecycle controls; services retain their separate `Service` lifecycle.

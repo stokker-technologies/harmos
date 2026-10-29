@@ -238,3 +238,25 @@ fn map_hasher_ownership_is_charged() {
     assert_eq!(Message::encode(&value), Message::encode(&default));
     assert!(value.memory_size() >= std::mem::size_of_val(&value) + 128);
 }
+
+#[test]
+fn root_option_preserves_presence() {
+    roundtrip(&Option::<u64>::None);
+    roundtrip(&Some(0_u64));
+    roundtrip(&Some(false));
+    roundtrip(&Some(String::new()));
+    roundtrip(&Some(Vec::<u8>::new()));
+    roundtrip(&Some(()));
+    roundtrip(&Option::<super::Original>::None);
+    roundtrip(&Some(super::Original { value: 0, payload: vec![] }));
+    roundtrip(&Some(super::Original { value: 7, payload: vec![0, 255] }));
+    roundtrip(&Some(BTreeMap::from([("name".to_owned(), "value".to_owned())])));
+    roundtrip(&Some(Option::<u64>::None));
+    roundtrip(&Some(Some(0_u64)));
+    assert_eq!(grpc::decode::<Option<u64>>(DecodeInput::new(&[])).unwrap(), None);
+    assert_ne!(super::encode(&Some(0_u64)), super::encode(&Option::<u64>::None));
+    assert_ne!(Some(0_u64).digest(), Option::<u64>::None.digest());
+    assert_ne!(Option::<u64>::fingerprint(), u64::fingerprint());
+    assert!(Option::<u64>::decode(&[1]).is_err());
+    assert!(Option::<u64>::decode(&[2]).is_err());
+}

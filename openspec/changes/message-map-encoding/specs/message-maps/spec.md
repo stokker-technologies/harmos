@@ -42,3 +42,14 @@ value/tag 2; root maps SHALL wrap entries at tag 1.
 
 - **WHEN** a map schema is exported and transcoded through protobuf
 - **THEN** its repeated entry representation roundtrips to the same typed map
+
+
+### Requirement: Root Optional Payloads
+
+Option<T> SHALL be portable as a complete operation payload when T has a
+portable schema, preserving absence independently from the contained default.
+
+#### Scenario: Present Default And Absent Values
+
+- **WHEN** None and Some(default) cross Postcard and protobuf boundaries
+- **THEN** both roundtrip with their original presence and distinct digests
