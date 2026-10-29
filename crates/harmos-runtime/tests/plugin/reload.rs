@@ -56,7 +56,7 @@ async fn reload_orders_lifecycle() {
         host.control.lock().unwrap().events,
         ["fence:client,provider", "stop:client", "stop:provider", "start:provider", "start:client"]
     );
-    // Its Original Generation Remains Occupied And OperationDeclaration
+    // Its Original Generation Remains Occupied And Callable
     assert!(matches!(session.router().enter("other"), Err(DispatchError::Occupied(_))));
     assert!(host.operations().call_encoded("other.fixture.run", request_payload()).await.is_ok());
     drop(unchanged);

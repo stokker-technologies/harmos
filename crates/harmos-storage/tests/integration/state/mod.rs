@@ -7,8 +7,6 @@
  * ***
  */
 
-// Compose State Backend Integration Stories
-
 /* === Modules === */
 
 mod file;

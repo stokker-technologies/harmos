@@ -225,7 +225,6 @@ impl Declaration {
         let operations = contracts.provides.iter().map(|contract| contract.operation().clone()).collect();
         let streams = publications::select(publications, name, &id)?;
 
-        // Select The CarrierSection Section
         let (observers, carrier) = match facility {
             Facility::Sidecar => {
                 let restart = restart(restart_policies, &id)?;

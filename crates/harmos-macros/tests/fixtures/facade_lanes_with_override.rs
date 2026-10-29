@@ -30,8 +30,6 @@
 
 /* === Enums === */
 
-// `lanes` used to take no arguments at all; proving the facade override
-// reaches it too covers the highest-risk edge of this change.
 #[facade::lanes(harmos_path = ::facade::__harmos)]
 enum Lanes {
     #[default]

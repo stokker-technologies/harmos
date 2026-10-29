@@ -66,15 +66,15 @@ pub struct Context {
     step: Option<String>,
 }
 
-// What the originating process observed: its source chain and, when that
-// process enabled capture, the backtrace where its carrier received the error.
-// The origin names whose frames these are, so a host capture never poses as a
-// plugin's.
 // Renders an error chain on one line for logs and text sinks. Each link prints
 // its own line once; a link whose text an outer link already embeds is
 // skipped, so a cause is never repeated.
 pub struct Report<'a>(pub &'a (dyn std::error::Error + 'static));
 
+// What the originating process observed: its source chain and, when that
+// process enabled capture, the backtrace where its carrier received the error.
+// The origin names whose frames these are, so a host capture never poses as a
+// plugin's.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Diagnostics {
@@ -127,7 +127,6 @@ impl Failure {
             return forwarded;
         }
 
-        // Collapse The Chain To Its Deepest Meaningful Message
         let chain: Vec<String> = sources(error)
             .map(|error| match error.downcast_ref::<crate::Refusal>() {
                 Some(refusal) => refusal.message().to_owned(),
@@ -136,7 +135,6 @@ impl Failure {
             .collect();
         let cause = chain.iter().rev().find(|message| !message.trim().is_empty()).cloned().unwrap_or_else(|| "operation failed".to_owned());
 
-        // Keep The Full Chain And Any Capture As Origin Diagnostics
         let backtrace = Backtrace::capture();
         let backtrace = (backtrace.status() == BacktraceStatus::Captured).then(|| bounded(backtrace.to_string(), BACKTRACE_LIMIT));
         let chain = chain.into_iter().take(CHAIN_LIMIT).map(|message| bounded(message, LINK_LIMIT)).collect();

@@ -7,8 +7,6 @@
  * ***
  */
 
-// Storage Arrow Query Contract
-
 /* === Modules === */
 
 pub mod aggregate;
