@@ -96,6 +96,8 @@ harmos-sdk = { path = "../harmos-sdk", default-features = false, features = ["gr
 # Utilities
 
 # Serialization
+# harmos_tools.build locates protoc through this package in cargo metadata.
+protoc-bin-vendored = { workspace = true }
 
 # Configuration
 
