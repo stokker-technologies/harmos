@@ -89,8 +89,6 @@ pub const POLICY: OperationPolicy = OperationPolicy {
     },
 };
 
-pub const EVERY_SCHEMA: &str = "*";
-
 pub const STREAM_POLICY: OperationPolicy = OperationPolicy {
     attempt_timeout: POLICY.timeout,
     retries: RetryPolicy::Never,

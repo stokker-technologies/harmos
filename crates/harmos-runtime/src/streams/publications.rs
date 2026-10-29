@@ -290,13 +290,6 @@ impl PublicationLease {
         self.admit(row, Some(wire_sequence), missed)
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-    pub fn stage_row(
-        &self, row: PublicationRow, wire_sequence: u64, missed: u64,
-    ) -> Result<super::StagedPublication, StreamPublicationError> {
-        self.stage_sequence(vec![row], Some(wire_sequence), missed, None).single()
-    }
-
     // An ordered batch takes contiguous sequences from `first_wire_sequence`;
     // `missed` applies before the first row only.
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
@@ -520,12 +513,6 @@ impl PluginStream {
     }
 
     pub fn watch(&self) -> impl futures_core::Stream<Item = Item<PublicationRow>> + Send + Unpin + use<> {
-        let window = Arc::clone(&self.wired.window);
-        let holding = Holding::engage(Arc::clone(&window));
-        window::following(window, Arc::clone(&self.closed), holding)
-    }
-
-    pub fn watch_managed(&self) -> impl futures_core::Stream<Item = Item<super::ManagedPublication>> + Send + Unpin + use<> {
         let window = Arc::clone(&self.wired.window);
         let holding = Holding::engage(Arc::clone(&window));
         window::following(window, Arc::clone(&self.closed), holding)

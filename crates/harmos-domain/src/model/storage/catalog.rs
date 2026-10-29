@@ -27,7 +27,6 @@ use crate::{Error, Identified, Identifier, MemorySize, Result, schema};
 const MAX_DEFINITIONS: usize = 4096;
 const MAX_IDENTITY_BYTES: usize = 1024;
 
-pub const LOOKUP_MEMORY_BYTES: usize = MAX_IDENTITY_BYTES * 2;
 const VALIDATION_BYTES: usize = 8 * 1024 * 1024;
 
 /* === Macros === */

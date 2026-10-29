@@ -247,18 +247,6 @@ impl harmos_runtime::Lifecycle for NativeProviderPlugin {
         setup.resource::<ProviderOwner>(plugin.resources.clone());
         Ok(plugin)
     }
-
-    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 #[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "provider", requires = ())]
@@ -282,18 +270,6 @@ impl harmos_runtime::Lifecycle for NativeClientPlugin {
         };
         setup.resource::<NativeClient>(plugin.resources.clone());
         Ok(plugin)
-    }
-
-    async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
-        Ok(())
     }
 }
 

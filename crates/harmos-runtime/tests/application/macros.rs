@@ -100,18 +100,6 @@ mod sheet {
         async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
             Ok(Self)
         }
-
-        async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-            Ok(())
-        }
-
-        async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-            Ok(())
-        }
-
-        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
-            Ok(())
-        }
     }
 
     impl harmos_runtime::Application for Studio {
@@ -215,18 +203,6 @@ mod counter {
         async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
             Ok(Self)
         }
-
-        async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-            Ok(())
-        }
-
-        async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-            Ok(())
-        }
-
-        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
-            Ok(())
-        }
     }
 
     impl harmos_runtime::Application for Counter {
@@ -301,15 +277,6 @@ mod unified_plugins {
         async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
             Ok(Self)
         }
-        async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        async fn cleanup(&mut self) -> Result<(), Self::Error> {
-            Ok(())
-        }
     }
 
     #[harmos_runtime::plugin(description = "Native Authored Plugin",
@@ -361,15 +328,6 @@ mod unified_plugins {
         type Context = harmos_runtime::sidecar::Supervisor;
         async fn prepare(_: SdkInitialization, _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
             panic!("inert inspection must not prepare the product plugin")
-        }
-        async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        async fn cleanup(&mut self) -> Result<(), Self::Error> {
-            Ok(())
         }
     }
 
@@ -569,15 +527,6 @@ mod unified_plugins {
         async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
             Ok(Self)
         }
-        async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        async fn cleanup(&mut self) -> Result<(), Self::Error> {
-            Ok(())
-        }
     }
 
     #[harmos_runtime::plugin(
@@ -621,15 +570,6 @@ mod unified_plugins {
         type Context = harmos_runtime::sidecar::Supervisor;
         async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
             Ok(Self)
-        }
-        async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        async fn cleanup(&mut self) -> Result<(), Self::Error> {
-            Ok(())
         }
     }
 
@@ -708,15 +648,6 @@ mod unified_plugins {
         async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
             Ok(Self)
         }
-        async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        async fn cleanup(&mut self) -> Result<(), Self::Error> {
-            Ok(())
-        }
     }
 
     #[harmos_runtime::plugin(id = "unified_listening", requires = (), listeners = Audience)]
@@ -735,15 +666,6 @@ mod unified_plugins {
         type Context = harmos_runtime::guest::kit::Context;
         async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
             Ok(Self)
-        }
-        async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        async fn cleanup(&mut self) -> Result<(), Self::Error> {
-            Ok(())
         }
     }
 

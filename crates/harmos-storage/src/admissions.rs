@@ -20,7 +20,7 @@ use std::time::UNIX_EPOCH;
 use sha2::{Digest, Sha256};
 
 // Local Imports
-use super::{RecordInput, RecordWrite, StorageCursor, StorageManager, StreamInput};
+use super::{RecordInput, RecordWrite, StorageCursor, StorageManager};
 use crate::storage::MutationId;
 use crate::{Error, Identifier, Result};
 
@@ -68,32 +68,6 @@ impl<C> StorageManager<C> {
         }
         self.admit_records(
             records,
-            Some(Mutation {
-                id: mutation,
-                fingerprint: hash.finalize().into(),
-            }),
-        )
-        .await
-    }
-
-    #[tracing::instrument(name = "storage.admissions.write_stream_once", level = "debug", skip_all)]
-    pub async fn write_stream_once(&self, mutation: &MutationId, rows: Vec<StreamInput>) -> Result<StorageCursor> {
-        self.admit_stream_values(mutation, rows).await
-    }
-
-    #[tracing::instrument(name = "storage.admissions.admit_stream_values", level = "debug", skip_all)]
-    pub(crate) async fn admit_stream_values(&self, mutation: &MutationId, rows: Vec<StreamInput>) -> Result<StorageCursor> {
-        nonempty(rows.len())?;
-        let mut hash = Sha256::new();
-        part(&mut hash, b"storage.write_stream:v1");
-        hash.update((rows.len() as u64).to_le_bytes());
-        for row in &rows {
-            part(&mut hash, row.stream.as_str().as_bytes());
-            hash.update(row.sequence.to_le_bytes());
-            hash_record(&mut hash, &row.record.borrowed());
-        }
-        self.admit_stream(
-            rows,
             Some(Mutation {
                 id: mutation,
                 fingerprint: hash.finalize().into(),

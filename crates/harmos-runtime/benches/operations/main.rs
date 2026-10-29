@@ -118,15 +118,6 @@ impl harmos_runtime::Lifecycle for App {
         setup.operations::<DispatchOperations>(Lanes::Open);
         Ok(Self)
     }
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
-        Ok(())
-    }
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 impl harmos_runtime::Application for App {

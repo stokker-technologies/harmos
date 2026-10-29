@@ -35,10 +35,6 @@ use super::*;
 /* === Implementations === */
 
 impl Manager {
-    pub fn cache_capacity(&self) -> usize {
-        self.registry.state.lock().expect("operation registry lock is healthy").cache_capacity
-    }
-
     pub fn set_cache_capacity(&self, capacity: usize) {
         let retired = {
             let mut state = self.registry.state.lock().expect("operation registry lock is healthy");

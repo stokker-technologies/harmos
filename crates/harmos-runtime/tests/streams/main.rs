@@ -9,8 +9,7 @@
 
 /* === Modules === */
 
-#[path = "../support/mod.rs"]
-mod support;
+use crate::support;
 
 #[path = "../streams/allocation.rs"]
 mod allocation;

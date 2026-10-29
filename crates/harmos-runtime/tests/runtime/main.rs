@@ -9,14 +9,10 @@
 
 /* === Modules === */
 
-#[path = "../support/mod.rs"]
-mod support;
-
 #[path = "../support/runtime_mirror.rs"]
 mod mirror;
 
-#[path = "../support/runtime_probe.rs"]
-mod probe;
+use crate::probe;
 
 #[path = "../runtime/boot.rs"]
 mod boot;

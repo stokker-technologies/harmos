@@ -406,20 +406,7 @@ impl<A: Application> harmos_sdk::operations::Host for ServiceContext<A> {
     where
         S::Row: harmos_domain::Message,
     {
-        use harmos_domain::Message;
-        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::Publish {
-            stream: S::ID.to_owned(),
-            schema: S::VERSION,
-            sequence: None,
-            published_unix_micros: None,
-            context: None,
-            payload: row.encode(),
-            following: Vec::new(),
-        });
-        async move {
-            published.await?;
-            Ok(())
-        }
+        harmos_operations::streams::publish_on::<_, S>(self, row)
     }
 
     type Error = Error;
@@ -523,18 +510,6 @@ mod tests {
 
         async fn prepare(_: (), _: &mut crate::Setup<Self>) -> std::result::Result<Self, Self::Error> {
             Ok(Self)
-        }
-
-        async fn initialize(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-            Ok(())
-        }
-
-        async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-            Ok(())
-        }
-
-        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
-            Ok(())
         }
     }
 

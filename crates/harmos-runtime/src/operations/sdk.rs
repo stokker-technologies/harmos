@@ -257,14 +257,6 @@ impl PluginSdkRegistration {
         Ok(())
     }
 
-    pub fn observer_outcome(&self) -> Result<()> {
-        #[cfg(feature = "plugin-sidecar")]
-        if let Some(binding) = &self.entries[0].native {
-            binding.observer_outcome()?;
-        }
-        Ok(())
-    }
-
     #[tracing::instrument(target = "harmos::operations", name = "operations.close", level = "debug", skip_all)]
     pub async fn close(&mut self) -> Result<()> {
         self.operations.fence(&self.entries, false);
