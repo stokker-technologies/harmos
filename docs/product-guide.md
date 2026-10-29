@@ -853,8 +853,7 @@ stores. Encoded calls still require an explicit
 
 Operation metadata belongs on its owning struct in a vertical file; catalogs
 assemble those types. `harmos::prelude::*` provides a bounded set of common
-authoring imports. See the [crate manifest](../crates/harmos/Cargo.toml) and
-[authoring skill](../.agents/skills/harmos-authoring/SKILL.md) for details.
+authoring imports. See the [crate manifest](../crates/harmos/Cargo.toml) for details.
 
 ## Performance
 
