@@ -44,3 +44,7 @@ Hub `machine-work-root` tasks 6.85/6.86 already own native report replacement an
 Only targeted deterministic checks during implementation: span coverage/fields, handoff ancestry, shared-batch links, cancellation/error closure, filtering, artifact flushing and exporter-readable relationships. No timing thresholds or authored-prose assertions. Add/use explicit project tasks with compiler-output preflight for focused compilation; no direct Cargo compile commands.
 
 After every implementation item and handoff closes, review complete coverage. The user authorized reinstalling the latest Hub and integrating this complete feature into `dev`, including push, ready PR, required checks and native auto-merge. Full native validation remains pending until the required authorized delivery flow; no benchmarks run as incidental per-change proof. Resolve published dependency pins where coupled runtime/library changes apply. Hub's generator supplies committed, repository-owned Python/workflow sources; the public Harmos pipeline does not acquire a private Hub runtime dependency.
+
+## Runtime Triage
+
+All source tasks already landed in `edda250a`; `harmos-runtime/tests/operations/causation.rs` retains handoff, filtering and cancellation-closure stories. Tasks 2.3/2.4 remain integration-owned proof repair and retirement obligations; this runtime slice does not repeat full validation or edit storage.

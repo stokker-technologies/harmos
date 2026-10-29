@@ -48,3 +48,12 @@
 - [x] 4.4 Run the requested seven-package focused tests, Wasm/guest builds, consumer check and all formatters; repair failures.
 - [x] 4.5 Push the combined candidate, verify remote SHA, open the authorized dev PR and enable squash auto-merge.
 - [x] 4.6 Run default ci:simulate once and report each job truthfully; hosted checks are handed off without polling. Source, Python and both Rust checks passed; Product and Tests builds failed on both platforms before compilation with a cache-wrapper RuntimeError; 14 dependent jobs were blocked. Full local proof remains failed; shared tooling repair is excluded by the owner.
+
+## 5. Runtime Follow-Ups
+
+- [x] 5.1 Reconcile the parked changes and attached runtime follow-ups with landed source; retain one-line evidence in the owning designs. Preserve delivery-only obligations.
+- [ ] 5.2 Provide public runtime-computed operation ID registration after the owner resolves whether it binds an existing operation type or arbitrary runtime schemas and handlers. Current catalog binding and setup accept type-owned catalogs only; do not introduce a second registration contract without this decision.
+- [ ] 5.3 Repair async future depth headroom once the failing consumer/reproducer or locked boundary is identified. Existing dispatch already boxes its driver; no required depth or failure is specified in the attachment.
+- [ ] 5.4 Resolve execution sealing latency against a concrete reproducer and owner boundary. Query-producer design defers further report sealing optimization; its measured file-finish/flush waits are storage-owned and excluded from this worktree.
+- [ ] 5.5 Accept observer cadence constant expressions with nonzero validation. Locked inventory: harmos-macros/src/artifact/observer.rs, harmos-sidecar/src/kit/observer.rs, product guide and authoring plugin reference plus canonical generated copies. Prove generated observer inventory and interval agree through focused sidecar tests; preserve the static observer contract.
+- [ ] 5.6 Resolve whether the runtime host owner is reserved before changing plugin owner admission; current attachment explicitly requests an owner decision.

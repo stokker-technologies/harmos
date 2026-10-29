@@ -46,8 +46,8 @@ impl Operation for Cancel {
 
 ## Declared Dependencies And Verification
 
-- `resources = [A, ..]` emits `Requires<A>` and `Dependent::RESOURCES`. Resource types are execution-only, so this projection is
-  emitted under the consumer `runtime` feature like catalog `registration()`.
+- `resources = [A, ..]` emits `Requires<A>` and `Dependent::RESOURCES`. Portable facade declarations gate execution on the
+  consumer `runtime` feature; role-specific runtime, sidecar and guest attributes emit these bounds unconditionally, independent of path.
 - `operations = [T, ..]` emits `Invokes<T>` and `OperationDeclaration::OPERATIONS` (contract level, unconditional).
 - Catalogs project `OPERATIONS` (`Callees`); a plugin's required contracts are its explicit `requires` plus its provided
   operations' callees not provided by the plugin itself.
@@ -71,27 +71,29 @@ impl Operation for Cancel {
 
 ## Risks
 
-- Implementation ownership is this worktree alone, including the inherited partial edits. Task order is domain/SDK, macros,
-  carriers, built-ins and all workspace consumers, then documentation and targeted proof. Owner now authorizes consolidation, dependency/tool refresh and delivery by PR with squash auto-merge into dev; release remains excluded.
+- Runtime follow-ups belong to `harmos.wt/runtime`, branch `feat/runtime-next`; storage belongs to its sibling owner. Only local
+  commits and targeted proof are authorized here. Final validation, delivery and retirement belong to the integration owner.
 - `Resource` and `Dependent` live in the SDK because they describe execution resources; domain owns `Requires` and `Invokes`.
 - Shared stream access uses an asynchronous receiver mutex; receiving remains serialized and cancellation-safe.
 - Stateful carrier and lifecycle machinery retains the internal `Carrier` lifecycle; consumer `Operation` has only consuming `run`.
-- The inherited deletion of `authoring-streamline` and folded current specs is retained as its retirement result.
-
 - Per-attempt request clones copy byte payloads; large transfers belong in streams.
 - Feature unification can enable a facade `runtime` without the consumer `runtime`; gating on the consumer feature avoids that.
 
 - Schematic uses aggregated callees directly; duplicate explicit requirement catalogs are removed.
-- Targeted fixture builds refresh stamped macro libraries because inherited compiler outputs no longer exist.
-
 - Generated messages derive Clone when absent so nested request messages support retry snapshots; manual codecs own Clone.
 - Declared native calls reuse the callee cache's erased response owner, preserving identity with direct invocations.
 
 - Guest roots re-export SDK `Operation`, `Context` and `Response`; plugin lifecycle context stays at `kit::Context`.
-- Remote-only declarations do not require execution when runtime is enabled. Catalog registration remains generated; individual
-  operations register through `RegistrationBatch::operation`, without eager inherent registration bodies.
-- Sandbox request mutation is discarded between attempts; shared retry state belongs to declared resources. Per-handler authored
-  initialization and cleanup probes are removed; plugin lifecycle and carrier settlement remain distinct.
-
+- Remote-only declarations do not require execution when runtime is enabled. `OperationCatalog::batch` supplies generated
+  executable bindings; lifecycle setup owns public composition. `RegistrationBatch` remains an internal authoring mechanism.
 - Sandbox development/test builds optimize schema processing, JSON decoding and SHA-256 fingerprinting so full metadata validation
   fits the unchanged Wasm fuel budget; schema and JSON settings match the schematic guest.
+
+## Runtime Follow-Up Triage
+
+- Core operation requests, dotted IDs, declared callees/resources and catalog cfg propagation already landed in `1b0630a2`.
+- Path-independent execution bounds already landed in `ab85df55`; `harmos-macros/tests/fixtures/facade_runtime_catalogs.rs` exercises all three role paths without a consumer `runtime` feature.
+- Hashed field spans already fixed in `1b0630a2` and verified in `ab85df55`; the focused SDK regression passes on this candidate.
+- Deterministic CLI readiness already landed in `ab85df55`; `harmos-runtime/tests/system/schematic.rs` awaits Initializing/Ready events and derives its handshake bound from the operation policy.
+- Plugin folders, declaration-only benchmark gates and operations-crate orphan guidance already landed in `ab85df55`.
+- Dispatch already boxes its driver in `harmos-runtime/src/operations/instances.rs`; remaining future-depth, runtime-ID registration and host-owner questions stay open in tasks 5.2/5.3/5.6.
