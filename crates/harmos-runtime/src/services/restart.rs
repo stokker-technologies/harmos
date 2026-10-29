@@ -7,9 +7,9 @@
  * ***
  */
 
-// The restart driver of one service instance. Each run is stopped and cleaned up
-// before replacement. Failures spend restart credit; sustained health refills
-// credit. Panics, exhausted credit and missed stop deadlines deactivate the service.
+// The Restart Driver Of One Service Instance. Each Run Is Stopped And Cleaned Up
+// Before Replacement. Failures Spend Restart Credit; Sustained Health Refills
+// Credit. Panics, Exhausted Credit And Missed Stop Deadlines Deactivate The Service.
 
 /* === Modules === */
 
