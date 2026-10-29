@@ -44,7 +44,7 @@ use crate::operations::{
     Backoff, CallContext, ContextError, ContextValue, Jitter, Manager, OperationDeclaration, Response, RestartPolicy, Running,
 };
 use crate::supervision::executor;
-use crate::{Application, Error, Result, evidence::Evidence, state::StateManager, streams::StreamManager};
+use crate::{Application, Error, Result, state::StateManager, streams::StreamManager};
 
 /* === Constants === */
 
@@ -101,7 +101,6 @@ pub(crate) struct Handles<A: Application> {
     pub(crate) state: StateManager<A>,
     pub(crate) records: crate::records::RecordManager<A>,
     pub(crate) streams: StreamManager<A>,
-    pub(crate) evidence: Evidence<A>,
 }
 
 #[derive(Clone)]
@@ -121,7 +120,6 @@ pub struct ServiceContext<A: Application> {
     pub(crate) records: crate::records::RecordManager<A>,
     pub(crate) operations: Manager,
     pub(crate) streams: StreamManager<A>,
-    pub(crate) evidence: Evidence<A>,
     pub(crate) stopping: watch::Receiver<bool>,
     pub(crate) ready: watch::Sender<bool>,
 
@@ -318,7 +316,6 @@ impl<A: Application> Handles<A> {
             records: self.records.clone(),
             operations,
             streams: self.streams.clone(),
-            evidence: self.evidence.clone(),
             stopping,
             ready,
             #[cfg(feature = "plugin-sidecar")]
@@ -336,7 +333,6 @@ impl<A: Application> Clone for Handles<A> {
             state: self.state.clone(),
             records: self.records.clone(),
             streams: self.streams.clone(),
-            evidence: self.evidence.clone(),
         }
     }
 }
@@ -368,10 +364,6 @@ impl<A: Application> ServiceContext<A> {
 
     pub fn streams(&self) -> &StreamManager<A> {
         &self.streams
-    }
-
-    pub fn evidence(&self) -> &Evidence<A> {
-        &self.evidence
     }
 
     pub fn is_stopping(&self) -> bool {
@@ -466,7 +458,6 @@ impl<A: Application> Clone for ServiceContext<A> {
             records: self.records.clone(),
             operations: self.operations.clone(),
             streams: self.streams.clone(),
-            evidence: self.evidence.clone(),
             stopping: self.stopping.clone(),
             ready: self.ready.clone(),
             #[cfg(feature = "plugin-sidecar")]
@@ -506,12 +497,6 @@ pub(crate) fn validate(definition: &ServiceDefinition) -> Result<()> {
         return Err(Error::InvalidInput {
             field: "service name",
             reason: "must not be empty",
-        });
-    }
-    if definition.id == crate::evidence::SOURCE {
-        return Err(Error::InvalidInput {
-            field: "service name",
-            reason: "artifact is reserved for evidence facts",
         });
     }
     definition.policy.validate().map_err(|source| Error::OperationDeclaration { source: source.into() })
