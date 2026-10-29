@@ -1,5 +1,7 @@
 # Schematic Editor
 
+Source: `examples/schematic/`, a Cargo workspace of its own.
+
 One terminal application, with interchangeable native and sandboxed plugins.
 The algorithms are deliberately small so the Harmos workflow stays visible.
 
@@ -12,7 +14,7 @@ target/build/dev/linux-x86_64/bin/schematic-cli
 target/build/dev/linux-x86_64/bin/schematic-cli --guest
 ```
 
-Read [walkthrough.rs](cli/src/walkthrough.rs) alongside the output. It creates a
+Read [walkthrough.rs](../examples/schematic/cli/src/walkthrough.rs) alongside the output. It creates a
 fresh temporary document, places and connects two symbols, moves one, validates
 the schematic, applies a proposed right-angle route, undoes/redoes it, then saves
 and reopens it. Both backends produce the same shared results. The final line is:
@@ -29,12 +31,12 @@ initialization starts; the readiness interval covers plugin initialization.
 
 | Directory | Owns |
 | --- | --- |
-| [domain](domain/src/lib.rs) | Shared models, stream and stored-object contracts. |
-| [operations](operations/src/lib.rs) | Vertical operation declarations, separate requests, optional implementations and catalogs for both carriers. |
-| [app](app/src/app.rs) | Document state, transactions, persistence, runtime composition, and plugin lifecycle. |
-| [cli](cli/src/walkthrough.rs) | The readable teaching sequence and terminal output. |
-| [guest](guest/src/lib.rs) | Sandboxed Wasm composition of the shared operation catalog. |
-| [sidecar](sidecar/src/lib.rs) | Native composition, directory access and progress publishing dependencies. |
+| [domain](../examples/schematic/domain/src/lib.rs) | Shared models, stream and stored-object contracts. |
+| [operations](../examples/schematic/operations/src/lib.rs) | Vertical operation declarations, separate requests, optional implementations and catalogs for both carriers. |
+| [app](../examples/schematic/app/src/app.rs) | Document state, transactions, persistence, runtime composition, and plugin lifecycle. |
+| [cli](../examples/schematic/cli/src/walkthrough.rs) | The readable teaching sequence and terminal output. |
+| [guest](../examples/schematic/guest/src/lib.rs) | Sandboxed Wasm composition of the shared operation catalog. |
+| [sidecar](../examples/schematic/sidecar/src/lib.rs) | Native composition, directory access and progress publishing dependencies. |
 
 The plugins return advice. The host applies it through `ApplyRoute`, preserving
 one owner for edits, undo/redo, and recovery. Neither plugin imports the app.
@@ -60,7 +62,7 @@ target/build/dev/linux-x86_64/bin/schematic-cli --advanced
 target/build/dev/linux-x86_64/bin/schematic-cli --guest --advanced
 ```
 
-[advanced.rs](cli/src/advanced.rs) drains three analysis findings, joins the
+[advanced.rs](../examples/schematic/cli/src/advanced.rs) drains three analysis findings, joins the
 response, then starts another analysis and cancels it with settlement.
 
 The native catalog also exposes `AnalyzeUpload { title }` (client stream of
@@ -109,14 +111,14 @@ Fixture preparation joins the Product and Tests manifests and stamps those exact
 `target/build/dev/<target>/fixtures/stamp.json`, and the system stories in
 `crates/*/tests/system/` drive those artifacts.
 
-The [JSONL adapter](storage/) is the example's persistence format. A document's recovery journal is distinct from a native
+The [JSONL adapter](../examples/schematic/storage/) is the example's persistence format. A document's recovery journal is distinct from a native
 plugin sidecar. Saving uses the adapter's checkpoint protocol after runtime
 settlement and publishes the document through an atomic file replacement.
 
 ## Transfer Benchmarks
 
 The `benchmark` feature on the sidecar and guest enables shared record, sample
-and file-byte transfer endpoints. Their [declarations and implementations](operations/src/transfer.rs) are reused by both example executables.
+and file-byte transfer endpoints. Their [declarations and implementations](../examples/schematic/operations/src/transfer.rs) are reused by both example executables.
 `Put`/`Take` transfer one owned batch per unary call; `Upload`/`Download` carry
 bounded batches through streams. Transfer IDs isolate concurrent datasets.
 The feature also exposes a `Hash` bridge to the host `HashFile` operation. Each
