@@ -169,7 +169,7 @@ impl WireTable {
         D: OperationDeclaration,
         T: Carrier<Declaration = D>,
     {
-        let qualified = QualifiedId::qualify(&self.owner, D::ID).map_err(|_| ServingError::Catalog)?;
+        let qualified = QualifiedId::qualify(&self.owner, contract.operation().id.as_str()).map_err(|_| ServingError::Catalog)?;
         let id = qualified.as_str();
         let (input, output) = T::StreamEndpoints::item_types();
         if (input, output) != crate::operations::item_types::<D>()
@@ -190,6 +190,7 @@ impl WireTable {
         if marked && protobuf.is_none() {
             return Err(ServingError::Codec(crate::MessageError::borrowed("gRPC operation has no provider protobuf projection")));
         }
+        let grant_operation = contract.operation().id.to_string();
         let prepare: Prepare = Box::new(move |payload, grpc| {
             if grpc && !marked {
                 return Err(ServingError::Codec(crate::MessageError::borrowed("operation has no gRPC contract")));
@@ -215,7 +216,7 @@ impl WireTable {
             #[cfg(not(feature = "grpc"))]
             let request =
                 <<T::Declaration as OperationDeclaration>::Request as crate::Message>::decode(&payload).map_err(ServingError::Codec)?;
-            let grant = <D as OperationDeclaration>::grant(&request);
+            let grant = crate::operations::registration::registered_grant::<D>(&grant_operation, D::grant(&request));
             let endpoints = endpoints()?;
             #[cfg(all(feature = "grpc", feature = "streaming"))]
             let endpoints = StreamEndpoints {

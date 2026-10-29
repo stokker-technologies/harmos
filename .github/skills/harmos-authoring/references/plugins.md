@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/plugins.md; sha256:81e9740e3e5377832cc8b017534e21ad995e348f84c411f1847a333ca3f36e0d -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/plugins.md; sha256:d32b95cadd1e8f2bfeb2ae2249b31de9fa02aa2543ba2dfb94cfc4ab781f7d62 -->
 
 # Plugins And Carriers
 
@@ -40,6 +40,10 @@ choose a registration prefix. Advertisements carry local IDs, while routed
 frames carry already-qualified IDs, fingerprints and u64 generations. Transports
 validate those IDs without adding a prefix. Old version-only peers are refused.
 
+`host` is a valid plugin owner with ordinary admission and grant checks. That
+name grants no application caller authority; authority comes from the runtime
+context. Actual qualified operation and service identity collisions are refused.
+
 ## Lifecycle Responsibilities
 
 The shared `Lifecycle` contract owns `Config`, `Error` and `Context`:
@@ -66,6 +70,10 @@ Native observers do not declare a typed resources bundle. Their initialization
 receives `&ExecutionContext`, and callbacks receive `ObserverContext<'_, Host>`
 (with `Supervisor` as the default host type). Call `resource::<T>()` on that
 context to resolve an `Arc<T>`; resource lookup returns `Result<_, ResourceError>`.
+
+Observer `interval_ms` accepts a constant `u64` expression, including a policy
+constant or associated constant. The generated inventory evaluates it at compile
+time and rejects zero. Runtime configuration cannot change this static cadence.
 
 For genuine process isolation, a separate sidecar can host the product runtime
 while another plugin requires its contracts through the entry crate's default

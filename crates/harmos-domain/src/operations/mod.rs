@@ -132,6 +132,17 @@ impl<'de> Deserialize<'de> for OperationDefinition {
 }
 
 impl OperationDefinition {
+    pub fn named<O: OperationDeclaration + ?Sized>(id: impl Into<String>) -> crate::Result<Self> {
+        let id = crate::Identifier::new(id.into())?;
+        let mut definition = O::definition();
+        if definition.id != id {
+            definition.fingerprint = catalog::fingerprint_at::<O>(id.as_str())?;
+            definition.id = id;
+        }
+        definition.validate()?;
+        Ok(definition)
+    }
+
     pub fn validate(&self) -> crate::Result<()> {
         if crate::reserved(self.id.as_str()) {
             return Err(crate::Error::ReservedOperation { id: self.id.as_str().to_owned() });

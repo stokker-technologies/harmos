@@ -11,6 +11,8 @@
 
 #[path = "../plugin/activation.rs"]
 mod activation;
+#[path = "../plugin/owners.rs"]
+mod owners;
 #[path = "../plugin/reload.rs"]
 mod reload;
 #[path = "../plugin/retirement.rs"]

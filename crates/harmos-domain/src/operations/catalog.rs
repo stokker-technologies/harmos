@@ -152,9 +152,13 @@ fn payload<T: crate::Portable>() -> Result<crate::Fingerprint> {
 }
 
 fn fingerprint<O: OperationDeclaration + ?Sized>() -> Result<crate::Fingerprint> {
+    fingerprint_at::<O>(O::ID)
+}
+
+pub(super) fn fingerprint_at<O: OperationDeclaration + ?Sized>(id: &str) -> Result<crate::Fingerprint> {
     let input = if O::Input::STREAMED { Some(payload::<<O::Input as super::Direction>::Item>()?) } else { None };
     let output = if O::Output::STREAMED { Some(payload::<<O::Output as super::Direction>::Item>()?) } else { None };
-    Ok(crate::schema::identity::operation(O::ID, payload::<O::Request>()?, payload::<O::Response>()?, input, output))
+    Ok(crate::schema::identity::operation(id, payload::<O::Request>()?, payload::<O::Response>()?, input, output))
 }
 
 fn append(declaration: &Entry, names: &mut BTreeSet<Identifier>, definitions: &mut Vec<OperationDefinition>) -> Result<()> {

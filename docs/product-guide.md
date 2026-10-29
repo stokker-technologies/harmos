@@ -971,6 +971,17 @@ There is no explicit irreversibility marker.
 
 ## Plugin Source Layout
 
+Runtime-selected operation IDs bind an existing type through
+`operations::Registration::new(lane).operation::<Read>(id)?`, then
+`runtime.register_batch(batch).await?` or plugin `register_embedded_batch`.
+The operation type supplies its schema, policy, resources and handler; the chosen
+ID enters the fingerprint. Invoke it with `operations.submit_at::<Read>(id, request)`.
+Static catalog composition and ordinary collision refusal remain unchanged.
+
+The plugin owner `host` is admitted like any other owner. Its name confers no
+application authority or grant exemption. Qualified identity collisions remain
+refusals; application caller authority comes from the runtime context.
+
 Keep one `-sidecar` or `-guest` crate under `crates/`. Several plugins belong
 under `plugins/sidecars/<name>` and `plugins/guests/<name>`. Carrier crates use
 `publish = false`.
@@ -995,3 +1006,7 @@ Rust's orphan rule prevents a runtime crate from implementing Harmos's
 `Operation` for a type declared in a separate domain crate. Keep the operation
 types and their implementations in an operations crate with a `runtime`
 feature; shared models remain in domain.
+
+Observer `interval_ms` accepts constant `u64` expressions such as
+`interval_ms = policy::POLL_INTERVAL_MS`. The generated observer inventory
+rejects zero at compile time; the cadence remains part of the static declaration.
