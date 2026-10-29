@@ -7,8 +7,6 @@
  * ***
  */
 
-// Compose In Process Carrier Story Domains
-
 /* === Modules === */
 
 #[cfg(feature = "transport")]

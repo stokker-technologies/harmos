@@ -121,10 +121,6 @@ impl<'a> Scope<'a> {
         self.core.instances.handles_of::<A>().streams.clone()
     }
 
-    pub fn evidence<A: crate::Application>(&self) -> crate::evidence::Evidence<A> {
-        self.core.instances.handles_of::<A>().evidence.clone()
-    }
-
     pub fn state<A: crate::Application>(&self) -> crate::state::StateManager<A> {
         let journal = self.core.instances.state_of::<A>();
         match self.core.cause {

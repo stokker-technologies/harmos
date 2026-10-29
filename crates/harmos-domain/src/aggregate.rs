@@ -39,8 +39,6 @@ const STD: u32 = 450_256_219;
 const PERCENTILE: u32 = 455_936_439;
 const RANK: u32 = 211_531_165;
 
-// Variant tags in declaration order, indexed by the Postcard ordinal.
-
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -175,7 +173,6 @@ impl Aggregate {
     fn read_postcard(input: &mut PostcardReader<'_>) -> Result<Self, MessageError> {
         let ordinal: u32 = input.value()?;
         if ordinal == 8 {
-            // The rank travels as the declared u32 and must fit a percentile rank.
             let rank: u32 = input.value()?;
             return u8::try_from(rank).map(Self::Percentile).map_err(|_| MessageError::borrowed("percentile rank exceeds 255"));
         }
@@ -270,8 +267,6 @@ const fn variant(name: &'static str, tag: u32, payload: declaration::Definition)
         cardinality: Cardinality::Variant,
     }
 }
-
-// A zero rank is the proto3 default and stays off the wire.
 
 /* === Tests === */
 

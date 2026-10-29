@@ -36,7 +36,6 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tracing::Instrument;
 // Local Imports
-use crate::evidence::{Declaration, Evidence, Vault};
 use crate::services::{Once as DeclaredService, ServiceDefinition};
 use crate::state::dispatch::Dispatch;
 use crate::state::{Feed, Inverting, Origin, ReadRequest, Tail, Undos, replay};
@@ -87,7 +86,6 @@ pub struct Runtime<A: Application> {
     #[cfg(feature = "grpc")]
     grpc: crate::grpc::GrpcManager,
 
-    pub evidence: Evidence<A>,
     stopping: Mutex<Stopping<A>>,
     closing: AtomicBool,
     storage: Arc<OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
@@ -108,7 +106,6 @@ pub struct Handle<A: Application> {
     #[cfg(feature = "grpc")]
     grpc: crate::grpc::GrpcManager,
 
-    pub evidence: Evidence<A>,
     storage: Arc<OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
 }
 
@@ -136,7 +133,6 @@ pub struct Builder<A: Application> {
     schema_settings: Arc<crate::config::SchemaSettings>,
     operation_middleware: Vec<Arc<dyn crate::operations::middleware::Middleware>>,
     services: Vec<DeclaredService<A>>,
-    evidence: Option<Declaration>,
 
     #[cfg(feature = "simulation")]
     simulation: crate::simulation::Configuration<A>,
@@ -235,9 +231,6 @@ enum Cause {
 
     #[error("application storage reconciliation failed: {0}")]
     Reconciliation(String),
-
-    #[error("the evidence declarations cannot be honored: {0}")]
-    Kept(String),
 
     #[cfg(feature = "simulation")]
     #[error("this build cannot be simulated after attaching {0}")]
@@ -361,7 +354,6 @@ impl<A: Application> Clone for Handle<A> {
             plugin: self.plugin.clone(),
             #[cfg(feature = "grpc")]
             grpc: self.grpc.clone(),
-            evidence: self.evidence.clone(),
             storage: self.storage.clone(),
         }
     }
@@ -404,7 +396,6 @@ impl<A: Application> Runtime<A> {
             schema_settings: Arc::new(crate::config::SchemaSettings::default()),
             operation_middleware: Vec::new(),
             services: Vec::new(),
-            evidence: None,
             #[cfg(feature = "simulation")]
             simulation: crate::simulation::Configuration::new(),
             #[cfg(feature = "simulation")]
@@ -453,7 +444,6 @@ impl<A: Application> Runtime<A> {
             plugin: self.plugin.clone(),
             #[cfg(feature = "grpc")]
             grpc: self.grpc.clone(),
-            evidence: self.evidence.clone(),
             storage: self.storage.clone(),
         }
     }
@@ -554,14 +544,6 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn evidence(&mut self, vault: impl Vault, kinds: impl IntoIterator<Item = (DefinitionId, u32)>) -> &mut Self {
-        #[cfg(feature = "simulation")]
-        self.live_only.push("an evidence vault");
-
-        self.evidence = Some(Declaration::new(vault, kinds));
-        self
-    }
-
     pub fn attach(&mut self, consumer: impl JournalConsumer<A>) -> &mut Self {
         #[cfg(feature = "simulation")]
         self.live_only.push("an attached fold");
@@ -639,12 +621,6 @@ impl<A: Application> Builder<A> {
     {
         let service = self.simulation.service_with(name, policy, resident);
         self.services.push(service);
-        self
-    }
-
-    #[cfg(feature = "simulation")]
-    pub fn simulated_evidence(&mut self, vault: impl Vault + Clone, kinds: impl IntoIterator<Item = (DefinitionId, u32)>) -> &mut Self {
-        self.evidence = Some(Declaration::new(vault, kinds));
         self
     }
 
@@ -798,7 +774,6 @@ impl<A: Application> Builder<A> {
             schema_settings,
             operation_middleware,
             services,
-            evidence,
             ..
         } = self;
         let tail = attachments.tail_window()?;
@@ -833,7 +808,6 @@ impl<A: Application> Builder<A> {
         }
         let windows = Table::resuming(definitions, state.position, resume).map_err(Incompatible::dishonored)?;
         let demand = windows.hold(selections).map_err(Incompatible::dishonored)?;
-        let replayed = recovered.clone();
         consumers.redelivering(recovered.clone(), stored, state.position);
 
         let durability = managed_durable.or_else(|| consumers.durability(state.position));
@@ -856,10 +830,6 @@ impl<A: Application> Builder<A> {
         let records = crate::records::RecordManager::new(journal.clone());
         boot.writer = Some(writer);
         boot.state = Some(journal.clone());
-        // Evidence folds from the same replayed order the state above it
-        // folded from, so a boot learns what was finalized from facts rather
-        // than from whatever files happen to be lying in a vault.
-        let evidence = Evidence::wired(journal.clone(), evidence, &replayed).map_err(Incompatible::kept)?;
         // The windows are wired before the consumers start, so a recorder
         // attached below never misses a row published in the gap between the
         // two.
@@ -877,7 +847,6 @@ impl<A: Application> Builder<A> {
             state: journal.clone(),
             records: records.clone(),
             streams: streams.clone(),
-            evidence: evidence.clone(),
         };
         let instances = crate::operations::instances::Instances::start(lanes, Box::new(handles.clone()), resources, &operation_settings);
         let mut reserved = std::collections::BTreeSet::new();
@@ -941,7 +910,6 @@ impl<A: Application> Builder<A> {
             plugin,
             #[cfg(feature = "grpc")]
             grpc,
-            evidence,
             stopping: Mutex::new(Stopping::Running(Some(supervisor))),
             closing: AtomicBool::new(false),
             storage,
@@ -1044,10 +1012,6 @@ impl Incompatible {
             cause: Cause::Simulation(live_only),
             cleanup: None,
         }
-    }
-
-    fn kept(cause: String) -> Self {
-        Self { cause: Cause::Kept(cause), cleanup: None }
     }
 }
 

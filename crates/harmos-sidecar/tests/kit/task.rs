@@ -57,7 +57,6 @@ async fn blocking_preserves_runtimes() {
     let (entered, started) = oneshot::channel();
     let blocking = spawn("blocking-observer".into(), async move {
         let _ = entered.send(thread::current().id());
-        // Block The Observer Thread Until The Test Releases It.
         let _ = blocked.recv();
     })
     .unwrap();

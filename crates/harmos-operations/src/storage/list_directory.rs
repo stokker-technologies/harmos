@@ -62,8 +62,6 @@ impl MemorySize for ListDirectory {
 #[cfg(feature = "runtime")]
 mod execution {
 
-    // Finite Storage Query Operation
-
     // Standard Library Imports
     // Third Party Imports
     // Local Imports

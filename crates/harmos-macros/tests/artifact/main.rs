@@ -70,14 +70,12 @@ fn schema(bytes: &[u8], name: &Value) -> Value {
 }
 
 fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>, required: &BTreeSet<&str>, published: &BTreeSet<&str>) {
-    // Owned Fragments
     for kind in OWNED {
         let fragment = identity(bytes, kind);
         assert_eq!(fragment["facility"], facility, "{facility} {kind} facility");
         assert_eq!(fragment["owner"], "schematic_tools", "{facility} {kind} owner");
     }
 
-    // Provided Contracts
     let contracts = identity(bytes, "contracts");
     let provides = contracts["provides"].as_array().expect("provided wire contracts");
     let ids = provides.iter().map(|contract| contract["operation"]["id"].as_str().expect("operation id")).collect::<BTreeSet<_>>();
@@ -91,7 +89,6 @@ fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>, required: 
         schema(bytes, &contract["response"]);
     }
 
-    // Lifecycle Contracts
     let lifecycle = contracts["lifecycle"].as_array().expect("lifecycle contracts");
     assert_eq!(lifecycle.len(), 2);
     for (contract, action) in lifecycle.iter().zip(["initialize", "shutdown"]) {
@@ -107,7 +104,6 @@ fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>, required: 
         );
     }
 
-    // Undeclared Sections
     assert_eq!(identity(bytes, "contributions")["sections"], json!([]));
     let streams = identity(bytes, "publications")["streams"].as_array().expect("published streams").clone();
     let streams = streams.iter().map(|stream| stream["id"].as_str().expect("stream id").to_owned()).collect::<BTreeSet<_>>();
@@ -129,11 +125,9 @@ fn artifacts_embed_metadata() {
     let progress = BTreeSet::from(["schematic.analysis_progress"]);
     let none = BTreeSet::new();
 
-    // Read The Test-Owned Copies Of The Built Artifacts
     let sidecar = fixtures::inspection("schematic-sidecar");
     let guest = fixtures::inspection("schematic-guest");
 
-    // Compare Both Declarations
     let mut declarations = Vec::new();
     for (bytes, facility, expected, required, published) in
         [(&sidecar, "sidecar", &native, &publishing, &progress), (&guest, "guest", &portable, &none, &none)]

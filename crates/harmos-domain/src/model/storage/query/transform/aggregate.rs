@@ -7,8 +7,6 @@
  * ***
  */
 
-// Storage Arrow Query Contract
-
 /* === Modules === */
 
 /* === Re-Exports === */

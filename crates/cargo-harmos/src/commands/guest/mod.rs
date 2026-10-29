@@ -7,8 +7,6 @@
  * ***
  */
 
-// Compose Guest Build And Watch Commands.
-
 /* === Modules === */
 
 mod build;

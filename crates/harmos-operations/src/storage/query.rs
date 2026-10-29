@@ -95,8 +95,6 @@ impl MemorySize for Query {
 mod execution {
     use super::*;
 
-    // Finite Storage Query Operation
-
     use crate::storage::IO_TIMEOUT;
     use crate::{Error, Result};
     use harmos_domain::plugin::Grant;

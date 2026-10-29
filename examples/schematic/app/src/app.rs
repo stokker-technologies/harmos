@@ -66,7 +66,6 @@ impl Lifecycle for SchematicEditor {
     type Context = harmos::Startup<Self>;
 
     async fn prepare(config: Self::Config, setup: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {
-        // Resources
         let checkpoint = if let Some(config) = config {
             let recovery = config.document.recovering()?;
             let checkpoint = Arc::new(recovery.sidecars());
@@ -77,14 +76,12 @@ impl Lifecycle for SchematicEditor {
             None
         };
 
-        // Lanes
         let settings = harmos::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()),
             ..Default::default()
         };
         setup.settings().operation_settings(settings);
 
-        // Operations
         setup.settings().register(Transactions::catalog()).register(Records::catalog()).register(Streams::catalog());
         Ok(Self { checkpoint })
     }
