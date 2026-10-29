@@ -232,6 +232,70 @@ fn assert_registration_conflict(result: Result<()>) {
 }
 
 #[tokio::test]
+async fn own_shared_calls() {
+    use super::super::cases::EchoDeclaration as Echo;
+    let runtime = runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
+    let mut definitions: Vec<_> = candidate().definitions().cloned().collect();
+    let discovery = harmos_runtime::operations::OperationDefinition::of::<Discover>().unwrap();
+    definitions[0].contributions.operations.push(discovery);
+    let candidate = PluginDefinitions::new(definitions, []).unwrap();
+
+    let mut manager = PluginManager::new(candidate.clone()).unwrap();
+    let mut host = host(runtime.operations.clone());
+    host.discovery = true;
+    manager.initialize(&mut host).await.unwrap();
+
+    let own = runtime.operations.caller(&host.callers["fixture"]).unwrap();
+    assert_eq!(own.call::<Shared>(Shared(request())).await.unwrap().value, 7);
+    let bytes = own.call_encoded(&format!("fixture.{}", Echo::ID), Text::from("own").encode()).await.unwrap();
+    assert_eq!(String::decode(&bytes).unwrap(), "own:1");
+
+    let entries = own.call::<Discover>(Discover).await.unwrap();
+    let entries: Vec<harmos_operations::host::DiscoveredOperation> = serde_json::from_slice(&entries).unwrap();
+    assert!(entries.iter().any(|entry| entry.contract.operation().id.as_str() == Echo::ID && entry.owner.as_str() == "fixture"));
+
+    #[cfg(feature = "grpc")]
+    {
+        use http_body_util::BodyExt as _;
+        let authority = harmos_runtime::grpc::server::Authority::Plugin(own.clone());
+        let response = grpc_call::<Echo>(authority).await;
+        let body = response.into_body().collect().await.unwrap();
+        assert_eq!(body.trailers().unwrap()["grpc-status"], "0");
+        let bytes = body.to_bytes();
+        let input = DecodeInput::new(&bytes[5..]);
+        assert_eq!(grpc::decode::<String>(input).unwrap(), "grpc:1");
+    }
+
+    let opened = Arc::new(tokio::sync::Notify::new());
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let gated_request = Shared(Request {
+        gate: Some((opened.clone(), gate)),
+        ..request()
+    });
+    let invocation = own.submit::<Shared>(gated_request).unwrap();
+    opened.notified().await;
+    invocation.cancel();
+    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    assert_eq!(own.call::<Shared>(Shared(request())).await.unwrap().value, 7);
+
+    let mut replacement: Vec<_> = candidate.definitions().cloned().collect();
+    replacement[0].configuration = br#"{"generation":2}"#.to_vec();
+    manager.reload(PluginDefinitions::new(replacement, []).unwrap(), &mut host).await.unwrap();
+    let next = runtime.operations.caller(&host.callers["fixture"]).unwrap();
+    assert_ne!(own.generation(), next.generation());
+    assert!(matches!(own.submit::<Shared>(Shared(request())), Err(Error::OperationCaller { .. })));
+    assert!(matches!(own.submit::<Discover>(Discover), Err(Error::OperationCaller { .. })));
+    #[cfg(feature = "grpc")]
+    {
+        let response = grpc_call::<Echo>(harmos_runtime::grpc::server::Authority::Plugin(own)).await;
+        assert_eq!(response.headers()["grpc-status"], "16");
+    }
+    assert_eq!(next.call::<Shared>(Shared(request())).await.unwrap().value, 7);
+    manager.shutdown(&mut host).await.unwrap();
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn plugin_caller_authorization() {
     let runtime = runtime().await;
     let mut manager = PluginManager::new(with_clients(true)).unwrap();
@@ -604,7 +668,7 @@ where
         encode,
         input: channel,
         output: channel,
-        opening_timeout: std::time::Duration::from_secs(1),
+        opening_timeout: O::POLICY.attempt_timeout,
     };
     let mut codec = harmos_runtime::grpc::Codec::<harmos_runtime::grpc::Transcoded, Text, harmos_runtime::operations::Response<Text>>::new(
         decode, encode,

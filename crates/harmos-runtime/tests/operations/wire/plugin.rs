@@ -54,6 +54,11 @@ struct SelectedDeclaration {
 
 struct SelectedOwner(&'static str);
 
+#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "fixture.discover",
+    response = Vec<u8>, policy = super::cases::EchoDeclaration::POLICY
+)]
+struct Discover;
+
 struct SelectedHost {
     operations: OperationManager<Lanes>,
     scopes: BTreeMap<String, PluginScope>,
@@ -104,6 +109,7 @@ struct Host {
     callers: BTreeMap<String, PluginCaller>,
     call_during_setup: bool,
     cleanup: Option<Arc<CleanupOwner>>,
+    discovery: bool,
 }
 
 struct Credit {
@@ -152,6 +158,18 @@ impl harmos_runtime::Operation for SelectedDeclaration {
         let resources = ctx.resource::<SelectedOwner>();
         let result: ::core::result::Result<String, Self::Error> = async move { Ok(format!("{}:{}", resources.0, self.value)) }.await;
         result.map(::core::convert::Into::into)
+    }
+}
+
+impl harmos_runtime::Operation for Discover {
+    type Error = harmos_operations::Error;
+
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<Vec<u8>>, Self::Error> {
+        use harmos_sdk::operations::access::Discovery;
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
+        let (entries, next) = host.discover(None, 256, 4 * 1024 * 1024).map_err(harmos_operations::Error::Access)?;
+        assert!(next.is_none());
+        Ok(entries.into())
     }
 }
 
@@ -272,6 +290,9 @@ impl PluginLifecycle for Host {
             bindings.operations::<super::cases::Operations>(Lanes::Open)?;
             if self.cleanup.is_some() {
                 bindings.operations::<crate::operations::Single<CleanupDeclaration>>(Lanes::Open)?;
+            }
+            if self.discovery {
+                bindings.operations::<crate::operations::Single<Discover>>(Lanes::Open)?;
             }
             bindings.operations::<crate::operations::Single<Shared>>(Lanes::Serial)?;
             bindings.operations::<crate::operations::Single<Parent>>(Lanes::Serial)
@@ -514,6 +535,7 @@ fn host(operations: OperationManager<Lanes>) -> Host {
         callers: BTreeMap::new(),
         call_during_setup: false,
         cleanup: None,
+        discovery: false,
     }
 }
 
