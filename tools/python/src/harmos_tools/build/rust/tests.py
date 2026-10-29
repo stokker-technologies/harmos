@@ -44,16 +44,20 @@ from ..fixtures import ROOT, TARGET, GUESTS
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=("dev", "release"), default="dev")
+    parser.add_argument("--features")
     parser.add_argument("--extended", action="store_true")
     options = parser.parse_args()
     with temporary.directory() as scratch:
-        build(options.profile, scratch, extended=options.extended)
+        build(options.profile, scratch, features=options.features, extended=options.extended)
 
 
-def build(profile: str, scratch: Path, *, extended: bool = False) -> None:
+def build(profile: str, scratch: Path, *, features: str | None = None, extended: bool = False) -> None:
     fixtures = paths.output(ROOT, "build", profile) / "fixtures"
     os.environ["CARGO_TARGET_DIR"] = str(TARGET)
-    cargo.archive(ROOT, profile, ["--all-features"] if extended else [])
+    arguments = ["--features", features] if features else []
+    if extended:
+        arguments = ["--all-features"]
+    cargo.archive(ROOT, profile, arguments)
     # Staging Starts From An Empty Fixture Directory, So The Stamp Names Only What This Build Produced.
     shutil.rmtree(fixtures, ignore_errors=True)
     fixtures.mkdir(parents=True)

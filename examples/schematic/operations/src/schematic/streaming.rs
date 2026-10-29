@@ -86,13 +86,15 @@ impl harmos::Operation for AnalyzeUpload {
             snapshot.validate().map_err(|_| crate::Error::InvalidInput)?;
             checked = checked.checked_add(1).ok_or(crate::Error::InvalidInput)?;
             let progress = schematic_domain::model::schematic::progress::AnalysisProgress { title: self.title.clone(), checked };
+            let sequence = resources.next_progress_sequence()?;
+            let payload = harmos::Message::encode(&progress);
             ctx.operation(harmos::builtins::streams::Publish {
                 stream: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::ID.to_owned(),
                 schema: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::VERSION,
-                sequence: None,
+                sequence: Some(sequence),
                 published_unix_micros: None,
                 context: None,
-                payload: harmos::Message::encode(&progress),
+                payload,
                 following: Vec::new(),
             })
             .await?;
@@ -126,15 +128,20 @@ impl harmos::Operation for AnalyzeExchange {
             let finding = super::analyze::Finding {
                 text: format!("{} Symbols, {} Connections", snapshot.symbols.len(), snapshot.connections.len()),
             };
-            ctx.streams().1.send_with(finding.memory_size(), || Ok(finding)).await?;
+            let bytes = finding.memory_size();
+            let output = &ctx.streams().1;
+            let make = || Ok(finding);
+            output.send_with(bytes, make).await?;
             let progress = schematic_domain::model::schematic::progress::AnalysisProgress { title: self.title.clone(), checked };
+            let sequence = resources.next_progress_sequence()?;
+            let payload = harmos::Message::encode(&progress);
             ctx.operation(harmos::builtins::streams::Publish {
                 stream: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::ID.to_owned(),
                 schema: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::VERSION,
-                sequence: None,
+                sequence: Some(sequence),
                 published_unix_micros: None,
                 context: None,
-                payload: harmos::Message::encode(&progress),
+                payload,
                 following: Vec::new(),
             })
             .await?;

@@ -95,20 +95,19 @@ fn fragments(facility: &str, owner: &str) -> Vec<u8> {
 }
 
 fn guest() -> Vec<u8> {
-    // Valid empty component with one custom section carrying inert metadata.
+    // Empty Component With Inert Metadata
     let mut bytes = b"\0asm\x0d\0\x01\0".to_vec();
     let mut section = vec![0]; // Empty custom-section name.
-    section.extend(fragments("guest", "guest.fixture"));
+    section.extend(fragments("guest", "guest_fixture"));
+
+    // Encode The Custom Section Length
     bytes.push(0);
     let mut len = section.len();
-    loop {
-        let byte = (len & 127) as u8;
+    while len >= 128 {
+        bytes.push((len & 127) as u8 | 128);
         len >>= 7;
-        bytes.push(byte | if len == 0 { 0 } else { 128 });
-        if len == 0 {
-            break;
-        }
     }
+    bytes.push(len as u8);
     bytes.extend(section);
     bytes
 }
@@ -147,10 +146,11 @@ fn archive(manifest: &[u8], entries: &[(&str, &[u8], tar::EntryType)]) -> Vec<u8
 
 #[test]
 fn independent_files_roundtrip() {
+    // Build Independent Native And Guest Files
     let staging = tempfile::tempdir().unwrap();
     let marker = staging.path().join("executed");
     let mut native = format!("#!/bin/sh\nprintf executed > '{}'\nexit 73\n", marker.display()).into_bytes();
-    native.extend(fragments("sidecar", "native.fixture"));
+    native.extend(fragments("sidecar", "native_fixture"));
     let guest = guest();
     let sources = [
         Source {
@@ -170,6 +170,8 @@ fn independent_files_roundtrip() {
         },
     ];
     let bundle = Bundle::build(identity(), &sources, Limits::default()).unwrap();
+
+    // Source Order Does Not Change The Archive
     let reversed = [
         Source {
             path: sources[2].path,
@@ -188,6 +190,8 @@ fn independent_files_roundtrip() {
         },
     ];
     assert_eq!(bundle.bytes(), Bundle::build(identity(), &reversed, Limits::default()).unwrap().bytes());
+
+    // Inspection Preserves Each File And Its Declaration
     let inspected = Bundle::inspect(bundle.bytes(), Limits::default()).unwrap();
     assert_eq!(inspected.manifest().identity, identity());
     assert_eq!(inspected.declaration("bin/probe"), Some(&Declaration::inspect(&native, Inspected::Sidecar).unwrap()));
@@ -200,6 +204,8 @@ fn independent_files_roundtrip() {
         assert_eq!(file.executable, source.executable);
     }
     let extracted = inspected.extract(staging.path()).unwrap();
+
+    // Extraction Preserves Permissions And Never Executes Native Code
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -213,6 +219,8 @@ fn independent_files_roundtrip() {
     }
     assert_eq!(std::fs::read(extracted.path().join("manifest.json")).unwrap(), serde_json::to_vec(inspected.manifest()).unwrap());
     assert!(!marker.exists(), "neither inspection nor extraction executes native code");
+
+    // Dropping The Extraction Removes Its Owned Directory
     let path = extracted.path().to_owned();
     drop(extracted);
     assert!(!path.exists());
@@ -221,6 +229,7 @@ fn independent_files_roundtrip() {
 
 #[test]
 fn executable_owned_registrations() {
+    // Registration Order Is Canonical
     let native = fragments("sidecar", "probe");
     let mut export = executable(Facility::Sidecar);
     let build = |export: Executable| {
@@ -237,6 +246,8 @@ fn executable_owned_registrations() {
     export.registrations.reverse();
     let valid = build(export.clone()).unwrap();
     assert_eq!(valid.manifest().files[0].executable.as_ref().unwrap().registrations, executable(Facility::Sidecar).registrations);
+
+    // Reject Invalid Or Duplicated Registration Metadata
     for change in 0..4 {
         let mut invalid = executable(Facility::Sidecar);
         match change {
@@ -248,6 +259,8 @@ fn executable_owned_registrations() {
         assert!(build(invalid).is_err());
     }
     assert!(build(executable(Facility::Guest)).is_err());
+
+    // One Executable Identity Per Target
     let sources = [
         Source {
             path: "bin/one",
@@ -298,6 +311,7 @@ fn executable_owned_registrations() {
 
 #[test]
 fn tampered_archives_refused() {
+    // Reject File Inventory Drift
     let bundle = asset();
     let manifest = serde_json::to_vec(bundle.manifest()).unwrap();
     let ordinary = [("files/data", b"abc".as_slice(), tar::EntryType::Regular)];
@@ -312,6 +326,7 @@ fn tampered_archives_refused() {
     ] {
         assert!(Bundle::inspect(&archive(&manifest, &entries), Limits::default()).is_err());
     }
+    // Reject Nonregular Entries
     for kind in [
         tar::EntryType::Symlink,
         tar::EntryType::Link,
@@ -324,19 +339,19 @@ fn tampered_archives_refused() {
     ] {
         assert!(Bundle::inspect(&archive(&manifest, &[("files/data", b"abc", kind)]), Limits::default()).is_err());
     }
+    // Reject Corrupted Archive Bytes
     for mutate in 0..5 {
         let mut bytes = bundle.bytes().to_vec();
         match mutate {
             0 => bytes.push(0),
             1 => bytes.extend_from_slice(bundle.bytes()),
-            2 => {
-                bytes.pop();
-            }
+            2 => bytes.truncate(bytes.len() - 1),
             3 => bytes[512 + manifest.len()] = 1, // Nonzero TAR padding.
             _ => bytes[0] ^= 1,                   // Broken header checksum.
         }
         assert!(Bundle::inspect(&bytes, Limits::default()).is_err());
     }
+    // Reject Manifest Tampering
     for field in ["schema", "size", "sha256", "path", "unknown"] {
         let mut value = serde_json::to_value(bundle.manifest()).unwrap();
         match field {
@@ -348,6 +363,7 @@ fn tampered_archives_refused() {
         }
         assert!(Bundle::inspect(&archive(&serde_json::to_vec(&value).unwrap(), &ordinary), Limits::default()).is_err());
     }
+    // Reject Duplicate Fields And Impossible Entry Sizes
     let duplicated = String::from_utf8(manifest).unwrap().replacen("\"schema\":1", "\"schema\":1,\"schema\":1", 1);
     assert!(Bundle::inspect(&archive(duplicated.as_bytes(), &ordinary), Limits::default()).is_err());
     let mut impossible_size = bundle.bytes().to_vec();
@@ -472,17 +488,20 @@ fn metadata_budgets_precede() {
     assert!(Bundle::inspect(bundle.bytes(), exact).is_ok());
 
     let native = fragments("sidecar", "probe");
+    let first = executable(Facility::Sidecar);
+    let original = first.clone();
     let one = Bundle::build(
         identity(),
         &[Source {
             path: "bin/one",
             bytes: &native,
-            executable: Some(executable(Facility::Sidecar)),
+            executable: Some(original),
         }],
         Limits::default(),
     )
     .unwrap();
-    let limit = serde_json::to_vec(one.manifest()).unwrap().len();
+    let one_manifest = serde_json::to_vec(one.manifest()).unwrap();
+    let limit = one_manifest.len();
     let mut other = executable(Facility::Sidecar);
     other.target = "other-target".into();
     let error = Bundle::build(
@@ -491,7 +510,7 @@ fn metadata_budgets_precede() {
             Source {
                 path: "bin/one",
                 bytes: &native,
-                executable: Some(executable(Facility::Sidecar)),
+                executable: Some(first),
             },
             Source {
                 path: "bin/two",
