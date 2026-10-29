@@ -46,7 +46,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **Native Sidecars** [`plugin-sidecar`]: Integrate supervised executables through typed contracts; native processes do not provide a Wasm sandbox.
 - **gRPC Interfaces** [`grpc`, `generate-proto`]: Expose typed operations and generate client contracts.
-- **Signal Processing** [`signal`, `signal-fft`]: Resample and summarize waveforms, with optional FFT analysis.
+- **Signal Processing** [`signal`, `signal-fft`]: Summarize and downsample waveforms, with an optional FFT.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 
 ## Interfaces
