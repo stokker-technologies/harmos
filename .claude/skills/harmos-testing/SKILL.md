@@ -1,9 +1,8 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:23a5d457e66afb9b533d182f0de12bf04f0941f5bb296596f4f44bbf362ef029 -->
-
 ---
 name: harmos-testing
 description: Test products using Harmos at domain, runtime, resource and carrier boundaries, including Harmos's shipped consumer examples.
 ---
+<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:52896d8ed9ef4c1d42d796769ddae435db14be28837fd0c53fa18d9d9ca09f46 -->
 
 # Harmos Consumer Testing
 

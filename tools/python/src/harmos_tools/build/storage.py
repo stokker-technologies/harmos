@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/build/storage.py; sha256:d35944af7e20093adb47d9eba540ca5fc7ed1c674a0becd2cd4a35c88dd26b0b
+# Rendered by stkr project update from templates/python/build/storage.py; sha256:236346b2e8f3bf2d2b0d509d1dbd31c22489b517e354fdb1875ab8abf1f8c043
 # ***
 #
 # Harmos
@@ -61,7 +61,8 @@ def preflight(directory: Path, *, target: Path | None = None) -> None:
     if not target.exists():
         return
     profiles = _profiles(target)
-    if sum(_scan(profile)[0] for profile in profiles) <= LIMIT:
+    # Live Compilers May Retire Scratch Entries During The Read-Only Size Pass.
+    if sum(_scan(profile, allow_missing=True)[0] for profile in profiles) <= LIMIT:
         return
     with ExitStack() as ownership:
         for profile in profiles:
@@ -118,18 +119,29 @@ def _profile(path: Path) -> bool:
     return True
 
 
-def _scan(profile: Path) -> tuple[int, list[Path]]:
+def _scan(profile: Path, *, allow_missing: bool = False) -> tuple[int, list[Path]]:
     size = 0
     entries = []
     pending = [profile]
     while pending:
         directory = pending.pop()
-        _metadata(directory)
-        for path in sorted(directory.iterdir()):
+        try:
+            _metadata(directory)
+            children = sorted(directory.iterdir())
+        except FileNotFoundError:
+            if not allow_missing or directory == profile:
+                raise
+            continue
+        for path in children:
             if path == profile / ".cargo-lock":
                 _metadata(path)
                 continue
-            metadata = _metadata(path)
+            try:
+                metadata = _metadata(path)
+            except FileNotFoundError:
+                if not allow_missing:
+                    raise
+                continue
             if stat.S_ISDIR(metadata.st_mode):
                 pending.append(path)
             elif stat.S_ISREG(metadata.st_mode):

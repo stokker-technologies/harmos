@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/workspaces.py; sha256:248e11e8557cc15adc97fc8eaa818ace9e7688854625a783570520491a980487
+# Rendered by stkr project update from templates/python/ci/workspaces.py; sha256:ba70a2401bc898194bcf0f03e03d763164bd5b62b4e428dc11f3563b2869ca87
 # ***
 #
 # Harmos
@@ -168,14 +168,21 @@ def active_processes(kernel, handle) -> int:
 
 
 @contextmanager
-def job(output: Path, repository: str, run: str, key: str, preserve: Callable[[Path], None]) -> Generator[Owner]:
+def job(output: Path, repository: str, run: str, key: str, preserve: Callable[[Path], None], *, stable: bool = False) -> Generator[Owner]:
     path = output / f"{key}.workspace-owner.json"
     lock = path.with_suffix(".lock")
     if path.exists() or linked(path) or linked(lock):
         raise ValueError("workspace ownership already exists or is linked")
     lock.touch(exist_ok=True)
     with containers.lease(lock):
-        root = Path(tempfile.mkdtemp(prefix="stkr-ci-job-"))
+        # Stable Per-Job Paths Preserve Rust Cache Keys Without Sharing Mutable Workspaces.
+        if re.fullmatch(r"[a-zA-Z0-9_-]+", repository) is None or re.fullmatch(r"[a-zA-Z0-9_-]+", key) is None:
+            raise ValueError("invalid workspace identity")
+        if stable:
+            root = Path(tempfile.gettempdir()).resolve() / f"stkr-ci-job-{repository}-{key}"
+            root.mkdir()
+        else:
+            root = Path(tempfile.mkdtemp(prefix="stkr-ci-job-"))
         record = {
             "version": 1,
             "repository": repository,

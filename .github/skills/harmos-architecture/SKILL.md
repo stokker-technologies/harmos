@@ -1,9 +1,8 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:e138463d2f40c2944fd85e0d0e73bd81715ed1defa247386e0a7c2bc6e76ce32 -->
-
 ---
 name: harmos-architecture
 description: Structure consumer applications using Harmos, including reusable domains and runtimes, self-contained plugins, resource libraries and interface crates.
 ---
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:0e754b2e4ae4d72e7b0c52dc7626aef22869a60acbdea7dec867d6cae0cf93a3 -->
 
 # Harmos Architecture
 
