@@ -20,8 +20,6 @@ pub mod storage;
 
 mod application;
 
-pub mod evidence;
-
 pub mod state;
 
 pub mod records;

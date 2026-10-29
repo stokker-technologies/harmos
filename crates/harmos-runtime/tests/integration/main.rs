@@ -16,8 +16,6 @@ extern crate harmos_runtime as harmos;
 
 #[path = "../application/main.rs"]
 mod application;
-#[path = "../evidence/main.rs"]
-mod evidence;
 #[path = "../observers/main.rs"]
 mod observers;
 #[path = "../operations/main.rs"]
