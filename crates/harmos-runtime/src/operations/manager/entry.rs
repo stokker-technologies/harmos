@@ -179,12 +179,9 @@ impl Entry {
                     operation: self.id().to_owned(),
                 });
             }
-            let same_provider = caller.owner() == self.owner.as_str()
+            let own = caller.owner() == self.owner.as_str()
                 && self.plugin.as_ref().is_some_and(|scope| scope.generation() == caller.generation());
-            let own = same_provider
-                && (self.definition.visibility == crate::operations::Visibility::Private
-                    || _origin.callback.as_ref().is_some_and(|entry| std::ptr::eq(entry.as_ptr(), self)));
-            let dependency = !same_provider
+            let dependency = !own
                 && self.definition.visibility == crate::operations::Visibility::Shared
                 && caller.allows_operation(self.owner.as_str(), self.contract.as_ref(), &self.definition.id, self.plugin.is_none());
             if !own && !dependency {
