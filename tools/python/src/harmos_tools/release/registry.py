@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/registry.py; sha256:589f4ba4fab011f1b1fab928a83e0c8eb87e6726e1bd8ba277cf8a031401c88b
+# Rendered by stkr project update from templates/python/release/registry.py; sha256:6fa89ec05725f6a421259b75d630ec61f3a7fd7a6886d096e1998fc597f7bb0d
 # ***
 #
 # Harmos
@@ -81,17 +81,17 @@ def publish_crates(directory: Path, *, sleep=time.sleep, clock=time.monotonic) -
 
 
 def rehearse_crates(directory: Path, *, skip_published: bool = True) -> None:
-    """Dry-Run Each Unpublished Crate Alone, In Publication Order, Seeing Only The Siblings Published Before It."""
-    storage.preflight(directory)
-    packages = publishable(directory)
-    target = Path(
-        json.loads(policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps"], capture=True))["target_directory"]
-    )
-    lock = directory / "Cargo.lock"
-    original = lock.read_bytes() if lock.is_file() else None
-    staged = []
-    with changelog.staged(directory, packages):
-        _rehearse_crates(directory, packages, target, lock, original, staged, skip_published=skip_published)
+    """Dry-Run Crates In Publication Order Without Publishing Credentials."""
+    with policy.credential_free(policy.policy(directory, "release")):
+        storage.preflight(directory)
+        packages = publishable(directory)
+        metadata = policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps"], capture=True)
+        target = Path(json.loads(metadata)["target_directory"])
+        lock = directory / "Cargo.lock"
+        original = lock.read_bytes() if lock.is_file() else None
+        staged = []
+        with changelog.staged(directory, packages):
+            _rehearse_crates(directory, packages, target, lock, original, staged, skip_published=skip_published)
 
 
 def publishable(directory: Path) -> dict:

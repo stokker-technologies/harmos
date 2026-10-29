@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/plugins.md; sha256:d32b95cadd1e8f2bfeb2ae2249b31de9fa02aa2543ba2dfb94cfc4ab781f7d62 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/plugins.md; sha256:df7661632f4f9a5c28540626d6ac05df1e92fb965351d3b9d35765846c28f756 -->
 
 # Plugins And Carriers
 
@@ -23,7 +23,9 @@ const CATALOGS: &'static [harmos::Catalog] = &[Operations::CATALOG];
 ```
 
 That slice drives both inert metadata inspection and executable binding. Keep
-feature selection on module and re-export declarations, never catalog variants. Inspection never
+backend selection on module and re-export declarations, keeping this portable
+plugin's catalog variants ungated. General application catalogs can instead
+declare platform-only operations as described in the operations reference. Inspection never
 runs prepare or initialize. Portable catalogs remain available without runtime
 execution dependencies.
 

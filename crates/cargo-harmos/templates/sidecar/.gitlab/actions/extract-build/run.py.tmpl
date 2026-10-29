@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/extract-build; sha256:79ab145a1e1268f3da0181bfa0719fadef4f66decc2ce28dbfed5b3b093bc556
+# Rendered by stkr project update from templates/ci/extract-build; sha256:e69719630dbcae8ca28d6d3608f623fb650ba3d328e6161e195201822edb986b
 """Transfer Declared Build Outputs Through The Repository Artifact Task."""
 
 # === Imports === #
@@ -8,6 +8,7 @@ import contextlib
 import glob
 import json
 import os
+import runpy
 import shutil
 import subprocess
 import tarfile
@@ -20,6 +21,8 @@ from pathlib import Path
 # === Public Exports === #
 
 # === Constants === #
+
+spawn_flags = runpy.run_path(str(Path(__file__).resolve().parents[1] / "process.py"))["spawn_flags"]
 
 # === Types === #
 
@@ -131,7 +134,7 @@ def main():
         raise ValueError("unknown artifact operation")
     print(f"::group::Build / {operation.title()}", flush=True)
     try:
-        subprocess.run(json.loads(os.environ["TRANSFER_COMMAND"]), check=True)
+        subprocess.run(json.loads(os.environ["TRANSFER_COMMAND"]), check=True, creationflags=spawn_flags())
     finally:
         print("::endgroup::", flush=True)
 

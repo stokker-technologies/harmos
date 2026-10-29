@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/policy.py; sha256:f751b4e78c6340403f9c7014cb5609944a96374e8652fe87c5ce40ae75e21988
+# Rendered by stkr project update from templates/python/release/policy.py; sha256:9fb3ba340d099780850921be74bc927b9f223daed3a218e1208b1511baa6a672
 # ***
 #
 # __PRODUCT_NAME__
@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tomllib
 from collections.abc import Callable, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -111,6 +112,25 @@ def write_json(path: Path, value: object) -> None:
         raise ToolError(f"refusing linked staging file: {temporary}")
     temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
     temporary.replace(path)
+
+
+@contextmanager
+def credential_free(settings: dict):
+    """Temporarily Remove Publishing Credentials And Select The Release Profile."""
+    declared = {name for lane in settings.get("package_signing", []) for name in lane.get("secrets", [])}
+    names = {name for name in os.environ if name.endswith(("_TOKEN", "_PASSWORD", "_SECRET")) or name in declared}
+    names.add("ACTIONS_ID_TOKEN_REQUEST_URL")
+    previous = {name: os.environ.pop(name) for name in names if name in os.environ}
+    profile = os.environ.get("RELEASE_PROFILE")
+    os.environ["RELEASE_PROFILE"] = "release"
+    try:
+        yield
+    finally:
+        os.environ.update(previous)
+        if profile is None:
+            os.environ.pop("RELEASE_PROFILE", None)
+        else:
+            os.environ["RELEASE_PROFILE"] = profile
 
 
 def main(

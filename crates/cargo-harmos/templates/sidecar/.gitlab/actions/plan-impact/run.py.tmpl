@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/plan-impact; sha256:225544d2e4aad5592a3d60f9b0d3c72456c6a65fd7d8f048dbfc97438670e822
+# Rendered by stkr project update from templates/ci/plan-impact; sha256:41250b3fa62f08d68152b99a563581c0f0f8056a58a5f1086812e7a7a4149d09
 """Select Conservative Native CI Jobs And Emit A GitLab Child Pipeline."""
 
 # === Imports === #
@@ -7,13 +7,14 @@
 import json
 import os
 import re
+import runpy
 import subprocess
 from pathlib import Path
 
 # Third Party Imports
 
 # Local Imports
-from ..process import spawn_flags
+spawn_flags = runpy.run_path(str(Path(__file__).resolve().parents[1] / 'process.py'))['spawn_flags']
 
 # Type Checking Imports
 
