@@ -21,7 +21,9 @@ const CATALOGS: &'static [harmos::Catalog] = &[Operations::CATALOG];
 ```
 
 That slice drives both inert metadata inspection and executable binding. Keep
-feature selection on module and re-export declarations, never catalog variants. Inspection never
+backend selection on module and re-export declarations, keeping this portable
+plugin's catalog variants ungated. General application catalogs can instead
+declare platform-only operations as described in the operations reference. Inspection never
 runs prepare or initialize. Portable catalogs remain available without runtime
 execution dependencies.
 

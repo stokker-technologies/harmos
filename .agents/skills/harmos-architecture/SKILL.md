@@ -69,9 +69,13 @@ them once with `setup.resource::<T>(value)`. Plugin `const CATALOGS` names the
 catalog's `CATALOG`; the SDK binds it after validating setup. A WLAN client or
 D-Bus connection is an ordinary resource retained by its lifecycle owner.
 
-Gate only declarations: `mod` lines (including test and runtime modules) and
-`pub use` lines. Never gate functions, impls, structs, fields, statements or
-catalog variants. Spell native predicates `target_os = "windows"` and `unix`;
+For this portable plugin layout, gate only declarations: `mod` lines (including
+test and runtime modules) and `pub use` lines. Keep its catalog variants ungated
+so the same operations ship on every supported platform. General application
+catalogs also support platform-only operations by gating both the owning `mod`
+and its catalog variant; see the authoring reference. Never gate functions,
+impls, structs, fields or statements to select a plugin backend.
+Spell native predicates `target_os = "windows"` and `unix`;
 use `target_os = "linux"` only for Linux-specific functionality.
 
 ## Operation Placement

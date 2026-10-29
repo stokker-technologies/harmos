@@ -4,6 +4,10 @@ This is a recommended consumer layout, not a claim that an existing example
 already has these exact directories. Product crates and a single sidecar or guest live under `crates/`. Several plugins use
 `plugins/sidecars/<name>` and `plugins/guests/<name>`, each with `publish = false`. Keep only populated crates and modules.
 
+Include the populated plugin paths as Cargo workspace members alongside
+`crates/*`, for example `members = ["crates/*", "plugins/sidecars/*", "plugins/guests/*"]`.
+Omit a plugin glob when that directory has no crates.
+
 ```text
 product/
 ├── Cargo.toml
