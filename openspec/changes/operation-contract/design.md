@@ -96,5 +96,5 @@ impl Operation for Cancel {
 - Hashed field spans already fixed in `1b0630a2` and verified in `ab85df55`; the focused SDK regression passes on this candidate.
 - Deterministic CLI readiness already landed in `ab85df55`; `harmos-runtime/tests/system/schematic.rs` awaits Initializing/Ready events and derives its handshake bound from the operation policy.
 - Plugin folders, declaration-only benchmark gates and operations-crate orphan guidance already landed in `ab85df55`.
-- Dispatch already boxes its driver in `harmos-runtime/src/operations/instances.rs`; remaining future-depth, runtime-ID registration and host-owner questions stay open in tasks 5.2/5.3/5.6.
+- Owner decision (2026-10-29): future-depth and sealing tasks close without source changes; reopen only for a failing reproducer or measured consumer budget miss.
 - Observer cadence keeps its static `u64` millisecond contract and accepts constant expressions; generated inventory rejects zero during const evaluation. No runtime cadence configuration is introduced.
