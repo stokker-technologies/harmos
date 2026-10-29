@@ -232,17 +232,6 @@ impl Attached {
         self
     }
 
-    pub fn ended_by<F, U>(self, end: F) -> Self
-    where
-        F: FnOnce() -> U + Send + 'static,
-        U: Future<Output = ()> + Send + 'static,
-    {
-        self.ending(Ending::terminal(move || async move {
-            end().await;
-            Ok(())
-        }))
-    }
-
     pub fn ending(mut self, ending: Ending) -> Self {
         self.end = Some(ending);
         self

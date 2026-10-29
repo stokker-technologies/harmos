@@ -1,0 +1,19 @@
+# Rendered by stkr project update from templates/ci/extract-build; sha256:39a6b57fa268786d3d9c825f224112d4c727efcd430cba289f3002272900c8be
+name: Extract / Build
+description: Extract / Build
+inputs:
+  command:
+    description: Command
+    required: true
+    default: ""
+outputs: {}
+runs:
+  using: composite
+  steps:
+  - shell: python
+    run: |-
+      import os, runpy
+      runpy.run_path(os.path.join(os.environ['GITHUB_ACTION_PATH'], 'run.py'), run_name='__main__')
+    env:
+      TRANSFER_OPERATION: extract
+      TRANSFER_COMMAND: ${{ inputs.command }}

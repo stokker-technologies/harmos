@@ -89,7 +89,7 @@ enum Controls {
 /* === Implementations === */
 
 #[harmos_runtime::operation(codec = manual, resources = [CoreOwner, harmos_runtime::operations::HostContext], id = "host.publish", response = (),
-    policy = <harmos_operations::streams::Publish as OperationDeclaration>::POLICY, visibility = Shared)]
+    policy = <harmos_operations::streams::Publish as OperationDeclaration>::POLICY, visibility = Public)]
 #[derive(Clone)]
 struct CorePublication(harmos_operations::streams::Publish);
 

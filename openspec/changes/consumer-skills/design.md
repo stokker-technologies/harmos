@@ -2,13 +2,13 @@
 
 ## Agreed Boundaries
 
-All product crates, including interfaces, live under crates/. The entry library exports the domain by default and the runtime through an optional runtime feature. Its prelude.rs exposes curated imports. The runtime composes execution resources; domain is independent, not beneath runtime.
+Product crates and a single sidecar/guest live under crates/. Several carrier plugins use plugins/sidecars/<name> and plugins/guests/<name>, as publish = false workspace members. The entry library exports the domain by default and the runtime through an optional runtime feature. Its prelude.rs exposes curated imports. The runtime composes execution resources; domain is independent, not beneath runtime.
 
-Reusable operations are declared in product-domain and implemented in product-runtime. A self-contained crate colocates declaration and handler in vertical operations files. Plugin-private operations use that layout; reusable product contracts never move into the interface. External automation and gRPC clients can remain cohesive resource libraries. An existing application execution owner maps to the runtime role.
+Reusable operation types and their implementations share product-operations, with execution behind runtime; Rust's orphan rule prevents implementing Harmos's Operation in a runtime crate for a domain-owned type. Shared portable models remain in product-domain; product-runtime composes resources and enables operation execution. A self-contained crate colocates declaration and handler in vertical operations files. Plugin-private operations use that layout; reusable product contracts never move into the interface. External automation and gRPC clients can remain cohesive resource libraries. An existing application execution owner maps to the runtime role.
 
 Portable settings and validation belong in the domain; runtime owns configured resources. Interface configuration and Dokime-specific settings retain their own roles. No universal boot.rs or empty module tree is required. Crates owning fallible behavior use error.rs and thiserror; facades, thin binaries, procedural macros and foreign adapters need no artificial error wrapper.
 
-Native plugins can compose a reusable product runtime through its facade, sharing resources and owning startup, failure cleanup and shutdown. Domain declaration catalogs advertise contracts; handler catalogs bind implementations. Carrier context and Wasm dependencies constrain reuse. Dokime-specific hooks, suites and evidence stay outside these skills.
+Native plugins can compose a reusable product runtime through its facade, sharing resources and owning startup, failure cleanup and shutdown. One operations catalog exposes portable declarations and executable binding when runtime is enabled. Portable plugins retain the same catalog inventory across platforms and select native implementations through module gates. General application catalogs support platform-only operations through matching module and variant gates. Carrier context and Wasm dependencies constrain reuse. Dokime-specific hooks, suites and evidence stay outside these skills.
 
 ## File Inventory
 

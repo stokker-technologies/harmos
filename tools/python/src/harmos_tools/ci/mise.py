@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/mise.py; sha256:933f630cd6838d3631fe51294e310389b42440aa3a1ac47d5544313287c3cf29
+# Rendered by stkr project update from templates/python/ci/mise.py; sha256:647726d3c737264fca8d81ffd4eb356ec31796cbf46248f692ec11b9e606d4c9
 # ***
 #
 # Harmos
@@ -56,8 +56,17 @@ def forms(definition: object) -> list[str]:
                 if not step.strip():
                     findings.append(f"{name} commands must not be empty")
                 continue
-            task = step.get("task") if isinstance(step, dict) else None
-            if not isinstance(task, str) or not task.strip():
+            reference = step if isinstance(step, dict) else {}
+            task = reference.get("task")
+            tasks = reference.get("tasks")
+            single = isinstance(task, str) and bool(task.strip()) and "tasks" not in reference
+            parallel = (
+                isinstance(tasks, list)
+                and bool(tasks)
+                and all(isinstance(task, str) and bool(task.strip()) for task in tasks)
+                and "task" not in reference
+            )
+            if not single and not parallel:
                 findings.append(f"{name} steps must be command strings or references with a nonempty task name")
     if table is not None and "shell" in table:
         shell = table["shell"]

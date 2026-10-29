@@ -61,7 +61,7 @@ struct ProviderOwner {
 struct Cancelled(std::sync::Arc<tokio::sync::Notify>);
 
 #[harmos_runtime::operation(resources = [NativeClient, harmos_sidecar::Supervisor], operations = [EchoOperation], id = "client.forward",  response = Echoed, policy = super::sandbox::EchoOperation::POLICY,
-    visibility = Shared)]
+    visibility = Public)]
 #[derive(Clone)]
 struct ForwardDeclaration {
     say: String,
@@ -136,7 +136,7 @@ enum NativeRequirements {
 /* === Implementations === */
 
 #[harmos_runtime::operation(codec = manual, resources = [ProviderOwner], id = ProviderEchoOperation::ID, response = Echoed,
-    policy = ProviderEchoOperation::POLICY, visibility = Shared)]
+    policy = ProviderEchoOperation::POLICY, visibility = Public)]
 #[derive(Clone)]
 struct ProviderRead(ProviderEchoOperation);
 

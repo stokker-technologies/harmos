@@ -58,9 +58,6 @@ pub(super) struct Origin {
     pub(super) scope: Option<PluginScope>,
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-    pub(super) callback: Option<Weak<Entry>>,
-
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) lifecycle: Option<LifecycleLoan>,
 
     // Calls made by a resident control, which may publish while it retires.
@@ -244,11 +241,6 @@ impl Source {
             identity: Identity::Host,
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             scope,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-            callback: match self {
-                Self::Callback(entry) => Some(entry.clone()),
-                _ => None,
-            },
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             lifecycle: match self {
                 Self::Lifecycle { loan, .. } => Some(loan.clone()),

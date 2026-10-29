@@ -31,7 +31,7 @@
     id = "schematic.route",
     response = Route,
     policy = crate::POLICY,
-    visibility = Shared,
+    visibility = Public,
     replay = harmos::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "ProposeRoute"),
 )]

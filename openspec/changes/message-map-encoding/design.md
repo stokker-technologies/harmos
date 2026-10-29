@@ -46,3 +46,7 @@ Migrate affected consumer assembly and dependent APIs to the selected tree.
 Root Option<T> uses an optional value/tag 1 field with T's scalar or message
 kind, preserving None versus Some(default) through Postcard and protobuf.
 Existing nested optional fields keep their current encoding.
+
+## Runtime Triage
+
+All source tasks already landed in `a9f77943`; `harmos-domain/tests/message/maps.rs` covers canonical maps, refusal, accounting and root optional presence. Final required validation (task 3.2) stays with the integration owner; no map implementation is repeated here.

@@ -7,7 +7,7 @@
 [project]
 name = "Harmos"
 visibility = "public"
-platforms = ["linux", "windows"]
+platforms = ["unix", "windows"]
 
 # === === Languages === === #
 
@@ -29,7 +29,7 @@ exclude = ["main", "master", "dev", "develop", "release/**"]
 # === === CI === === #
 
 [ci.runners]
-linux = "ubuntu-24.04"
+unix = "ubuntu-24.04"
 windows = "windows-2022"
 
 # --- Impact --- #
@@ -701,7 +701,6 @@ language = "rust"
 name = "schematic-{version}-{target}.zip"
 profiles = ["dev", "release"]
 targets = ["linux-x86_64"]
-release = true
 inputs = [
   { path = "target/build/{profile}/{target}/bin/schematic-cli", destination = "schematic-cli" },
   { path = "target/build/{profile}/{target}/bin/plugins/schematic-sidecar", destination = "plugins/schematic-sidecar" },
@@ -713,7 +712,6 @@ language = "rust"
 name = "schematic-{version}-{target}.zip"
 profiles = ["dev", "release"]
 targets = ["windows-x86_64"]
-release = true
 inputs = [
   { path = "target/build/{profile}/{target}/bin/schematic-cli.exe", destination = "schematic-cli.exe" },
   { path = "target/build/{profile}/{target}/bin/plugins/schematic-sidecar.exe", destination = "plugins/schematic-sidecar.exe" },

@@ -131,7 +131,12 @@ impl Manager {
         entry.authorize(&origin)?;
         let authorization = self.authorize_external(&entry, &origin)?;
         let authority = entry.grant_authority(&origin, authorization);
-        authority.admit(O::grant(&request.value).or(request.grant.take()).as_ref())?;
+        let grant = O::grant(&request.value).or(request.grant.take());
+        let grant = match entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>() {
+            Some(factory) => factory.grant(grant),
+            None => grant,
+        };
+        authority.admit(grant.as_ref())?;
         // Encoded bindings carry the authority to the provider's prepared grant.
         let origin = Origin {
             grants: Some(Arc::new(authority)),
@@ -153,7 +158,10 @@ impl Manager {
             let Some(factory) = original.downcast_ref::<harmos_sdk::operations::OperationFactory>() else {
                 return Err(original);
             };
-            if factory.definition.fingerprint != O::definition().fingerprint || !factory.accepts_native::<O, P>() {
+            let expected = crate::operations::OperationDefinition::named::<O>(entry.id());
+            if !expected.is_ok_and(|definition| factory.definition.fingerprint == definition.fingerprint)
+                || !factory.accepts_native::<O, P>()
+            {
                 return Err(original);
             }
             let binding = crate::operations::authored::factory::<O, P>(self, &entry, factory.clone());

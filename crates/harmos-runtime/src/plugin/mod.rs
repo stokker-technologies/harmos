@@ -214,7 +214,7 @@ impl PluginGraph {
                     } else {
                         let mut compatible = providers.iter().filter(|provider| {
                             *provider != &artifact.id
-                                && operation.visibility == crate::operations::Visibility::Shared
+                                && operation.visibility == crate::operations::Visibility::Public
                                 && declared[*provider].contributions.wire_contracts.iter().any(|actual| actual == contract)
                         });
                         let first = compatible.next();
@@ -232,7 +232,7 @@ impl PluginGraph {
                         Some("version, schema, policy, visibility or replay differs")
                     } else if operation.visibility == crate::operations::Visibility::Host
                         || provider == &artifact.id
-                        || provider != &artifact.id && operation.visibility != crate::operations::Visibility::Shared
+                        || provider != &artifact.id && operation.visibility != crate::operations::Visibility::Public
                     {
                         Some("operation visibility denies this plugin caller")
                     } else {

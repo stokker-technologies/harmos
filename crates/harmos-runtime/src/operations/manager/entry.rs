@@ -154,7 +154,9 @@ impl Entry {
             plugin: _origin
                 .scope
                 .as_ref()
-                .filter(|caller| caller.owner() != self.owner.as_str())
+                .filter(|caller| {
+                    !self.plugin.as_ref().is_some_and(|scope| scope.owner() == caller.owner() && scope.generation() == caller.generation())
+                })
                 .map(|caller| (caller.owner().to_owned(), caller.requirement(&self.definition.id).cloned())),
             external,
         }
@@ -178,11 +180,9 @@ impl Entry {
                 });
             }
             let own = caller.owner() == self.owner.as_str()
-                && self.plugin.as_ref().is_some_and(|scope| scope.generation() == caller.generation())
-                && (self.definition.visibility == crate::operations::Visibility::Private
-                    || _origin.callback.as_ref().is_some_and(|entry| std::ptr::eq(entry.as_ptr(), self)));
-            let dependency = caller.owner() != self.owner.as_str()
-                && self.definition.visibility == crate::operations::Visibility::Shared
+                && self.plugin.as_ref().is_some_and(|scope| scope.generation() == caller.generation());
+            let dependency = !own
+                && self.definition.visibility == crate::operations::Visibility::Public
                 && caller.allows_operation(self.owner.as_str(), self.contract.as_ref(), &self.definition.id, self.plugin.is_none());
             if !own && !dependency {
                 return Err(Error::OperationUnauthorized {

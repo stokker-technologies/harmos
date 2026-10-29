@@ -59,8 +59,10 @@ fn whole(file: &harmos_storage::FileReference) -> harmos_storage::FileRead {
     }
 }
 
-fn shareable_tempfile() -> std::fs::File {
-    tempfile::NamedTempFile::new().unwrap().into_file()
+fn shareable_tempfile() -> (tempfile::NamedTempFile, std::fs::File) {
+    let owner = tempfile::NamedTempFile::new().unwrap();
+    let file = owner.as_file().try_clone().unwrap();
+    (owner, file)
 }
 
 #[tokio::test(start_paused = true)]
@@ -648,7 +650,7 @@ async fn file_slice_refuses() {
 async fn opened_capture_retains_cancelled_copy() {
     use std::io::Write;
     let f = Fixture::new(config()).await;
-    let mut source = shareable_tempfile();
+    let (_source_owner, mut source) = shareable_tempfile();
     let expected = b"original opened source";
     source.write_all(expected).unwrap();
     let target = f.storage.produce_file(metadata("opened-capture", expected)).await.unwrap();
@@ -697,7 +699,7 @@ async fn opened_capture_keeps_source_identity() {
 async fn opened_capture_retries_exact_failed_chunk() {
     use std::io::Write;
     let f = Fixture::new(config()).await;
-    let mut source = shareable_tempfile();
+    let (_source_owner, mut source) = shareable_tempfile();
     let expected = b"retained failed bytes";
     source.write_all(expected).unwrap();
     let target = f.storage.produce_file(metadata("failed-opened-capture", expected)).await.unwrap();
@@ -720,7 +722,7 @@ async fn opened_capture_verifies_retained_prefix() {
     for (id, source_bytes, succeeds) in
         [("matching-prefix", b"prefixsuffix".as_slice(), true), ("differing-prefix", b"badfixsuffix".as_slice(), false)]
     {
-        let mut source = shareable_tempfile();
+        let (_source_owner, mut source) = shareable_tempfile();
         source.write_all(source_bytes).unwrap();
         let mut target = f.storage.produce_file(metadata(id, b"prefixsuffix")).await.unwrap();
         target.write_all(b"prefix".to_vec()).await.unwrap();
@@ -748,7 +750,7 @@ async fn opened_capture_verifies_retained_prefix() {
 async fn opened_capture_synchronizes_one_original_production() {
     use std::io::Write;
     let f = Fixture::new(config()).await;
-    let mut source = shareable_tempfile();
+    let (_source_owner, mut source) = shareable_tempfile();
     source.write_all(b"prefix").unwrap();
     let mut definition = metadata("live-opened", b"");
     definition.expected_length = None;
@@ -788,7 +790,7 @@ async fn opened_capture_synchronizes_one_original_production() {
 async fn opened_capture_finish_rechecks_stable_source_on_repeat() {
     use std::io::{Seek, SeekFrom, Write};
     let f = Fixture::new(config()).await;
-    let mut source = shareable_tempfile();
+    let (_source_owner, mut source) = shareable_tempfile();
     source.write_all(b"original").unwrap();
     let stamp = source.metadata().unwrap().modified().unwrap();
     let target = f.storage.produce_file(metadata("stable-repeat", b"original")).await.unwrap();
@@ -815,7 +817,7 @@ async fn opened_capture_finish_rechecks_stable_source_on_repeat() {
 async fn opened_capture_discards_unstable_unaccepted_suffix() {
     use std::io::Write;
     let f = Fixture::new(config()).await;
-    let mut source = shareable_tempfile();
+    let (_source_owner, mut source) = shareable_tempfile();
     source.write_all(b"prefixsuffix").unwrap();
     let mut definition = metadata("unstable-opened", b"");
     definition.expected_length = None;
@@ -857,7 +859,7 @@ async fn opened_capture_interrupts_only_accepted_cancelled_step() {
     policy.response.batch_bytes = NonZeroUsize::new(31).unwrap();
     let f = Fixture::new(policy).await;
     let bytes: Vec<_> = (0..96).map(|value| value as u8).collect();
-    let mut source = shareable_tempfile();
+    let (_source_owner, mut source) = shareable_tempfile();
     source.write_all(&bytes).unwrap();
     let mut definition = metadata("interrupted-opened", b"");
     definition.expected_length = None;
@@ -899,7 +901,7 @@ async fn opened_capture_prefix_conflict_survives_source_repair() {
     use std::io::{Seek, SeekFrom, Write};
     let f = Fixture::new(config()).await;
     for (id, truncate) in [("rewrite-opened", false), ("truncate-opened", true)] {
-        let mut source = shareable_tempfile();
+        let (_source_owner, mut source) = shareable_tempfile();
         source.write_all(b"prefix").unwrap();
         let mut definition = metadata(id, b"");
         definition.expected_length = None;
@@ -937,7 +939,7 @@ async fn opened_clones_keep_independent_read_offsets() {
     use std::io::{Seek, SeekFrom, Write};
     let f = Fixture::new(config()).await;
     let expected: Vec<u8> = (0..256_000).map(|index| (index % 251) as u8).collect();
-    let mut source = shareable_tempfile();
+    let (_source_owner, mut source) = shareable_tempfile();
     source.write_all(&expected).unwrap();
     let mut observer = source.try_clone().unwrap();
     observer.seek(SeekFrom::Start(11)).unwrap();
@@ -985,7 +987,7 @@ async fn frozen_file_keeps_exact_bytes_across_source_mutation_and_capture_retry(
     use std::io::{Seek, SeekFrom, Write};
     let f = Fixture::new(config()).await;
     let expected = b"independent frozen bytes";
-    let mut source = shareable_tempfile();
+    let (_source_owner, mut source) = shareable_tempfile();
     source.write_all(expected).unwrap();
     let session = f.storage.clone();
     let frozen = session.freeze_opened_file(source.try_clone().unwrap(), ByteRange { offset: 0, limit: None }).await.unwrap();
@@ -1030,7 +1032,7 @@ async fn frozen_file_keeps_exact_bytes_across_source_mutation_and_capture_retry(
 async fn frozen_file_ranges_include_empty_and_refuse_missing_prefix() {
     use std::io::Write;
     let f = Fixture::new(config()).await;
-    let mut source = shareable_tempfile();
+    let (_source_owner, mut source) = shareable_tempfile();
     source.write_all(b"prefixsuffix").unwrap();
     let session = f.storage.clone();
     for (offset, limit, bytes) in [(0, 0, b"".as_slice()), (0, 6, b"prefix".as_slice()), (6, 6, b"suffix".as_slice())] {
@@ -1048,5 +1050,70 @@ async fn frozen_file_ranges_include_empty_and_refuse_missing_prefix() {
     }
     assert!(session.freeze_opened_file(source, ByteRange { offset: 0, limit: Some(13) }).await.is_err());
     drop(session);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn frozen_readers_keep_owners() {
+    use std::io::Write;
+
+    let f = Fixture::new(config()).await;
+    let (source_owner, mut source) = shareable_tempfile();
+    source.write_all(b"prefixsuffix").unwrap();
+    let frozen = f.storage.freeze_opened_file(source, ByteRange { offset: 0, limit: None }).await.unwrap();
+    drop(source_owner);
+
+    let mut left = frozen.read(ByteRange { offset: 0, limit: Some(6) }).await.unwrap();
+    let mut right = frozen.read(ByteRange { offset: 6, limit: Some(6) }).await.unwrap();
+    let target = f.storage.produce_file(metadata("frozen-owners", b"prefixsuffix")).await.unwrap();
+    let mut capture = f.storage.capture_frozen_file(frozen, target).unwrap();
+    let (first, second, reference) = tokio::join!(left.next(), right.next(), capture.finish());
+    assert_eq!(first.unwrap().unwrap().bytes(), b"prefix");
+    assert_eq!(second.unwrap().unwrap().bytes(), b"suffix");
+    assert_eq!(reference.unwrap().length, 12);
+    drop(capture);
+    assert!(left.next().await.unwrap().is_none());
+    assert!(right.next().await.unwrap().is_none());
+    drop((left, right));
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn local_errors_keep_context() {
+    use harmos_storage::{FileRead, FileSource};
+
+    let f = Fixture::new(config()).await;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("missing-source");
+    let request = FileRead {
+        source: FileSource::Local(path.clone()),
+        range: ByteRange { offset: 0, limit: None },
+    };
+    let error = f.storage.read_file(request.clone()).await.err().expect("missing path must fail");
+    let Error::Backend { operation, kind, source } = error else { panic!("local error must preserve its backend classification") };
+    assert_eq!(operation, "local filesystem");
+    assert_eq!(kind, harmos_storage::BackendFailure::Permanent);
+    let message = source.to_string();
+    assert!(message.contains("inspect path component"));
+    assert!(message.contains(path.to_str().unwrap()));
+    let native = source.source().unwrap().downcast_ref::<std::io::Error>().unwrap();
+    assert_eq!(native.kind(), std::io::ErrorKind::NotFound);
+    assert!(native.raw_os_error().is_some());
+
+    std::fs::write(&path, b"payload").unwrap();
+    let opened = std::fs::File::open(&path).unwrap();
+    let mut local = f.storage.read_file(request).await.unwrap();
+    let mut opened = f.storage.read_opened_file(opened, ByteRange { offset: 0, limit: None }).await.unwrap();
+    std::fs::File::create(&path).unwrap();
+    for reader in [&mut local, &mut opened] {
+        let error = reader.next().await.expect_err("truncated source must fail");
+        let Error::Backend { source, .. } = error else { panic!("read failure must retain its native source") };
+        let message = source.to_string();
+        assert!(message.contains("read source"));
+        assert!(message.contains(path.to_str().unwrap()));
+        let native = source.source().unwrap().downcast_ref::<std::io::Error>().unwrap();
+        assert_eq!(native.kind(), std::io::ErrorKind::UnexpectedEof);
+    }
+    drop((local, opened));
     f.finish().await;
 }

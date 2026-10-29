@@ -104,7 +104,7 @@ struct Callback {
 }
 
 #[harmos_runtime::operation(codec = manual, resources = [Callback, harmos_runtime::operations::HostContext, harmos_sdk::operations::publication::PublicationAccess], id = "host.publish", response = (),
-    policy = <harmos_operations::streams::Publish as harmos_runtime::OperationDeclaration>::POLICY, visibility = Shared)]
+    policy = <harmos_operations::streams::Publish as harmos_runtime::OperationDeclaration>::POLICY, visibility = Public)]
 #[derive(Clone)]
 struct CallbackPublication(harmos_operations::streams::Publish);
 

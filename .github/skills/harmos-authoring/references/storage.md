@@ -1,22 +1,23 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/storage.md; sha256:f71ca1e72c0fcff5416d1248ca058c266afce0323f809a42d395d620a45c0f3d -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/storage.md; sha256:0695c02744635d61115c3868318c57eb4ed3c7510eb62c086a0bad7e97fbd686 -->
 
 # Storage Integration
 
-## Ownership And Admission
+## Ownership And Limits
 
-Use Harmos storage as the owner of admitted records, streams, objects, files,
-retention and accounting. The product runtime retains the workers that keep
-storage active. A viewer or transient query client does not own its producer.
+Use Harmos storage as the owner of records, streams, objects, files and
+retention. The product runtime retains the workers that keep storage active.
+A viewer or transient query client does not own its producer.
 
-Supply consumer-owned storage budgets, concurrency, admission settings and
-response batch ceilings explicitly. Preserve retained allocation claims when
-projecting or transporting results. Cloning or slicing shared batches does not
-make their storage allocation free; avoid unaccounted intermediate collections.
+Supply pending-write limits, query concurrency and serialized response batch
+ceilings explicitly. Storage shares immutable batch allocations across clones,
+slices and retries; consumers own budgets for retained results and conversion
+scratch. There is no storage read-memory pool or ReadSession admission API.
 
-Use the provided retained or consuming projection APIs when converting admitted
-data. Inspect their aliasing, capacity and ownership requirements before
-conversion. Refusal and cancellation must preserve the API's admitted-write,
-retry and completion guarantees.
+Use consuming projection APIs when converting shared data. Inspect their
+aliasing and ownership requirements: typed/file projections require unique
+owners. Refusal and cancellation preserve admitted-write, retry and completion
+guarantees. Retained writes await queue capacity through the same path as
+write_all and preserve exact bytes for retry without cancelling production.
 
 ## Queries And Live Data
 
@@ -48,7 +49,16 @@ production contract. `ListDirectory` and `WatchDirectory` use the shared
 selection rules and change/rescan semantics. Do not replace these contracts
 with operation-specific filesystem adapters in each interface.
 
-Keep transfer buffers and retained file slices within their admitted lifetimes.
+Opened-file reads retain the supplied filesystem object and independent caller
+cursors. On Windows the handle must permit a separate read open. Keep named or
+shareable delete-on-close temporary owners alive through reads and captures;
+do not unlink a temporary before an independent reopen. StorageManager's
+freeze_opened_file creates an immutable FrozenFile with length and SHA-256;
+its read and capture_frozen_file paths retain the private named backing through
+readers, blocking work, cancellation and exact capture retries. Local filesystem
+errors identify the step and path while preserving the native source error.
+
+Keep transfer buffers and retained file slices within their owning lifetimes.
 Verify supported platform behavior and filesystem permissions; using a shared
 operation contract does not make a native filesystem available inside a guest.
 

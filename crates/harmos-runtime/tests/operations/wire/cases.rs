@@ -125,7 +125,7 @@ macro_rules! scripted_codec {
 
 #[harmos_runtime::operation(resources = [Owner, harmos_runtime::operations::HostContext], id = "fixture.echo",
     response = String,
-    visibility = Shared,
+    visibility = Public,
     policy = ECHO_POLICY,
     key = |request: &EchoDeclaration| (request.value == "retry")
         .then(|| CacheKey::new(request.value.as_bytes().to_vec()).unwrap()),
@@ -145,7 +145,7 @@ pub(super) struct PrivateEchoDeclaration {
 
 #[harmos_runtime::operation(resources = [Owner, harmos_runtime::operations::HostContext, Destination], id = "fixture.nested_echo",
     response = String,
-    visibility = Shared,
+    visibility = Public,
     policy = NESTED_POLICY
 )]
 #[derive(Debug)]

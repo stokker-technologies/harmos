@@ -554,6 +554,32 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    #[cfg(feature = "derive")]
+    mod cadence {
+        use super::super::Observer;
+        use super::{Duration, ObserverContext};
+
+        const CADENCE_MS: u64 = 17;
+
+        #[derive(Default)]
+        struct ConfiguredObserver;
+
+        #[crate::observer(harmos_path = crate, interval_ms = CADENCE_MS * 2)]
+        impl ConfiguredObserver {
+            async fn observe(&mut self, _: &ObserverContext<'_>) -> Result<(), std::convert::Infallible> {
+                Ok(())
+            }
+        }
+
+        #[test]
+        fn constant_expression() {
+            use harmos_domain::inventory::observers::Declared;
+
+            assert_eq!(ConfiguredObserver::INTERVAL, Duration::from_millis(34));
+            assert_eq!(ConfiguredObserver::ENTRY.interval, ConfiguredObserver::INTERVAL);
+        }
+    }
+
     #[test]
     fn context_resource_resolution() {
         let value = Arc::new(17_u32);

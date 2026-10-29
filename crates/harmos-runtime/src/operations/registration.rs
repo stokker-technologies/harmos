@@ -52,7 +52,7 @@ type BindCatalog = dyn Fn(&Manager) -> Result<()> + Send + Sync;
 /* === Structs === */
 
 #[derive(Clone)]
-pub(crate) struct Registration<L: Lane> {
+pub struct Registration<L: Lane> {
     pub(crate) batch: harmos_sdk::__private::RegistrationBatch,
     pub(crate) lane: Option<L>,
     pub(crate) defaults: std::collections::BTreeMap<&'static str, L>,
@@ -93,6 +93,20 @@ pub(crate) trait RegistrationExt {
 }
 
 /* === Implementations === */
+
+impl<L: Lane> Registration<L> {
+    pub fn new(lane: L) -> Self {
+        harmos_sdk::__private::RegistrationBatch::new().lane(lane)
+    }
+
+    pub fn operation<O: harmos_sdk::operations::Executable>(mut self, id: impl AsRef<str>) -> Result<Self> {
+        self.batch = self.batch.operation_named::<O>(id.as_ref()).map_err(|source| crate::Error::OperationFailed {
+            operation: id.as_ref().to_owned(),
+            source: Arc::new(source),
+        })?;
+        Ok(self)
+    }
+}
 
 impl RegistrationExt for harmos_sdk::__private::RegistrationBatch {
     fn lane<L: Lane>(self, lane: L) -> Registration<L> {
@@ -204,7 +218,7 @@ impl Bindings<'_> {
         self.register(C::batch().lane(lane))
     }
 
-    pub(crate) fn register<L: Lane>(&mut self, registration: Registration<L>) -> Result<()> {
+    pub fn register<L: Lane>(&mut self, registration: Registration<L>) -> Result<()> {
         let entries = self.operations.native_entries(registration, self.owner, self.scope)?;
         self.entries.extend(entries);
         Ok(())

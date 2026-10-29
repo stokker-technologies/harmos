@@ -96,6 +96,17 @@ credentials. Contributions use the [Apache-2.0 license](LICENSE).
 Release preparation and publication follow the separate protected release
 workflow; an ordinary pull request does not publish packages.
 
+`mise run release:publish:dry` stages the available native packages and dry-runs
+crate publication. `mise run release:rehearse` uses existing release-profile
+packages for every declared release target, strips publication credentials and
+checks the same archive and crate inventories without creating a provider
+release. Neither command builds missing Product packages. Generated changelogs
+are included temporarily in crates and restored afterwards.
+
+Before the first release with this workflow layout, the owner must register
+crates.io Trusted Publishing against `release.yml`, environment `release`, for
+`stokker-technologies/harmos`, replacing the previous workflow identity.
+
 ## Reporting Issues
 
 Use the [issue tracker](https://github.com/stokker-technologies/harmos/issues).

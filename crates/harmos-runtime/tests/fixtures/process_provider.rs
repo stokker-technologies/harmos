@@ -43,7 +43,7 @@ pub(crate) struct Resources {
 }
 
 #[harmos_runtime::operation(codec = manual, resources = [Resources], id = <ReadDeclaration as harmos_runtime::OperationDeclaration>::ID, response = Step,
-    policy = POLICY, visibility = Shared)]
+    policy = POLICY, visibility = Public)]
 #[derive(Clone)]
 struct Reading(ReadDeclaration);
 

@@ -7,7 +7,7 @@
  * ***
  */
 
-// Bind Private And Shared Native Handlers To Their Original Resources.
+// Bind Private And Public Native Handlers To Their Original Resources.
 
 /* === Modules === */
 

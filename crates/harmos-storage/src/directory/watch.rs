@@ -243,7 +243,7 @@ fn entry(selection: &Selection, path: &Path) -> Result<Option<DirectoryEntry>> {
     let metadata = match std::fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(crate::local::io_error(error)),
+        Err(error) => return Err(crate::local::io_error("inspect watched entry", path, error)),
     };
     if crate::local::linked(&metadata) {
         return Ok(None);

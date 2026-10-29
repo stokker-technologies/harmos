@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/package/run.py; sha256:0adba5934d1dc06d5cdbacb8bcc32592dd25862da4f64b32d2903438c1c4fd6f
+# Rendered by stkr project update from templates/python/package/run.py; sha256:a460d551622a75cab790f64fd570737512a1a687637625c68e09d860eab95b8e
 # ***
 #
 # Harmos
@@ -28,6 +28,7 @@ from pathlib import Path
 # Local Imports
 from .. import temporary
 from ..build import paths
+from ..process import spawn_flags
 from ..release import policy
 from . import changelog
 
@@ -83,7 +84,7 @@ def packaged(directory: Path, profile: str, target: str) -> list[dict]:
     result = [
         {"target": target, "path": (root / item["language"] / item["output"]).relative_to(directory).as_posix(), "name": item["output"]}
         for item in definitions(directory, profile, target)
-        if item["release"] and "triple" in item
+        if "triple" in item and item["release"]
     ]
     return result
 
@@ -223,7 +224,7 @@ def verify(directory: Path, profile: str, target: str, root: Path | None = None)
                 stdin=sys.stdin,
                 stdout=sys.stdout,
                 stderr=sys.stderr,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                creationflags=spawn_flags(),
                 cwd=install,
                 check=True,
             )
@@ -248,7 +249,7 @@ def installed(directory: Path, settings: dict, root: Path, target: str) -> None:
                         stdin=sys.stdin,
                         stdout=sys.stdout,
                         stderr=sys.stderr,
-                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                        creationflags=spawn_flags(),
                         cwd=install.parent,
                         env=environment,
                         check=True,
@@ -276,7 +277,7 @@ def installed(directory: Path, settings: dict, root: Path, target: str) -> None:
                         stdin=sys.stdin,
                         stdout=sys.stdout,
                         stderr=sys.stderr,
-                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                        creationflags=spawn_flags(),
                         cwd=install,
                         check=True,
                     )
@@ -291,7 +292,7 @@ def installed(directory: Path, settings: dict, root: Path, target: str) -> None:
                     stdin=sys.stdin,
                     stdout=sys.stdout,
                     stderr=sys.stderr,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    creationflags=spawn_flags(),
                     cwd=install,
                     check=True,
                 )
@@ -350,7 +351,7 @@ def main() -> None:
                 stdin=sys.stdin,
                 stdout=sys.stdout,
                 stderr=sys.stderr,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                creationflags=spawn_flags(),
                 cwd=directory,
                 check=True,
             )

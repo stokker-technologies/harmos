@@ -275,31 +275,6 @@ where
         managed.verify_artifact = verify_executable_artifact;
         Ok(managed)
     }
-
-    pub fn new_executable_graph(
-        residents: impl IntoIterator<Item = Supervised<A, Executable, H>>, definitions: PluginDefinitions, lane: L, capacity: NonZeroUsize,
-        encoding_memory_bytes: NonZeroUsize,
-    ) -> Result<Self> {
-        let mut managed = Self::new_graph(residents, definitions, lane, capacity, encoding_memory_bytes)?;
-        for definition in managed.manager.definitions() {
-            let resident = &managed.residents[&definition.id];
-            verify_executable_inputs(&resident.attach, definition)?;
-        }
-        managed.verify_artifact = verify_executable_artifact;
-        Ok(managed)
-    }
-
-    pub fn new_executable_catalog<C>(
-        resident: Supervised<A, Executable, H>, definition: PluginDefinition, lane: L, capacity: NonZeroUsize,
-        encoding_memory_bytes: NonZeroUsize,
-    ) -> Result<Self>
-    where
-        C: crate::catalog::Catalog<crate::operations::Declarations> + crate::catalog::Catalog<crate::operations::NativeBindings>,
-    {
-        let mut managed = Self::new_executable(resident, definition, lane, capacity, encoding_memory_bytes)?;
-        managed.catalog = |bindings, lane, native, capacity| bindings.register_native_catalog::<C>(lane, native, capacity);
-        Ok(managed)
-    }
 }
 
 impl<A, S, H, L> Resident<A> for Managed<A, S, H, L>

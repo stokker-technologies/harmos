@@ -123,11 +123,6 @@ impl Source {
         }
     }
 
-    pub fn matches_context(&self, context: Context) -> bool {
-        context.validate().is_ok()
-            && matches!((self, context), (Self::Record { .. }, Context::Record { .. }) | (Self::Stream { .. }, Context::Stream { .. }))
-    }
-
     fn validate(&self) -> Result<(), Error> {
         if self.id().trim().is_empty() || self.id().chars().any(char::is_control) {
             return Err(Error::Source {
@@ -189,7 +184,7 @@ impl Definition {
     pub fn new(id: Identifier, source: Source, callback: Contract) -> Result<Self, Error> {
         source.validate()?;
         let operation = callback.operation();
-        if operation.visibility != Visibility::Shared
+        if operation.visibility != Visibility::Public
             || operation.policy.retries != RetryPolicy::Never
             || operation.replay != ReplaySafety::Unknown
         {
