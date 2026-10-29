@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/build/bench.py; sha256:0b778e719053f884e08efb81aab73b3a9b04c12cb2fe114a10297b35bd9aaf9a
+# Rendered by stkr project update from templates/python/build/bench.py; sha256:08fbf500c25645320dff6ff8aea7d6ae62f1e47d05a6e744dc58ea5b400d14ae
 # ***
 #
 # Harmos
@@ -22,8 +22,8 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
-from ..process import spawn_flags
 from .. import temporary
+from ..process import spawn_flags
 from ..test import archive
 from . import cargo, paths
 

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/artifacts.py; sha256:03006881633f50f5efbcc3e2399e13b11396ed6ddaf6126d62f9d10d2f09ebda
+# Rendered by stkr project update from templates/python/ci/artifacts.py; sha256:2aae4481cb0e5873564ef17648f901d8d4b86f80d35f8533ed8990bea97e56a4
 # ***
 #
 # Harmos
@@ -22,8 +22,8 @@ from pathlib import Path, PurePosixPath
 
 # Third Party Imports
 # Local Imports
-from ..process import spawn_flags
 from ..build.paths import target
+from ..process import spawn_flags
 
 # Type Checking Imports
 

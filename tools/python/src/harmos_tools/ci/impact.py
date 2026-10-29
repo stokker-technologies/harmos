@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/impact.py; sha256:33fee493790ff23a0a302e6c5d3b8c832717c18509f4e5c6f9a1ffc802ffd24d
+# Rendered by stkr project update from templates/python/ci/impact.py; sha256:9f1a133eddb0e76ef9c131b0f369a777343f6878ba26b6cbd37b53f9972503e5
 # ***
 #
 # Harmos
@@ -18,7 +18,6 @@ import subprocess
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from ..process import spawn_flags
 

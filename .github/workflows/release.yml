@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/release.yml; sha256:d877c2c921c806b665f14796956339d5a09df3f16670f3fea8aa33ec156f8087
+# Rendered by stkr project update from templates/ci/.github/workflows/release.yml; sha256:701c517980669ab732bd037dc0ceba103f12c012ed5b4e40303a56d00a7d7b46
 name: Release
 "on":
   workflow_dispatch: {}
@@ -570,12 +570,12 @@ jobs:
       with:
         summary-module: ""
     env:
-      MISE_ENABLE_TOOLS: ${{ matrix.environment.MISE_ENABLE_TOOLS }}
-      MISE_TASK_SKIP: ${{ matrix.environment.MISE_TASK_SKIP }}
-      PROFILE: ${{ matrix.environment.PROFILE }}
-      RELEASE_BUILD_RUN_ID: ${{ matrix.environment.RELEASE_BUILD_RUN_ID }}
-      RELEASE_BUILD_SHA: ${{ matrix.environment.RELEASE_BUILD_SHA }}
-      RELEASE_BUILD_VERSION: ${{ matrix.environment.RELEASE_BUILD_VERSION }}
+      MISE_ENABLE_TOOLS: go,node,python,rust,uv,gh,git-cliff,glab
+      MISE_TASK_SKIP: package:rust
+      PROFILE: ${{ needs.validated.outputs.review_profile }}
+      RELEASE_BUILD_RUN_ID: ${{ needs.validated.outputs.review_run }}
+      RELEASE_BUILD_SHA: ${{ needs.validated.outputs.review_sha }}
+      RELEASE_BUILD_VERSION: ${{ needs.validated.outputs.review_version }}
     environment: release
     needs:
     - publish
@@ -596,22 +596,8 @@ jobs:
         - platform: unix
           runner: ubuntu-24.04
           minutes: 120
-          environment:
-            MISE_ENABLE_TOOLS: go,node,python,rust,uv,gh,git-cliff,glab
-            MISE_TASK_SKIP: package:rust
-            PROFILE: ${{ needs.validated.outputs.review_profile }}
-            RELEASE_BUILD_RUN_ID: ${{ needs.validated.outputs.review_run }}
-            RELEASE_BUILD_SHA: ${{ needs.validated.outputs.review_sha }}
-            RELEASE_BUILD_VERSION: ${{ needs.validated.outputs.review_version }}
           container: ""
         - platform: windows
           runner: windows-2022
           minutes: 120
-          environment:
-            MISE_ENABLE_TOOLS: go,node,python,rust,uv,gh,git-cliff,glab
-            MISE_TASK_SKIP: package:rust
-            PROFILE: ${{ needs.validated.outputs.review_profile }}
-            RELEASE_BUILD_RUN_ID: ${{ needs.validated.outputs.review_run }}
-            RELEASE_BUILD_SHA: ${{ needs.validated.outputs.review_sha }}
-            RELEASE_BUILD_VERSION: ${{ needs.validated.outputs.review_version }}
           container: ""

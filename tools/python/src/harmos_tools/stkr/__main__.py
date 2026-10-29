@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/stkr/__main__.py; sha256:53831cfc6c831efc8ab26165f0ab977e1bee39c2306be05c15fc7eccb15b6a5f
+# Rendered by stkr project update from templates/python/stkr/__main__.py; sha256:65607ebb372a58a42b77e8df6f127f6f7df05c4223b6a5988a5bfa9581819e61
 # ***
 #
 # Harmos
@@ -25,7 +25,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from ..process import spawn_flags
 

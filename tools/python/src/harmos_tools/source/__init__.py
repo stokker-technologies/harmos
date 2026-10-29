@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/source/__init__.py; sha256:e2cc48ecc165376cff0e103f1e80fe2c4ac2f932e327fbc0b70baafde816fadd
+# Rendered by stkr project update from templates/python/source/__init__.py; sha256:2962b7ad40ebbe5ee937d668b4c9daa3f0862a2a27d22f9e3889f3b6598c3236
 # ***
 #
 # Harmos
@@ -16,7 +16,6 @@ import subprocess
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from ..process import spawn_flags
 

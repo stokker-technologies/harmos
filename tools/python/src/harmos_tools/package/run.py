@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/package/run.py; sha256:a8ea7d5cd478340ddc37f49b51f065f801da7003ad9e331842d624ee7d332c70
+# Rendered by stkr project update from templates/python/package/run.py; sha256:a460d551622a75cab790f64fd570737512a1a687637625c68e09d860eab95b8e
 # ***
 #
 # Harmos
@@ -26,9 +26,9 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
-from ..process import spawn_flags
 from .. import temporary
 from ..build import paths
+from ..process import spawn_flags
 from ..release import policy
 from . import changelog
 

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/build/cargo.py; sha256:f3e553fffefc2076ba88bc2c4c72abe239c5c7e636ba53f6554eac0cdd55d87d
+# Rendered by stkr project update from templates/python/build/cargo.py; sha256:4c56dfaf08d51627877cae6593507f7ee12e2548441d4c0ac677c5f8f37733a5
 # ***
 #
 # Harmos
@@ -22,8 +22,8 @@ from typing import Any
 
 # Third Party Imports
 # Local Imports
-from ..process import spawn_flags
 from ..ci import summary
+from ..process import spawn_flags
 from . import paths, storage
 
 # Type Checking Imports
