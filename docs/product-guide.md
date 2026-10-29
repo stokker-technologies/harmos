@@ -539,35 +539,16 @@ producer and clears the disconnected deadline. Finish, abort and storage shutdow
 still retire production; existing file-count and pending-write limits remain enforced.
 A viewer owns its subscription, while the original service owns production.
 
-One file owns each operation. Its definition division contains messages, the operation struct, policy, contract implementations and
-contract tests. The runtime division follows the definition's Tests section and contains its own complete skeleton, including runtime-only
-tests. Shared models remain in the product domain; resource libraries are optional execution dependencies.
+One file owns each operation: its messages, the operation struct, policy and
+contract tests, followed by a runtime-gated module with the implementation.
+Shared models remain in the product domain; resource libraries are optional
+execution dependencies.
 
 ```rust
-/* === --- === Definition Module === --- === */
-
-/* === Modules === */
-
-
-/* === Re-Exports === */
-
-
-/* === Imports === */
-
 #[cfg(feature = "runtime")]
 use device::Device;
 
-/* === Constants === */
-
 const POLICY: harmos::OperationPolicy = crate::POLICY;
-
-/* === Macros === */
-
-
-/* === Type Aliases === */
-
-
-/* === Structs === */
 
 #[harmos::message]
 pub struct Reading { pub value: f64 }
@@ -576,58 +557,10 @@ pub struct Reading { pub value: f64 }
     visibility = Public, resources = [Device])]
 pub struct Read { pub channel: u32 }
 
-/* === Enums === */
-
-
-/* === Traits === */
-
-
-/* === Implementations === */
-
-
-/* === Public Functions === */
-
-
-/* === Private Functions === */
-
-
-/* === Tests === */
-
-
-/* === --- === Runtime Module === --- === */
-
 #[cfg(feature = "runtime")]
 mod runtime {
-    /* === Modules === */
-
-
-    /* === Re-Exports === */
-
-
-    /* === Imports === */
-
     use super::*;
     use harmos::{Context, Operation, Response};
-
-    /* === Constants === */
-
-
-    /* === Macros === */
-
-
-    /* === Type Aliases === */
-
-
-    /* === Structs === */
-
-
-    /* === Enums === */
-
-
-    /* === Traits === */
-
-
-    /* === Implementations === */
 
     impl Operation for Read {
         type Error = device::Error;
@@ -637,14 +570,6 @@ mod runtime {
             Ok(Reading { value: device.read(self.channel).await? }.into())
         }
     }
-
-    /* === Public Functions === */
-
-
-    /* === Private Functions === */
-
-
-    /* === Tests === */
 }
 ```
 
