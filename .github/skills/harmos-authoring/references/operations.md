@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/operations.md; sha256:ccb5b55493f5960fe1311df88bd8fe31e55fcb0b65706694348608e01bfb9d64 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/operations.md; sha256:92db6b613e2c14b4a943b5a0c361184f939f9af47498cded11ef8c383bab9e3e -->
 
 # Operations
 
@@ -120,6 +120,8 @@ The operations crate uses `harmos` with `default-features = false` and
 `runtime = ["harmos/runtime", "dep:device"]`. A unit operation struct is a unit request. `response` defaults to `()` and
 `visibility` to `Private`; `Public` and `Host` are short visibility forms. The operation struct is the request message;
 its runtime implementation declares only `Error` and consuming `run` (plus optional error classification).
+Private operations cannot declare `grpc(...)`; use `Public` or `Host` for gRPC exposure.
+The macro rejects Private bindings at compile time, and runtime registration refuses them.
 
 For a platform-only operation, put `#[cfg(windows)]` on its `mod` declaration and its catalog variant. The catalog preserves
 variant attributes for both portable projections and runtime registration. Short built-ins may keep their gated implementation inline.

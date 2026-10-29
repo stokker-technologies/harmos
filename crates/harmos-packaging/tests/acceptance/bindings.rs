@@ -73,7 +73,7 @@ struct Payload {
     id = "read",
     response = Payload,
     policy = POLICY,
-    grpc(package = "test.v1", service = "Shapes", method = "Read"),
+    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Read"),
 )]
 struct ReadOperation {
     text: String,
@@ -87,7 +87,7 @@ struct ReadOperation {
     input = Payload,
     output = Payload,
     policy = POLICY,
-    grpc(package = "test.v1", service = "Shapes", method = "Exchange"),
+    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Exchange"),
 )]
 struct ExchangeOperation {
     text: String,
@@ -100,7 +100,7 @@ struct ExchangeOperation {
     response = Payload,
     input = Payload,
     policy = POLICY,
-    grpc(package = "test.v1", service = "Shapes", method = "Upload"),
+    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Upload"),
 )]
 struct UploadOperation {
     text: String,
@@ -113,7 +113,7 @@ struct UploadOperation {
     response = Payload,
     output = Payload,
     policy = POLICY,
-    grpc(package = "test.v1", service = "Shapes", method = "Download"),
+    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Download"),
 )]
 struct DownloadOperation {
     text: String,

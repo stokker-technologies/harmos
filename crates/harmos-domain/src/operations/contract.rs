@@ -93,6 +93,9 @@ pub enum ContractError {
     #[error("invalid or reserved gRPC binding name")]
     Grpc,
 
+    #[error("private operation `{id}` cannot declare a gRPC binding")]
+    PrivateGrpc { id: String },
+
     #[error("invalid wire operation metadata: {0}")]
     Operation(#[from] crate::Error),
 
@@ -255,6 +258,9 @@ impl Contract {
 
     pub fn with_grpc(mut self, binding: Option<super::Grpc>) -> Result<Self, ContractError> {
         if let Some(binding) = &binding {
+            if self.operation.visibility == super::Visibility::Private {
+                return Err(ContractError::PrivateGrpc { id: self.operation.id.to_string() });
+            }
             binding.validate()?;
         }
         self.grpc = binding;

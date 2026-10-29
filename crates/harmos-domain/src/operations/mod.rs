@@ -203,4 +203,25 @@ mod tests {
         let metadata: serde_json::Value = serde_json::from_slice(fragment).unwrap();
         assert_eq!(metadata["provides"][0]["operation"]["visibility"], "public");
     }
+
+    #[test]
+    fn grpc_visibility_contracts() {
+        let binding = Grpc::new("visibility.v1", "Operations", "Call");
+        for visibility in [Visibility::Private, Visibility::Public, Visibility::Host] {
+            let mut declaration = WireDeclaration::of::<Published>();
+            declaration.operation.visibility = visibility;
+            declaration.grpc = Some(binding.clone());
+            let result = declaration.contract();
+            if visibility == Visibility::Private {
+                assert!(matches!(result, Err(ContractError::PrivateGrpc { .. })));
+                continue;
+            }
+            let contract = result.unwrap();
+            let encoded = serde_json::to_value(&contract).unwrap();
+            assert_eq!(serde_json::from_value::<Contract>(encoded.clone()).unwrap(), contract);
+            let mut private = encoded;
+            private["operation"]["visibility"] = serde_json::json!("private");
+            assert!(serde_json::from_value::<Contract>(private).is_err());
+        }
+    }
 }

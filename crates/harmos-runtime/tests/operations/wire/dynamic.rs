@@ -46,7 +46,7 @@ struct Value {
 }
 
 #[harmos_runtime::operation(id = "dynamic.unary", response = Value, policy = POLICY,
-     grpc(package = "dynamic.v1", service = "External", method = "Unary"),
+     visibility = Public, grpc(package = "dynamic.v1", service = "External", method = "Unary"),
 )]
 struct UnaryDeclaration {
     small: u32,
@@ -56,7 +56,7 @@ struct UnaryDeclaration {
 
 #[harmos_runtime::operation(id = "dynamic.exchange", response = Value, input = Value,
     output = Value, policy = POLICY,
-    grpc(package = "dynamic.v1", service = "External", method = "Exchange"),
+    visibility = Public, grpc(package = "dynamic.v1", service = "External", method = "Exchange"),
 )]
 struct ExchangeDeclaration {
     small: u32,

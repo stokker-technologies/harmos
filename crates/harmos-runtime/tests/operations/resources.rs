@@ -176,3 +176,45 @@ async fn nested_resources_shared() {
     assert_eq!(following.seen, 2, "parent, child and following attempt share one value");
     runtime.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn private_grpc_refused() {
+    use harmos_runtime::operations::{Grpc, NoStream, OperationDeclaration, Registration, Resource, WireDeclaration};
+
+    #[harmos_runtime::message]
+    #[derive(Clone)]
+    struct Private;
+
+    impl OperationDeclaration for Private {
+        type Request = Self;
+        type Response = ();
+        type Input = NoStream;
+        type Output = NoStream;
+        const ID: &'static str = "resources.private_grpc";
+        const POLICY: harmos_runtime::OperationPolicy = ReadContractDeclaration::POLICY;
+        const GRPC: Option<Grpc> = Some(Grpc::new("resources.v1", "Private", "Call"));
+    }
+
+    impl harmos_runtime::Dependent for Private {
+        const RESOURCES: &'static [Resource] = &[];
+    }
+
+    impl harmos_runtime::Operation for Private {
+        type Error = std::convert::Infallible;
+        async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
+            unreachable!("Private gRPC operations must never activate")
+        }
+    }
+
+    assert!(matches!(WireDeclaration::of::<Private>().contract(), Err(harmos_runtime::operations::ContractError::PrivateGrpc { .. })));
+    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+    let registration = Registration::new(Lanes::Open).operation::<Private>(Private::ID).unwrap();
+    let error = runtime.register_batch(registration).await.unwrap_err();
+    let harmos_runtime::Error::OperationFailed { source, .. } = error else { panic!("unexpected error: {error:?}") };
+    assert!(matches!(
+        source.downcast_ref::<harmos_runtime::operations::ContractError>(),
+        Some(harmos_runtime::operations::ContractError::PrivateGrpc { .. })
+    ));
+    assert!(runtime.operations.definition(Private::ID).is_err());
+    runtime.shutdown().await.unwrap();
+}
