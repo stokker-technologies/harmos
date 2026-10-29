@@ -55,22 +55,6 @@ pub(super) fn create_dir_all(path: &Path) -> io::Result<()> {
     sync_directory(parent(path))
 }
 
-pub(super) fn move_directory(source: &Path, destination: &Path) -> io::Result<()> {
-    match fs::symlink_metadata(destination) {
-        Ok(_) => {
-            return Err(io::Error::new(io::ErrorKind::AlreadyExists, "destination already exists"));
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-    fs::rename(source, destination)?;
-    File::open(parent(destination))?.sync_all()?;
-    if parent(source) != parent(destination) {
-        File::open(parent(source))?.sync_all()?;
-    }
-    Ok(())
-}
-
 pub(super) fn install(source: &Path, destination: &Path) -> io::Result<()> {
     fs::hard_link(source, destination)?;
     sync_directory(parent(destination))

@@ -72,21 +72,6 @@ impl<C> StorageManager<C> {
         Ok(self.position(sequence))
     }
 
-    pub fn record_batch_len(&self, records: &[RecordInput]) -> Result<usize> {
-        self.batch_prefix(records.iter().map(|record| {
-            let value = StoredRecord {
-                position: self.position(u64::MAX),
-                schema: record.schema.clone(),
-                scope: record.scope.clone(),
-                item: record.item.clone(),
-                source: record.source.clone(),
-                source_time: record.source_time,
-                payload: record.payload.as_slice(),
-            };
-            encoded_size(&value)
-        }))
-    }
-
     pub fn stream_batch_len(&self, rows: &[StreamInput]) -> Result<usize> {
         self.batch_prefix(rows.iter().map(|row| {
             let value = StoredRow {

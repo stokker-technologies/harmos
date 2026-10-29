@@ -1228,7 +1228,6 @@ dependencies = [
  "harmos-sdk",
  "harmos-sidecar",
  "harmos-storage",
- "heck",
  "http-body",
  "http-body-util",
  "petgraph",

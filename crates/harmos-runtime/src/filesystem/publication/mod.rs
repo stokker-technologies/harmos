@@ -81,20 +81,6 @@ pub fn create_dir_all(path: &Path) -> crate::filesystem::Result<()> {
     platform::create_dir_all(path).map_err(|error| crate::filesystem::Error::publication("create directory", path, error))
 }
 
-pub fn move_directory(source: &Path, destination: &Path) -> crate::filesystem::Result<()> {
-    let metadata =
-        fs::symlink_metadata(source).map_err(|error| crate::filesystem::Error::publication("inspect directory", source, error))?;
-    if !metadata.is_dir() || metadata.file_type().is_symlink() {
-        return Err(crate::filesystem::Error::publication(
-            "move directory",
-            source,
-            io::Error::other("source must be a regular directory"),
-        ));
-    }
-    platform::move_directory(source, destination)
-        .map_err(|error| crate::filesystem::Error::publication("move directory", destination, error))
-}
-
 pub fn install(source: &Path, destination: &Path) -> crate::filesystem::Result<()> {
     sync_file(source).map_err(|error| crate::filesystem::Error::publication("flush staged file", source, error))?;
     platform::install(source, destination).map_err(|error| crate::filesystem::Error::publication("install file", destination, error))

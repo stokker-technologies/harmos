@@ -471,15 +471,6 @@ impl Contracts {
         Self::from_projection(&C::ENTRIES)
     }
 
-    pub fn from_entries(entries: &[WireDeclaration]) -> Result<Vec<Contract>, ContractError> {
-        let mut ids = BTreeSet::new();
-        let mut contracts = Vec::with_capacity(entries.len());
-        for declaration in entries {
-            append(declaration, &mut ids, &mut contracts)?;
-        }
-        Ok(contracts)
-    }
-
     pub fn from_tree(entries: &[crate::catalog::Node<WireDeclaration>]) -> Result<Vec<Contract>, ContractError> {
         let mut ids = BTreeSet::new();
         let mut contracts = Vec::new();
