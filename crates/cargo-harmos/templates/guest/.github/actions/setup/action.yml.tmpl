@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/setup; sha256:8e92bb2bc1713b9c66541363f6e8ec1194c9bc5800d66b20476a7b84eea6a825
+# Rendered by stkr project update from templates/ci/setup; sha256:d20efe7a2583202a099eb0b660c16b7d8817957f9015c2898da96e5ba9a61aa0
 name: Setup
 description: Setup
 inputs:
@@ -27,6 +27,9 @@ inputs:
     required: false
     default: ""
 outputs:
+  bench_baselines-path:
+    description: Resolved bench_baselines path
+    value: ${{ steps.native.outputs.bench_baselines-path }}
   bench_baselines-cache-hit:
     description: Observed bench_baselines cache-hit
     value: ${{ steps.bench_baselines.outputs.cache-hit }}
@@ -36,6 +39,9 @@ outputs:
   bench_baselines-outcome:
     description: Observed bench_baselines outcome
     value: ${{ steps.bench_baselines.outcome }}
+  cargo_downloads-path:
+    description: Resolved cargo_downloads path
+    value: ${{ steps.native.outputs.cargo_downloads-path }}
   cargo_downloads-cache-hit:
     description: Observed cargo_downloads cache-hit
     value: ${{ steps.cargo_downloads.outputs.cache-hit }}
@@ -45,6 +51,9 @@ outputs:
   cargo_downloads-outcome:
     description: Observed cargo_downloads outcome
     value: ${{ steps.cargo_downloads.outcome }}
+  mise-path:
+    description: Resolved mise path
+    value: ${{ steps.native.outputs.mise-path }}
   mise-cache-hit:
     description: Observed mise cache-hit
     value: ${{ steps.mise.outputs.cache-hit }}
@@ -54,6 +63,9 @@ outputs:
   mise-outcome:
     description: Observed mise outcome
     value: ${{ steps.mise.outcome }}
+  pnpm-path:
+    description: Resolved pnpm path
+    value: ${{ steps.native.outputs.pnpm-path }}
   pnpm-cache-hit:
     description: Observed pnpm cache-hit
     value: ${{ steps.pnpm.outputs.cache-hit }}
@@ -63,6 +75,9 @@ outputs:
   pnpm-outcome:
     description: Observed pnpm outcome
     value: ${{ steps.pnpm.outcome }}
+  sccache-path:
+    description: Resolved sccache path
+    value: ${{ steps.native.outputs.sccache-path }}
   sccache-cache-hit:
     description: Observed sccache cache-hit
     value: ${{ steps.sccache.outputs.cache-hit }}
@@ -72,6 +87,9 @@ outputs:
   sccache-outcome:
     description: Observed sccache outcome
     value: ${{ steps.sccache.outcome }}
+  uv-path:
+    description: Resolved uv path
+    value: ${{ steps.native.outputs.uv-path }}
   uv-cache-hit:
     description: Observed uv cache-hit
     value: ${{ steps.uv.outputs.cache-hit }}
@@ -97,50 +115,50 @@ runs:
       COMPILER_CACHE_MODE: ${{ inputs.cache-mode }}
   - id: bench_baselines
     name: Cache / bench-baselines
-    if: contains(inputs.caches, '"bench_baselines"')
+    if: steps.native.outputs.bench_baselines-path != ''
     uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
     with:
-      path: ${{ fromJSON(inputs.caches).bench_baselines.path }}
+      path: ${{ steps.native.outputs.bench_baselines-path }}
       key: ${{ steps.native.outputs.bench_baselines-key }}
       restore-keys: ${{ steps.native.outputs.bench_baselines-restore-keys }}
   - id: cargo_downloads
     name: Cache / Cargo
-    if: contains(inputs.caches, '"cargo_downloads"')
+    if: steps.native.outputs.cargo_downloads-path != ''
     uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
     with:
-      path: ${{ fromJSON(inputs.caches).cargo_downloads.path }}
+      path: ${{ steps.native.outputs.cargo_downloads-path }}
       key: ${{ steps.native.outputs.cargo_downloads-key }}
       restore-keys: ${{ steps.native.outputs.cargo_downloads-restore-keys }}
   - id: mise
     name: Cache / Mise
-    if: contains(inputs.caches, '"mise"')
+    if: steps.native.outputs.mise-path != ''
     uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
     with:
-      path: ${{ fromJSON(inputs.caches).mise.path }}
+      path: ${{ steps.native.outputs.mise-path }}
       key: ${{ steps.native.outputs.mise-key }}
       restore-keys: ${{ steps.native.outputs.mise-restore-keys }}
   - id: pnpm
     name: Cache / PNPM
-    if: contains(inputs.caches, '"pnpm"')
+    if: steps.native.outputs.pnpm-path != ''
     uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
     with:
-      path: ${{ fromJSON(inputs.caches).pnpm.path }}
+      path: ${{ steps.native.outputs.pnpm-path }}
       key: ${{ steps.native.outputs.pnpm-key }}
       restore-keys: ${{ steps.native.outputs.pnpm-restore-keys }}
   - id: sccache
     name: Cache / Compiler
-    if: contains(inputs.caches, '"sccache"')
+    if: steps.native.outputs.sccache-path != ''
     uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
     with:
-      path: ${{ fromJSON(inputs.caches).sccache.path }}
+      path: ${{ steps.native.outputs.sccache-path }}
       key: ${{ steps.native.outputs.sccache-key }}
       restore-keys: ${{ steps.native.outputs.sccache-restore-keys }}
   - id: uv
     name: Cache / UV
-    if: contains(inputs.caches, '"uv"')
+    if: steps.native.outputs.uv-path != ''
     uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
     with:
-      path: ${{ fromJSON(inputs.caches).uv.path }}
+      path: ${{ steps.native.outputs.uv-path }}
       key: ${{ steps.native.outputs.uv-key }}
       restore-keys: ${{ steps.native.outputs.uv-restore-keys }}
   - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8

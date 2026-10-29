@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/setup; sha256:779bd3a3310e66f15d4f6b9fdf75593eb3fff958bace2fc48192041e819846f1
+# Rendered by stkr project update from templates/ci/setup; sha256:6d7c04cc9d36a7084cdc77cd11e8b16d4829de4abb9da0c31be73200c89d91cc
 """Prepare Native Tools And Stable Toolchain Roots Before Mise."""
 
 # === Imports === #
@@ -106,7 +106,8 @@ def windows(workspace):
     if not installation:
         raise RuntimeError("the Windows image requires Visual Studio C++ tools")
     vcvars = Path(installation) / "VC/Auxiliary/Build/vcvars64.bat"
-    output = subprocess.check_output(["cmd.exe", "/d", "/s", "/c", f'""{vcvars}" >nul && set"'], text=True, creationflags=spawn_flags())
+    # Preserve Cmd Quoting Through CreateProcess.
+    output = subprocess.check_output(f'cmd.exe /d /s /c ""{vcvars}" >nul && set"', text=True, creationflags=spawn_flags())
     values = dict(line.split("=", 1) for line in output.splitlines() if "=" in line and not line.startswith("="))
     export({name.upper(): value for name, value in values.items() if name.upper() in {"PATH", "INCLUDE", "LIB", "LIBPATH"}})
 
@@ -242,10 +243,12 @@ def main():
         if destination := os.environ.get("GITHUB_OUTPUT"):
             with Path(destination).open("a", encoding="utf-8") as stream:
                 for name, cache in json.loads(os.environ.get("CACHE_PLAN", "{}")).items():
-                    for field in ("key", "restore-keys"):
+                    for field in ("path", "key", "restore-keys"):
                         value = cache.get(field, "")
-                        for variable in ("MISE_ROOT_ID", "WORKSPACE_ROOT_ID", "RUNNER_IMAGE_ID"):
+                        for variable in ("MISE_DATA_DIR", "MISE_ROOT_ID", "WORKSPACE_ROOT_ID", "RUNNER_IMAGE_ID"):
                             value = value.replace("<" + variable + ">", os.environ[variable])
+                        if field == "path" and not value.strip():
+                            raise ValueError(f"cache path is empty: {name}")
                         stream.write(f"{name}-{field}<<CACHE_VALUE\n{value}\nCACHE_VALUE\n")
     if options.roots_only:
         return

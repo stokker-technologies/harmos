@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/policy.py; sha256:9fb3ba340d099780850921be74bc927b9f223daed3a218e1208b1511baa6a672
+# Rendered by stkr project update from templates/python/release/policy.py; sha256:666761bc1a6270dc36d43f42d468dc114d3e845b3cd7b8ee2055be4d7ce52ddb
 # ***
 #
 # __PRODUCT_NAME__
@@ -34,6 +34,8 @@ from ..process import spawn_flags
 
 # === Constants === #
 
+LIBRARY_TARGETS = frozenset({"lib", "rlib", "dylib", "cdylib", "staticlib", "proc-macro"})
+
 # === Types === #
 
 # === Classes === #
@@ -63,6 +65,31 @@ def policy(directory: Path, name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ToolError(f"[{name}] must be a table")
     return value
+
+
+def publishable(directory: Path, metadata: dict) -> dict:
+    """Select Library Workspace Members And Refuse Publishable Artifact-Only Packages."""
+    settings = config(directory)
+    plugin_project = settings.get("project", {}).get("profile") in {"plugin", "sidecar", "guest"}
+    plugins = {plugin["package"] for plugin in settings.get("release", {}).get("plugins", [])}
+    members = set(metadata["workspace_members"])
+    packages = {}
+    for package in metadata["packages"]:
+        if package["id"] not in members or package.get("publish") == []:
+            continue
+        name = package["name"]
+        manifest = Path(package["manifest_path"]).resolve()
+        relative = manifest.relative_to(directory.resolve()) if manifest.is_relative_to(directory.resolve()) else manifest
+        plugin = plugin_project or name in plugins or (not relative.is_absolute() and "plugins" in relative.parts[:-1])
+        library = any(LIBRARY_TARGETS.intersection(target["kind"]) for target in package["targets"])
+        if plugin or not library:
+            role = "plugin" if plugin else "non-library"
+            raise ToolError(
+                f"{relative.as_posix()}: {name} is a {role} package; packages without library targets and plugin packages never publish to "
+                "registries; declare publish = false"
+            )
+        packages[name] = package
+    return packages
 
 
 def profile(default: str = "release") -> str:

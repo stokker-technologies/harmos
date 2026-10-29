@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/registry.py; sha256:6fa89ec05725f6a421259b75d630ec61f3a7fd7a6886d096e1998fc597f7bb0d
+# Rendered by stkr project update from templates/python/release/registry.py; sha256:710e4bde82f628ecd16ff9cc5d255e8f8d632a10c90a48256500cd2c402b9e82
 # ***
 #
 # Harmos
@@ -97,18 +97,7 @@ def rehearse_crates(directory: Path, *, skip_published: bool = True) -> None:
 def publishable(directory: Path) -> dict:
     """Publishable Workspace Members By Name."""
     metadata = json.loads(policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps", "--locked"], capture=True))
-    members = set(metadata["workspace_members"])
-    packages = {package["name"]: package for package in metadata["packages"] if package["id"] in members and package.get("publish") != []}
-    for name, package in packages.items():
-        role = _interface_role(package)
-        if role:
-            manifest = Path(package.get("manifest_path", "Cargo.toml"))
-            manifest = manifest.relative_to(directory) if manifest.is_relative_to(directory) else manifest
-            raise policy.ToolError(
-                f"{manifest.as_posix()}: {name} is a {role} crate; CLI, GUI and Cargo subcommand crates ship as release executables and installers, "
-                "never to crates.io; declare publish = false"
-            )
-    return packages
+    return policy.publishable(directory, metadata)
 
 
 def crate_published(name: str, version: str | None = None) -> bool:
@@ -628,16 +617,6 @@ def _rehearse_crates(
         # The patches record themselves in the lock file; the rehearsal leaves the committed lock untouched.
         if original is not None:
             lock.write_bytes(original)
-
-
-def _interface_role(package: dict) -> str | None:
-    """CLI For A `-cli` Crate, Cargo Subcommand For `cargo-<name>`, GUI For A `-gui` Crate Or A Tauri Desktop Shell."""
-    if package["name"].endswith("-cli"):
-        return "CLI"
-    if package["name"].startswith("cargo-"):
-        return "Cargo subcommand"
-    tauri = any(item.get("name") == "tauri" and item.get("kind") is None for item in package.get("dependencies", []))
-    return "GUI" if package["name"].endswith("-gui") or tauri else None
 
 
 def _same_tree(directory: Path, head: str, merged: str) -> None:
