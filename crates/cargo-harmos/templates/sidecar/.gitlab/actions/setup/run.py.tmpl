@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/setup; sha256:6d7c04cc9d36a7084cdc77cd11e8b16d4829de4abb9da0c31be73200c89d91cc
+# Rendered by stkr project update from templates/ci/setup; sha256:3d616a0f6d3cf66f9bcba9c70b445ef8d69950a680be97596254f16479df0a2c
 """Prepare Native Tools And Stable Toolchain Roots Before Mise."""
 
 # === Imports === #
@@ -10,7 +10,9 @@ import ctypes
 import hashlib
 import json
 import os
+import re
 import runpy
+import shlex
 import shutil
 import subprocess
 import sys
@@ -227,6 +229,20 @@ def rustup():
     export({"PATH": os.pathsep.join([str(proxies), os.environ["PATH"]])})
 
 
+def glab(version):
+    if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None:
+        raise ValueError("GitLab CLI bootstrap requires an exact version")
+    # This Explicit CI Tool Is Outside The Project Lock; Project Installs Remain Locked.
+    subprocess.run(
+        ["mise", "install", "--yes", f"glab@{version}"],
+        env=os.environ | {"MISE_LOCKED": "0", "MISE_ENABLE_TOOLS": "glab"},
+        stdout=sys.stderr,
+        creationflags=spawn_flags(),
+        check=True,
+    )
+    export({"MISE_GLAB_VERSION": version})
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -234,7 +250,11 @@ def main():
     )
     parser.add_argument("--roots-only", action="store_true")
     parser.add_argument("--emit-shell", action="store_true")
+    parser.add_argument("--glab-version")
     options = parser.parse_args()
+    if options.glab_version:
+        glab(options.glab_version)
+        return
     workspace = Path.cwd()
     with group("Toolchain Roots"):
         export(roots(os.environ, workspace, Path.home()))
@@ -270,7 +290,10 @@ if __name__ == "__main__":
         with contextlib.redirect_stdout(sys.stderr):
             main()
         for name, value in EXPORTED.items():
-            escaped = value.replace("'", "''")
-            print(f"$env:{name}='{escaped}'")
+            if os.name == "nt":
+                escaped = value.replace("'", "''")
+                print(f"$env:{name}='{escaped}'")
+            else:
+                print(f"export {name}={shlex.quote(value)}")
     else:
         main()

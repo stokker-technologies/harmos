@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/release.yml; sha256:701c517980669ab732bd037dc0ceba103f12c012ed5b4e40303a56d00a7d7b46
+# Rendered by stkr project update from templates/ci/.github/workflows/release.yml; sha256:fa66d3f527ecd305994f6977455df21ab1cabdb5a20b56f4b01518f59e95291c
 name: Release
 "on":
   workflow_dispatch: {}
@@ -358,7 +358,7 @@ jobs:
       pull-requests: read
       actions: read
     env:
-      MISE_ENABLE_TOOLS: gh,python
+      MISE_ENABLE_TOOLS: python
     outputs:
       validated: ${{ steps.review.outputs.validated }}
       review_run: ${{ steps.review.outputs.review_run }}

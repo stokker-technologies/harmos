@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/plan-impact; sha256:cdece7c1c4296f177c6105311839131603ef8770c57578183ae8b7576e444e54
+# Rendered by stkr project update from templates/ci/plan-impact; sha256:2dc96fc3eb85bd9ce1d6837424ac0dea1ddea4409bff8e52a559cc92be1efa37
 """Select Conservative Native CI Jobs And Emit A GitLab Child Pipeline."""
 
 # === Imports === #
@@ -7,6 +7,7 @@
 import json
 import os
 import re
+import runpy
 import subprocess
 from pathlib import Path
 
