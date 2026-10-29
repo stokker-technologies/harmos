@@ -84,7 +84,7 @@ Use the `harmos` facade to compose a runtime and define your application's
 state, transactions and operations. Optional Cargo features select plugin,
 transport and simulation capabilities. The default facade exposes portable contracts;
 enable `runtime` for SDK execution and, on native targets, host runtime facilities.
-The [operations guide](.agents/skills/harmos-authoring/references/operations.md)
+The [product guide](docs/product-guide.md)
 shows one operation file where the request implements consuming execution with declared resources and child operations.
 
 Portable messages support standard Rust maps with deterministic key ordering
@@ -136,12 +136,6 @@ and wire formats support only the current v1 shape; no migration is provided.
 Built-in operation contracts live in `harmos-operations`, re-exported as
 `harmos::builtins`. Its `host`, `lifecycle`, `storage` and `streams` catalogs
 and `Builtins::catalog()` are available without runtime dependencies.
-
-For agent-assisted consumer development, use the self-contained
-[architecture](.agents/skills/harmos-architecture/SKILL.md),
-[authoring](.agents/skills/harmos-authoring/SKILL.md) and
-[testing](.agents/skills/harmos-testing/SKILL.md) skills. They cover reusable
-products and self-contained plugins, including the shipped consumer examples.
 
 ## Contributing
 
