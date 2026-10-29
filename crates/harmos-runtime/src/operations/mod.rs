@@ -33,7 +33,6 @@ pub(crate) mod instances;
 mod invocation;
 pub(crate) mod lane;
 mod manager;
-pub mod middleware;
 pub(crate) mod refusal;
 pub mod resident;
 pub(crate) mod scope;

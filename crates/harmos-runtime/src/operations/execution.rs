@@ -52,7 +52,6 @@ pub(crate) struct Prepared<O> {
     pub(super) id: OperationInstanceId,
     pub(super) completed: Option<Completed<O>>,
     pub(super) refusal: Option<Error>,
-    pub(super) middleware: Option<super::middleware::Session>,
 }
 
 pub(super) struct Execution {
@@ -145,17 +144,7 @@ pub(super) async fn execute<O: Send + 'static>(
         submitted,
         timeout: prepared.policy.timeout,
     };
-    let mut middleware = prepared.middleware.take();
-    let mut refusal = prepared.refusal.take();
-    if refusal.is_none()
-        && let Some(session) = &mut middleware
-    {
-        refusal = match bounded(budget.remaining(), Box::pin(session.enter()), &mut cancelled).await {
-            Stage::Completed(answer) => answer.err(),
-            Stage::Cancelled => Some(Refusal::Cancelled.into()),
-            Stage::Expired => Some(Refusal::TimedOut.into()),
-        };
-    }
+    let refusal = prepared.refusal.take();
     let was_refused = refusal.is_some();
     let mut permit = None;
     let answer = match refusal {
@@ -194,14 +183,7 @@ pub(super) async fn execute<O: Send + 'static>(
             },
             diagnostic,
         );
-        let failure = failure.unwrap_or_else(|| Refusal::Unavailable.into());
-        if let Some(session) = &mut middleware {
-            session.observe(super::middleware::Observation {
-                outcome: failure_outcome(&failure),
-                settled: false,
-            });
-        }
-        return Err(failure);
+        return Err(failure.unwrap_or_else(|| Refusal::Unavailable.into()));
     }
     drop(prepared.body);
     let answer = if was_refused {
@@ -220,9 +202,6 @@ pub(super) async fn execute<O: Send + 'static>(
     drop(admission);
     instance.complete(outcome(&answer));
     instance.finished();
-    if let Some(session) = &mut middleware {
-        session.observe(super::middleware::Observation { outcome: outcome(&answer), settled: true });
-    }
     answer
 }
 

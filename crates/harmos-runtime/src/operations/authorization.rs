@@ -16,12 +16,13 @@ pub use harmos_domain::inventory::contracts::Required;
 /* === Imports === */
 
 // Standard Library Imports
+use std::sync::{Arc, Mutex};
 
 // Third Party Imports
 
 // Local Imports
 use super::{CallContext, Contract, OperationDefinition, OperationGeneration};
-use crate::{Identifier, Result};
+use crate::{Error, Identifier, Result};
 
 /* === Constants === */
 
@@ -38,6 +39,17 @@ pub struct Provider<'a> {
     pub generation: OperationGeneration,
     pub definition: &'a OperationDefinition,
     pub contract: &'a Contract,
+}
+
+#[derive(Default)]
+pub(super) struct Configuration {
+    state: Mutex<State>,
+}
+
+#[derive(Default)]
+struct State {
+    authorizer: Option<Arc<dyn Authorizer>>,
+    frozen: bool,
 }
 
 /* === Enums === */
@@ -57,6 +69,32 @@ pub trait Authorizer: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
+impl Configuration {
+    pub(super) fn register(&self, authorizer: Arc<dyn Authorizer>) -> Result<()> {
+        let mut state = self.state.lock().expect("authorization configuration lock is healthy");
+        if state.frozen {
+            return Err(Error::Closing {
+                domain: "operation authorization configuration",
+            });
+        }
+        if state.authorizer.is_some() {
+            return Err(Error::InvalidInput {
+                field: "operation authorizer",
+                reason: "authorization already has an owner",
+            });
+        }
+        state.authorizer = Some(authorizer);
+        Ok(())
+    }
+
+    #[cfg(feature = "grpc")]
+    pub(super) fn authorizer(&self) -> Option<Arc<dyn Authorizer>> {
+        let mut state = self.state.lock().expect("authorization configuration lock is healthy");
+        state.frozen = true;
+        state.authorizer.clone()
+    }
+}
 
 /* === Public Functions === */
 

@@ -97,7 +97,7 @@ pub(crate) struct WeakOperationManager {
 
 pub(crate) struct Registry {
     pub(crate) service_runner: crate::services::ServiceRunner,
-    middleware: super::middleware::Configuration,
+    authorization: super::authorization::Configuration,
     state: Mutex<State>,
 }
 

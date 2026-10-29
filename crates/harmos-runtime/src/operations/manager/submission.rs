@@ -209,9 +209,7 @@ impl Manager {
         pending.insert(id, Arc::clone(&control));
         drop(pending);
 
-        let middleware = self.registry.middleware.capture();
-        let context = if middleware.is_empty() { self.context.clone() } else { Arc::new(std::sync::OnceLock::new()) };
-        request.context = context.clone();
+        request.context = self.context.clone();
         let mut job = (binding.prepare)(
             (request, endpoints),
             id,
@@ -226,17 +224,6 @@ impl Manager {
         #[cfg(feature = "grpc")]
         if let Some(deadline) = self.call_context().get::<crate::operations::context::Deadline>() {
             job.policy.timeout = job.policy.timeout.min(deadline.0.saturating_duration_since(submitted));
-        }
-        if !middleware.is_empty() {
-            job.middleware = Some(crate::operations::middleware::Session::new(
-                middleware,
-                entry.definition.clone(),
-                id,
-                entry.generation,
-                self.call_context().clone(),
-                context,
-                origin,
-            ));
         }
         let refusal = if executor::now().saturating_duration_since(submitted) >= job.policy.timeout {
             Err(crate::Refusal::TimedOut.into())

@@ -131,7 +131,6 @@ pub struct Builder<A: Application> {
     operations: Vec<crate::operations::CatalogBinding>,
     operation_settings: crate::operations::Settings,
     schema_settings: Arc<crate::config::SchemaSettings>,
-    operation_middleware: Vec<Arc<dyn crate::operations::middleware::Middleware>>,
     services: Vec<DeclaredService<A>>,
 
     #[cfg(feature = "simulation")]
@@ -394,7 +393,6 @@ impl<A: Application> Runtime<A> {
             operations: Vec::new(),
             operation_settings: crate::operations::Settings::default(),
             schema_settings: Arc::new(crate::config::SchemaSettings::default()),
-            operation_middleware: Vec::new(),
             services: Vec::new(),
             #[cfg(feature = "simulation")]
             simulation: crate::simulation::Configuration::new(),
@@ -510,11 +508,6 @@ impl<A: Application> Builder<A> {
         let binding = crate::operations::CatalogBinding::new(registration);
         self.bind_operations(binding)
     }
-    pub fn operation_middleware(&mut self, middleware: Arc<dyn crate::operations::middleware::Middleware>) -> &mut Self {
-        self.operation_middleware.push(middleware);
-        self
-    }
-
     pub fn operation_settings(&mut self, settings: crate::operations::Settings) -> &mut Self {
         self.operation_settings = settings;
         self
@@ -772,7 +765,6 @@ impl<A: Application> Builder<A> {
             operations: bindings,
             operation_settings,
             schema_settings,
-            operation_middleware,
             services,
             ..
         } = self;
@@ -862,9 +854,6 @@ impl<A: Application> Builder<A> {
         }
         let operations =
             crate::operations::Manager::new::<A>(instances, &operation_settings, reserved, boot.identity.clone(), schema_settings);
-        for middleware in operation_middleware {
-            operations.register_middleware(middleware).map_err(Incompatible::work)?;
-        }
         for binding in bindings {
             binding.bind(&operations).map_err(|source| Incompatible {
                 cause: Cause::Operations(source),

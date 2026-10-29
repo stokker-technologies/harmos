@@ -15,7 +15,7 @@
 
 // Standard Library Imports
 use std::sync::{
-    Arc, Mutex,
+    Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use std::time::Duration;
@@ -67,21 +67,6 @@ struct Trace {
 }
 struct AttemptGuard {
     trace: Arc<Trace>,
-}
-
-struct Observe(Arc<Mutex<Vec<harmos_runtime::operations::middleware::Observation>>>);
-
-impl harmos_runtime::operations::middleware::Middleware for Observe {
-    fn enter<'a>(
-        &'a self, _: &'a mut harmos_runtime::operations::middleware::Invocation,
-    ) -> harmos_runtime::operations::middleware::Enter<'a> {
-        Box::pin(async { Ok(()) })
-    }
-    fn observe(
-        &self, _: &harmos_runtime::operations::middleware::Invocation, observation: harmos_runtime::operations::middleware::Observation,
-    ) {
-        self.0.lock().unwrap().push(observation);
-    }
 }
 
 /* === Enums === */
@@ -252,8 +237,6 @@ async fn items_remain_visible() {
 async fn failure_not_success() {
     let (runtime, trace) = runtime().await;
     trace.fail_finish.store(true, Ordering::SeqCst);
-    let observations = Arc::new(Mutex::new(Vec::new()));
-    runtime.operations.register_middleware(Arc::new(Observe(observations.clone()))).unwrap();
     let (sender, receiver) = channel(1);
     let instance = runtime.operations.submit_endpoints::<ProduceDeclaration, _>(Request { count: 1, fail: false }, sender).unwrap();
     let id = instance.id();
@@ -262,12 +245,6 @@ async fn failure_not_success() {
     assert!(stream.next().await.unwrap().is_err());
     assert!(stream.next().await.is_none());
     assert!(runtime.operations.status(id).is_none());
-    {
-        let observations = observations.lock().unwrap();
-        assert_eq!(observations.len(), 1);
-        assert!(observations[0].settled);
-        assert_eq!(observations[0].outcome, harmos_runtime::operations::OperationOutcome::Failed);
-    }
     drop(stream);
     assert_eq!(trace.finished.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -277,7 +254,6 @@ async fn failure_not_success() {
     assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(trace.finished.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    assert_eq!(observations.lock().unwrap().len(), 1);
 }
 
 #[tokio::test(start_paused = true)]

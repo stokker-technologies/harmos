@@ -30,8 +30,6 @@ mod execution;
 mod host;
 #[path = "../operations/lanes.rs"]
 mod lanes;
-#[path = "../operations/middleware.rs"]
-mod middleware;
 #[path = "../operations/outcomes.rs"]
 mod outcomes;
 #[path = "../operations/policy.rs"]

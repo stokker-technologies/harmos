@@ -48,7 +48,7 @@ impl Manager {
             lanes: Arc::new(Lanes::default()),
             registry: Arc::new(Registry {
                 service_runner: crate::services::authored_runner::<A>,
-                middleware: crate::operations::middleware::Configuration::default(),
+                authorization: crate::operations::authorization::Configuration::default(),
                 state: Mutex::new(State {
                     closing: false,
                     entries: BTreeMap::new(),
@@ -65,12 +65,8 @@ impl Manager {
         }
     }
 
-    pub fn register_middleware(&self, middleware: Arc<dyn crate::operations::middleware::Middleware>) -> Result<()> {
-        self.registry.middleware.register(middleware)
-    }
-
     pub fn register_authorizer(&self, authorizer: Arc<dyn crate::operations::authorization::Authorizer>) -> Result<()> {
-        self.registry.middleware.register_authorizer(authorizer)
+        self.registry.authorization.register(authorizer)
     }
 
     #[cfg(feature = "grpc")]
@@ -85,7 +81,7 @@ impl Manager {
     ) -> Result<Option<crate::operations::authorization::Authorization>> {
         #[cfg(feature = "grpc")]
         if matches!(origin.identity, crate::operations::caller::Identity::External(_)) {
-            let Some(authorizer) = self.registry.middleware.authorizer() else {
+            let Some(authorizer) = self.registry.authorization.authorizer() else {
                 // Preserve Existing Explicit Anonymous Routes When No Policy Is Configured.
                 return Ok(None);
             };
