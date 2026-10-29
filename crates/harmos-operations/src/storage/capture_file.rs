@@ -45,7 +45,7 @@ product!(CaptureFile {
     id = "storage.capture_file",
     response = FileReference,
     policy = IO_POLICY,
-    visibility = Shared,
+    visibility = Public,
     replay = ReplaySafety::Unknown,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "CaptureFile"),
     grant = Self::grant_for)]

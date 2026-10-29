@@ -45,7 +45,7 @@ type Backends = PluginBackend<Resources, Resources, Resources>;
 
 #[harmos_runtime::operation(resources = [SelectedOwner], id = "fixture.selected_provider",
     response = String,
-    visibility = Shared,
+    visibility = Public,
     policy = super::cases::EchoDeclaration::POLICY
 )]
 struct SelectedDeclaration {
@@ -66,14 +66,14 @@ struct SelectedHost {
 }
 
 // Shares The Compute Request, Which Stays In Process.
-#[harmos_runtime::operation(resources = [Owner, harmos_runtime::operations::HostContext], codec = manual, id = "test.shared",
+#[harmos_runtime::operation(resources = [Owner, harmos_runtime::operations::HostContext], codec = manual, id = "test.public",
     response = Response,
-    visibility = Shared,
+    visibility = Public,
     policy = Compute::POLICY,
-    key = |request: &Shared| Compute::key(&request.0),
+    key = |request: &Public| Compute::key(&request.0),
 )]
 #[derive(Clone)]
-struct Shared(Request);
+struct Public(Request);
 
 #[harmos_runtime::operation(resources = [CleanupOwner], id = "fixture.callback_cleanup",
     response = String,
@@ -135,9 +135,9 @@ struct Running {
 
 /* === Implementations === */
 
-super::in_process!(Shared);
+super::in_process!(Public);
 
-impl harmos_runtime::MemorySize for Shared {
+impl harmos_runtime::MemorySize for Public {
     fn memory_size(&self) -> usize {
         self.0.memory_size()
     }
@@ -215,7 +215,7 @@ impl PluginLifecycle for SelectedHost {
     }
 }
 
-impl harmos_runtime::Operation for Shared {
+impl harmos_runtime::Operation for Public {
     type Error = Failed;
 
     async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<Response>, Failed> {
@@ -276,7 +276,7 @@ impl PluginLifecycle for Host {
         if definition.id != "fixture" {
             if self.call_during_setup && definition.id == "client" {
                 // Source is staged; its declared provider was committed earlier.
-                assert_eq!(self.operations.caller(&caller)?.call::<Shared>(Shared(request())).await?.value, 7);
+                assert_eq!(self.operations.caller(&caller)?.call::<Public>(Public(request())).await?.value, 7);
             }
             return Ok(());
         }
@@ -294,7 +294,7 @@ impl PluginLifecycle for Host {
             if self.discovery {
                 bindings.operations::<crate::operations::Single<Discover>>(Lanes::Open)?;
             }
-            bindings.operations::<crate::operations::Single<Shared>>(Lanes::Serial)?;
+            bindings.operations::<crate::operations::Single<Public>>(Lanes::Serial)?;
             bindings.operations::<crate::operations::Single<Parent>>(Lanes::Serial)
         })?);
 
@@ -477,7 +477,7 @@ fn selected_candidate(provider: &str, first: bool) -> PluginDefinitions {
 fn candidate() -> PluginDefinitions {
     let mut operations = harmos_runtime::operations::Declarations::of::<Operations>().unwrap();
     operations.extend(harmos_runtime::operations::Declarations::of::<super::cases::Operations>().unwrap());
-    operations.push(harmos_runtime::operations::OperationDefinition::of::<Shared>().unwrap());
+    operations.push(harmos_runtime::operations::OperationDefinition::of::<Public>().unwrap());
     operations.push(harmos_runtime::operations::OperationDefinition::of::<Parent>().unwrap());
     PluginDefinitions::new(
         [PluginDefinition {

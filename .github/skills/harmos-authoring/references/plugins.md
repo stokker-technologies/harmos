@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/plugins.md; sha256:df7661632f4f9a5c28540626d6ac05df1e92fb965351d3b9d35765846c28f756 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/plugins.md; sha256:8c6c2a8c332171f822101553993f086825b8d59f24d234ba8e4cdf5340376165 -->
 
 # Plugins And Carriers
 
@@ -65,7 +65,7 @@ ownership; dropping a handle does not settle asynchronous work.
 
 A plugin can require operations implemented by another registered provider.
 The host matches complete contracts, including fingerprints, schema, policy,
-visibility and replay behavior. Shared visibility and unambiguous selection
+visibility and replay behavior. Public visibility and unambiguous selection
 are required; explicit provider selection does not relax compatibility.
 
 Native observers do not declare a typed resources bundle. Their initialization

@@ -64,7 +64,7 @@ coded!(CatalogKind { Operations, Schemas, Streams, Objects });
     id = "host.catalog",
     response = CatalogPage,
     policy = super::POLICY,
-    visibility = Shared,
+    visibility = Public,
     grant = Catalog::required_grant,
     grpc(package = "harmos.host.v1", service = "Host", method = "Catalog"),
 )]

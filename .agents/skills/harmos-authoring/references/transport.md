@@ -8,11 +8,15 @@ This declaration fragment assumes a product-owned `Reading` and `POLICY`:
 ```rust
 #[harmos::operation(
     id = "instrument.read", response = Reading,
-    policy = POLICY,
+    policy = POLICY, visibility = Public,
     grpc(package = "instrument.v1", service = "Instrument", method = "Read"),
 )]
 pub struct Read { pub channel: u32 }
 ```
+
+Private operations cannot declare `grpc(...)`: the macro rejects them at compile time,
+and runtime contract registration rejects them as well. Use `Public` for plugin and
+host callers, or `Host` for the host application and its clients only.
 
 The runtime's gRPC facility exposes that contract. `harmos-domain` owns the
 portable schema graph and metadata; `harmos-packaging` owns static schema and

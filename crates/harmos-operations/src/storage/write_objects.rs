@@ -51,7 +51,7 @@ product!(WriteObjects {
     policy = IO_POLICY,
     input = DataBatch,
     output = WriteReceipt,
-    visibility = Shared,
+    visibility = Public,
     replay = ReplaySafety::Unknown,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "WriteObjects"),
 )]

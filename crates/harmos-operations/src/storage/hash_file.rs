@@ -43,7 +43,7 @@ product!(HashFile {
     id = "storage.hash_file",
     response = FileHash,
     policy = IO_POLICY,
-    visibility = Shared,
+    visibility = Public,
     replay = ReplaySafety::Idempotent,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "HashFile"),
     grant = Self::grant_for)]

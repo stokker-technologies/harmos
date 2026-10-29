@@ -76,7 +76,7 @@ pub struct ProgressDeclaration {
 }
 
 #[harmos_runtime::operation(codec = manual, resources = [State], id = "consumption.consume", response = (),
-    policy = POLICY, visibility = Shared)]
+    policy = POLICY, visibility = Public)]
 #[derive(Clone)]
 pub struct Consumption(Delivery<Listener>);
 

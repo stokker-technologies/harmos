@@ -96,7 +96,7 @@ async fn callbacks_guard_admission() {
         drop(bytes);
 
         #[harmos_runtime::operation(response = u32, id = "fixture.echo",
-            visibility = Shared, policy = super::super::cases::EchoDeclaration::POLICY)]
+            visibility = Public, policy = super::super::cases::EchoDeclaration::POLICY)]
         struct Changed {
             pub value: String,
         }
@@ -232,7 +232,7 @@ fn assert_registration_conflict(result: Result<()>) {
 }
 
 #[tokio::test]
-async fn own_shared_calls() {
+async fn own_public_calls() {
     use super::super::cases::EchoDeclaration as Echo;
     let runtime = runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
     let mut definitions: Vec<_> = candidate().definitions().cloned().collect();
@@ -246,7 +246,7 @@ async fn own_shared_calls() {
     manager.initialize(&mut host).await.unwrap();
 
     let own = runtime.operations.caller(&host.callers["fixture"]).unwrap();
-    assert_eq!(own.call::<Shared>(Shared(request())).await.unwrap().value, 7);
+    assert_eq!(own.call::<Public>(Public(request())).await.unwrap().value, 7);
     let bytes = own.call_encoded(&format!("fixture.{}", Echo::ID), Text::from("own").encode()).await.unwrap();
     assert_eq!(String::decode(&bytes).unwrap(), "own:1");
 
@@ -268,29 +268,29 @@ async fn own_shared_calls() {
 
     let opened = Arc::new(tokio::sync::Notify::new());
     let gate = Arc::new(tokio::sync::Notify::new());
-    let gated_request = Shared(Request {
+    let gated_request = Public(Request {
         gate: Some((opened.clone(), gate)),
         ..request()
     });
-    let invocation = own.submit::<Shared>(gated_request).unwrap();
+    let invocation = own.submit::<Public>(gated_request).unwrap();
     opened.notified().await;
     invocation.cancel();
     assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
-    assert_eq!(own.call::<Shared>(Shared(request())).await.unwrap().value, 7);
+    assert_eq!(own.call::<Public>(Public(request())).await.unwrap().value, 7);
 
     let mut replacement: Vec<_> = candidate.definitions().cloned().collect();
     replacement[0].configuration = br#"{"generation":2}"#.to_vec();
     manager.reload(PluginDefinitions::new(replacement, []).unwrap(), &mut host).await.unwrap();
     let next = runtime.operations.caller(&host.callers["fixture"]).unwrap();
     assert_ne!(own.generation(), next.generation());
-    assert!(matches!(own.submit::<Shared>(Shared(request())), Err(Error::OperationCaller { .. })));
+    assert!(matches!(own.submit::<Public>(Public(request())), Err(Error::OperationCaller { .. })));
     assert!(matches!(own.submit::<Discover>(Discover), Err(Error::OperationCaller { .. })));
     #[cfg(feature = "grpc")]
     {
         let response = grpc_call::<Echo>(harmos_runtime::grpc::server::Authority::Plugin(own)).await;
         assert_eq!(response.headers()["grpc-status"], "16");
     }
-    assert_eq!(next.call::<Shared>(Shared(request())).await.unwrap().value, 7);
+    assert_eq!(next.call::<Public>(Public(request())).await.unwrap().value, 7);
     manager.shutdown(&mut host).await.unwrap();
     runtime.shutdown().await.unwrap();
 }
@@ -303,17 +303,17 @@ async fn plugin_caller_authorization() {
     host.call_during_setup = true;
     manager.initialize(&mut host).await.unwrap();
     let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
-    assert_eq!(caller.call::<Shared>(Shared(request())).await.unwrap().value, 7);
-    // Parent is shared; its resource-owner context can call its private child.
+    assert_eq!(caller.call::<Public>(Public(request())).await.unwrap().value, 7);
+    // Parent is public; its resource-owner context can call its private child.
     assert_eq!(caller.call::<Parent>(Parent(request())).await.unwrap().value, 7);
     let (requests, decoded) = harmos_runtime::operations::stream(harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::new(1).unwrap(),
         bytes: NonZeroUsize::new(4096).unwrap(),
     })
     .unwrap();
-    requests.send_with(4096, || Ok(Shared(request()))).await.unwrap();
+    requests.send_with(4096, || Ok(Public(request()))).await.unwrap();
     let charged = decoded.recv().await.unwrap();
-    assert_eq!(caller.submit_charged::<Shared, _>(charged, ()).unwrap().await.unwrap().value, 7);
+    assert_eq!(caller.submit_charged::<Public, _>(charged, ()).unwrap().await.unwrap().value, 7);
     drop(requests.reserve(4096).await.unwrap());
     #[cfg(feature = "grpc")]
     {
@@ -354,22 +354,22 @@ async fn plugin_caller_authorization() {
     }
     for source in ["transitive", "unrelated"] {
         let source = runtime.operations.caller(&host.callers[source]).unwrap();
-        assert!(matches!(source.submit::<Shared>(Shared(request())), Err(Error::OperationUnauthorized { .. })));
+        assert!(matches!(source.submit::<Public>(Public(request())), Err(Error::OperationUnauthorized { .. })));
     }
     assert_eq!(host.owner.prepared.load(std::sync::atomic::Ordering::SeqCst), prepared);
     assert_eq!(runtime.operations.caller(&host.callers["fixture"]).unwrap().call::<Compute>(request()).await.unwrap().value, 7);
     manager.shutdown(&mut host).await.unwrap();
-    assert!(matches!(caller.submit::<Shared>(Shared(request())), Err(Error::OperationCaller { .. })));
+    assert!(matches!(caller.submit::<Public>(Public(request())), Err(Error::OperationCaller { .. })));
     let (output, input) = harmos_runtime::operations::stream::<u32>(harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::new(1).unwrap(),
         bytes: NonZeroUsize::new(4).unwrap(),
     })
     .unwrap();
-    assert!(matches!(caller.submit_endpoints::<Shared, _>(Shared(request()), input), Err(Error::OperationCaller { .. })));
+    assert!(matches!(caller.submit_endpoints::<Public, _>(Public(request()), input), Err(Error::OperationCaller { .. })));
     assert!(output.is_closed());
-    requests.send_with(4096, || Ok(Shared(request()))).await.unwrap();
+    requests.send_with(4096, || Ok(Public(request()))).await.unwrap();
     let charged = decoded.recv().await.unwrap();
-    assert!(matches!(caller.submit_charged::<Shared, _>(charged, ()), Err(Error::OperationCaller { .. })));
+    assert!(matches!(caller.submit_charged::<Public, _>(charged, ()), Err(Error::OperationCaller { .. })));
     drop(requests.reserve(4096).await.unwrap());
     #[cfg(feature = "grpc")]
     {
@@ -387,10 +387,10 @@ async fn operation_cache_partitioned() {
     let mut host = host(runtime.operations.clone());
     manager.initialize(&mut host).await.unwrap();
     let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
-    let keyed = || Shared(Request { keyed: true, ..request() });
+    let keyed = || Public(Request { keyed: true, ..request() });
     let host_response = runtime.operation(keyed()).run().await.unwrap();
-    let first = caller.call::<Shared>(keyed()).await.unwrap();
-    let again = caller.call::<Shared>(keyed()).await.unwrap();
+    let first = caller.call::<Public>(keyed()).await.unwrap();
+    let again = caller.call::<Public>(keyed()).await.unwrap();
     assert!(!host_response.ptr_eq(&first));
     assert!(first.ptr_eq(&again));
     assert_eq!(host.owner.runs.load(std::sync::atomic::Ordering::SeqCst), 2);
@@ -399,9 +399,9 @@ async fn operation_cache_partitioned() {
     let mut next = with_clients(true).definitions().cloned().collect::<Vec<_>>();
     next.iter_mut().find(|definition| definition.id == "client").unwrap().configuration = br#"{"revision":2}"#.to_vec();
     manager.reload(PluginDefinitions::new(next, []).unwrap(), &mut host).await.unwrap();
-    assert!(matches!(caller.submit::<Shared>(keyed()), Err(Error::OperationCaller { .. })));
+    assert!(matches!(caller.submit::<Public>(keyed()), Err(Error::OperationCaller { .. })));
     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
-    let next = replacement.call::<Shared>(keyed()).await.unwrap();
+    let next = replacement.call::<Public>(keyed()).await.unwrap();
     assert!(!first.ptr_eq(&next));
     assert!(host_response.ptr_eq(&runtime.operation(keyed()).run().await.unwrap()));
     manager.shutdown(&mut host).await.unwrap();
@@ -416,10 +416,10 @@ async fn requirement_revokes_operation() {
     manager.initialize(&mut host).await.unwrap();
     let old = runtime.operations.caller(&host.callers["client"]).unwrap();
     manager.reload(with_clients(false), &mut host).await.unwrap();
-    assert!(matches!(old.submit::<Shared>(Shared(request())), Err(Error::OperationCaller { .. })));
+    assert!(matches!(old.submit::<Public>(Public(request())), Err(Error::OperationCaller { .. })));
     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
-    assert!(matches!(replacement.submit::<Shared>(Shared(request())), Err(Error::OperationUnauthorized { .. })));
-    assert_eq!(runtime.operation(Shared(request())).run().await.unwrap().value, 7);
+    assert!(matches!(replacement.submit::<Public>(Public(request())), Err(Error::OperationUnauthorized { .. })));
+    assert_eq!(runtime.operation(Public(request())).run().await.unwrap().value, 7);
     manager.shutdown(&mut host).await.unwrap();
     runtime.shutdown().await.unwrap();
 }
@@ -434,7 +434,7 @@ async fn queued_operations_recheck() {
     let opened = Arc::new(tokio::sync::Notify::new());
     let gate = Arc::new(tokio::sync::Notify::new());
     let held = runtime
-        .operation(Shared(Request {
+        .operation(Public(Request {
             gate: Some((opened.clone(), gate.clone())),
             ..request()
         }))
@@ -442,7 +442,7 @@ async fn queued_operations_recheck() {
         .await
         .unwrap();
     opened.notified().await;
-    let queued = source.submit::<Shared>(Shared(request())).unwrap();
+    let queued = source.submit::<Public>(Public(request())).unwrap();
     manager.reload(with_clients(false), &mut host).await.unwrap();
 
     gate.notify_one();
@@ -482,7 +482,7 @@ async fn encoded_calls_authorized() {
         String::decode(&owner.call_encoded(&format!("fixture.{}", PrivateEcho::ID), Text::from("own").encode()).await.unwrap()).unwrap(),
         "own:1"
     );
-    // The client's shared parent invokes its own private child as the bound owner.
+    // The client's public parent invokes its own private child as the bound owner.
     assert_eq!(&*client.call::<NestedDeclaration>(NestedDeclaration::from("nested")).await.unwrap(), "nested:1");
     let prepared = host.owner.prepared.load(std::sync::atomic::Ordering::SeqCst);
     // Malformed payloads must not replace authorization failures with codec errors.
@@ -509,7 +509,7 @@ async fn activation_refuses_incomplete() {
                 definition.contributions.operations[0].policy.timeout += std::time::Duration::from_secs(1);
             }
             _ => {
-                definition.contributions.operations[0].visibility = harmos_runtime::operations::Visibility::Shared;
+                definition.contributions.operations[0].visibility = harmos_runtime::operations::Visibility::Public;
             }
         }
         let mut manager = PluginManager::new(PluginDefinitions::new([definition], []).unwrap()).unwrap();

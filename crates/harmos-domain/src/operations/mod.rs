@@ -80,7 +80,7 @@ struct DecodedOperationDefinition {
 #[serde(rename_all = "snake_case")]
 pub enum Visibility {
     Private,
-    Shared,
+    Public,
     Host,
 }
 
@@ -164,3 +164,64 @@ impl OperationDefinition {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Published;
+
+    impl OperationDeclaration for Published {
+        type Request = ();
+        type Response = ();
+        type Input = NoStream;
+        type Output = NoStream;
+        const ID: &'static str = "visibility.public";
+        const POLICY: OperationPolicy = crate::model::operations::lifecycle::POLICY;
+        const VISIBILITY: Visibility = Visibility::Public;
+    }
+
+    #[test]
+    fn public_metadata_roundtrip() {
+        let contract = WireDeclaration::of::<Published>().contract().unwrap();
+        let encoded = serde_json::to_value(&contract).unwrap();
+        assert_eq!(encoded["operation"]["visibility"], "public");
+        assert_eq!(serde_json::from_value::<Contract>(encoded.clone()).unwrap(), contract);
+        assert_eq!(contract.fingerprint(), Published::definition().fingerprint);
+
+        let mut obsolete = encoded;
+        obsolete["operation"]["visibility"] = serde_json::json!("shared");
+        assert!(serde_json::from_value::<Contract>(obsolete).is_err());
+
+        use crate::catalog::Node;
+        use crate::inventory::contracts::{encode_tree, encoded_tree_len};
+        const OPERATIONS: &[Node<WireDeclaration>] = &[Node::Leaf(WireDeclaration::of::<Published>())];
+        const LIFECYCLE: &[OperationPolicy; 2] = &[Published::POLICY; 2];
+        const SIZE: usize = encoded_tree_len("sidecar", "fixture", OPERATIONS, &[], LIFECYCLE);
+        const METADATA: [u8; SIZE] = encode_tree("sidecar", "fixture", OPERATIONS, &[], LIFECYCLE);
+        let fragment = &METADATA[crate::PREFIX.len()..METADATA.len() - 1];
+        let metadata: serde_json::Value = serde_json::from_slice(fragment).unwrap();
+        assert_eq!(metadata["provides"][0]["operation"]["visibility"], "public");
+    }
+
+    #[test]
+    fn grpc_visibility_contracts() {
+        let binding = Grpc::new("visibility.v1", "Operations", "Call");
+        for visibility in [Visibility::Private, Visibility::Public, Visibility::Host] {
+            let mut declaration = WireDeclaration::of::<Published>();
+            declaration.operation.visibility = visibility;
+            declaration.grpc = Some(binding.clone());
+            let result = declaration.contract();
+            if visibility == Visibility::Private {
+                assert!(matches!(result, Err(ContractError::PrivateGrpc { .. })));
+                continue;
+            }
+            let contract = result.unwrap();
+            let encoded = serde_json::to_value(&contract).unwrap();
+            assert_eq!(serde_json::from_value::<Contract>(encoded.clone()).unwrap(), contract);
+            let mut private = encoded;
+            private["operation"]["visibility"] = serde_json::json!("private");
+            assert!(serde_json::from_value::<Contract>(private).is_err());
+        }
+    }
+}

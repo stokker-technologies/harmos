@@ -49,7 +49,7 @@ pub(crate) struct Payload {
     harmos_path = ::harmos_domain,
     response = Payload,
     policy = POLICY,
-    grpc(package = "test.v1", service = "Shapes", method = "Read"),
+    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Read"),
 )]
 pub(crate) struct ReadOperation {
     text: String,
@@ -64,7 +64,7 @@ pub(crate) struct ReadOperation {
     input = Payload,
     output = Payload,
     policy = POLICY,
-    grpc(package = "test.v1", service = "Shapes", method = "Exchange"),
+    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Exchange"),
 )]
 pub(crate) struct ExchangeOperation {
     text: String,
@@ -78,7 +78,7 @@ pub(crate) struct ExchangeOperation {
     response = Payload,
     input = Payload,
     policy = POLICY,
-    grpc(package = "test.v1", service = "Shapes", method = "Upload"),
+    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Upload"),
 )]
 pub(crate) struct UploadOperation {
     text: String,
@@ -92,7 +92,7 @@ pub(crate) struct UploadOperation {
     response = Payload,
     output = Payload,
     policy = POLICY,
-    grpc(package = "test.v1", service = "Shapes", method = "Download"),
+    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Download"),
 )]
 pub(crate) struct DownloadOperation {
     text: String,
@@ -105,7 +105,7 @@ pub(crate) struct DownloadOperation {
     id = "annotate",
     response = AnnotatedOperation,
     policy = POLICY,
-    grpc(package = "test.v1", service = "Portable", method = "Annotate"),
+    visibility = Public, grpc(package = "test.v1", service = "Portable", method = "Annotate"),
 )]
 #[derive(Clone, PartialEq)]
 pub(crate) struct AnnotatedOperation {
@@ -121,7 +121,7 @@ pub(crate) struct AnnotatedOperation {
     id = "wrap",
     response = Delivered,
     policy = POLICY,
-    grpc(package = "test.v1", service = "Boxed", method = "Wrap"),
+    visibility = Public, grpc(package = "test.v1", service = "Boxed", method = "Wrap"),
 )]
 #[derive(Clone, PartialEq)]
 pub(crate) struct EnvelopeOperation {

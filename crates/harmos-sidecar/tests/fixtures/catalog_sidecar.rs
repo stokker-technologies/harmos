@@ -59,7 +59,7 @@ struct Catalog;
     id = "catalog.read",
     response = (),
     policy = Catalog::INITIALIZATION_POLICY,
-    grpc(package = "fixture.v1", service = "Native", method = "Read"),
+    visibility = Public, grpc(package = "fixture.v1", service = "Native", method = "Read"),
 )]
 #[derive(Clone, PartialEq)]
 struct ReadOperation {}

@@ -63,7 +63,7 @@ ownership; dropping a handle does not settle asynchronous work.
 
 A plugin can require operations implemented by another registered provider.
 The host matches complete contracts, including fingerprints, schema, policy,
-visibility and replay behavior. Shared visibility and unambiguous selection
+visibility and replay behavior. Public visibility and unambiguous selection
 are required; explicit provider selection does not relax compatibility.
 
 Native observers do not declare a typed resources bundle. Their initialization

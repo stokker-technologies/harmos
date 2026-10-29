@@ -77,7 +77,7 @@ struct Publishing {
 }
 
 #[harmos_runtime::operation(codec = manual, resources = [Supervisor], id = PublishPulseDeclaration::ID, response = (),
-    policy = PublishPulseDeclaration::POLICY, visibility = Shared)]
+    policy = PublishPulseDeclaration::POLICY, visibility = Public)]
 #[derive(Clone)]
 struct PublishingCall(PublishPulseDeclaration);
 
@@ -203,7 +203,7 @@ struct Host {
 }
 
 #[harmos_runtime::operation(codec = manual, resources = [Provider], id = AmplifyDeclaration::ID, response = Amplified,
-    policy = AmplifyDeclaration::POLICY, visibility = Shared)]
+    policy = AmplifyDeclaration::POLICY, visibility = Public)]
 #[derive(Clone)]
 struct Amplifying(AmplifyDeclaration);
 

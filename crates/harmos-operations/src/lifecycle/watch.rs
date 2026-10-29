@@ -40,7 +40,7 @@ use harmos_domain::operations::instance::Id;
     response = super::InstanceState,
     output = super::InstanceState,
     policy = super::WATCH_POLICY,
-    visibility = Shared,
+    visibility = Public,
     grpc(package = "harmos.host.v1", service = "Operations", method = "Watch"),
 )]
 #[derive(Clone, Default, PartialEq)]

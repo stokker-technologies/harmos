@@ -606,7 +606,7 @@ const fn declaration<const N: usize>(out: &mut Encoder<N>, entry: &Entry) {
     out.raw(b",\"visibility\":");
     out.quoted(match entry.visibility {
         Visibility::Private => "private",
-        Visibility::Shared => "shared",
+        Visibility::Public => "public",
         Visibility::Host => "host",
     });
     out.raw(b",\"replay\":");

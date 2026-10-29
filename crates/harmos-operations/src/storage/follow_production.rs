@@ -50,7 +50,7 @@ product!(FollowProduction {
     response = FileProgress,
     policy = IO_POLICY,
     output = FileBatch,
-    visibility = Shared,
+    visibility = Public,
     replay = ReplaySafety::Unknown,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "FollowProduction"),
     grant = Self::grant_for,

@@ -79,7 +79,7 @@ inert_plugin!(ExplicitEmptyGuest, "explicit_empty_guest", harmos_runtime::guest:
 #[harmos_runtime::operation(id = "fixture.selected",
     response = Response,
     description = "SelectedDeclaration \"operation\" Русский",
-    visibility = Shared,
+    visibility = Public,
     replay = ReplaySafety::Deduplicated,
     policy = OperationPolicy {
         timeout: Duration::from_secs(2),
