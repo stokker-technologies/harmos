@@ -90,6 +90,7 @@ impl OperationDeclaration for Encoded {
     const POLICY: super::OperationPolicy = super::OperationPolicy {
         timeout: harmos_domain::operations::UNBOUNDED,
         attempt_timeout: harmos_domain::operations::UNBOUNDED,
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: super::RetryPolicy::Never,
     };
 }
@@ -103,8 +104,13 @@ impl EncodedInvocation {
         self.generation
     }
 
-    pub fn cancel(&self) {
-        self.control.cancel();
+    pub fn request_cancel(&self) {
+        self.control.request_cancel();
+    }
+
+    pub async fn cancel(self) -> Result<Vec<u8>> {
+        self.request_cancel();
+        self.await
     }
 
     pub fn status(&self) -> super::OperationStatus {
@@ -508,6 +514,7 @@ mod tests {
         policy = crate::OperationPolicy {
             timeout: Duration::from_secs(1),
             attempt_timeout: Duration::from_secs(1),
+            cancellation_timeout: std::time::Duration::ZERO,
             retries: crate::RetryPolicy::Never,
         },
     )]

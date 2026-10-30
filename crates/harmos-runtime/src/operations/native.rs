@@ -310,6 +310,18 @@ impl<E: 'static> crate::grpc::Wire<Encoded<E>> for Forwarded {
 }
 
 #[cfg(feature = "grpc")]
+impl crate::grpc::Wire<super::NoStream> for Forwarded {
+    fn encode(_: &super::NoStream, _: &mut Vec<u8>) -> std::result::Result<(), crate::MessageError> {
+        Err(crate::MessageError::borrowed("operation has no stream"))
+    }
+    fn decode_admitted<C>(
+        _: harmos_sdk::grpc::DecodeInput<'_>, _: impl FnOnce(usize) -> std::result::Result<C, tonic::Status>,
+    ) -> std::result::Result<(super::NoStream, C), tonic::Status> {
+        Err(tonic::Status::invalid_argument("operation has no stream"))
+    }
+}
+
+#[cfg(feature = "grpc")]
 impl crate::grpc::Wire<Opaque> for Forwarded {
     fn encode(value: &Opaque, bytes: &mut Vec<u8>) -> std::result::Result<(), crate::MessageError> {
         bytes.extend_from_slice(&value.0);
@@ -605,15 +617,20 @@ impl Native {
         };
         let running = self.endpoint.attempt(command, children);
         tokio::pin!(running);
+        let mut cancellation_sent = false;
         let answer = loop {
             tokio::select! {
                 biased;
                 answer = &mut running => break answer?,
+                _ = context.scope().cancellation().cancelled(), if !cancellation_sent => {
+                    cancellation_sent = true;
+                    self.endpoint.phase(WireCommand::Cancel { invocation }).await?;
+                }
                 Some(request) = incoming.recv() => {
                     if request.answer.is_closed() { continue; }
                     let child = context.submit_encoded_at(&request.operation, request.fingerprint, request.generation, request.payload, request.submitted, request.values);
                     // A Cancelled Admission Reply Still Cancels Its Admitted Child
-                    if let Err(Ok(child)) = request.answer.send(child) { child.cancel(); }
+                    if let Err(Ok(child)) = request.answer.send(child) { child.request_cancel(); }
                 }
             }
         };
@@ -668,6 +685,7 @@ impl<E: super::StreamEndpoints + Shape> OperationDeclaration for Encoded<E> {
     const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: harmos_domain::operations::UNBOUNDED,
         attempt_timeout: harmos_domain::operations::UNBOUNDED,
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
 }

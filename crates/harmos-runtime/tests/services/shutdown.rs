@@ -71,6 +71,7 @@ struct StopWait(Arc<Cleanup>);
         policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
+            cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::Never,
         },
     )]

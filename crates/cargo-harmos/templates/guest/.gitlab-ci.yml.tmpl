@@ -68,6 +68,7 @@ workflow:
   - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev"
     variables:
       PROFILE: dev
+      CACHE_POLICY: pull-push
     auto_cancel:
       on_new_commit: interruptible
 include:

@@ -102,7 +102,7 @@ async fn stop_cleanup(
 ) -> harmos_runtime::Result<()> {
     match request {
         CleanupRequest::Instance => {
-            lease.cancel();
+            lease.request_cancel();
             lease.settle().await
         }
         CleanupRequest::Definition => runtime.operations.unregister_resident("retained-cleanup").await,

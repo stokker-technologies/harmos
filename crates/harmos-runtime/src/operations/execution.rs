@@ -180,8 +180,7 @@ pub(super) async fn execute<O: Send + 'static>(
     {
         let logical = match answer {
             Err(error) => Some(error),
-            Ok(_) if *cancelled.borrow() => Some(Refusal::Cancelled.into()),
-            Ok(_) if budget.remaining().is_zero() => Some(Refusal::TimedOut.into()),
+            Ok(_) if !*cancelled.borrow() && budget.remaining().is_zero() => Some(Refusal::TimedOut.into()),
             Ok(_) => None,
         };
         instance.complete(logical.as_ref().map_or(Outcome::Succeeded, failure_outcome));
@@ -206,9 +205,7 @@ pub(super) async fn execute<O: Send + 'static>(
     drop(prepared.body);
     let answer = if was_refused {
         answer
-    } else if *cancelled.borrow() {
-        Err(Refusal::Cancelled.into())
-    } else if budget.remaining().is_zero() {
+    } else if !*cancelled.borrow() && budget.remaining().is_zero() {
         Err(Refusal::TimedOut.into())
     } else {
         answer
@@ -282,8 +279,10 @@ async fn attempts<O: Send + 'static>(
             return Err(Refusal::Cancelled.into());
         }
         let core = ScopeCore::new(instances.clone(), admission.clone(), cause, Arc::downgrade(instance));
-        let answer = bounded(
+        let answer = cooperative(
             prepared.policy.attempt_timeout.min(remaining),
+            prepared.policy.cancellation_timeout,
+            core.cancellation(),
             Box::pin(
                 prepared
                     .body
@@ -294,14 +293,14 @@ async fn attempts<O: Send + 'static>(
         )
         .await;
         let mut children = core.close();
-        if *cancelled.borrow() {
+        if *cancelled.borrow() && !matches!(answer, Stage::Completed(Ok(_))) {
             children.drain().await;
             return Err(Refusal::Cancelled.into());
         }
         let (error, failure) = match answer {
             Stage::Completed(Ok(response)) => {
                 children.drain().await;
-                return if budget.remaining().is_zero() { Err(Refusal::TimedOut.into()) } else { Ok(response) };
+                return if !*cancelled.borrow() && budget.remaining().is_zero() { Err(Refusal::TimedOut.into()) } else { Ok(response) };
             }
             Stage::Completed(Err(error)) => {
                 let failure = prepared.body.classify(&error);
@@ -352,6 +351,28 @@ async fn bounded<O>(timeout: Duration, future: Attempt<'_, O>, cancelled: &mut w
     }
 }
 
+async fn cooperative<O>(
+    timeout: Duration, grace: Duration, signal: &harmos_sdk::operations::Cancellation, future: Attempt<'_, O>,
+    cancelled: &mut watch::Receiver<bool>,
+) -> Stage<O> {
+    let running = executor::timeout(timeout, future);
+    tokio::pin!(running);
+    if let Some(answer) = interruptible(&mut running, cancelled).await {
+        return match answer {
+            Ok(answer) => Stage::Completed(answer),
+            Err(_) => Stage::Expired,
+        };
+    }
+    signal.request();
+    if grace.is_zero() {
+        return Stage::Cancelled;
+    }
+    match executor::timeout(grace, &mut running).await {
+        Ok(Ok(Ok(response))) => Stage::Completed(Ok(response)),
+        _ => Stage::Cancelled,
+    }
+}
+
 fn outcome<O>(answer: &Result<O>) -> Outcome {
     answer.as_ref().err().map_or(Outcome::Succeeded, failure_outcome)
 }
@@ -366,3 +387,31 @@ fn failure_outcome(error: &Error) -> Outcome {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn cancel_final_response_grace_is_bounded_by_attempt() {
+        let (cancel, mut cancelled) = watch::channel(false);
+        let signal = harmos_sdk::operations::Cancellation::default();
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let started = entered.clone();
+        let work: Attempt<'_, ()> = Box::pin(async move {
+            started.notify_one();
+            std::future::pending().await
+        });
+        let running = cooperative(Duration::from_millis(10), Duration::from_secs(1), &signal, work, &mut cancelled);
+        tokio::pin!(running);
+        tokio::select! {
+            _ = &mut running => panic!("attempt must remain pending"),
+            _ = entered.notified() => {}
+        }
+        cancel.send_replace(true);
+        let before = tokio::time::Instant::now();
+        assert!(matches!(running.await, Stage::Cancelled));
+        assert_eq!(tokio::time::Instant::now() - before, Duration::from_millis(10));
+        assert!(signal.is_requested());
+    }
+}

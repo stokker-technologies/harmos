@@ -32,6 +32,7 @@ use harmos_runtime::{Application, Lifecycle, Runtime, Setup, Startup, StartupErr
 const POLICY: harmos_runtime::OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(1),
     attempt_timeout: Duration::from_secs(1),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: harmos_runtime::RetryPolicy::Never,
 };
 

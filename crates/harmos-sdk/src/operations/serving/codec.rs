@@ -166,6 +166,9 @@ enum Envelope<'a> {
         instance: u64,
         action: WireChildAction,
     },
+    Cancel {
+        invocation: u64,
+    },
 }
 
 /* === Traits === */
@@ -228,6 +231,7 @@ impl WireCommand {
                 values: owned(values)?,
             },
             Envelope::Finalize { invocation } => Self::Finalize { invocation },
+            Envelope::Cancel { invocation } => Self::Cancel { invocation },
             Envelope::StreamAttempt { invocation, epoch, context, values } => Self::StreamAttempt {
                 invocation,
                 epoch,
@@ -296,6 +300,7 @@ impl WireCommand {
             Self::StreamFinish { invocation, epoch } => Envelope::StreamFinish { invocation: *invocation, epoch: *epoch },
             Self::StreamReceive { invocation, epoch } => Envelope::StreamReceive { invocation: *invocation, epoch: *epoch },
             Self::Finalize { invocation } => Envelope::Finalize { invocation: *invocation },
+            Self::Cancel { invocation } => Envelope::Cancel { invocation: *invocation },
         }
     }
 }

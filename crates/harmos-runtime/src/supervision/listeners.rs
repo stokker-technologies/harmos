@@ -86,7 +86,7 @@ impl Listener {
                     *delivery.failure.lock().expect("listener failure poisoned") = Some(Arc::new(error));
                     scope.close_listeners();
                     if let Some(original) = delivery.pending.lock().await.as_ref() {
-                        original.invocation.cancel();
+                        original.invocation.request_cancel();
                     }
                 }
             }
@@ -124,7 +124,7 @@ impl Listener {
         })?;
         let mut pending = self.delivery.pending.lock().await;
         if let Some(original) = pending.as_ref() {
-            original.invocation.cancel();
+            original.invocation.request_cancel();
             original.invocation.control.settle().await.map_err(|source| Error::OperationSettlement { source })?;
         }
         // Same Positive Physical Control Before Source Release; Failed Wait Keeps It.
@@ -145,8 +145,8 @@ impl Delivery {
         let invocation = &mut original.as_mut().expect("retained callback").invocation;
         let outcome = tokio::select! {
             biased;
-            _ = stopping.changed() => { invocation.cancel(); return Ok(false); },
-            _ = scope.closed() => { invocation.cancel(); return Ok(false); },
+            _ = stopping.changed() => { invocation.request_cancel(); return Ok(false); },
+            _ = scope.closed() => { invocation.request_cancel(); return Ok(false); },
             outcome = &mut *invocation => outcome,
         };
         match outcome {

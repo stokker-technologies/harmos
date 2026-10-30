@@ -32,6 +32,7 @@ use harmos_runtime::sidecar::{Refusal, Supervisor};
 const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(120),
     attempt_timeout: Duration::from_secs(120),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 

@@ -172,7 +172,7 @@ async fn grpc_stream_lifecycle() {
     let counts = Arc::new(Counts::default());
     let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
     fixture.initialize().await.unwrap();
-    assert_eq!(fixture.runtime.grpc().methods().len(), 4);
+    assert_eq!(fixture.runtime.grpc().methods().len(), 6);
     let operations = harmos_runtime::grpc::server::Settings::default();
     let attached = fixture
         .runtime

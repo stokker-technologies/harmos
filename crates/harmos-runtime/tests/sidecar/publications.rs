@@ -47,6 +47,7 @@ static OBSERVER_SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<O
 const LIFECYCLE: harmos_runtime::operations::OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_millis(500),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: harmos_runtime::operations::RetryPolicy::Never,
 };
 
@@ -338,6 +339,7 @@ impl harmos_operations::lifecycle::Policy for Twins {
     const INITIALIZATION_POLICY: harmos_runtime::operations::OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: harmos_runtime::operations::RetryPolicy::Never,
     };
     const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;

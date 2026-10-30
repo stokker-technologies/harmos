@@ -350,7 +350,7 @@ async fn cancellation_skips_backend() {
     let resources = runtime.operations.context().resource::<Control>().unwrap();
     let lease = manager.submit_resident("queued").await.unwrap();
     // The Current-Thread Executor Has Not Polled The Queued Backend Yet.
-    lease.cancel();
+    lease.request_cancel();
     lease.settle().await.unwrap();
     let lifecycle = lease.status();
     assert_eq!(lifecycle.outcome(), Some(OperationOutcome::Cancelled));
@@ -463,8 +463,8 @@ async fn instance_cancel_joins() {
     phase(manager, &key, RUNNING).await;
     assert_eq!(leases(manager, &key), 2);
     assert_eq!(first.id(), second.id());
-    first.cancel();
-    first.cancel();
+    first.request_cancel();
+    first.request_cancel();
     reached(&resources.stops).await;
     {
         let settling = first.settle();
@@ -489,7 +489,7 @@ async fn instance_cancel_joins() {
     let replacement = manager.submit_resident("watch").await.unwrap();
     phase(manager, &key, RUNNING).await;
     assert_ne!(replacement.id(), first.id());
-    first.cancel();
+    first.request_cancel();
     first.settle().await.unwrap();
     first.release().await.unwrap();
     second.release().await.unwrap();

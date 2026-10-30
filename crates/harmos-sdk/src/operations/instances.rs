@@ -41,7 +41,7 @@ pub trait Instances: Send + Sync {
 }
 pub trait InstanceControl: Send + Sync {
     fn status(&self) -> Status;
-    fn cancel(&self);
+    fn request_cancel(&self);
     fn subscribe(&self) -> Box<dyn InstanceChanges>;
 }
 pub trait InstanceChanges: Send {

@@ -138,12 +138,13 @@ impl Manager {
                         let Some(binding) = entry.contract.as_ref().and_then(|contract| contract.grpc()) else {
                             continue;
                         };
-                        let path = binding.path();
-                        if state.grpc_services.contains(&format!("{}.{}", binding.package, binding.service))
-                            || state.grpc.get(&path).and_then(Weak::upgrade).is_some()
-                            || staged.insert(path.clone(), Arc::downgrade(entry)).is_some()
-                        {
-                            return Err(Error::AlreadyRegistered { domain: "gRPC method", name: path });
+                        for path in [binding.path(), binding.run_path()] {
+                            if state.grpc_services.contains(&format!("{}.{}", binding.package, binding.service))
+                                || state.grpc.get(&path).and_then(Weak::upgrade).is_some()
+                                || staged.insert(path.clone(), Arc::downgrade(entry)).is_some()
+                            {
+                                return Err(Error::AlreadyRegistered { domain: "gRPC method", name: path });
+                            }
                         }
                     }
                     state.grpc.extend(staged);

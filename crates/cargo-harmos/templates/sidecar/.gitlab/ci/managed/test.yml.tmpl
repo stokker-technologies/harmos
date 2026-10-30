@@ -22,7 +22,7 @@ Test / Rust / Unit (unix):
     expire_in: 7 days
     paths:
     - target/tests/$PROFILE/unix-*/unit-rust/
-    - .stkr/traces/$PROFILE/unix-*/unit-rust/
+    - target/traces/$PROFILE/unix-*/unit-rust/
     reports:
       junit: target/tests/$PROFILE/unix-*/unit-rust/junit.xml
   variables:
@@ -53,7 +53,7 @@ Test / Rust / Unit (windows):
     expire_in: 7 days
     paths:
     - target/tests/$PROFILE/windows-*/unit-rust/
-    - .stkr/traces/$PROFILE/windows-*/unit-rust/
+    - target/traces/$PROFILE/windows-*/unit-rust/
     reports:
       junit: target/tests/$PROFILE/windows-*/unit-rust/junit.xml
   hooks:

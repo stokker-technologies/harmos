@@ -327,7 +327,9 @@ fn execution_context(context: Context<'_>) -> Result<harmos_sdk::ExecutionContex
         operation: "host context".to_owned(),
         source: Arc::new(source),
     })?;
-    Ok(harmos_sdk::ExecutionContext::new(dependencies, context.context().clone()))
+    let mut execution = harmos_sdk::ExecutionContext::new(dependencies, context.context().clone());
+    execution.cancellation = context.scope().cancellation().clone();
+    Ok(execution)
 }
 async fn guarded<O>(operation: &str, future: impl Future<Output = std::result::Result<O, harmos_sdk::ServingError>>) -> Result<O> {
     let mut future = std::pin::pin!(future);

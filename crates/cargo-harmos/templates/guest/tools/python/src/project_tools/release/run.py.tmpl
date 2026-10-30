@@ -32,9 +32,9 @@ from ..process import spawn_flags
 # isort: split
 from .. import temporary
 from ..package import run as packages
+from ..package.changelog import notes
 from ..test import archive
 from . import layout, policy, registry, screenshots, version
-from ..package.changelog import notes
 
 # Type Checking Imports
 
@@ -434,7 +434,7 @@ def verify(directory: Path, settings: dict) -> None:
         registry.verify_signatures(directory, settings, root, list(inventory))
         native = native_target(settings)
         packages.installed(directory, {**settings, "tag": tag}, root, native)
-    policy.write_json(directory / ".stkr/state/release-publication.json", {"sha": sha, "tag": tag, "verified": True})
+    policy.write_json(directory / "target/state/release-publication.json", {"sha": sha, "tag": tag, "verified": True})
 
 
 def crates(directory: Path, settings: dict) -> None:
@@ -715,7 +715,7 @@ def _online(settings: dict) -> bool:
 
 def _policy_version(directory: Path, value: str) -> None:
     """Write `[version] value` In The Project Policy, Keeping Every Other Line."""
-    path = directory / ".stkr/project.toml"
+    path = directory / "tools/project.toml"
     text = path.read_text(encoding="utf-8")
     match = re.search(r"(?ms)(^\[version\]\s*\n)(.*?)(?=^\[|\Z)", text)
     if match is None:

@@ -43,6 +43,27 @@ use super::*;
 /* === Tests === */
 
 #[tokio::test]
+async fn initialize_failure_retains_application_context() {
+    let counts = Arc::new(Counts::default());
+    counts.fail_initialization.store(true, Ordering::SeqCst);
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
+    let error = fixture.initialize().await.unwrap_err();
+    let harmos_runtime::Error::PluginLifecycle { source } = error else { panic!() };
+    let harmos_runtime::plugin::PluginFailure::Start { artifact, source, cleanup } = *source else { panic!() };
+    assert_eq!(artifact, "operation_handshake");
+    assert!(cleanup.is_empty());
+    let failure = source.failure().unwrap();
+    assert_eq!(failure.code(), harmos_runtime::operations::FailureKind::Permanent);
+    assert_eq!(failure.refusal_code(), Some(-32_100));
+    assert_eq!(failure.detail("secret"), Some("api_token"));
+    assert_eq!(failure.context().operation(), Some("harmos.initialize"));
+    assert_eq!(failure.diagnostics().unwrap().origin(), harmos_domain::failure::Origin::Plugin);
+    assert!(!failure.diagnostics().unwrap().chain().is_empty());
+    fixture.runtime.shutdown().await.unwrap();
+    assert_eq!(counts.cleaned.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn catalog_mismatch_refused() {
     for change in 0..8 {
         let counts = Arc::new(Counts::default());
@@ -185,7 +206,7 @@ async fn cancelled_attempt_resources() {
         fixture.runtime.operations.submit_encoded(&format!("operation_handshake.{}", ReadDeclaration::ID), Vec::new()).unwrap();
     (counts.attempt_entered.notified()).await;
     assert_eq!(invocation.status().phase(), harmos_runtime::operations::OperationPhase::Running);
-    invocation.cancel();
+    invocation.request_cancel();
     let result = (&mut invocation).await;
     assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     assert_eq!(invocation.status().phase(), harmos_runtime::operations::OperationPhase::Settled);
@@ -204,7 +225,7 @@ async fn grpc_original_owner() {
     let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
     assert!(fixture.runtime.grpc().methods().is_empty());
     fixture.initialize().await.unwrap();
-    assert_eq!(fixture.runtime.grpc().methods().len(), 4);
+    assert_eq!(fixture.runtime.grpc().methods().len(), 6);
     let settings = harmos_runtime::grpc::Settings {
         address: "127.0.0.1:0".parse().unwrap(),
         operations: harmos_runtime::grpc::server::Settings::default(),
@@ -247,3 +268,39 @@ async fn grpc_original_owner() {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn cancel_final_response_sidecar() {
+    use crate::operations::cancellation::Finish;
+    use harmos_runtime::Message;
+    let counts = Arc::new(Counts::default());
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
+    fixture.initialize().await.unwrap();
+    for mode in 0..4 {
+        let mut invocation =
+            fixture.runtime.operations.submit_encoded("operation_handshake.cancel.finish", Finish { mode }.encode()).unwrap();
+        counts.cancellation.entered.notified().await;
+        invocation.request_cancel();
+        let result = (&mut invocation).await;
+        if mode == 0 {
+            assert_eq!(u64::decode(&result.unwrap()).unwrap(), 42);
+        } else {
+            assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+        }
+        assert_eq!(counts.cancellation.dropped.load(Ordering::SeqCst), mode as usize + 1);
+    }
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
+}
+
+#[cfg(feature = "grpc")]
+#[tokio::test]
+async fn cancel_final_response_sidecar_grpc() {
+    let counts = Arc::new(Counts::default());
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
+    fixture.initialize().await.unwrap();
+    crate::operations::cancellation::remote(&fixture.runtime, &counts.cancellation).await;
+    assert_eq!(counts.cancellation.dropped.load(Ordering::SeqCst), 4);
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
+}

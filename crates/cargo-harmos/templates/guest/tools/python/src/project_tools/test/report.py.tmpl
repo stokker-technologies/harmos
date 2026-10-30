@@ -32,8 +32,8 @@ from . import policy
 # === Constants === #
 
 TESTS = Path("target/tests")
-BENCHMARKS = Path(".stkr/benchmarks")
-TRACES = Path(".stkr/traces")
+BENCHMARKS = Path("target/benchmarks")
+TRACES = Path("target/traces")
 LOCK = TESTS / ".lock"
 
 # === Types === #

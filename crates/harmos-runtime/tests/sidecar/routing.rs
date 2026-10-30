@@ -142,6 +142,7 @@ struct Forwarder;
     policy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::OnTransient {
             max_retries: 1,
             backoff: harmos_runtime::operations::Backoff::Fixed {
@@ -355,6 +356,7 @@ impl harmos_operations::lifecycle::Policy for Publishing {
     const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
@@ -414,6 +416,7 @@ impl harmos_operations::lifecycle::Policy for Dependent {
     const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;

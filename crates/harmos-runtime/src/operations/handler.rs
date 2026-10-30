@@ -56,7 +56,7 @@ pub struct Running<O: OperationDeclaration> {
     pub(crate) id: OperationInstanceId,
     pub(super) generation: OperationGeneration,
     pub(crate) outcome: Outcome<O::Response>,
-    pub(super) control: Arc<crate::supervision::instance::Instance>,
+    pub(crate) control: Arc<crate::supervision::instance::Instance>,
     pub(super) released: bool,
 }
 
@@ -133,10 +133,10 @@ impl<O: OperationDeclaration> Running<O> {
     }
 
     // A resident instance stops for every lease holder.
-    pub fn cancel(&self) {
+    pub fn request_cancel(&self) {
         match &self.outcome {
             Outcome::Resident { lease: Some(lease), .. } => lease.stop(),
-            _ => self.control.cancel(),
+            _ => self.control.request_cancel(),
         }
     }
 
@@ -173,8 +173,8 @@ impl<O: OperationDeclaration> Running<O> {
         self.await
     }
 
-    pub async fn cancel_and_join(self) -> Result<crate::operations::Response<O::Response>> {
-        self.cancel();
+    pub async fn cancel(self) -> Result<crate::operations::Response<O::Response>> {
+        self.request_cancel();
         self.await
     }
 
@@ -203,7 +203,7 @@ impl<O: OperationDeclaration> Running<O> {
         match lease {
             Some(lease) => lease.release().await,
             None => {
-                self.control.cancel();
+                self.control.request_cancel();
                 self.settle().await
             }
         }
@@ -253,7 +253,7 @@ impl<O: OperationDeclaration> Drop for Running<O> {
     fn drop(&mut self) {
         // A resident lease releases itself when dropped.
         if matches!(self.outcome, Outcome::Request(_)) && !self.released && !self.control.is_settled() {
-            self.control.cancel();
+            self.control.request_cancel();
         }
     }
 }
@@ -272,8 +272,8 @@ where
         std::future::ready(Ok(self.control.status().portable()))
     }
 
-    fn cancel(&self) -> impl Future<Output = Result<()>> + Send {
-        Running::cancel(self);
+    fn request_cancel(&self) -> impl Future<Output = Result<()>> + Send {
+        Running::request_cancel(self);
         std::future::ready(Ok(()))
     }
 
@@ -497,8 +497,8 @@ impl harmos_sdk::operations::instances::InstanceControl for crate::supervision::
     fn status(&self) -> harmos_domain::operations::instance::Status {
         self.status().portable()
     }
-    fn cancel(&self) {
-        self.cancel();
+    fn request_cancel(&self) {
+        self.request_cancel();
     }
     fn subscribe(&self) -> Box<dyn harmos_sdk::operations::instances::InstanceChanges> {
         Box::new(InstanceChanges(self.settlement()))

@@ -8,4 +8,4 @@
 
 [files]
 # Templates Are Rendered Before Source Checks
-extend-exclude = ["**/.stkr/templates/**"]
+extend-exclude = ["**/.*/**"]
