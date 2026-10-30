@@ -550,7 +550,7 @@ pub(crate) fn registered_grant<D: OperationDeclaration>(id: &str, grant: Option<
 }
 
 fn service_error(error: impl std::error::Error + 'static) -> ServingError {
-    ServingError::Handler(crate::Failure::originate(crate::operations::FailureKind::Permanent, &error, crate::failure::Origin::Plugin))
+    ServingError::Handler(super::StartupError::failure(&error, crate::operations::FailureKind::Permanent))
 }
 
 fn operation_error<O: Carrier>(error: O::Error) -> ServingError {
