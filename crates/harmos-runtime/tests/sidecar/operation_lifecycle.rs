@@ -43,6 +43,27 @@ use super::*;
 /* === Tests === */
 
 #[tokio::test]
+async fn initialize_failure_retains_application_context() {
+    let counts = Arc::new(Counts::default());
+    counts.fail_initialization.store(true, Ordering::SeqCst);
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
+    let error = fixture.initialize().await.unwrap_err();
+    let harmos_runtime::Error::PluginLifecycle { source } = error else { panic!() };
+    let harmos_runtime::plugin::PluginFailure::Start { artifact, source, cleanup } = *source else { panic!() };
+    assert_eq!(artifact, "operation_handshake");
+    assert!(cleanup.is_empty());
+    let failure = source.failure().unwrap();
+    assert_eq!(failure.code(), harmos_runtime::operations::FailureKind::Permanent);
+    assert_eq!(failure.refusal_code(), Some(-32_100));
+    assert_eq!(failure.detail("secret"), Some("api_token"));
+    assert_eq!(failure.context().operation(), Some("harmos.initialize"));
+    assert_eq!(failure.diagnostics().unwrap().origin(), harmos_domain::failure::Origin::Plugin);
+    assert!(!failure.diagnostics().unwrap().chain().is_empty());
+    fixture.runtime.shutdown().await.unwrap();
+    assert_eq!(counts.cleaned.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn catalog_mismatch_refused() {
     for change in 0..8 {
         let counts = Arc::new(Counts::default());

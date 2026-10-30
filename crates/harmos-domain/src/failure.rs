@@ -21,7 +21,9 @@
 
 // Standard Library Imports
 use std::backtrace::{Backtrace, BacktraceStatus};
+use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::Arc;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
@@ -52,6 +54,8 @@ pub struct Failure(Box<Record>);
 #[serde(deny_unknown_fields)]
 struct Record {
     code: operations::FailureKind,
+    refusal_code: Option<i64>,
+    details: BTreeMap<String, String>,
     cause: String,
     context: Context,
     diagnostics: Option<Diagnostics>,
@@ -109,6 +113,8 @@ impl Failure {
     pub fn new(code: operations::FailureKind, cause: impl Into<String>) -> Self {
         Self(Box::new(Record {
             code,
+            refusal_code: None,
+            details: BTreeMap::new(),
             cause: cause.into(),
             context: Context::default(),
             diagnostics: None,
@@ -116,15 +122,12 @@ impl Failure {
     }
 
     // Writes the cause once from an error chain. A failure already carried in
-    // the chain keeps its cause, frames and diagnostics, taking only the
-    // classification of the handler that returned it; otherwise the deepest
+    // the chain keeps its classification, cause, frames and diagnostics; otherwise the deepest
     // meaningful message becomes the cause and the whole chain moves into
     // diagnostics.
     pub fn originate(code: operations::FailureKind, error: &(dyn std::error::Error + 'static), origin: Origin) -> Self {
         if let Some(carried) = carried(error) {
-            let mut forwarded = carried.clone();
-            forwarded.0.code = code;
-            return forwarded;
+            return carried.clone();
         }
 
         let chain: Vec<String> = sources(error)
@@ -152,6 +155,24 @@ impl Failure {
 
     pub fn code(&self) -> operations::FailureKind {
         self.0.code
+    }
+
+    pub fn refusal_code(&self) -> Option<i64> {
+        self.0.refusal_code
+    }
+
+    pub(crate) fn with_refusal_code(mut self, code: i64) -> Self {
+        self.0.refusal_code.get_or_insert(code);
+        self
+    }
+
+    pub fn with_detail(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.0.details.insert(key.into(), value.into());
+        self
+    }
+
+    pub fn detail(&self, key: &str) -> Option<&str> {
+        self.0.details.get(key).map(String::as_str)
     }
 
     pub fn cause(&self) -> &str {
@@ -246,7 +267,21 @@ impl Diagnostics {
 /* === Private Functions === */
 
 fn sources<'a>(error: &'a (dyn std::error::Error + 'static)) -> impl Iterator<Item = &'a (dyn std::error::Error + 'static)> {
-    std::iter::successors(Some(error), |error| error.source())
+    std::iter::successors(Some(error), |error| {
+        let shared: Option<&(dyn std::error::Error + 'static)> = error
+            .downcast_ref::<Arc<crate::Refusal>>()
+            .map(|inner| inner.as_ref() as _)
+            .or_else(|| error.downcast_ref::<Arc<Failure>>().map(|inner| inner.as_ref() as _))
+            .or_else(|| error.downcast_ref::<Arc<std::io::Error>>().map(|inner| inner.as_ref() as _))
+            .or_else(|| error.downcast_ref::<Arc<dyn std::error::Error + Send + Sync>>().map(|inner| inner.as_ref() as _));
+        shared.or_else(|| {
+            error
+                .downcast_ref::<std::io::Error>()
+                .and_then(std::io::Error::get_ref)
+                .map(|inner| inner as &(dyn std::error::Error + 'static))
+                .or_else(|| error.source())
+        })
+    })
 }
 
 fn carried<'a>(error: &'a (dyn std::error::Error + 'static)) -> Option<&'a Failure> {
@@ -267,3 +302,29 @@ fn bounded(mut text: String, limit: usize) -> String {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::{Failure, Origin};
+    use crate::{Refusal, operations::FailureKind};
+
+    #[test]
+    fn application_failure_survives_origin_and_carrier_roundtrip() {
+        let source = std::io::Error::from(std::io::ErrorKind::NotFound);
+        let original = Failure::originate(FailureKind::Transient, &source, Origin::Plugin)
+            .with_detail("plugin", "fixture")
+            .with_detail("secret", "api_token");
+        let refusal = Refusal::failed(-32_100, original);
+        let wrapped = std::sync::Arc::new(std::io::Error::other(refusal));
+        let forwarded = Failure::originate(FailureKind::Permanent, &wrapped, Origin::Host).in_operation("harmos.initialize");
+        let received = Failure::decode(&forwarded.encode()).unwrap();
+        assert_eq!(received, forwarded);
+        assert_eq!(received.code(), FailureKind::Transient);
+        assert_eq!(received.refusal_code(), Some(-32_100));
+        assert_eq!(received.detail("plugin"), Some("fixture"));
+        assert_eq!(received.detail("secret"), Some("api_token"));
+        assert_eq!(received.context().operation(), Some("harmos.initialize"));
+        assert_eq!(received.diagnostics().unwrap().origin(), Origin::Plugin);
+        assert_eq!(received.diagnostics().unwrap().chain().len(), 1);
+    }
+}

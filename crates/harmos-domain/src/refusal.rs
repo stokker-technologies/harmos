@@ -63,7 +63,10 @@ impl Refusal {
     }
 
     pub fn failed(code: i64, failure: Failure) -> Self {
-        Self { code, failure }
+        Self {
+            code,
+            failure: failure.with_refusal_code(code),
+        }
     }
 
     // Refuses with the failure an error chain carries, or writes its cause.
