@@ -18,33 +18,13 @@
 // Third Party Imports
 
 // Local Imports
-use harmos_domain::inventory::{contracts, listeners, observers, publications};
 use harmos_operations::lifecycle;
 use harmos_operations::lifecycle::Policy;
 use harmos_sdk::operations::{OperationPolicy, RetryPolicy};
-use harmos_sdk::plugin::{Declared, Plugin};
+use harmos_sdk::plugin::Plugin;
 use harmos_sidecar::{Refusal, Registrar, RegistrationError, Supervisor};
 
 /* === Constants === */
-
-const SDK: [harmos_domain::operations::OperationPolicy; 2] = [Catalog::INITIALIZATION_POLICY, Catalog::SHUTDOWN_POLICY];
-
-#[used]
-static IDENTITY: [u8; contracts::identity_len("sidecar", Catalog::ID, Catalog::VERSION, Catalog::DESCRIPTION, "()")] =
-    contracts::encode_identity("sidecar", Catalog::ID, Catalog::VERSION, Catalog::DESCRIPTION, "()");
-
-#[used]
-static CONTRACTS: [u8; contracts::encoded_fragments_len("sidecar", Catalog::ID, Catalog::PROVIDES, &[], &SDK)] =
-    contracts::encode_fragments("sidecar", Catalog::ID, Catalog::PROVIDES, &[], &SDK);
-
-#[used]
-static PUBLICATIONS: [u8; publications::encoded_len("sidecar", Catalog::ID, &[])] = publications::encode("sidecar", Catalog::ID, &[]);
-
-#[used]
-static LISTENERS: [u8; listeners::encoded_len("sidecar", Catalog::ID, &[])] = listeners::encode("sidecar", Catalog::ID, &[]);
-
-#[used]
-static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", Catalog::ID, &[])] = observers::encode_tree("sidecar", Catalog::ID, &[]);
 
 /* === Macros === */
 
@@ -114,28 +94,18 @@ impl harmos_sdk::Lifecycle for Catalog {
     }
 }
 
+#[harmos_macros::plugin(
+    harmos_path = ::harmos_sidecar,
+    id = "catalog_fixture",
+    description = "Exports a catalog and never runs.",
+    requires(ReadOperation),
+)]
 impl Plugin for Catalog {
     const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[Readings::CATALOG];
 
     fn register(registrar: &mut Registrar) -> Result<(), RegistrationError> {
         registrar.register("zeta.catalog", 2, &serde_json::json!({"suite": "probe"}))?;
         registrar.register("alpha.catalog", 1, &vec![1, 2])
-    }
-}
-
-impl Declared for Catalog {
-    const ID: &'static str = "catalog_fixture";
-    const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-    const DESCRIPTION: &'static str = "Exports a catalog and never runs.";
-    const PROVIDES: &'static [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>] =
-        <Self as Plugin>::CATALOGS[0].declarations;
-    const REQUIRES: &'static [harmos_domain::catalog::Node<harmos_domain::plugin::Requirement>] = &[];
-    const STREAMS: &'static [publications::Entry] = &[];
-    fn markers() -> Result<Vec<&'static [u8]>, harmos_domain::schema::graph::Error> {
-        harmos_domain::plugin::schema_markers::<Self>(
-            vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &LISTENERS, &OBSERVERS],
-            &harmos_domain::config::SchemaSettings::default(),
-        )
     }
 }
 
