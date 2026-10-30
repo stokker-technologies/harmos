@@ -18,6 +18,7 @@ mod frames;
 mod handshake;
 mod lifecycle;
 mod managed;
+mod native_lifecycle;
 mod observers;
 mod physical;
 
@@ -26,6 +27,7 @@ mod physical;
 pub(crate) use connection::Endpoint;
 pub(crate) use managed::RuntimeDriver;
 pub use managed::{Managed, ManagedError};
+pub use native_lifecycle::NativeLifecycle;
 
 /* === Imports === */
 

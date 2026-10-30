@@ -28,7 +28,7 @@ pub use harmos_sidecar::{
 
 pub use harmos_sidecar::__private;
 
-pub use crate::services::{DemandLease, DemandSource, Managed, ManagedError, Notice, SidecarError, Supervised};
+pub use crate::services::{DemandLease, DemandSource, Managed, ManagedError, NativeLifecycle, Notice, SidecarError, Supervised};
 
 /* === Imports === */
 
