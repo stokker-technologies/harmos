@@ -48,8 +48,7 @@ use crate::{Application, Result};
 
 impl Manager {
     pub(crate) fn stage_services(
-        &self, entries: Vec<(Definition, Arc<dyn resident::Runner>)>,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] plugin: Option<crate::plugin::PluginScope>,
+        &self, entries: Vec<(Definition, Arc<dyn resident::Runner>)>, #[cfg(feature = "plugin")] plugin: Option<crate::plugin::PluginScope>,
     ) -> Result<resident::Staged> {
         let state = self.registry.state.lock().expect("operation registry lock is healthy");
         if state.closing || !self.instances.is_accepting() {
@@ -67,7 +66,7 @@ impl Manager {
         let staged = self.resident.stage(
             &self.resident.root(),
             entries,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin")]
             plugin,
         );
         drop(state);
@@ -78,7 +77,7 @@ impl Manager {
         let root = self.resident.root();
         let identity = match owner {
             crate::services::ServiceOwner::Host => Identity::Host,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin")]
             crate::services::ServiceOwner::Plugin(scope) => Identity::Plugin {
                 owner: scope.owner().into(),
                 generation: scope.generation(),
@@ -109,7 +108,7 @@ impl Manager {
         self.stage_scoped(
             resources,
             backends,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin")]
             None,
         )
     }
@@ -123,7 +122,7 @@ impl Manager {
 
     fn stage_scoped<B: ObserverBackend>(
         &self, resources: &Arc<harmos_sdk::ExecutionContext>, backends: impl IntoIterator<Item = B>,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] plugin: Option<crate::plugin::PluginScope>,
+        #[cfg(feature = "plugin")] plugin: Option<crate::plugin::PluginScope>,
     ) -> Result<ObserverRegistration> {
         let scope = self.resident.scope(Arc::clone(resources))?;
         let entries = backends
@@ -137,7 +136,7 @@ impl Manager {
         self.resident.stage(
             &scope,
             entries,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin")]
             plugin,
         )
     }

@@ -88,7 +88,7 @@ pub struct NamedManifest {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("publication inventory requires a guest or sidecar facility and a valid owner segment")]
+    #[error("publication inventory requires a sidecar facility and a valid owner segment")]
     Identity,
 
     #[error("publication inventory differs from authored streams")]

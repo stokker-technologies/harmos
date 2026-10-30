@@ -26,11 +26,10 @@ use crate::{FRAGMENT_LIMIT, ScanError, StreamDeclaration};
 
 /* === Constants === */
 
-const OWNED: [&str; 14] = [
+const OWNED: [&str; 13] = [
     "capabilities",
     "contracts",
     "contributions",
-    "guest",
     "listeners",
     "observers",
     "operations",
@@ -77,13 +76,11 @@ pub struct RestartPolicy {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Facility {
     Sidecar,
-    Guest,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CarrierSection {
     Sidecar { restart: Option<RestartPolicy> },
-    Guest,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -105,9 +102,6 @@ pub enum DeclarationError {
 
     #[error(transparent)]
     ObserverInventory(#[from] observers::Error),
-
-    #[error("guest observer callbacks are unsupported")]
-    UnsupportedObservers,
 
     #[error("the Harmos sidecar restart policy is invalid")]
     InvalidRestartPolicy,
@@ -161,7 +155,6 @@ impl Facility {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Sidecar => "sidecar",
-            Self::Guest => "guest",
         }
     }
 }
@@ -234,15 +227,6 @@ impl Declaration {
                 let carrier = CarrierSection::Sidecar { restart };
                 (selected.observers, carrier)
             }
-            Facility::Guest => {
-                if observer_manifests.iter().any(|manifest| manifest.facility == name && manifest.owner == id) {
-                    let selected = observers::select_manifest(observer_manifests, name, &id, &streams)?;
-                    if !selected.observers.is_empty() {
-                        return Err(DeclarationError::UnsupportedObservers);
-                    }
-                }
-                (Vec::new(), CarrierSection::Guest)
-            }
         };
         Ok(Self {
             id,
@@ -266,7 +250,6 @@ impl Declaration {
     pub fn restart(&self) -> Option<RestartPolicy> {
         match &self.carrier {
             CarrierSection::Sidecar { restart, .. } => *restart,
-            CarrierSection::Guest => None,
         }
     }
 

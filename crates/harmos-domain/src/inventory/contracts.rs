@@ -156,7 +156,7 @@ pub enum Error {
     #[error("contract inventory exceeds its entry or fragment budget")]
     Budget,
 
-    #[error("contract inventory requires a guest or sidecar facility and a valid artifact owner")]
+    #[error("contract inventory requires a sidecar facility and a valid artifact owner")]
     Identity,
 
     #[error("requirement `{id}` carries a duplicate or invalid grant")]
@@ -410,7 +410,7 @@ pub const fn encode_identity<const N: usize>(facility: &str, id: &str, version: 
 }
 
 pub(crate) const fn valid_identity(facility: &str, owner: &str) -> bool {
-    matches!(facility.as_bytes(), b"guest" | b"sidecar") && crate::identity::segment(owner)
+    matches!(facility.as_bytes(), b"sidecar") && crate::identity::segment(owner)
 }
 
 pub(crate) const fn wire<const N: usize>(out: &mut Encoder<N>, entry: &WireDeclaration) {
@@ -759,9 +759,7 @@ mod tests {
         let parts = parts();
         assert_eq!(parts.len(), 1 + PROVIDED.len() + REQUIRED.len());
         assert!(parts.iter().all(|part| serde_json::to_vec(part).unwrap().len() <= crate::FRAGMENT_LIMIT));
-        for (facility, inspected, packaged) in
-            [("sidecar", Facility::Sidecar, Packaged::Sidecar), ("guest", Facility::Guest, Packaged::Guest)]
-        {
+        for (facility, inspected, packaged) in [("sidecar", Facility::Sidecar, Packaged::Sidecar)] {
             let artifact = artifact(facility, &mut parts.clone());
             let declaration = Declaration::inspect(&artifact, inspected).unwrap();
             assert_eq!(declaration.contracts.provides.len(), 4);

@@ -28,17 +28,8 @@ sidecar = [
   "harmos-sidecar/streaming",
   "harmos-runtime?/plugin-sidecar",
 ]
-guest = [
-  "runtime",
-  "harmos-runtime?/plugin-guest",
-  "dep:harmos-guest",
-  "harmos-guest/kit",
-  "harmos-guest/derive",
-  "harmos-guest/grpc",
-  "harmos-guest/streaming",
-]
-grpc = ["runtime", "harmos-runtime?/grpc", "harmos-sdk?/grpc", "harmos-sidecar?/grpc", "harmos-guest?/grpc"]
-streaming = ["runtime", "harmos-sdk?/streaming", "harmos-sidecar?/streaming", "harmos-guest?/streaming"]
+grpc = ["runtime", "harmos-runtime?/grpc", "harmos-sdk?/grpc", "harmos-sidecar?/grpc"]
+streaming = ["runtime", "harmos-sdk?/streaming", "harmos-sidecar?/streaming"]
 generate-proto = ["runtime", "harmos-runtime/generate-proto"]
 signal = ["runtime", "harmos-runtime/signal"]
 signal-fft = ["runtime", "harmos-runtime/signal-fft"]
@@ -49,7 +40,6 @@ simulation = ["runtime", "harmos-runtime/simulation"]
 [dependencies]
 # Local
 harmos-domain = { workspace = true, features = ["derive"] }
-harmos-guest = { workspace = true, optional = true, default-features = false }
 harmos-macros = { workspace = true }
 harmos-operations = { workspace = true }
 

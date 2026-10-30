@@ -64,7 +64,7 @@ struct Ring {
     standing: bool,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 pub(super) struct ListenerCandidate {
     pub(super) cursor: u64,
     pub(super) sequence: u64,
@@ -282,7 +282,7 @@ impl Window {
     }
 
     // Rows the window still takes without evicting one past `taken`.
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(super) fn room(&self, taken: u64) -> usize {
         let ring = self.ring.read().expect("the ring is never poisoned");
         let read = ring.rows.partition_point(|(cursor, ..)| *cursor <= taken);
@@ -432,7 +432,7 @@ impl Window {
         (rows, ring.evicted > resume || ring.missed > resume)
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(super) fn listener_candidates(&self, after: u64, through: u64, source: usize, limit: usize, selected: &mut Vec<ListenerCandidate>) {
         let ring = self.ring.read().expect("the ring is never poisoned");
         let mut lower = 0;
@@ -464,7 +464,7 @@ impl Window {
         }
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(super) fn listener_row(&self, cursor: u64) -> Option<Row> {
         let ring = self.ring.read().expect("the ring is never poisoned");
         let mut lower = 0;
@@ -480,7 +480,7 @@ impl Window {
         ring.rows.get(lower).filter(|row| row.0 == cursor).map(|row| Arc::clone(&row.3))
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(super) fn logical_frontier(&self) -> u64 {
         self.ring.read().expect("the ring is never poisoned").next
     }

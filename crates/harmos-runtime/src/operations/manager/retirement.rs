@@ -35,7 +35,7 @@ use super::*;
 /* === Implementations === */
 
 impl Manager {
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(in crate::operations) fn scope_entries(&self, scope: &crate::plugin::PluginScope) -> Vec<Arc<Entry>> {
         let state = self.registry.state.lock().expect("operation registry lock is healthy");
         state
@@ -57,7 +57,7 @@ impl Manager {
             let state = self.registry.state.lock().expect("operation registry lock is healthy");
             Arc::clone(state.select(id, owner)?)
         };
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin")]
         if let Some(scope) = &entry.plugin {
             // Notify the staging gate before revocation, outside registry guards.
             scope.unbind_operations();
@@ -86,7 +86,7 @@ impl Manager {
         Ok(())
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(in crate::operations) fn fence(&self, entries: &[Arc<Entry>], abandoned: bool) {
         let retired = {
             let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
@@ -110,12 +110,12 @@ impl Manager {
         drop(retired);
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(in crate::operations) fn remove_settled(&self, entries: &[Arc<Entry>]) {
         self.release_settled(entries, true);
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     fn release_settled(&self, entries: &[Arc<Entry>], preserve_explicit: bool) {
         let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
         for entry in entries {
@@ -129,14 +129,14 @@ impl Manager {
         // The caller owns every entry until after this guard is released.
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(in crate::operations) async fn settle_entries(&self, entries: &[Arc<Entry>]) -> Result<()> {
         self.settle_owned_entries(entries).await?;
         self.release_settled(entries, false);
         Ok(())
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(in crate::operations) async fn settle_owned_entries(&self, entries: &[Arc<Entry>]) -> Result<()> {
         for entry in entries {
             settle(entry).await?;

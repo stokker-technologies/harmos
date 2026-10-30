@@ -9,7 +9,7 @@ Defines the filesystem operations Harmos ships: unified file sources, hashing an
 The system SHALL expose stored and executing-host local files through one FileSource and ReadFile source/range contract. Reads SHALL stream bounded data whose backing allocations survive retained aliases.
 
 #### Scenario: Shared Local Access
-- **WHEN** a native caller, gRPC client, sidecar or guest invokes a local-file operation at any path accessible to the executing host process
+- **WHEN** a native caller, gRPC client or sidecar invokes a local-file operation at any path accessible to the executing host process
 - **THEN** the same implementation SHALL execute it without a carrier-specific exclusion or additional per-plugin allowlist, subject to ordinary operation authorization and host filesystem permissions
 
 #### Scenario: Arbitrary Accessible Paths

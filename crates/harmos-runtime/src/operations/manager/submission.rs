@@ -65,7 +65,7 @@ impl Manager {
         self.admit::<O, ()>((request.into(), ()), None, &[], &Source::Host, Some(cause))
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(in crate::operations) fn submit_by<O: OperationDeclaration, P: Send + 'static>(
         &self, input: (crate::operations::binding::Request<O::Request>, P), source: &Source,
     ) -> Result<Running<O>> {
@@ -180,7 +180,7 @@ impl Manager {
         let mut pending = entry.pending.lock().expect("operation settlement lock is healthy");
         source.check()?;
         entry.available_to(&origin)?;
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin")]
         if entry.sdk.is_some() && pending.values().any(|control| !control.is_settled()) {
             return Err(Error::ResourceExhausted { resource: "SDK physical settlement" });
         }

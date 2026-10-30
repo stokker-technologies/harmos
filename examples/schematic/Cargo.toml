@@ -2,7 +2,7 @@
 
 [workspace]
 resolver = "3"
-members = ["app", "cli", "domain", "guest", "operations", "sidecar", "storage"]
+members = ["app", "cli", "domain", "operations", "sidecar", "storage"]
 
 # === Workspace Package === #
 
@@ -70,13 +70,6 @@ all = "warn"
 # === Lints === #
 
 # === Profiles === #
-
-# Keep Full Guest Metadata Validation Within The Same Fuel Budget In Dev Builds.
-[profile.dev.package.harmos-domain]
-opt-level = 2
-
-[profile.dev.package.serde_json]
-opt-level = 2
 
 # === Patches === #
 

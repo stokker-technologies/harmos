@@ -56,7 +56,7 @@ static SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<Counts>>> 
 type RetirementGate = Arc<Mutex<Option<(Arc<Notify>, Arc<Notify>)>>>;
 type Source = Advertised<harmos_sidecar::PluginNative<Endpoint>>;
 pub(crate) type Resident<A> = Supervised<Bank, A, fn(&ServiceContext<Bank>, Notice)>;
-type Backends<A> = PluginBackend<(), Backend<A>, ()>;
+type Backends<A> = PluginBackend<Backend<A>, ()>;
 
 /* === Structs === */
 
@@ -166,7 +166,7 @@ struct Host<A: Attach> {
 pub(crate) struct Managed<A: Attach> {
     pub(crate) runtime: harmos_runtime::Runtime<Bank>,
     sample_projection: Option<Arc<SampleProjection>>,
-    manager: PluginManager<(), Backend<A>, ()>,
+    manager: PluginManager<Backend<A>, ()>,
     host: Host<A>,
 }
 
@@ -540,7 +540,6 @@ impl<A: Attach> Default for Backend<A> {
 }
 
 impl<A: Attach> PluginLifecycle for Host<A> {
-    type Guest = ();
     type Sidecar = Backend<A>;
     type Embedded = ();
     fn preflight(&mut self, definitions: &PluginDefinitions) -> harmos_runtime::Result<()> {

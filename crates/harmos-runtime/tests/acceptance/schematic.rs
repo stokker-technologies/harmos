@@ -59,7 +59,7 @@ fn succeeded(output: &Output) {
 #[test]
 fn inspect_reports_plugins() {
     let directory = tempfile::tempdir().unwrap();
-    for (artifact, facility) in [("schematic-guest", "guest"), ("schematic-sidecar", "sidecar")] {
+    for (artifact, facility) in [("schematic-sidecar", "sidecar")] {
         let path = fixtures::artifact(artifact);
         let output = cargo_harmos(directory.path(), &[facility.as_ref(), "inspect".as_ref(), path.as_os_str(), "--json".as_ref()]);
         succeeded(&output);
@@ -79,7 +79,7 @@ fn inspect_refuses_inputs() {
     let missing = cargo_harmos(directory.path(), &["sidecar".as_ref(), "inspect".as_ref(), "missing-plugin".as_ref()]);
     assert_eq!(missing.status.code(), Some(3));
 
-    let malformed = directory.path().join("invalid.wasm");
+    let malformed = directory.path().join("invalid-plugin");
     std::fs::write(&malformed, b"invalid input").unwrap();
     let invalid = cargo_harmos(directory.path(), &["sidecar".as_ref(), "inspect".as_ref(), malformed.as_os_str()]);
     assert_eq!(invalid.status.code(), Some(2));

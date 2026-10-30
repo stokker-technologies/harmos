@@ -67,7 +67,7 @@ Storage SHALL support explicitly bounded independent file I/O while preserving p
 
 ### Requirement: Comparable Performance Workloads
 
-Benchmarks SHALL separately identify storage, real sidecar, real guest and external gRPC paths with explicit settings, deterministic inputs and identical before/after measurement boundaries.
+Benchmarks SHALL separately identify storage, real sidecar and external gRPC paths with explicit settings, deterministic inputs and identical before/after measurement boundaries.
 
 #### Scenario: Storage Scale
 
@@ -82,7 +82,7 @@ Benchmarks SHALL separately identify storage, real sidecar, real guest and exter
 
 #### Scenario: Symmetric Carrier Datasets
 
-- **WHEN** the sidecar or guest transfer suite runs
+- **WHEN** the sidecar transfer suite runs
 - **THEN** it transfers 10,000 records, 30 MiB of file bytes and 1,000,000 samples in both directions through the real carrier
 - **AND** it compares unary batches with streams using identical batch sizes and verifies ordering, counts and contents outside timing
 - **AND** the three datasets run concurrently on a reused host/plugin with isolated transfer IDs, using benchmark-feature endpoints in the shipped Schematic examples

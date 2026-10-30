@@ -34,7 +34,6 @@ bench = false
 default = []
 plugin = ["dep:petgraph", "dep:semver", "semver/serde", "dep:harmos-packaging"]
 plugin-sidecar = ["plugin", "dep:harmos-sidecar", "harmos-sidecar/kit", "harmos-sidecar/derive", "tokio/io-util", "tokio/process"]
-plugin-guest = ["plugin", "dep:harmos-guest", "harmos-guest/kit", "harmos-guest/derive", "dep:wasmtime"]
 grpc = [
   "harmos-sdk/grpc",
   "generate-proto",
@@ -60,7 +59,6 @@ simulation = ["tokio/test-util"]
 [dependencies]
 # Local
 harmos-domain = { workspace = true, features = ["derive"] }
-harmos-guest = { workspace = true, optional = true }
 harmos-macros = { workspace = true, default-features = true }
 harmos-operations = { workspace = true, features = ["runtime"] }
 harmos-packaging = { workspace = true, optional = true }
@@ -219,7 +217,6 @@ harmos-sidecar = { workspace = true, optional = true }
 # Logging
 
 # Utilities
-wasmtime = { workspace = true, optional = true }
 
 # Serialization
 
@@ -290,12 +287,6 @@ name = "system-sidecar-host"
 path = "benches/sidecar/system.rs"
 harness = false
 required-features = ["plugin-sidecar"]
-
-[[bench]]
-name = "system-guest"
-path = "benches/guest/main.rs"
-harness = false
-required-features = ["plugin-guest"]
 
 [[bench]]
 name = "system-grpc"

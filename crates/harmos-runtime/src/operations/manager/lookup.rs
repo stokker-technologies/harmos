@@ -50,7 +50,7 @@ impl Manager {
     }
 
     pub(in crate::operations) fn entry_as(&self, id: &str, _origin: &Origin) -> Result<Arc<Entry>> {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin")]
         if let Some(scope) = &_origin.scope {
             if let Some(required) = Identifier::new(id)
                 .ok()
@@ -83,7 +83,7 @@ impl Manager {
         self.entry(id)
     }
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(feature = "plugin-sidecar")]
     pub(in crate::operations) fn encode_assignments(&self, scope: &PluginScope, allowance: usize) -> Result<Vec<u8>> {
         let exhausted = || Error::ResourceExhausted { resource: "SDK encoding memory" };
         let state = self.registry.state.lock().expect("operation registry lock is healthy");
@@ -160,7 +160,7 @@ impl Manager {
         }
         let entry = Some(state.select(id, owner)?)
             .filter(|entry| {
-                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                #[cfg(feature = "plugin")]
                 if entry.sdk.is_some() {
                     return false;
                 }

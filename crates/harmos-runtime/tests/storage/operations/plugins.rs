@@ -47,7 +47,7 @@ use harmos_runtime::{Error, Identifier, Result};
 
 /* === Type Aliases === */
 
-type Backends = PluginBackend<(), (), Option<PluginEndpoint>>;
+type Backends = PluginBackend<(), Option<PluginEndpoint>>;
 
 /* === Structs === */
 
@@ -63,7 +63,6 @@ struct Host {
 /* === Implementations === */
 
 impl PluginLifecycle for Host {
-    type Guest = ();
     type Sidecar = ();
     type Embedded = Option<PluginEndpoint>;
 

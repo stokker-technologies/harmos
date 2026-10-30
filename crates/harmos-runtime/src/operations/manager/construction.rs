@@ -52,7 +52,7 @@ impl Manager {
                 state: Mutex::new(State {
                     closing: false,
                     entries: BTreeMap::new(),
-                    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                    #[cfg(feature = "plugin")]
                     staging: Vec::new(),
                     #[cfg(feature = "grpc")]
                     grpc: BTreeMap::new(),
@@ -95,9 +95,9 @@ impl Manager {
                 operation: entry.id().to_owned(),
             };
             let contract = entry.contract.as_ref().ok_or_else(denied)?;
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin")]
             let plugin = entry.plugin.is_some();
-            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
+            #[cfg(not(feature = "plugin"))]
             let plugin = false;
             let selected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 authorizer.authorize(

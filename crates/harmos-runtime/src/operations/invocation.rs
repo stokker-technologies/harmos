@@ -302,7 +302,7 @@ mod tests {
                 binding,
                 definition,
                 None,
-                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                #[cfg(feature = "plugin")]
                 None,
             )
             .unwrap();

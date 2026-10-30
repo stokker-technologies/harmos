@@ -39,9 +39,6 @@ use tracing_subscriber::util::SubscriberInitExt;
 #[derive(Parser)]
 #[command(version, about = "Run The Schematic Editor Walkthrough")]
 struct Args {
-    #[arg(long, conflicts_with = "sidecar", num_args = 0..=1)]
-    guest: Option<Option<PathBuf>>,
-
     #[arg(long)]
     sidecar: Option<PathBuf>,
 
@@ -91,9 +88,8 @@ async fn dispatch(args: Args) -> schematic_cli::Result<()> {
     let bundled = directory.join("plugins").join(format!("schematic-sidecar{}", std::env::consts::EXE_SUFFIX));
     let sibling = if bundled.is_file() { bundled } else { directory.join(format!("schematic-sidecar{}", std::env::consts::EXE_SUFFIX)) };
     let sidecar = args.sidecar.unwrap_or(sibling);
-    let guest = args.guest.map(|path| path.unwrap_or_else(|| directory.join("plugins/schematic-guest.wasm")));
     let directory = std::env::current_dir()?;
-    schematic_cli::run(guest.as_deref(), &sidecar, &directory, args.advanced).await
+    schematic_cli::run(&sidecar, &directory, args.advanced).await
 }
 
 fn capture() -> std::io::Result<Option<FlushGuard>> {
@@ -118,7 +114,7 @@ fn instrumented(metadata: &tracing::Metadata<'_>) -> bool {
     if !metadata.is_span() {
         return matches!(metadata.target(), "harmos::operations" | "harmos::state" | "harmos::carrier" | "harmos::grpc");
     }
-    let prefixes = ["operations.", "state.", "storage.", "streams.", "carrier.", "grpc.", "guest.", "sidecar.", "system.story"];
+    let prefixes = ["operations.", "state.", "storage.", "streams.", "carrier.", "grpc.", "sidecar.", "system.story"];
     prefixes.iter().any(|prefix| metadata.name().starts_with(prefix))
 }
 

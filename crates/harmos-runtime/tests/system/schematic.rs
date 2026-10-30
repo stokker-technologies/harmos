@@ -7,7 +7,7 @@
  * ***
  */
 
-// Walk The CLI Across Both Built Plugin Backends
+// Walk The CLI Through Its Built Native Plugin
 
 /* === Modules === */
 
@@ -59,7 +59,7 @@ fn cli_backends_reopen() {
     let cli = fixtures::artifact("schematic-cli");
     let mut children = Vec::new();
 
-    for (backend, artifact) in [("--sidecar", "schematic-sidecar"), ("--guest", "schematic-guest")] {
+    for (backend, artifact) in [("--sidecar", "schematic-sidecar")] {
         let plugin = fixtures::artifact(artifact);
 
         // Nominal Editing Persists Through The Backend And Reopens.
@@ -105,7 +105,7 @@ fn cli_streams_settle() {
     let cli = fixtures::artifact("schematic-cli");
     let mut children = Vec::new();
 
-    for (backend, artifact) in [("--sidecar", "schematic-sidecar"), ("--guest", "schematic-guest")] {
+    for (backend, artifact) in [("--sidecar", "schematic-sidecar")] {
         let plugin = fixtures::artifact(artifact);
 
         // Start The Next Backend Only After This CLI Has Initialized Its Plugin.
@@ -137,8 +137,6 @@ fn cli_streams_settle() {
             }
             Ok(bytes)
         });
-        // Wasm Compilation Is Preparation, Outside The Operation Deadline.
-        // The System Story Policy Still Bounds The Whole Walkthrough.
         let initializing = ready.recv();
         let readiness = ready.recv_timeout(schematic_operations::POLICY.timeout);
         if initializing != Ok(Startup::Initializing) || readiness != Ok(Startup::Ready) {
@@ -172,14 +170,9 @@ fn cli_streams_settle() {
         advanced_outputs.push(lines.collect::<Vec<_>>());
     }
 
-    // Only The Native Backend Lists The Caller's Directories.
-    let guest = advanced_outputs.pop().unwrap();
-    let native = advanced_outputs.pop().unwrap();
-    let is_directory = |line: &String| line.starts_with("Native directories:");
-    let (directories, shared): (Vec<_>, Vec<_>) = native.into_iter().partition(is_directory);
-    assert_eq!(directories, [r#"Native directories: ["alpha", "zeta"]"#]);
-    assert_eq!(shared, guest);
+    let output = advanced_outputs.pop().unwrap();
+    assert!(output.iter().any(|line| line == r#"Native directories: ["alpha", "zeta"]"#));
     for expected in ["Analysis settled: 3 findings", "Cancelled analysis and waited for settlement", REOPENED] {
-        assert!(guest.iter().any(|line| line == expected), "missing {expected}");
+        assert!(output.iter().any(|line| line == expected), "missing {expected}");
     }
 }

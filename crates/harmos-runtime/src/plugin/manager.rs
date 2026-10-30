@@ -41,13 +41,13 @@ const EVENTS: usize = 64;
 
 type Observer = dyn Fn(&str, Option<PluginStatus>) + Send + Sync;
 type CleanupOwner = Arc<Cleanup<Box<dyn Resource>>>;
-type Stop<G, S, E> = for<'a> fn(&'a PluginDefinition, &'a PluginScope, &'a mut PluginBackend<G, S, E>) -> Finalize<'a>;
+type Stop<S, E> = for<'a> fn(&'a PluginDefinition, &'a PluginScope, &'a mut PluginBackend<S, E>) -> Finalize<'a>;
 
 /* === Structs === */
 
-pub struct PluginManager<G, S, E> {
+pub struct PluginManager<S, E> {
     definitions: BTreeMap<String, PluginDefinition>,
-    instances: BTreeMap<String, PluginInstance<G, S, E>>,
+    instances: BTreeMap<String, PluginInstance<S, E>>,
     graph: PluginGraph,
     router: Router,
     failed: BTreeSet<String>,
@@ -62,7 +62,7 @@ pub struct PluginManager<G, S, E> {
     retirement: Option<retirement::Wait>,
     cleanup: PluginCleanup,
     executor: Option<tokio::runtime::Handle>,
-    retain: fn(&mut PluginInstance<G, S, E>),
+    retain: fn(&mut PluginInstance<S, E>),
 }
 
 struct Restart {
@@ -71,21 +71,21 @@ struct Restart {
     next: Option<tokio::time::Instant>,
 }
 
-pub struct PluginInstance<G, S, E> {
+pub struct PluginInstance<S, E> {
     definition: PluginDefinition,
     generation: PluginGeneration,
     scope: PluginScope,
     state: watch::Sender<PluginState>,
-    backend: Option<PluginBackend<G, S, E>>,
-    stop: Stop<G, S, E>,
+    backend: Option<PluginBackend<S, E>>,
+    stop: Stop<S, E>,
     cleanup: Option<CleanupOwner>,
 }
 
-struct Retiring<G, S, E> {
+struct Retiring<S, E> {
     definition: PluginDefinition,
     scope: PluginScope,
-    backend: PluginBackend<G, S, E>,
-    stop: Stop<G, S, E>,
+    backend: PluginBackend<S, E>,
+    stop: Stop<S, E>,
 }
 
 pub struct PluginLifecycleAuthority<'a> {
@@ -159,7 +159,6 @@ pub enum PluginFailure {
 /* === Traits === */
 
 pub trait PluginLifecycle {
-    type Guest: Send + 'static;
     type Sidecar: Send + 'static;
     type Embedded: Send + 'static;
 
@@ -173,22 +172,21 @@ pub trait PluginLifecycle {
         Ok(())
     }
 
-    fn prepare(&mut self, definition: &PluginDefinition) -> Result<PluginBackend<Self::Guest, Self::Sidecar, Self::Embedded>>;
+    fn prepare(&mut self, definition: &PluginDefinition) -> Result<PluginBackend<Self::Sidecar, Self::Embedded>>;
 
     fn fence(&mut self, transition: PluginTransition, affected: &[PluginDefinition]) -> impl Future<Output = Result<()>> + Send;
     fn start(
         &mut self, definition: &PluginDefinition, router: &Router, authority: &PluginLifecycleAuthority<'_>,
-        backend: &mut PluginBackend<Self::Guest, Self::Sidecar, Self::Embedded>,
+        backend: &mut PluginBackend<Self::Sidecar, Self::Embedded>,
     ) -> impl Future<Output = Result<()>> + Send;
     fn stop(
-        definition: &PluginDefinition, authority: &PluginLifecycleAuthority<'_>,
-        backend: &mut PluginBackend<Self::Guest, Self::Sidecar, Self::Embedded>,
+        definition: &PluginDefinition, authority: &PluginLifecycleAuthority<'_>, backend: &mut PluginBackend<Self::Sidecar, Self::Embedded>,
     ) -> impl Future<Output = Result<()>> + Send;
 }
 
 /* === Implementations === */
 
-impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> Resource for Retiring<G, S, E> {
+impl<S: Send + 'static, E: Send + 'static> Resource for Retiring<S, E> {
     fn finalize(&mut self) -> Finalize<'_> {
         (self.stop)(&self.definition, &self.scope, &mut self.backend)
     }
@@ -252,13 +250,13 @@ impl PluginReloadPlan {
     }
 }
 
-impl<G, S, E> PluginInstance<G, S, E> {
+impl<S, E> PluginInstance<S, E> {
     fn ready(&self) -> bool {
         *self.state.borrow() == PluginState::Ready && self.scope.is_ready()
     }
 }
 
-impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S, E> {
+impl<S: Send + 'static, E: Send + 'static> PluginManager<S, E> {
     pub fn new(candidate: PluginDefinitions) -> Result<Self> {
         let identity = PluginGeneration::fresh()?;
         let definitions = by_id(&candidate.graph);
@@ -279,7 +277,7 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
             retirement: None,
             cleanup: PluginCleanup::new(),
             executor: None,
-            retain: retain_backend::<G, S, E>,
+            retain: retain_backend::<S, E>,
         })
     }
 
@@ -372,7 +370,7 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
         self.restarts.iter().filter_map(|(id, restart)| restart.next.map(|next| (id.clone(), next))).min_by_key(|(_, next)| *next)
     }
 
-    pub(crate) async fn reload_selected<L: PluginLifecycle<Guest = G, Sidecar = S, Embedded = E>>(
+    pub(crate) async fn reload_selected<L: PluginLifecycle<Sidecar = S, Embedded = E>>(
         &mut self, candidate: PluginDefinitions, selected: &BTreeSet<String>, lifecycle: &mut L,
     ) -> Result<()> {
         self.resume_retirement().await?;
@@ -381,7 +379,7 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
         self.apply_reload(plan, lifecycle).await
     }
 
-    pub(crate) async fn initialize_selected<L: PluginLifecycle<Guest = G, Sidecar = S, Embedded = E>>(
+    pub(crate) async fn initialize_selected<L: PluginLifecycle<Sidecar = S, Embedded = E>>(
         &mut self, selected: &BTreeSet<String>, lifecycle: &mut L,
     ) -> Result<()> {
         self.resume_retirement().await?;
@@ -422,7 +420,7 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
 
     pub(crate) fn poll_backends(
         &mut self, context: &mut std::task::Context<'_>,
-        mut poll: impl FnMut(&mut PluginBackend<G, S, E>, &mut std::task::Context<'_>) -> std::task::Poll<Result<()>>,
+        mut poll: impl FnMut(&mut PluginBackend<S, E>, &mut std::task::Context<'_>) -> std::task::Poll<Result<()>>,
     ) -> std::task::Poll<(String, Result<()>)> {
         let mut quiescing = Vec::new();
         let mut exited = None;
@@ -619,7 +617,7 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
         })
     }
 
-    pub async fn initialize<L: PluginLifecycle<Guest = G, Sidecar = S, Embedded = E>>(&mut self, lifecycle: &mut L) -> Result<()> {
+    pub async fn initialize<L: PluginLifecycle<Sidecar = S, Embedded = E>>(&mut self, lifecycle: &mut L) -> Result<()> {
         self.resume_retirement().await?;
         self.resolve()?;
         let candidate = PluginDefinitions {
@@ -630,7 +628,7 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
         self.transition(plan, FailureScope::Instance, lifecycle).await
     }
 
-    pub async fn reload<L: PluginLifecycle<Guest = G, Sidecar = S, Embedded = E>>(
+    pub async fn reload<L: PluginLifecycle<Sidecar = S, Embedded = E>>(
         &mut self, candidate: PluginDefinitions, lifecycle: &mut L,
     ) -> Result<()> {
         self.resume_retirement().await?;
@@ -638,13 +636,13 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
         self.apply_reload(plan, lifecycle).await
     }
 
-    pub async fn apply_reload<L: PluginLifecycle<Guest = G, Sidecar = S, Embedded = E>>(
+    pub async fn apply_reload<L: PluginLifecycle<Sidecar = S, Embedded = E>>(
         &mut self, plan: PluginReloadPlan, lifecycle: &mut L,
     ) -> Result<()> {
         self.transition(plan, FailureScope::Group, lifecycle).await
     }
 
-    async fn transition<L: PluginLifecycle<Guest = G, Sidecar = S, Embedded = E>>(
+    async fn transition<L: PluginLifecycle<Sidecar = S, Embedded = E>>(
         &mut self, plan: PluginReloadPlan, failure_scope: FailureScope, lifecycle: &mut L,
     ) -> Result<()> {
         if plan.manager != self.identity {
@@ -746,7 +744,7 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
         Ok(())
     }
 
-    fn stage_generation<L: PluginLifecycle<Guest = G, Sidecar = S, Embedded = E>>(
+    fn stage_generation<L: PluginLifecycle<Sidecar = S, Embedded = E>>(
         &mut self, definition: &PluginDefinition,
     ) -> Result<PluginGeneration> {
         self.executor.get_or_insert_with(tokio::runtime::Handle::current);
@@ -774,7 +772,7 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
         Ok(generation)
     }
 
-    async fn initialize_generation<L: PluginLifecycle<Guest = G, Sidecar = S, Embedded = E>>(
+    async fn initialize_generation<L: PluginLifecycle<Sidecar = S, Embedded = E>>(
         &mut self, definition: &PluginDefinition, generation: PluginGeneration, lifecycle: &mut L,
     ) -> Result<()> {
         let setup = match lifecycle.prepare(definition) {
@@ -812,7 +810,7 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
         Ok(())
     }
 
-    pub async fn shutdown<L: PluginLifecycle<Guest = G, Sidecar = S, Embedded = E>>(&mut self, lifecycle: &mut L) -> Result<()> {
+    pub async fn shutdown<L: PluginLifecycle<Sidecar = S, Embedded = E>>(&mut self, lifecycle: &mut L) -> Result<()> {
         self.resume_retirement().await?;
         let stopping: Vec<_> =
             self.graph.ordered().iter().rev().filter(|definition| self.instances.contains_key(&definition.id)).cloned().collect();
@@ -961,7 +959,7 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
     }
 }
 
-impl<G, S, E> Drop for PluginManager<G, S, E> {
+impl<S, E> Drop for PluginManager<S, E> {
     fn drop(&mut self) {
         if self.instances.is_empty() {
             self.cleanup.settled();
@@ -996,7 +994,7 @@ impl<G, S, E> Drop for PluginManager<G, S, E> {
 
 /* === Private Functions === */
 
-#[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-sidecar")]
 fn remote_failure(failure: crate::operations::FailureKind) -> PluginFailureClass {
     match failure {
         crate::operations::FailureKind::Transient | crate::operations::FailureKind::Ambiguous => PluginFailureClass::Recoverable,
@@ -1028,17 +1026,13 @@ fn classify(error: &Error) -> PluginFailureClass {
             if let Some(error) = source.downcast_ref::<crate::operations::NativeError>() {
                 return remote_failure(error.classification());
             }
-            #[cfg(feature = "plugin-guest")]
-            if let Some(error) = source.downcast_ref::<crate::operations::ComponentError>() {
-                return remote_failure(error.classification());
-            }
             PluginFailureClass::Recoverable
         }
         _ => PluginFailureClass::Recoverable,
     }
 }
 
-fn retain_backend<G: Send + 'static, S: Send + 'static, E: Send + 'static>(instance: &mut PluginInstance<G, S, E>) {
+fn retain_backend<S: Send + 'static, E: Send + 'static>(instance: &mut PluginInstance<S, E>) {
     if instance.cleanup.is_none()
         && let Some(backend) = instance.backend.take()
     {
@@ -1054,7 +1048,7 @@ fn retain_backend<G: Send + 'static, S: Send + 'static, E: Send + 'static>(insta
 }
 
 fn stop_backend<'a, L: PluginLifecycle>(
-    definition: &'a PluginDefinition, scope: &'a PluginScope, backend: &'a mut PluginBackend<L::Guest, L::Sidecar, L::Embedded>,
+    definition: &'a PluginDefinition, scope: &'a PluginScope, backend: &'a mut PluginBackend<L::Sidecar, L::Embedded>,
 ) -> Finalize<'a> {
     Box::pin(async move {
         let authority = PluginLifecycleAuthority {

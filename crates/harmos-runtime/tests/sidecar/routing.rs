@@ -64,7 +64,7 @@ forward!(UnauthorizedForward, "unauthorized.forward", []);
 
 type NoticeHandler = Box<dyn Fn(&ServiceContext<Bank>, Notice) + Send + Sync>;
 type Resident = Supervised<Bank, Attachment, NoticeHandler>;
-type Backends = PluginBackend<(), Resources, ()>;
+type Backends = PluginBackend<Resources, ()>;
 
 /* === Structs === */
 
@@ -620,7 +620,6 @@ impl Host {
 }
 
 impl PluginLifecycle for Host {
-    type Guest = ();
     type Sidecar = Resources;
     type Embedded = ();
     fn preflight(&mut self, candidate: &PluginDefinitions) -> harmos_runtime::Result<()> {

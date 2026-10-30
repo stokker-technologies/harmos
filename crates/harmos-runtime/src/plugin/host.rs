@@ -11,8 +11,6 @@
 
 /* === Modules === */
 
-#[cfg(feature = "plugin-guest")]
-mod guest;
 mod progress;
 #[cfg(feature = "plugin-sidecar")]
 mod sidecar;
@@ -57,8 +55,8 @@ const COMMANDS: usize = 64;
 pub(super) type LifecycleFuture<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
 pub(super) type Driver = Box<dyn Execution>;
 pub(super) type Factory = Arc<dyn Fn() -> Result<Driver> + Send + Sync>;
-type Backends = PluginBackend<Driver, Driver, Driver>;
-type Registry = PluginManager<Driver, Driver, Driver>;
+type Backends = PluginBackend<Driver, Driver>;
+type Registry = PluginManager<Driver, Driver>;
 type Bind = Arc<dyn Fn(&mut Bindings<'_>) -> Result<()> + Send + Sync>;
 type Snapshots = Arc<RwLock<BTreeMap<String, PluginStatus>>>;
 
@@ -411,7 +409,6 @@ impl<A: Application> PluginHost<A> {
 }
 
 impl PluginLifecycle for Lifecycle {
-    type Guest = Driver;
     type Sidecar = Driver;
     type Embedded = Driver;
 
@@ -441,7 +438,6 @@ impl PluginLifecycle for Lifecycle {
             driving: self.driving.clone(),
         });
         Ok(match definition.kind() {
-            super::PluginKind::Guest => PluginBackend::Guest(driver),
             super::PluginKind::Sidecar => PluginBackend::Sidecar(driver),
             super::PluginKind::Embedded => PluginBackend::Embedded(driver),
         })
@@ -826,7 +822,7 @@ fn publish(registry: &Registry, snapshots: &Snapshots) {
 
 fn driver(backend: &mut Backends) -> &mut Driver {
     match backend {
-        PluginBackend::Guest(driver) | PluginBackend::Sidecar(driver) | PluginBackend::Embedded(driver) => driver,
+        PluginBackend::Sidecar(driver) | PluginBackend::Embedded(driver) => driver,
     }
 }
 

@@ -66,7 +66,7 @@ pub enum Error {
     #[error("multiple contribution inventories for `{owner}`")]
     Duplicate { owner: String },
 
-    #[error("contribution inventory requires a guest or sidecar facility and a valid owner")]
+    #[error("contribution inventory requires a sidecar facility and a valid owner")]
     Identity,
 
     #[error("contribution inventory exceeds its section budget")]

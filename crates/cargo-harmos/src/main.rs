@@ -13,9 +13,9 @@
 
 mod commands;
 mod error;
-#[cfg(any(feature = "sidecar", feature = "guest"))]
+#[cfg(feature = "sidecar")]
 mod input;
-#[cfg(any(feature = "sidecar", feature = "guest"))]
+#[cfg(feature = "sidecar")]
 mod output;
 
 /* === Re-Exports === */
@@ -61,13 +61,13 @@ fn main() -> std::process::ExitCode {
     }
     let arguments = Arguments::parse_from(arguments);
     let cancellation = harmos_packaging::BuildCancellation::default();
-    #[cfg(any(feature = "sidecar", feature = "guest"))]
+    #[cfg(feature = "sidecar")]
     let startup = {
         let stopping = cancellation.clone();
         ctrlc::try_set_handler(move || stopping.cancel())
             .map_err(|error| harmos_packaging::Error::Io(std::io::Error::other(error.to_string())))
     };
-    #[cfg(not(any(feature = "sidecar", feature = "guest")))]
+    #[cfg(not(feature = "sidecar"))]
     let startup: Result<(), harmos_packaging::Error> = Ok(());
     let result = startup.map_err(error::Error::from).and_then(|()| arguments.command.run(&cancellation));
     match result {

@@ -196,7 +196,7 @@ impl<A: Application> StreamManager<A> {
                         window: Arc::clone(&previous.window),
                         definition: definition.clone(),
                         publisher: Mutex::new(Weak::new()),
-                        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                        #[cfg(feature = "plugin")]
                         staged: None,
                     }),
                 );
@@ -217,7 +217,7 @@ impl<A: Application> StreamManager<A> {
                         ),
                         definition,
                         publisher: Mutex::new(Weak::new()),
-                        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                        #[cfg(feature = "plugin")]
                         staged: None,
                     });
                     if floor > Position::ORIGIN && floor <= *self.applied.borrow() {
@@ -292,12 +292,12 @@ impl PublicationLease {
 
     // An ordered batch takes contiguous sequences from `first_wire_sequence`;
     // `missed` applies before the first row only.
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub fn stage_rows(&self, rows: Vec<PublicationRow>, first_wire_sequence: u64, missed: u64) -> super::StagedRows {
         self.stage_sequence(rows, Some(first_wire_sequence), missed, None)
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub fn stage_derived_row(&self, row: PublicationRow, missed: u64) -> Result<super::StagedPublication, StreamPublicationError> {
         self.stage_sequence(vec![row], None, missed, None).single()
     }
@@ -311,7 +311,7 @@ impl PublicationLease {
 
     // One visibility fence and one scope phase cover the whole batch, so no
     // reader or commit observes it half staged.
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     fn stage_sequence(
         &self, rows: Vec<PublicationRow>, wire_sequence: Option<u64>, missed: u64, context: Option<&crate::operations::Context<'_>>,
     ) -> super::StagedRows {
@@ -382,7 +382,7 @@ impl PublicationLease {
     fn admit(&self, row: PublicationRow, sequence: Option<u64>, missed: u64) -> Result<super::ManagedPublication, StreamPublicationError> {
         let _visibility = self.stream.wired.window.visibility.write().expect("stream visibility poisoned");
         let result = {
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin")]
             if let Some(staged) = &self.stream.wired.staged {
                 staged.scope.prepare_publication(|ready| {
                     if !ready {
@@ -393,7 +393,7 @@ impl PublicationLease {
             } else {
                 self.admit_locked(row, sequence, missed, true)
             }
-            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
+            #[cfg(not(feature = "plugin"))]
             {
                 self.admit_locked(row, sequence, missed, true)
             }
@@ -428,11 +428,11 @@ impl PublicationLease {
         }
         self.stream.wired.validation.as_ref().expect("compiled plugin schema").validate(&row.payload)?;
         let generation = {
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin")]
             {
                 self.stream.wired.staged.as_ref().map(|staged| staged.scope.generation().get())
             }
-            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
+            #[cfg(not(feature = "plugin"))]
             {
                 None
             }
@@ -462,7 +462,7 @@ impl PublicationLease {
     }
 
     pub fn revoke(&self) {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin")]
         if let Some(staged) = &self.stream.wired.staged {
             staged.scope.unbind_streams();
         }
@@ -525,11 +525,11 @@ impl PluginStream {
 
 impl Wired {
     fn is_staged(&self) -> bool {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin")]
         {
             self.staged.is_some()
         }
-        #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
+        #[cfg(not(feature = "plugin"))]
         {
             false
         }
@@ -584,7 +584,7 @@ pub(super) fn validate_existing(
         {
             return Err(StreamAdmissionError::Changed(definition.id().into()));
         }
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin")]
         if require_unoccupied && wired.staged.as_ref().is_some_and(|staged| !staged.scope.has_committed()) {
             return Err(StreamAdmissionError::Occupied(definition.id().into()));
         }

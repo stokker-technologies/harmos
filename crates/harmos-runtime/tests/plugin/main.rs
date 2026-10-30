@@ -66,8 +66,8 @@ struct Activation {
     stopping: Option<StopContext>,
 }
 
-type Backends = PluginBackend<Activation, Activation, Activation>;
-type Manager = PluginManager<Activation, Activation, Activation>;
+type Backends = PluginBackend<Activation, Activation>;
+type Manager = PluginManager<Activation, Activation>;
 
 struct StopContext {
     owner: String,
@@ -131,7 +131,6 @@ struct Owner;
 struct Shutdown;
 
 impl PluginLifecycle for Shutdown {
-    type Guest = Activation;
     type Sidecar = Activation;
     type Embedded = Activation;
 
@@ -284,7 +283,6 @@ impl Host {
 }
 
 impl PluginLifecycle for Host {
-    type Guest = Activation;
     type Sidecar = Activation;
     type Embedded = Activation;
 
@@ -300,10 +298,9 @@ impl PluginLifecycle for Host {
             ..Activation::default()
         };
         if self.wrong_backend.as_ref() == Some(&definition.id) {
-            return Ok(PluginBackend::Guest(activation));
+            return Ok(PluginBackend::Embedded(activation));
         }
         Ok(match definition.kind() {
-            PluginKind::Guest => PluginBackend::Guest(activation),
             PluginKind::Sidecar => PluginBackend::Sidecar(activation),
             PluginKind::Embedded => PluginBackend::Embedded(activation),
         })
@@ -427,7 +424,7 @@ impl PluginLifecycle for Host {
 
 fn activation(backend: &mut Backends) -> &mut Activation {
     match backend {
-        PluginBackend::Guest(endpoint) | PluginBackend::Sidecar(endpoint) | PluginBackend::Embedded(endpoint) => endpoint,
+        PluginBackend::Sidecar(endpoint) | PluginBackend::Embedded(endpoint) => endpoint,
     }
 }
 
@@ -435,7 +432,7 @@ fn plan() -> PluginGraph {
     PluginGraph::resolve([
         definition("provider", PluginKind::Embedded, &[]),
         definition("client", PluginKind::Sidecar, &["provider"]),
-        definition("other", PluginKind::Guest, &[]),
+        definition("other", PluginKind::Sidecar, &[]),
     ])
     .unwrap()
 }
@@ -445,7 +442,6 @@ fn definition(id: &str, kind: PluginKind, requires: &[&str]) -> PluginDefinition
         id: id.to_owned(),
         version: "1.0.0".parse().unwrap(),
         artifact: match kind {
-            PluginKind::Guest => harmos_runtime::plugin::PluginArtifact::Guest { sha256: [0; 32] },
             PluginKind::Sidecar => harmos_runtime::plugin::PluginArtifact::LocalSidecar { revision: "fixture".into() },
             PluginKind::Embedded => harmos_runtime::plugin::PluginArtifact::Embedded { revision: "fixture".into() },
         },
@@ -484,14 +480,14 @@ fn failure(error: Error) -> PluginFailure {
 }
 
 trait ReloadParts {
-    async fn reload_parts<L: PluginLifecycle<Guest = Activation, Sidecar = Activation, Embedded = Activation>>(
+    async fn reload_parts<L: PluginLifecycle<Sidecar = Activation, Embedded = Activation>>(
         &mut self, graph: PluginGraph, inventories: impl IntoIterator<Item = (String, Vec<Definition>)>,
         rebuilt: impl IntoIterator<Item = String>, lifecycle: &mut L,
     ) -> Result<()>;
 }
 
 impl ReloadParts for Manager {
-    async fn reload_parts<L: PluginLifecycle<Guest = Activation, Sidecar = Activation, Embedded = Activation>>(
+    async fn reload_parts<L: PluginLifecycle<Sidecar = Activation, Embedded = Activation>>(
         &mut self, graph: PluginGraph, inventories: impl IntoIterator<Item = (String, Vec<Definition>)>,
         rebuilt: impl IntoIterator<Item = String>, lifecycle: &mut L,
     ) -> Result<()> {

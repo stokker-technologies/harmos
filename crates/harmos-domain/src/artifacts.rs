@@ -28,11 +28,10 @@ pub const PREFIX: &[u8] = b"\0HARMOS:ARTIFACT:V1:";
 
 pub const FRAGMENT_LIMIT: usize = 64 * 1024;
 
-pub const KINDS: [&str; 17] = [
+pub const KINDS: [&str; 16] = [
     "capabilities",
     "contracts",
     "contributions",
-    "guest",
     "listeners",
     "observers",
     "operations",

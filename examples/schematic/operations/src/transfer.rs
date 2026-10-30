@@ -144,15 +144,6 @@ pub enum Transfers {
 }
 
 #[harmos::catalog]
-pub enum Guest {
-    #[nested]
-    Shared(crate::Operations),
-
-    #[nested]
-    Transfers(Transfers),
-}
-
-#[harmos::catalog]
 pub enum Native {
     #[nested]
     Shared(crate::Native),

@@ -52,7 +52,7 @@ type StreamListeners<A> = fn(&PluginDefinition, &mut crate::streams::PluginListe
 
 pub(crate) struct RuntimeDriver<A: Application, L> {
     host: Host<A, Executable, Diagnostics<A>, L>,
-    backend: PluginBackend<(), Backend<A, Executable, Diagnostics<A>>, ()>,
+    backend: PluginBackend<Backend<A, Executable, Diagnostics<A>>, ()>,
 }
 
 pub struct Managed<A: Application, S, H, L> {
@@ -63,7 +63,7 @@ pub struct Managed<A: Application, S, H, L> {
     catalog: NativeCatalog<L>,
     stream_listeners: StreamListeners<A>,
     verify_artifact: fn(&S, &PluginDefinition) -> Result<()>,
-    manager: PluginManager<(), Backend<A, S, H>, ()>,
+    manager: PluginManager<Backend<A, S, H>, ()>,
     host: Option<Host<A, S, H, L>>,
 }
 
@@ -388,14 +388,13 @@ where
     H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
     L: Lane + Clone,
 {
-    type Guest = ();
     type Sidecar = Backend<A, S, H>;
     type Embedded = ();
     fn preflight(&mut self, candidate: &PluginDefinitions) -> Result<()> {
         self.operations.validate_requirements(candidate)
     }
 
-    fn prepare(&mut self, definition: &PluginDefinition) -> Result<PluginBackend<(), Self::Sidecar, ()>> {
+    fn prepare(&mut self, definition: &PluginDefinition) -> Result<PluginBackend<Self::Sidecar, ()>> {
         (self.verify_artifact)(&self.residents[&definition.id].attach, definition)?;
         Ok(PluginBackend::Sidecar(Backend {
             progress: None,
@@ -420,7 +419,7 @@ where
 
     async fn start(
         &mut self, definition: &PluginDefinition, router: &Router, authority: &PluginLifecycleAuthority<'_>,
-        backend: &mut PluginBackend<(), Self::Sidecar, ()>,
+        backend: &mut PluginBackend<Self::Sidecar, ()>,
     ) -> Result<()> {
         let PluginBackend::Sidecar(backend) = backend else { unreachable!() };
         let original = &self.residents[&definition.id];
@@ -466,7 +465,7 @@ where
     }
 
     async fn stop(
-        _: &PluginDefinition, authority: &PluginLifecycleAuthority<'_>, backend: &mut PluginBackend<(), Self::Sidecar, ()>,
+        _: &PluginDefinition, authority: &PluginLifecycleAuthority<'_>, backend: &mut PluginBackend<Self::Sidecar, ()>,
     ) -> Result<()> {
         let PluginBackend::Sidecar(backend) = backend else { unreachable!() };
         let Some(physical) = &mut backend.physical else {

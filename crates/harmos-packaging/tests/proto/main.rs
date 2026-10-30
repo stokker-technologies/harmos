@@ -75,21 +75,21 @@ fn independent_schema_catalogs() {
     let routes = Artifacts::new(&Contracts::of::<Routes>().unwrap()).unwrap();
     let portable = Artifacts::new(&Contracts::of::<Portable>().unwrap()).unwrap();
     let native = proto::generate(&routes.operation_contracts().unwrap(), &first.join("grpc/native")).unwrap();
-    let guest = proto::generate(&portable.operation_contracts().unwrap(), &first.join("grpc/portable")).unwrap();
+    let portable_export = proto::generate(&portable.operation_contracts().unwrap(), &first.join("grpc/portable")).unwrap();
     let peer = proto::generate(&portable.operation_contracts().unwrap(), &second.join("grpc/portable")).unwrap();
-    let snapshot = std::fs::read(guest.join("descriptors.bin")).unwrap();
+    let snapshot = std::fs::read(portable_export.join("descriptors.bin")).unwrap();
     assert_eq!(snapshot, std::fs::read(peer.join("descriptors.bin")).unwrap());
     for name in portable.files().keys() {
-        assert_eq!(std::fs::read(guest.join(name)).unwrap(), std::fs::read(peer.join(name)).unwrap());
+        assert_eq!(std::fs::read(portable_export.join(name)).unwrap(), std::fs::read(peer.join(name)).unwrap());
     }
     // Repeated And Reduced Exports Affect Only Their Selected Producer And Catalog.
     let repeated = proto::generate(&portable.operation_contracts().unwrap(), &first.join("grpc/portable")).unwrap();
     assert_eq!(std::fs::read(repeated.join("descriptors.bin")).unwrap(), snapshot);
     proto::generate(std::iter::empty(), &first.join("grpc/native")).unwrap();
-    assert_eq!(std::fs::read(guest.join("descriptors.bin")).unwrap(), snapshot);
+    assert_eq!(std::fs::read(portable_export.join("descriptors.bin")).unwrap(), snapshot);
     assert_eq!(std::fs::read(peer.join("descriptors.bin")).unwrap(), snapshot);
     assert!(DescriptorPool::decode(std::fs::read(native.join("descriptors.bin")).unwrap().as_slice()).unwrap().services().next().is_none());
-    let manifest = std::fs::read_to_string(guest.join("manifest.txt")).unwrap();
+    let manifest = std::fs::read_to_string(portable_export.join("manifest.txt")).unwrap();
     assert!(manifest.starts_with("descriptors.bin\n"));
     assert!(portable.files().keys().all(|name| manifest.lines().any(|line| line == name)));
 }

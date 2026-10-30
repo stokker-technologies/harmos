@@ -465,9 +465,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             const FACILITY: &str = #facility;
             const ENTRIES: &[#harmos::catalog::Node<#inventory::observers::Entry>] = <#name as #declarations>::OBSERVERS;
             #inventory::publications::require_tree_subset(ENTRIES, <#name as #declarations>::STREAMS);
-            const _: () = if FACILITY.as_bytes()[0] == b'g' {
-                assert!(#harmos::catalog::count(ENTRIES) == 0, "guest observer callbacks are unsupported");
-            };
             const LENGTH: usize = #inventory::observers::encoded_tree_len(FACILITY, #id, ENTRIES);
             #[used]
             static MARKER: [u8; LENGTH] = #inventory::observers::encode_tree(FACILITY, #id, ENTRIES);

@@ -41,7 +41,7 @@ use schematic_app::operations::{AnalyzeSchematic, ListDirectories};
 
 /* === Public Functions === */
 
-pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result<()> {
+pub async fn run(runtime: &Runtime, schematic: Snapshot) -> Result<()> {
     // Drain A Bounded Streaming Analysis
     let settings = StreamSettings {
         items: NonZeroUsize::MIN,
@@ -61,11 +61,9 @@ pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result
     println!("Cancelled analysis and waited for settlement");
 
     // Only The Native Sidecar Has Filesystem Access
-    if native {
-        let request = ListDirectories {};
-        let response = runtime.operation(request).run().await?;
-        println!("Native directories: {:?}", response.directories);
-    }
+    let request = ListDirectories {};
+    let response = runtime.operation(request).run().await?;
+    println!("Native directories: {:?}", response.directories);
     Ok(())
 }
 

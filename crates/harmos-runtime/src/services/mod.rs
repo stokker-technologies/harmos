@@ -73,7 +73,7 @@ pub(crate) type ServiceRunner =
 pub(crate) enum ServiceOwner {
     Host,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     Plugin(crate::plugin::PluginScope),
 }
 
@@ -179,7 +179,7 @@ impl ServiceManager {
     pub(crate) fn new(operations: Manager) -> Self {
         Self { operations, owner: ServiceOwner::Host }
     }
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(crate) fn scoped(operations: Manager, scope: crate::plugin::PluginScope) -> Self {
         Self {
             operations,
@@ -189,7 +189,7 @@ impl ServiceManager {
     fn owner(&self) -> &str {
         match &self.owner {
             ServiceOwner::Host => "host",
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin")]
             ServiceOwner::Plugin(scope) => scope.owner(),
         }
     }
@@ -232,7 +232,7 @@ impl ServiceManager {
         }
         let staged = self.operations.stage_services(
             entries,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin")]
             match &self.owner {
                 ServiceOwner::Host => None,
                 ServiceOwner::Plugin(scope) => Some(scope.clone()),
@@ -270,7 +270,7 @@ impl<A: Application> Resident<A> for AuthoredService {
         let mut dependencies = harmos_sdk::__private::ResourceSet::new();
         match &self.owner {
             ServiceOwner::Host => dependencies.insert(context.clone()).map_err(|_| harmos_sdk::ServingError::Catalog)?,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin")]
             ServiceOwner::Plugin(scope) => dependencies.insert(Arc::new(scope.clone())).map_err(|_| harmos_sdk::ServingError::Catalog)?,
         }
         let call = harmos_sdk::ExecutionContext::new(dependencies, harmos_sdk::operations::Host::context(&context.operations).clone())

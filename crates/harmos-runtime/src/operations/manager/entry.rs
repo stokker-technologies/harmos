@@ -62,7 +62,7 @@ impl Entry {
     }
 
     pub(super) fn lifecycle_control(&self) -> bool {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin")]
         if self.sdk.is_some() {
             return true;
         }
@@ -70,7 +70,7 @@ impl Entry {
     }
 
     pub(in crate::operations) fn retirement_control(&self) -> bool {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin")]
         if self.sdk == Some(harmos_operations::lifecycle::Action::Shutdown) {
             return true;
         }
@@ -78,7 +78,7 @@ impl Entry {
     }
 
     pub(in crate::operations) fn available_to(&self, origin: &Origin) -> Result<()> {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin")]
         if origin.has_lifecycle_loan() {
             return self.available_for_lifecycle();
         }
@@ -86,7 +86,7 @@ impl Entry {
         self.available()
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(in crate::operations) fn admitted_shutdown(&self, control: &Arc<Instance>) -> bool {
         self.sdk == Some(harmos_operations::lifecycle::Action::Shutdown)
             && self.active.load(Ordering::Acquire)
@@ -94,7 +94,7 @@ impl Entry {
             && self.pending.lock().expect("operation settlement lock is healthy").values().any(|original| Arc::ptr_eq(original, control))
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(in crate::operations) fn available_for_lifecycle(&self) -> Result<()> {
         if self.sdk.is_some() || self.active.load(Ordering::Acquire) {
             return self.available();
@@ -116,7 +116,7 @@ impl Entry {
         if !self.active.load(Ordering::Acquire) && !retiring {
             return Err(Error::Closing { domain: "operation" });
         }
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin")]
         if let Some(scope) = &self.plugin {
             if let Some(action) = self.sdk {
                 use harmos_operations::lifecycle::Action;
@@ -139,7 +139,7 @@ impl Entry {
         Ok(())
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(in crate::operations) fn plugin(&self) -> Option<&PluginScope> {
         self.plugin.as_ref()
     }
@@ -150,7 +150,7 @@ impl Entry {
         GrantAuthority {
             owner: self.owner.to_string(),
             operation: self.id().to_owned(),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin")]
             plugin: _origin
                 .scope
                 .as_ref()
@@ -163,7 +163,7 @@ impl Entry {
     }
 
     pub(in crate::operations) fn authorize(&self, _origin: &Origin) -> Result<()> {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin")]
         if let Some(caller) = &_origin.scope {
             if self.sdk.is_some() {
                 return Err(Error::OperationUnauthorized {

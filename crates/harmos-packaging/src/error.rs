@@ -56,9 +56,6 @@ pub enum Error {
     #[error("Cargo build failed: {0}")]
     Cargo(String),
 
-    #[error("guest componentization failed: {0}")]
-    Component(String),
-
     #[error("built artifact changed after stamping: {0}")]
     ArtifactChanged(std::path::PathBuf),
 

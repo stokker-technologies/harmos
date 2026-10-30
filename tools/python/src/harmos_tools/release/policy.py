@@ -68,7 +68,7 @@ def policy(directory: Path, name: str) -> dict[str, Any]:
 def publishable(directory: Path, metadata: dict) -> dict:
     """Select Library Workspace Members And Refuse Publishable Artifact-Only Packages."""
     settings = config(directory)
-    plugin_project = settings.get("project", {}).get("profile") in {"plugin", "sidecar", "guest"}
+    plugin_project = settings.get("project", {}).get("profile") in {"plugin", "sidecar"}
     plugins = {plugin["package"] for plugin in settings.get("release", {}).get("plugins", [])}
     members = set(metadata["workspace_members"])
     packages = {}

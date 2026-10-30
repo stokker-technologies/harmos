@@ -39,7 +39,7 @@ use harmos_runtime::{Error, Message, Result, operations::OperationManager};
 
 /* === Type Aliases === */
 
-type Backends = PluginBackend<Resources, Resources, Resources>;
+type Backends = PluginBackend<Resources, Resources>;
 
 /* === Structs === */
 
@@ -114,7 +114,7 @@ struct Host {
 
 struct Credit {
     runtime: harmos_runtime::Runtime<super::Bank>,
-    manager: PluginManager<Resources, Resources, Resources>,
+    manager: PluginManager<Resources, Resources>,
     host: Host,
     cleanup: Arc<CleanupOwner>,
     target: harmos_runtime::operations::PluginCallback,
@@ -123,7 +123,7 @@ struct Credit {
 
 struct Running {
     runtime: harmos_runtime::Runtime<super::Bank>,
-    manager: PluginManager<Resources, Resources, Resources>,
+    manager: PluginManager<Resources, Resources>,
     host: Host,
     gate: Arc<tokio::sync::Notify>,
     invocation: harmos_runtime::operations::Running<Compute>,
@@ -174,7 +174,6 @@ impl harmos_runtime::Operation for Discover {
 }
 
 impl PluginLifecycle for SelectedHost {
-    type Guest = Resources;
     type Sidecar = Resources;
     type Embedded = Resources;
     fn prepare(&mut self, _: &PluginDefinition) -> Result<Backends> {
@@ -250,7 +249,6 @@ impl Drop for CleanupGuard {
 }
 
 impl PluginLifecycle for Host {
-    type Guest = Resources;
     type Sidecar = Resources;
     type Embedded = Resources;
 

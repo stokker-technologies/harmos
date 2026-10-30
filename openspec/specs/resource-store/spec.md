@@ -8,7 +8,7 @@ Define shared lifecycle setup, frozen resource ownership and constant catalog in
 
 ### Requirement: Shared Lifecycle
 
-Applications, sidecars and guests SHALL implement one Lifecycle contract with Config,
+Applications and sidecars SHALL implement one Lifecycle contract with Config,
 Error and Context, asynchronous prepare(config, setup), initialize(context), stop(context)
 and cleanup(). Application SHALL extend Lifecycle and retain its non-resource type items.
 
@@ -19,7 +19,7 @@ and cleanup(). Application SHALL extend Lifecycle and retain its non-resource ty
 
 #### Scenario: Plugin Order
 
-- **WHEN** a sidecar or guest activates and stops
+- **WHEN** a sidecar activates and stops
 - **THEN** its original owner follows the same prepare, initialize, serve, stop, cleanup order.
 
 ### Requirement: Single Setup And Frozen Resources
@@ -68,13 +68,13 @@ bind_operations, resource bundles and consumer RegistrationBatch APIs SHALL be r
 
 ### Requirement: Symmetric Facade Attributes
 
-The harmos facade SHALL expose sidecar and guest modules and attributes behind matching
+The harmos facade SHALL expose the sidecar module and attribute behind matching
 features. Generated paths SHALL resolve through the facade without caller-ending guesses;
 resource and requirement declarations SHALL NOT be silently cfg-dropped.
 
 #### Scenario: Facade-Only Consumer
 
-- **WHEN** a consumer depends on harmos and uses either facade attribute
+- **WHEN** a consumer depends on harmos and uses the facade attribute
 - **THEN** it compiles and embeds the expected inventory without direct carrier dependencies.
 
 ### Requirement: Lifecycle Guidance

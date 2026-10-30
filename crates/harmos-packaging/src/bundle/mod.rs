@@ -120,7 +120,6 @@ impl Bundle {
             if let Some(executable) = &file.executable {
                 let facility = match executable.facility {
                     Facility::Sidecar => harmos_domain::inventory::Facility::Sidecar,
-                    Facility::Guest => harmos_domain::inventory::Facility::Guest,
                 };
                 let declaration = Declaration::inspect_with_settings(content, facility, settings)
                     .map_err(|error| invalid(format!("plugin `{}` executable `{}`: {error}", manifest.identity.name, file.path)))?;

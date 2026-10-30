@@ -8,8 +8,8 @@
  */
 
 // The host one authored body uses wherever it runs: in process over
-// the operation manager, in a sidecar over the connection frames, or in a guest
-// over the Wasm imports. Storage and other host services are reached as
+// the operation manager or in a sidecar over the connection frames.
+// Storage and other host services are reached as
 // declared operations through `call` and `submit`, never as per-kit methods.
 
 /* === Modules === */

@@ -96,7 +96,7 @@ where
 /* === Public Functions === */
 
 // The gRPC handler of one declaration, selected by the directions it streams.
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+#[cfg(feature = "plugin-sidecar")]
 pub(crate) fn handler<O: crate::operations::OperationDeclaration>() -> Handler {
     use crate::operations::Direction;
     match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {

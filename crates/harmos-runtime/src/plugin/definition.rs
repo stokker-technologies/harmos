@@ -60,9 +60,6 @@ pub struct PluginContributions {
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum PluginArtifact {
-    Guest {
-        sha256: [u8; 32],
-    },
     Sidecar {
         path: PathBuf,
         sha256: [u8; 32],
@@ -81,7 +78,6 @@ pub enum PluginArtifact {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PluginKind {
     Sidecar,
-    Guest,
     Embedded,
 }
 
@@ -157,7 +153,6 @@ impl fmt::Debug for PluginContributions {
 impl fmt::Debug for PluginArtifact {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Guest { sha256 } => formatter.debug_struct("Guest").field("sha256", sha256).finish(),
             Self::Sidecar { path, sha256, directory, .. } => formatter
                 .debug_struct("Sidecar")
                 .field("path", path)
@@ -175,7 +170,6 @@ impl fmt::Debug for PluginArtifact {
 impl PluginArtifact {
     pub fn kind(&self) -> PluginKind {
         match self {
-            Self::Guest { .. } => PluginKind::Guest,
             Self::Sidecar { .. } | Self::LocalSidecar { .. } => PluginKind::Sidecar,
             Self::Embedded { .. } => PluginKind::Embedded,
         }
@@ -183,7 +177,6 @@ impl PluginArtifact {
 
     fn validate(&self) -> Result<(), PluginDefinitionError> {
         match self {
-            Self::Guest { .. } => Ok(()),
             Self::Embedded { revision } | Self::LocalSidecar { revision } => {
                 if revision.trim().is_empty() {
                     return Err(invalid("artifact revision", "revision is empty"));
@@ -227,12 +220,7 @@ impl PluginDefinition {
         Self::inspected(executable.declaration(), artifact, configuration)
     }
 
-    #[cfg(feature = "plugin-guest")]
-    pub fn guest<A: crate::Application>(loaded: &crate::guest::Loaded<A>, configuration: Vec<u8>) -> Result<Self, PluginDefinitionError> {
-        Self::inspected(loaded.declaration(), PluginArtifact::Guest { sha256: loaded.sha256() }, configuration)
-    }
-
-    #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-sidecar")]
     fn inspected(
         declaration: &harmos_domain::inventory::Declaration, artifact: PluginArtifact, configuration: Vec<u8>,
     ) -> Result<Self, PluginDefinitionError> {

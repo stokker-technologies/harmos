@@ -110,25 +110,15 @@ def product(profile: str, scratch: Path) -> None:
     package = next(package for package in metadata["packages"] if package["name"] == f"protoc-bin-vendored-{platform}")
     protoc = Path(package["manifest_path"]).parent / "bin" / ("protoc.exe" if os.name == "nt" else "protoc")
 
-    builds = {}
-    for package in ("schematic-sidecar", "schematic-guest"):
-        capture = (
-            fixtures.capture(package, SCHEMATIC.parent, profile, ["-p", package, "--target", "wasm32-unknown-unknown"], scratch)
-            if package == "schematic-guest"
-            else native
-        )
-        backend = "sidecar" if package == "schematic-sidecar" else "guest"
-        built, receipt = fixtures.collect(tool, SCHEMATIC, package, backend, profile, capture, scratch)
-        artifact, staged = fixtures.stage_build(built, receipt, package, files, examples)
-        source = examples / artifact
-        filename = source.name if package == "schematic-sidecar" else "schematic-guest.wasm"
-        destination = export / "bin/plugins" / filename
-        fixtures.copy(source, destination, files)
-        artifacts[package] = destination.relative_to(export).as_posix()
-        builds[package] = f"product/examples/{staged}"
-        if package == "schematic-sidecar":
-            # Consume Producer-Local Schemas Before The Guest Compiler Preflight.
-            fixtures.generate_python(tool, export / builds[package], protoc, files)
+    package = "schematic-sidecar"
+    built, receipt = fixtures.collect(tool, SCHEMATIC, package, "sidecar", profile, native, scratch)
+    artifact, staged = fixtures.stage_build(built, receipt, package, files, examples)
+    source = examples / artifact
+    destination = export / "bin/plugins" / source.name
+    fixtures.copy(source, destination, files)
+    artifacts[package] = destination.relative_to(export).as_posix()
+    builds = {package: f"product/examples/{staged}"}
+    fixtures.generate_python(tool, export / builds[package], protoc, files)
 
     catalog = {
         "artifacts": artifacts,

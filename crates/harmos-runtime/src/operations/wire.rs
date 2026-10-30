@@ -51,7 +51,7 @@ pub(super) struct EncodedInput {
     pub(super) native_capacity: Option<OwnedSemaphorePermit>,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 #[derive(Clone)]
 pub struct PluginCallback {
     operations: Manager,
@@ -204,7 +204,7 @@ impl Manager {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 impl Manager {
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn capture_host_control(
@@ -238,7 +238,7 @@ impl Manager {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 impl PluginCallback {
     pub(super) fn from_entry(operations: Manager, entry: Arc<Entry>, contract: &crate::operations::Contract) -> Result<Self> {
         if entry.declared() != contract.operation() || entry.contract.as_ref() != Some(contract) {
@@ -339,7 +339,7 @@ impl PluginControl {
     }
 }
 
-#[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-sidecar")]
 impl super::Caller {
     pub(crate) fn submit_encoded_at(
         &self, operation: &str, fingerprint: [u8; 32], generation: u64, payload: Vec<u8>, submitted: tokio::time::Instant,
@@ -370,7 +370,7 @@ impl super::Context<'_> {
         )
     }
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn submit_encoded_at(
         &self, operation: &str, fingerprint: [u8; 32], generation: u64, payload: Vec<u8>, submitted: tokio::time::Instant,
         values: Vec<super::CallValue>,

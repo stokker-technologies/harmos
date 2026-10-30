@@ -38,7 +38,7 @@ use harmos_runtime::{Error, Message, Result, operations::OperationManager};
 
 /* === Type Aliases === */
 
-type Backends = PluginBackend<Resources, Resources, Resources>;
+type Backends = PluginBackend<Resources, Resources>;
 
 /* === Structs === */
 
@@ -164,7 +164,6 @@ impl harmos_runtime::Operation for ControlDeclaration {
 }
 
 impl PluginLifecycle for Host {
-    type Guest = Resources;
     type Sidecar = Resources;
     type Embedded = Resources;
     fn preflight(&mut self, candidate: &PluginDefinitions) -> Result<()> {
@@ -172,7 +171,6 @@ impl PluginLifecycle for Host {
     }
     fn prepare(&mut self, definition: &PluginDefinition) -> Result<Backends> {
         Ok(match definition.kind() {
-            harmos_runtime::plugin::PluginKind::Guest => PluginBackend::Guest(Resources::default()),
             harmos_runtime::plugin::PluginKind::Sidecar => PluginBackend::Sidecar(Resources::default()),
             harmos_runtime::plugin::PluginKind::Embedded => PluginBackend::Embedded(Resources::default()),
         })
@@ -184,7 +182,7 @@ impl PluginLifecycle for Host {
         &mut self, definition: &PluginDefinition, router: &Router, _: &PluginLifecycleAuthority<'_>, backend: &mut Backends,
     ) -> Result<()> {
         let resources = match backend {
-            PluginBackend::Guest(resources) | PluginBackend::Sidecar(resources) | PluginBackend::Embedded(resources) => resources,
+            PluginBackend::Sidecar(resources) | PluginBackend::Embedded(resources) => resources,
         };
         let endpoint = router.enter(&definition.id).unwrap();
         self.callers.insert(definition.id.clone(), endpoint.caller());
@@ -210,7 +208,7 @@ impl PluginLifecycle for Host {
     }
     async fn stop(_: &PluginDefinition, _: &PluginLifecycleAuthority<'_>, backend: &mut Backends) -> Result<()> {
         let resources = match backend {
-            PluginBackend::Guest(resources) | PluginBackend::Sidecar(resources) | PluginBackend::Embedded(resources) => resources,
+            PluginBackend::Sidecar(resources) | PluginBackend::Embedded(resources) => resources,
         };
         if let Some(registration) = resources.registration.as_mut() {
             registration.shutdown().await?;
@@ -256,7 +254,7 @@ fn required(contract: harmos_runtime::operations::Contract, grants: Vec<Grant>) 
 fn requiring(required: Vec<Required>) -> PluginDefinitions {
     let mut declared: Vec<_> = definitions("first").definitions().cloned().collect();
     let client = declared.iter_mut().find(|definition| definition.id == "client").unwrap();
-    client.artifact = PluginArtifact::Guest { sha256: [1; 32] };
+    client.artifact = PluginArtifact::LocalSidecar { revision: "client".into() };
     client.contributions.required_contracts = Some(required);
     PluginDefinitions::new(declared, []).unwrap()
 }

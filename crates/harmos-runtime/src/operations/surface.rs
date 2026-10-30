@@ -50,7 +50,7 @@ pub struct Invocation<O: OperationDeclaration, L: Lane, E: EndpointSet = ()> {
 enum Target {
     Host(Manager),
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     Plugin(crate::plugin::PluginScope),
 }
 
@@ -110,7 +110,7 @@ impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
         request.lane = self.lane.map(|lane| lane.name());
         let (operations, source) = match self.target {
             Target::Host(operations) => (operations, Source::Host),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin")]
             Target::Plugin(scope) => (scope.operation_manager()?, Source::Scope(scope)),
         };
         let id = self.id.as_deref().unwrap_or(O::ID);
@@ -122,7 +122,7 @@ impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 impl crate::plugin::PluginScope {
     pub fn operation<O: OperationDeclaration<Request = O>, L: Lane>(&self, request: O) -> Invocation<O, L> {
         Invocation {
