@@ -24,8 +24,6 @@ from ..process import spawn_flags
 
 # === Constants === #
 
-# Seeded Templates Contain Jinja Until Instantiated
-TEMPLATE_ROOT = Path(".stkr/templates")
 
 # === Types === #
 
@@ -47,7 +45,8 @@ def files(directory: Path, *patterns: str) -> list[str]:
 
 
 def maintained(path: Path) -> bool:
-    return not path.is_relative_to(TEMPLATE_ROOT)
+    """Exclude Private Dot-Directories Without Loading Their Templates."""
+    return not any(part.startswith(".") for part in path.parts[:-1])
 
 
 # === Private Functions === #

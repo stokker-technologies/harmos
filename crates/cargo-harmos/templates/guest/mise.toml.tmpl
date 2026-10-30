@@ -51,13 +51,17 @@ run = "uv sync --locked --project tools/python --all-groups"
 description = "Format Every Language"
 usage = 'flag "--check"'
 run = [
-  { tasks = ["format:toml {% if usage.check %}--check{% endif %}", "format:rust {% if usage.check %}--check{% endif %}", "format:python {% if usage.check %}--check{% endif %}"] },
+  { tasks = [
+    "format:toml {% if usage.check %}--check{% endif %}",
+    "format:rust {% if usage.check %}--check{% endif %}",
+    "format:python {% if usage.check %}--check{% endif %}",
+  ] },
 ]
 
 [tasks."format:python"]
 description = "Format Python"
 usage = 'flag "--check"'
-run = 'uv run --locked --project tools/python ruff format --force-exclude --exclude="**/.stkr/templates/**" "tools/python"{% if usage.check %} --check{% endif %}'
+run = 'uv run --locked --project tools/python ruff format --force-exclude --exclude="**/.*/**" "tools/python"{% if usage.check %} --check{% endif %}'
 
 [tasks."format:rust"]
 description = "Format Rust"
@@ -78,8 +82,8 @@ depends = ["lint:rust", "lint:python"]
 [tasks."lint:python"]
 description = "Lint Python"
 run = [
-  'uv run --locked --project tools/python ruff check --force-exclude --exclude="**/.stkr/templates/**" "tools/python"',
-  'uv run --locked --project tools/python ty check --exclude="**/.stkr/templates/**" "tools/python"',
+  'uv run --locked --project tools/python ruff check --force-exclude --exclude="**/.*/**" "tools/python"',
+  'uv run --locked --project tools/python ty check --exclude="**/.*/**" "tools/python"',
 ]
 
 [tasks."lint:rust"]
@@ -213,7 +217,7 @@ run = "uv run --locked --project tools/python python -m project_tools.release.ru
 
 [tasks.housekeeping]
 description = "Clean Owned Build Outputs And State"
-run = "uv run --locked --project tools/python python .stkr/commands.py project housekeeping"
+run = "stkr project housekeeping"
 
 [tasks."housekeeping:outdated"]
 description = "Report Available Dependency And Tool Updates Without Changing Anything"

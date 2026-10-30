@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import Any
 
 # Third Party Imports
-
 # Local Imports
 from ..process import spawn_flags
 
@@ -50,13 +49,13 @@ class ToolError(Exception):
 def root() -> Path:
     current = Path.cwd().resolve()
     for candidate in (current, *current.parents):
-        if (candidate / ".stkr/project.toml").is_file():
+        if (candidate / "tools/project.toml").is_file():
             return candidate
     raise ToolError("no project policy file found")
 
 
 def config(directory: Path) -> dict[str, Any]:
-    return tomllib.loads((directory / ".stkr/project.toml").read_text(encoding="utf-8"))
+    return tomllib.loads((directory / "tools/project.toml").read_text(encoding="utf-8"))
 
 
 def policy(directory: Path, name: str) -> dict[str, Any]:
