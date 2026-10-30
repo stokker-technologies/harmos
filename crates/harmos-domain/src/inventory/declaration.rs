@@ -144,7 +144,7 @@ pub enum DeclarationError {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Fragment {
     Plugin(contracts::Identity),
-    Contracts(Box<contracts::NamedManifest>),
+    Contracts(Box<contracts::NamedFragment>),
     Contributions(Box<contributions::Manifest>),
     Listeners(Box<listeners::NamedManifest>),
     Observers(Box<observers::Manifest>),
@@ -207,10 +207,6 @@ impl Declaration {
         };
 
         // Resolve The Complete Inert Dictionary Before Selecting Owned Sections.
-        let contract_manifests = contract_manifests
-            .into_iter()
-            .map(|manifest| manifest.resolve(&schemas, &mut settings))
-            .collect::<Result<_, contracts::Error>>()?;
         let listener_manifests = listener_manifests
             .into_iter()
             .map(|manifest| manifest.resolve(&schemas, &mut settings))
@@ -219,7 +215,7 @@ impl Declaration {
             .into_iter()
             .map(|manifest| manifest.resolve(&schemas, &mut settings))
             .collect::<Result<_, publications::Error>>()?;
-        let contracts = contracts::select(contract_manifests, name, &id)?;
+        let contracts = contracts::select(contract_manifests, name, &id, &schemas, &mut settings)?;
         let sections = contributions::select(contribution_manifests, name, &id)?;
         let listeners = listeners::select(listener_manifests, name, &id, &contracts.provides)?.unwrap_or_default();
         let operations = contracts.provides.iter().map(|contract| contract.operation().clone()).collect();

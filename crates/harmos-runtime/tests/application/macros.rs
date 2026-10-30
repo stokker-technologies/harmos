@@ -457,11 +457,11 @@ mod unified_plugins {
             );
         }
         {
-            let mut parts: Vec<serde_json::Value> = Listening::markers()
-                .unwrap()
-                .into_iter()
-                .map(|marker| serde_json::from_slice(&marker[harmos_domain::PREFIX.len()..marker.len() - 1]).unwrap())
-                .collect();
+            let mut parts = harmos_domain::artifacts::fragments::<serde_json::Value>(
+                &Listening::markers().unwrap().concat(),
+                &["contracts", "listeners", "plugin", "contributions", "publications", "observers", "schema"],
+            )
+            .unwrap();
             let bytes = |parts: &[serde_json::Value]| {
                 let mut bytes = Vec::new();
                 for part in parts {
@@ -480,7 +480,7 @@ mod unified_plugins {
                 .is_err()
             );
             parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 1.into();
-            parts.iter_mut().find(|part| part["kind"] == "contracts").unwrap()["provides"] = serde_json::json!([]);
+            parts.retain(|part| part["kind"] != "contracts" || part["entry"]["direction"] != "provides");
             assert!(
                 harmos_runtime::sidecar::inventory::Declaration::inspect(
                     &bytes(&parts),

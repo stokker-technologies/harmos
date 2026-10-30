@@ -436,9 +436,9 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             const PROVIDES: &[#harmos::catalog::Node<#harmos::operations::WireDeclaration>] = <#name as #declarations>::PROVIDES;
             const REQUIRES: &[#harmos::catalog::Node<#requirement>] = <#name as #declarations>::REQUIRES;
             const SDK: [#harmos::operations::OperationPolicy; 2] = #lifecycle;
-            const LENGTH: usize = #inventory::contracts::encoded_tree_len(FACILITY, #id, PROVIDES, REQUIRES, &SDK);
+            const LENGTH: usize = #inventory::contracts::encoded_fragments_len(FACILITY, #id, PROVIDES, REQUIRES, &SDK);
             #[used]
-            static MARKER: [u8; LENGTH] = #inventory::contracts::encode_tree(FACILITY, #id, PROVIDES, REQUIRES, &SDK);
+            static MARKER: [u8; LENGTH] = #inventory::contracts::encode_fragments(FACILITY, #id, PROVIDES, REQUIRES, &SDK);
             &MARKER
         };
 
