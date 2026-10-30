@@ -35,6 +35,7 @@ pub enum Error {
     #[error("build cancelled after retaining and settling its child processes")]
     Cancelled,
 
+    #[cfg(feature = "build-tools")]
     #[error(transparent)]
     Watch(#[from] notify::Error),
 
