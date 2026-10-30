@@ -470,7 +470,7 @@ jobs:
         harmos_tools.ci.build --profile release --output product --task build
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
-        contains(fromJSON(needs.impact.outputs.jobs), 'build')) && (env.PROFILE == 'dev')
+        contains(fromJSON(needs.impact.outputs.jobs), 'build')) && (env.PROFILE == 'dev' && github.event_name != 'pull_request')
     - name: Archive product
       uses: ./.github/actions/archive-build
       with:
@@ -554,7 +554,7 @@ jobs:
         harmos_tools.ci.build --profile release --output product --task build
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
-        contains(fromJSON(needs.impact.outputs.jobs), 'build')) && (env.PROFILE == 'dev')
+        contains(fromJSON(needs.impact.outputs.jobs), 'build')) && (env.PROFILE == 'dev' && github.event_name != 'pull_request')
     - name: Archive product
       uses: ./.github/actions/archive-build
       with:
