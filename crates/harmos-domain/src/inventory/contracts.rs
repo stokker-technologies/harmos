@@ -740,6 +740,17 @@ mod tests {
     }
 
     #[test]
+    fn encoded_inventory_round_trip() {
+        let mut artifact = artifact("sidecar", &mut []);
+        artifact.extend_from_slice(&CONTRACTS);
+        let declaration = Declaration::inspect(&artifact, Facility::Sidecar).unwrap();
+        assert_eq!(declaration.contracts.provides.len(), PROVIDED.len());
+        assert_eq!(declaration.contracts.requires.len(), REQUIRED.len());
+        assert_eq!(declaration.contracts.lifecycle[0], lifecycle::Descriptor::new(lifecycle::Action::Initialize, SDK[0]).unwrap());
+        assert_eq!(declaration.contracts.lifecycle[1], lifecycle::Descriptor::new(lifecycle::Action::Shutdown, SDK[1]).unwrap());
+    }
+
+    #[test]
     fn total_over_fragment_limit_packages_and_resolves() {
         use harmos_packaging::bundle::{Bundle, Executable, Facility as Packaged, Identity, Limits, Source};
         assert!(CONTRACTS.len() > crate::FRAGMENT_LIMIT);
