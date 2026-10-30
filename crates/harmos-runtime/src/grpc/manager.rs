@@ -193,12 +193,6 @@ impl Drop for Attached {
 
 impl Settings {
     fn validate(&self) -> Result<()> {
-        if !self.web && !self.allowed_origins.is_empty() {
-            return Err(Error::InvalidInput {
-                field: "gRPC allowed origins",
-                reason: "cross-origin access requires gRPC-Web to be enabled",
-            });
-        }
         if self.request_timeout.is_zero()
             || self.shutdown_timeout.is_zero()
             || tokio::time::Instant::now().checked_add(self.request_timeout).is_none()
