@@ -908,6 +908,12 @@ stores. Encoded calls still require an explicit
 `operations::Settings::preparation_bytes` budget through setup settings.
 
 `PluginManager` remains the lower-level extension for applications supplying their own backend lifecycle.
+Native backends can use `sidecar::NativeLifecycle` to retain their operation and SDK
+registrations and initialization/shutdown receipts. Stage operations and any application
+listeners before the SDK, then begin and join initialization under the manager's authority.
+During retirement, settle admitted SDK work, join initialization, begin and join shutdown,
+withdraw operations, settle the physical carrier and close the SDK. The backend owns
+physical progress and shutdown deadlines; interrupted joins retain their original receipts.
 
 Operation metadata belongs on its owning struct in a vertical file; catalogs
 assemble those types. `harmos::prelude::*` provides a bounded set of common

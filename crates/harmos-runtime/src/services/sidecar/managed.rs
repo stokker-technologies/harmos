@@ -24,10 +24,9 @@ use std::task::Poll;
 use sha2::{Digest, Sha256};
 // Local Imports
 use super::{
-    Notice, Supervised,
+    NativeLifecycle, Notice, Supervised,
     physical::{Physical, Polling},
 };
-use crate::operations::{EncodedInvocation, PluginRegistration, PluginSdkRegistration};
 use crate::plugin::{
     PluginArtifact, PluginBackend, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginLifecycleAuthority, PluginManager,
     PluginTransition, Router,
@@ -74,12 +73,7 @@ struct Backend<A: Application, S, H> {
     grace: std::time::Duration,
     dependencies: BTreeSet<String>,
     physical: Option<Physical<A, S, H>>,
-    registration: Option<PluginRegistration>,
-    sdk: Option<PluginSdkRegistration>,
-    initializing: Option<EncodedInvocation>,
-    shutting_down: Option<EncodedInvocation>,
-    initialized: Option<tokio::sync::watch::Receiver<bool>>,
-    shutdown_attempted: bool,
+    native: NativeLifecycle,
     stream_listeners: Option<crate::streams::PluginListenerRegistration>,
 }
 
@@ -404,12 +398,7 @@ where
             grace: self.residents[&definition.id].grace,
             dependencies: self.dependencies.remove(&definition.id).expect("original resolved dependencies transfer once"),
             physical: None,
-            registration: None,
-            sdk: None,
-            initializing: None,
-            shutting_down: None,
-            initialized: None,
-            shutdown_attempted: false,
+            native: NativeLifecycle::default(),
             stream_listeners: None,
         }))
     }
@@ -445,21 +434,17 @@ where
             })
         };
         let native = Arc::new(drive(physical, &self.polling, &backend.dependencies, &mut self.exit, staged, Progress::Admission).await?);
-        backend.registration = Some(self.operations.stage_plugin(native.scope().expect("original native scope"), |bindings| {
-            (self.catalog)(bindings, self.lane, native.clone(), self.capacity)
-        })?);
+        backend
+            .native
+            .stage_operations(&native, &self.operations, |bindings| (self.catalog)(bindings, self.lane, native.clone(), self.capacity))?;
         backend.stream_listeners =
             Some(self.streams.stage_listeners(native.scope().expect("original native scope"), &self.operations, |bindings| {
                 (self.stream_listeners)(definition, bindings)
             })?);
-        backend.initialized = Some(native.initialization());
-        backend.sdk = Some(native.stage_sdk(&self.operations, self.lane)?);
-        backend.initializing =
-            Some(backend.sdk.as_ref().unwrap().submit_initialize(authority, &definition.configuration, self.encoding_memory_bytes)?);
-        let initializing = backend.initializing.as_mut().unwrap();
-        let receipt = async { Ok(initializing.await) };
+        backend.native.stage_sdk(&native, &self.operations, self.lane)?;
+        backend.native.begin_initialize(authority, &definition.configuration, self.encoding_memory_bytes)?;
+        let receipt = async { Ok(backend.native.join_initialization().await) };
         let result = drive(physical, &self.polling, &backend.dependencies, &mut self.exit, receipt, Progress::Admission).await?;
-        backend.initializing.take();
         result?;
         physical.ready();
         Ok(())
@@ -476,58 +461,41 @@ where
             drive(physical, &backend.polling, &backend.dependencies, &mut backend.exit, listeners.shutdown(), Progress::Settlement).await?;
         }
         backend.stream_listeners.take();
-        if let Some(sdk) = &backend.sdk {
-            drive(physical, &backend.polling, &backend.dependencies, &mut backend.exit, sdk.settle(), Progress::Settlement).await?;
-            if let Some(initializing) = &mut backend.initializing {
-                let receipt = async { Ok(initializing.await) };
-                let _outcome =
-                    drive(physical, &backend.polling, &backend.dependencies, &mut backend.exit, receipt, Progress::Settlement).await?;
-                backend.initializing.take();
-            }
-            let initialized = backend.initialized.as_ref().is_some_and(|original| *original.borrow());
-            if physical.is_running() && initialized && !backend.shutdown_attempted {
-                backend.shutting_down = Some(sdk.submit_shutdown(authority)?);
-                backend.shutdown_attempted = true;
-            }
-            if let Some(shutdown) = &mut backend.shutting_down {
-                let grace = backend.grace;
-                let receipt = async { Ok((&mut *shutdown).await) };
-                let orderly = crate::supervision::executor::timeout(
-                    grace,
-                    drive(physical, &backend.polling, &backend.dependencies, &mut backend.exit, receipt, Progress::Settlement),
-                )
-                .await;
-                let result = match orderly {
-                    Ok(result) => result?,
-                    Err(_) => {
-                        // End The Original Carrier, Then Join Its Retained SDK Receipt.
-                        physical.request_cancel();
-                        drive(
-                            physical,
-                            &backend.polling,
-                            &backend.dependencies,
-                            &mut backend.exit,
-                            async { Ok(shutdown.await) },
-                            Progress::Settlement,
-                        )
-                        .await?
-                    }
-                };
-                backend.shutting_down.take();
-                result?;
-            }
+        drive(physical, &backend.polling, &backend.dependencies, &mut backend.exit, backend.native.settle(), Progress::Settlement).await?;
+        let receipt = async { Ok(backend.native.join_initialization().await) };
+        let _outcome = drive(physical, &backend.polling, &backend.dependencies, &mut backend.exit, receipt, Progress::Settlement).await?;
+        backend.native.begin_shutdown(authority, physical.is_running())?;
+        if backend.native.shutdown_pending() {
+            let grace = backend.grace;
+            let receipt = async { Ok(backend.native.join_shutdown().await) };
+            let orderly = crate::supervision::executor::timeout(
+                grace,
+                drive(physical, &backend.polling, &backend.dependencies, &mut backend.exit, receipt, Progress::Settlement),
+            )
+            .await;
+            let result = match orderly {
+                Ok(result) => result?,
+                Err(_) => {
+                    // End The Original Carrier, Then Join Its Retained SDK Receipt.
+                    physical.request_cancel();
+                    drive(
+                        physical,
+                        &backend.polling,
+                        &backend.dependencies,
+                        &mut backend.exit,
+                        async { Ok(backend.native.join_shutdown().await) },
+                        Progress::Settlement,
+                    )
+                    .await?
+                }
+            };
+            result?;
         }
-        if let Some(registration) = &mut backend.registration {
-            drive(physical, &backend.polling, &backend.dependencies, &mut backend.exit, registration.shutdown(), Progress::Settlement)
-                .await?;
-        }
+        drive(physical, &backend.polling, &backend.dependencies, &mut backend.exit, backend.native.withdraw(), Progress::Settlement)
+            .await?;
         physical.request_cancel();
         drive(physical, &backend.polling, &backend.dependencies, &mut backend.exit, async { Ok(()) }, Progress::Settlement).await?;
-        if let Some(sdk) = &mut backend.sdk {
-            sdk.close().await?;
-        }
-        backend.sdk.take();
-        backend.registration.take();
+        backend.native.close().await?;
         backend.physical.take();
         backend.progress.take();
         Ok(())
