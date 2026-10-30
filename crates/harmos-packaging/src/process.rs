@@ -51,11 +51,18 @@ pub struct ProcessSettings {
 }
 
 pub(super) struct Process {
-    child: Arc<Mutex<Box<dyn ChildWrapper>>>,
+    child: Arc<Mutex<Owner>>,
     finished: Arc<AtomicBool>,
     monitor: Option<JoinHandle<std::io::Result<()>>>,
     failed: Arc<AtomicBool>,
     timed_out: Arc<AtomicBool>,
+}
+
+struct Owner {
+    child: Box<dyn ChildWrapper>,
+    armed: bool,
+    #[cfg(unix)]
+    group: libc::pid_t,
 }
 
 /* === Enums === */
@@ -76,6 +83,58 @@ impl BuildCancellation {
     }
 }
 
+impl Owner {
+    #[cfg(unix)]
+    #[expect(unsafe_code, reason = "kill with signal zero only observes the owned process-group identity")]
+    fn group_exists(&mut self) -> std::io::Result<bool> {
+        if !self.armed {
+            return Ok(false);
+        }
+        // A process group may outlive its leader; retire its numeric identity
+        // once absence is observed so later cleanup cannot reuse it.
+        if unsafe { libc::kill(-self.group, 0) } == 0 {
+            return Ok(true);
+        }
+        let error = std::io::Error::last_os_error();
+        match error.raw_os_error() {
+            Some(libc::ESRCH) => {
+                self.armed = false;
+                Ok(false)
+            }
+            Some(libc::EPERM) => Ok(true),
+            _ => Err(error),
+        }
+    }
+
+    fn try_wait(&mut self) -> std::io::Result<Option<ExitStatus>> {
+        let status = self.child.try_wait()?;
+        #[cfg(unix)]
+        if status.is_some() {
+            self.group_exists()?;
+        }
+        Ok(status)
+    }
+
+    fn kill(&mut self) -> std::io::Result<()> {
+        if !self.armed {
+            return Ok(());
+        }
+        #[cfg(unix)]
+        if !self.group_exists()? {
+            return Ok(());
+        }
+        let result = match self.child.start_kill() {
+            #[cfg(unix)]
+            Err(error) if error.raw_os_error() == Some(libc::ESRCH) => Ok(()),
+            result => result,
+        };
+        if result.is_ok() {
+            self.armed = false;
+        }
+        result
+    }
+}
+
 impl Process {
     pub(super) fn spawn(command: Command, cancellation: &BuildCancellation) -> Result<Self, Error> {
         Self::spawn_until(command, cancellation, None)
@@ -93,7 +152,15 @@ impl Process {
             flags.0.0 = 0x08000000;
             command.wrap(flags).wrap(process_wrap::std::JobObject);
         }
-        let child = Arc::new(Mutex::new(command.spawn()?));
+        let child = command.spawn()?;
+        #[cfg(unix)]
+        let group = libc::pid_t::try_from(child.id()).map_err(|_| std::io::Error::other("process identity exceeds group range"))?;
+        let child = Arc::new(Mutex::new(Owner {
+            child,
+            armed: true,
+            #[cfg(unix)]
+            group,
+        }));
         let retained = child.clone();
         let finished = Arc::new(AtomicBool::new(false));
         let completed = finished.clone();
@@ -110,7 +177,7 @@ impl Process {
                     expired.store(true, Ordering::Release);
                 }
                 if cancellation.is_cancelled() || fault.load(Ordering::Acquire) || elapsed {
-                    return retained.lock().expect("process owner is healthy").start_kill();
+                    return retained.lock().expect("process owner is healthy").kill();
                 }
                 std::thread::park_timeout(Duration::from_millis(20));
             }
@@ -126,14 +193,11 @@ impl Process {
     }
 
     pub(super) fn stdout(&self) -> std::process::ChildStdout {
-        self.child.lock().expect("process owner is healthy").stdout().take().expect("Cargo stdout was piped")
+        self.child.lock().expect("process owner is healthy").child.stdout().take().expect("Cargo stdout was piped")
     }
 
     pub(super) fn kill(&self) -> Result<(), Error> {
-        let mut child = self.child.lock().expect("process owner is healthy");
-        if child.try_wait()?.is_none() {
-            child.start_kill()?;
-        }
+        self.child.lock().expect("process owner is healthy").kill()?;
         Ok(())
     }
 
@@ -168,7 +232,7 @@ impl Process {
 
     fn output_bounded(mut self, stdout_limit: usize, stderr_limit: usize) -> Result<Output, Error> {
         let mut stdout = self.stdout();
-        let mut stderr = self.child.lock().expect("process owner is healthy").stderr().take().expect("Cargo stderr was piped");
+        let mut stderr = self.child.lock().expect("process owner is healthy").child.stderr().take().expect("Cargo stderr was piped");
         let fault = self.failed.clone();
         let stdout = std::thread::spawn(move || read(&mut stdout, stdout_limit, &fault));
         let fault = self.failed.clone();

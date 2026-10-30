@@ -58,6 +58,12 @@ fn catalog_capture_bounds_output_and_settles_process_tree() {
             }
             match fs::read_to_string("mode").unwrap_or_default().as_str() {
                 "flood" => loop { println!("{}", "x".repeat(4096)); },
+                "detach" => {
+                    let _child = std::process::Command::new(std::env::current_exe().unwrap()).arg("--child")
+                        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().unwrap();
+                    while !std::path::Path::new("ready").exists() { thread::sleep(Duration::from_millis(10)); }
+                    print!("[ ]\n");
+                },
                 "wait" => {
                     let _child = std::process::Command::new(std::env::current_exe().unwrap()).arg("--child").spawn().unwrap();
                     thread::sleep(Duration::from_secs(30));
@@ -87,6 +93,13 @@ fn catalog_capture_bounds_output_and_settles_process_tree() {
     std::thread::sleep(Duration::from_secs(1));
     assert!(!root.path().join("late").exists(), "the timed-out descendant did not survive capture");
     std::fs::remove_file(root.path().join("ready")).unwrap();
+    std::fs::write(root.path().join("mode"), "detach").unwrap();
+    native::catalog(&artifact, Some(root.path()), settings, &BuildCancellation::default()).unwrap();
+    assert!(root.path().join("ready").exists());
+    std::thread::sleep(Duration::from_millis(1700));
+    assert!(!root.path().join("late").exists(), "successful capture retained its leader's descendants");
+    std::fs::remove_file(root.path().join("ready")).unwrap();
+    std::fs::write(root.path().join("mode"), "wait").unwrap();
     let cancellation = BuildCancellation::default();
     std::thread::scope(|scope| {
         let child =

@@ -24,7 +24,7 @@ publish.workspace = true
 
 [features]
 default = []
-build-tools = ["dep:notify", "dep:process-wrap"]
+build-tools = ["dep:notify", "dep:process-wrap", "dep:libc"]
 sidecar = ["build-tools"]
 guest = ["build-tools", "dep:wit-component", "dep:wasm-encoder", "dep:wasmparser"]
 generate-proto = ["dep:heck", "dep:prost-reflect"]
@@ -119,6 +119,9 @@ protoc-bin-vendored = { workspace = true }
 # Testing
 
 # === Target Dependencies === #
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true, optional = true }
 
 # === Test Targets === #
 

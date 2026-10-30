@@ -1183,6 +1183,7 @@ dependencies = [
  "harmos-domain",
  "harmos-sdk",
  "heck",
+ "libc",
  "notify",
  "process-wrap",
  "prost-reflect",
