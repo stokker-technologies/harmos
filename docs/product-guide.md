@@ -118,7 +118,8 @@ fixtures remain source or CI artifacts. Release downloads include generated
 `CHANGELOG.md` and `SHA256SUMS`; the internal upload inventory is not a download.
 
 `package` consumes the existing build receipt and verifies every artifact and
-schema byte stamp before bundling. It never runs Cargo. Relocated archives use
+schema byte stamp before bundling. It never runs Cargo. Each sidecar bundle
+records the registrations its executable prints for `CATALOG_EXPORT_FLAG`. Relocated archives use
 explicit `--relocate-from` and `--relocate-to` path mapping while preserving hashes.
 Library consumers can stamp existing outputs with `Artifact::read` and
 `Schema::read`, then construct a `Build` without another compiler invocation.
