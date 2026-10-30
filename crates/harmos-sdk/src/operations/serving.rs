@@ -1050,7 +1050,7 @@ fn wire_answer(result: Result<Vec<u8>, ServingError>) -> WireAnswer {
         Ok(payload) => WireAnswer::Ready { payload },
         Err(ServingError::Handler(failure)) => WireAnswer::Failed { failure },
         Err(error) => WireAnswer::Failed {
-            failure: crate::Failure::originate(error.classification(), &error, crate::failure::Origin::Plugin),
+            failure: StartupError::failure(&error, error.classification()),
         },
     }
 }

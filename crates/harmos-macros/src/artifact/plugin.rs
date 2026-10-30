@@ -403,9 +403,15 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             ];
 
             fn markers() -> ::std::result::Result<::std::vec::Vec<&'static [u8]>, #harmos::schema::graph::Error> {
+                <Self as #declarations>::markers_with_settings(&#harmos::__private::SchemaSettings::default())
+            }
+
+            fn markers_with_settings(settings: &#harmos::__private::SchemaSettings)
+                -> ::std::result::Result<::std::vec::Vec<&'static [u8]>, #harmos::schema::graph::Error>
+            {
                 #harmos::__private::PluginSchemaMarkers::<Self>(
                     ::std::vec![#identity, #contracts, #publications, #listeners, #observers, #contribution_marker #restart_reference],
-                    &#harmos::__private::SchemaSettings::default(),
+                    settings,
                 )
             }
         }

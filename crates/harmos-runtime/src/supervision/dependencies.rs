@@ -18,7 +18,7 @@ use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet};
 
 // Third Party Imports
-use petgraph::algo::toposort;
+use petgraph::algo::{tarjan_scc, toposort};
 use petgraph::graph::DiGraph;
 
 // Local Imports
@@ -50,7 +50,7 @@ pub(crate) struct Retirement<K> {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Invalid<K> {
     Missing { owner: K, dependency: K },
-    Cycle { owner: K },
+    Cycle { members: Vec<K> },
 }
 
 /* === Traits === */
@@ -76,7 +76,12 @@ impl<K: Clone + Ord> Graph<K> {
         }
         // Sorted Node And Edge Insertion Makes Independent Ordering Reproducible.
         let ordered = toposort(&graph, None)
-            .map_err(|cycle| Invalid::Cycle { owner: graph[cycle.node_id()].clone() })?
+            .map_err(|cycle| {
+                let component = tarjan_scc(&graph).into_iter().find(|component| component.contains(&cycle.node_id()));
+                let mut members: Vec<_> = component.into_iter().flatten().map(|node| graph[node].clone()).collect();
+                members.sort();
+                Invalid::Cycle { members }
+            })?
             .into_iter()
             .map(|node| graph[node].clone())
             .collect();

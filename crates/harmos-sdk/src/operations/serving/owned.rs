@@ -352,7 +352,7 @@ impl<T: Carrier> Prepared for State<T> {
 // The handler's error becomes the failure's cause here, in the plugin process
 // where it originated; every later carrier forwards the same value.
 fn operation_error<T: Carrier>(error: T::Error) -> ServingError {
-    let failure = crate::Failure::originate(T::classify(&error), &error, crate::failure::Origin::Plugin);
+    let failure = super::StartupError::failure(&error, T::classify(&error));
     ServingError::Handler(failure)
 }
 
