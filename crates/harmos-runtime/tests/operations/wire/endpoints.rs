@@ -43,7 +43,7 @@ macro_rules! operation {
         #[harmos_runtime::operation(resources = [Trace], id = $id, response = u32, input = u32, output = u32,
                                             policy = OperationPolicy {
                                                 timeout: Duration::from_secs(3), attempt_timeout: Duration::from_secs(2),
-                                                retries: if $retry { RetryPolicy::OnTransient { max_retries: 1,
+                                                cancellation_timeout: std::time::Duration::ZERO, retries: if $retry { RetryPolicy::OnTransient { max_retries: 1,
                                                     backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None } } }
                                                     else { RetryPolicy::Never },
                                             }, key = |_: &$name| $cache.then(|| CacheKey::new(vec![1]).unwrap()))]
@@ -343,7 +343,7 @@ async fn cancellation_settles_owner() {
         }
     })
     .await;
-    instance.cancel();
+    instance.request_cancel();
     assert!(bounded(instance).await.is_err());
     assert!(input.is_closed());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -627,7 +627,7 @@ async fn parent_cancellation<const CHARGED: bool>() {
         .unwrap();
     bounded(input.send_with(4, || Ok(7))).await.unwrap();
     let held = bounded(output.recv()).await.unwrap();
-    parent.cancel();
+    parent.request_cancel();
     assert!(bounded(parent).await.is_err());
     assert!(input.is_closed());
     assert!(bounded(output.recv()).await.is_none());

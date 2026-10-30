@@ -33,11 +33,7 @@ pub type ReadPages<T> = ReadBatch<Vec<ReadBatch<Vec<T>>>>;
 /* === Structs === */
 
 pub struct ReadBatch<T> {
-    inner: Arc<ReadOwner<T>>,
-}
-
-struct ReadOwner<T> {
-    value: T,
+    inner: Arc<T>,
 }
 
 /* === Enums === */
@@ -48,7 +44,7 @@ struct ReadOwner<T> {
 
 impl<T> ReadBatch<T> {
     pub fn new(value: T) -> Self {
-        Self { inner: Arc::new(ReadOwner { value }) }
+        Self { inner: Arc::new(value) }
     }
 
     /// Moves A Unique Batch Through A Fallible Projection.
@@ -63,7 +59,7 @@ impl<T> ReadBatch<T> {
                 reason: "requires a unique owner",
             })
         })?;
-        let value = map(owner.value)?;
+        let value = map(owner)?;
         tracing::Span::current().record("outcome", "completed");
         Ok(ReadBatch::new(value))
     }
@@ -82,7 +78,7 @@ impl<T> ReadBatch<T> {
         };
         let left = Arc::try_unwrap(self.inner).map_err(|_| shared())?;
         let right = Arc::try_unwrap(other.inner).map_err(|_| shared())?;
-        Ok(ReadBatch::new(map(left.value, right.value)?))
+        Ok(ReadBatch::new(map(left, right)?))
     }
 
     pub fn owner(&self) -> Arc<impl Borrow<T> + Send + Sync + 'static>
@@ -95,7 +91,7 @@ impl<T> ReadBatch<T> {
 
 impl<T: std::fmt::Debug> std::fmt::Debug for ReadBatch<T> {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.debug_tuple("ReadBatch").field(&self.inner.value).finish()
+        formatter.debug_tuple("ReadBatch").field(self.inner.as_ref()).finish()
     }
 }
 
@@ -109,28 +105,22 @@ impl<T> Deref for ReadBatch<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &self.inner.value
+        self.inner.as_ref()
     }
 }
 
 impl<T> AsRef<T> for ReadBatch<T> {
     fn as_ref(&self) -> &T {
-        &self.inner.value
-    }
-}
-
-impl<T> Borrow<T> for ReadOwner<T> {
-    fn borrow(&self) -> &T {
-        &self.value
+        self.inner.as_ref()
     }
 }
 
 impl<T: MemorySize> MemorySize for ReadBatch<T> {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(std::mem::size_of::<ReadOwner<T>>())
+            .saturating_add(std::mem::size_of::<T>())
             .saturating_add(2 * std::mem::size_of::<usize>())
-            .saturating_add(self.inner.value.memory_size().saturating_sub(std::mem::size_of::<T>()))
+            .saturating_add(self.inner.as_ref().memory_size().saturating_sub(std::mem::size_of::<T>()))
     }
 }
 

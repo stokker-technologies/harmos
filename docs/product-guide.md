@@ -7,6 +7,21 @@ diagnostics across carriers. Applications can attach named, non-secret context
 with `Failure::with_detail` and read it with `Failure::detail`; a plugin admission
 consumer can use these fields for actionable errors without parsing prose.
 
+Startup configuration errors expose `StartupError::report()` with separate root
+failures and consequences. Each issue retains its original `Failure` together
+with resource and operation identity where applicable. Carriers preserve that
+report as the `harmos.startup` structured detail on the existing failure;
+`operations::StartupReport::from_failure` reads it without parsing messages.
+Original refusal codes, detail maps and diagnostics remain in the report. Display
+renders readable root prose rather than Rust Debug output.
+
+Classification is scoped to one startup/prepare pass. If the pass contains a
+runtime preparation/construction failure, every `MissingResource` in that pass
+is a consequence, regardless of reporting order. Other failures remain separate
+roots. Without a preparation failure, missing resources are roots themselves.
+This rule describes a failed pass, not a resource dependency graph; Display
+summarizes consequences as operations unavailable because startup failed.
+
 ## Examples
 
 The [Schematic Editor](schematic.md) is one application with two
@@ -737,6 +752,46 @@ Local operation IDs use dotted segments `segment(.segment)*`, each with that sam
 `temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `host.operations.cancel`, `harmos.initialize`
 and `storage.append_file`. `codec = manual` preserves an explicitly authored message codec.
 
+Started operations return the same typed `Response<T>` from `join()` and
+`cancel().await`. `request_cancel()` sends only the signal. An implementation
+can await `ctx.cancelled()` and return its normal response; cancellation errors
+or a missing response become `Refusal::Cancelled`. Set
+`OperationPolicy::cancellation_timeout` to the grace duration. Zero preserves
+immediate abort. Grace never extends the remaining attempt or overall timeout,
+and cancellation never retries. Final responses still wait for owned children
+and cleanup. Dropping a handle requests cancellation without retaining its result.
+
+```rust
+let handle = runtime.operation(request).start().await?;
+let summary = handle.cancel().await?;
+// Inside Operation::run:
+ctx.cancelled().await;
+Ok(summary.into())
+```
+
+For gRPC, every exported operation also has a bidirectional `Run<Method>` RPC.
+Its opening frame is `request` (tag 1), input rows are `item` (tag 2), and
+`cancel` (tag 3, an empty message) requests cooperative cancellation.
+`finish` (tag 4, an empty message) closes input while retaining cancellation
+control; Rust handles expose `finish_input().await`. Responses
+contain output `item` (tag 1) or final `response` (tag 2). Keep the response stream
+open through cancellation. An HTTP/2 abort abandons the result. Rust callers use
+`harmos::grpc::client::start::<Operation>(channel, request, transport_settings)`
+and the returned handle's `cancel().await` or `join().await`; both return the
+normal typed response or a gRPC status, including `Code::Cancelled`.
+The caller supplies transport and buffer settings; operation deadlines come
+from the server's operation policy. Generated Python descriptors include
+`run_grpc_path`, `run_request` and `run_response`, with `Invoker.start` and
+`OperationHandle.cancel` transport interfaces. Harmos emits protobuf contracts
+for external TypeScript generators and does not generate a TypeScript execution
+client. Ordinary RPC methods remain available alongside managed calls.
+
+Portable request and response integer fields support `u32`, `u64`, `i32` and
+`i64` across in-process, sidecar, guest and gRPC carriers. `u16` is rejected by
+the message macro; represent ports with `u32` and validate their range in the
+operation. `u8` is supported as byte buffers (`Vec<u8>`), not as a scalar field.
+`usize`, `isize`, narrower signed integers and 128-bit integers are unsupported.
+
 Standard `HashMap<K, V>` and `BTreeMap<K, V>` work as message fields and
 complete operation payloads. Keys are `bool`, `u32`, `u64`, `i32`, `i64` or
 `String`; values are supported scalars, bytes or named messages. Encoding sorts
@@ -973,7 +1028,14 @@ the initialization/shutdown policies, including for an empty plugin. Each JSON
 fragment is limited to 64 KiB. Inspection merges entries into one resolved
 manifest, enforcing entry limits and duplicate rules across fragments; shared
 `preparation_bytes` and `preparation_work` budgets bound the aggregate metadata
-and schema resolution. Aggregate provides/requires fragments are unsupported.
+and schema resolution. Consumers pass their `SchemaSettings` through
+`Declaration::inspect_with_settings`, `Bundle::build_with_settings`,
+`Bundle::inspect_with_settings` and `Executable::at_with_settings`.
+Sidecar authors use `run_plugin_with_settings` or
+`serve_plugin_channels_with_settings` for the matching native self-inspection.
+The existing convenience methods retain Harmos defaults. Memory and work
+refusals report attempted usage and the allowed amount; bundle errors also name
+the package and executable. Aggregate provides/requires fragments are unsupported.
 
 Protocol, artifact, envelope, journal and schema formats are v1. Only current
 shapes are supported; there are no old-peer checks, historical shape converters,

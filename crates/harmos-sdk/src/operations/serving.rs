@@ -116,6 +116,7 @@ pub struct WireTable {
 }
 
 struct Slot {
+    cancellation: super::Cancellation,
     operation: String,
     lifecycle: bool,
     resident: bool,
@@ -187,6 +188,7 @@ pub enum WireCommand {
     StreamSend { invocation: u64, epoch: u64, payload: Vec<u8> },
     StreamFinish { invocation: u64, epoch: u64 },
     StreamReceive { invocation: u64, epoch: u64 },
+    Cancel { invocation: u64 },
     PrepareGrpc { invocation: u64, operation: String, fingerprint: [u8; 32], generation: u64, payload: Vec<u8> },
 }
 
@@ -400,15 +402,9 @@ impl WireTable {
         if self.closed || self.ordinary_closed {
             return Err(ServingError::Closing);
         }
-        let mut staged = Self::new(&self.owner)?;
+        let mut staged = self.configuration()?;
         staged.resources = self.resources.clone();
         staged.trusted_resources = self.trusted_resources.clone();
-        staged.capacity = self.capacity;
-        staged.provided.clone_from(&self.provided);
-        #[cfg(feature = "streaming")]
-        {
-            staged.stream_limits = self.stream_limits;
-        }
         for factory in batch.operations {
             factory.install(&mut staged)?;
         }
@@ -440,7 +436,7 @@ impl WireTable {
         let slots: Vec<_> =
             self.prepared.iter().filter(|(_, slot)| slot.operation == key).map(|(invocation, slot)| (*invocation, slot.clone())).collect();
         for (_, slot) in &slots {
-            slot.cancel();
+            slot.request_cancel();
         }
         for (_, slot) in &slots {
             slot.finalize().await?;
@@ -569,6 +565,7 @@ impl WireTable {
             .map_err(|_| ServingError::Panicked)??;
         let answer = encode_prepared_grant(prepared.grant().as_ref());
         let slot = Slot {
+            cancellation: Default::default(),
             operation: operation.to_owned(),
             lifecycle: handler.lifecycle,
             resident: handler.resident,
@@ -666,6 +663,12 @@ impl WireTable {
         }
     }
 
+    fn signal(&self, invocation: u64) -> Result<Vec<u8>, ServingError> {
+        let slot = self.prepared.get(&invocation).ok_or(ServingError::Missing { invocation })?;
+        slot.cancellation.request();
+        Ok(Vec::new())
+    }
+
     pub fn begin(
         &mut self, command: WireCommand, context: Arc<ExecutionContext>,
     ) -> Pin<Box<dyn Future<Output = WireAnswer> + Send + 'static>> {
@@ -674,12 +677,16 @@ impl WireTable {
         if command.is_stream_traffic() {
             return Box::pin(self.traffic(command).instrument(span).in_current_context());
         }
+        if let WireCommand::Cancel { invocation } = command {
+            let result = self.signal(invocation);
+            return Box::pin(async move { wire_answer(result) });
+        }
         let slot = match &command {
             WireCommand::Initialize { invocation, .. }
             | WireCommand::Attempt { invocation, .. }
             | WireCommand::StreamAttempt { invocation, .. }
             | WireCommand::Finalize { invocation } => self.prepared.get(invocation).cloned(),
-            WireCommand::Prepare { .. } | WireCommand::PrepareGrpc { .. } => None,
+            WireCommand::Prepare { .. } | WireCommand::PrepareGrpc { .. } | WireCommand::Cancel { .. } => None,
             WireCommand::StreamSend { .. } | WireCommand::StreamFinish { .. } | WireCommand::StreamReceive { .. } => {
                 unreachable!("stream traffic already dispatched")
             }
@@ -733,7 +740,7 @@ impl WireTable {
                         Some(slot) => slot.finalize().await.map(|()| Vec::new()),
                         None => Ok(Vec::new()),
                     },
-                    WireCommand::Prepare { .. } | WireCommand::PrepareGrpc { .. } => {
+                    WireCommand::Prepare { .. } | WireCommand::PrepareGrpc { .. } | WireCommand::Cancel { .. } => {
                         unreachable!("preparation is synchronous")
                     }
                 };
@@ -748,7 +755,7 @@ impl WireTable {
         self.ordinary_closed = true;
         let slots: Vec<_> = self.prepared.values().filter(|slot| !slot.lifecycle).cloned().collect();
         for slot in &slots {
-            slot.cancel();
+            slot.request_cancel();
         }
         Box::pin(async move {
             for slot in slots {
@@ -773,7 +780,7 @@ impl WireTable {
         self.closed = true;
         let slots: Vec<_> = self.prepared.values().cloned().collect();
         for slot in &slots {
-            slot.cancel();
+            slot.request_cancel();
         }
         Box::pin(async move {
             for slot in slots {
@@ -820,6 +827,7 @@ impl WireTable {
             return wire_answer(slot.attempt(invocation, context, Some(epoch)).await);
         }
         let result = match command {
+            WireCommand::Cancel { invocation } => self.signal(invocation),
             WireCommand::PrepareGrpc {
                 invocation,
                 operation,
@@ -849,7 +857,7 @@ impl WireTable {
 }
 
 impl Slot {
-    fn cancel(&self) {
+    fn request_cancel(&self) {
         let waiters = {
             let mut state = self.state.lock().expect("invocation state lock");
             state.cancelled = true;
@@ -938,7 +946,9 @@ impl Slot {
         if epoch.is_some() {
             return Err(ServingError::StreamUnsupported);
         }
-        let result = self.active(loan.prepared.as_mut().expect("loaned invocation state").attempt(context)).await;
+        let mut context = context.clone();
+        context.cancellation = self.cancellation.clone();
+        let result = self.active(loan.prepared.as_mut().expect("loaned invocation state").attempt(&context)).await;
         #[cfg(feature = "streaming")]
         if let Some(attempt) = attempt {
             attempt.end();
@@ -1021,6 +1031,7 @@ pub fn decode_prepared_grant(payload: &[u8]) -> Result<Option<crate::plugin::Gra
 
 fn command_identity(command: &WireCommand) -> (u64, &'static str) {
     match command {
+        WireCommand::Cancel { invocation } => (*invocation, "cancel"),
         WireCommand::Prepare { invocation, .. } => (*invocation, "prepare"),
         WireCommand::PrepareGrpc { invocation, .. } => (*invocation, "prepare_grpc"),
         WireCommand::Initialize { invocation, .. } => (*invocation, "initialize"),
@@ -1039,7 +1050,7 @@ fn wire_answer(result: Result<Vec<u8>, ServingError>) -> WireAnswer {
         Ok(payload) => WireAnswer::Ready { payload },
         Err(ServingError::Handler(failure)) => WireAnswer::Failed { failure },
         Err(error) => WireAnswer::Failed {
-            failure: crate::Failure::originate(error.classification(), &error, crate::failure::Origin::Plugin),
+            failure: StartupError::failure(&error, error.classification()),
         },
     }
 }
@@ -1062,6 +1073,7 @@ mod tests {
     #[test]
     fn withdrawal_cancels_a_pending_active_future() {
         let slot = Slot {
+            cancellation: Default::default(),
             operation: "host.read".to_owned(),
             lifecycle: false,
             resident: false,
@@ -1077,7 +1089,7 @@ mod tests {
         let mut active = Box::pin(slot.active(std::future::pending::<Result<(), ServingError>>()));
         let mut context = std::task::Context::from_waker(Waker::noop());
         assert!(active.as_mut().poll(&mut context).is_pending());
-        slot.cancel();
+        slot.request_cancel();
         assert!(matches!(active.as_mut().poll(&mut context), Poll::Ready(Err(ServingError::Closing))));
     }
 }

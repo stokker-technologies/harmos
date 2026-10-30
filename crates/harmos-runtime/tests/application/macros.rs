@@ -260,6 +260,7 @@ mod unified_plugins {
     const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(15),
         attempt_timeout: Duration::from_secs(5),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
 

@@ -187,7 +187,7 @@ impl Attached {
 
 impl Drop for Attached {
     fn drop(&mut self) {
-        self.host.cancel(self.generation);
+        self.host.request_cancel(self.generation);
     }
 }
 

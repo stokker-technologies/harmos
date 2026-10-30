@@ -334,7 +334,7 @@ impl Instance {
         children.push(Arc::downgrade(child));
         drop(children);
         if self.status().cancellation_requested {
-            child.cancel();
+            child.request_cancel();
         }
     }
 
@@ -445,7 +445,7 @@ impl Instance {
         )
     }
 
-    pub(crate) fn cancel(&self) {
+    pub(crate) fn request_cancel(&self) {
         tracing::dispatcher::with_default(&self.dispatcher, || {
             tracing::debug!(target: "harmos::operations", parent: &self.trace(), "instance cancellation requested");
         });
@@ -465,7 +465,7 @@ impl Instance {
         }
         let children: Vec<_> = self.children.lock().expect("instance child lock is healthy").iter().filter_map(Weak::upgrade).collect();
         for child in children {
-            child.cancel();
+            child.request_cancel();
         }
     }
 }

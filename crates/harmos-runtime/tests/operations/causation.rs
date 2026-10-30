@@ -35,6 +35,7 @@ use harmos_runtime::{Error, Runtime, state::CausationId, state::Position};
 const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 
@@ -210,7 +211,7 @@ async fn scoped_trace_handoffs() {
             let invocation = runtime.operation(NoteContractDeclaration { label: "trace-secret-payload".to_owned() }).start().await.unwrap();
             invocation.await.unwrap();
             let cancelled = runtime.operation(NoteContractDeclaration { label: "cancelled".to_owned() }).start().await.unwrap();
-            cancelled.cancel();
+            cancelled.request_cancel();
             assert!(cancelled.await.is_err());
         }
         .instrument(span)

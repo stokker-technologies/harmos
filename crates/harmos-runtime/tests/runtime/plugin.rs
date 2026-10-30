@@ -73,6 +73,7 @@ fn fragments(facility: &str, owner: &str) -> Vec<u8> {
     let policy = harmos_runtime::OperationPolicy {
         timeout: std::time::Duration::from_secs(2),
         attempt_timeout: std::time::Duration::from_secs(2),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
     let lifecycle = ["initialize", "shutdown"].map(|action| json!({"action":action,"identity":"harmos.operation.v1","policy":policy}));

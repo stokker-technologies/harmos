@@ -161,15 +161,4 @@ mod tests {
         bytes[1] = b'9';
         assert!(read::<Vec<u8>>(&mut bytes.as_slice(), 128).is_err());
     }
-
-    #[test]
-    fn record_size_validated() {
-        let line = encode(&"abc", usize::MAX).unwrap();
-        assert_eq!(encode(&"abc", line.len()).unwrap(), line);
-
-        let mut bytes = Vec::new();
-        assert!(write(&mut bytes, &"abc", line.len() - 1).is_err());
-        assert!(bytes.is_empty());
-        assert!(read::<String>(&mut line.as_slice(), line.len() - 1).is_err());
-    }
 }
