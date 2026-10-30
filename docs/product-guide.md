@@ -2,6 +2,11 @@
 
 Detailed composition, feature selection and runnable examples. Start with the [Quick Start](../README.md#quick-start).
 
+Operation failures retain their classification, application refusal code and source
+diagnostics across carriers. Applications can attach named, non-secret context
+with `Failure::with_detail` and read it with `Failure::detail`; a plugin admission
+consumer can use these fields for actionable errors without parsing prose.
+
 ## Examples
 
 The [Schematic Editor](schematic.md) is one application with two
