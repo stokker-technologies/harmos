@@ -64,6 +64,7 @@ type Backends<A> = PluginBackend<(), Backend<A>, ()>;
 struct Counts {
     attached: AtomicUsize,
     initialized: AtomicUsize,
+    fail_initialization: AtomicBool,
     cleaned: AtomicUsize,
     started: AtomicUsize,
     block_attempt: AtomicBool,
@@ -289,6 +290,16 @@ impl harmos_runtime::Lifecycle for Endpoint {
 
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         self.counts.initialized.fetch_add(1, Ordering::SeqCst);
+        if self.counts.fail_initialization.load(Ordering::SeqCst) {
+            let source = std::io::Error::from(std::io::ErrorKind::NotFound);
+            let failure = harmos_domain::Failure::originate(
+                harmos_runtime::operations::FailureKind::Permanent,
+                &source,
+                harmos_domain::failure::Origin::Plugin,
+            )
+            .with_detail("secret", "api_token");
+            return Err(std::io::Error::other(harmos_sidecar::Refusal::failed(-32_100, failure)));
+        }
         Ok(())
     }
 
