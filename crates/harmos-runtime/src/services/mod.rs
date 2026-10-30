@@ -40,9 +40,7 @@ use std::time::Duration;
 use tokio::sync::watch;
 // Local Imports
 use crate::ServicePolicy;
-use crate::operations::{
-    Backoff, CallContext, ContextError, ContextValue, Jitter, Manager, OperationDeclaration, Response, RestartPolicy, Running,
-};
+use crate::operations::{Backoff, CallContext, ContextError, ContextValue, Jitter, Manager, OperationDeclaration, RestartPolicy, Running};
 use crate::supervision::executor;
 use crate::{Application, Error, Result, state::StateManager, streams::StreamManager};
 
@@ -431,10 +429,6 @@ impl<A: Application> harmos_sdk::operations::Host for ServiceContext<A> {
         &self, request: O::Request, claims: crate::operations::RequestClaims,
     ) -> impl Future<Output = Result<Running<O>>> + Send {
         harmos_sdk::operations::Host::submit_owned::<O>(&self.operations, request, claims)
-    }
-
-    fn call<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Response<O::Response>>> + Send {
-        harmos_sdk::operations::Host::call::<O>(&self.operations, request)
     }
 }
 
