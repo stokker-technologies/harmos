@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --locked --quiet --project tools/python python .stkr/commands.py --optional project hook pre",
+            "command": "stkr project hook pre",
             "timeout": 30
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --locked --quiet --project tools/python python .stkr/commands.py --optional project hook post",
+            "command": "stkr project hook post",
             "timeout": 30
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --locked --quiet --project tools/python python .stkr/commands.py --optional project hook stop",
+            "command": "stkr project hook stop",
             "timeout": 3600
           }
         ]
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --locked --quiet --project tools/python python .stkr/commands.py --optional project hook start",
+            "command": "stkr project hook start",
             "timeout": 3600
           }
         ]
