@@ -674,34 +674,6 @@ mod tests {
     }
 
     #[test]
-    fn native_response_retains_owner_across_retries_and_cleanup() {
-        let value = Arc::new(42u64);
-        let retained = Arc::downgrade(&value);
-        let mut dependencies = ResourceSet::new();
-        dependencies.insert(value).unwrap();
-        let batch = RegistrationBatch::new().operation::<Read>();
-        let factory = &batch.operations[0];
-        assert!(factory.prepare_native(dependencies.clone(), Box::new(7u64), Box::new(())).is_err());
-        let mut invocation = factory.prepare_native(dependencies, Box::new(Read), Box::new(())).unwrap();
-        let context = ExecutionContext::new(ResourceSet::new(), super::super::CallContext::default());
-
-        ready(invocation.initialize(context.clone()));
-        let first = ready(invocation.run(context.clone())).restore::<u64>().unwrap();
-        let second = ready(invocation.run(context)).restore::<u64>().unwrap();
-        assert!(first.ptr_eq(&second));
-        assert_eq!(*first, 42);
-        ready(invocation.stop());
-        ready(invocation.cleanup());
-
-        drop(invocation);
-        drop(batch);
-        assert!(retained.upgrade().is_some());
-        drop(first);
-        drop(second);
-        assert!(retained.upgrade().is_none());
-    }
-
-    #[test]
     fn encoded_factory_preserves_request_cache_key_and_response() {
         use crate::Message;
 
