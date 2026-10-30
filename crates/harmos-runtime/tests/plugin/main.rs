@@ -432,33 +432,33 @@ fn activation(backend: &mut Backends) -> &mut Activation {
 }
 
 fn plan() -> PluginGraph {
-    PluginGraph::resolve(
-        [
-            ("provider", PluginKind::Embedded, vec![]),
-            ("client", PluginKind::Sidecar, vec!["provider"]),
-            ("other", PluginKind::Guest, vec![]),
-        ]
-        .into_iter()
-        .map(|(id, kind, requires)| PluginDefinition {
-            id: id.to_owned(),
-            version: "1.0.0".parse().unwrap(),
-            artifact: match kind {
-                PluginKind::Guest => harmos_runtime::plugin::PluginArtifact::Guest { sha256: [0; 32] },
-                PluginKind::Sidecar => harmos_runtime::plugin::PluginArtifact::LocalSidecar { revision: "fixture".into() },
-                PluginKind::Embedded => harmos_runtime::plugin::PluginArtifact::Embedded { revision: "fixture".into() },
-            },
-            configuration: b"null".to_vec(),
-            contributions: harmos_runtime::plugin::PluginContributions::default(),
-            requires: requires
-                .into_iter()
-                .map(|id| Requirement {
-                    id: id.to_owned(),
-                    version: "*".parse().unwrap(),
-                })
-                .collect(),
-        }),
-    )
+    PluginGraph::resolve([
+        definition("provider", PluginKind::Embedded, &[]),
+        definition("client", PluginKind::Sidecar, &["provider"]),
+        definition("other", PluginKind::Guest, &[]),
+    ])
     .unwrap()
+}
+
+fn definition(id: &str, kind: PluginKind, requires: &[&str]) -> PluginDefinition {
+    PluginDefinition {
+        id: id.to_owned(),
+        version: "1.0.0".parse().unwrap(),
+        artifact: match kind {
+            PluginKind::Guest => harmos_runtime::plugin::PluginArtifact::Guest { sha256: [0; 32] },
+            PluginKind::Sidecar => harmos_runtime::plugin::PluginArtifact::LocalSidecar { revision: "fixture".into() },
+            PluginKind::Embedded => harmos_runtime::plugin::PluginArtifact::Embedded { revision: "fixture".into() },
+        },
+        configuration: b"null".to_vec(),
+        contributions: harmos_runtime::plugin::PluginContributions::default(),
+        requires: requires
+            .iter()
+            .map(|id| Requirement {
+                id: (*id).to_owned(),
+                version: "*".parse().unwrap(),
+            })
+            .collect(),
+    }
 }
 
 fn inventories(plan: &PluginGraph) -> Vec<(String, Vec<Definition>)> {
