@@ -101,6 +101,9 @@ pub enum Error {
     #[error("schema preparation exceeds its memory or work allowance")]
     Budget,
 
+    #[error("schema preparation {budget} budget exceeded: used {used}, allowed {allowed}")]
+    Allowance { budget: &'static str, used: usize, allowed: usize },
+
     #[error("schema definition {definition} is absent")]
     Reference { definition: usize },
 
@@ -364,7 +367,11 @@ impl Preparation {
     fn add_bytes(&mut self, count: usize, size: usize, settings: &SchemaSettings) -> Result<(), Error> {
         self.bytes = count.checked_mul(size).and_then(|bytes| self.bytes.checked_add(bytes)).ok_or(Error::Budget)?;
         if self.bytes > settings.preparation_bytes.get() {
-            return Err(Error::Budget);
+            return Err(Error::Allowance {
+                budget: "memory bytes",
+                used: self.bytes,
+                allowed: settings.preparation_bytes.get(),
+            });
         }
         Ok(())
     }
@@ -372,7 +379,11 @@ impl Preparation {
     fn add_work(&mut self, work: usize, settings: &SchemaSettings) -> Result<(), Error> {
         self.work = self.work.checked_add(work).ok_or(Error::Budget)?;
         if self.work > settings.preparation_work.get() {
-            return Err(Error::Budget);
+            return Err(Error::Allowance {
+                budget: "work",
+                used: self.work,
+                allowed: settings.preparation_work.get(),
+            });
         }
         Ok(())
     }

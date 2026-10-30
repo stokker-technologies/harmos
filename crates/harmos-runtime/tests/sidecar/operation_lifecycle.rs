@@ -73,7 +73,7 @@ async fn catalog_mismatch_refused() {
                 operations.pop();
             }
             1 => operations[0].policy.timeout += Duration::from_secs(1),
-            2 => operations[0].visibility = harmos_runtime::operations::Visibility::Public,
+            2 => operations[0].visibility = harmos_runtime::operations::Visibility::Private,
             3 => operations[0].replay = harmos_runtime::operations::ReplaySafety::Idempotent,
             4 => operations[0].description.push('!'),
             5 => operations.push(Definition {
