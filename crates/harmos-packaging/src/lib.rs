@@ -14,6 +14,8 @@
 #[cfg(feature = "build-tools")]
 mod build;
 pub mod bundle;
+#[cfg(feature = "build-tools")]
+pub mod cargo;
 #[cfg(feature = "guest")]
 mod component;
 #[cfg(feature = "build-tools")]
@@ -23,6 +25,8 @@ mod dev;
 mod error;
 #[cfg(feature = "build-tools")]
 mod metadata;
+#[cfg(feature = "build-tools")]
+pub mod native;
 #[cfg(feature = "build-tools")]
 mod process;
 #[cfg(feature = "generate-proto")]
@@ -41,7 +45,7 @@ pub use dev::{DevEvent, dev};
 pub use error::Error;
 pub use harmos_domain::inventory::{Declaration, DeclarationError, Facility};
 #[cfg(feature = "build-tools")]
-pub use process::BuildCancellation;
+pub use process::{BuildCancellation, ProcessSettings};
 
 /* === Imports === */
 

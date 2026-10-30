@@ -13,6 +13,7 @@
 
 #[path = "../build/capture.rs"]
 mod capture;
+mod native;
 
 /* === Re-Exports === */
 

@@ -35,6 +35,9 @@ pub enum Error {
     #[error("build cancelled after retaining and settling its child processes")]
     Cancelled,
 
+    #[error("authoring subprocess exceeded its deadline after settling its process tree")]
+    Timeout,
+
     #[cfg(feature = "build-tools")]
     #[error(transparent)]
     Watch(#[from] notify::Error),

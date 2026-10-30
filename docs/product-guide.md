@@ -102,6 +102,14 @@ The same crate owns `bundle`, Cargo discovery, inert inspection, development
 launching and Wasm componentization. Inert bundle inspection and schema generation
 do not enable Cargo discovery, file watching or subprocess supervision. Select
 `build-tools` for those authoring APIs; `sidecar` and `guest` imply it.
+Application authoring tools can collect an existing successful Cargo stream with
+`cargo::collect`, select named native executables with their emitted PDB paths,
+and reuse `native::{host_target, strip_debug, catalog}`. Collection never starts
+Cargo. Native tools accept explicit subprocess deadlines and output bounds plus a
+`BuildCancellation`; cancellation settles the owned process tree. Catalog capture
+executes the stamped artifact, verifies it before and after export, and reports
+the captured byte count for application-owned aggregate budgets. Applications
+retain their bundle compatibility, assets, symbols and launch policy.
 
 ```sh
 cargo run --locked -p cargo-harmos -- harmos sidecar build --manifest-path examples/schematic/Cargo.toml -p schematic-sidecar --json > sidecar-build.json
