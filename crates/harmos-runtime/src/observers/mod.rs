@@ -8,7 +8,7 @@
  */
 
 // The observer kind of resident operation. An observer's declaration (its
-// interval, streams, demand keys and activation) is attribute metadata; the
+// streams, demand keys and activation) is attribute metadata; the
 // operation manager activates it through `submit_resident`, shares one
 // instance among runtime callers and reports its
 // phases through the shared operation status. A backend drives one
@@ -39,7 +39,6 @@ pub(crate) use native::Native;
 use std::collections::BTreeSet;
 use std::future::Future;
 use std::sync::Arc;
-use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
@@ -57,7 +56,6 @@ use harmos_domain::inventory::StreamDeclaration;
 #[derive(Clone, Debug)]
 pub struct ObserverDefinition {
     pub id: String,
-    pub interval: Duration,
     pub streams: Vec<StreamDeclaration>,
     pub demand_keys: Vec<String>,
 }
@@ -84,12 +82,6 @@ pub(crate) fn validate(definition: &ObserverDefinition) -> Result<()> {
         return Err(Error::InvalidInput {
             field: "observer identity",
             reason: "must be nonempty and contain no control characters",
-        });
-    }
-    if definition.interval.is_zero() {
-        return Err(Error::InvalidInput {
-            field: "observer interval",
-            reason: "must be positive",
         });
     }
     let mut names = BTreeSet::new();

@@ -62,6 +62,25 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     let id = id.map(|id| quote!(#id)).unwrap_or_else(|| quote!(concat!(module_path!(), "::", stringify!(#name))));
     let description = super::description(description, &block.attrs);
 
+    let cadence = if let Some(cadence) = declared(&block, "interval") {
+        if cadence.sig.asyncness.is_some() || cadence.sig.inputs.len() != 1 || !matches!(cadence.sig.inputs.first(), Some(FnArg::Typed(_)))
+        {
+            return Err(Error::new(
+                cadence.sig.span(),
+                "interval takes the execution context synchronously: `fn interval(resources: &ExecutionContext) -> Result<Duration, Error>`",
+            ));
+        }
+        borrowed(&parameter(cadence.sig.inputs.first().expect("one typed parameter"))?, "the context an observer binds")?;
+        returned(cadence)?;
+        quote! {
+            fn interval(resources: &#harmos::__private::sidecar::ExecutionContext) -> ::core::result::Result<::core::time::Duration, Self::Error> {
+                <Self>::interval(resources)
+            }
+        }
+    } else {
+        quote!()
+    };
+
     let observing = required(&block, "observe", "async fn observe(&mut self, context: &ObserverContext<'_>) -> Result<(), Error>")?;
     asynchronous(observing, "a observe awaits its instrument without blocking the executor")?;
     let host = host(observing)?;
@@ -132,16 +151,14 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     Ok(quote! {
         #item
 
+        // Validate The Declared Default Even When A Runtime Override Is Present.
+        const _: ::core::time::Duration = <#name as #harmos::__private::sidecar::Observer<#host>>::INTERVAL;
+
         #[automatically_derived]
         impl #harmos::__private::PluginInventory::observers::Declared for #name {
             const ENTRY: #harmos::__private::PluginInventory::observers::Entry =
                 #harmos::__private::PluginInventory::observers::Entry {
                     id: #id, description: #description,
-                    interval: {
-                        let milliseconds: u64 = #interval;
-                        ::core::assert!(milliseconds > 0, "an observer's interval is at least 1 millisecond");
-                        ::core::time::Duration::from_millis(milliseconds)
-                    },
                     activation: #harmos::__private::sidecar::Activation::#activation,
                     streams: &[#(#harmos::__private::PluginInventory::publications::Entry::of::<#streams>()),*],
                     demand_keys: &[#(#demand_keys),*],
@@ -152,8 +169,12 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         impl #harmos::__private::sidecar::Observer<#host> for #name {
             type Error = <#observed as #answer>::Err;
             const ID: &'static str = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.id;
+            const INTERVAL: ::core::time::Duration = {
+                let milliseconds: u64 = #interval;
+                ::core::assert!(milliseconds > 0, "an observer's interval is at least 1 millisecond");
+                ::core::time::Duration::from_millis(milliseconds)
+            };
             const DESCRIPTION: &'static str = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.description;
-            const INTERVAL: ::core::time::Duration = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.interval;
             const STREAMS: &'static [#harmos::__private::sidecar::inventory::publications::Entry] = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.streams;
             const DEMAND_KEYS: &'static [#harmos::__private::sidecar::DemandKey] = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.demand_keys;
             const ACTIVATION: #harmos::__private::sidecar::Activation = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.activation;
@@ -161,6 +182,8 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             // The author's own inherent functions are what run: an inherent
             // associated function shadows the trait's, so these delegations
             // reach the lines that were written rather than loop back here.
+            #cadence
+
             fn initialize(
                 resources: &#harmos::__private::sidecar::ExecutionContext,
             ) -> impl ::core::future::Future<
@@ -232,6 +255,9 @@ fn arguments(attribute: TokenStream) -> Result<(HarmosPath, Expr, Vec<Path>, Vec
             continue;
         }
         match argument {
+            Meta::NameValue(named) if named.path.is_ident("interval_ms") => {
+                set_once(&mut interval, named.value.clone(), named.span(), "interval_ms")?
+            }
             Meta::NameValue(named) if named.path.is_ident("id") => {
                 let value = syn::parse2::<LitStr>(named.value.to_token_stream())?;
                 if value.value().trim().is_empty() || value.value().chars().any(char::is_control) {
@@ -263,9 +289,6 @@ fn arguments(attribute: TokenStream) -> Result<(HarmosPath, Expr, Vec<Path>, Vec
                     "replace `stream = Row` with `streams(Row)` and return Result<()>; publish through the observe context",
                 ));
             }
-            Meta::NameValue(named) if named.path.is_ident("interval_ms") => {
-                set_once(&mut interval, named.value.clone(), named.span(), "interval_ms")?
-            }
             other => {
                 return Err(Error::new(
                     other.span(),
@@ -275,13 +298,7 @@ fn arguments(attribute: TokenStream) -> Result<(HarmosPath, Expr, Vec<Path>, Vec
         }
     }
 
-    let Some(interval) = interval else {
-        return Err(Error::new(
-            span,
-            "an observer declares `interval_ms = …`: cadence belongs to the observer, never to \
-             whoever leased it",
-        ));
-    };
+    let interval = interval.ok_or_else(|| Error::new(span, "an observer declares `interval_ms = …`: its initial cadence is required"))?;
     let streams = streams.unwrap_or_default();
     let demand_keys = demand_keys.unwrap_or_default();
     let activation = activation.map(|value| value.value()).unwrap_or_else(|| "plugin".into());
@@ -296,3 +313,20 @@ fn arguments(attribute: TokenStream) -> Result<(HarmosPath, Expr, Vec<Path>, Vec
 }
 
 /* === Tests === */
+
+#[test]
+fn cadence_declaration_required() {
+    assert!(arguments(quote!()).is_err());
+    assert!(arguments(quote!(interval_ms = 10, interval_ms = 20)).is_err());
+}
+
+#[test]
+fn cadence_override_signature() {
+    let observer = quote! {
+        impl Watch {
+            async fn interval(_: &ExecutionContext) -> Result<Duration, Error> { todo!() }
+            async fn observe(&mut self, _: &ObserverContext<'_>) -> Result<(), Error> { todo!() }
+        }
+    };
+    assert!(expand(quote!(interval_ms = 10), &observer).is_err());
+}

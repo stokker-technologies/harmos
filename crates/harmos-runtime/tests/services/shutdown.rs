@@ -193,7 +193,7 @@ async fn service_stop_observer() {
         fn definition(&self) -> harmos_runtime::Result<harmos_runtime::observers::ObserverDefinition> {
             Ok(harmos_runtime::observers::ObserverDefinition {
                 id: "blocked-observer".into(),
-                interval: Duration::from_secs(10),
+
                 streams: vec![],
                 demand_keys: vec![],
             })

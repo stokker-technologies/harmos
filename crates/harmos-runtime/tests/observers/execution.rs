@@ -74,7 +74,7 @@ enum Event {
 
 /* === Implementations === */
 
-#[harmos_runtime::observer(id = "execution.watch", interval_ms = 5)]
+#[harmos_runtime::observer(interval_ms = 5, id = "execution.watch")]
 impl Watch {
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, std::io::Error> {
         let resolved = context.resource::<Resources>().unwrap();

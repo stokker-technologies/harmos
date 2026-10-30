@@ -153,7 +153,7 @@ impl<S: StreamSpec<Row = Pulse>> ObserverStreamPublisher<S> for Host {
     }
 }
 
-#[harmos_runtime::observer(id = "host.watch", interval_ms = 5, streams(Pulse))]
+#[harmos_runtime::observer(interval_ms = 5, id = "host.watch", streams(Pulse))]
 impl Watch {
     async fn observe(&mut self, ctx: &ObserverContext<'_, Host>) -> Result<(), Failure> {
         let value = ctx.call(7).await?;
@@ -163,7 +163,7 @@ impl Watch {
     }
 }
 
-#[harmos_runtime::observer(id = "host.grants", interval_ms = 5, streams(Pulse))]
+#[harmos_runtime::observer(interval_ms = 5, id = "host.grants", streams(Pulse))]
 impl CheckGrants {
     async fn observe(&mut self, ctx: &ObserverContext<'_, Host>) -> Result<(), Failure> {
         assert!(matches!(ctx.publish(Denied).await, Err(Failure::Publication(PublicationError::Undeclared { .. }))));

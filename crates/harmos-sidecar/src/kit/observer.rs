@@ -9,7 +9,7 @@
 
 // An observer is a resident body with the shared lifecycle verbs: it
 // initializes (retrying each cadence until it succeeds), observes once per
-// declared interval for as long as its activation runs, and stops and cleans
+// resolved interval for as long as its activation runs, and stops and cleans
 // up when that activation is cancelled. `Activity` is that body for one
 // activation; whoever runs the activation owns its lifecycle.
 
@@ -46,7 +46,7 @@ use harmos_domain::inventory::publications;
 /* === Type Aliases === */
 
 type ContextFactory<H> = Arc<dyn Fn(&H) -> Arc<dyn Any + Send + Sync> + Send + Sync>;
-type Open<H> = fn(Arc<harmos_sdk::ExecutionContext>, H, Option<ContextFactory<H>>, Identity) -> Result<Activity, ObserverError>;
+type Open<H> = fn(Arc<harmos_sdk::ExecutionContext>, H, Option<ContextFactory<H>>, Identity, Duration) -> Result<Activity, ObserverError>;
 type Step<'a> = Pin<Box<dyn Future<Output = Result<(), ObserverError>> + Send + 'a>>;
 
 /* === Structs === */
@@ -75,6 +75,7 @@ pub struct ObserverContext<'a, H = Supervisor> {
 pub struct Instance<H = Supervisor> {
     entry: harmos_domain::inventory::observers::Entry,
     open: Open<H>,
+    interval: fn(&harmos_sdk::ExecutionContext) -> Result<Duration, ObserverError>,
     context: Option<ContextFactory<H>>,
 }
 
@@ -92,6 +93,7 @@ struct Bound<S: Observer<H>, H: Send + Sync + 'static> {
     host: H,
     extension: Option<Arc<dyn Any + Send + Sync>>,
     observer: Option<S>,
+    interval: Duration,
     stopped: bool,
 }
 
@@ -104,6 +106,15 @@ pub enum ObserverError {
 
     #[error("the observer activation identity could not be drawn: {0}")]
     Identity(#[source] std::io::Error),
+
+    #[error("the observer interval must be positive")]
+    InvalidInterval,
+
+    #[error("the observer interval could not be resolved: {0}")]
+    IntervalFailed(#[source] Arc<dyn std::error::Error + Send + Sync>),
+
+    #[error("the observer panicked while resolving its interval")]
+    IntervalPanicked,
 
     #[error("the observer callback panicked")]
     CallbackPanicked,
@@ -148,6 +159,10 @@ pub trait Observer<H: Send + Sync + 'static = Supervisor>: Sized + Send + 'stati
 
     const INTERVAL: Duration;
 
+    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<Duration, Self::Error> {
+        Ok(Self::INTERVAL)
+    }
+
     fn initialize(resources: &harmos_sdk::ExecutionContext) -> impl Future<Output = Result<Self, Self::Error>> + Send;
 
     fn observe(&mut self, ctx: &ObserverContext<'_, H>) -> impl Future<Output = Result<(), Self::Error>> + Send;
@@ -187,7 +202,6 @@ impl<H: Send + Sync + 'static, S: Observer<H>> harmos_domain::catalog::Member<S>
     const ENTRY: harmos_domain::inventory::observers::Entry = harmos_domain::inventory::observers::Entry {
         id: S::ID,
         description: S::DESCRIPTION,
-        interval: S::INTERVAL,
         activation: S::ACTIVATION,
         streams: S::STREAMS,
         demand_keys: S::DEMAND_KEYS,
@@ -286,7 +300,6 @@ impl<H: Send + Sync + 'static> Instance<H> {
             !S::ID.trim().is_empty() && !S::ID.chars().any(char::is_control),
             "an observer identity must be nonempty and contain no control characters"
         );
-        assert!(!S::INTERVAL.is_zero(), "an observer interval must be nonzero");
         assert!(
             S::ACTIVATION != Activation::Demand || !S::STREAMS.is_empty() || !S::DEMAND_KEYS.is_empty(),
             "a demand observer must declare streams or demand keys"
@@ -299,6 +312,7 @@ impl<H: Send + Sync + 'static> Instance<H> {
         Self {
             entry: <Inventory<H> as harmos_domain::catalog::Member<S>>::ENTRY,
             open: Activity::open::<S, H>,
+            interval: resolve_interval::<S, H>,
             context: None,
         }
     }
@@ -332,21 +346,21 @@ impl<H: Send + Sync + 'static> Instance<H> {
         self.entry.activation
     }
 
-    pub fn interval(&self) -> Duration {
-        self.entry.interval
-    }
-
-    // Open one activation over its resources and bound host. Nothing runs
-    // until the caller drives `observe`.
+    // Resolve cadence and bind one activation to its resources and host.
+    // Initialization and sampling run when the caller drives `observe`.
     pub fn activate(&self, resources: Arc<harmos_sdk::ExecutionContext>, host: H) -> Result<Activity, ObserverError> {
         let identity = Identity::new(self.entry.id).map_err(ObserverError::Identity)?;
-        (self.open)(resources, host, self.context.clone(), identity)
+        let interval = (self.interval)(&resources).inspect_err(|error| {
+            tracing::error!(observer = identity.observer, activation_id = %identity.activation,
+                error = %harmos_domain::failure::Report(error), "observer interval resolution failed; activation refused");
+        })?;
+        (self.open)(resources, host, self.context.clone(), identity, interval)
     }
 }
 
 impl Activity {
     fn open<S: Observer<H>, H: Send + Sync + 'static>(
-        resources: Arc<harmos_sdk::ExecutionContext>, host: H, context: Option<ContextFactory<H>>, identity: Identity,
+        resources: Arc<harmos_sdk::ExecutionContext>, host: H, context: Option<ContextFactory<H>>, identity: Identity, interval: Duration,
     ) -> Result<Self, ObserverError> {
         let create_extension = || match context {
             Some(factory) => {
@@ -369,6 +383,7 @@ impl Activity {
             host,
             extension,
             observer: None,
+            interval,
             stopped: false,
         };
         Ok(Self { identity, body: Box::new(bound) })
@@ -386,7 +401,7 @@ impl Activity {
         self.body.is_initialized()
     }
 
-    // Initialize at the declared cadence until it succeeds, report readiness,
+    // Initialize at the resolved cadence until it succeeds, report readiness,
     // then observe once per interval. Returns only when the activation can no
     // longer continue; dropping the future interrupts it.
     pub async fn observe(&mut self, ready: impl Fn() + Send + Sync) -> ObserverError {
@@ -410,7 +425,7 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
         Box::pin(async move {
             let name = self.identity.observer;
             let activation = self.identity.activation;
-            let mut clock = interval(S::INTERVAL);
+            let mut clock = interval(self.interval);
             clock.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
             // Initialization Owns Its Partial Acquisitions; Only Success Is Cleaned Up
@@ -498,6 +513,15 @@ pub(super) fn validate_outputs<H>(instances: &[Instance<H>], grants: &[publicati
 
 /* === Private Functions === */
 
+fn resolve_interval<S: Observer<H>, H: Send + Sync + 'static>(resources: &harmos_sdk::ExecutionContext) -> Result<Duration, ObserverError> {
+    match std::panic::catch_unwind(AssertUnwindSafe(|| S::interval(resources))) {
+        Ok(Ok(interval)) if interval.is_zero() => Err(ObserverError::InvalidInterval),
+        Ok(Ok(interval)) => Ok(interval),
+        Ok(Err(error)) => Err(ObserverError::IntervalFailed(Arc::new(error))),
+        Err(_) => Err(ObserverError::IntervalPanicked),
+    }
+}
+
 fn observed_result<E: std::error::Error + 'static>(
     observed: Result<Result<(), E>, Box<dyn Any + Send>>, identity: Identity, tick: u64,
 ) -> Result<(), ObserverError> {
@@ -553,32 +577,6 @@ mod tests {
     use super::{Identity, ObserverContext, Tick};
     use std::sync::Arc;
     use std::time::Duration;
-
-    #[cfg(feature = "derive")]
-    mod cadence {
-        use super::super::Observer;
-        use super::{Duration, ObserverContext};
-
-        const CADENCE_MS: u64 = 17;
-
-        #[derive(Default)]
-        struct ConfiguredObserver;
-
-        #[crate::observer(harmos_path = crate, interval_ms = CADENCE_MS * 2)]
-        impl ConfiguredObserver {
-            async fn observe(&mut self, _: &ObserverContext<'_>) -> Result<(), std::convert::Infallible> {
-                Ok(())
-            }
-        }
-
-        #[test]
-        fn constant_expression() {
-            use harmos_domain::inventory::observers::Declared;
-
-            assert_eq!(ConfiguredObserver::INTERVAL, Duration::from_millis(34));
-            assert_eq!(ConfiguredObserver::ENTRY.interval, ConfiguredObserver::INTERVAL);
-        }
-    }
 
     #[test]
     fn context_resource_resolution() {

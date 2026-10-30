@@ -15,7 +15,6 @@
 
 // Standard Library Imports
 use std::collections::BTreeSet;
-use std::time::Duration;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
@@ -43,7 +42,6 @@ pub struct DemandKey {
 pub struct Entry {
     pub id: &'static str,
     pub description: &'static str,
-    pub interval: Duration,
     pub activation: Activation,
     pub streams: &'static [publications::Entry],
     pub demand_keys: &'static [DemandKey],
@@ -54,7 +52,6 @@ pub struct Entry {
 pub struct Declaration {
     pub id: String,
     pub description: String,
-    pub interval: Duration,
     pub activation: Activation,
     pub streams: Vec<String>,
     pub demand_keys: Vec<String>,
@@ -118,7 +115,6 @@ impl Entry {
         Declaration {
             id: self.id.to_owned(),
             description: self.description.to_owned(),
-            interval: self.interval,
             activation: self.activation,
             streams: self.streams.iter().map(|entry| entry.id.to_owned()).collect(),
             demand_keys: self.demand_keys.iter().map(DemandKey::name).collect(),
@@ -189,9 +185,6 @@ pub fn validate(observers: &[Declaration], grants: &[StreamDeclaration]) -> Resu
         if observer.id.trim().is_empty() || observer.id.chars().any(char::is_control) || !ids.insert(&observer.id) {
             return Err(invalid("identities must be nonempty, unique, and contain no control characters"));
         }
-        if observer.interval.is_zero() {
-            return Err(invalid("interval must be positive"));
-        }
         let mut keys = BTreeSet::new();
         for stream in &observer.streams {
             if !keys.insert(stream) || !grants.iter().any(|grant| grant.id == *stream) {
@@ -257,11 +250,7 @@ const fn entry<const N: usize>(out: &mut Encoder<N>, entry: Entry) {
     out.quoted(entry.id);
     out.raw(b",\"description\":");
     out.quoted(entry.description);
-    out.raw(b",\"interval\":{\"secs\":");
-    out.number(entry.interval.as_secs());
-    out.raw(b",\"nanos\":");
-    out.number(entry.interval.subsec_nanos() as u64);
-    out.raw(b"},\"activation\":");
+    out.raw(b",\"activation\":");
     out.quoted(match entry.activation {
         Activation::Plugin => "plugin",
         Activation::Demand => "demand",

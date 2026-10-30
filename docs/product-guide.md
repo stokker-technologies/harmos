@@ -1087,6 +1087,31 @@ Rust's orphan rule prevents a runtime crate from implementing Harmos's
 types and their implementations in an operations crate with a `runtime`
 feature; shared models remain in domain.
 
-Observer `interval_ms` accepts constant `u64` expressions such as
-`interval_ms = policy::POLL_INTERVAL_MS`. The generated observer inventory
-rejects zero at compile time; the cadence remains part of the static declaration.
+Process observers require a positive declared initial cadence. The macro sets
+`Observer::INTERVAL`; an optional synchronous method overrides it once at
+activation from the producing plugin's execution resources:
+
+```rust,ignore
+#[harmos::observer(interval_ms = 1_000)]
+impl Poller {
+    // Optional: omit this method to use the declared 1,000 ms cadence.
+    fn interval(resources: &harmos::ExecutionContext) -> Result<Duration, Error> {
+        let settings = resources.resource::<Settings>()?;
+        Ok(settings.poll_interval)
+    }
+
+    async fn observe(&mut self, context: &ObserverContext<'_>) -> Result<(), Error> {
+        // Collect and publish through context.
+        Ok(())
+    }
+}
+```
+
+`interval_ms` is required, accepts a constant expression and must be at least
+1 ms, even when an override exists. Manual `Observer` implementations declare
+`const INTERVAL: Duration` and inherit the same fallback method. Streams have no
+cadence. Static observer inventory contains identity, activation, outputs and
+demand keys; it does not advertise the declared default as an effective interval.
+A zero runtime duration, resolution error or panic refuses activation before
+initialization. Initialization retries and sampling use the captured interval;
+changed resources apply on the next activation.

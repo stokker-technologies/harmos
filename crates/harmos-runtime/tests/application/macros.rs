@@ -303,8 +303,12 @@ mod unified_plugins {
         }
     }
     struct InertObserver;
-    #[harmos_runtime::observer(id = "fixture.unified.inert-observer", interval_ms = 1000)]
+    #[harmos_runtime::observer(interval_ms = 100, id = "fixture.unified.inert-observer")]
     impl InertObserver {
+        fn interval(_: &harmos_sdk::ExecutionContext) -> Result<std::time::Duration, Infallible> {
+            panic!("metadata inspection must not resolve observer cadence")
+        }
+
         async fn initialize(_: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
             panic!("metadata inspection must not initialize callback resources")
         }
@@ -405,7 +409,6 @@ mod unified_plugins {
         let physical =
             <harmos_runtime::sidecar::__private::ObserverInventory<CustomHost> as harmos_runtime::catalog::Member<InertObserver>>::ENTRY;
         assert_eq!(inert.id, physical.id);
-        assert_eq!(inert.interval, physical.interval);
         assert_eq!(inert.streams.len(), physical.streams.len());
         // The Observe Control Is Built In, Never An Authored Provision.
         let control = <harmos_runtime::operations::observers::Control as harmos_runtime::operations::OperationDeclaration>::ID;
