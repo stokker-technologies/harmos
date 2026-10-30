@@ -402,15 +402,9 @@ impl WireTable {
         if self.closed || self.ordinary_closed {
             return Err(ServingError::Closing);
         }
-        let mut staged = Self::new(&self.owner)?;
+        let mut staged = self.configuration()?;
         staged.resources = self.resources.clone();
         staged.trusted_resources = self.trusted_resources.clone();
-        staged.capacity = self.capacity;
-        staged.provided.clone_from(&self.provided);
-        #[cfg(feature = "streaming")]
-        {
-            staged.stream_limits = self.stream_limits;
-        }
         for factory in batch.operations {
             factory.install(&mut staged)?;
         }
