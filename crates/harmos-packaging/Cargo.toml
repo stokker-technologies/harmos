@@ -24,8 +24,9 @@ publish.workspace = true
 
 [features]
 default = []
-sidecar = []
-guest = ["dep:wit-component", "dep:wasm-encoder", "dep:wasmparser"]
+build-tools = ["dep:notify", "dep:process-wrap"]
+sidecar = ["build-tools"]
+guest = ["build-tools", "dep:wit-component", "dep:wasm-encoder", "dep:wasmparser"]
 generate-proto = ["dep:heck", "dep:prost-reflect"]
 generate-python = ["generate-proto"]
 
@@ -59,14 +60,14 @@ wit-component = { workspace = true, optional = true, default-features = true }
 # Configuration
 
 # Filesystem
-notify = { workspace = true }
+notify = { workspace = true, optional = true }
 tar = { workspace = true }
 tempfile = { workspace = true, default-features = true }
 
 # Parsing
 
 # Concurrency
-process-wrap = { workspace = true, features = ["std", "job-object", "process-group", "creation-flags"] }
+process-wrap = { workspace = true, optional = true, features = ["std", "job-object", "process-group", "creation-flags"] }
 
 # Async
 

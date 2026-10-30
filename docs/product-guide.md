@@ -99,7 +99,9 @@ with the official Buf generator after the Cargo build. Protobuf output goes to
 the exact selected output directory. A producer's build script selects its current
 `OUT_DIR/grpc/<catalog>/`; packaging retains that producer/catalog identity.
 The same crate owns `bundle`, Cargo discovery, inert inspection, development
-launching and Wasm componentization.
+launching and Wasm componentization. Inert bundle inspection and schema generation
+do not enable Cargo discovery, file watching or subprocess supervision. Select
+`build-tools` for those authoring APIs; `sidecar` and `guest` imply it.
 
 ```sh
 cargo run --locked -p cargo-harmos -- harmos sidecar build --manifest-path examples/schematic/Cargo.toml -p schematic-sidecar --json > sidecar-build.json
