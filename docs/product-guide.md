@@ -967,7 +967,14 @@ the initialization/shutdown policies, including for an empty plugin. Each JSON
 fragment is limited to 64 KiB. Inspection merges entries into one resolved
 manifest, enforcing entry limits and duplicate rules across fragments; shared
 `preparation_bytes` and `preparation_work` budgets bound the aggregate metadata
-and schema resolution. Aggregate provides/requires fragments are unsupported.
+and schema resolution. Consumers pass their `SchemaSettings` through
+`Declaration::inspect_with_settings`, `Bundle::build_with_settings`,
+`Bundle::inspect_with_settings` and `Executable::at_with_settings`.
+Sidecar authors use `run_plugin_with_settings` or
+`serve_plugin_channels_with_settings` for the matching native self-inspection.
+The existing convenience methods retain Harmos defaults. Memory and work
+refusals report attempted usage and the allowed amount; bundle errors also name
+the package and executable. Aggregate provides/requires fragments are unsupported.
 
 Protocol, artifact, envelope, journal and schema formats are v1. Only current
 shapes are supported; there are no old-peer checks, historical shape converters,
