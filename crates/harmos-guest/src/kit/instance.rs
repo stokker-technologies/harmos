@@ -151,7 +151,7 @@ impl<O: OperationDeclaration> OperationInstance<O> {
         Status::try_from(&state).map_err(OperationRefusal::of)
     }
 
-    pub async fn cancel(&self) -> Result<(), OperationRefusal> {
+    pub async fn request_cancel(&self) -> Result<(), OperationRefusal> {
         self.host.child_control(self.id, WireChildAction::Cancel).await?;
         Ok(())
     }
@@ -164,8 +164,8 @@ impl<O: OperationDeclaration> OperationInstance<O> {
         Ok(Response::new(response))
     }
 
-    pub async fn cancel_and_join(self) -> Result<Response<O::Response>, OperationRefusal> {
-        self.cancel().await?;
+    pub async fn cancel(self) -> Result<Response<O::Response>, OperationRefusal> {
+        self.request_cancel().await?;
         self.join().await
     }
 
@@ -197,8 +197,8 @@ impl<O: OperationDeclaration> Instance<O> for OperationInstance<O> {
         OperationInstance::status(self)
     }
 
-    fn cancel(&self) -> impl Future<Output = Result<(), OperationRefusal>> + Send {
-        OperationInstance::cancel(self)
+    fn request_cancel(&self) -> impl Future<Output = Result<(), OperationRefusal>> + Send {
+        OperationInstance::request_cancel(self)
     }
 
     fn join(self) -> impl Future<Output = Result<Response<O::Response>, OperationRefusal>> + Send {

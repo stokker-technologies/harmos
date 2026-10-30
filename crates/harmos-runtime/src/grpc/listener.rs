@@ -103,7 +103,7 @@ struct Connection {
 pub(super) trait Host: Send + Sync {
     fn attach(&self, resources: Arc<Resources>) -> Pending<'_, (u64, SocketAddr)>;
     fn detach(&self, generation: u64) -> Pending<'_, ()>;
-    fn cancel(&self, generation: u64);
+    fn request_cancel(&self, generation: u64);
     fn attached(&self) -> bool;
     fn close(&self);
     fn shutdown(&self) -> Pending<'_, ()>;
@@ -142,7 +142,7 @@ impl<A: Application> Owner<A> {
         };
         current.resources.stopping.send_replace(true);
         if let Some(lease) = &current.lease {
-            lease.cancel();
+            lease.request_cancel();
         }
         drop(current.lease);
         match self.operations.unregister_resident(&current.service).await {
@@ -162,7 +162,7 @@ impl<A: Application> Owner<A> {
 impl<A: Application> Drop for Starting<'_, A> {
     fn drop(&mut self) {
         if !self.ready {
-            self.owner.cancel(self.generation);
+            self.owner.request_cancel(self.generation);
         }
     }
 }
@@ -218,7 +218,7 @@ impl<A: Application> Host for Owner<A> {
                     current.lease = Some(lease.clone());
                 }
                 if *resources.stopping.borrow() {
-                    lease.cancel();
+                    lease.request_cancel();
                 }
                 lease.ready().await?;
                 resources.address.lock().expect("gRPC address lock is healthy").ok_or(Error::NotReady { domain: "gRPC listener" })
@@ -243,14 +243,14 @@ impl<A: Application> Host for Owner<A> {
         })
     }
 
-    fn cancel(&self, generation: u64) {
+    fn request_cancel(&self, generation: u64) {
         let current = self.current();
         let Some(current) = current.get(&generation) else {
             return;
         };
         current.resources.stopping.send_replace(true);
         if let Some(lease) = &current.lease {
-            lease.cancel();
+            lease.request_cancel();
         }
     }
 
@@ -263,7 +263,7 @@ impl<A: Application> Host for Owner<A> {
         for current in self.current().values() {
             current.resources.stopping.send_replace(true);
             if let Some(lease) = &current.lease {
-                lease.cancel();
+                lease.request_cancel();
             }
         }
     }

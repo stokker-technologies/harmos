@@ -110,7 +110,7 @@ impl Children {
                 let submitted = self.submitted.lock().expect("submitted child lock is healthy");
                 let invocation = submitted.get(&instance).and_then(|child| child.invocation.as_ref()).ok_or_else(|| unknown(instance))?;
                 if control.action == WireChildAction::Cancel {
-                    invocation.cancel();
+                    invocation.request_cancel();
                 }
                 let state = harmos_operations::lifecycle::InstanceState::from(invocation.control.status().portable());
                 Ok(state.encode())
@@ -143,7 +143,7 @@ impl Future for Child {
 impl Drop for Child {
     fn drop(&mut self) {
         if let Some(invocation) = &self.invocation {
-            invocation.cancel();
+            invocation.request_cancel();
         }
     }
 }
@@ -158,7 +158,7 @@ pub(crate) async fn lifecycle(invocation: EncodedInvocation, mut cancelled: ones
     let outcome = tokio::select! {
         biased;
         _ = &mut cancelled => {
-            invocation.invocation.as_ref().expect("owned lifecycle invocation").cancel();
+            invocation.invocation.as_ref().expect("owned lifecycle invocation").request_cancel();
             invocation.await
         }
         outcome = &mut invocation => outcome,
@@ -205,7 +205,7 @@ async fn drained(mut invocation: Child, mut cancelled: oneshot::Receiver<()>) ->
     tokio::select! {
         biased;
         _ = &mut cancelled => {
-            invocation.invocation.as_ref().expect("owned child").cancel();
+            invocation.invocation.as_ref().expect("owned child").request_cancel();
             invocation.await.map_err(refused)
         }
         outcome = &mut invocation => outcome.map_err(refused),

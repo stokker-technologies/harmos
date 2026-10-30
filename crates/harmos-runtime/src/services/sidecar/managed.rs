@@ -501,7 +501,7 @@ where
                     Ok(result) => result?,
                     Err(_) => {
                         // End The Original Carrier, Then Join Its Retained SDK Receipt.
-                        physical.cancel();
+                        physical.request_cancel();
                         drive(
                             physical,
                             &backend.polling,
@@ -521,7 +521,7 @@ where
             drive(physical, &backend.polling, &backend.dependencies, &mut backend.exit, registration.shutdown(), Progress::Settlement)
                 .await?;
         }
-        physical.cancel();
+        physical.request_cancel();
         drive(physical, &backend.polling, &backend.dependencies, &mut backend.exit, async { Ok(()) }, Progress::Settlement).await?;
         if let Some(sdk) = &mut backend.sdk {
             sdk.close().await?;

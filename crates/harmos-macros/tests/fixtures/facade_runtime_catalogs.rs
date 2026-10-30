@@ -27,6 +27,7 @@ use harmos::{Lifecycle, Operation};
 const POLICY: harmos::OperationPolicy = harmos::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: harmos::RetryPolicy::Never,
 };
 

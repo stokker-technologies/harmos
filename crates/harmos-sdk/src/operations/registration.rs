@@ -582,6 +582,7 @@ mod tests {
         policy = crate::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
+            cancellation_timeout: std::time::Duration::ZERO,
             retries: crate::RetryPolicy::Never,
         },
         key = |_: &Read| Some(super::super::CacheKey::new(vec![42]).unwrap()),

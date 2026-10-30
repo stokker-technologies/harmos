@@ -53,6 +53,7 @@ struct Answer {
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: harmos_runtime::RetryPolicy::Never,
     },
 )]
@@ -127,7 +128,7 @@ async fn cancellation_drops_attempt_state() {
     let (runtime, trace) = runtime().await;
     let call = runtime.operation(ReadContractDeclaration { mode: Mode::Wait }).start().await.unwrap();
     trace.running.notified().await;
-    call.cancel();
+    call.request_cancel();
     assert!(call.await.is_err());
     assert_eq!(trace.entered.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -155,6 +156,7 @@ mod listed {
     const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(1),
         attempt_timeout: Duration::from_secs(1),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
 

@@ -103,6 +103,7 @@ impl harmos_operations::lifecycle::Policy for Receiver {
     const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
@@ -143,6 +144,7 @@ impl Listener for Observed {
     const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(100),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
 }

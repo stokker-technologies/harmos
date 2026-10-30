@@ -62,6 +62,7 @@ type Backends<A> = PluginBackend<(), Backend<A>, ()>;
 
 #[derive(Default)]
 struct Counts {
+    cancellation: Arc<crate::operations::cancellation::Probe>,
     attached: AtomicUsize,
     initialized: AtomicUsize,
     fail_initialization: AtomicBool,
@@ -107,6 +108,7 @@ struct Endpoint {
     policy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::OnTransient {
             max_retries: 1,
             backoff: harmos_runtime::operations::Backoff::Fixed {
@@ -176,6 +178,8 @@ pub(crate) use super::support::Lanes;
 
 #[harmos_runtime::catalog]
 enum Operations {
+    Cancellation(crate::operations::cancellation::Finish),
+    CancellationExchange(crate::operations::cancellation::Exchange),
     RefreshDeclaration(RefreshDeclaration),
     ReadDeclaration(ReadDeclaration),
     Upload(streams::UploadDeclaration),
@@ -265,6 +269,7 @@ impl harmos_operations::lifecycle::Policy for Endpoint {
     const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
@@ -284,6 +289,7 @@ impl harmos_runtime::Lifecycle for Endpoint {
             .ok_or_else(|| std::io::Error::other("original fixture resources unavailable"))?;
         let plugin = Self { counts };
         setup.resource::<Counts>(plugin.counts.clone());
+        setup.resource::<crate::operations::cancellation::Probe>(plugin.counts.cancellation.clone());
         streams::configure(setup.settings()).map_err(std::io::Error::other)?;
         Ok(plugin)
     }
@@ -316,7 +322,7 @@ impl harmos_runtime::Plugin for Endpoint {
 
 impl Drop for Calling {
     fn drop(&mut self) {
-        self.0.cancel();
+        self.0.request_cancel();
     }
 }
 
@@ -726,7 +732,7 @@ async fn submitted(host: &harmos_runtime::sidecar::Supervisor, counts: &Counts) 
     // Cancel, Then Join
     let cancelled = host.submit::<RefreshDeclaration>(RefreshDeclaration {}).await?;
     counts.refresh_started.notified().await;
-    assert!(Instance::cancel_and_join(cancelled).await.is_err());
+    assert!(Instance::cancel(cancelled).await.is_err());
 
     // Dropping The Handle Releases The Child
     let dropped = host.submit::<RefreshDeclaration>(RefreshDeclaration {}).await?;

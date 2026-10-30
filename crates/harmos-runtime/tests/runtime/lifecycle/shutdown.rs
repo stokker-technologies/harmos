@@ -78,6 +78,7 @@ struct PendingGuard(Arc<Cancellation>);
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(3),
         attempt_timeout: Duration::from_secs(2),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: harmos_runtime::operations::RetryPolicy::Never,
     },
     response = (),

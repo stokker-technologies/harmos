@@ -35,6 +35,7 @@ use super::{Backoff, Duration, Jitter, OperationPolicy, RetryPolicy, Value};
     operations = [ReadOperation], id = "fixture.read", response = Value, policy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::OnTransient {
             max_retries: 1,
             backoff: Backoff::Fixed {
@@ -48,6 +49,7 @@ use super::{Backoff, Duration, Jitter, OperationPolicy, RetryPolicy, Value};
     operations = [ReadOperation], id = "fixture.read", response = Value, policy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::OnTransient {
             max_retries: 1,
             backoff: Backoff::Fixed {

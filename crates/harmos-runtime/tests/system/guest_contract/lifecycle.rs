@@ -150,6 +150,7 @@ pub(super) enum GuestOperations {
     Fail(wire::FailOperation),
     Read(wire::ReadOperation),
     Counts(wire::CountsOperation),
+    Finish(wire::FinishOperation),
 }
 
 #[harmos_domain::catalog]

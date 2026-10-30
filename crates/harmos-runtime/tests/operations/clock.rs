@@ -38,6 +38,7 @@ use harmos_runtime::operations::RetryPolicy;
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(600),
         attempt_timeout: Duration::from_secs(600),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     },
 )]

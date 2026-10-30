@@ -67,6 +67,7 @@ impl lifecycle::Policy for Catalog {
     const INITIALIZATION_POLICY: OperationPolicy = OperationPolicy {
         timeout: std::time::Duration::from_secs(120),
         attempt_timeout: std::time::Duration::from_secs(120),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;

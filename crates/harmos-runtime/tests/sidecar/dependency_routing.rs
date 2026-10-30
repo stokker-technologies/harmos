@@ -363,7 +363,7 @@ async fn cancellation_settles_handlers() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let invocation = runtime.operations.submit::<Forward>(Forward { value: 0 }).await.unwrap();
     (provider.started.notified()).await;
-    invocation.cancel();
+    invocation.request_cancel();
     assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     (provider.dropped.notified()).await;
     assert_eq!(runtime.operations.call::<Forward>(Forward { value: 9 }).await.unwrap().value, 9);
@@ -445,7 +445,7 @@ async fn cancelled_dependency_capacity() {
         "expected native capacity refusal: {:?}",
         busy.as_ref().err()
     );
-    invocation.cancel();
+    invocation.request_cancel();
     assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     (provider.dropped.notified()).await;
     let bytes = runtime.operations.call_encoded(&format!("caller.{}", Forward::ID), Message::encode(&Forward { value: 9 })).await.unwrap();
@@ -586,7 +586,7 @@ async fn capacity_precedes_encoding() {
             assert!(matches!(busy, Err(harmos_runtime::Error::OperationFailed { source, .. })
                 if matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Capacity))));
         }
-        invocation.cancel();
+        invocation.request_cancel();
         assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
         let bytes =
             target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(AmplifyDeclaration { value: 9 }.encode())).unwrap().await.unwrap();

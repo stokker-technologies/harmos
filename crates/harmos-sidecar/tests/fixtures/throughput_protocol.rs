@@ -35,6 +35,7 @@ const MAX_CASES: usize = 256;
 const SDK_POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(120),
     attempt_timeout: Duration::from_secs(120),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 const SDK: [harmos_domain::operations::OperationPolicy; 2] = [SDK_POLICY, SDK_POLICY];
@@ -83,6 +84,7 @@ static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", TransportPlugin::I
     policy = OperationPolicy {
         timeout: Duration::from_secs(120),
         attempt_timeout: Duration::from_secs(120),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     },
 )]
@@ -114,6 +116,7 @@ pub struct Done {
     policy = OperationPolicy {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     },
 )]

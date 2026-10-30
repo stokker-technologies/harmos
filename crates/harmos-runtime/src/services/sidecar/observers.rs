@@ -219,7 +219,7 @@ impl ObserverBackend for Backend {
         let result = match ended {
             Some(result) => result,
             None => {
-                invocation.cancel();
+                invocation.request_cancel();
                 tokio::select! {
                     result = &mut invocation => result,
                     () = remote.fence() => return Err(failure(SidecarError::Unavailable)),

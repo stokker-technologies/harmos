@@ -70,7 +70,7 @@ pub use harmos_sdk::operations::{
     WIRE_METHOD, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand, WireDeclaration,
     WireEndpoints, WireStreamLimits, WireStreams, item_types,
 };
-pub use harmos_sdk::operations::{CallContext, Host, Instance, RequestClaims, Response, instance};
+pub use harmos_sdk::operations::{CallContext, Cancellation, Host, Instance, RequestClaims, Response, instance};
 pub use lane::{Capacity, Lane, LaneSet, LaneSettings};
 #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 pub use remote::{RemoteStreamError, StreamEndpoints, StreamPeer};

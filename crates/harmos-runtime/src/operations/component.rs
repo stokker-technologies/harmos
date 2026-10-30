@@ -353,15 +353,20 @@ impl Component {
         };
         let running = self.endpoint.phase(command, Some(children));
         tokio::pin!(running);
+        let mut cancellation_sent = false;
         let answer = loop {
             tokio::select! {
                 biased;
                 answer = &mut running => break answer?,
+                _ = context.scope().cancellation().cancelled(), if !cancellation_sent => {
+                    cancellation_sent = true;
+                    self.endpoint.phase(WireCommand::Cancel { invocation }, None).await?;
+                }
                 Some(request) = incoming.recv() => {
                     if request.answer.is_closed() { continue; }
                     let child = context.submit_encoded_at(&request.operation, request.fingerprint, request.generation, request.payload, request.submitted, request.values);
                     // A Cancelled Admission Reply Still Cancels Its Admitted Child
-                    if let Err(Ok(child)) = request.answer.send(child) { child.cancel(); }
+                    if let Err(Ok(child)) = request.answer.send(child) { child.request_cancel(); }
                 }
             }
         };

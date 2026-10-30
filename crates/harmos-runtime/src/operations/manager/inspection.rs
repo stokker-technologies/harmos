@@ -91,8 +91,12 @@ impl Manager {
         }
         state
             .grpc
-            .values()
-            .filter_map(Weak::upgrade)
+            .iter()
+            .filter_map(|(path, entry)| {
+                let entry = entry.upgrade()?;
+                let binding = entry.contract.as_ref()?.grpc()?;
+                (path == &binding.path()).then_some(entry)
+            })
             .filter(|entry| entry.active.load(Ordering::Acquire) && entry.available().is_ok())
             .filter_map(|entry| {
                 Some(crate::operations::GrpcMethod {

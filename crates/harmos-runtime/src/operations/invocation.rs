@@ -210,6 +210,7 @@ mod tests {
     const POLICY: crate::OperationPolicy = crate::OperationPolicy {
         timeout: std::time::Duration::from_secs(2),
         attempt_timeout: std::time::Duration::from_secs(2),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: crate::RetryPolicy::Never,
     };
 

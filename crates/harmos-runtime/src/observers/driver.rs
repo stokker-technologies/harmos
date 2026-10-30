@@ -187,7 +187,7 @@ impl ChildSettlement {
         let pending = self.pending.lock().expect("observer children are healthy").clone();
         if !self.backend_returned.load(Ordering::Acquire) {
             for control in &pending {
-                control.cancel();
+                control.request_cancel();
             }
         }
         let joining = pending

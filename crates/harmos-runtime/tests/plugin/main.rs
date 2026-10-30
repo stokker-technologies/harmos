@@ -190,7 +190,7 @@ macro_rules! operation {
     ($name:ident, $millis:literal, $visibility:ident) => {
         #[harmos_runtime::operation(codec = manual, resources = [Owner], id = "fixture.run", response = String,
             visibility = $visibility, policy = OperationPolicy {
-                timeout: Duration::from_millis($millis), attempt_timeout: Duration::from_millis($millis), retries: RetryPolicy::Never,
+                timeout: Duration::from_millis($millis), attempt_timeout: Duration::from_millis($millis), cancellation_timeout: std::time::Duration::ZERO, retries: RetryPolicy::Never,
             })]
         #[derive(Clone)]
         struct $name { value: String }

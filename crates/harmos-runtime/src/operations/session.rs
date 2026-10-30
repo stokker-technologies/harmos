@@ -98,8 +98,8 @@ impl<O: OperationDeclaration, I, R> Session<O, I, R> {
         self.completion.status()
     }
 
-    pub fn cancel(&self) {
-        self.completion.cancel();
+    pub fn request_cancel(&self) {
+        self.completion.request_cancel();
     }
 
     pub fn split(self) -> (I, R, Completion<O>) {
@@ -113,8 +113,16 @@ impl<O: OperationDeclaration, I, R> Session<O, I, R> {
         completion.join().await
     }
 
+    pub async fn cancel(self) -> Result<crate::operations::Response<O::Response>> {
+        self.request_cancel();
+        let (input, output, completion) = self.split();
+        drop(input);
+        drop(output);
+        completion.cancel().await
+    }
+
     pub async fn cancel_and_settle(self) -> Result<()> {
-        self.cancel();
+        self.request_cancel();
         let (input, output, completion) = self.split();
         drop(input);
         drop(output);
@@ -228,8 +236,8 @@ impl<O: OperationDeclaration> Completion<O> {
         self.instance.status()
     }
 
-    pub fn cancel(&self) {
-        self.instance.cancel();
+    pub fn request_cancel(&self) {
+        self.instance.request_cancel();
     }
 
     pub async fn settle(&self) -> Result<()> {
@@ -248,8 +256,15 @@ impl<O: OperationDeclaration> Completion<O> {
         result
     }
 
+    pub async fn cancel(mut self) -> Result<crate::operations::Response<O::Response>> {
+        self.instance.request_cancel();
+        let result = (&mut self.instance).await;
+        self.delivered = true;
+        result
+    }
+
     pub async fn cancel_and_settle(mut self) -> Result<()> {
-        self.instance.cancel();
+        self.instance.request_cancel();
         let result = self.instance.settle().await;
         self.delivered = true;
         result
@@ -401,7 +416,7 @@ fn exchange<O: crate::operations::OperationDeclaration>(
 }
 fn cancel_unsettled(control: &Instance) {
     if control.status().phase() != Phase::Settled {
-        control.cancel();
+        control.request_cancel();
     }
 }
 async fn ended(control: &Instance) -> Error {

@@ -123,7 +123,7 @@ where
             }
         };
         if forwarded.is_err() {
-            pending.instance.cancel();
+            pending.instance.request_cancel();
         }
         let result = (&mut pending.instance).await;
         pending.delivered = true;

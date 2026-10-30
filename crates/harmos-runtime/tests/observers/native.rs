@@ -284,7 +284,7 @@ async fn handles_keep_cleanup() {
     counts.refuse_stop.store(true, Ordering::SeqCst);
     let lease = manager.submit_resident("native").await.unwrap();
     phase(manager, &key(manager, &lease), RUNNING).await;
-    lease.cancel();
+    lease.request_cancel();
     assert!(lease.settle().await.is_err());
     drop(lease);
     assert_eq!(counts.dropped.load(Ordering::SeqCst), 0);
@@ -317,7 +317,7 @@ async fn cleanup_recovery(finalizing: bool) {
     let expected = if finalizing { OperationPhase::Finalizing } else { OperationPhase::Stopping };
     let lease = manager.submit_resident("native").await.unwrap();
     phase(manager, &key(manager, &lease), RUNNING).await;
-    lease.cancel();
+    lease.request_cancel();
     assert!(lease.settle().await.is_err());
     assert!(!lease.status().phase().is_terminal());
     assert!(lease.status().cleanup_pending());
