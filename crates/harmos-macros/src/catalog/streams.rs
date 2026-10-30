@@ -24,6 +24,7 @@ use syn::spanned::Spanned;
 use syn::{Error, ItemEnum, Meta, Path, Token, Type};
 // Local Imports
 use crate::path::{self, HarmosPath};
+use crate::set_once;
 
 /* === Constants === */
 
@@ -152,14 +153,6 @@ fn harmos_path(attribute: TokenStream) -> Result<HarmosPath, Error> {
     }
 
     Ok(HarmosPath::resolve(harmos_path))
-}
-
-fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &str) -> Result<(), Error> {
-    if place.replace(value).is_some() {
-        return Err(Error::new(span, format!("`{name}` is declared only once")));
-    }
-
-    Ok(())
 }
 
 /* === Tests === */
