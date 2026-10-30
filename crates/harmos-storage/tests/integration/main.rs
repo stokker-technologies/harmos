@@ -9,7 +9,6 @@
 
 /* === Modules === */
 
-mod directory;
 mod json;
 mod json_sessions;
 mod manager;

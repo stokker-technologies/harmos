@@ -45,7 +45,7 @@
 fn builtin_inventory() {
     let definitions = harmos_operations::Builtins::catalog();
     let ids: std::collections::BTreeSet<_> = definitions.iter().map(|definition| definition.id.as_str()).collect();
-    assert_eq!(definitions.len(), 30);
+    assert_eq!(definitions.len(), 28);
     assert_eq!(ids.len(), definitions.len());
     let mut dependencies = definitions.into_iter();
     assert!(dependencies.all(|definition| definition.fingerprint.0 != [0; 32]));

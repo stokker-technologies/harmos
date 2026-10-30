@@ -1,7 +1,7 @@
 # filesystem-operations Specification
 
 ## Purpose
-Defines the filesystem operations Harmos ships: unified file sources, hashing and capture, file following, directory selection and watching, under composed resource policy and measurement.
+Defines the filesystem operations Harmos ships: unified file sources, hashing and capture, and file following under composed resource policy and measurement.
 
 ## Requirements
 
@@ -38,19 +38,8 @@ FollowFile SHALL accept Beginning, End or At(offset), emit bounded data and expl
 - **WHEN** a followed local file grows, truncates or is replaced
 - **THEN** the reader SHALL deliver available bytes and the corresponding change events without silently treating replacement as continuation, and cancellation SHALL release resources
 
-### Requirement: Directory Selection And Watching
-ListDirectory and WatchDirectory SHALL share root, recursion and ordered include/exclude rules. Rules SHALL match case-sensitive slash-relative paths with star confined to a segment, double-star crossing segments, last match winning and unmatched paths excluded. Traversal SHALL not prune excluded ancestors when descendants can match and SHALL not follow symlinks.
-
-#### Scenario: Later Descendant Inclusion
-- **WHEN** an excluded directory contains a descendant matched by a later include rule
-- **THEN** the descendant SHALL still be discovered
-
-#### Scenario: Initial Scan And Overflow
-- **WHEN** watching begins with include_existing enabled while files change
-- **THEN** Existing and InitialScanComplete SHALL coordinate with subsequent Created, Modified, Removed and Renamed events, and uncertainty or notification overflow SHALL produce RescanRequired rather than silent loss
-
 ### Requirement: Composed Resource Policy And Measurement
-The system SHALL compose filesystem and capture/replay/state resource settings under their existing owners, retain ordinary shared data ownership without restoring the superseded storage read pool, and measure applicable hash/capture/read/follow/directory workloads after the combined implementation. New workloads SHALL be identified as having no historical baseline.
+The system SHALL compose filesystem and capture/replay/state resource settings under their existing owners, retain ordinary shared data ownership without restoring the superseded storage read pool, and measure applicable hash/capture/read/follow workloads after the combined implementation. New workloads SHALL be identified as having no historical baseline.
 
 #### Scenario: Retained Buffers
 - **WHEN** a consumer retains a file slice or typed-record page after the producer advances or closes

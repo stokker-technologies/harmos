@@ -21,7 +21,7 @@ use std::path::PathBuf;
 // Local Imports
 use harmos_domain::model::storage::*;
 use harmos_domain::{MemorySize, Message};
-use harmos_operations::storage::{CaptureFile, FollowFile, FollowProduction, HashFile, ListDirectory, ReadFile, WatchDirectory};
+use harmos_operations::storage::{CaptureFile, FollowFile, FollowProduction, HashFile, ReadFile};
 
 /* === Constants === */
 
@@ -52,46 +52,6 @@ fn roundtrip<T: Message + MemorySize + harmos_domain::schema::Described + Partia
 }
 
 /* === Tests === */
-
-#[test]
-fn directory_contract_roundtrips() {
-    let selection = DirectorySelection {
-        root: PathBuf::from("data/measurements"),
-        recursive: true,
-        rules: vec![
-            DirectoryRule {
-                pattern: "**/*.bin".into(),
-                include: true,
-            },
-            DirectoryRule {
-                pattern: "private/**".into(),
-                include: false,
-            },
-        ],
-    };
-    roundtrip(ListDirectory { selection: selection.clone() });
-    roundtrip(WatchDirectory { selection, include_existing: true });
-    let entry = DirectoryEntry {
-        path: "measurements/run.bin".into(),
-        directory: false,
-        length: 8192,
-    };
-    for event in [
-        DirectoryEvent::Existing(entry.clone()),
-        DirectoryEvent::Created(entry.clone()),
-        DirectoryEvent::Modified(entry),
-        DirectoryEvent::InitialScanComplete,
-        DirectoryEvent::Removed { path: "old.bin".into() },
-        DirectoryEvent::Renamed {
-            from: "old.bin".into(),
-            to: "new.bin".into(),
-        },
-        DirectoryEvent::RescanRequired,
-    ] {
-        roundtrip(event);
-    }
-    roundtrip(DirectoryCompletion { entries: 1000 });
-}
 
 #[test]
 fn file_contract_roundtrips() {

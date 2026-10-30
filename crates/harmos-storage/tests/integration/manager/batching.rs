@@ -44,7 +44,7 @@ use harmos_storage::state::StateBackend;
 /* === Structs === */
 
 #[derive(Clone, Default)]
-struct Capture(Arc<Mutex<Captured>>, Arc<tokio::sync::Notify>);
+struct Capture(Arc<Mutex<Captured>>);
 
 #[derive(Clone, Debug, Default)]
 struct Captured {
@@ -129,8 +129,6 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for Capture {
         if let Some(span) = created.and_then(|created| capture.spans.get_mut(&created)) {
             span.closed = Some(closed);
         }
-        drop(capture);
-        self.1.notify_one();
     }
 }
 
@@ -974,11 +972,8 @@ async fn retained_observer_traced() {
 #[tokio::test]
 async fn filesystem_trace_lifetimes() {
     use harmos_domain::model::storage::files::{ByteRange, FileSource};
-    use harmos_domain::model::storage::{DirectoryRule, DirectorySelection};
     use harmos_storage::FileRead;
     use harmos_storage::{JsonStorage, JsonStorageSettings, StorageBackend};
-    use std::future::Future;
-    use std::task::Poll;
 
     let f = Fixture::new(config()).await;
     let root = tempfile::tempdir().unwrap();
@@ -1001,28 +996,6 @@ async fn filesystem_trace_lifetimes() {
     assert_eq!(reader.next().await.unwrap().unwrap().bytes(), b"private-payload");
     assert!(reader.next().await.unwrap().is_none());
     drop(reader);
-
-    let selection = DirectorySelection {
-        root: root.path().to_owned(),
-        recursive: false,
-        rules: vec![DirectoryRule { pattern: "**".into(), include: true }],
-    };
-    let mut listing =
-        f.storage.list_directory(selection.clone()).instrument(request.clone()).with_subscriber(dispatch.clone()).await.unwrap();
-    assert!(listing.next().await.unwrap().is_some());
-    while listing.next().await.unwrap().is_some() {}
-    drop(listing);
-    let mut watcher =
-        f.storage.watch_directory(selection, false).instrument(request.clone()).with_subscriber(dispatch.clone()).await.unwrap();
-    assert!(watcher.next().await.unwrap().is_some());
-    let mut pending = Box::pin(watcher.next());
-    std::future::poll_fn(|task| {
-        assert!(pending.as_mut().poll(task).is_pending());
-        Poll::Ready(())
-    })
-    .await;
-    drop(pending);
-    drop(watcher);
 
     let digest = f
         .storage
@@ -1053,34 +1026,11 @@ async fn filesystem_trace_lifetimes() {
     tracing::dispatcher::with_default(&dispatch, || drop(request));
     f.finish().await;
 
-    // Native Watcher Drop Signals Shutdown; Its Callback Can Retire On Another Thread.
-    tokio::time::timeout(Duration::from_secs(10), async {
-        loop {
-            let changed = capture.1.notified();
-            if capture.0.lock().unwrap().spans.values().all(|span| span.closed.is_some()) {
-                break;
-            }
-            changed.await;
-        }
-    })
-    .await
-    .expect("native watcher and request spans must close after shutdown");
-
     let captured = capture.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    for name in [
-        "storage.local.open",
-        "storage.local.next",
-        "storage.file.hash_file",
-        "storage.directory.page",
-        "storage.directory.watch.page",
-        "storage.directory.subscription",
-        "storage.backend.blocking",
-        "storage.json.backend",
-    ] {
+    for name in ["storage.local.open", "storage.local.next", "storage.file.hash_file", "storage.backend.blocking", "storage.json.backend"] {
         assert!(captured.spans.values().any(|span| span.name == name && span.parent.is_some()), "missing {name}");
     }
     assert!(captured.spans.values().all(|span| span.closed.is_some()), "retained spans: {captured:#?}");
-    assert!(captured.spans.values().any(|span| span.name == "storage.directory.watch.page" && span.fields["outcome"] == "\"cancelled\""));
     assert!(captured.spans.values().any(|span| span.name == "storage.json.backend" && span.fields["outcome"] == "\"failed\""));
     assert!(captured.spans.values().any(|span| span.name == "storage.backend.blocking" && span.fields["outcome"] == "\"completed\""));
     assert!(captured.spans.values().any(|span| span.name == "storage.backend.blocking" && span.fields["outcome"] == "\"failed\""));
