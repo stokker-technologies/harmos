@@ -70,8 +70,12 @@ pub trait Host: Send + Sync + Sized {
         async move { self.submit_owned::<O>(request, claims).await?.join().await }
     }
 
-    fn call<O: OperationDeclaration>(&self, request: O::Request)
-    -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send;
+    fn call<O: OperationDeclaration>(
+        &self, request: O::Request,
+    ) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send {
+        let submitted = self.submit::<O>(request);
+        async move { submitted.await?.join().await }
+    }
 
     // Publish one row on a declared stream through the host's `host.publish`.
     fn publish_on<S: StreamSpec>(&self, row: &S::Row) -> impl Future<Output = Result<(), Self::Error>> + Send
