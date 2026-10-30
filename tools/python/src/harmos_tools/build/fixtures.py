@@ -193,7 +193,7 @@ def offline_inputs(destination: Path) -> Path:
         stdin=sys.stdin,
         stderr=sys.stderr,
     )
-    projects = [ROOT / "tools/python", *(ROOT / f"crates/cargo-harmos/templates/{kind}/tools/python" for kind in ("sidecar", "guest"))]
+    projects = [ROOT / "tools/python", ROOT / "crates/cargo-harmos/templates/sidecar/tools/python"]
     requirements = []
     for index, project in enumerate(projects):
         selected = destination / ("requirements.txt" if index == 0 else f"starter-{project.parents[1].name}.txt")

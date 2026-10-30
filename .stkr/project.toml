@@ -509,16 +509,6 @@ package = "__PACKAGE_NAME__"
 module = "__RUST_MODULE__"
 product = "__PRODUCT_NAME__"
 
-[[templates.scaffolds]]
-path = "crates/cargo-harmos/templates/guest"
-profile = "guest"
-suffix = ".tmpl"
-tasks = "crates/cargo-harmos/scaffold-guest.tasks.toml"
-
-[templates.scaffolds.placeholders]
-package = "__PACKAGE_NAME__"
-module = "__RUST_MODULE__"
-product = "__PRODUCT_NAME__"
 
 [[template]]
 name = "header"

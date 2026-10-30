@@ -143,7 +143,7 @@ Create a plugin from the maintained starter with an explicit source selection:
 ```sh
 target/debug/cargo-harmos harmos new sidecar target/my-plugin --harmos-path .
 # For a separately maintained project, select a published revision:
-cargo harmos new guest my-plugin --harmos-rev <full-published-sha>
+cargo harmos new sidecar my-plugin --harmos-rev <full-published-sha>
 ```
 
 The starters include their managed Python runner and repository task graph.
