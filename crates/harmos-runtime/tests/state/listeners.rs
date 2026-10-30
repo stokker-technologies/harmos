@@ -570,7 +570,7 @@ async fn runtime_signals_listener() {
         fn definition(&self) -> harmos_runtime::Result<harmos_runtime::observers::ObserverDefinition> {
             Ok(harmos_runtime::observers::ObserverDefinition {
                 id: "blocked-cleanup".into(),
-                interval: Duration::from_secs(10),
+
                 streams: vec![],
                 demand_keys: vec![],
             })

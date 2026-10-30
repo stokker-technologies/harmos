@@ -40,8 +40,12 @@ pub struct Level;
 
 /* === Implementations === */
 
-#[harmos::observer(interval_ms = 100)]
+#[harmos::observer]
 impl Level {
+    fn interval(_: &harmos::ExecutionContext) -> Result<std::time::Duration, String> {
+        Ok(std::time::Duration::from_millis(100))
+    }
+
     async fn initialize(_resources: &harmos::ExecutionContext) -> Result<Self, String> {
         Ok(Self)
     }

@@ -219,8 +219,12 @@ impl harmos_runtime::Plugin for Producer {
     }
 }
 
-#[harmos_runtime::observer(id = "demand.record-only", interval_ms = 5, activation = "demand", demand_keys(RECORD))]
+#[harmos_runtime::observer(id = "demand.record-only", activation = "demand", demand_keys(RECORD))]
 impl RecordOnly {
+    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<std::time::Duration, Infallible> {
+        Ok(std::time::Duration::from_millis(5))
+    }
+
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
         let resolved = context.resource::<Resources>().unwrap();
         let resources = resolved.as_ref();
@@ -247,8 +251,12 @@ impl RecordOnly {
     }
 }
 
-#[harmos_runtime::observer(id = "demand.mixed", interval_ms = 5, activation = "demand", streams(Row), demand_keys(RECORD, AUXILIARY))]
+#[harmos_runtime::observer(id = "demand.mixed", activation = "demand", streams(Row), demand_keys(RECORD, AUXILIARY))]
 impl Mixed {
+    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<std::time::Duration, Infallible> {
+        Ok(std::time::Duration::from_millis(5))
+    }
+
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
         let resolved = context.resource::<Resources>().unwrap();
         let resources = resolved.as_ref();
@@ -283,8 +291,12 @@ impl Mixed {
     }
 }
 
-#[harmos_runtime::observer(id = "demand.idle", interval_ms = LIFECYCLE.timeout.as_millis() as u64 * 4, activation = "demand", demand_keys(IDLE))]
+#[harmos_runtime::observer(id = "demand.idle", activation = "demand", demand_keys(IDLE))]
 impl Idle {
+    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<std::time::Duration, Infallible> {
+        Ok(std::time::Duration::from_millis(LIFECYCLE.timeout.as_millis() as u64 * 4))
+    }
+
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
         let resources = context.resource::<Resources>().unwrap();
         let counts = Arc::clone(&resources.counts);

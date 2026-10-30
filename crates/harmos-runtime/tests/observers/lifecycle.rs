@@ -81,7 +81,9 @@ impl Resources {
 impl<const MODE: u8, const INTERVAL_MS: u64> Observer<()> for Watch<MODE, INTERVAL_MS> {
     type Error = std::io::Error;
     const ID: &'static str = "lifecycle";
-    const INTERVAL: Duration = Duration::from_millis(INTERVAL_MS);
+    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<Duration, Self::Error> {
+        Ok(Duration::from_millis(INTERVAL_MS))
+    }
 
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Self::Error> {
         let resolved = context.resource::<Resources>().unwrap();

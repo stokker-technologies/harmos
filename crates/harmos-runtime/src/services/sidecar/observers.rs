@@ -373,7 +373,6 @@ pub(super) fn stage(
     let backends = definitions.iter().map(|entry| Backend {
         definition: ObserverDefinition {
             id: entry.id.clone(),
-            interval: entry.interval,
             demand_keys: entry.demand_keys.clone(),
             streams: publications.iter().filter(|row| entry.streams.contains(&row.id)).cloned().collect(),
         },

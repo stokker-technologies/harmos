@@ -324,8 +324,12 @@ impl harmos_runtime::Plugin for Ticking {
     }
 }
 
-#[harmos_runtime::observer(streams(TickingPulse), demand_keys(TICKING_DEMAND), activation = "demand", interval_ms = 1)]
+#[harmos_runtime::observer(streams(TickingPulse), demand_keys(TICKING_DEMAND), activation = "demand")]
 impl Producer {
+    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<std::time::Duration, Infallible> {
+        Ok(std::time::Duration::from_millis(1))
+    }
+
     async fn observe(&mut self, ctx: &ObserverContext<'_, harmos_sidecar::Publisher<Ticking>>) -> Result<(), Infallible> {
         match ctx.publish_on::<TickingPulse>(&support::pulse(ctx.tick().ordinal())).await {
             // A Retiring Generation May Tick Once After The Host Closes Its Admission.
@@ -568,8 +572,12 @@ impl harmos_runtime::Plugin for SampledTwins {
     }
 }
 
-#[harmos_runtime::observer(streams(Left), activation = "demand", interval_ms = 5)]
+#[harmos_runtime::observer(streams(Left), activation = "demand")]
 impl LeftObserver {
+    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<std::time::Duration, Infallible> {
+        Ok(std::time::Duration::from_millis(5))
+    }
+
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
         let resolved = context.resource::<ObserverResources>().unwrap();
         let resources = resolved.as_ref();
@@ -594,8 +602,12 @@ impl LeftObserver {
     }
 }
 
-#[harmos_runtime::observer(streams(Right), activation = "demand", interval_ms = 5)]
+#[harmos_runtime::observer(streams(Right), activation = "demand")]
 impl RightObserver {
+    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<std::time::Duration, Infallible> {
+        Ok(std::time::Duration::from_millis(5))
+    }
+
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
         let resolved = context.resource::<ObserverResources>().unwrap();
         let resources = resolved.as_ref();
@@ -618,8 +630,12 @@ impl RightObserver {
     }
 }
 
-#[harmos_runtime::observer(interval_ms = 5, streams(Left, Right), activation = "demand")]
+#[harmos_runtime::observer(streams(Left, Right), activation = "demand")]
 impl MultiStreamObserver {
+    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<std::time::Duration, harmos_sidecar::PublishError> {
+        Ok(std::time::Duration::from_millis(5))
+    }
+
     async fn observe(
         &mut self, ctx: &ObserverContext<'_, harmos_sidecar::Publisher<MultiStream>>,
     ) -> Result<(), harmos_sidecar::PublishError> {
@@ -659,8 +675,12 @@ impl harmos_runtime::Plugin for MultiStream {
     }
 }
 
-#[harmos_runtime::observer(streams(FloodRows), interval_ms = 1)]
+#[harmos_runtime::observer(streams(FloodRows))]
 impl Flooding {
+    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<std::time::Duration, harmos_sidecar::PublishError> {
+        Ok(std::time::Duration::from_millis(1))
+    }
+
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, harmos_sidecar::PublishError> {
         let resolved = context.resource::<super::witness::Witness>().unwrap();
         let resources = resolved.as_ref();
