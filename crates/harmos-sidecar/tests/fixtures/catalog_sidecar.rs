@@ -34,8 +34,8 @@ static IDENTITY: [u8; contracts::identity_len("sidecar", Catalog::ID, Catalog::V
     contracts::encode_identity("sidecar", Catalog::ID, Catalog::VERSION, Catalog::DESCRIPTION, "()");
 
 #[used]
-static CONTRACTS: [u8; contracts::encoded_tree_len("sidecar", Catalog::ID, Catalog::PROVIDES, &[], &SDK)] =
-    contracts::encode_tree("sidecar", Catalog::ID, Catalog::PROVIDES, &[], &SDK);
+static CONTRACTS: [u8; contracts::encoded_fragments_len("sidecar", Catalog::ID, Catalog::PROVIDES, &[], &SDK)] =
+    contracts::encode_fragments("sidecar", Catalog::ID, Catalog::PROVIDES, &[], &SDK);
 
 #[used]
 static PUBLICATIONS: [u8; publications::encoded_len("sidecar", Catalog::ID, &[])] = publications::encode("sidecar", Catalog::ID, &[]);

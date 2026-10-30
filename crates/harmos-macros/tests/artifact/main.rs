@@ -76,20 +76,29 @@ fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>, required: 
         assert_eq!(fragment["owner"], "schematic_tools", "{facility} {kind} owner");
     }
 
-    let contracts = identity(bytes, "contracts");
-    let provides = contracts["provides"].as_array().expect("provided wire contracts");
+    let contracts = fragments(bytes).filter(|value| value["kind"] == "contracts").collect::<Vec<_>>();
+    let provides = contracts
+        .iter()
+        .filter(|value| value["entry"]["direction"] == "provides")
+        .map(|value| &value["entry"]["contract"])
+        .collect::<Vec<_>>();
     let ids = provides.iter().map(|contract| contract["operation"]["id"].as_str().expect("operation id")).collect::<BTreeSet<_>>();
     assert_eq!(&ids, expected, "{facility} provided operations");
-    let requires = contracts["requires"].as_array().expect("required wire contracts");
-    let needed =
-        requires.iter().map(|required| required["contract"]["operation"]["id"].as_str().expect("operation id")).collect::<BTreeSet<_>>();
+    let requires = contracts
+        .iter()
+        .filter(|value| value["entry"]["direction"] == "requires")
+        .map(|value| &value["entry"]["contract"])
+        .collect::<Vec<_>>();
+    let needed = requires.iter().map(|contract| contract["operation"]["id"].as_str().expect("operation id")).collect::<BTreeSet<_>>();
     assert_eq!(&needed, required, "{facility} required operations");
-    for contract in provides.iter().chain(requires.iter().map(|required| &required["contract"])) {
+    for contract in provides.iter().chain(requires.iter()) {
         schema(bytes, &contract["request"]);
         schema(bytes, &contract["response"]);
     }
 
-    let lifecycle = contracts["lifecycle"].as_array().expect("lifecycle contracts");
+    let lifecycle = contracts.iter().find(|value| value["entry"]["direction"] == "lifecycle").unwrap()["entry"]["lifecycle"]
+        .as_array()
+        .expect("lifecycle contracts");
     assert_eq!(lifecycle.len(), 2);
     for (contract, action) in lifecycle.iter().zip(["initialize", "shutdown"]) {
         assert_eq!(contract["action"], action);

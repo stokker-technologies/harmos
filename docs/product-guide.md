@@ -960,6 +960,15 @@ instance, discovery, publication, lifecycle and grant-access handles through
 `ExecutionContext`, along with the erased storage engine. State owners retain
 authorization, generation fencing and resource lifecycle ownership.
 
+Artifact contract inventory emits one `contracts` fragment per provided or required
+operation, with `facility`, `owner` and an `entry` containing `direction` and
+`contract` (plus `grants` for requirements). A separate `lifecycle` entry carries
+the initialization/shutdown policies, including for an empty plugin. Each JSON
+fragment is limited to 64 KiB. Inspection merges entries into one resolved
+manifest, enforcing entry limits and duplicate rules across fragments; shared
+`preparation_bytes` and `preparation_work` budgets bound the aggregate metadata
+and schema resolution. Aggregate provides/requires fragments are unsupported.
+
 Protocol, artifact, envelope, journal and schema formats are v1. Only current
 shapes are supported; there are no old-peer checks, historical shape converters,
 legacy decoders or journal upgrades.

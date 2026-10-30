@@ -78,7 +78,7 @@ fn fragments(facility: &str, owner: &str) -> Vec<u8> {
     let lifecycle = ["initialize", "shutdown"].map(|action| json!({"action":action,"identity":"harmos.operation.v1","policy":policy}));
     let mut fragments = vec![
         json!({"kind":"plugin","facility":facility,"id":owner,"version":"1.0.0","description":"Byte-only fixture","config":"Settings"}),
-        json!({"kind":"contracts","facility":facility,"owner":owner,"provides":[],"requires":[],"lifecycle":lifecycle}),
+        json!({"kind":"contracts","facility":facility,"owner":owner,"entry":{"direction":"lifecycle","lifecycle":lifecycle}}),
         json!({"kind":"publications","facility":facility,"owner":owner,"streams":[]}),
     ];
     if facility == "sidecar" {

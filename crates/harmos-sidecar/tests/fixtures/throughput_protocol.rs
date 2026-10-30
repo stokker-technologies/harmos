@@ -49,13 +49,13 @@ static IDENTITY: [u8; contracts::identity_len(
 )] = contracts::encode_identity("sidecar", TransportPlugin::ID, TransportPlugin::VERSION, TransportPlugin::DESCRIPTION, "()");
 
 #[used]
-static CONTRACTS: [u8; contracts::encoded_tree_len(
+static CONTRACTS: [u8; contracts::encoded_fragments_len(
     "sidecar",
     TransportPlugin::ID,
     TransportPlugin::PROVIDES,
     TransportPlugin::REQUIRES,
     &SDK,
-)] = contracts::encode_tree("sidecar", TransportPlugin::ID, TransportPlugin::PROVIDES, TransportPlugin::REQUIRES, &SDK);
+)] = contracts::encode_fragments("sidecar", TransportPlugin::ID, TransportPlugin::PROVIDES, TransportPlugin::REQUIRES, &SDK);
 
 #[used]
 static PUBLICATIONS: [u8; publications::encoded_len("sidecar", TransportPlugin::ID, TransportPlugin::STREAMS)] =

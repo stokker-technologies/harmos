@@ -73,9 +73,6 @@ pub struct Identity {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Decoded {
-    #[serde(default)]
-    kind: Option<String>,
-
     facility: String,
     owner: String,
     provides: Vec<Contract>,
@@ -109,21 +106,10 @@ pub struct NamedContract {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct NamedRequired {
-    pub contract: NamedContract,
-
-    #[serde(default)]
-    pub grants: Vec<Grant>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct NamedManifest {
+pub struct NamedFragment {
     pub facility: String,
     pub owner: String,
-    pub provides: Vec<NamedContract>,
-    pub requires: Vec<NamedRequired>,
-    pub lifecycle: [NamedLifecycle; 2],
+    pub entry: NamedEntry,
 }
 
 #[derive(Deserialize)]
@@ -151,12 +137,20 @@ pub(crate) struct Encoder<const N: usize> {
 
 /* === Enums === */
 
+#[derive(Deserialize)]
+#[serde(tag = "direction", rename_all = "snake_case", deny_unknown_fields)]
+pub enum NamedEntry {
+    Provides { contract: NamedContract },
+    Requires { contract: NamedContract, grants: Vec<Grant> },
+    Lifecycle { lifecycle: [NamedLifecycle; 2] },
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("missing complete {facility} contract inventory for `{owner}`")]
     Missing { facility: String, owner: String },
 
-    #[error("multiple {facility} contract inventories for `{owner}`")]
+    #[error("multiple {facility} contract lifecycle headers for `{owner}`")]
     Duplicate { facility: String, owner: String },
 
     #[error("contract inventory exceeds its entry or fragment budget")]
@@ -164,9 +158,6 @@ pub enum Error {
 
     #[error("contract inventory requires a guest or sidecar facility and a valid artifact owner")]
     Identity,
-
-    #[error("contract inventory has an invalid fragment kind")]
-    Kind,
 
     #[error("requirement `{id}` carries a duplicate or invalid grant")]
     Grant { id: String },
@@ -188,9 +179,6 @@ pub enum Error {
 
     #[error("invalid resolved contract: {0}")]
     Contract(#[from] crate::operations::ContractError),
-
-    #[error("invalid contract inventory JSON: {0}")]
-    Decode(#[from] serde_json::Error),
 }
 
 /* === Traits === */
@@ -229,49 +217,10 @@ impl NamedContract {
     }
 }
 
-impl NamedManifest {
-    pub fn resolve(self, declarations: &[Named], settings: &mut SchemaSettings) -> Result<Manifest, Error> {
-        if self.provides.len() > ENTRY_LIMIT || self.requires.len() > ENTRY_LIMIT {
-            return Err(Error::Budget);
-        }
-        let provides = self.provides.into_iter().map(|contract| contract.resolve(declarations, settings)).collect::<Result<_, _>>()?;
-        let requires = self
-            .requires
-            .into_iter()
-            .map(|entry| {
-                Ok(Required {
-                    contract: entry.contract.resolve(declarations, settings)?,
-                    grants: entry.grants,
-                })
-            })
-            .collect::<Result<_, Error>>()?;
-        let resolve = |entry: NamedLifecycle| -> Result<lifecycle::Descriptor, Error> {
-            if entry.identity != "harmos.operation.v1" {
-                return Err(Error::Identity);
-            }
-            Ok(lifecycle::Descriptor::new(entry.action, entry.policy)?)
-        };
-        let [initialize, shutdown] = self.lifecycle;
-        let lifecycle = [resolve(initialize)?, resolve(shutdown)?];
-        let manifest = Manifest {
-            facility: self.facility,
-            owner: self.owner,
-            provides,
-            requires,
-            lifecycle,
-        };
-        validate(&manifest)?;
-        Ok(manifest)
-    }
-}
-
 impl TryFrom<Decoded> for Manifest {
     type Error = Error;
 
     fn try_from(value: Decoded) -> Result<Self, Error> {
-        if value.kind.as_deref().is_some_and(|kind| kind != "contracts") {
-            return Err(Error::Kind);
-        }
         let manifest = Self {
             facility: value.facility,
             owner: value.owner,
@@ -330,25 +279,64 @@ impl<const N: usize> Encoder<N> {
 
 /* === Public Functions === */
 
-pub fn decode(fragment: &[u8]) -> Result<Manifest, Error> {
-    if fragment.len() > crate::FRAGMENT_LIMIT {
-        return Err(Error::Budget);
+pub fn select(
+    fragments: Vec<NamedFragment>, facility: &str, owner: &str, declarations: &[Named], settings: &mut SchemaSettings,
+) -> Result<Manifest, Error> {
+    let mut provides = Vec::new();
+    let mut requires = Vec::new();
+    let mut lifecycle = None;
+    for fragment in fragments {
+        if !valid_identity(&fragment.facility, &fragment.owner) {
+            return Err(Error::Identity);
+        }
+        if fragment.facility != facility || fragment.owner != owner {
+            continue;
+        }
+        match fragment.entry {
+            NamedEntry::Provides { contract } => {
+                if provides.len() == ENTRY_LIMIT {
+                    return Err(Error::Budget);
+                }
+                provides.push(contract.resolve(declarations, settings)?);
+            }
+            NamedEntry::Requires { contract, grants } => {
+                if requires.len() == ENTRY_LIMIT {
+                    return Err(Error::Budget);
+                }
+                requires.push(Required {
+                    contract: contract.resolve(declarations, settings)?,
+                    grants,
+                });
+            }
+            NamedEntry::Lifecycle { lifecycle: entries } => {
+                if lifecycle.is_some() {
+                    return Err(Error::Duplicate {
+                        facility: facility.to_owned(),
+                        owner: owner.to_owned(),
+                    });
+                }
+                let resolve = |entry: NamedLifecycle| -> Result<lifecycle::Descriptor, Error> {
+                    if entry.identity != "harmos.operation.v1" {
+                        return Err(Error::Identity);
+                    }
+                    Ok(lifecycle::Descriptor::new(entry.action, entry.policy)?)
+                };
+                let [initialize, shutdown] = entries;
+                lifecycle = Some([resolve(initialize)?, resolve(shutdown)?]);
+            }
+        }
     }
-    Ok(serde_json::from_slice(fragment)?)
-}
-
-pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str) -> Result<Manifest, Error> {
-    let mut matching = manifests.into_iter().filter(|value| value.facility == facility && value.owner == owner);
-    let manifest = matching.next().ok_or_else(|| Error::Missing {
+    let lifecycle = lifecycle.ok_or_else(|| Error::Missing {
         facility: facility.to_owned(),
         owner: owner.to_owned(),
     })?;
-    if matching.next().is_some() {
-        return Err(Error::Duplicate {
-            facility: facility.to_owned(),
-            owner: owner.to_owned(),
-        });
-    }
+    let manifest = Manifest {
+        facility: facility.to_owned(),
+        owner: owner.to_owned(),
+        provides,
+        requires,
+        lifecycle,
+    };
     validate(&manifest)?;
     Ok(manifest)
 }
@@ -397,18 +385,16 @@ pub fn validate(manifest: &Manifest) -> Result<(), Error> {
     Ok(())
 }
 
-pub const fn encoded_tree_len(
+pub const fn encoded_fragments_len(
     facility: &str, owner: &str, provides: &[Node<WireDeclaration>], requires: &[Node<Requirement>], lifecycle: &[OperationPolicy; 2],
 ) -> usize {
-    let size = encoded::<0>(facility, owner, provides, requires, lifecycle).cursor;
-    assert!(size - PREFIX.len() - 1 <= crate::FRAGMENT_LIMIT);
-    size
+    encoded::<0>(facility, owner, provides, requires, lifecycle).cursor
 }
 
-pub const fn encode_tree<const N: usize>(
+pub const fn encode_fragments<const N: usize>(
     facility: &str, owner: &str, provides: &[Node<WireDeclaration>], requires: &[Node<Requirement>], lifecycle: &[OperationPolicy; 2],
 ) -> [u8; N] {
-    assert!(N == encoded_tree_len(facility, owner, provides, requires, lifecycle));
+    assert!(N == encoded_fragments_len(facility, owner, provides, requires, lifecycle));
     encoded::<N>(facility, owner, provides, requires, lifecycle).bytes
 }
 
@@ -521,33 +507,43 @@ const fn encoded<const N: usize>(
     assert!(crate::catalog::count(provides) <= ENTRY_LIMIT);
     assert!(crate::catalog::count(requires) <= ENTRY_LIMIT);
     let mut out = Encoder { bytes: [0; N], cursor: 0 };
+    let start = begin(&mut out, facility, owner, "lifecycle");
+    out.raw(b",\"lifecycle\":[{\"action\":\"initialize\",\"identity\":\"harmos.operation.v1\",\"policy\":");
+    policy(&mut out, lifecycle[0]);
+    out.raw(b"},{\"action\":\"shutdown\",\"identity\":\"harmos.operation.v1\",\"policy\":");
+    policy(&mut out, lifecycle[1]);
+    out.raw(b"}]");
+    finish(&mut out, start);
+    tree(&mut out, facility, owner, provides);
+    required(&mut out, facility, owner, requires);
+    out
+}
+
+const fn begin<const N: usize>(out: &mut Encoder<N>, facility: &str, owner: &str, direction: &str) -> usize {
     out.raw(PREFIX);
+    let start = out.cursor;
     out.raw(b"{\"kind\":\"contracts\",\"facility\":");
     out.quoted(facility);
     out.raw(b",\"owner\":");
     out.quoted(owner);
-    out.raw(b",\"provides\":[");
-    tree(&mut out, provides, &mut true);
-    out.raw(b"],\"requires\":[");
-    required(&mut out, requires, &mut true);
-    out.raw(b"],\"lifecycle\":[{\"action\":\"initialize\",\"identity\":\"harmos.operation.v1\",\"policy\":");
-    policy(&mut out, lifecycle[0]);
-    out.raw(b"},{\"action\":\"shutdown\",\"identity\":\"harmos.operation.v1\",\"policy\":");
-    policy(&mut out, lifecycle[1]);
-    out.raw(b"}]}\0");
-    out
+    out.raw(b",\"entry\":{\"direction\":");
+    out.quoted(direction);
+    start
 }
 
-const fn required<const N: usize>(out: &mut Encoder<N>, entries: &[Node<Requirement>], first: &mut bool) {
+const fn finish<const N: usize>(out: &mut Encoder<N>, start: usize) {
+    out.raw(b"}}");
+    assert!(out.cursor - start <= crate::FRAGMENT_LIMIT);
+    out.raw(b"\0");
+}
+
+const fn required<const N: usize>(out: &mut Encoder<N>, facility: &str, owner: &str, entries: &[Node<Requirement>]) {
     let mut index = 0;
     while index < entries.len() {
         match &entries[index] {
             Node::Leaf(entry) => {
-                if !*first {
-                    out.raw(b",");
-                }
-                *first = false;
-                out.raw(b"{\"contract\":");
+                let start = begin(out, facility, owner, "requires");
+                out.raw(b",\"contract\":");
                 wire(out, &entry.declaration);
                 out.raw(b",\"grants\":[");
                 let mut grant = 0;
@@ -571,26 +567,26 @@ const fn required<const N: usize>(out: &mut Encoder<N>, entries: &[Node<Requirem
                     out.raw(b"}");
                     grant += 1;
                 }
-                out.raw(b"]}");
+                out.raw(b"]");
+                finish(out, start);
             }
-            Node::Nested(nested) => required(out, nested, first),
+            Node::Nested(nested) => required(out, facility, owner, nested),
         }
         index += 1;
     }
 }
 
-const fn tree<const N: usize>(out: &mut Encoder<N>, entries: &[Node<WireDeclaration>], first: &mut bool) {
+const fn tree<const N: usize>(out: &mut Encoder<N>, facility: &str, owner: &str, entries: &[Node<WireDeclaration>]) {
     let mut index = 0;
     while index < entries.len() {
         match &entries[index] {
             Node::Leaf(entry) => {
-                if !*first {
-                    out.raw(b",");
-                }
-                *first = false;
+                let start = begin(out, facility, owner, "provides");
+                out.raw(b",\"contract\":");
                 wire(out, entry);
+                finish(out, start);
             }
-            Node::Nested(nested) => tree(out, nested, first),
+            Node::Nested(nested) => tree(out, facility, owner, nested),
         }
         index += 1;
     }
@@ -650,3 +646,235 @@ const fn backoff<const N: usize>(out: &mut Encoder<N>, value: Backoff) {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::inventory::{Declaration, Facility};
+    use crate::operations::{NoStream, OperationDeclaration};
+    use serde_json::{Value, json};
+
+    struct Read;
+
+    impl OperationDeclaration for Read {
+        type Request = ();
+        type Response = ();
+        type Input = NoStream;
+        type Output = NoStream;
+        const ID: &'static str = "fixture.read";
+        const POLICY: OperationPolicy = lifecycle::POLICY;
+    }
+
+    const SDK: [OperationPolicy; 2] = [lifecycle::POLICY; 2];
+    const DESCRIPTION: &str = match str::from_utf8(&[b'x'; 9000]) {
+        Ok(value) => value,
+        Err(_) => panic!("ASCII"),
+    };
+    const IDS: [&str; 4] = ["fixture.one", "fixture.two", "fixture.three", "fixture.four"];
+    const PROVIDED: &[Node<WireDeclaration>] = &{
+        let mut entries = [const { Node::Leaf(WireDeclaration::of::<Read>()) }; 4];
+        let mut index = 0;
+        while index < entries.len() {
+            let Node::Leaf(entry) = &mut entries[index] else {
+                panic!("leaf");
+            };
+            entry.operation.id = IDS[index];
+            entry.operation.description = DESCRIPTION;
+            index += 1;
+        }
+        entries
+    };
+    const REQUIRED: &[Node<Requirement>] = &{
+        let mut entries = [const {
+            Node::Leaf(Requirement {
+                declaration: WireDeclaration::of::<Read>(),
+                grants: &[],
+            })
+        }; 4];
+        let mut index = 0;
+        while index < entries.len() {
+            let Node::Leaf(entry) = &mut entries[index] else {
+                panic!("leaf");
+            };
+            entry.declaration.operation.id = IDS[index];
+            entry.declaration.operation.description = DESCRIPTION;
+            index += 1;
+        }
+        entries
+    };
+    const PROVIDED_TREE: &[Node<WireDeclaration>] = &[Node::Nested(PROVIDED)];
+    const REQUIRED_TREE: &[Node<Requirement>] = &[Node::Nested(REQUIRED)];
+    const SIZE: usize = encoded_fragments_len("sidecar", "fixture", PROVIDED_TREE, REQUIRED_TREE, &SDK);
+    static CONTRACTS: [u8; SIZE] = encode_fragments("sidecar", "fixture", PROVIDED_TREE, REQUIRED_TREE, &SDK);
+
+    fn parts() -> Vec<Value> {
+        crate::artifacts::fragments(&CONTRACTS, &["contracts"]).unwrap()
+    }
+
+    fn bytes(parts: &[Value]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for part in parts {
+            bytes.extend_from_slice(PREFIX);
+            bytes.extend(serde_json::to_vec(part).unwrap());
+            bytes.push(0);
+        }
+        bytes
+    }
+
+    fn artifact(facility: &str, parts: &mut [Value]) -> Vec<u8> {
+        for part in parts.iter_mut() {
+            part["facility"] = facility.into();
+        }
+        let mut artifact = bytes(parts);
+        artifact.extend(bytes(&[
+            json!({"kind":"plugin","facility":facility,"id":"fixture","version":"1.0.0","description":"","config":"()"}),
+            json!({"kind":"publications","facility":facility,"owner":"fixture","streams":[]}),
+            json!({"kind":"observers","facility":facility,"owner":"fixture","observers":[]}),
+        ]));
+        let schemas =
+            crate::schema::declaration::markers_many([WireDeclaration::of::<Read>().request], &SchemaSettings::default()).unwrap();
+        for schema in schemas {
+            artifact.extend_from_slice(schema);
+        }
+        artifact
+    }
+
+    #[test]
+    fn total_over_fragment_limit_packages_and_resolves() {
+        use harmos_packaging::bundle::{Bundle, Executable, Facility as Packaged, Identity, Limits, Source};
+        assert!(CONTRACTS.len() > crate::FRAGMENT_LIMIT);
+        let parts = parts();
+        assert_eq!(parts.len(), 1 + PROVIDED.len() + REQUIRED.len());
+        assert!(parts.iter().all(|part| serde_json::to_vec(part).unwrap().len() <= crate::FRAGMENT_LIMIT));
+        for (facility, inspected, packaged) in
+            [("sidecar", Facility::Sidecar, Packaged::Sidecar), ("guest", Facility::Guest, Packaged::Guest)]
+        {
+            let artifact = artifact(facility, &mut parts.clone());
+            let declaration = Declaration::inspect(&artifact, inspected).unwrap();
+            assert_eq!(declaration.contracts.provides.len(), 4);
+            assert_eq!(declaration.contracts.requires.len(), 4);
+            for (provided, required) in declaration.contracts.provides.iter().zip(&declaration.contracts.requires) {
+                assert_eq!(provided, &required.contract);
+                assert_eq!(provided.operation().description, DESCRIPTION);
+            }
+            let identity = Identity {
+                name: "fixture".into(),
+                version: "1.0.0".parse().unwrap(),
+                description: String::new(),
+                package: Default::default(),
+            };
+            let executable = Executable {
+                facility: packaged,
+                target: "fixture-target".into(),
+                registrations: Vec::new(),
+            };
+            let source = Source {
+                path: "plugin.bin",
+                bytes: &artifact,
+                executable: Some(executable),
+            };
+            let bundle = Bundle::build(identity, &[source], Limits::default()).unwrap();
+            let reopened = Bundle::inspect(bundle.bytes(), Limits::default()).unwrap();
+            let packaged = reopened.declaration("plugin.bin").unwrap();
+            assert_eq!(packaged.id, declaration.id);
+            assert_eq!(serde_json::to_value(&packaged.contracts).unwrap(), serde_json::to_value(&declaration.contracts).unwrap());
+        }
+    }
+
+    #[test]
+    fn duplicate_entries_across_fragments_are_refused() {
+        for direction in ["provides", "requires"] {
+            let mut parts = parts();
+            let duplicate = parts.iter().find(|part| part["entry"]["direction"] == direction).unwrap().clone();
+            parts.push(duplicate);
+            let error = Declaration::inspect(&artifact("sidecar", &mut parts), Facility::Sidecar).unwrap_err();
+            assert!(
+                matches!(error, crate::inventory::DeclarationError::ContractInventory(Error::OperationDuplicate { direction: actual, .. }) if actual == direction)
+            );
+        }
+    }
+
+    #[test]
+    fn lifecycle_header_is_required_and_unique() {
+        let mut duplicate = parts();
+        duplicate.push(duplicate[0].clone());
+        assert!(matches!(
+            Declaration::inspect(&artifact("sidecar", &mut duplicate), Facility::Sidecar),
+            Err(crate::inventory::DeclarationError::ContractInventory(Error::Duplicate { .. }))
+        ));
+        let mut missing = parts();
+        missing.remove(0);
+        assert!(matches!(
+            Declaration::inspect(&artifact("sidecar", &mut missing), Facility::Sidecar),
+            Err(crate::inventory::DeclarationError::ContractInventory(Error::Missing { .. }))
+        ));
+    }
+
+    #[test]
+    fn merged_entry_limit_is_enforced() {
+        for direction in ["provides", "requires"] {
+            let template = parts().into_iter().find(|part| part["entry"]["direction"] == direction).unwrap();
+            let mut parts = vec![parts().remove(0)];
+            for index in 0..=ENTRY_LIMIT {
+                let mut part = template.clone();
+                part["entry"]["contract"]["operation"]["id"] = format!("fixture.operation{index}").into();
+                part["entry"]["contract"]["operation"]["description"] = "".into();
+                parts.push(part);
+            }
+            let fragments = parts
+                .into_iter()
+                .map(|mut part| {
+                    part.as_object_mut().unwrap().remove("kind");
+                    serde_json::from_value(part).unwrap()
+                })
+                .collect();
+            let mut settings = SchemaSettings {
+                preparation_bytes: std::num::NonZeroUsize::new(usize::MAX).unwrap(),
+                preparation_work: std::num::NonZeroUsize::new(usize::MAX).unwrap(),
+            };
+            let markers = crate::schema::declaration::markers_many([WireDeclaration::of::<Read>().request], &settings).unwrap();
+            let schemas = crate::artifacts::fragments::<Named>(&markers.concat(), &["schema"]).unwrap();
+            assert!(matches!(select(fragments, "sidecar", "fixture", &schemas, &mut settings), Err(Error::Budget)));
+        }
+    }
+
+    #[test]
+    fn aggregate_shape_is_refused() {
+        let mut parts = parts();
+        parts[0] = json!({"kind":"contracts","facility":"sidecar","owner":"fixture","provides":[],"requires":[],"lifecycle":parts[0]["entry"]["lifecycle"]});
+        assert!(matches!(
+            Declaration::inspect(&artifact("sidecar", &mut parts), Facility::Sidecar),
+            Err(crate::inventory::DeclarationError::Malformed { .. })
+        ));
+    }
+
+    #[test]
+    fn aggregate_preparation_budgets_remain_enforced() {
+        let count = parts().len();
+        for memory in [false, true] {
+            let mut settings = SchemaSettings::default();
+            if memory {
+                settings.preparation_bytes = std::num::NonZeroUsize::new(CONTRACTS.len()).unwrap();
+            } else {
+                settings.preparation_work = std::num::NonZeroUsize::new(CONTRACTS.len() / 2).unwrap();
+            }
+            assert!(matches!(
+                crate::artifacts::fragments_with_settings::<Value>(&CONTRACTS, &["contracts"], &mut settings),
+                Err(crate::ScanError::Budget)
+            ));
+        }
+        assert_eq!(count, 9);
+    }
+
+    #[test]
+    fn individual_fragment_limit_remains_enforced() {
+        let oversized = vec![b'x'; crate::FRAGMENT_LIMIT + 1];
+        let mut artifact = PREFIX.to_vec();
+        artifact.extend(oversized);
+        artifact.push(0);
+        assert!(matches!(crate::artifacts::fragments::<Value>(&artifact, &["contracts"]), Err(crate::ScanError::Oversized)));
+        let mut provided = WireDeclaration::of::<Read>();
+        provided.operation.description = str::from_utf8(&[b'x'; crate::FRAGMENT_LIMIT]).unwrap();
+        assert!(std::panic::catch_unwind(|| encoded_fragments_len("sidecar", "fixture", &[Node::Leaf(provided)], &[], &SDK)).is_err());
+    }
+}
