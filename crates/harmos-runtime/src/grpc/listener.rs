@@ -345,22 +345,8 @@ impl<A: Application> Resident<A> for Listener {
                 }
             }
         };
-        // Cross-Origin Preflight Wraps gRPC-Web; Actual Calls Keep Ingress Authentication.
-        let web = self.resources.settings.web;
-        let origins = super::origin::CrossOrigin::new(&self.resources.settings.allowed_origins);
-        self.task = Some(tokio::spawn(async move {
-            if web {
-                server
-                    .accept_http1(true)
-                    .layer(tower::util::option_layer(origins))
-                    .layer(tonic_web::GrpcWebLayer::new())
-                    .serve_with_incoming_shutdown(inbound, incoming, shutdown)
-                    .await
-                    .map_err(failure)
-            } else {
-                server.serve_with_incoming_shutdown(inbound, incoming, shutdown).await.map_err(failure)
-            }
-        }));
+        self.task =
+            Some(tokio::spawn(async move { server.serve_with_incoming_shutdown(inbound, incoming, shutdown).await.map_err(failure) }));
         *self.resources.address.lock().expect("gRPC address lock is healthy") = Some(address);
         tracing::info!(%address, "gRPC listener ready");
         context.ready();

@@ -28,8 +28,6 @@ mod listener;
 mod manager;
 pub(crate) mod native;
 
-mod origin;
-
 pub mod middleware;
 
 mod reflection;
@@ -62,7 +60,6 @@ pub use harmos_sdk::grpc::{encoded_len, encoded_len_admitted};
 pub use input::{InputError, input, open};
 
 pub use manager::{Attached, GrpcManager, Settings};
-pub use origin::Origin;
 
 /* === Imports === */
 
