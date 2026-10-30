@@ -23,8 +23,8 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Error, Expr, Ident, ItemImpl, LitStr, Meta, Path, PathArguments, Token, Type};
 // Local Imports
-use super::set_once;
 use crate::path::{self, HarmosPath};
+use crate::set_once;
 
 /* === Constants === */
 

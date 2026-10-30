@@ -52,16 +52,16 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     let mut skip_default = None;
     for meta in Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attributes)? {
         if matches!(&meta, Meta::Path(path) if path.is_ident("skip_debug")) {
-            crate::artifact::set_once(&mut skip_debug, true, meta.span(), "skip_debug")?;
+            crate::set_once(&mut skip_debug, true, meta.span(), "skip_debug")?;
             continue;
         }
         if matches!(&meta, Meta::Path(path) if path.is_ident("skip_default")) {
-            crate::artifact::set_once(&mut skip_default, true, meta.span(), "skip_default")?;
+            crate::set_once(&mut skip_default, true, meta.span(), "skip_default")?;
             continue;
         }
         let value = path::declared(&meta)
             .ok_or_else(|| Error::new(meta.span(), "message accepts only harmos_path, skip_debug and skip_default"))??;
-        crate::artifact::set_once(&mut explicit, value, meta.span(), path::KEY)?;
+        crate::set_once(&mut explicit, value, meta.span(), path::KEY)?;
     }
     let skip_debug = skip_debug.unwrap_or(false);
     let skip_default = skip_default.unwrap_or(false);

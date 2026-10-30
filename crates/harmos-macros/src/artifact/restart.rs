@@ -22,7 +22,7 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Error, LitInt, Meta, Token};
 // Local Imports
-use super::set_once;
+use crate::set_once;
 
 /* === Constants === */
 
