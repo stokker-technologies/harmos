@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/ci/mise.py; sha256:647726d3c737264fca8d81ffd4eb356ec31796cbf46248f692ec11b9e606d4c9
 # ***
 #
 # Harmos

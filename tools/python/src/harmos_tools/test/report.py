@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/test/report.py; sha256:31b4de8de7ce8b455ddb7e93e015bb7f5a4c1056d83cf42941e0808582033ea0
 # ***
 #
 # Harmos

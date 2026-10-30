@@ -653,6 +653,13 @@ path = "yaml/module.yaml"
 default = true
 snippet = "stkr-yaml"
 
+[[template]]
+name = "project"
+language = "stkr"
+path = "toml/project.toml"
+default = false
+snippet = "stkr"
+
 # === === Release === === #
 
 [release]

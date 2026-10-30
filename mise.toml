@@ -390,7 +390,7 @@ run = "uv run --locked --project tools/python python -m harmos_tools.release.run
 
 [tasks.housekeeping]
 description = "Inspect Repository Housekeeping"
-run = "uv run --locked --project tools/python python -m harmos_tools.stkr project housekeeping preview"
+run = "uv run --locked --project tools/python python .stkr/commands.py project housekeeping preview"
 
 [tasks."housekeeping:stats"]
 description = "Report Project Statistics"

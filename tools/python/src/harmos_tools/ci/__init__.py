@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/ci/__init__.py; sha256:32c82ef41afda94541d9273e90e44e1e92feba103384dd5dc530df80d03bc685
 # ***
 #
 # Harmos
@@ -8,7 +7,7 @@
 # ***
 
 
-"""Hub-Rendered Native CI Planning."""
+"""Native CI Planning."""
 
 # === Imports === #
 

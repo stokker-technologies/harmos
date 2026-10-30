@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/build/paths.py; sha256:b7dbd2f9944a66698ed48ce873b959cfc1758b268ddac73c7d57818a55ed316d
 # ***
 #
 # Harmos

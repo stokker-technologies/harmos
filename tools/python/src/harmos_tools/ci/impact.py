@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/ci/impact.py; sha256:9f1a133eddb0e76ef9c131b0f369a777343f6878ba26b6cbd37b53f9972503e5
 # ***
 #
 # Harmos
@@ -94,7 +93,7 @@ def select(plan: dict, paths: set[str] | None) -> set[str]:
 
 
 def selection(root: Path, plan: dict, target: str = "origin/dev") -> set[str]:
-    """Resolve Portable Local Impact Without A Hub Installation Or Registration."""
+    """Resolve Portable Local Impact From The Project's Changes."""
     return select(plan, changed_paths(target, root))
 
 
@@ -150,7 +149,7 @@ def main(plan: dict) -> None:
 
 
 def _matches(patterns: list[str], path: str) -> bool:
-    # Hub Compiles The Glob Dialect Once For Both Local And Provider Resolution.
+    # Compile The Glob Dialect Once For Both Local And Provider Resolution.
     return any(re.fullmatch(pattern.encode("utf-8"), path.encode("utf-8")) is not None for pattern in patterns)
 
 

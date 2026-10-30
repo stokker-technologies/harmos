@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/package/changelog.py; sha256:c20acdc6315b0ab008ab1597d8d49146b102069f3f1b7d968b4d0ed1c4f03c93
 # ***
 #
 # Harmos

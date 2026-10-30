@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/ci/review-release; sha256:a3c15316079b71dcab1d9dba8279b21c053f4799428033a62a49cb0998416977
 """Find A Green Review Of This Exact Tree And Restore Its Package Artifacts."""
 
 # === Imports === #
@@ -107,6 +106,22 @@ def github_review_run(run, review):
     )
 
 
+def github_validation_run(runs, jobs_for):
+    for run in sorted(runs, key=lambda item: item["id"], reverse=True):
+        if run.get("display_title") in ("CI / Closed Review", "CI / Draft Review"):
+            continue
+        if run.get("display_title") != "CI / Validation" or run.get("status") != "completed" or run.get("conclusion") != "success":
+            raise ValueError("review run is not green validation")
+        jobs = jobs_for(run["id"])
+        gates = [job for job in jobs if job.get("name") == "CI / Required"]
+        if len(gates) != 1 or gates[0].get("conclusion") != "success":
+            raise ValueError("review required gate is not green")
+        if not jobs or any(job.get("conclusion") not in ("success", "skipped") for job in jobs):
+            raise ValueError("review jobs are not green")
+        return run, jobs
+    raise ValueError("review has no validation run")
+
+
 def lookup():
     sha = command("git", "rev-parse", "HEAD")
     tree = command("git", "rev-parse", "HEAD^{tree}")
@@ -145,12 +160,7 @@ def lookup():
     if github:
         runs = pages(f"actions/workflows/ci.yml/runs?event=pull_request&head_sha={head}", "workflow_runs")
         runs = [run for run in runs if github_review_run(run, review)]
-        run = max(runs, key=lambda item: item["id"])
-        if run.get("status") != "completed" or run.get("conclusion") != "success":
-            raise ValueError("review run is not green")
-        jobs = pages(f"actions/runs/{run['id']}/jobs?filter=latest", "jobs")
-        if not jobs or any(job.get("conclusion") not in ("success", "skipped") for job in jobs):
-            raise ValueError("review jobs are not green")
+        run, jobs = github_validation_run(runs, lambda identifier: pages(f"actions/runs/{identifier}/jobs?filter=latest", "jobs"))
         artifacts = pages(f"actions/runs/{run['id']}/artifacts", "artifacts")
         for name in required:
             matches = [artifact for artifact in artifacts if artifact.get("name") == name.replace("PROFILE", profile)]

@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/temporary/__init__.py; sha256:256bc5c9625edba17a53057058a85cce06de12c1fa419fac25c3a913b696dfe8
 # ***
 #
 # Harmos
@@ -37,7 +36,7 @@ from pathlib import Path
 
 @contextmanager
 def directory() -> Generator[Path]:
-    with tempfile.TemporaryDirectory(prefix="stkr-tmp-") as name:
+    with tempfile.TemporaryDirectory(prefix="project-tmp-") as name:
         path = Path(name)
         with (path / "owner.lock").open("x+b") as owner:
             if os.name == "nt":
@@ -48,7 +47,7 @@ def directory() -> Generator[Path]:
                 import fcntl
 
                 fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            owner.write(b"stkr-temporary-v1\n")
+            owner.write(b"project-temporary-v1\n")
             owner.flush()
             contents = path / "contents"
             contents.mkdir()

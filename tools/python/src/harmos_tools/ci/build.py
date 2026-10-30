@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/ci/build.py; sha256:e390bb3876ae3c233eb08ae8370193d15d83f98e51099a3d303d43855a0c608e
 # ***
 #
 # Harmos
@@ -98,7 +97,7 @@ def _run(command: Sequence[str] | str, label: str, shell: str | None = None) -> 
         "COMPILER_CACHE_MODE",
         "READ_WRITE" if os.environ.get("CACHE_POLICY") == "pull-push" else "READ_ONLY",
     )
-    phase_store = tempfile.TemporaryDirectory(prefix="stkr-build-phases-")
+    phase_store = tempfile.TemporaryDirectory(prefix="project-build-phases-")
     phase_file = Path(phase_store.name) / "phases.jsonl"
     previous_phase_file = os.environ.get("BUILD_PHASE_FILE")
     os.environ["BUILD_PHASE_FILE"] = str(phase_file)

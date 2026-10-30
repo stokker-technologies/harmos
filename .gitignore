@@ -45,7 +45,7 @@ Thumbs.db
 /tools/python/.venv/
 __pycache__/
 .ruff_cache/
-!.vscode/stkr.code-snippets
+!.vscode/project.code-snippets
 
 # Native Coverage Profiles
 *.profraw
@@ -62,10 +62,10 @@ __pycache__/
 /.stkr/tests/
 /.stkr/benchmarks/
 
-# BEGIN Stkr CI
+# BEGIN CI
 /.cache/
 /.mise/
-# END Stkr CI
+# END CI
 
 # OpenSpec Changes And Specs Are Tracked; Uncomment To Keep Them Local.
 # /openspec/

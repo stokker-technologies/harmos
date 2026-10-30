@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/release/__init__.py; sha256:6361864a91c275cd6970ac9c244b6ea41dfbcee98df68680c0eb8ed60bcdf266
 # ***
 #
 # Harmos
@@ -7,7 +6,7 @@
 #
 # ***
 
-"""Hub-Rendered Release Tooling: Policy, Versions, Registries And Screenshots"""
+"""Release Tooling: Policy, Versions, Registries And Screenshots"""
 
 # === Imports === #
 

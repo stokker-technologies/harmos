@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/ci/containers.py; sha256:214ae4f3316b341aa1cab8d2546ed2c144fee84087d609b1df4bccdf3fd75104
 # ***
 #
 # Harmos
@@ -32,7 +31,7 @@ from pathlib import Path
 
 # === Constants === #
 
-LABEL = "stkr.simulation."
+LABEL = "project.simulation."
 
 # === Types === #
 
@@ -126,7 +125,7 @@ def job(output: Path, repository: str, run: str, key: str, preserve: Callable[[s
         raise ValueError("Docker job ownership already exists or is linked")
     lock.touch(exist_ok=True)
     with lease(lock):
-        name = f"stkr-ci-{run}-{key.replace('_', '-')}"
+        name = f"project-ci-{run}-{key.replace('_', '-')}"
         record = {
             "version": 1,
             "repository": repository,
@@ -187,7 +186,7 @@ def _valid(path: Path, record: object, repository: str) -> bool:
         or re.fullmatch(r"[a-f0-9]{32}", nonce) is None
     ):
         return False
-    name = f"stkr-ci-{run}-{key.replace('_', '-')}"
+    name = f"project-ci-{run}-{key.replace('_', '-')}"
     return (
         record.get("output") == str(path.parent.resolve())
         and path.name == f"{key}.docker-owner.json"

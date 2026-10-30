@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/format/toml.py; sha256:bae9006226362e4b80d7a0e11ed4d5f5db13baeffb97e16bac8502da536e1684
 # ***
 #
 # Harmos

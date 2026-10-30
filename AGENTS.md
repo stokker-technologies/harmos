@@ -1,5 +1,3 @@
-<!-- Rendered by stkr project update from .agents/GUIDANCE.md; sha256:049a2eee508cf374fe2c677e79eb088aaf9febc7e4c3d4c58ca1e7c33e68916f -->
-
 # Project Guidance
 
 ## Configuration Policy

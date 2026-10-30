@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --locked --quiet --project tools/python python -m harmos_tools.stkr --optional project hook post",
+            "command": "uv run --locked --quiet --project tools/python python .stkr/commands.py --optional project hook post",
             "timeout": 30
           }
         ]
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --locked --quiet --project tools/python python -m harmos_tools.stkr --optional project hook pre",
+            "command": "uv run --locked --quiet --project tools/python python .stkr/commands.py --optional project hook pre",
             "timeout": 30
           }
         ]
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --locked --quiet --project tools/python python -m harmos_tools.stkr --optional project hook start",
+            "command": "uv run --locked --quiet --project tools/python python .stkr/commands.py --optional project hook start",
             "timeout": 3600
           }
         ]
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --locked --quiet --project tools/python python -m harmos_tools.stkr --optional project hook stop",
+            "command": "uv run --locked --quiet --project tools/python python .stkr/commands.py --optional project hook stop",
             "timeout": 3600
           }
         ]

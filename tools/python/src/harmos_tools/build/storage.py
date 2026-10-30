@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/build/storage.py; sha256:05015423565f6c899d8182b19f67abd447d64c05fe2e776606dbf3dd4ccbd2e4
 # ***
 #
 # Harmos

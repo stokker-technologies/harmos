@@ -1,10 +1,19 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:7cf19942cd9cd272a8442e18a7a9f79819b59ff7b0d6ba655ab01fcaa20e3a67
 name: CI
+run-name: >-
+  ${{ github.event_name == 'pull_request' && github.event.action == 'closed' &&
+  'CI / Closed Review' || github.event_name == 'pull_request' &&
+  github.event.pull_request.draft && 'CI / Draft Review' || 'CI / Validation' }}
 "on":
   push:
     branches:
     - dev
-  pull_request: {}
+  pull_request:
+    types:
+    - opened
+    - synchronize
+    - reopened
+    - ready_for_review
+    - closed
   workflow_dispatch: {}
 permissions:
   contents: read
@@ -74,10 +83,14 @@ jobs:
     env:
       MISE_ENABLE_TOOLS: >-
         go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo,git-cliff
+    if: >-
+      (true) && (github.event_name != 'pull_request' || (github.event.action !=
+      'closed' && !github.event.pull_request.draft))
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-source-${{ (github.event_name == 'pull_request' ||
-        github.event_name == 'push') && github.ref || github.run_id }}
+        ci-${{ github.workflow }}-source-shared-${{ github.event_name == 'pull_request'
+        && github.event.number || github.event_name == 'push' && github.ref ||
+        github.run_id }}
       cancel-in-progress: true
   check_python:
     name: Check / Python
@@ -136,10 +149,14 @@ jobs:
     env:
       MISE_ENABLE_TOOLS: >-
         go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+    if: >-
+      (true) && (github.event_name != 'pull_request' || (github.event.action !=
+      'closed' && !github.event.pull_request.draft))
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-check_python-${{ (github.event_name == 'pull_request'
-        || github.event_name == 'push') && github.ref || github.run_id }}
+        ci-${{ github.workflow }}-check_python-shared-${{ github.event_name ==
+        'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
+        github.run_id }}
       cancel-in-progress: true
   build_product:
     name: Build / Product (${{ matrix.platform }})
@@ -173,7 +190,9 @@ jobs:
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
         project_tools.ci.build --profile release --output product --task build
-      if: matrix.platform == 'unix' && (true) && (env.PROFILE == 'dev')
+      if: >-
+        matrix.platform == 'unix' && (true) && (env.PROFILE == 'dev' &&
+        github.event_name != 'pull_request')
     - name: Archive product
       uses: ./.github/actions/archive-build
       with:
@@ -256,7 +275,9 @@ jobs:
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
         project_tools.ci.build --profile release --output product --task build
-      if: matrix.platform == 'windows' && (true) && (env.PROFILE == 'dev')
+      if: >-
+        matrix.platform == 'windows' && (true) && (env.PROFILE == 'dev' &&
+        github.event_name != 'pull_request')
     - name: Archive product
       uses: ./.github/actions/archive-build
       with:
@@ -342,10 +363,14 @@ jobs:
           runner: windows-latest
           minutes: 120
           container: ""
+    if: >-
+      (true) && (github.event_name != 'pull_request' || (github.event.action !=
+      'closed' && !github.event.pull_request.draft))
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-build_product-${{ (github.event_name ==
-        'pull_request' || github.event_name == 'push') && github.ref || github.run_id }}
+        ci-${{ github.workflow }}-build_product-${{ matrix.platform }}-${{
+        github.event_name == 'pull_request' && github.event.number || github.event_name == 'push' &&
+        github.ref || github.run_id }}
       cancel-in-progress: true
   build_tests:
     name: Build / Tests (${{ matrix.platform }})
@@ -538,10 +563,14 @@ jobs:
           runner: windows-latest
           minutes: 120
           container: ""
+    if: >-
+      (true) && (github.event_name != 'pull_request' || (github.event.action !=
+      'closed' && !github.event.pull_request.draft))
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-build_tests-${{ (github.event_name == 'pull_request'
-        || github.event_name == 'push') && github.ref || github.run_id }}
+        ci-${{ github.workflow }}-build_tests-${{ matrix.platform }}-${{
+        github.event_name == 'pull_request' && github.event.number || github.event_name == 'push' &&
+        github.ref || github.run_id }}
       cancel-in-progress: true
   check_rust:
     name: Check / Rust (${{ matrix.platform }})
@@ -710,10 +739,14 @@ jobs:
           runner: windows-latest
           minutes: 120
           container: ""
+    if: >-
+      (true) && (github.event_name != 'pull_request' || (github.event.action !=
+      'closed' && !github.event.pull_request.draft))
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-check_rust-${{ (github.event_name == 'pull_request'
-        || github.event_name == 'push') && github.ref || github.run_id }}
+        ci-${{ github.workflow }}-check_rust-${{ matrix.platform }}-${{
+        github.event_name == 'pull_request' && github.event.number || github.event_name == 'push' &&
+        github.ref || github.run_id }}
       cancel-in-progress: true
   package_rust:
     name: Package / Rust (${{ matrix.platform }})
@@ -947,9 +980,11 @@ jobs:
       with:
         summary-module: ""
     if: >-
-      ((github.event_name == 'schedule' || github.event_name == 'pull_request' ||
-      startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/dev')))
+      (((github.event_name == 'schedule' || github.event_name == 'pull_request' ||
+      startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'push' && github.ref == 'refs/heads/dev')))) &&
+      (github.event_name != 'pull_request' || (github.event.action != 'closed' &&
+      !github.event.pull_request.draft))
     env:
       MISE_ENABLE_TOOLS: >-
         go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
@@ -971,8 +1006,9 @@ jobs:
           container: ""
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-package_rust-${{ (github.event_name == 'pull_request'
-        || github.event_name == 'push') && github.ref || github.run_id }}
+        ci-${{ github.workflow }}-package_rust-${{ matrix.platform }}-${{
+        github.event_name == 'pull_request' && github.event.number || github.event_name == 'push' &&
+        github.ref || github.run_id }}
       cancel-in-progress: true
   validate_test_rust_unit:
     name: Test / Rust / Unit (${{ matrix.platform }})
@@ -1141,10 +1177,14 @@ jobs:
           runner: windows-latest
           minutes: 120
           container: ""
+    if: >-
+      (true) && (github.event_name != 'pull_request' || (github.event.action !=
+      'closed' && !github.event.pull_request.draft))
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-validate_test_rust_unit-${{ (github.event_name ==
-        'pull_request' || github.event_name == 'push') && github.ref || github.run_id }}
+        ci-${{ github.workflow }}-validate_test_rust_unit-${{ matrix.platform }}-${{
+        github.event_name == 'pull_request' && github.event.number || github.event_name ==
+        'push' && github.ref || github.run_id }}
       cancel-in-progress: true
   required:
     name: CI / Required
@@ -1158,7 +1198,9 @@ jobs:
     - check_rust
     - package_rust
     - validate_test_rust_unit
-    if: always()
+    if: >-
+      (always()) && (github.event_name != 'pull_request' || (github.event.action !=
+      'closed' && !github.event.pull_request.draft))
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -1171,6 +1213,74 @@ jobs:
         RESULTS: ${{ toJSON(needs) }}
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-required-${{ (github.event_name == 'pull_request' ||
-        github.event_name == 'push') && github.ref || github.run_id }}
+        ci-${{ github.workflow }}-required-shared-${{ github.event_name ==
+        'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
+        github.run_id }}
       cancel-in-progress: true
+  cancel_closed:
+    name: Cancel / Closed Review
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - group: >-
+            ci-${{ github.workflow }}-source-shared-${{ github.event_name == 'pull_request'
+            && github.event.number || github.event_name == 'push' && github.ref ||
+            github.run_id }}
+        - group: >-
+            ci-${{ github.workflow }}-check_python-shared-${{ github.event_name ==
+            'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
+            github.run_id }}
+        - group: >-
+            ci-${{ github.workflow }}-build_product-unix-${{ github.event_name ==
+            'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
+            github.run_id }}
+        - group: >-
+            ci-${{ github.workflow }}-build_product-windows-${{ github.event_name ==
+            'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
+            github.run_id }}
+        - group: >-
+            ci-${{ github.workflow }}-build_tests-unix-${{ github.event_name ==
+            'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
+            github.run_id }}
+        - group: >-
+            ci-${{ github.workflow }}-build_tests-windows-${{ github.event_name ==
+            'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
+            github.run_id }}
+        - group: >-
+            ci-${{ github.workflow }}-check_rust-unix-${{ github.event_name ==
+            'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
+            github.run_id }}
+        - group: >-
+            ci-${{ github.workflow }}-check_rust-windows-${{ github.event_name ==
+            'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
+            github.run_id }}
+        - group: >-
+            ci-${{ github.workflow }}-package_rust-unix-${{ github.event_name ==
+            'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
+            github.run_id }}
+        - group: >-
+            ci-${{ github.workflow }}-package_rust-windows-${{ github.event_name ==
+            'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
+            github.run_id }}
+        - group: >-
+            ci-${{ github.workflow }}-validate_test_rust_unit-unix-${{ github.event_name ==
+            'pull_request' && github.event.number || github.event_name == 'push' &&
+            github.ref || github.run_id }}
+        - group: >-
+            ci-${{ github.workflow }}-validate_test_rust_unit-windows-${{ github.event_name
+            == 'pull_request' && github.event.number || github.event_name == 'push' &&
+            github.ref || github.run_id }}
+        - group: >-
+            ci-${{ github.workflow }}-required-shared-${{ github.event_name ==
+            'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
+            github.run_id }}
+    concurrency:
+      group: ${{ matrix.group }}
+      cancel-in-progress: true
+    steps:
+    - shell: python
+      run: pass

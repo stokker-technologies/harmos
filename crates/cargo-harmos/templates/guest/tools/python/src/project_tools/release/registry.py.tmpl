@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/release/registry.py; sha256:91186fcb62f1b055f2e0c2b95a52589ceb79659c21499b94f4907b1a44d6ec35
 # ***
 #
 # __PRODUCT_NAME__
@@ -17,6 +16,7 @@ import hashlib
 import json
 import os
 import re
+import runpy
 import subprocess
 import time
 import urllib.error
@@ -151,12 +151,15 @@ def request(
     binary: bool = False,
     upload: bool = False,
     graphql: bool = False,
+    channel: bool = False,
 ) -> bytes | None:
     provider = settings["provider"]
     if provider == "github":
         base = os.environ.get("GITHUB_API_URL", settings.get("api_url", "https://api.github.com"))
         repository = settings.get("repository", os.environ.get("GITHUB_REPOSITORY"))
         token = os.environ.get("GH_TOKEN", os.environ.get("GITHUB_TOKEN"))
+        if method == "GET" and endpoint.startswith("actions/"):
+            token = os.environ.get("GITHUB_TOKEN") or token
         if not repository or not token:
             raise policy.ToolError("GitHub repository and native token required")
         headers = {"Authorization": "Bearer " + token, "X-GitHub-Api-Version": "2022-11-28"}
@@ -187,16 +190,34 @@ def request(
             headers = {"Authorization": "Bearer " + token}
             url = base.rstrip("/").removesuffix("/v4") + "/graphql"
         else:
+            if channel:
+                resource = endpoint.split("?", 1)[0]
+                links = re.fullmatch(r"releases/dev-channel/assets/links(?:/[0-9]+)?", resource)
+                allowed = (
+                    resource == "releases"
+                    and method == "POST"
+                    or resource == "releases/dev-channel"
+                    and method in {"GET", "PUT"}
+                    or links
+                    and method in {"GET", "POST", "DELETE"}
+                )
+                if not allowed:
+                    raise policy.ToolError("dev channel requires native job-token release endpoints")
             cleanup = method == "DELETE" and endpoint.startswith("repository/branches/release%2Fv")
             merging = method == "PUT" and re.fullmatch(r"merge_requests/[0-9]+/merge", endpoint) is not None
             tagging = method == "POST" and endpoint in {"repository/tags", "repository/commits"} or cleanup or merging
             if (
-                method != "GET"
+                not channel
+                and method != "GET"
                 and not tagging
                 and not ((method == "PUT" and endpoint.startswith("packages/generic/")) or (method == "POST" and endpoint == "releases"))
             ):
                 raise policy.ToolError("GitLab release write endpoint is not allowed")
-            if tagging:
+            if channel:
+                if not job_token:
+                    raise policy.ToolError("dev channel requires native CI_JOB_TOKEN")
+                headers = {"JOB-TOKEN": job_token}
+            elif tagging:
                 if not token:
                     raise policy.ToolError("GitLab tagging and release reviews require the RELEASE_TOKEN release identity")
                 headers = {"Authorization": "Bearer " + token}
@@ -226,22 +247,23 @@ def request(
         if error.code == 404 and method == "GET":
             return None
         message = error.read().decode("utf-8", errors="replace")
-        if token:
-            message = message.replace(token, "***")
+        for secret in (token, os.environ.get("CI_JOB_TOKEN")):
+            if secret:
+                message = message.replace(secret, "***")
         raise policy.ToolError(f"release provider {method} failed: HTTP {error.code}: {message}") from error
 
 
-def document(settings: dict, endpoint: str, method: str = "GET", body: dict | None = None) -> Any:
-    value = request(settings, endpoint, method, json.dumps(body).encode() if body is not None else None)
+def document(settings: dict, endpoint: str, method: str = "GET", body: dict | None = None, *, channel: bool = False) -> Any:
+    value = request(settings, endpoint, method, json.dumps(body).encode() if body is not None else None, channel=channel)
     return json.loads(value) if value else None
 
 
-def pages(settings: dict, endpoint: str, key: str | None = None) -> list:
+def pages(settings: dict, endpoint: str, key: str | None = None, *, channel: bool = False) -> list:
     result = []
     page = 1
     while True:
         separator = "&" if "?" in endpoint else "?"
-        response = document(settings, f"{endpoint}{separator}per_page=100&page={page}")
+        response = document(settings, f"{endpoint}{separator}per_page=100&page={page}", channel=channel)
         values = response.get(key, []) if key and isinstance(response, dict) else response
         if not isinstance(values, list):
             raise policy.ToolError("provider returned invalid paginated evidence")
@@ -472,13 +494,19 @@ def rehearsed(directory: Path, settings: dict, review: dict, sha: str) -> None:
     """The Release Review Head Passed Its Rehearsal And Its Tree Is Exactly The Merged Tree."""
     head = review["head"]
     if settings["provider"] == "github":
-        runs = document(settings, f"commits/{head}/check-runs?check_name={urllib.parse.quote(REHEARSAL_CHECK)}&filter=latest")
-        checks = runs.get("check_runs") if isinstance(runs, dict) else None
-        if (
-            not isinstance(checks, list)
-            or not checks
-            or any(not isinstance(run, dict) or run.get("status") != "completed" or run.get("conclusion") != "success" for run in checks)
-        ):
+        evidence = runpy.run_path(str(directory / ".github/actions/review-release/run.py"))
+        pull = document(settings, f"pulls/{review['number']}")
+        runs = pages(settings, f"actions/workflows/ci.yml/runs?event=pull_request&head_sha={head}", "workflow_runs")
+        try:
+            if not isinstance(pull, dict) or pull.get("number") != review["number"] or pull.get("head", {}).get("sha") != head:
+                raise ValueError("review identity or head differs")
+            candidates = [run for run in runs if evidence["github_review_run"](run, pull)]
+            _, jobs = evidence["github_validation_run"](
+                candidates, lambda identifier: pages(settings, f"actions/runs/{identifier}/jobs?filter=latest", "jobs")
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise policy.ToolError(f"release PR #{review['number']} head {head} has no green validation: {error}") from error
+        if not any(job.get("name") == REHEARSAL_CHECK and job.get("conclusion") == "success" for job in jobs):
             raise policy.ToolError(f"release PR #{review['number']} head {head} has no successful {REHEARSAL_CHECK} check")
         _same_tree(directory, head, sha)
         return

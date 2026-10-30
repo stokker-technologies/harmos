@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/test/runners.py; sha256:7b39723ee7aba1c8981ff5785da0c988df06d19c9cfbf497c955d3d1c8530bf6
 # ***
 #
 # Harmos

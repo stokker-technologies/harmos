@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/test/policy.py; sha256:d956942b6f631f51715e62e8cfb93dd2ea16b12047cead5d58a1f733f619bd5d
 # ***
 #
 # __PRODUCT_NAME__
@@ -6,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # ***
-"""Testing Policy From `stkr.toml [conventions.testing]` And The Expected Lane Set.
+"""Testing Policy From `[conventions.testing]` And The Expected Lane Set.
 
 Keys, all optional:
 
@@ -22,7 +21,7 @@ Keys, all optional:
     timeout_seconds = 300
     reason = "Streams a full capture"
 
-Limits are story counts per layer, enforced by Hub's source inventory. TypeScript and
+Limits are story counts per layer, enforced by the source inventory. TypeScript and
 JavaScript workspace packages each have their own scope; other tests share the project scope.
 Exceeding one is a curation finding in the
 index, never a failure. Deadlines are the per-story maximum of a lane in seconds. An override
@@ -109,16 +108,16 @@ class Policy:
 
 
 def root(start: Path | None = None) -> Path:
-    """The project root: the nearest directory holding `stkr.toml`."""
+    """The project root: the nearest directory holding project policy."""
     current = (start or Path.cwd()).resolve()
     for candidate in (current, *current.parents):
-        if (candidate / "stkr.toml").is_file():
+        if (candidate / ".stkr/project.toml").is_file():
             return candidate
-    raise TestError("no stkr.toml found above the working directory")
+    raise TestError("no project policy file found above the working directory")
 
 
 def load(directory: Path) -> Policy:
-    document = _toml(directory / "stkr.toml")
+    document = _toml(directory / ".stkr/project.toml")
     testing = document.get("conventions", {}).get("testing", {})
     if not isinstance(testing, dict):
         raise TestError("[conventions.testing] must be a table")

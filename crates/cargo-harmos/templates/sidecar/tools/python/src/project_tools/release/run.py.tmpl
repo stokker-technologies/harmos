@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:455bf669d8ece385bdb1637b1e9898ed95f93df2da3a6273c29e5f12ba70060d
 # ***
 #
 # __PRODUCT_NAME__
@@ -122,6 +121,8 @@ def assets(directory: Path, settings: dict, selected: str, tag: str, profile: st
             continue
         relative = definition["path"].format(profile=profile, target=selected, product=settings["product"], version=tag[1:])
         source = policy.inside(directory, relative)
+        if source.name == "latest.json" and not signed:
+            continue
         name = layout.asset_name(directory, settings, definition, selected, tag, source)
         if name is None:
             continue
@@ -134,7 +135,17 @@ def assets(directory: Path, settings: dict, selected: str, tag: str, profile: st
     return result
 
 
-def stage(directory: Path, settings: dict, tag: str, targets: list[str], profile: str | None = None, *, signed: bool = False) -> list[dict]:
+def stage(
+    directory: Path,
+    settings: dict,
+    tag: str,
+    targets: list[str],
+    profile: str | None = None,
+    *,
+    signed: bool = False,
+    source_revision: str | None = None,
+    release_notes: str | None = None,
+) -> list[dict]:
     """Copy Each Target's Release Downloads Into Its target/release-assets/<target>/ And Their SHA256SUMS Into any/."""
     profile = policy.profile() if profile is None else profile
     root = _root(directory)
@@ -153,7 +164,6 @@ def stage(directory: Path, settings: dict, tag: str, targets: list[str], profile
             packages.verify(directory, profile, selected)
         (root / selected).mkdir(parents=True)
         declared = assets(directory, settings, selected, tag, profile, signed=signed)
-        declared.extend(item for item in plugins if item["target"] == selected)
         for asset in declared:
             # Downloads publish side by side, so a name must be unique across every target.
             if any(item["name"].casefold() == asset["name"].casefold() for item in files):
@@ -162,14 +172,19 @@ def stage(directory: Path, settings: dict, tag: str, targets: list[str], profile
             shutil.copyfile(policy.inside(directory, asset["path"]), destination)
             files.append(_describe(root, destination))
     (root / SHARED).mkdir(parents=True)
+    for destination in layout.plugin_archives(directory, root, plugins):
+        if any(item["name"].casefold() == destination.name.casefold() for item in files):
+            raise policy.ToolError(f"release download names collide across targets: {destination.name}")
+        files.append(_describe(root, destination))
     changelog = root / SHARED / "CHANGELOG.md"
-    changelog.write_text(notes(directory, tag), encoding="utf-8", newline="\n")
+    content = notes(directory, tag) if release_notes is None else release_notes
+    if source_revision is not None:
+        content += f"\nSource Commit: {source_revision}\n"
+    changelog.write_text(content, encoding="utf-8", newline="\n")
     files.append(_describe(root, changelog))
     if plugins:
-        digests = {item["name"]: item["sha256"] for item in files}
-        bundles = [{**item, "sha256": digests[item["name"]]} for item in plugins]
         feed = root / SHARED / "plugins.json"
-        policy.write_json(feed, layout.plugin_feed(settings, tag, bundles))
+        policy.write_json(feed, layout.plugin_feed(settings, tag, plugins))
         files.append(_describe(root, feed))
     (root / SHARED / SUMS).write_text("".join(f"{item['sha256']}  {item['name']}\n" for item in files), encoding="utf-8")
     files.append(_describe(root, root / SHARED / SUMS))
@@ -275,21 +290,30 @@ def review(directory: Path, settings: dict) -> None:
     registry.arm_auto_merge(settings, branch, title)
 
 
-def dry(directory: Path, settings: dict, *, profile: str | None = None, require_all: bool = False) -> None:
+def dry(
+    directory: Path,
+    settings: dict,
+    *,
+    profile: str | None = None,
+    require_all: bool = False,
+    source_revision: str | None = None,
+    release_notes: str | None = None,
+    targets: list[str] | None = None,
+) -> None:
     """Stage The Active Profile's Packages Like A Release And Run The Native Downloads From Them, Offline."""
     tag = release_tag(directory)
     version.run(directory, "check")
     # Release reviews package the release profile; every other run packages dev.
     profile = policy.profile("dev") if profile is None else profile
     root = _root(directory)
-    targets = list(settings.get("targets", []))
+    targets = list(settings.get("targets", [])) if targets is None else targets
     present = [selected for selected in targets if (directory / "target/package" / profile / selected).is_dir()]
     missing = sorted(set(targets) - set(present))
     if missing and (require_all or continuous_integration()):
         raise policy.ToolError(f"{profile} packages are missing for release targets: {', '.join(missing)}")
     if missing:
         print(f"note: no local {profile} packages for {', '.join(missing)}; CI stages every release target")
-    stage(directory, settings, tag, present, profile=profile)
+    stage(directory, settings, tag, present, profile=profile, source_revision=source_revision, release_notes=release_notes)
     files = layout.uploads(directory, staged=True)
     _checksums(root / SHARED / SUMS, {item["name"]: item for item in files})
     native = _native()
@@ -468,25 +492,29 @@ def tag(directory: Path, settings: dict) -> None:
         print(f"{branch}: deleted after its squash")
 
 
-def rehearse(directory: Path, settings: dict, *, target: str | None = None) -> None:
+def rehearse(directory: Path, settings: dict, *, target: str | None = None, profile: str = "release", stage_only: bool = False) -> None:
     """Verify Selected Local Packages Or Every Hosted Target Without Publishing Credentials."""
     hosted = continuous_integration()
+    if profile not in {"dev", "release"}:
+        raise policy.ToolError("rehearsal profile must be dev or release")
+    if hosted and (profile != "release" or stage_only):
+        raise policy.ToolError("hosted rehearsal requires complete release-profile verification")
     if hosted and target not in (None, "all"):
         raise policy.ToolError("hosted rehearsal requires all declared release targets")
     target = target or ("all" if hosted else "native")
     selected = native_target(settings) if target == "native" else target
-    if selected != "all":
-        if selected not in settings.get("targets", []):
-            raise policy.ToolError(f"undeclared release target: {selected}")
-        settings = {**settings, "targets": [selected]}
-    with policy.credential_free(settings):
+    if selected != "all" and selected not in settings.get("targets", []):
+        raise policy.ToolError(f"undeclared release target: {selected}")
+    targets = list(settings.get("targets", [])) if selected == "all" else [selected]
+    with policy.credential_free(settings, profile=profile):
         _refuse_overrides(directory)
-        dry(directory, settings, profile="release", require_all=True)
-        if _task_defined(directory, "release:publish:rust"):
+        revision = _revision(directory) if stage_only else None
+        dry(directory, settings, profile=profile, require_all=True, source_revision=revision, targets=targets)
+        if not stage_only and _task_defined(directory, "release:publish:rust"):
             registry.rehearse_crates(directory, skip_published=False)
-        if _task_defined(directory, "release:publish:python"):
+        if not stage_only and _task_defined(directory, "release:publish:python"):
             registry.python(directory, settings, dry_run=True)
-    print("release rehearsal passed using staged release-profile packages")
+    print(f"release {'staging' if stage_only else 'rehearsal'} passed using staged {profile}-profile packages")
 
 
 def identity(directory: Path, settings: dict) -> None:
@@ -517,24 +545,28 @@ def main(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("verb", choices=VERBS)
     parser.add_argument("--target", help="Rehearse native, one declared release target, or all targets; hosted runs require all.")
+    parser.add_argument("--profile", choices=("dev", "release"), help="Local rehearsal package profile; defaults to release.")
+    parser.add_argument("--stage-only", action="store_true", help="Local rehearsal staging without registry dry-runs.")
     options = parser.parse_args(arguments)
     try:
-        run(policy.root(), options.verb, target=options.target)
+        run(policy.root(), options.verb, target=options.target, profile=options.profile, stage_only=options.stage_only)
     except (policy.ToolError, OSError, ValueError, KeyError, TypeError) as error:
         print(f"release: {error}", file=sys.stderr)
         return 1
     return 0
 
 
-def run(directory: Path, verb: str, *, target: str | None = None) -> None:
-    if target is not None and verb != "rehearse":
-        raise policy.ToolError("--target is supported only by rehearsal")
+def run(directory: Path, verb: str, *, target: str | None = None, profile: str | None = None, stage_only: bool = False) -> None:
+    if verb != "rehearse" and (target is not None or profile is not None or stage_only):
+        raise policy.ToolError("--target, --profile and --stage-only are supported only by rehearsal")
     settings = policy.policy(directory, "release")
     operations = {
         "prepare": prepare,
         "review": review,
         "dry": dry,
-        "rehearse": lambda directory, settings: rehearse(directory, settings, target=target),
+        "rehearse": lambda directory, settings: rehearse(
+            directory, settings, target=target, profile=profile or "release", stage_only=stage_only
+        ),
         "identity": identity,
         "crates-dry": lambda directory, settings: registry.rehearse_crates(directory, skip_published=False),
         "tag": tag,
@@ -683,7 +715,7 @@ def _online(settings: dict) -> bool:
 
 def _policy_version(directory: Path, value: str) -> None:
     """Write `[version] value` In The Project Policy, Keeping Every Other Line."""
-    path = directory / "stkr.toml"
+    path = directory / ".stkr/project.toml"
     text = path.read_text(encoding="utf-8")
     match = re.search(r"(?ms)(^\[version\]\s*\n)(.*?)(?=^\[|\Z)", text)
     if match is None:
