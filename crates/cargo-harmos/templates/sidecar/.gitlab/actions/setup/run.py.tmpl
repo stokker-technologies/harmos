@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/ci/setup; sha256:3d616a0f6d3cf66f9bcba9c70b445ef8d69950a680be97596254f16479df0a2c
 """Prepare Native Tools And Stable Toolchain Roots Before Mise."""
 
 # === Imports === #

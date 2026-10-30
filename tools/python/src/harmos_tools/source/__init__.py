@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/source/__init__.py; sha256:2962b7ad40ebbe5ee937d668b4c9daa3f0862a2a27d22f9e3889f3b6598c3236
 # ***
 #
 # Harmos

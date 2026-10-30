@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/build/cargo.py; sha256:4c56dfaf08d51627877cae6593507f7ee12e2548441d4c0ac677c5f8f37733a5
 # ***
 #
 # Harmos

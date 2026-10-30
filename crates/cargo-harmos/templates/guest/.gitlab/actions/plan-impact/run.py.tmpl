@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/ci/plan-impact; sha256:2dc96fc3eb85bd9ce1d6837424ac0dea1ddea4409bff8e52a559cc92be1efa37
 """Select Conservative Native CI Jobs And Emit A GitLab Child Pipeline."""
 
 # === Imports === #
@@ -88,7 +87,7 @@ def select(plan: dict, paths: set[str] | None) -> set[str]:
 
 
 def selection(root: Path, plan: dict, target: str = "origin/dev") -> set[str]:
-    """Resolve Portable Local Impact Without A Hub Installation Or Registration."""
+    """Resolve Portable Local Impact From The Project's Changes."""
     return select(plan, changed_paths(target, root))
 
 
@@ -144,7 +143,7 @@ def main(plan: dict) -> None:
 
 
 def _matches(patterns: list[str], path: str) -> bool:
-    # Hub Compiles The Glob Dialect Once For Both Local And Provider Resolution.
+    # Compile The Glob Dialect Once For Both Local And Provider Resolution.
     return any(re.fullmatch(pattern.encode("utf-8"), path.encode("utf-8")) is not None for pattern in patterns)
 
 

@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/ci/artifacts.py; sha256:2aae4481cb0e5873564ef17648f901d8d4b86f80d35f8533ed8990bea97e56a4
 # ***
 #
 # Harmos

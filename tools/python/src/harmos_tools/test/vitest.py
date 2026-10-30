@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/test/vitest.py; sha256:22591e28d397e796b4d675cc8b780d4ca78bf5508404d162f5b1d00b0b1e9ea6
 # ***
 #
 # Harmos

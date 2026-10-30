@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/test/nextest.py; sha256:27be1510a6401e968f0efd97794a37cfae4c23b9b58ac985eebc8c41d287a7fe
 # ***
 #
 # Harmos
@@ -33,7 +32,7 @@ from . import policy
 
 # === Constants === #
 
-PROFILE = "stkr"
+PROFILE = "project"
 UNIT = "kind(lib) | kind(bin) | kind(proc-macro)"
 PACKAGE_FLAGS = ("-p", "--package")
 FILTER_FLAGS = ("-E", "--filterset", "--filter-expr")

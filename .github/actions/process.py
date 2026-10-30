@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/process/__init__.py; sha256:9deb702eabb20188f9680f40f6e412195f4abcfc1ed6ab195cc65a851dc0150c
 
 
 """Preserve Attached Consoles And Keep Headless Child Processes Hidden."""

@@ -1,7 +1,7 @@
 {
   "c-header header": {
     "scope": "c",
-    "prefix": "stkr-h",
+    "prefix": "h",
     "body": [
       "/* ***",
       " *",
@@ -38,7 +38,7 @@
   },
   "c module": {
     "scope": "c",
-    "prefix": "stkr-c",
+    "prefix": "c",
     "body": [
       "/* ***",
       " *",
@@ -81,7 +81,7 @@
   },
   "cargo package": {
     "scope": "toml",
-    "prefix": "stkr-cargo",
+    "prefix": "cargo",
     "body": [
       "# ***",
       "#",
@@ -130,7 +130,7 @@
   },
   "cargo workspace": {
     "scope": "toml",
-    "prefix": "stkr-cargo-workspace",
+    "prefix": "cargo-workspace",
     "body": [
       "# ***",
       "#",
@@ -164,7 +164,7 @@
   },
   "cpp-header header": {
     "scope": "cpp",
-    "prefix": "stkr-hpp",
+    "prefix": "hpp",
     "body": [
       "/* ***",
       " *",
@@ -203,7 +203,7 @@
   },
   "cpp module": {
     "scope": "cpp",
-    "prefix": "stkr-cpp",
+    "prefix": "cpp",
     "body": [
       "/* ***",
       " *",
@@ -244,7 +244,7 @@
   },
   "css module": {
     "scope": "css",
-    "prefix": "stkr-css",
+    "prefix": "css",
     "body": [
       "/* ***",
       " *",
@@ -261,7 +261,7 @@
   },
   "javascript module": {
     "scope": "javascript",
-    "prefix": "stkr-js",
+    "prefix": "js",
     "body": [
       "/* ***",
       " *",
@@ -304,7 +304,7 @@
   },
   "markdown contributing": {
     "scope": "markdown",
-    "prefix": "stkr-md-contributing",
+    "prefix": "md-contributing",
     "body": [
       "# Contributing",
       "",
@@ -332,7 +332,7 @@
   },
   "markdown file": {
     "scope": "markdown",
-    "prefix": "stkr-md",
+    "prefix": "md",
     "body": [
       "# Harmos",
       "",
@@ -342,7 +342,7 @@
   },
   "markdown readme": {
     "scope": "markdown",
-    "prefix": "stkr-md-readme",
+    "prefix": "md-readme",
     "body": [
       "# Harmos",
       "",
@@ -378,7 +378,7 @@
   },
   "python module": {
     "scope": "python",
-    "prefix": "stkr-py",
+    "prefix": "py",
     "body": [
       "# ***",
       "#",
@@ -420,7 +420,7 @@
   },
   "rust module": {
     "scope": "rust",
-    "prefix": "stkr-rs",
+    "prefix": "rs",
     "body": [
       "/* ***",
       " *",
@@ -471,7 +471,7 @@
   },
   "scss module": {
     "scope": "scss",
-    "prefix": "stkr-scss",
+    "prefix": "scss",
     "body": [
       "/* ***",
       " *",
@@ -488,7 +488,7 @@
   },
   "toml file": {
     "scope": "toml",
-    "prefix": "stkr-toml",
+    "prefix": "toml",
     "body": [
       "# ***",
       "#",
@@ -501,109 +501,9 @@
       ""
     ]
   },
-  "stkr stkr": {
-    "scope": "toml",
-    "prefix": "stkr-stkr",
-    "body": [
-      "# Project Policy Owned By The Hub",
-      "# Native manifests own package metadata; mise owns executable recipes.",
-      "# Defaults stay implicit. Commented sections do not declare configuration.",
-      "",
-      "# === === Project === === #",
-      "",
-      "# === === Languages === === #",
-      "",
-      "# === === Repository === === #",
-      "",
-      "# === === CI === === #",
-      "",
-      "# Literal Runner Labels; No Provider Variable Overrides.",
-      "# [ci.runners]",
-      "# linux = \"ubuntu-24.04\"",
-      "# windows = \"windows-2022\"",
-      "# small = \"ubuntu-24.04\"",
-      "# build = \"ubuntu-24.04\"",
-      "# nightly = \"ubuntu-24.04\"",
-      "# coverage = \"ubuntu-24.04\"",
-      "",
-      "# Impact Rules, Named Caches And Sparse Job Overrides Are Optional.",
-      "# Add Their Nonempty CI Subsections In Schema Order: Impact, Caches, Stage / <Name>.",
-      "[ci.impact]",
-      "default = \"full\"",
-      "",
-      "[[ci.impact.rules]]",
-      "name = \"prose\"",
-      "include = [\"README.md\", \"CONTRIBUTING.md\", \"LICENSE\", \"LICENSE.*\", \"docs/**/*.md\"]",
-      "exclude = [\"docs/examples/**\", \"docs/tutorials/**\", \"docs/templates/**\", \"docs/src/**\"]",
-      "jobs = [\"check:repository\"]",
-      "",
-      "# [ci.caches.documents]",
-      "# paths = [\".cache/documents/\"]",
-      "# key_files = [\"mise.lock\"]",
-      "# compatibility = \"toolchain\"",
-      "",
-      "# GitLab Compiler Caching Requires Explicit Remote Storage; Credentials Stay In CI.",
-      "# [ci.sccache]",
-      "# backend = \"s3\"",
-      "# bucket = \"compiler-cache\"",
-      "# region = \"eu-central-1\"",
-      "# endpoint = \"https://storage.example.com\"",
-      "",
-      "# [[ci.jobs]]",
-      "# id = \"check:documentation\"",
-      "# timeout_minutes = 120",
-      "# bootstrap = []",
-      "# caches = [\"documents\"]",
-      "",
-      "# Named Outputs Belong To Their Producer; Inputs Wait And Transfer, Depends Only Waits.",
-      "# [[ci.jobs]]",
-      "# id = \"build\"",
-      "# outputs.product = [\"target/build/{profile}/{target}/bin/\"]",
-      "# [[ci.jobs]]",
-      "# id = \"test:rust:system\"",
-      "# pipelines = [\"pr\", \"dev\", \"release\", \"nightly\"]",
-      "# inputs = [\"build#product\"]",
-      "# depends = [\"check:repository\"]",
-      "",
-      "# === === Agents === === #",
-      "",
-      "# === === Hooks === === #",
-      "",
-      "# === === Conventions === === #",
-      "",
-      "# === === Templates === === #",
-      "",
-      "# === === Release === === #",
-      "",
-      "# Raw CLI Products And Explicit ZIP Bundles Are Optional Authored Package Policy.",
-      "# [[package.executables]]",
-      "# package = \"cargo-example\"",
-      "# command = \"cargo-example\"",
-      "# name = \"cargo-example\"",
-      "# targets = { linux-x86_64 = \"x86_64-unknown-linux-gnu\" }",
-      "# release = true",
-      "# verify = [\"--version\"]",
-      "# installers = []",
-      "",
-      "# [[package.bundles]]",
-      "# language = \"rust\"",
-      "# name = \"plugins-{version}-{target}.zip\"",
-      "# profiles = [\"dev\", \"release\"]",
-      "# targets = [\"linux-x86_64\"]",
-      "# release = true",
-      "# inputs = [{ path = \"target/build/{profile}/{target}/plugins/example.bin\", destination = \"plugins/example.bin\" }]",
-      "",
-      "# === === Documentation === === #",
-      "",
-      "# === === Screenshots === === #",
-      "",
-      "# === === PyO3 === === #",
-      ""
-    ]
-  },
   "typescriptreact component": {
     "scope": "typescriptreact",
-    "prefix": "stkr-tsx",
+    "prefix": "tsx",
     "body": [
       "/* ***",
       " *",
@@ -646,7 +546,7 @@
   },
   "typescript module": {
     "scope": "typescript",
-    "prefix": "stkr-ts",
+    "prefix": "ts",
     "body": [
       "/* ***",
       " *",
@@ -689,7 +589,7 @@
   },
   "yaml module": {
     "scope": "yaml",
-    "prefix": "stkr-yaml",
+    "prefix": "yaml",
     "body": [
       "# ***",
       "#",

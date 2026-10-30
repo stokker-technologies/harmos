@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/build/bench.py; sha256:08fbf500c25645320dff6ff8aea7d6ae62f1e47d05a6e744dc58ea5b400d14ae
 # ***
 #
 # Harmos

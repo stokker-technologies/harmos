@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/ci/compiler.py; sha256:3f998bbf7ce17f95a7560c9bb4a28274a3d4f4ea13e08f65a0fdb02463919697
 # ***
 #
 # Harmos
@@ -99,7 +98,7 @@ def _configured(command: Sequence[str] | str, shell: str | None, *, statistics: 
             SCCACHE_BUCKET=os.environ["SCCACHE_BUCKET"],
             SCCACHE_REGION=os.environ["SCCACHE_REGION"],
             SCCACHE_S3_RW_MODE=mode,
-            SCCACHE_S3_KEY_PREFIX="stkr-v5/" + os.environ.get("CI_PROJECT_PATH_SLUG", "project") + "/",
+            SCCACHE_S3_KEY_PREFIX="project-v5/" + os.environ.get("CI_PROJECT_PATH_SLUG", "project") + "/",
         )
         if endpoint := os.environ.get("SCCACHE_ENDPOINT"):
             environment["SCCACHE_ENDPOINT"] = endpoint
@@ -109,11 +108,9 @@ def _configured(command: Sequence[str] | str, shell: str | None, *, statistics: 
         directory = Path(os.environ["SCCACHE_DIR"])
         directory.mkdir(parents=True, exist_ok=True)
         environment.update(SCCACHE_DIR=str(directory.resolve()), SCCACHE_LOCAL_RW_MODE=mode)
-        if size := os.environ.get("SCCACHE_CACHE_SIZE"):
-            environment["SCCACHE_CACHE_SIZE"] = size
     else:
         raise RuntimeError("sccache: a supported explicit backend is required")
-    with tempfile.TemporaryDirectory(prefix="stkr-sccache-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="project-sccache-") as temporary:
         # Ignore Persistent Runner Configuration And Use Only The Declared Store.
         configuration = Path(temporary) / "config"
         configuration.write_text("", encoding="utf-8")

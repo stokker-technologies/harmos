@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/ci/save-caches; sha256:7b52e5e5e7ff98e872498a60e53a4c95f696eb1d741a1b2071ca165df6520c31
 """Report Observed Cache Restores Through The Repository Summary Task."""
 
 # === Imports === #

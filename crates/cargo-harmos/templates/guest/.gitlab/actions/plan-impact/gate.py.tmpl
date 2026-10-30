@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/ci/gate.py; sha256:6d687a7baad2b6c5d5a2901ced13f118e0e0f6ab93d53a6c43b1893dff64b6a3
 """Require Every Selected Validation Job To Succeed."""
 
 # === Imports === #

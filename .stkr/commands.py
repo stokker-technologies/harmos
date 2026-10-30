@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/stkr/__main__.py; sha256:65607ebb372a58a42b77e8df6f127f6f7df05c4223b6a5988a5bfa9581819e61
 # ***
 #
 # Harmos
@@ -9,7 +8,7 @@
 
 """Run The Hub CLI From PATH Or The Mise Shims, Or Report It Unavailable.
 
-`python -m <tools>.stkr [--optional] <arguments>` runs `stkr <arguments>` with this process's standard streams and
+`python .stkr/commands.py [--optional] <arguments>` runs `stkr <arguments>` with this process's standard streams and
 returns its exit code. Without the CLI an `--optional` call prints "stkr unavailable" and succeeds, so hooks and
 optional checks pass on machines without the Hub; any other call fails and names `stkr machine install`.
 """
@@ -26,7 +25,7 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
-from ..process import spawn_flags
+from process import spawn_flags
 
 # Type Checking Imports
 

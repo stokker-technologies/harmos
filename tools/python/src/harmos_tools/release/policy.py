@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/release/policy.py; sha256:cd8d408e46435fb57a822d22d25283082f2786c0d6c7a368388603f852302d90
 # ***
 #
 # Harmos
@@ -51,13 +50,13 @@ class ToolError(Exception):
 def root() -> Path:
     current = Path.cwd().resolve()
     for candidate in (current, *current.parents):
-        if (candidate / "stkr.toml").is_file():
+        if (candidate / ".stkr/project.toml").is_file():
             return candidate
-    raise ToolError("no stkr.toml found")
+    raise ToolError("no project policy file found")
 
 
 def config(directory: Path) -> dict[str, Any]:
-    return tomllib.loads((directory / "stkr.toml").read_text(encoding="utf-8"))
+    return tomllib.loads((directory / ".stkr/project.toml").read_text(encoding="utf-8"))
 
 
 def policy(directory: Path, name: str) -> dict[str, Any]:
@@ -142,22 +141,22 @@ def write_json(path: Path, value: object) -> None:
 
 
 @contextmanager
-def credential_free(settings: dict):
-    """Temporarily Remove Publishing Credentials And Select The Release Profile."""
+def credential_free(settings: dict, *, profile: str = "release"):
+    """Temporarily Remove Publishing Credentials And Select The Requested Package Profile."""
     declared = {name for lane in settings.get("package_signing", []) for name in lane.get("secrets", [])}
     names = {name for name in os.environ if name.endswith(("_TOKEN", "_PASSWORD", "_SECRET")) or name in declared}
     names.add("ACTIONS_ID_TOKEN_REQUEST_URL")
     previous = {name: os.environ.pop(name) for name in names if name in os.environ}
-    profile = os.environ.get("RELEASE_PROFILE")
-    os.environ["RELEASE_PROFILE"] = "release"
+    previous_profile = os.environ.get("RELEASE_PROFILE")
+    os.environ["RELEASE_PROFILE"] = profile
     try:
         yield
     finally:
         os.environ.update(previous)
-        if profile is None:
+        if previous_profile is None:
             os.environ.pop("RELEASE_PROFILE", None)
         else:
-            os.environ["RELEASE_PROFILE"] = profile
+            os.environ["RELEASE_PROFILE"] = previous_profile
 
 
 def main(

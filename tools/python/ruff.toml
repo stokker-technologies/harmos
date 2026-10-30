@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/tools/ruff.toml; sha256:be576819186f8e7d4c7042b79999f80e0ad30f062afb6be3eecdc89e788bc41c
 # ***
 #
 # Harmos
@@ -9,7 +8,7 @@
 
 # === Formatting === #
 
-# Width 140 matches every Hub-rendered formatter: wide displays are the norm and two files still sit side by side in a
+# Width 140 matches the project formatters: wide displays are the norm and two files still sit side by side in a
 # diff on a 4K display.
 line-length = 140
 # Templates Are Rendered Before Source Formatting

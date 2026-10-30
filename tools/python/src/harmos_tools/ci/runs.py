@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/ci/runs.py; sha256:32cc0c41e4b0dfc5a5d29bc9e73ad09b285d80c2e2d873e872ccb625ce1de321
 # ***
 #
 # Harmos
@@ -32,7 +31,7 @@ from . import containers
 
 # === Constants === #
 
-MARKER = ".stkr-ci-run.json"
+MARKER = ".project-ci-run.json"
 
 # === Types === #
 

@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/ci/archive-build; sha256:e69719630dbcae8ca28d6d3608f623fb650ba3d328e6161e195201822edb986b
 """Transfer Declared Build Outputs Through The Repository Artifact Task."""
 
 # === Imports === #

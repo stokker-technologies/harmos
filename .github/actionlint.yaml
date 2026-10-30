@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/ci/.github/actionlint.yaml; sha256:4651f131682a8ea8097c6d9653e365f5bbadc57aa3bf794c1c6621c2becd237a
 self-hosted-runner:
   labels:
   - macos-latest

@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/python/ci/workspaces.py; sha256:6ba1189e6c1af3649395ee2387dadb2ee4dcfa4874553dafb0d71edb96590b2b
 # ***
 #
 # __PRODUCT_NAME__
@@ -34,7 +33,7 @@ from . import containers
 
 # === Constants === #
 
-MARKER = ".stkr-ci-owner.json"
+MARKER = ".project-ci-owner.json"
 
 # === Types === #
 
@@ -58,7 +57,7 @@ class Owner:
         staging.replace(self.path)
 
     def starting(self) -> str:
-        self.record["command"] = {"platform": sys.platform, "job": "stkr-ci-" + uuid.uuid4().hex, "state": "launching"}
+        self.record["command"] = {"platform": sys.platform, "job": "project-ci-" + uuid.uuid4().hex, "state": "launching"}
         self.save()
         return self.record["command"]["job"]
 
@@ -115,7 +114,7 @@ def linked(path: Path) -> bool:
 def command_live(command: dict) -> bool:
     if not isinstance(command, dict) or not isinstance(command.get("job"), str) or command.get("platform") != sys.platform:
         return True
-    if command.get("state") != "running" or re.fullmatch(r"stkr-ci-[a-f0-9]{32}", command["job"]) is None:
+    if command.get("state") != "running" or re.fullmatch(r"project-ci-[a-f0-9]{32}", command["job"]) is None:
         return True
     if os.name == "nt":
         kernel = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -179,10 +178,10 @@ def job(output: Path, repository: str, run: str, key: str, preserve: Callable[[P
         if re.fullmatch(r"[a-zA-Z0-9_-]+", repository) is None or re.fullmatch(r"[a-zA-Z0-9_-]+", key) is None:
             raise ValueError("invalid workspace identity")
         if stable:
-            root = Path(tempfile.gettempdir()).resolve() / f"stkr-ci-job-{repository}-{key}"
+            root = Path(tempfile.gettempdir()).resolve() / f"project-ci-job-{repository}-{key}"
             root.mkdir()
         else:
-            root = Path(tempfile.mkdtemp(prefix="stkr-ci-job-"))
+            root = Path(tempfile.mkdtemp(prefix="project-ci-job-"))
         record = {
             "version": 1,
             "repository": repository,
@@ -247,7 +246,7 @@ def valid(path: Path, record: object, repository: str) -> bool:
         and re.fullmatch(r"[a-f0-9]{32}", record["nonce"]) is not None
         and target.is_absolute()
         and target.parent == Path(tempfile.gettempdir()).resolve()
-        and target.name.startswith("stkr-ci-job-")
+        and target.name.startswith("project-ci-job-")
         and record.get("phase") in ("active", "clean")
     )
 
