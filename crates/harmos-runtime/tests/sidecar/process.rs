@@ -38,6 +38,7 @@ const CAPACITY: usize = 2;
 const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(10),
     attempt_timeout: Duration::from_secs(10),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 
@@ -407,7 +408,7 @@ async fn cancellation_settles_slots() {
 
     // Cancelling The Outer Call Settles The Nested Slot It Holds
     fixture.marks.marked("echo-started-0").await;
-    pending.cancel();
+    pending.request_cancel();
     assert!(pending.await.is_err());
     fixture.marks.marked("echo-finalized-0").await;
     fixture.marks.marked("nested-finalized-42").await;

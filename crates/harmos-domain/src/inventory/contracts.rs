@@ -466,6 +466,8 @@ pub(crate) const fn policy<const N: usize>(out: &mut Encoder<N>, value: Operatio
     duration(out, value.timeout);
     out.raw(b",\"attempt_timeout\":");
     duration(out, value.attempt_timeout);
+    out.raw(b",\"cancellation_timeout\":");
+    duration(out, value.cancellation_timeout);
     out.raw(b",\"retries\":");
     match value.retries {
         RetryPolicy::Never => out.quoted("never"),

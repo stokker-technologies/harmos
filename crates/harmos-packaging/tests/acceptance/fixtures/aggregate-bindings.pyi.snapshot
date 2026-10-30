@@ -16,7 +16,7 @@
 from google.protobuf.message import Message
 
 # Local Imports
-from .operation import Invoker as Invoker, Operation as Operation, OperationError as OperationError, ResponseStream as ResponseStream
+from .operation import Invoker as Invoker, Operation as Operation, OperationError as OperationError, OperationHandle as OperationHandle, ResponseStream as ResponseStream
 import bindings_aggregate._wire.test.v1.ShapesMessages.Aggregate.messages_pb2 as _wire_0
 
 # Type Checking Imports

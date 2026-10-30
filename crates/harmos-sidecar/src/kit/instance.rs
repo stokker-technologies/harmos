@@ -62,7 +62,7 @@ impl<O: OperationDeclaration> OperationInstance<O> {
         decode_status(&bytes)
     }
 
-    pub async fn cancel(&self) -> Result<(), CallError> {
+    pub async fn request_cancel(&self) -> Result<(), CallError> {
         self.host.child_control(self.id, WireChildAction::Cancel).await?;
         Ok(())
     }
@@ -74,8 +74,8 @@ impl<O: OperationDeclaration> OperationInstance<O> {
         decode_response::<O>(&bytes)
     }
 
-    pub async fn cancel_and_join(self) -> Result<Response<O::Response>, CallError> {
-        self.cancel().await?;
+    pub async fn cancel(self) -> Result<Response<O::Response>, CallError> {
+        self.request_cancel().await?;
         self.join().await
     }
 
@@ -107,8 +107,8 @@ impl<O: OperationDeclaration> Instance<O> for OperationInstance<O> {
         OperationInstance::status(self)
     }
 
-    fn cancel(&self) -> impl Future<Output = Result<(), CallError>> + Send {
-        OperationInstance::cancel(self)
+    fn request_cancel(&self) -> impl Future<Output = Result<(), CallError>> + Send {
+        OperationInstance::request_cancel(self)
     }
 
     fn join(self) -> impl Future<Output = Result<Response<O::Response>, CallError>> + Send {

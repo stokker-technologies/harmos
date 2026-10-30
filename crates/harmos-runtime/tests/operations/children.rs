@@ -72,6 +72,7 @@ enum Failed {
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
+            cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::OnTransient {
                 max_retries: 1,
                 backoff: Backoff::Fixed { delay: Duration::from_millis(10), jitter: Jitter::None },
@@ -87,6 +88,7 @@ struct ParentContractDeclaration {
         policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(5),
             attempt_timeout: Duration::from_secs(5),
+            cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::Never,
         },
     )]
@@ -181,7 +183,7 @@ async fn parent_joins_child() {
         let parent = runtime.operation(ParentContractDeclaration { exit }).start().await.unwrap();
         if cancel {
             trace.parent_ready.notified().await;
-            parent.cancel();
+            parent.request_cancel();
         }
         let outcome = parent.await;
 

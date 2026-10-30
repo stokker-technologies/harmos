@@ -93,3 +93,24 @@ fn independent_schema_catalogs() {
     assert!(manifest.starts_with("descriptors.bin\n"));
     assert!(portable.files().keys().all(|name| manifest.lines().any(|line| line == name)));
 }
+
+#[test]
+fn cancel_final_response_contracts() {
+    let contracts = Contracts::of::<Routes>().unwrap();
+    for contract in &contracts {
+        let Some(grpc) = contract.grpc() else {
+            continue;
+        };
+        let service = proto::descriptor(&grpc.package, &grpc.service, &[(&grpc.method, contract)]).unwrap();
+        let ordinary = service.methods().find(|method| method.name() == grpc.method.as_ref()).unwrap();
+        let managed = service.methods().find(|method| method.name() == format!("Run{}", grpc.method)).unwrap();
+        assert!(managed.is_client_streaming() && managed.is_server_streaming());
+        assert_eq!(managed.input().get_field_by_name("request").unwrap().number(), 1);
+        assert_eq!(managed.input().get_field_by_name("cancel").unwrap().number(), 3);
+        assert_eq!(managed.output().get_field_by_name("response").unwrap().number(), 2);
+        assert_eq!(ordinary.is_client_streaming(), contract.input().is_some());
+        assert_eq!(ordinary.is_server_streaming(), contract.output().is_some());
+        assert_eq!(managed.input().get_field_by_name("item").is_some(), contract.input().is_some());
+        assert_eq!(managed.output().get_field_by_name("item").is_some(), contract.output().is_some());
+    }
+}

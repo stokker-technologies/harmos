@@ -299,7 +299,7 @@ where
     }
 
     // Stop the connection's instance; its cleanup settles through `poll_ending`.
-    pub(super) fn cancel(&mut self) {
+    pub(super) fn request_cancel(&mut self) {
         let signals = {
             let mut original = self.original.lock().unwrap_or_else(|error| error.into_inner());
             original.cancelled = true;

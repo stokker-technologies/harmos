@@ -33,11 +33,13 @@ use super::{Duration, Echoed, OperationPolicy, RetryPolicy};
 #[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(harmos_path = ::harmos_domain, id = "probe.spin", response = Echoed, policy = OperationPolicy {
         timeout: Duration::from_secs(600),
         attempt_timeout: Duration::from_secs(600),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     }))]
 #[cfg_attr(target_arch = "wasm32", harmos::guest::operation(harmos_path = ::harmos::guest, id = "probe.spin", response = Echoed, policy = OperationPolicy {
         timeout: Duration::from_secs(600),
         attempt_timeout: Duration::from_secs(600),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     }))]
 #[derive(Clone, PartialEq)]

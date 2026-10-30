@@ -28,6 +28,7 @@ use harmos_runtime::{Error, Message, Refusal};
 const ECHO_POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::OnTransient {
         max_retries: 1,
         backoff: Backoff::Fixed {
@@ -45,6 +46,7 @@ const NESTED_POLICY: OperationPolicy = OperationPolicy {
 const CODEC_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 
@@ -487,7 +489,7 @@ async fn cancellation_joins_child() {
     let started = owner.wire_started.notified();
     let parent = runtime.operation(NestedDeclaration::from("block")).start().await.unwrap();
     started.await;
-    parent.cancel();
+    parent.request_cancel();
     assert!(matches!(parent.await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();

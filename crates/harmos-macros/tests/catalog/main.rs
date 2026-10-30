@@ -96,6 +96,7 @@ impl harmos::builtins::lifecycle::Policy for Example {{
     const INITIALIZATION_POLICY: harmos::OperationPolicy = harmos::OperationPolicy {{
         timeout: std::time::Duration::from_secs(10),
         attempt_timeout: std::time::Duration::from_secs(10),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: harmos::RetryPolicy::Never,
     }};
     const SHUTDOWN_POLICY: harmos::OperationPolicy = Self::INITIALIZATION_POLICY;

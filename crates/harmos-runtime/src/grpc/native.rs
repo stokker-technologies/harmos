@@ -114,7 +114,7 @@ impl super::Encode<Raw> for Output {
 impl Drop for Pending {
     fn drop(&mut self) {
         if !self.settled {
-            self.invocation.cancel();
+            self.invocation.request_cancel();
         }
     }
 }
@@ -140,7 +140,7 @@ impl Pending {
                     self.forward = None;
                     if let Err(error) = result {
                         if !self.settled {
-                            self.invocation.cancel();
+                            self.invocation.request_cancel();
                             let _ = (&mut self.invocation).await;
                             self.settled = true;
                         }
@@ -262,6 +262,72 @@ impl tonic::server::StreamingService<StreamItem<InputEnvelope<Vec<u8>, Vec<u8>>>
     }
 }
 
+impl tonic::server::StreamingService<StreamItem<super::ControlEnvelope<Vec<u8>, Vec<u8>>>> for Endpoint {
+    type Response = Output;
+    type ResponseStream = OutputStream;
+    type Future = tonic::codegen::BoxFuture<Response<OutputStream>, Status>;
+
+    fn call(&mut self, request: Request<Streaming<StreamItem<super::ControlEnvelope<Vec<u8>, Vec<u8>>>>>) -> Self::Future {
+        let endpoint = Self {
+            binding: self.binding(&request),
+            settings: self.settings,
+        };
+        Box::pin(async move {
+            let mut incoming = request.into_inner();
+            let first = tokio::time::timeout(endpoint.settings.opening_timeout, incoming.next())
+                .await
+                .map_err(|_| Status::deadline_exceeded("operation opening timed out"))?
+                .transpose()?
+                .ok_or_else(|| Status::invalid_argument("missing opening request"))?;
+            let request = first
+                .project(|frame| match frame {
+                    super::ControlEnvelope::Request(request) => Ok(request),
+                    _ => Err(()),
+                })
+                .map_err(|error| server::status(error.into()))?
+                .map_err(|_| Status::invalid_argument("opening request required"))?;
+            let mut pending = endpoint.start(endpoint.binding.clone(), request)?;
+            let control = pending.invocation.control.clone();
+            let streams = pending.streams.clone();
+            let input = endpoint.binding.contract().input().is_some();
+            pending.forward = Some(Box::pin(async move {
+                let mut finished = false;
+                while let Some(frame) = incoming.next().await {
+                    let frame = frame?;
+                    if matches!(&*frame, super::ControlEnvelope::Cancel) {
+                        control.request_cancel();
+                        return Ok(());
+                    }
+                    if !input {
+                        return Err(Status::invalid_argument("operation has no input stream"));
+                    }
+                    if finished {
+                        return Err(Status::invalid_argument("input already finished"));
+                    }
+                    if matches!(&*frame, super::ControlEnvelope::Finish) {
+                        streams.as_ref().expect("declared input").finish_input(1).map_err(serving)?;
+                        finished = true;
+                        continue;
+                    }
+                    let item = frame
+                        .project(|frame| match frame {
+                            super::ControlEnvelope::Item(item) => Ok(item),
+                            _ => Err(()),
+                        })
+                        .map_err(|error| server::status(error.into()))?
+                        .map_err(|_| Status::invalid_argument("duplicate opening request"))?;
+                    streams.as_ref().expect("declared input").send(1, &item).await.map_err(serving)?;
+                }
+                if input && !finished {
+                    streams.as_ref().expect("declared input").finish_input(1).map_err(serving)?;
+                }
+                Ok(())
+            }));
+            Ok(Response::new(pending.output()))
+        })
+    }
+}
+
 /* === Public Functions === */
 
 pub(crate) fn serve(authority: server::Authority, settings: server::Settings, request: http::Request<Body>) -> server::HttpFuture {
@@ -269,6 +335,7 @@ pub(crate) fn serve(authority: server::Authority, settings: server::Settings, re
         let server::Authority::Binding(binding) = authority else {
             return Status::internal("native operation binding required").into_http();
         };
+        let managed = super::controlled::is_managed(&server::Authority::Binding(binding.clone()), request.uri().path());
         let input = binding.contract().input().is_some();
         let output = binding.contract().output().is_some();
         let factory = match binding.native_factory() {
@@ -277,12 +344,12 @@ pub(crate) fn serve(authority: server::Authority, settings: server::Settings, re
         };
         let memory: super::decoding::AdditionalMemory = std::sync::Arc::new(move |bytes| {
             let encoded = harmos_sdk::grpc::DecodeInput::new(bytes);
-            let payload = if input {
+            let payload = if input || managed {
                 let (tag, payload) = encoded
-                    .variant(&[1, 2])
+                    .variant(if managed { &[1, 2, 3, 4] } else { &[1, 2] })
                     .map_err(|error| Status::invalid_argument(error.to_string()))?
                     .ok_or_else(|| Status::invalid_argument("empty operation envelope"))?;
-                if tag == 2 {
+                if tag != 1 {
                     return Ok(0);
                 }
                 payload.contiguous().map_err(|error| Status::invalid_argument(error.to_string()))?
@@ -295,7 +362,13 @@ pub(crate) fn serve(authority: server::Authority, settings: server::Settings, re
         });
         let preparation = binding.operations.preparation.clone();
         let endpoint = Endpoint { binding, settings };
-        if input {
+        if managed {
+            let codec = match Codec::<Raw, super::ControlEnvelope<Vec<u8>, Vec<u8>>, Output>::new(settings.decode, settings.encode) {
+                Ok(codec) => codec.with_additional_memory(memory).with_preparation(preparation),
+                Err(error) => return error.into_http(),
+            };
+            codec.server().streaming(endpoint, request).await
+        } else if input {
             let codec = match Codec::<Raw, InputEnvelope<Vec<u8>, Vec<u8>>, Output>::new(settings.decode, settings.encode) {
                 Ok(codec) => codec.with_additional_memory(memory).with_preparation(preparation),
                 Err(error) => return error.into_http(),

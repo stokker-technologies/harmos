@@ -30,6 +30,7 @@ use harmos_runtime::{Error, Runtime};
 const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 
@@ -336,7 +337,7 @@ async fn cancellation_interrupts_policy() {
     let invocation =
         runtime.operations.with_context(context("alice")).submit::<DeclareParentDeclaration>(DeclareParentDeclaration {}).unwrap();
     (entered.acquire()).await.unwrap().forget();
-    invocation.cancel();
+    invocation.request_cancel();
     assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     {
         let observations = observed.lock().unwrap();

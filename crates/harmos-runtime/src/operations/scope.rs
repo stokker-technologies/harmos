@@ -41,6 +41,7 @@ pub struct Scope<'a> {
 
 #[derive(Clone)]
 pub(crate) struct ScopeCore {
+    cancellation: harmos_sdk::operations::Cancellation,
     instances: Arc<Instances>,
     parent: Weak<Instance>,
     admission: Admission,
@@ -65,6 +66,10 @@ pub(crate) struct Child {
 /* === Implementations === */
 
 impl<'a> Scope<'a> {
+    pub fn cancellation(&self) -> &harmos_sdk::operations::Cancellation {
+        &self.core.cancellation
+    }
+
     pub(crate) fn owned(&self) -> ScopeCore {
         self.core.clone()
     }
@@ -137,8 +142,13 @@ impl std::fmt::Debug for Scope<'_> {
 }
 
 impl ScopeCore {
+    pub(super) fn cancellation(&self) -> &harmos_sdk::operations::Cancellation {
+        &self.cancellation
+    }
+
     pub(crate) fn new(instances: Arc<Instances>, admission: Admission, cause: Option<Position>, parent: Weak<Instance>) -> Self {
         Self {
+            cancellation: Default::default(),
             instances,
             parent,
             admission,
@@ -155,7 +165,7 @@ impl ScopeCore {
             std::mem::take(&mut *children).into_values().collect()
         };
         for child in &children {
-            child.control.cancel();
+            child.control.request_cancel();
         }
 
         ClosedScope { children }

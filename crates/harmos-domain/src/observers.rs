@@ -33,6 +33,7 @@ use crate::schema::{Cardinality, Described};
 pub const POLICY: OperationPolicy = OperationPolicy {
     timeout: UNBOUNDED,
     attempt_timeout: UNBOUNDED,
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 

@@ -185,7 +185,7 @@ async fn cancelled_attempt_resources() {
         fixture.runtime.operations.submit_encoded(&format!("operation_handshake.{}", ReadDeclaration::ID), Vec::new()).unwrap();
     (counts.attempt_entered.notified()).await;
     assert_eq!(invocation.status().phase(), harmos_runtime::operations::OperationPhase::Running);
-    invocation.cancel();
+    invocation.request_cancel();
     let result = (&mut invocation).await;
     assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     assert_eq!(invocation.status().phase(), harmos_runtime::operations::OperationPhase::Settled);
@@ -204,7 +204,7 @@ async fn grpc_original_owner() {
     let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
     assert!(fixture.runtime.grpc().methods().is_empty());
     fixture.initialize().await.unwrap();
-    assert_eq!(fixture.runtime.grpc().methods().len(), 4);
+    assert_eq!(fixture.runtime.grpc().methods().len(), 6);
     let settings = harmos_runtime::grpc::Settings {
         address: "127.0.0.1:0".parse().unwrap(),
         operations: harmos_runtime::grpc::server::Settings::default(),
@@ -247,3 +247,39 @@ async fn grpc_original_owner() {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn cancel_final_response_sidecar() {
+    use crate::operations::cancellation::Finish;
+    use harmos_runtime::Message;
+    let counts = Arc::new(Counts::default());
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
+    fixture.initialize().await.unwrap();
+    for mode in 0..4 {
+        let mut invocation =
+            fixture.runtime.operations.submit_encoded("operation_handshake.cancel.finish", Finish { mode }.encode()).unwrap();
+        counts.cancellation.entered.notified().await;
+        invocation.request_cancel();
+        let result = (&mut invocation).await;
+        if mode == 0 {
+            assert_eq!(u64::decode(&result.unwrap()).unwrap(), 42);
+        } else {
+            assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+        }
+        assert_eq!(counts.cancellation.dropped.load(Ordering::SeqCst), mode as usize + 1);
+    }
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
+}
+
+#[cfg(feature = "grpc")]
+#[tokio::test]
+async fn cancel_final_response_sidecar_grpc() {
+    let counts = Arc::new(Counts::default());
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
+    fixture.initialize().await.unwrap();
+    crate::operations::cancellation::remote(&fixture.runtime, &counts.cancellation).await;
+    assert_eq!(counts.cancellation.dropped.load(Ordering::SeqCst), 4);
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
+}

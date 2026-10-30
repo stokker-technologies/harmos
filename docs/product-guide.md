@@ -731,6 +731,46 @@ Local operation IDs use dotted segments `segment(.segment)*`, each with that sam
 `temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `host.operations.cancel`, `harmos.initialize`
 and `storage.append_file`. `codec = manual` preserves an explicitly authored message codec.
 
+Started operations return the same typed `Response<T>` from `join()` and
+`cancel().await`. `request_cancel()` sends only the signal. An implementation
+can await `ctx.cancelled()` and return its normal response; cancellation errors
+or a missing response become `Refusal::Cancelled`. Set
+`OperationPolicy::cancellation_timeout` to the grace duration. Zero preserves
+immediate abort. Grace never extends the remaining attempt or overall timeout,
+and cancellation never retries. Final responses still wait for owned children
+and cleanup. Dropping a handle requests cancellation without retaining its result.
+
+```rust
+let handle = runtime.operation(request).start().await?;
+let summary = handle.cancel().await?;
+// Inside Operation::run:
+ctx.cancelled().await;
+Ok(summary.into())
+```
+
+For gRPC, every exported operation also has a bidirectional `Run<Method>` RPC.
+Its opening frame is `request` (tag 1), input rows are `item` (tag 2), and
+`cancel` (tag 3, an empty message) requests cooperative cancellation.
+`finish` (tag 4, an empty message) closes input while retaining cancellation
+control; Rust handles expose `finish_input().await`. Responses
+contain output `item` (tag 1) or final `response` (tag 2). Keep the response stream
+open through cancellation. An HTTP/2 abort abandons the result. Rust callers use
+`harmos::grpc::client::start::<Operation>(channel, request, transport_settings)`
+and the returned handle's `cancel().await` or `join().await`; both return the
+normal typed response or a gRPC status, including `Code::Cancelled`.
+The caller supplies transport and buffer settings; operation deadlines come
+from the server's operation policy. Generated Python descriptors include
+`run_grpc_path`, `run_request` and `run_response`, with `Invoker.start` and
+`OperationHandle.cancel` transport interfaces. Harmos emits protobuf contracts
+for external TypeScript generators and does not generate a TypeScript execution
+client. Ordinary RPC methods remain available alongside managed calls.
+
+Portable request and response integer fields support `u32`, `u64`, `i32` and
+`i64` across in-process, sidecar, guest and gRPC carriers. `u16` is rejected by
+the message macro; represent ports with `u32` and validate their range in the
+operation. `u8` is supported as byte buffers (`Vec<u8>`), not as a scalar field.
+`usize`, `isize`, narrower signed integers and 128-bit integers are unsupported.
+
 Standard `HashMap<K, V>` and `BTreeMap<K, V>` work as message fields and
 complete operation payloads. Keys are `bool`, `u32`, `u64`, `i32`, `i64` or
 `String`; values are supported scalars, bytes or named messages. Encoding sorts

@@ -362,7 +362,7 @@ impl<A: Application> Owned<A> {
                         let finite = pending.iter().filter(|call| call.admission).count();
                         // Finalization Borrows An Already Admitted Running's Receipt.
                         // It Must Progress Even When Retained Background Debts Fill Admission.
-                        let finalization = matches!(&request.call, Command::Operation(WireCommand::Finalize { .. }));
+                        let finalization = matches!(&request.call, Command::Operation(WireCommand::Finalize { .. } | WireCommand::Cancel { .. }));
                         if !finalization && finite + background_debts >= CALLS {
                             let _ = request.answer.send(Err(crate::plugin::DispatchError::Busy.into()));
                             continue;

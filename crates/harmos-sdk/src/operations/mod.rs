@@ -12,6 +12,7 @@
 pub mod access;
 mod authored;
 mod calls;
+mod cancellation;
 pub mod instance;
 pub mod instances;
 pub mod lifecycle;
@@ -33,6 +34,7 @@ mod surface;
 pub use authored::Carrier;
 pub use authored::{EndpointSet, Executable, InputEndpoint, OutputEndpoint};
 pub use calls::{CallFuture, Caller, Calls, InvocationError, Target};
+pub use cancellation::Cancellation;
 pub use harmos_domain::operations::*;
 pub use instance::Instance;
 pub use operation::{Authored, Context, Dependent, Operation, Resource, Shape, Streams};
