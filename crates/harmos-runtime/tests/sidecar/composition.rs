@@ -413,7 +413,16 @@ async fn generated_entry_attaches() {
     assert_eq!(failure.context().step(), None);
     let diagnostics = failure.diagnostics().expect("origin diagnostics");
     assert_eq!(diagnostics.origin(), harmos_runtime::failure::Origin::Plugin);
-    assert_eq!(diagnostics.chain().len(), 3, "the full origin chain stays in diagnostics");
+    assert_eq!(
+        diagnostics.chain(),
+        [
+            "operation `gauge.probe.read` failed: gRPC transport error: connection reset",
+            "gRPC transport error: connection reset",
+            "connection reset",
+            "connection reset",
+        ],
+        "the full origin chain, including the I/O error's inner source, stays in diagnostics"
+    );
     let rendered = std::iter::successors(Some(&error as &(dyn std::error::Error + 'static)), |error| error.source())
         .map(ToString::to_string)
         .collect::<Vec<_>>()
