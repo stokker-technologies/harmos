@@ -603,7 +603,7 @@ fn publish(path: &std::path::Path, bytes: &[u8]) -> Result<(), Error> {
 }
 
 fn read_messages(reader: impl BufRead, selected: &BTreeMap<String, String>) -> Result<BuildMessages, Error> {
-    let collected = crate::cargo::collect(reader, selected)?;
+    let collected = crate::cargo::collect_with_diagnostics(reader, selected, |rendered| eprint!("{rendered}"))?;
     let artifacts = collected
         .artifacts
         .into_iter()

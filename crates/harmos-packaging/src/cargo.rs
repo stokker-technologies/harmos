@@ -88,6 +88,12 @@ struct Target {
 }
 
 pub fn collect(reader: impl BufRead, selected: &BTreeMap<String, String>) -> Result<CargoOutputs, Error> {
+    collect_with_diagnostics(reader, selected, |_| {})
+}
+
+pub(crate) fn collect_with_diagnostics(
+    reader: impl BufRead, selected: &BTreeMap<String, String>, mut diagnostic: impl FnMut(&str),
+) -> Result<CargoOutputs, Error> {
     let mut artifacts = Vec::new();
     let mut outputs = BTreeSet::new();
     let mut finished = false;
@@ -104,7 +110,7 @@ pub fn collect(reader: impl BufRead, selected: &BTreeMap<String, String>) -> Res
             continue;
         }
         if let Some(rendered) = message.message.as_ref().and_then(|diagnostic| diagnostic.rendered.as_ref()) {
-            eprint!("{rendered}");
+            diagnostic(rendered);
         }
         let Some(producer) = message.package_id.as_ref().and_then(|id| selected.get(id)) else {
             continue;
