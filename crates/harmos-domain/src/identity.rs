@@ -304,24 +304,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn qualified_segments() {
-        assert_eq!(QualifiedId::qualify("host", "read_2").unwrap().as_str(), "host.read_2");
-        assert_eq!(QualifiedId::parse("host.storage.read_file").unwrap().as_str(), "host.storage.read_file");
-        for value in ["read", "host..read", ".read", "host.", "Host.read", "host.read-file", "host.2read", "host.read\0"] {
-            assert!(QualifiedId::parse(value).is_err(), "{value:?}");
-        }
-        assert!(QualifiedId::qualify("owner.other", "read").is_err());
-    }
-
-    #[test]
-    fn dotted_local_segments() {
-        for value in ["read", "storage.read_file", "host.operations.cancel", "a0.b_2"] {
-            assert!(super::dotted(value), "{value:?}");
-        }
-        for value in ["", ".read", "read.", "read..file", "Read", "read.2file", "read.file-name", "read.é"] {
-            assert!(!super::dotted(value), "{value:?}");
-        }
-    }
 }

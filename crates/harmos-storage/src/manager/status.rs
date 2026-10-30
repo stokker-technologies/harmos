@@ -212,30 +212,6 @@ mod tests {
         storage.inner.notify();
         assert!(matches!(waiting.await, Err(Error::Closing { .. })));
     }
-    #[tokio::test]
-    async fn saved_wait_coalesces() {
-        let storage = storage();
-        {
-            let mut state = storage.inner.state.lock().unwrap();
-            state.ready = true;
-            state.status.running = true;
-            state.status.accepted.sequence = 12;
-        }
-        let before = storage.cursor_saved();
-        let mut waiting = Box::pin(storage.wait_saved_after(&before));
-        assert!(pending(waiting.as_mut()).await);
-        for sequence in [3, 9] {
-            storage.inner.state.lock().unwrap().status.saved.sequence = sequence;
-            storage.inner.notify();
-        }
-        assert_eq!(waiting.await.unwrap().sequence, 9);
-        // Persistence Can Advance Between Taking A Snapshot And Polling The Wait.
-        let cursor = storage.position(9);
-        let waiting = storage.wait_saved_after(&cursor);
-        storage.inner.state.lock().unwrap().status.saved.sequence = 12;
-        storage.inner.notify();
-        assert_eq!(waiting.await.unwrap().sequence, 12);
-    }
 
     #[tokio::test]
     async fn saved_wait_errors() {

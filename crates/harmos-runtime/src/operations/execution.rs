@@ -409,9 +409,9 @@ mod tests {
             _ = entered.notified() => {}
         }
         cancel.send_replace(true);
-        let before = tokio::time::Instant::now();
+        let before = executor::now();
         assert!(matches!(running.await, Stage::Cancelled));
-        assert_eq!(tokio::time::Instant::now() - before, Duration::from_millis(10));
+        assert_eq!(executor::now() - before, Duration::from_millis(10));
         assert!(signal.is_requested());
     }
 }

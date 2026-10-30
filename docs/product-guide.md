@@ -7,6 +7,21 @@ diagnostics across carriers. Applications can attach named, non-secret context
 with `Failure::with_detail` and read it with `Failure::detail`; a plugin admission
 consumer can use these fields for actionable errors without parsing prose.
 
+Startup configuration errors expose `StartupError::report()` with separate root
+failures and consequences. Each issue retains its original `Failure` together
+with resource and operation identity where applicable. Carriers preserve that
+report as the `harmos.startup` structured detail on the existing failure;
+`operations::StartupReport::from_failure` reads it without parsing messages.
+Original refusal codes, detail maps and diagnostics remain in the report. Display
+renders readable root prose rather than Rust Debug output.
+
+Classification is scoped to one startup/prepare pass. If the pass contains a
+runtime preparation/construction failure, every `MissingResource` in that pass
+is a consequence, regardless of reporting order. Other failures remain separate
+roots. Without a preparation failure, missing resources are roots themselves.
+This rule describes a failed pass, not a resource dependency graph; Display
+summarizes consequences as operations unavailable because startup failed.
+
 ## Examples
 
 The [Schematic Editor](schematic.md) is one application with two
@@ -1012,7 +1027,14 @@ the initialization/shutdown policies, including for an empty plugin. Each JSON
 fragment is limited to 64 KiB. Inspection merges entries into one resolved
 manifest, enforcing entry limits and duplicate rules across fragments; shared
 `preparation_bytes` and `preparation_work` budgets bound the aggregate metadata
-and schema resolution. Aggregate provides/requires fragments are unsupported.
+and schema resolution. Consumers pass their `SchemaSettings` through
+`Declaration::inspect_with_settings`, `Bundle::build_with_settings`,
+`Bundle::inspect_with_settings` and `Executable::at_with_settings`.
+Sidecar authors use `run_plugin_with_settings` or
+`serve_plugin_channels_with_settings` for the matching native self-inspection.
+The existing convenience methods retain Harmos defaults. Memory and work
+refusals report attempted usage and the allowed amount; bundle errors also name
+the package and executable. Aggregate provides/requires fragments are unsupported.
 
 Protocol, artifact, envelope, journal and schema formats are v1. Only current
 shapes are supported; there are no old-peer checks, historical shape converters,

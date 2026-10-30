@@ -52,6 +52,10 @@ pub trait Declared: Send + Sync + 'static {
     const STREAMS: &'static [crate::inventory::publications::Entry];
 
     fn markers() -> Result<Vec<&'static [u8]>, crate::schema::graph::Error>;
+
+    fn markers_with_settings(_settings: &crate::config::SchemaSettings) -> Result<Vec<&'static [u8]>, crate::schema::graph::Error> {
+        Self::markers()
+    }
 }
 
 /* === Implementations === */
@@ -67,7 +71,11 @@ pub fn schema_markers<P: Declared>(
     use crate::schema::graph::Error;
     let carrier_bytes = carrier.capacity().checked_mul(std::mem::size_of::<&[u8]>()).ok_or(Error::Budget)?;
     if carrier_bytes > settings.preparation_bytes.get() {
-        return Err(Error::Budget);
+        return Err(Error::Allowance {
+            budget: "memory bytes",
+            used: carrier_bytes,
+            allowed: settings.preparation_bytes.get(),
+        });
     }
     let mut roots = Vec::new();
     {
@@ -97,7 +105,12 @@ pub fn schema_markers<P: Declared>(
         .checked_mul(std::mem::size_of::<Definition>())
         .and_then(|bytes| bytes.checked_add(carrier.capacity() * std::mem::size_of::<&[u8]>()))
         .ok_or(Error::Budget)?;
-    let remaining = settings.preparation_bytes.get().checked_sub(retained).and_then(std::num::NonZeroUsize::new).ok_or(Error::Budget)?;
+    let remaining =
+        settings.preparation_bytes.get().checked_sub(retained).and_then(std::num::NonZeroUsize::new).ok_or(Error::Allowance {
+            budget: "memory bytes",
+            used: retained,
+            allowed: settings.preparation_bytes.get(),
+        })?;
     let allowance = crate::config::SchemaSettings {
         preparation_bytes: remaining,
         ..*settings
@@ -110,7 +123,11 @@ pub fn schema_markers<P: Declared>(
         .and_then(|bytes| bytes.checked_add(declarations.capacity() * std::mem::size_of::<&[u8]>()))
         .ok_or(Error::Budget)?;
     if output > settings.preparation_bytes.get() {
-        return Err(Error::Budget);
+        return Err(Error::Allowance {
+            budget: "memory bytes",
+            used: output,
+            allowed: settings.preparation_bytes.get(),
+        });
     }
     carrier.extend(declarations);
     Ok(carrier)
@@ -128,8 +145,19 @@ fn push_schema_root(
         .checked_mul(4 * std::mem::size_of::<crate::schema::declaration::Definition>())
         .and_then(|bytes| bytes.checked_add(carrier_bytes))
         .ok_or(Error::Budget)?;
-    if bytes > settings.preparation_bytes.get() || count > settings.preparation_work.get() {
-        return Err(Error::Budget);
+    if bytes > settings.preparation_bytes.get() {
+        return Err(Error::Allowance {
+            budget: "memory bytes",
+            used: bytes,
+            allowed: settings.preparation_bytes.get(),
+        });
+    }
+    if count > settings.preparation_work.get() {
+        return Err(Error::Allowance {
+            budget: "work",
+            used: count,
+            allowed: settings.preparation_work.get(),
+        });
     }
     roots.push(definition);
     Ok(())

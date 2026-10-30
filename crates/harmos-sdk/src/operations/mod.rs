@@ -52,7 +52,7 @@ pub use serving::{
 #[cfg(feature = "streaming")]
 pub use serving::{WireEndpoints, WireStreamLimits, WireStreams};
 
-pub use startup::StartupError;
+pub use startup::{StartupError, StartupIssue, StartupReport};
 #[cfg(feature = "streaming")]
 pub use streaming::{Error as StreamError, StreamInput, StreamItem, StreamOutput, StreamPermit, StreamSettings, stream};
 pub use surface::{Host, RequestClaims};
