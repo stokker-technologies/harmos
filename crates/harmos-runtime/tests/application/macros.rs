@@ -303,7 +303,7 @@ mod unified_plugins {
         }
     }
     struct InertObserver;
-    #[harmos_runtime::observer(id = "fixture.unified.inert-observer")]
+    #[harmos_runtime::observer(interval_ms = 100, id = "fixture.unified.inert-observer")]
     impl InertObserver {
         fn interval(_: &harmos_sdk::ExecutionContext) -> Result<std::time::Duration, Infallible> {
             panic!("metadata inspection must not resolve observer cadence")

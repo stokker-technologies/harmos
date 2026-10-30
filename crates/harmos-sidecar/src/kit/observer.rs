@@ -157,7 +157,11 @@ pub trait Observer<H: Send + Sync + 'static = Supervisor>: Sized + Send + 'stati
 
     const ACTIVATION: Activation = Activation::Plugin;
 
-    fn interval(resources: &harmos_sdk::ExecutionContext) -> Result<Duration, Self::Error>;
+    const INTERVAL: Duration;
+
+    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<Duration, Self::Error> {
+        Ok(Self::INTERVAL)
+    }
 
     fn initialize(resources: &harmos_sdk::ExecutionContext) -> impl Future<Output = Result<Self, Self::Error>> + Send;
 

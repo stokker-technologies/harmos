@@ -21,7 +21,7 @@ use quote::{ToTokens, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Error, FnArg, GenericArgument, LitStr, Meta, Path, PathArguments, Token, Type};
+use syn::{Error, Expr, FnArg, GenericArgument, LitStr, Meta, Path, PathArguments, Token, Type};
 // Local Imports
 use super::contribution::{asynchronous, block, borrowed, declared, parameter, required, returned};
 use crate::path::{self, HarmosPath};
@@ -56,21 +56,30 @@ pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream 
 /* === Private Functions === */
 
 fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Error> {
-    let (harmos, streams, demand_keys, activation, description, id) = arguments(attribute)?;
+    let (harmos, interval, streams, demand_keys, activation, description, id) = arguments(attribute)?;
     let block = block(item.clone(), "#[harmos::observer]")?;
     let name = &block.self_ty;
     let id = id.map(|id| quote!(#id)).unwrap_or_else(|| quote!(concat!(module_path!(), "::", stringify!(#name))));
     let description = super::description(description, &block.attrs);
 
-    let cadence = required(&block, "interval", "fn interval(resources: &ExecutionContext) -> Result<Duration, Error>")?;
-    if cadence.sig.asyncness.is_some() || cadence.sig.inputs.len() != 1 || !matches!(cadence.sig.inputs.first(), Some(FnArg::Typed(_))) {
-        return Err(Error::new(
-            cadence.sig.span(),
-            "interval takes the execution context synchronously: `fn interval(resources: &ExecutionContext) -> Result<Duration, Error>`",
-        ));
-    }
-    borrowed(&parameter(cadence.sig.inputs.first().expect("one typed parameter"))?, "the context an observer binds")?;
-    returned(cadence)?;
+    let cadence = if let Some(cadence) = declared(&block, "interval") {
+        if cadence.sig.asyncness.is_some() || cadence.sig.inputs.len() != 1 || !matches!(cadence.sig.inputs.first(), Some(FnArg::Typed(_)))
+        {
+            return Err(Error::new(
+                cadence.sig.span(),
+                "interval takes the execution context synchronously: `fn interval(resources: &ExecutionContext) -> Result<Duration, Error>`",
+            ));
+        }
+        borrowed(&parameter(cadence.sig.inputs.first().expect("one typed parameter"))?, "the context an observer binds")?;
+        returned(cadence)?;
+        quote! {
+            fn interval(resources: &#harmos::__private::sidecar::ExecutionContext) -> ::core::result::Result<::core::time::Duration, Self::Error> {
+                <Self>::interval(resources)
+            }
+        }
+    } else {
+        quote!()
+    };
 
     let observing = required(&block, "observe", "async fn observe(&mut self, context: &ObserverContext<'_>) -> Result<(), Error>")?;
     asynchronous(observing, "a observe awaits its instrument without blocking the executor")?;
@@ -142,6 +151,9 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     Ok(quote! {
         #item
 
+        // Validate The Declared Default Even When A Runtime Override Is Present.
+        const _: ::core::time::Duration = <#name as #harmos::__private::sidecar::Observer<#host>>::INTERVAL;
+
         #[automatically_derived]
         impl #harmos::__private::PluginInventory::observers::Declared for #name {
             const ENTRY: #harmos::__private::PluginInventory::observers::Entry =
@@ -157,6 +169,11 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         impl #harmos::__private::sidecar::Observer<#host> for #name {
             type Error = <#observed as #answer>::Err;
             const ID: &'static str = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.id;
+            const INTERVAL: ::core::time::Duration = {
+                let milliseconds: u64 = #interval;
+                ::core::assert!(milliseconds > 0, "an observer's interval is at least 1 millisecond");
+                ::core::time::Duration::from_millis(milliseconds)
+            };
             const DESCRIPTION: &'static str = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.description;
             const STREAMS: &'static [#harmos::__private::sidecar::inventory::publications::Entry] = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.streams;
             const DEMAND_KEYS: &'static [#harmos::__private::sidecar::DemandKey] = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.demand_keys;
@@ -165,9 +182,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             // The author's own inherent functions are what run: an inherent
             // associated function shadows the trait's, so these delegations
             // reach the lines that were written rather than loop back here.
-            fn interval(resources: &#harmos::__private::sidecar::ExecutionContext) -> ::core::result::Result<::core::time::Duration, Self::Error> {
-                <Self>::interval(resources)
-            }
+            #cadence
 
             fn initialize(
                 resources: &#harmos::__private::sidecar::ExecutionContext,
@@ -223,10 +238,11 @@ fn host(observing: &syn::ImplItemFn) -> Result<Option<Type>, Error> {
 }
 
 #[allow(clippy::type_complexity)]
-fn arguments(attribute: TokenStream) -> Result<(HarmosPath, Vec<Path>, Vec<Path>, String, Option<LitStr>, Option<LitStr>), Error> {
+fn arguments(attribute: TokenStream) -> Result<(HarmosPath, Expr, Vec<Path>, Vec<Path>, String, Option<LitStr>, Option<LitStr>), Error> {
     let span = attribute.span();
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute)?;
     let mut harmos_path: Option<Path> = None;
+    let mut interval = None;
     let mut streams = None;
     let mut demand_keys = None;
     let mut activation = None;
@@ -239,6 +255,9 @@ fn arguments(attribute: TokenStream) -> Result<(HarmosPath, Vec<Path>, Vec<Path>
             continue;
         }
         match argument {
+            Meta::NameValue(named) if named.path.is_ident("interval_ms") => {
+                set_once(&mut interval, named.value.clone(), named.span(), "interval_ms")?
+            }
             Meta::NameValue(named) if named.path.is_ident("id") => {
                 let value = syn::parse2::<LitStr>(named.value.to_token_stream())?;
                 if value.value().trim().is_empty() || value.value().chars().any(char::is_control) {
@@ -273,12 +292,13 @@ fn arguments(attribute: TokenStream) -> Result<(HarmosPath, Vec<Path>, Vec<Path>
             other => {
                 return Err(Error::new(
                     other.span(),
-                    "an observer declares optional `streams(A, B)`, `demand_keys(KEY, OTHER)`, `activation = \"plugin\"` or `\"demand\"`, and `harmos_path = …`",
+                    "an observer declares `interval_ms = …`, with optional `streams(A, B)`, `demand_keys(KEY, OTHER)`, `activation = \"plugin\"` or `\"demand\"`, and `harmos_path = …`",
                 ));
             }
         }
     }
 
+    let interval = interval.ok_or_else(|| Error::new(span, "an observer declares `interval_ms = …`: its initial cadence is required"))?;
     let streams = streams.unwrap_or_default();
     let demand_keys = demand_keys.unwrap_or_default();
     let activation = activation.map(|value| value.value()).unwrap_or_else(|| "plugin".into());
@@ -289,7 +309,24 @@ fn arguments(attribute: TokenStream) -> Result<(HarmosPath, Vec<Path>, Vec<Path>
         return Err(Error::new(span, "a demand observer requires `streams(A, B)` or `demand_keys(KEY, OTHER)`"));
     }
 
-    Ok((HarmosPath::resolve(harmos_path), streams, demand_keys, activation, description, id))
+    Ok((HarmosPath::resolve(harmos_path), interval, streams, demand_keys, activation, description, id))
 }
 
 /* === Tests === */
+
+#[test]
+fn cadence_declaration_required() {
+    assert!(arguments(quote!()).is_err());
+    assert!(arguments(quote!(interval_ms = 10, interval_ms = 20)).is_err());
+}
+
+#[test]
+fn cadence_override_signature() {
+    let observer = quote! {
+        impl Watch {
+            async fn interval(_: &ExecutionContext) -> Result<Duration, Error> { todo!() }
+            async fn observe(&mut self, _: &ObserverContext<'_>) -> Result<(), Error> { todo!() }
+        }
+    };
+    assert!(expand(quote!(interval_ms = 10), &observer).is_err());
+}

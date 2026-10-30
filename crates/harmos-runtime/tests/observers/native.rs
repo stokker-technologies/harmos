@@ -75,9 +75,7 @@ impl harmos_runtime::sidecar::StreamSpec for ConfiguredRow {
 impl Observer<()> for ConfiguredWatch {
     type Error = Error;
     const ID: &'static str = "schema-budget.native";
-    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<Duration, Self::Error> {
-        Ok(Duration::from_millis(5))
-    }
+    const INTERVAL: std::time::Duration = Duration::from_millis(5);
     const STREAMS: &'static [harmos_runtime::sidecar::inventory::publications::Entry] =
         &[harmos_runtime::sidecar::inventory::publications::Entry::of::<ConfiguredRow>()];
 
@@ -111,9 +109,7 @@ impl Counts {
 impl<const PANIC: bool> Observer<()> for Watch<PANIC> {
     type Error = Error;
     const ID: &'static str = "native";
-    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<Duration, Self::Error> {
-        Ok(Duration::from_millis(5))
-    }
+    const INTERVAL: std::time::Duration = Duration::from_millis(5);
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Error> {
         let resolved = context.resource::<Counts>().unwrap();
         let resources = &resolved;

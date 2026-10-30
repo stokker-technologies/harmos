@@ -8,7 +8,7 @@ The owner approved this paired change, commits only and no push.
 
 ## What Changes
 
-- Replace Observer::INTERVAL with a resource-based runtime interval method.
+- Retain required observer defaults and allow optional resource-based activation overrides.
 - Remove cadence from static observer inventories and backend definitions.
 - Resolve and validate cadence once per activation before initializing and sampling.
 - Migrate native and sidecar consumers, macros, examples, templates, tests and docs.

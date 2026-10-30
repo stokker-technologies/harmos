@@ -46,6 +46,9 @@ struct Settings {
 
 struct Configured;
 
+#[derive(Default)]
+struct DeclaredCadence;
+
 struct Publisher(mpsc::UnboundedSender<(u64, Duration)>);
 
 /* === Enums === */
@@ -70,7 +73,7 @@ impl ObserverPublisher<(u64, Duration)> for Publisher {
     }
 }
 
-#[harmos_runtime::observer]
+#[harmos_runtime::observer(interval_ms = 101)]
 impl Configured {
     fn interval(context: &harmos_sdk::ExecutionContext) -> Result<Duration, std::io::Error> {
         let settings = context.resource::<Settings>().map_err(std::io::Error::other)?;
@@ -96,6 +99,13 @@ impl Configured {
     }
 }
 
+#[harmos_runtime::observer(interval_ms = 23)]
+impl DeclaredCadence {
+    async fn observe(&mut self, context: &ObserverContext<'_, Publisher>) -> Result<(), std::io::Error> {
+        context.publish((context.tick().ordinal(), context.tick().elapsed())).await.map_err(std::io::Error::other)
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
@@ -112,6 +122,30 @@ fn resources(interval: Resolution) -> Arc<Settings> {
 
 #[tokio::test(start_paused = true)]
 async fn resource_cadence() {
+    // Declared Cadence Without An Override
+    use harmos_runtime::sidecar::Observer;
+
+    let cadence = <DeclaredCadence as Observer<Publisher>>::INTERVAL;
+    let (published, mut samples) = mpsc::unbounded_channel();
+    let mut activity = Instance::<Publisher>::of::<DeclaredCadence>()
+        .activate(Arc::new(harmos_sdk::ExecutionContext::default()), Publisher(published))
+        .unwrap();
+    {
+        let mut observing = pin!(activity.observe(|| {}));
+        pending::parked(observing.as_mut()).await;
+        for ordinal in 1..=3 {
+            tokio::time::advance(cadence - Duration::from_millis(1)).await;
+            pending::parked(observing.as_mut()).await;
+            assert!(samples.try_recv().is_err());
+            tokio::time::advance(Duration::from_millis(1)).await;
+            pending::parked(observing.as_mut()).await;
+            assert_eq!(samples.try_recv().unwrap(), (u64::from(ordinal), cadence * ordinal));
+        }
+    }
+    activity.stop().await.unwrap();
+    activity.cleanup().await.unwrap();
+
+    // Resource Override And Reactivation
     let cadence = Duration::from_millis(37);
     let settings = resources(Resolution::Interval(cadence));
     let (published, mut samples) = mpsc::unbounded_channel();

@@ -74,12 +74,8 @@ enum Event {
 
 /* === Implementations === */
 
-#[harmos_runtime::observer(id = "execution.watch")]
+#[harmos_runtime::observer(interval_ms = 5, id = "execution.watch")]
 impl Watch {
-    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<std::time::Duration, std::io::Error> {
-        Ok(std::time::Duration::from_millis(5))
-    }
-
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, std::io::Error> {
         let resolved = context.resource::<Resources>().unwrap();
         let resources = resolved.as_ref();
@@ -139,12 +135,8 @@ impl std::io::Write for Diagnostics {
     }
 }
 
-#[harmos_runtime::observer]
+#[harmos_runtime::observer(interval_ms = 5)]
 impl NeverStarts {
-    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<std::time::Duration, std::io::Error> {
-        Ok(std::time::Duration::from_millis(5))
-    }
-
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, std::io::Error> {
         let resolved = context.resource::<Resources>().unwrap();
         let resources = resolved.as_ref();

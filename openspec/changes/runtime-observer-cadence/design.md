@@ -3,15 +3,21 @@
 ## Approved API
 
 ```rust
-fn interval(resources: &ExecutionContext) -> Result<Duration, Self::Error>;
+#[harmos::observer(interval_ms = DEFAULT_INTERVAL_MS)] // Required, at least 1 ms.
+impl Poller {
+    // Optional Activation Override
+    fn interval(resources: &ExecutionContext) -> Result<Duration, Error> { /* settings */ }
+}
 ```
 
-Observer implementations supply cadence from their producing plugin's resources.
-The observer macro delegates the authored method; interval_ms attribute metadata
-and Observer::INTERVAL are removed. Static Entry/Declaration and ObserverDefinition
-contain no interval. Instance activation resolves cadence, rejects zero, and passes
-the snapshot to the scheduler for initialization retries and ticks.
-Error and panic handling must refuse activation without a spinning timer.
+The macro sets `Observer::INTERVAL` to the declared default, validates it even
+when an override exists, and delegates an optional authored interval method.
+The trait's fallback returns `Self::INTERVAL`; manual observers declare the same
+constant. Streams remain cadence-less. Static Entry/Declaration and
+ObserverDefinition do not advertise a default as effective cadence.
+Activation resolves the interval once, rejects zero, and passes the snapshot to
+the scheduler for initialization retries and ticks. Error and panic handling
+refuse activation without a spinning timer. Resource changes apply on reactivation.
 
 ## Paired Consumer
 

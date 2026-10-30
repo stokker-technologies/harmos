@@ -202,9 +202,7 @@ impl ObserverPublisher<Pulse> for Host {
 impl<const N: u64> Observer<Host> for Watch<N> {
     type Error = PublishError;
     const ID: &'static str = if N == 0 { "custom.first" } else { "custom.second" };
-    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<Duration, Self::Error> {
-        Ok(Duration::from_millis(5))
-    }
+    const INTERVAL: std::time::Duration = Duration::from_millis(5);
     const STREAMS: &'static [publications::Entry] = &[publications::Entry::of::<Published>()];
 
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, PublishError> {

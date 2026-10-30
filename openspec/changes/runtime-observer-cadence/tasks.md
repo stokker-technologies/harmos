@@ -9,6 +9,8 @@
 - [x] 1.5 Update product/authoring guides and review README impact; remove obsolete cadence guidance.
 - [x] 1.6 Hand off all source and review paired consumer integration.
 
+- [x] 1.8 Correct observer defaults: required validated interval_ms, optional activation override, migrate all consumers, add fallback/override validation coverage and update maintained docs/specification; host defaults remain settings-owned.
+
 ## Validation And Delivery
 
 - [x] 2.1 Validate specification and run targeted observer/SDK tests through focused mise task.

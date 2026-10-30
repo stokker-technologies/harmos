@@ -53,12 +53,8 @@ impl harmos::builtins::lifecycle::Policy for Bridge {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = controls::POLICY;
 }
 
-#[harmos::observer(streams(Output))]
+#[harmos::observer(interval_ms = 5, streams(Output))]
 impl Watch {
-    fn interval(_: &harmos::ExecutionContext) -> Result<std::time::Duration, harmos::sidecar::Refusal> {
-        Ok(std::time::Duration::from_millis(5))
-    }
-
     async fn observe(&mut self, _: &harmos::sidecar::ObserverContext<'_>) -> Result<(), harmos::sidecar::Refusal> { Ok(()) }
 }
 
