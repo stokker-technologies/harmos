@@ -277,6 +277,46 @@ async fn filtered_storage_unchanged() {
     assert!(capture.0.lock().unwrap().spans.is_empty());
 }
 
+#[tokio::test]
+async fn filtered_backend_preserves_caller_outcome() {
+    use harmos_storage::{JsonStorage, JsonStorageSettings, StorageBackend};
+
+    let capture = Capture::default();
+    let subscriber = Registry::default().with(capture.clone()).with(tracing_subscriber::filter::LevelFilter::INFO);
+    let dispatch = tracing::Dispatch::new(subscriber);
+    async {
+        let root = tempfile::tempdir().unwrap();
+        let json = JsonStorage::new(
+            JsonStorageSettings {
+                root: root.path().join("json"),
+                max_entry_bytes: NonZeroUsize::new(4096).unwrap(),
+            },
+            super::history(),
+        );
+        let state =
+            harmos_storage::state::file::FileBackend::new(root.path().join("state"), super::history(), super::fixture::state_settings());
+        let caller = tracing::info_span!("backend_caller", outcome = "pending");
+        async {
+            assert!(json.cursor_saved().await.is_err());
+            let opened = json.open().await.unwrap();
+            assert_eq!(json.cursor_saved().await.unwrap(), opened);
+            json.close().await.unwrap();
+            let opened = state.open().await.unwrap();
+            assert_eq!(state.flush(&opened).await.unwrap(), opened);
+            state.close().await.unwrap();
+        }
+        .instrument(caller)
+        .await;
+    }
+    .with_subscriber(dispatch)
+    .await;
+    let captured = capture.0.lock().unwrap();
+    let caller = captured.spans.values().find(|span| span.name == "backend_caller").unwrap();
+    assert_eq!(caller.fields["outcome"], "\"pending\"");
+    assert!(caller.closed.is_some());
+    assert_eq!(captured.spans.len(), 1, "backend debug spans are filtered out");
+}
+
 #[tokio::test(start_paused = true)]
 async fn split_collectors_coalesce() {
     let f = Fixture::new(config()).await;

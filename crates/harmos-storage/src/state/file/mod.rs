@@ -114,84 +114,64 @@ impl StateBackend for FileBackend {
     fn open(&self) -> StorageFuture<'_, RecoveryPosition> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
-            let future = async move {
-                let span = tracing::debug_span!("storage.state.backend", method = "open", outcome = "cancelled");
-                let result = tracing::Instrument::instrument(
-                    async move {
-                        let mut owner =
-                            tracing::Instrument::instrument(self.journal.clone().lock_owned(), tracing::trace_span!("storage.lock.wait"))
-                                .await;
-                        let root = self.root.clone();
-                        let history = self.history.clone();
-                        let settings = self.settings;
-                        let opener = Arc::clone(&self.opener);
-                        let cancelled = Arc::new(AtomicBool::new(false));
-                        let _cancel = CancelOpen(Arc::clone(&cancelled));
-                        {
-                            let context = crate::execution::Context::current();
-                            tokio::task::spawn_blocking(move || {
-                                context.blocking(|| {
-                                    if owner.is_none() {
-                                        *owner = Some(StateLog::open(&root, history, settings, opener, &mut || {
-                                            if cancelled.load(Ordering::Acquire) {
-                                                Err(Error::Closing { domain: "cancelled state recovery" })
-                                            } else {
-                                                Ok(())
-                                            }
-                                        })?);
-                                    }
-                                    let journal = owner.as_ref().expect("opened journal");
-                                    journal.check()?;
-                                    Ok(journal.position())
-                                })
+            let span = context.sync(|| tracing::debug_span!("storage.state.backend", method = "open", outcome = "cancelled"));
+            context
+                .result(span, async move {
+                    let mut owner =
+                        tracing::Instrument::instrument(self.journal.clone().lock_owned(), tracing::trace_span!("storage.lock.wait")).await;
+                    let root = self.root.clone();
+                    let history = self.history.clone();
+                    let settings = self.settings;
+                    let opener = Arc::clone(&self.opener);
+                    let cancelled = Arc::new(AtomicBool::new(false));
+                    let _cancel = CancelOpen(Arc::clone(&cancelled));
+                    {
+                        let context = crate::execution::Context::current();
+                        tokio::task::spawn_blocking(move || {
+                            context.blocking(|| {
+                                if owner.is_none() {
+                                    *owner = Some(StateLog::open(&root, history, settings, opener, &mut || {
+                                        if cancelled.load(Ordering::Acquire) {
+                                            Err(Error::Closing { domain: "cancelled state recovery" })
+                                        } else {
+                                            Ok(())
+                                        }
+                                    })?);
+                                }
+                                let journal = owner.as_ref().expect("opened journal");
+                                journal.check()?;
+                                Ok(journal.position())
                             })
-                        }
-                        .await
-                        .map_err(task)?
-                    },
-                    span.clone(),
-                )
-                .await;
-                span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
-                result
-            };
-            context.scope(future).await
+                        })
+                    }
+                    .await
+                    .map_err(task)?
+                })
+                .await
         })
     }
 
     fn read_snapshot(&self, maximum: NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
-            let future = async move {
-                let span = tracing::debug_span!("storage.state.backend", method = "read_snapshot", outcome = "cancelled");
-                let result = tracing::Instrument::instrument(self.call(move |journal| journal.snapshot(maximum.get())), span.clone()).await;
-                span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
-                result
-            };
-            context.scope(future).await
+            let span = context.sync(|| tracing::debug_span!("storage.state.backend", method = "read_snapshot", outcome = "cancelled"));
+            context.result(span, self.call(move |journal| journal.snapshot(maximum.get()))).await
         })
     }
 
     fn write_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
-            let future = async move {
-                let span = tracing::debug_span!("storage.state.backend", method = "write_snapshot", outcome = "cancelled");
-                let result = tracing::Instrument::instrument(
-                    async move {
-                        if snapshot.len() != 1 {
-                            return Err(format::invalid("snapshot write requires exactly one snapshot"));
-                        }
-                        self.history.check(&snapshot.as_slice()[0].through.history)?;
-                        self.call(move |journal| journal.checkpoint(&snapshot.as_slice()[0])).await
-                    },
-                    span.clone(),
-                )
-                .await;
-                span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
-                result
-            };
-            context.scope(future).await
+            let span = context.sync(|| tracing::debug_span!("storage.state.backend", method = "write_snapshot", outcome = "cancelled"));
+            context
+                .result(span, async move {
+                    if snapshot.len() != 1 {
+                        return Err(format::invalid("snapshot write requires exactly one snapshot"));
+                    }
+                    self.history.check(&snapshot.as_slice()[0].through.history)?;
+                    self.call(move |journal| journal.checkpoint(&snapshot.as_slice()[0])).await
+                })
+                .await
         })
     }
 
@@ -200,102 +180,73 @@ impl StateBackend for FileBackend {
     ) -> StorageFuture<'a, RecoveryPage> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
-            let future = async move {
-                let span = tracing::debug_span!("storage.state.backend", method = "read_entries", outcome = "cancelled");
-                let result = tracing::Instrument::instrument(
-                    async move {
-                        self.history.check(&after.history)?;
-                        self.history.check(&through.history)?;
-                        let after = after.clone();
-                        let through = through.clone();
-                        self.call(move |journal| journal.page(&after, &through, limits)).await
-                    },
-                    span.clone(),
-                )
-                .await;
-                span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
-                result
-            };
-            context.scope(future).await
+            let span = context.sync(|| tracing::debug_span!("storage.state.backend", method = "read_entries", outcome = "cancelled"));
+            context
+                .result(span, async move {
+                    self.history.check(&after.history)?;
+                    self.history.check(&through.history)?;
+                    let after = after.clone();
+                    let through = through.clone();
+                    self.call(move |journal| journal.page(&after, &through, limits)).await
+                })
+                .await
         })
     }
 
     fn write_entries(&self, entries: StorageBatch<RecoveryEntry>) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
-            let future = async move {
-                let span = tracing::debug_span!("storage.state.backend", method = "write_entries", outcome = "cancelled");
-                let result = tracing::Instrument::instrument(
-                    async move {
-                        for entry in entries.as_slice() {
-                            self.history.check(&entry.position.history)?;
-                        }
-                        self.call(move |journal| journal.append(entries.as_slice())).await
-                    },
-                    span.clone(),
-                )
-                .await;
-                span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
-                result
-            };
-            context.scope(future).await
+            let span = context.sync(|| tracing::debug_span!("storage.state.backend", method = "write_entries", outcome = "cancelled"));
+            context
+                .result(span, async move {
+                    for entry in entries.as_slice() {
+                        self.history.check(&entry.position.history)?;
+                    }
+                    self.call(move |journal| journal.append(entries.as_slice())).await
+                })
+                .await
         })
     }
 
     fn flush<'a>(&'a self, through: &'a RecoveryPosition) -> StorageFuture<'a, RecoveryPosition> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
-            let future = async move {
-                let span = tracing::debug_span!("storage.state.backend", method = "flush", outcome = "cancelled");
-                let result = tracing::Instrument::instrument(
-                    async move {
-                        self.history.check(&through.history)?;
-                        let through = through.clone();
-                        self.call(move |journal| journal.flush(&through)).await
-                    },
-                    span.clone(),
-                )
-                .await;
-                span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
-                result
-            };
-            context.scope(future).await
+            let span = context.sync(|| tracing::debug_span!("storage.state.backend", method = "flush", outcome = "cancelled"));
+            context
+                .result(span, async move {
+                    self.history.check(&through.history)?;
+                    let through = through.clone();
+                    self.call(move |journal| journal.flush(&through)).await
+                })
+                .await
         })
     }
 
     fn close(&self) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
-            let future = async move {
-                let span = tracing::debug_span!("storage.state.backend", method = "close", outcome = "cancelled");
-                let result = tracing::Instrument::instrument(
-                    async move {
-                        let mut owner =
-                            tracing::Instrument::instrument(self.journal.clone().lock_owned(), tracing::trace_span!("storage.lock.wait"))
-                                .await;
-                        {
-                            let context = crate::execution::Context::current();
-                            tokio::task::spawn_blocking(move || {
-                                context.blocking(|| {
-                                    let Some(mut journal) = owner.take() else {
-                                        return Ok(());
-                                    };
-                                    journal.check()?;
-                                    journal.flush(&journal.position())?;
-                                    Ok(())
-                                })
+            let span = context.sync(|| tracing::debug_span!("storage.state.backend", method = "close", outcome = "cancelled"));
+            context
+                .result(span, async move {
+                    let mut owner =
+                        tracing::Instrument::instrument(self.journal.clone().lock_owned(), tracing::trace_span!("storage.lock.wait")).await;
+                    {
+                        let context = crate::execution::Context::current();
+                        tokio::task::spawn_blocking(move || {
+                            context.blocking(|| {
+                                let Some(mut journal) = owner.take() else {
+                                    return Ok(());
+                                };
+                                journal.check()?;
+                                journal.flush(&journal.position())?;
+                                Ok(())
                             })
-                        }
-                        .await
-                        .map_err(task)?
-                    },
-                    span.clone(),
-                )
-                .await;
-                span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
-                result
-            };
-            context.scope(future).await
+                        })
+                    }
+                    .await
+                    .map_err(task)?
+                })
+                .await
         })
     }
 }
