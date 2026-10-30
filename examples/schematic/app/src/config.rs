@@ -20,11 +20,8 @@ use std::path::{Path, PathBuf};
 // Third Party Imports
 
 // Local Imports
-use crate::error::ConfigError;
 
 /* === Constants === */
-
-pub const RECORDINGS: &str = "SCHEMATIC_RECORDINGS";
 
 /* === Macros === */
 
@@ -55,15 +52,6 @@ impl Settings {
         Self {
             journal_sync_entries: NonZeroUsize::new(1).unwrap(),
             recordings: recordings.into(),
-        }
-    }
-
-    pub fn from_env() -> Result<Self, ConfigError> {
-        match std::env::var(RECORDINGS) {
-            Ok(recordings) if !recordings.is_empty() => Ok(Self::new(recordings)),
-            Ok(_) => Err(ConfigError::Empty { variable: RECORDINGS }),
-            Err(std::env::VarError::NotPresent) => Err(ConfigError::Missing { variable: RECORDINGS }),
-            Err(std::env::VarError::NotUnicode(_)) => Err(ConfigError::NotUnicode { variable: RECORDINGS }),
         }
     }
 
