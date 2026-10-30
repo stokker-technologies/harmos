@@ -585,7 +585,7 @@ pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &Bu
 
 // The registrations a stamped sidecar exports; this runs the artifact, never Cargo.
 fn exported_catalog(path: &Path, cancellation: &BuildCancellation) -> Result<Vec<harmos_domain::Registration>, Error> {
-    let mut command = Command::new(path);
+    let mut command = Command::new(std::path::absolute(path)?);
     command.arg(harmos_domain::CATALOG_EXPORT_FLAG).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let output = Process::spawn(command, cancellation)?.output()?;
     cancellation.check()?;
