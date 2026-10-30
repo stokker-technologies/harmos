@@ -98,38 +98,6 @@ struct CaptureFile {
     sha256: String,
 }
 
-#[derive(Deserialize)]
-struct Message {
-    reason: String,
-    package_id: Option<String>,
-    executable: Option<PathBuf>,
-
-    #[serde(default)]
-    filenames: Vec<PathBuf>,
-
-    target: Option<Target>,
-    out_dir: Option<PathBuf>,
-    message: Option<Diagnostic>,
-    success: Option<bool>,
-    profile: Option<Profile>,
-}
-
-#[derive(Deserialize)]
-struct Diagnostic {
-    rendered: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct Profile {
-    test: bool,
-}
-
-#[derive(Deserialize)]
-struct Target {
-    name: String,
-    kind: Vec<String>,
-}
-
 /* === Enums === */
 
 /* === Traits === */
@@ -273,20 +241,7 @@ pub(super) fn build_resolved(settings: &BuildSettings, cancellation: &BuildCance
     let target = match (&settings.backend, &settings.target) {
         (BuildBackend::Guest, None) => "wasm32-unknown-unknown".to_owned(),
         (_, Some(target)) => target.clone(),
-        (BuildBackend::Sidecar, None) => {
-            let mut command = Command::new("rustc");
-            command.args(["-vV"]).stdout(Stdio::piped()).stderr(Stdio::piped());
-            let version = Process::spawn(command, cancellation)?.output()?;
-            cancellation.check()?;
-            if !version.status.success() {
-                return Err(Error::Cargo("rustc host discovery failed".into()));
-            }
-            String::from_utf8_lossy(&version.stdout)
-                .lines()
-                .find_map(|line| line.strip_prefix("host: "))
-                .ok_or_else(|| Error::Cargo("rustc did not report its host target".into()))?
-                .to_owned()
-        }
+        (BuildBackend::Sidecar, None) => crate::native::host_target(Some(directory), tool_settings(), cancellation)?,
     };
     if (settings.backend == BuildBackend::Guest) != target.starts_with("wasm32-") {
         return Err(Error::Settings("backend and selected target disagree".into()));
@@ -455,29 +410,19 @@ fn finish_build(
 
 /* === Private Functions === */
 
-fn native_shipping_bytes(path: &Path, cancellation: &BuildCancellation) -> Result<Vec<u8>, Error> {
-    let mut rustc = Command::new("rustc");
-    rustc.args(["--print", "sysroot"]).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let sysroot = Process::spawn(rustc, cancellation)?.output()?;
-    if !sysroot.status.success() {
-        return Err(Error::Cargo("rustc sysroot discovery failed".into()));
+fn tool_settings() -> crate::ProcessSettings {
+    crate::ProcessSettings {
+        timeout: Some(std::time::Duration::from_secs(120)),
+        stdout_bytes: 65_536,
+        stderr_bytes: 262_144,
     }
-    let tools = PathBuf::from(String::from_utf8_lossy(&sysroot.stdout).trim()).join("lib/rustlib");
-    let executable = format!("llvm-objcopy{}", std::env::consts::EXE_SUFFIX);
-    let objcopy = std::fs::read_dir(tools)?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path().join("bin").join(&executable))
-        .find(|path| path.is_file())
-        .ok_or_else(|| Error::Settings("packaging requires the Rust llvm-tools component".into()))?;
+}
 
-    let temporary = tempfile::NamedTempFile::new()?;
-    let mut command = Command::new(&objcopy);
-    command.arg("--strip-debug").arg(path).arg(temporary.path()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let result = Process::spawn(command, cancellation)?.output()?;
-    if !result.status.success() {
-        return Err(Error::Cargo(format!("debug separation failed: {}", String::from_utf8_lossy(&result.stderr))));
-    }
-    read_artifact(temporary.path())
+fn native_shipping_bytes(path: &Path, cancellation: &BuildCancellation) -> Result<Vec<u8>, Error> {
+    let target = crate::native::host_target(None, tool_settings(), cancellation)?;
+    let directory = tempfile::tempdir()?;
+    let shipping = crate::native::strip_debug(path, directory.path(), &target, tool_settings(), cancellation)?;
+    read_artifact(&shipping)
 }
 
 pub(super) fn validate_backend(settings: &BuildSettings) -> Result<(), Error> {
@@ -529,6 +474,22 @@ pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &Bu
             .and_then(|name| name.to_str())
             .ok_or_else(|| Error::Settings("artifact filename is not UTF-8".into()))?
             .to_owned();
+        let registrations = match backend {
+            BuildBackend::Sidecar => {
+                crate::native::catalog(
+                    artifact,
+                    None,
+                    crate::ProcessSettings {
+                        timeout: Some(std::time::Duration::from_secs(10)),
+                        stdout_bytes: Limits::default().manifest_bytes,
+                        stderr_bytes: 262_144,
+                    },
+                    cancellation,
+                )?
+                .registrations
+            }
+            BuildBackend::Guest => Vec::new(),
+        };
         let mut files = BTreeMap::from([(executable.clone(), content)]);
         for schema in schemas.iter().filter(|schema| schema.producer == artifact.producer) {
             safe_name(&schema.catalog)?;
@@ -552,7 +513,7 @@ pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &Bu
                 executable: (path == &executable).then(|| Executable {
                     facility,
                     target: target.to_owned(),
-                    registrations: Vec::new(),
+                    registrations: registrations.clone(),
                 }),
             })
             .collect();
@@ -642,56 +603,11 @@ fn publish(path: &std::path::Path, bytes: &[u8]) -> Result<(), Error> {
 }
 
 fn read_messages(reader: impl BufRead, selected: &BTreeMap<String, String>) -> Result<BuildMessages, Error> {
-    let mut artifacts = Vec::new();
-    let mut outputs = BTreeSet::new();
-    let mut finished = false;
-    for line in reader.lines() {
-        let message: Message = serde_json::from_str(&line?)?;
-        if finished {
-            return Err(Error::Cargo("messages follow the completed Cargo build".into()));
-        }
-        if message.reason == "build-finished" {
-            if message.success != Some(true) {
-                return Err(Error::Cargo("captured Cargo build did not succeed".into()));
-            }
-            finished = true;
-            continue;
-        }
-        if let Some(rendered) = message.message.as_ref().and_then(|diagnostic| diagnostic.rendered.as_ref()) {
-            eprint!("{rendered}");
-        }
-        let Some(producer) = message.package_id.as_ref().and_then(|id| selected.get(id)) else {
-            continue;
-        };
-        if message.reason == "build-script-executed" {
-            if let Some(directory) = message.out_dir {
-                outputs.insert((producer.clone(), directory));
-            }
-            continue;
-        }
-        if message.reason != "compiler-artifact" || message.profile.is_some_and(|profile| profile.test) {
-            continue;
-        }
-        let Some(target) = message.target else {
-            continue;
-        };
-        if target.kind.iter().any(|kind| kind == "custom-build" || kind == "example" || kind == "test" || kind == "bench") {
-            continue;
-        }
-        let files = message
-            .executable
-            .into_iter()
-            .chain(message.filenames.into_iter().filter(|path| path.extension().is_some_and(|extension| extension == "wasm")));
-        for path in files {
-            artifacts.push(Artifact::read(producer.clone(), target.name.clone(), path)?);
-        }
-    }
-    if !finished {
-        return Err(Error::Cargo("captured Cargo stream has no successful build-finished event".into()));
-    }
-    artifacts.sort_by(|left, right| (&left.producer, &left.name, &left.path).cmp(&(&right.producer, &right.name, &right.path)));
-    artifacts.dedup_by(|left, right| left.producer == right.producer && left.name == right.name && left.path == right.path);
-    Ok((artifacts, outputs))
+    let collected = crate::cargo::collect_with_diagnostics(reader, selected, |rendered| eprint!("{rendered}"))?;
+    let artifacts = collected
+        .artifacts
+        .into_iter()
+        .map(|artifact| Artifact::read(artifact.producer, artifact.name, artifact.path))
+        .collect::<Result<_, _>>()?;
+    Ok((artifacts, collected.schema_directories))
 }
-
-/* === Tests === */

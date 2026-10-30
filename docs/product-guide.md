@@ -99,7 +99,17 @@ with the official Buf generator after the Cargo build. Protobuf output goes to
 the exact selected output directory. A producer's build script selects its current
 `OUT_DIR/grpc/<catalog>/`; packaging retains that producer/catalog identity.
 The same crate owns `bundle`, Cargo discovery, inert inspection, development
-launching and Wasm componentization.
+launching and Wasm componentization. Inert bundle inspection and schema generation
+do not enable Cargo discovery, file watching or subprocess supervision. Select
+`build-tools` for those authoring APIs; `sidecar` and `guest` imply it.
+Application authoring tools can collect an existing successful Cargo stream with
+`cargo::collect`, select named native executables with their emitted PDB paths,
+and reuse `native::{host_target, strip_debug, catalog}`. Collection never starts
+Cargo. Native tools accept explicit subprocess deadlines and output bounds plus a
+`BuildCancellation`; cancellation settles the owned process tree. Catalog capture
+executes the stamped artifact, verifies it before and after export, and reports
+the captured byte count for application-owned aggregate budgets. Applications
+retain their bundle compatibility, assets, symbols and launch policy.
 
 ```sh
 cargo run --locked -p cargo-harmos -- harmos sidecar build --manifest-path examples/schematic/Cargo.toml -p schematic-sidecar --json > sidecar-build.json
@@ -133,7 +143,8 @@ fixtures remain source or CI artifacts. Release downloads include generated
 `CHANGELOG.md` and `SHA256SUMS`; the internal upload inventory is not a download.
 
 `package` consumes the existing build receipt and verifies every artifact and
-schema byte stamp before bundling. It never runs Cargo. Relocated archives use
+schema byte stamp before bundling. It never runs Cargo. Each sidecar bundle
+records the registrations its executable prints for `CATALOG_EXPORT_FLAG`. Relocated archives use
 explicit `--relocate-from` and `--relocate-to` path mapping while preserving hashes.
 Library consumers can stamp existing outputs with `Artifact::read` and
 `Schema::read`, then construct a `Build` without another compiler invocation.

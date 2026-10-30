@@ -22,6 +22,9 @@ use crate::identity::artifact_subset;
 
 /* === Constants === */
 
+/// The sole argument that makes a sidecar print its registrations as JSON and exit.
+pub const CATALOG_EXPORT_FLAG: &str = "--harmos-export-catalog-v1";
+
 /* === Macros === */
 
 /* === Type Aliases === */
