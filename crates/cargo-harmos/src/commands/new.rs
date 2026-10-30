@@ -58,9 +58,6 @@ struct Project {
 enum Command {
     #[command(about = "Create A Native Sidecar Plugin.")]
     Sidecar(Project),
-
-    #[command(about = "Create A Sandboxed Guest Plugin.")]
-    Guest(Project),
 }
 
 /* === Traits === */
@@ -72,7 +69,6 @@ enum Command {
 pub fn run(arguments: Arguments) -> Result<(), Error> {
     let (project, files) = match arguments.command {
         Command::Sidecar(project) => (project, embedded::SIDECAR),
-        Command::Guest(project) => (project, embedded::GUEST),
     };
     let package = project
         .destination

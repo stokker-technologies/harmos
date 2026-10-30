@@ -351,16 +351,6 @@ fn sidecar_starter_works() {
 }
 
 #[test]
-fn guest_starter_works() {
-    Project::new("guest").check_and_test();
-}
-
-#[test]
 fn sidecar_dev_lifecycle() {
     dev_rebuilds("sidecar");
-}
-
-#[test]
-fn guest_dev_lifecycle() {
-    dev_rebuilds("guest");
 }

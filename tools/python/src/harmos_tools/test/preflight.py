@@ -72,9 +72,8 @@ def main(arguments: list[str] | None = None) -> None:
         # Starter Stories Share Mise's Runtime Links; Install Only Their Declared Tools Before Nextest Starts Them.
         environment = dict(os.environ)
         templates = ROOT / "crates/cargo-harmos/templates"
-        guest = (templates / "guest/mise.toml.tmpl").read_text(encoding="utf-8")
         sidecar = (templates / "sidecar/mise.toml.tmpl").read_text(encoding="utf-8")
-        tools = set(tomllib.loads(guest)["tools"]) | set(tomllib.loads(sidecar)["tools"])
+        tools = set(tomllib.loads(sidecar)["tools"])
         names = sorted(tools)
         environment["MISE_ENABLE_TOOLS"] = ",".join(names)
         environment.pop("UV_PROJECT_ENVIRONMENT", None)
