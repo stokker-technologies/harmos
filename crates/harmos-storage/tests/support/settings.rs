@@ -41,8 +41,6 @@ pub fn storage_settings() -> StorageSettings {
     StorageSettings {
         filesystem: harmos_storage::StorageFilesystemSettings {
             poll_interval: std::time::Duration::from_millis(100),
-            max_entries: std::num::NonZeroUsize::new(100_000).unwrap(),
-            event_capacity: std::num::NonZeroUsize::new(1024).unwrap(),
         },
 
         request: StorageRequestSettings {

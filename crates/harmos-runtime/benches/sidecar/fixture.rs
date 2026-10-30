@@ -222,8 +222,6 @@ async fn runtime() -> (Runtime<Model>, StorageManager, tempfile::TempDir, Durati
     let settings = StorageSettings {
         filesystem: StorageFilesystemSettings {
             poll_interval: Duration::from_millis(100),
-            max_entries: nz(100_000),
-            event_capacity: nz(1024),
         },
 
         request: StorageRequestSettings {

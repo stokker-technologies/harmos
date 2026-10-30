@@ -70,8 +70,6 @@ pub struct StorageSettings {
 #[serde(deny_unknown_fields)]
 pub struct StorageFilesystemSettings {
     pub poll_interval: Duration,
-    pub max_entries: NonZeroUsize,
-    pub event_capacity: NonZeroUsize,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -112,10 +110,10 @@ impl Default for StorageAccumulatorSettings {
 
 impl StorageSettings {
     pub fn validate(&self) -> crate::Result<()> {
-        if self.filesystem.poll_interval.is_zero() || self.filesystem.event_capacity.get() > tokio::sync::Semaphore::MAX_PERMITS {
+        if self.filesystem.poll_interval.is_zero() {
             return Err(crate::Error::InvalidInput {
                 field: "storage filesystem",
-                reason: "poll interval must be positive and event capacity bounded",
+                reason: "poll interval must be positive",
             });
         }
 
@@ -159,8 +157,6 @@ mod tests {
         StorageSettings {
             filesystem: crate::config::StorageFilesystemSettings {
                 poll_interval: std::time::Duration::from_millis(100),
-                max_entries: std::num::NonZeroUsize::new(100_000).unwrap(),
-                event_capacity: std::num::NonZeroUsize::new(1024).unwrap(),
             },
 
             request: StorageRequestSettings {

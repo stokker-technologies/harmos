@@ -26,12 +26,10 @@ mod follow_production;
 mod follow_records;
 mod follow_stream;
 mod hash_file;
-mod list_directory;
 mod query;
 mod read_file;
 mod resume_file;
 mod storage_status;
-mod watch_directory;
 mod write_file;
 mod write_objects;
 mod write_records;
@@ -52,12 +50,10 @@ pub use follow_production::FollowProduction;
 pub use follow_records::{FollowBoundaries, FollowRecords, Followed};
 pub use follow_stream::FollowStream;
 pub use hash_file::HashFile;
-pub use list_directory::ListDirectory;
 pub use query::Query;
 pub use read_file::ReadFile;
 pub use resume_file::ResumeFile;
 pub use storage_status::StorageStatus;
-pub use watch_directory::WatchDirectory;
 pub use write_file::WriteFile;
 pub use write_objects::WriteObjects;
 pub use write_records::WriteRecords;
@@ -108,8 +104,6 @@ pub const IO_POLICY: OperationPolicy = OperationPolicy {
 
 #[harmos::catalog(harmos_path = crate)]
 pub enum Storage {
-    ListDirectory(ListDirectory),
-    WatchDirectory(WatchDirectory),
     Query(Query),
     ReadFile(ReadFile),
     HashFile(HashFile),

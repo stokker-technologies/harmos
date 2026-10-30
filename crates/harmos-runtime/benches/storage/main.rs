@@ -10,7 +10,6 @@
 /* === Modules === */
 
 mod contention;
-mod directories;
 mod files;
 mod filesystem;
 mod fixture;
@@ -218,7 +217,6 @@ fn main() {
     transforms::run(&mut criterion, &executor);
     files::run(&mut criterion, &executor);
     filesystem::run(&mut criterion, &executor);
-    directories::run(&mut criterion, &executor);
     contention::run(&mut criterion, &executor);
     criterion.final_summary();
 }

@@ -16,7 +16,6 @@ pub mod arrow;
 pub mod catalog;
 pub mod codec;
 pub mod data;
-pub mod directory;
 pub mod files;
 pub mod identities;
 pub mod keys;
@@ -33,7 +32,6 @@ pub mod writes;
 pub use arrow::ArrowIpc;
 pub use catalog::{ObjectCatalog, ObjectDefinition, ObjectDefinitions, StoredObject};
 pub use data::{RecordInput, RecordWrite, StoredRecord, StoredRow, StreamInput, StreamWrite};
-pub use directory::{DirectoryCompletion, DirectoryEntry, DirectoryEvent, DirectoryRule, DirectorySelection};
 pub use files::{
     ByteRange, CaptureConsistency, FileBatch, FileCompletion, FileEvent, FileHash, FileMetadata, FilePhase, FileProgress, FileReference,
     FileSession, FileSource, FollowStart, StagedFile,

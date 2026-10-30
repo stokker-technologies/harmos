@@ -295,7 +295,7 @@ let settings = StorageSettings {
         max_pending_write_bytes,
     },
     response: StorageResponseSettings { batch_rows, batch_bytes },
-    filesystem: StorageFilesystemSettings { poll_interval, max_entries, event_capacity },
+    filesystem: StorageFilesystemSettings { poll_interval },
 };
 let storage = StorageManager::new(StorageBackends { primary, state }, settings)?;
 ```
@@ -393,15 +393,7 @@ changes but does not freeze concurrent writers into an atomic snapshot.
 explicit truncation/replacement events. Staged-production observation uses the
 distinct `FollowProduction` operation. Native file slices and shared read batches
 retain their backing allocations until their final owner is released.
-
-`ListDirectory` and `WatchDirectory` share a `DirectorySelection` containing the
-root, recursion flag and ordered include/exclude rules. Patterns match
-case-sensitive slash-relative paths: `*` stays within one segment and `**` crosses
-segments. The last matching rule wins; unmatched paths are excluded. An excluded
-ancestor does not suppress a later matching descendant. Watching subscribes before
-initial enumeration, emits `Existing` then `InitialScanComplete`, and reports
-notification uncertainty or overflow as `RescanRequired`. A modification event
-does not establish that a producer has finished writing a file.
+Applications own directory enumeration and change subscriptions.
 
 Finite storage queries select a source at a full persisted storage cursor,
 apply an ordered transform plan, and apply row `offset`/`limit` to the final
@@ -967,7 +959,7 @@ only for that check and stopped before command and transfer measurements.
 
 | Suite | What It Measures |
 | --- | --- |
-| [Storage](../crates/harmos-runtime/benches/storage/main.rs) | Shipped JSON persistence: 30 MiB upload/download, 10,000 records and 1,000,000 samples with symmetric writes/reads, concurrent files and queries; local/stored read, hash, capture and follow; directory listing and change delivery. |
+| [Storage](../crates/harmos-runtime/benches/storage/main.rs) | Shipped JSON persistence: 30 MiB upload/download, 10,000 records and 1,000,000 samples with symmetric writes/reads, concurrent files and queries; local/stored read, hash, capture and follow. |
 | [Sidecar Host](../crates/harmos-runtime/benches/sidecar/system.rs) | Real native process: bidirectional 10,000-record, 30 MiB file and 1,000,000-sample transfers, comparing unary batches and streams; startup and command latency. |
 | [Guest](../crates/harmos-runtime/benches/guest/main.rs) | Real Wasm component: the same bidirectional unary/streamed transfer workloads, plus startup and command latency. |
 | [External gRPC](../crates/harmos-runtime/benches/grpc/main.rs) | Separate server-process startup, client commands over a socket, and isolated Postcard/Protobuf codec costs. |
@@ -979,9 +971,7 @@ then run `mise run bench`. Storage uses 1 MiB chunks, 4096-row input ceilings,
 128 MiB read memory and 64 MiB pending-write memory. Reads start from persisted
 data; setup writes and verification are excluded from read timings. These are
 warm filesystem measurements, not forced cold-cache reads.
-The filesystem cases use 30 MiB files; directory listing and initial watching
-use 1,000 entries. Hash/capture include their required hashing work. Directory
-change latency includes creating the file and receiving its notification.
+The filesystem cases use 30 MiB files. Hash/capture include their required hashing work.
 
 One million samples represent one second at 1 MHz without pacing ingestion.
 The paced transport rate is also an input, not a claimed throughput result.
