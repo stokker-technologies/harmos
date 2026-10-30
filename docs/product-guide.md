@@ -7,6 +7,21 @@ diagnostics across carriers. Applications can attach named, non-secret context
 with `Failure::with_detail` and read it with `Failure::detail`; a plugin admission
 consumer can use these fields for actionable errors without parsing prose.
 
+Startup configuration errors expose `StartupError::report()` with separate root
+failures and consequences. Each issue retains its original `Failure` together
+with resource and operation identity where applicable. Carriers preserve that
+report as the `harmos.startup` structured detail on the existing failure;
+`operations::StartupReport::from_failure` reads it without parsing messages.
+Original refusal codes, detail maps and diagnostics remain in the report. Display
+renders readable root prose rather than Rust Debug output.
+
+Classification is scoped to one startup/prepare pass. If the pass contains a
+runtime preparation/construction failure, every `MissingResource` in that pass
+is a consequence, regardless of reporting order. Other failures remain separate
+roots. Without a preparation failure, missing resources are roots themselves.
+This rule describes a failed pass, not a resource dependency graph; Display
+summarizes consequences as operations unavailable because startup failed.
+
 ## Examples
 
 The [Schematic Editor](schematic.md) is one application with two
