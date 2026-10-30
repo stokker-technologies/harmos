@@ -24,8 +24,8 @@ use syn::spanned::Spanned;
 use syn::{Error, Expr, FnArg, GenericArgument, LitStr, Meta, Path, PathArguments, Token, Type};
 // Local Imports
 use super::contribution::{asynchronous, block, borrowed, declared, parameter, required, returned};
-use super::set_once;
 use crate::path::{self, HarmosPath};
+use crate::set_once;
 
 /* === Constants === */
 

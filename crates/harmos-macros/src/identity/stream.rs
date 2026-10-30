@@ -24,6 +24,7 @@ use syn::spanned::Spanned;
 use syn::{Error, Expr, Fields, Ident, Item, LitInt, LitStr, Meta, Path, Token, Type};
 // Local Imports
 use crate::path::{self, HarmosPath};
+use crate::set_once;
 
 /* === Constants === */
 
@@ -471,14 +472,6 @@ fn declared_field<'row>(row: &'row Item, field: &Ident, coordinate: &str) -> Res
         .find(|candidate| candidate.ident.as_ref() == Some(field))
         .map(|candidate| &candidate.ty)
         .ok_or_else(|| Error::new(field.span(), format!("the declared `{coordinate}` names no field of this row")))
-}
-
-fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &str) -> Result<(), Error> {
-    if place.replace(value).is_some() {
-        return Err(Error::new(span, format!("`{name}` is declared only once")));
-    }
-
-    Ok(())
 }
 
 fn positive_usize(literal: &LitInt, message: &str) -> Result<(), Error> {

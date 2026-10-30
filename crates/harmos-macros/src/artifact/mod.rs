@@ -41,13 +41,6 @@ use syn::{Error, LitStr};
 
 /* === Public Functions === */
 
-pub(crate) fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &str) -> Result<(), Error> {
-    if place.replace(value).is_some() {
-        return Err(Error::new(span, format!("`{name}` is declared only once")));
-    }
-    Ok(())
-}
-
 pub(crate) fn symbol(value: &str) -> String {
     value.chars().map(|character| if character.is_ascii_alphanumeric() { character.to_ascii_uppercase() } else { '_' }).collect()
 }
