@@ -1,0 +1,44 @@
+[[ci.jobs]]
+id = "build"
+
+[ci.jobs.outputs]
+product = ["target/build/{profile}/{target}/bin", "target/build/{profile}/{target}/lib", "target/build/{profile}/{target}/product"]
+
+[[ci.jobs]]
+id = "build:rust:tests"
+
+[ci.jobs.outputs]
+tests = ["target/build/{profile}/{target}/tests/archive.tar.zst", "target/build/{profile}/{target}/tests/compiler.json"]
+
+[[ci.jobs]]
+id = "test:rust:unit"
+inputs = ["build:rust:tests#tests"]
+
+[[ci.jobs]]
+id = "test:rust:coverage"
+inputs = ["build:rust:tests#tests"]
+
+[[ci.jobs]]
+id = "package:rust"
+inputs = ["build#product"]
+
+[ci.jobs.outputs]
+package = ["target/package/{profile}/{target}"]
+
+[conventions.testing.deadlines]
+acceptance = 900
+integration = 120
+system = 900
+unit = 120
+
+[languages.python]
+roots = ["tools/python"]
+
+[languages.rust]
+roots = ["src"]
+
+[project]
+name = "__PRODUCT_NAME__"
+platforms = ["unix", "windows"]
+profile = "sidecar"
+visibility = "public"

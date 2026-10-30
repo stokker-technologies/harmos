@@ -54,29 +54,22 @@ jobs:
         harmos_tools.release.run review
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
-        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
-        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
-        endsWith(github.ref, '/merge'))) && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
+        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup.outputs.cargo_downloads-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
         path: ${{ steps.setup.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
-        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
-        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
-        endsWith(github.ref, '/merge'))) && steps.setup.outputs.mise-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup.outputs.mise-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
-        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
-        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
-        endsWith(github.ref, '/merge'))) && steps.setup.outputs.uv-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup.outputs.uv-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
@@ -133,29 +126,22 @@ jobs:
           steps.crates.outputs.token }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
-        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
-        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
-        endsWith(github.ref, '/merge'))) && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
+        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup.outputs.cargo_downloads-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
         path: ${{ steps.setup.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
-        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
-        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
-        endsWith(github.ref, '/merge'))) && steps.setup.outputs.mise-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup.outputs.mise-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
-        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
-        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
-        endsWith(github.ref, '/merge'))) && steps.setup.outputs.uv-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup.outputs.uv-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
@@ -204,11 +190,9 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: disk
         cache-mode: >-
-          ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
-          github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
-          (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
-          endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-release-publish-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ env.PROFILE }}-release-publish-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+          ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
+          github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-release-publish-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-release-publish-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-\\nci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-release-publish-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
@@ -253,38 +237,29 @@ jobs:
         subject-checksums: target/release-assets/any/SHA256SUMS
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
-        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
-        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
-        endsWith(github.ref, '/merge'))) && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
+        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup.outputs.cargo_downloads-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
         path: ${{ steps.setup.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
-        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
-        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
-        endsWith(github.ref, '/merge'))) && steps.setup.outputs.mise-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup.outputs.mise-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
-        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
-        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
-        endsWith(github.ref, '/merge'))) && steps.setup.outputs.sccache-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup.outputs.sccache-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
         path: ${{ steps.setup.outputs.sccache-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
-        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
-        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
-        endsWith(github.ref, '/merge'))) && steps.setup.outputs.uv-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup.outputs.uv-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
@@ -300,11 +275,10 @@ jobs:
       MISE_TASK_SKIP: package:rust
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+      SCCACHE_CACHE_SIZE: 2G
       COMPILER_CACHE_MODE: >-
-        ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
-        github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
-        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
-        endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}
+        ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
       PROFILE: ${{ needs.validated.outputs.review_profile }}
       RELEASE_BUILD_RUN_ID: ${{ needs.validated.outputs.review_run }}
       RELEASE_BUILD_SHA: ${{ needs.validated.outputs.review_sha }}
@@ -433,11 +407,8 @@ jobs:
       if: >-
         matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
         && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
-        'refs/tags/v'))) && (success() && ((github.event_name == 'push' && (github.ref ==
-        'refs/heads/dev' || github.ref == 'refs/heads/main' || startsWith(github.ref,
-        'refs/tags/v'))) || (github.event_name == 'pull_request' && startsWith(github.ref,
-        'refs/pull/') && endsWith(github.ref, '/merge'))) &&
-        steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
+        'refs/tags/v'))) && (success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.cargo_downloads-cache-primary-key }}
         path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
@@ -445,11 +416,8 @@ jobs:
       if: >-
         matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
         && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
-        'refs/tags/v'))) && (success() && ((github.event_name == 'push' && (github.ref ==
-        'refs/heads/dev' || github.ref == 'refs/heads/main' || startsWith(github.ref,
-        'refs/tags/v'))) || (github.event_name == 'pull_request' && startsWith(github.ref,
-        'refs/pull/') && endsWith(github.ref, '/merge'))) && steps.setup_unix.outputs.mise-cache-hit
-        != 'true')
+        'refs/tags/v'))) && (success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup_unix.outputs.mise-cache-hit != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup_unix.outputs.mise-path }}
@@ -457,11 +425,8 @@ jobs:
       if: >-
         matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
         && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
-        'refs/tags/v'))) && (success() && ((github.event_name == 'push' && (github.ref ==
-        'refs/heads/dev' || github.ref == 'refs/heads/main' || startsWith(github.ref,
-        'refs/tags/v'))) || (github.event_name == 'pull_request' && startsWith(github.ref,
-        'refs/pull/') && endsWith(github.ref, '/merge'))) && steps.setup_unix.outputs.uv-cache-hit !=
-        'true')
+        'refs/tags/v'))) && (success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup_unix.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_unix.outputs.uv-path }}
@@ -527,11 +492,9 @@ jobs:
       if: >-
         matrix.platform == 'windows' && (always() && !contains(needs.*.result,
         'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
-        'refs/tags/v'))) && (success() && ((github.event_name == 'push' && (github.ref ==
-        'refs/heads/dev' || github.ref == 'refs/heads/main' || startsWith(github.ref,
-        'refs/tags/v'))) || (github.event_name == 'pull_request' && startsWith(github.ref,
-        'refs/pull/') && endsWith(github.ref, '/merge'))) &&
-        steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
+        'refs/tags/v'))) && (success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup_windows.outputs.cargo_downloads-cache-hit !=
+        'true')
       with:
         key: ${{ steps.setup_windows.outputs.cargo_downloads-cache-primary-key }}
         path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
@@ -539,11 +502,8 @@ jobs:
       if: >-
         matrix.platform == 'windows' && (always() && !contains(needs.*.result,
         'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
-        'refs/tags/v'))) && (success() && ((github.event_name == 'push' && (github.ref ==
-        'refs/heads/dev' || github.ref == 'refs/heads/main' || startsWith(github.ref,
-        'refs/tags/v'))) || (github.event_name == 'pull_request' && startsWith(github.ref,
-        'refs/pull/') && endsWith(github.ref, '/merge'))) &&
-        steps.setup_windows.outputs.mise-cache-hit != 'true')
+        'refs/tags/v'))) && (success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup_windows.outputs.mise-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup_windows.outputs.mise-path }}
@@ -551,11 +511,8 @@ jobs:
       if: >-
         matrix.platform == 'windows' && (always() && !contains(needs.*.result,
         'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
-        'refs/tags/v'))) && (success() && ((github.event_name == 'push' && (github.ref ==
-        'refs/heads/dev' || github.ref == 'refs/heads/main' || startsWith(github.ref,
-        'refs/tags/v'))) || (github.event_name == 'pull_request' && startsWith(github.ref,
-        'refs/pull/') && endsWith(github.ref, '/merge'))) &&
-        steps.setup_windows.outputs.uv-cache-hit != 'true')
+        'refs/tags/v'))) && (success() && (github.ref == 'refs/heads/dev' && github.event_name !=
+        'pull_request') && steps.setup_windows.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_windows.outputs.uv-path }}

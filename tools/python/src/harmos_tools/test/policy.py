@@ -111,13 +111,13 @@ def root(start: Path | None = None) -> Path:
     """The project root: the nearest directory holding project policy."""
     current = (start or Path.cwd()).resolve()
     for candidate in (current, *current.parents):
-        if (candidate / ".stkr/project.toml").is_file():
+        if (candidate / "tools/project.toml").is_file():
             return candidate
     raise TestError("no project policy file found above the working directory")
 
 
 def load(directory: Path) -> Policy:
-    document = _toml(directory / ".stkr/project.toml")
+    document = _toml(directory / "tools/project.toml")
     testing = document.get("conventions", {}).get("testing", {})
     if not isinstance(testing, dict):
         raise TestError("[conventions.testing] must be a table")
