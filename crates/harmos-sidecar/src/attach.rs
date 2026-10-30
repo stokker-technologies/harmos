@@ -253,6 +253,10 @@ impl Attached {
 
 impl Executable {
     pub fn at(path: impl AsRef<Path>) -> Result<Self, ExecutableError> {
+        Self::at_with_settings(path, &harmos_domain::config::SchemaSettings::default())
+    }
+
+    pub fn at_with_settings(path: impl AsRef<Path>, settings: &harmos_domain::config::SchemaSettings) -> Result<Self, ExecutableError> {
         let program = path.as_ref().to_path_buf();
         if !program.is_absolute() {
             return Err(ExecutableError::Relative { path: program });
@@ -262,10 +266,11 @@ impl Executable {
             return Err(ExecutableError::NotFile { path: program });
         }
         let bytes = std::fs::read(&program).map_err(|source| ExecutableError::Unreadable { path: program.clone(), source })?;
-        let declaration = Declaration::inspect(&bytes, Facility::Sidecar).map_err(|source| ExecutableError::Declaration {
-            path: program.clone(),
-            source: Box::new(source),
-        })?;
+        let declaration =
+            Declaration::inspect_with_settings(&bytes, Facility::Sidecar, settings).map_err(|source| ExecutableError::Declaration {
+                path: program.clone(),
+                source: Box::new(source),
+            })?;
         Ok(Self {
             program,
             declaration,
