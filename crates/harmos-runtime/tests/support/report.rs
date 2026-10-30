@@ -109,7 +109,7 @@ pub(crate) fn instrumented(metadata: &tracing::Metadata<'_>) -> bool {
     if !metadata.is_span() {
         return matches!(metadata.target(), "harmos::operations" | "harmos::state" | "harmos::carrier" | "harmos::grpc");
     }
-    let prefixes = ["operations.", "state.", "storage.", "streams.", "carrier.", "grpc.", "guest.", "sidecar.", "system.story"];
+    let prefixes = ["operations.", "state.", "storage.", "streams.", "carrier.", "grpc.", "sidecar.", "system.story"];
     prefixes.iter().any(|prefix| metadata.name().starts_with(prefix))
 }
 

@@ -52,7 +52,6 @@ pub struct DevSettings {
 #[serde(rename_all = "snake_case")]
 pub enum BuildBackend {
     Sidecar,
-    Guest,
 }
 
 /* === Enums === */

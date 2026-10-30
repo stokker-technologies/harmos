@@ -78,7 +78,7 @@ impl<'a> Scope<'a> {
         Self { core }
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(crate) fn original_control(&self) -> Weak<Instance> {
         self.core.parent.clone()
     }

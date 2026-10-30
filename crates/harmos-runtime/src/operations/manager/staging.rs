@@ -35,7 +35,7 @@ use super::*;
 /* === Implementations === */
 
 impl Manager {
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(in crate::operations) fn track_staging(&self, scope: &Arc<PluginScope>) -> Result<()> {
         let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
         if state.closing || !self.instances.is_accepting() {
@@ -47,7 +47,7 @@ impl Manager {
         Ok(())
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(in crate::operations) fn validate_staging(&self, entries: &[Arc<Entry>]) -> Result<()> {
         let state = self.registry.state.lock().expect("operation registry lock is healthy");
         if state.closing

@@ -129,25 +129,12 @@ fn artifacts_embed_metadata() {
         .into_iter()
         .chain(["schematic.analyze.exchange", "schematic.analyze.upload", "schematic.list.directories"])
         .collect::<BTreeSet<_>>();
-    let portable = SHARED.into_iter().collect::<BTreeSet<_>>();
-    // Only The Native Sidecar Publishes Analysis Progress, Through The Host
     let publishing = BTreeSet::from(["host.publish"]);
     let progress = BTreeSet::from(["schematic.analysis_progress"]);
-    let none = BTreeSet::new();
-
     let sidecar = fixtures::inspection("schematic-sidecar");
-    let guest = fixtures::inspection("schematic-guest");
-
-    let mut declarations = Vec::new();
-    for (bytes, facility, expected, required, published) in
-        [(&sidecar, "sidecar", &native, &publishing, &progress), (&guest, "guest", &portable, &none, &none)]
-    {
-        let declaration = identity(bytes, "plugin");
-        assert_eq!(declaration["facility"], facility);
-        assert_eq!(declaration["id"], "schematic_tools");
-        assert!(declaration["version"].as_str().is_some_and(|version| !version.is_empty()), "{facility} declares the package version");
-        inventory(bytes, facility, expected, required, published);
-        declarations.push([declaration["id"].clone(), declaration["version"].clone(), declaration["description"].clone()]);
-    }
-    assert_eq!(declarations[0], declarations[1], "one plugin built for both facilities declares one id, version and description");
+    let declaration = identity(&sidecar, "plugin");
+    assert_eq!(declaration["facility"], "sidecar");
+    assert_eq!(declaration["id"], "schematic_tools");
+    assert!(declaration["version"].as_str().is_some_and(|version| !version.is_empty()), "sidecar declares the package version");
+    inventory(&sidecar, "sidecar", &native, &publishing, &progress);
 }

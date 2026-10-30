@@ -17,7 +17,7 @@ mod allocation;
 #[path = "retention.rs"]
 mod retention;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 #[path = "../streams/listeners.rs"]
 mod listeners;
 

@@ -24,23 +24,22 @@ summarizes consequences as operations unavailable because startup failed.
 
 ## Examples
 
-The [Schematic Editor](schematic.md) is one application with two
-plugin backends. Read the [walkthrough](../examples/schematic/cli/src/walkthrough.rs)
+The [Schematic Editor](schematic.md) is one application with a native
+sidecar plugin. Read the [walkthrough](../examples/schematic/cli/src/walkthrough.rs)
 from top to bottom: place two symbols, connect them, ask the plugin to validate
 and propose a route, apply the proposal as a host transaction, undo/redo, and
 save/reopen the document.
 
 ```sh
 target/build/dev/linux-x86_64/bin/schematic-cli
-target/build/dev/linux-x86_64/bin/schematic-cli --guest
 ```
 
-`mise run build` builds the workspace and the example's CLI, sidecar and guest
-component once. Without a flag the CLI loads the sidecar beside it. Both plugins implement `ValidateSchematic`, `ProposeRoute`, and the streaming
+`mise run build` builds the workspace and the example's CLI and sidecar
+once. Without a flag the CLI loads the sidecar beside it. The plugin implements `ValidateSchematic`, `ProposeRoute`, and the streaming
 `AnalyzeSchematic`. The native sidecar additionally provides client-streaming
 `AnalyzeUpload` and bidirectional `AnalyzeExchange`, with typed progress
 publications. Its `ListDirectories` operation lists immediate subdirectories of
-an explicitly configured working directory. The guest omits native filesystem access.
+an explicitly configured working directory.
 
 The [advanced follow-on](../examples/schematic/cli/src/advanced.rs) demonstrates
 bounded streaming, cancellation with settlement, and native directory access.
@@ -59,7 +58,6 @@ features imply `runtime`.
 | `runtime` | SDK lifecycle, registration and host runtime facilities. |
 | `plugin` | Shared plugin management, activation, routing, and reload. |
 | `sidecar` | Native process authoring and hosting with matching module attributes. |
-| `guest` | Wasm guest authoring and native sandbox hosting with matching module attributes. |
 | `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. Includes `generate-proto`. |
 | `generate-proto` | Protobuf descriptor projection used by runtime transport. |
 | `signal` | Signal-processing kernels. |
@@ -67,13 +65,12 @@ features imply `runtime`.
 | `simulation` | Deterministic runtime simulation. |
 
 Application-local attributes use `harmos::runtime::{operation, catalog}`; plugin-local
-attributes use the matching `sidecar` or `guest` module. Reusable operation libraries
+attributes use the `sidecar` module. Reusable operation libraries
 use root attributes and declare their own `runtime` feature wired to `harmos/runtime`.
 
 Applications and plugins depend on the `harmos` facade. Shared portable
-contracts are available without its runtime feature. `sidecar` and `guest`
-select matching authoring modules and attributes; guest builds use target-compatible
-SDK execution without the native host runtime. Operations use
+contracts are available without its runtime feature. `sidecar` selects its
+native authoring module and attributes. Operations use
 `harmos::{Operation, Context, Response}`: the operation is the request, and
 `async fn run(self, ctx: Context<'_, Self>) -> Result<Response<T>, Self::Error>`
 is its required method. Declare `resources` and `operations` on the operation;
@@ -81,7 +78,7 @@ resolve them through `ctx.resource::<T>()` and `ctx.operation(request)`.
 `ctx.streams()` exposes derived endpoints. Use dotted IDs and `visibility = Public`
 or `Host` when needed; the default is `Private`. Applications and plugins share
 `Lifecycle` with async prepare, initialize, stop and cleanup. Plugin lifecycle
-contexts are `harmos::sidecar::Supervisor` or `harmos::guest::kit::Context`.
+context is `harmos::sidecar::Supervisor`.
 Build tools use `harmos-packaging` for inert inspection and generation.
 `harmos-storage` owns the Arrow query and persistence engine plus signal kernels;
 `harmos-runtime` composes that engine with host lifecycle and managed state.
@@ -99,12 +96,11 @@ with the official Buf generator after the Cargo build. Protobuf output goes to
 the exact selected output directory. A producer's build script selects its current
 `OUT_DIR/grpc/<catalog>/`; packaging retains that producer/catalog identity.
 The same crate owns `bundle`, Cargo discovery, inert inspection, development
-launching and Wasm componentization.
+launching.
 
 ```sh
 cargo run --locked -p cargo-harmos -- harmos sidecar build --manifest-path examples/schematic/Cargo.toml -p schematic-sidecar --json > sidecar-build.json
 cargo run --locked -p cargo-harmos -- harmos sidecar package --build-json sidecar-build.json --output target/packages --json
-cargo run --locked -p cargo-harmos -- harmos guest build --manifest-path examples/schematic/Cargo.toml -p schematic-guest --json
 cargo run --locked -p cargo-harmos -- harmos sidecar inspect examples/schematic/target/x86_64-unknown-linux-gnu/debug/schematic-sidecar --json
 ```
 
@@ -126,9 +122,8 @@ is distributed through release archives.
 
 CI packages retain `schematic-<version>-<platform>.zip` demo bundles for
 `linux-x86_64` and `windows-x86_64`. Extract the complete ZIP and run
-`schematic-cli` (`schematic-cli.exe` on Windows); `--guest` selects the bundled
-Wasm backend. Keep its `plugins/` directory beside the executable. Package
-checks run both backends from an isolated extraction. Examples, test reports and
+`schematic-cli` (`schematic-cli.exe` on Windows). Keep its `plugins/` directory
+beside the executable. Package checks run the sidecar from an isolated extraction. Examples, test reports and
 fixtures remain source or CI artifacts. Release downloads include generated
 `CHANGELOG.md` and `SHA256SUMS`; the internal upload inventory is not a download.
 
@@ -149,9 +144,7 @@ cargo harmos new sidecar my-plugin --harmos-rev <full-published-sha>
 The starters include their managed Python runner and repository task graph.
 Keep generated guidance and tooling current through the owning authoring tool.
 
-`cargo harmos sidecar build` prepares native plugins; `cargo harmos guest build`
-drives the selected Wasm build and converts guest core modules
-into inspected `.component.wasm` files beside the selected module, and reports
+`cargo harmos sidecar build` prepares native plugins and reports
 exact artifact and schema paths. Native collection requires Rust's `llvm-tools`
 component. Collection removes debug information from shipping copies under `harmos/<producer>/`
 beside compiler outputs on every platform. Original compiler outputs and separate
@@ -359,7 +352,7 @@ SHA-256. `CaptureFile` creates an independent durable stored file while hashing.
 `CaptureConsistency::Stable` rejects detected source changes; it does not provide
 an atomic snapshot. `Bounded` copies the initially selected range. Local paths
 refer to the executing host and may be anywhere its process can access, including
-requests from gRPC, native plugins and Wasm guests. There are no configured-root
+requests from gRPC and native plugins. There are no configured-root
 boundaries, path-scoped grants or extra per-plugin allowlists for local sources.
 Normal operation exposure and existing stored-file scope grants still apply.
 Transport paths use UTF-8 and reject unrepresentable paths; native readers retain
@@ -484,7 +477,7 @@ stops detached reduction work and releases temporary files.
 Native callers can attach their own allocation owner with
 `operations::RequestClaims::retain(owner)` and submit using `Host::call_owned` or
 `submit_owned`. Accepted work retains that owner after caller cancellation.
-Guest and sidecar bindings refuse process-local claims.
+Sidecar bindings refuse process-local claims.
 
 `ArrowBatch::try_map(convert_owned)` projects a RecordBatch into a shared result.
 `FileReadBatch::try_map` requires a unique owner. Direct Arrow projections decode
@@ -786,7 +779,7 @@ for external TypeScript generators and does not generate a TypeScript execution
 client. Ordinary RPC methods remain available alongside managed calls.
 
 Portable request and response integer fields support `u32`, `u64`, `i32` and
-`i64` across in-process, sidecar, guest and gRPC carriers. `u16` is rejected by
+`i64` across in-process, sidecar and gRPC carriers. `u16` is rejected by
 the message macro; represent ports with `u32` and validate their range in the
 operation. `u8` is supported as byte buffers (`Vec<u8>`), not as a scalar field.
 `usize`, `isize`, narrower signed integers and 128-bit integers are unsupported.
@@ -839,8 +832,15 @@ decode, encode, gRPC, operation and plugin settings. Consumers own defaults and
 pass each owner its relevant settings rather than retaining global configuration
 in every manager.
 
+Plugins execute trusted native code, either in a supervised sidecar process or
+through application-owned embedded operations. WebAssembly guest execution,
+its component tooling and its sandbox guarantees have been retired. Native
+process supervision does not restrict filesystem, network or device access;
+applications requiring such restrictions must supply their own OS isolation.
+Portable operation contracts remain available without a native runtime.
+
 Host runtimes expose one shared `runtime.plugin` owner; `runtime.handle().plugin`
-clones that same owner. Embedded, guest and native registration is inert. Explicit
+clones that same owner. Embedded and native registration is inert. Explicit
 `initialize()` starts the dependency graph, and runtime shutdown retires plugins
 before closing their operation/state infrastructure. The schematic example uses
 this owner for both plugin backends.
@@ -877,11 +877,8 @@ does not replenish it. Status retains the lifetime startup count, last failure
 class, retry deadline and cleanup state, including stopping while the original
 retirement owner is still settling. Invalid configuration/contracts are terminal. Explicit stop cancels restarts for the plugin and its dependents;
 failed cleanup prevents a fresh physical attempt. Plugin restart never replays
-uncertain operation calls or streaming transfers. Guest `shutdown_timeout` bounds
-the complete stop wait, including SDK settlement, authored shutdown and physical
-finalization. A timeout retains the same invocation and cleanup owners; retrying
-stop resumes settlement without launching another plugin attempt. `reload(id)`
-restarts a frozen definition and its active dependents; `reload_sidecar`, `reload_guest` and
+uncertain operation calls or streaming transfers. `reload(id)`
+restarts a frozen definition and its active dependents; `reload_sidecar` and
 `reload_embedded` accept replacement inputs through the same validation and
 retirement owner. Caller abandonment, explicit stop and runtime shutdown interrupt
 reload initialization and fence each new generation; cleanup retains ownership
@@ -890,7 +887,7 @@ activation. `remove(id)` requires registered dependents to be removed first.
 
 Embedded operation contributions and host contributions register resource-free
 catalogs through `register::<Operations>(lane)`. Plugin scopes retain their
-host-assigned ownership and authority checks. Native and guest authors declare
+host-assigned ownership and authority checks. Native authors declare
 one constant slice:
 
 ```rust
@@ -951,10 +948,10 @@ Context propagation restores the owning subscriber during polling and cancellati
 Some asynchronous handoffs allocate a boxed future for this teardown guarantee;
 instrumentation overhead has not been benchmarked.
 
-Storage, sidecar hosts, Wasm guests and external gRPC commands have separate
+Storage, sidecar hosts and external gRPC commands have separate
 benchmark suites. Lower-level stream and framing suites retain their codec and
 transport measurements. The carrier suites enable the `benchmark` feature on the
-shipped Schematic sidecar and guest, sharing their transfer contracts and handlers.
+shipped Schematic sidecar, reusing its transfer contracts and handlers.
 Each direction uses 256-record, 4096-sample or 1 MiB file batches, comparing unary
 calls against a stream. Generation and content verification are outside timing;
 completion includes the receiver acknowledgment. Records, files and samples run
@@ -969,7 +966,6 @@ only for that check and stopped before command and transfer measurements.
 | --- | --- |
 | [Storage](../crates/harmos-runtime/benches/storage/main.rs) | Shipped JSON persistence: 30 MiB upload/download, 10,000 records and 1,000,000 samples with symmetric writes/reads, concurrent files and queries; local/stored read, hash, capture and follow; directory listing and change delivery. |
 | [Sidecar Host](../crates/harmos-runtime/benches/sidecar/system.rs) | Real native process: bidirectional 10,000-record, 30 MiB file and 1,000,000-sample transfers, comparing unary batches and streams; startup and command latency. |
-| [Guest](../crates/harmos-runtime/benches/guest/main.rs) | Real Wasm component: the same bidirectional unary/streamed transfer workloads, plus startup and command latency. |
 | [External gRPC](../crates/harmos-runtime/benches/grpc/main.rs) | Separate server-process startup, client commands over a socket, and isolated Postcard/Protobuf codec costs. |
 | [Streams](../crates/harmos-runtime/benches/streams/main.rs) | Concurrent waveform work, batch summaries, codec costs, and native consumers using 64 KiB and 1 MiB payloads. |
 | [Plugin Transport](../crates/harmos-sidecar/benches/transport/main.rs) | Native transport throughput and latency, including 64-byte, 1 KiB, and 64 KiB bursts and a paced 10 MiB/s workload. |
@@ -1015,7 +1011,7 @@ reserved plugin lifecycle controls.
 The operations crate enables all built-in execution with `runtime`, which includes
 `harmos-sdk` and `harmos-storage`. Carrier kits select its lightweight `lifecycle`
 feature for the two SDK plugin controls, without linking host storage into a
-Wasm component. It never depends on `harmos-runtime`. Runtime composition supplies SDK-owned
+native sidecar. It never depends on `harmos-runtime`. Runtime composition supplies SDK-owned
 instance, discovery, publication, lifecycle and grant-access handles through
 `ExecutionContext`, along with the erased storage engine. State owners retain
 authorization, generation fencing and resource lifecycle ownership.
@@ -1062,8 +1058,8 @@ The plugin owner `host` is admitted like any other owner. Its name confers no
 application authority or grant exemption. Qualified identity collisions remain
 refusals; application caller authority comes from the runtime context.
 
-Keep one `-sidecar` or `-guest` crate under `crates/`. Several plugins belong
-under `plugins/sidecars/<name>` and `plugins/guests/<name>`. Carrier crates use
+Keep one `-sidecar` crate under `crates/`. Several plugins belong
+under `plugins/sidecars/<name>`. Carrier crates use
 `publish = false`.
 
 Each operation has one portable definition in `operations/<op>/mod.rs`, with

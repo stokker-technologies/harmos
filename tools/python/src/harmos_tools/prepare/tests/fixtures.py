@@ -47,7 +47,7 @@ def main() -> None:
     parser.add_argument("--focused-messages", type=Path)
     parser.add_argument("--libraries", help="comma-separated library target names represented in focused Cargo messages")
     parser.add_argument("--inspection-messages", help="comma-separated Cargo JSON captures that produced inspected artifacts")
-    parser.add_argument("--inspections", help="comma-separated native executable or wasm target names to inspect")
+    parser.add_argument("--inspections", help="comma-separated native executable target names to inspect")
 
     options = parser.parse_args()
     if options.focused_messages is None:
@@ -112,7 +112,7 @@ def prepare_focused(
 
 
 def _inspection_artifacts(messages: list[Path], requested: list[str]) -> dict[str, Path]:
-    """Resolve Native Executable And Guest Wasm Inspections Across Target Captures."""
+    """Resolve Native Executable Inspections Across Target Captures."""
     if not requested:
         return {}
     if len(set(requested)) != len(requested):
@@ -193,9 +193,7 @@ def _inspection_paths(event: dict[str, Any]) -> list[Path]:
     executable = event.get("executable")
     if executable:
         return [Path(executable).resolve()]
-    wasm_files = [Path(path) for path in event.get("filenames", [])]
-    wasm_files = [path for path in wasm_files if path.suffix == ".wasm"]
-    return [path.resolve() for path in wasm_files]
+    return []
 
 
 def _valid_target_name(name: str) -> bool:
@@ -222,7 +220,7 @@ def prepare(profile: str) -> None:
     metadata["dependencies"] = "../product/examples/libraries"
     metadata["executables"] = [metadata["artifacts"][name] for name in ("cargo-harmos", "schematic-cli", "schematic-sidecar")]
     # Integration Inspects Immutable Copies Without Running Product Hosts.
-    for name in ("schematic-sidecar", "schematic-guest"):
+    for name in ("schematic-sidecar",):
         source = export / catalog["artifacts"][name]
         destination = fixtures / "inspection" / source.name
         staging.copy(source, destination, files)

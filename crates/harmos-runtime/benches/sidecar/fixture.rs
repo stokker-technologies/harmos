@@ -16,8 +16,6 @@
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "plugin-guest")]
-use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -97,7 +95,6 @@ impl harmos_runtime::Application for Model {
 
 impl Fixture {
     #[cfg(feature = "plugin-sidecar")]
-    #[allow(dead_code, reason = "Each Carrier Benchmark Selects Its Matching Constructor")]
     pub async fn sidecar() -> Self {
         let (runtime, storage, root, host_elapsed) = runtime().await;
         let started = Instant::now();
@@ -106,33 +103,6 @@ impl Fixture {
         plugin.host_operations.push(harmos_runtime::Identifier::new("host.publish").unwrap());
         let settings = harmos_runtime::config::PluginSidecarSettings { plugin, calls: nz(8) };
         runtime.plugin.register_sidecar::<schematic_operations::transfer::Native>(executable, settings, Lanes::Open).await.unwrap();
-        runtime.plugin.initialize().await.unwrap();
-        Self {
-            runtime,
-            storage,
-            _storage_root: root,
-            startup_elapsed: host_elapsed + started.elapsed(),
-        }
-    }
-
-    #[cfg(feature = "plugin-guest")]
-    #[allow(dead_code, reason = "Each Carrier Benchmark Selects Its Matching Constructor")]
-    pub async fn guest() -> Self {
-        let (runtime, storage, root, host_elapsed) = runtime().await;
-        let started = Instant::now();
-        let bytes = std::fs::read(artifact("schematic-guest")).unwrap();
-        let settings = harmos_runtime::config::PluginGuestSettings {
-            component_bytes: nz(64 * 1024 * 1024),
-            memory_bytes: nz(256 * 1024 * 1024),
-            fuel: NonZeroU64::new(2_000_000_000).unwrap(),
-            memories: nz(1),
-            table_elements: nz(65_536),
-            tables: nz(8),
-            instances: nz(8),
-        };
-        let host = harmos_runtime::guest::Host::with_settings(&runtime, settings).unwrap();
-        let loaded = host.load(&bytes).unwrap();
-        runtime.plugin.register_guest::<schematic_operations::transfer::Guest>(loaded, plugin_settings(), Lanes::Open).await.unwrap();
         runtime.plugin.initialize().await.unwrap();
         Self {
             runtime,

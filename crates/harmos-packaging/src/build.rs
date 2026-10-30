@@ -103,10 +103,6 @@ struct Message {
     reason: String,
     package_id: Option<String>,
     executable: Option<PathBuf>,
-
-    #[serde(default)]
-    filenames: Vec<PathBuf>,
-
     target: Option<Target>,
     out_dir: Option<PathBuf>,
     message: Option<Diagnostic>,
@@ -196,7 +192,7 @@ impl Build {
         if packages.is_empty() || packages.values().collect::<BTreeSet<_>>().len() != packages.len() {
             return Err(Error::Settings("collection needs unambiguous selected Cargo packages".into()));
         }
-        if (settings.backend == BuildBackend::Guest) != receipt.target.starts_with("wasm32-") {
+        if receipt.target.starts_with("wasm32-") {
             return Err(Error::Settings("backend and producer target disagree".into()));
         }
         let (artifacts, outputs) = read_messages(std::io::Cursor::new(message_bytes), &packages)?;
@@ -271,7 +267,6 @@ pub(super) fn build_resolved(settings: &BuildSettings, cancellation: &BuildCance
     let directory = manifest.parent().ok_or_else(|| Error::Settings("manifest has no project directory".into()))?;
     let selected = metadata.select(settings)?;
     let target = match (&settings.backend, &settings.target) {
-        (BuildBackend::Guest, None) => "wasm32-unknown-unknown".to_owned(),
         (_, Some(target)) => target.clone(),
         (BuildBackend::Sidecar, None) => {
             let mut command = Command::new("rustc");
@@ -288,7 +283,7 @@ pub(super) fn build_resolved(settings: &BuildSettings, cancellation: &BuildCance
                 .to_owned()
         }
     };
-    if (settings.backend == BuildBackend::Guest) != target.starts_with("wasm32-") {
+    if target.starts_with("wasm32-") {
         return Err(Error::Settings("backend and selected target disagree".into()));
     }
     let mut command = Command::new(cargo);
@@ -331,8 +326,7 @@ fn finish_build(
     backend: BuildBackend, profile: BuildProfile, target: String, mut artifacts: Vec<Artifact>, outputs: BTreeSet<(String, PathBuf)>,
     cancellation: &BuildCancellation, generated: Option<&BTreeMap<PathBuf, String>>,
 ) -> Result<Build, Error> {
-    artifacts
-        .retain(|artifact| (artifact.path.extension().is_some_and(|extension| extension == "wasm")) == (backend == BuildBackend::Guest));
+    artifacts.retain(|artifact| artifact.path.extension().is_none_or(|extension| extension != "wasm"));
     if artifacts.is_empty() {
         return Err(Error::Settings("selected packages contain no artifact for this backend".into()));
     }
@@ -347,14 +341,6 @@ fn finish_build(
         let parent = artifact.path.parent().ok_or_else(|| Error::Settings("artifact has no parent directory".into()))?;
         let file_name = artifact.path.file_name().ok_or_else(|| Error::Settings("artifact has no file name".into()))?;
         let output = parent.join("harmos").join(&artifact.producer).join(file_name);
-        #[cfg(feature = "guest")]
-        let bytes = if backend == BuildBackend::Guest {
-            let module = std::fs::read(&artifact.path)?;
-            super::component::strip_debug(&module).map_err(Error::Component)?
-        } else {
-            native_shipping_bytes(&artifact.path, cancellation)?
-        };
-        #[cfg(not(feature = "guest"))]
         let bytes = native_shipping_bytes(&artifact.path, cancellation)?;
         if bytes.len() > crate::bundle::Limits::default().file_bytes {
             return Err(Error::Settings("artifact exceeds bundle byte limit".into()));
@@ -364,32 +350,6 @@ fn finish_build(
         shipping.insert(output.clone(), (bytes, permissions));
         artifact.path = output;
     }
-    #[cfg(feature = "guest")]
-    let mut components: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
-    #[cfg(not(feature = "guest"))]
-    let components: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
-    // Cargo Emits Core Modules; Consumers Receive Ready-To-Load Components.
-    #[cfg(feature = "guest")]
-    for artifact in &mut artifacts {
-        if artifact.path.extension().is_none_or(|extension| extension != "wasm") {
-            continue;
-        }
-        let module = &shipping[&artifact.path].0;
-        if digest(module) != artifact.sha256 {
-            return Err(Error::ArtifactChanged(artifact.path.clone()));
-        }
-        super::Declaration::inspect(module, super::Facility::Guest)?;
-        if module.starts_with(b"\0asm\x0d\0\x01\0") {
-            continue;
-        }
-        let component = super::componentize(module).map_err(Error::Component)?;
-        super::Declaration::inspect(&component, super::Facility::Guest)?;
-        let output = artifact.path.with_extension("component.wasm");
-        artifact.sha256 = digest(&component);
-        components.insert(output.clone(), component);
-        artifact.path = output;
-    }
-
     let expected_schemas = generated.map(|generated| {
         generated
             .iter()
@@ -441,9 +401,6 @@ fn finish_build(
         publish(&path, &bytes)?;
         std::fs::set_permissions(path, permissions)?;
     }
-    for (path, bytes) in components {
-        publish(&path, &bytes)?;
-    }
     Ok(Build {
         backend,
         profile,
@@ -483,7 +440,6 @@ fn native_shipping_bytes(path: &Path, cancellation: &BuildCancellation) -> Resul
 pub(super) fn validate_backend(settings: &BuildSettings) -> Result<(), Error> {
     let enabled = match settings.backend {
         BuildBackend::Sidecar => cfg!(feature = "sidecar"),
-        BuildBackend::Guest => cfg!(feature = "guest"),
     };
     if !enabled {
         return Err(Error::Settings("selected packaging backend is disabled".into()));
@@ -507,11 +463,9 @@ pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &Bu
     use crate::bundle::{Bundle, Executable, Facility, Identity, Limits, Source};
     let facility = match backend {
         BuildBackend::Sidecar => Facility::Sidecar,
-        BuildBackend::Guest => Facility::Guest,
     };
     let inspected = match backend {
         BuildBackend::Sidecar => super::Facility::Sidecar,
-        BuildBackend::Guest => super::Facility::Guest,
     };
     let mut prepared = BTreeMap::new();
     for artifact in artifacts {
@@ -678,10 +632,7 @@ fn read_messages(reader: impl BufRead, selected: &BTreeMap<String, String>) -> R
         if target.kind.iter().any(|kind| kind == "custom-build" || kind == "example" || kind == "test" || kind == "bench") {
             continue;
         }
-        let files = message
-            .executable
-            .into_iter()
-            .chain(message.filenames.into_iter().filter(|path| path.extension().is_some_and(|extension| extension == "wasm")));
+        let files = message.executable.into_iter();
         for path in files {
             artifacts.push(Artifact::read(producer.clone(), target.name.clone(), path)?);
         }

@@ -100,32 +100,30 @@ def plugins(directory: Path, settings: dict, tag: str, targets: list[str], profi
             raise policy.ToolError("shipped plugin names collide")
         names.add(package.casefold())
         kind = declaration.get("kind")
-        if kind not in {"sidecar", "guest"}:
-            raise policy.ToolError("shipped plugin kind must be sidecar or guest")
+        if kind != "sidecar":
+            raise policy.ToolError("shipped plugin kind must be sidecar")
         requirement = declaration.get(requirement_key)
         if not isinstance(requirement, str) or not requirement.strip() or len(requirement) > 256:
             raise policy.ToolError(f"plugin {requirement_key} must declare its host requirement")
-        if kind == "guest" and "targets" in declaration:
-            raise policy.ToolError("guest plugins are target-independent; omit targets")
-        declared = declaration.get("targets") if kind == "sidecar" else {"any": "any"}
+        declared = declaration.get("targets")
         if (
             not isinstance(declared, dict)
             or not declared
-            or not set(declared) <= set(settings["targets"] if kind == "sidecar" else ["any"])
+            or not set(declared) <= set(settings["targets"])
         ):
             raise policy.ToolError("sidecar targets must map declared release targets to Rust ABIs")
-        for target in targets if kind == "sidecar" else ["any"]:
+        for target in targets:
             abi = declared.get(target)
             if abi is None:
                 continue
-            if kind == "sidecar" and abi != triple(directory, settings, target):
+            if abi != triple(directory, settings, target):
                 raise policy.ToolError("plugin target differs from the declared release ABI")
             relative = declaration["path"].format(profile=profile, target=target, version=tag[1:], package=package)
             source = policy.inside(directory, relative)
             if source.suffix != f".{extension}" or not source.is_file() or source.is_symlink():
                 raise policy.ToolError(f"missing regular shipped plugin bundle: {relative}")
-            suffix = ".zip" if target == "any" or target.startswith("windows-") else ".tar.gz"
-            name = f"{settings['product']}-{kind}s-{tag[1:]}" + ("" if target == "any" else f"-{abi}") + suffix
+            suffix = ".zip" if target.startswith("windows-") else ".tar.gz"
+            name = f"{settings['product']}-sidecars-{tag[1:]}-{abi}{suffix}"
             result.append(
                 {
                     "package": package,

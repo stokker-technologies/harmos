@@ -10,7 +10,7 @@
 
 [package]
 name = "harmos-packaging"
-description = "Harmos packaging: reusable Cargo builds, inert inspection and guest componentization."
+description = "Harmos packaging: reusable Cargo builds, inert inspection."
 autotests = false
 version.workspace = true
 edition.workspace = true
@@ -25,7 +25,6 @@ publish.workspace = true
 [features]
 default = []
 sidecar = []
-guest = ["dep:wit-component", "dep:wasm-encoder", "dep:wasmparser"]
 generate-proto = ["dep:heck", "dep:prost-reflect"]
 generate-python = ["generate-proto"]
 
@@ -52,9 +51,6 @@ sha2 = { workspace = true, default-features = true }
 prost-reflect = { workspace = true, optional = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true, features = ["raw_value"] }
-wasm-encoder = { workspace = true, optional = true, default-features = true, features = ["wasmparser"] }
-wasmparser = { workspace = true, optional = true, default-features = true }
-wit-component = { workspace = true, optional = true, default-features = true }
 
 # Configuration
 

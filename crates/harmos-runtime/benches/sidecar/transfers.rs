@@ -7,7 +7,7 @@
  * ***
  */
 
-// Symmetric Typed Transfers Across Real Native And Wasm Carrier Boundaries.
+// Symmetric Typed Transfers Across Real Native Carrier Boundaries.
 
 /* === Modules === */
 

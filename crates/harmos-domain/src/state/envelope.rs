@@ -59,6 +59,7 @@ pub enum Kind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FactSource {
     Work(String),
+    // Retained serialized journal provenance; guest execution is no longer supported.
     Guest(String),
     Sidecar(String),
 }

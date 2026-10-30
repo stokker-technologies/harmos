@@ -48,7 +48,7 @@ use super::{OperationGeneration, OperationInstanceId, Running};
 
 use super::instances::Instances;
 use crate::operations::{CacheKey, OperationDeclaration, OperationDefinition};
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 use crate::plugin::PluginScope;
 use crate::supervision::executor;
 use crate::supervision::instance::Instance;
@@ -83,7 +83,7 @@ pub struct Manager {
     pub(crate) resident: super::resident::Registry,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 #[derive(Clone)]
 pub(crate) struct WeakOperationManager {
     schema_settings: std::sync::Weak<crate::config::SchemaSettings>,
@@ -101,7 +101,7 @@ pub(crate) struct Registry {
     state: Mutex<State>,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 pub(crate) struct GenerationCommit<'a> {
     _state: std::sync::MutexGuard<'a, State>,
 }
@@ -110,7 +110,7 @@ struct State {
     closing: bool,
     entries: BTreeMap<String, BTreeMap<String, Arc<Entry>>>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     staging: Vec<std::sync::Weak<PluginScope>>,
 
     #[cfg(feature = "grpc")]
@@ -153,10 +153,10 @@ pub(super) struct Entry {
     #[cfg(feature = "plugin-sidecar")]
     pub(super) native: Option<Arc<super::native::Binding>>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     plugin: Option<PluginScope>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(super) sdk: Option<harmos_operations::lifecycle::Action>,
 }
 
@@ -176,7 +176,7 @@ pub(super) struct GrantAuthority {
     operation: String,
 
     // A cross-owner plugin caller and its declared requirement for this operation.
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     plugin: Option<(String, Option<harmos_domain::inventory::contracts::Required>)>,
 
     // External Authority Never Replaces A Plugin Caller's Own Requirement.
@@ -217,14 +217,14 @@ impl Manager {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 impl std::fmt::Debug for WeakOperationManager {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.debug_struct("WeakOperationManager").finish_non_exhaustive()
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 impl WeakOperationManager {
     pub(crate) fn upgrade(&self) -> Option<Manager> {
         Some(Manager {
@@ -242,7 +242,7 @@ impl WeakOperationManager {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 impl Manager {
     pub(crate) fn downgrade(&self) -> WeakOperationManager {
         WeakOperationManager {
@@ -295,7 +295,7 @@ impl<L: Lane> std::ops::Deref for OperationManager<L> {
 
 /* === Private Functions === */
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 fn grant_allowed(required: Option<&harmos_domain::inventory::contracts::Required>, grant: Option<&harmos_domain::plugin::Grant>) -> bool {
     match grant {
         None => true,

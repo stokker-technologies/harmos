@@ -43,7 +43,6 @@ Your application defines each change; Harmos manages its accepted history.
 - **Streams And Storage** [`runtime`]: Capture bounded live measurements and supply adapters for history, snapshots and streams.
 - **Crash Recovery** [`runtime`]: Reconstruct state and undo history according to your storage adapter's durability policy.
 - **Plugin Lifecycle** [`plugin`]: Register typed plugin contracts and manage activation, routing and reload.
-- **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **Native Sidecars** [`plugin-sidecar`]: Integrate supervised executables through typed contracts; native processes do not provide a Wasm sandbox.
 - **gRPC Interfaces** [`grpc`, `generate-proto`]: Expose typed operations and generate client contracts.
 - **Signal Processing** [`signal`, `signal-fft`]: Summarize and downsample waveforms, with an optional FFT.
@@ -59,11 +58,10 @@ history and recovery without a graphical editor.
 
 #### Examples
 
-After building the example, choose its native sidecar or WebAssembly guest:
+After building the example, run its native sidecar:
 
 ```sh
 target/build/dev/linux-x86_64/bin/schematic-cli
-target/build/dev/linux-x86_64/bin/schematic-cli --guest
 ```
 
 ### Python
@@ -99,7 +97,7 @@ applications control collection. See [Performance](docs/product-guide.md#perform
 The [Schematic walkthrough](examples/schematic/cli/src/walkthrough.rs) covers
 editing, plugin validation, undo/redo and save/reopen. Its
 [storage adapter](examples/schematic/storage/) shows application-owned persistence.
-Its sidecar and guest also provide shared transfer endpoints under the `benchmark`
+Its sidecar also provides transfer endpoints under the `benchmark`
 feature for the [performance suites](docs/product-guide.md#performance).
 Harmos also ships a filesystem `JsonStorage` backend for records, streams, objects
 and files; see the [storage configuration guide](docs/product-guide.md).

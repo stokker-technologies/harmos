@@ -34,7 +34,7 @@ mod poison;
 #[path = "records.rs"]
 mod records;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 #[path = "../state/listeners.rs"]
 mod listeners;
 

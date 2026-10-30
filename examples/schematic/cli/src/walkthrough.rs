@@ -48,7 +48,7 @@ use schematic_app::{app, config::Settings, document::Document, services::Plugin}
 /* === Public Functions === */
 
 #[tracing::instrument(level = "debug", skip_all)]
-pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advanced: bool) -> Result<()> {
+pub async fn run(sidecar: &Path, directory: &Path, advanced: bool) -> Result<()> {
     // Create A Document And Its Recovery Journal
     let scratch = tempfile::tempdir()?;
     let path = scratch.path().join("schematic.json");
@@ -58,21 +58,9 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     let runtime = app::launch(document, &config).await?;
     let checkpoint = runtime.operations.context().resource::<schematic_app::storage::Sidecar>().map_err(std::io::Error::other)?;
 
-    // Choose A Backend For The Same Operations
     let plugin = async {
-        // Component Compilation Precedes The Bounded Plugin Initialization.
-        let loaded = match guest {
-            Some(path) => {
-                let bytes = std::fs::read(path)?;
-                Some(schematic_app::services::guest::load(&runtime, &bytes)?)
-            }
-            None => None,
-        };
         eprintln!("schematic.plugin.initializing");
-        let plugin = match loaded {
-            Some(loaded) => Plugin::guest(&runtime, loaded).await?,
-            None => Plugin::sidecar(&runtime, sidecar, directory).await?,
-        };
+        let plugin = Plugin::sidecar(&runtime, sidecar, directory).await?;
         eprintln!("schematic.plugin.ready");
         Ok::<_, crate::Error>(plugin)
     }
@@ -85,7 +73,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
         }
     };
 
-    let result = edit(&runtime, advanced, guest.is_none()).await;
+    let result = edit(&runtime, advanced).await;
     let stopped = plugin.stop().await;
     let snapshot = runtime.state.state().read(Clone::clone).await;
     let settled = runtime.shutdown().await;
@@ -112,7 +100,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
 
 /* === Private Functions === */
 
-async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()> {
+async fn edit(runtime: &app::Runtime, advanced: bool) -> Result<()> {
     let principal = PrincipalId::new("designer");
     let state = runtime.state.as_principal(principal.clone());
 
@@ -178,7 +166,7 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
     println!("Undid and redid the route");
 
     if advanced {
-        crate::advanced::run(runtime, schematic, native).await?;
+        crate::advanced::run(runtime, schematic).await?;
     }
     Ok(())
 }

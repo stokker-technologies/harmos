@@ -35,7 +35,7 @@ pub struct PluginScope {
     owner: Arc<str>,
     generation: PluginGeneration,
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(feature = "plugin-sidecar")]
     generation_context: Arc<OnceLock<[u8; 32]>>,
 
     phase: Arc<watch::Sender<Phase>>,
@@ -85,7 +85,7 @@ impl PluginScope {
         self.generation == other.generation && Arc::ptr_eq(&self.phase, &other.phase)
     }
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn issue_generation_context(&self) -> Result<[u8; 32]> {
         if self.is_closed() {
             return Err(Error::Closing { domain: "plugin generation" });
@@ -108,7 +108,7 @@ impl PluginScope {
         Ok(*self.generation_context.get().expect("generation context issued once"))
     }
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn accepts_generation_context(&self, context: &[u8]) -> bool {
         !self.is_closed() && self.generation_context.get().is_some_and(|original| original.as_slice() == context)
     }
@@ -117,7 +117,7 @@ impl PluginScope {
         Self {
             owner: Arc::from(owner),
             generation,
-            #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+            #[cfg(feature = "plugin-sidecar")]
             generation_context: Arc::new(OnceLock::new()),
             phase: Arc::new(
                 watch::channel(Phase::Staged {
@@ -218,7 +218,7 @@ impl PluginScope {
         self
     }
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn wire_contracts(&self) -> impl Iterator<Item = &crate::operations::Contract> {
         self.wire_contracts.values()
     }

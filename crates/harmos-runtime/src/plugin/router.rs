@@ -248,11 +248,6 @@ impl PluginEndpoint {
         self.live.scope.as_ref()
     }
 
-    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-    pub(crate) fn revocation(&self) -> watch::Sender<bool> {
-        self.live.alive.clone()
-    }
-
     pub fn caller(&self) -> PluginCaller {
         PluginCaller {
             generation: self.live.generation,

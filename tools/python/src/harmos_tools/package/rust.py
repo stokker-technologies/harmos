@@ -76,7 +76,7 @@ def main() -> None:
         _verify_schematic(destination / "rust" / bundle["output"], export, selectors)
 
     tool = export / selectors["artifacts"]["cargo-harmos"]
-    for name, backend in (("schematic-sidecar", "sidecar"), ("schematic-guest", "guest")):
+    for name, backend in (("schematic-sidecar", "sidecar"),):
         receipt = export / selectors["builds"][name]
         result = destination / f"{name}.json"
         command = [
@@ -108,7 +108,7 @@ def main() -> None:
 
 def _verify_schematic(bundle: Path, export: Path, selectors: dict) -> None:
     expected = {}
-    for name in ("schematic-cli", "schematic-sidecar", "schematic-guest"):
+    for name in ("schematic-cli", "schematic-sidecar"):
         source = export / selectors["artifacts"][name]
         relative = source.relative_to(export / "bin").as_posix()
         expected[relative] = selectors["files"][source.relative_to(ROOT).as_posix()]
@@ -117,7 +117,6 @@ def _verify_schematic(bundle: Path, export: Path, selectors: dict) -> None:
         _unpack_schematic(bundle, install, expected)
         executable = install / ("schematic-cli.exe" if sys.platform == "win32" else "schematic-cli")
         _walkthrough(executable, install / "sidecar", [])
-        _walkthrough(executable, install / "guest", ["--guest"])
 
 
 def _unpack_schematic(bundle: Path, install: Path, expected: dict[str, str]) -> None:
@@ -132,8 +131,7 @@ def _unpack_schematic(bundle: Path, install: Path, expected: dict[str, str]) -> 
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
         _asset(target, expected[name])
-        permissions = 0 if name.endswith(".wasm") else 0o111
-        target.chmod(target.stat().st_mode | permissions)
+        target.chmod(target.stat().st_mode | 0o111)
 
 
 def _walkthrough(executable: Path, directory: Path, arguments: list[str]) -> None:

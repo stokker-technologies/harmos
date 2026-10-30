@@ -40,26 +40,18 @@ const POLICY: harmos::OperationPolicy = harmos::OperationPolicy {
 #[harmos::sidecar::operation(id = "fixture.sidecar", response = (), policy = POLICY)]
 struct SidecarOperation;
 
-#[harmos::guest::operation(id = "fixture.guest", response = (), policy = POLICY)]
-struct GuestOperation;
-
 #[harmos::runtime::operation(id = "fixture.application", resources = [usize], response = (), policy = POLICY)]
 struct ApplicationOperation;
 
 struct Plugin;
 
-struct GuestPlugin;
+struct EmptyPlugin;
 
 /* === Enums === */
 
 #[harmos::sidecar::catalog]
 enum SidecarCatalog {
     Sidecar(SidecarOperation),
-}
-
-#[harmos::guest::catalog]
-enum GuestCatalog {
-    Guest(GuestOperation),
 }
 
 #[harmos::runtime::catalog]
@@ -72,14 +64,6 @@ enum ApplicationCatalog {
 /* === Implementations === */
 
 impl Operation for SidecarOperation {
-    type Error = Infallible;
-
-    async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<()>, Self::Error> {
-        Ok(().into())
-    }
-}
-
-impl Operation for GuestOperation {
     type Error = Infallible;
 
     async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<()>, Self::Error> {
@@ -116,14 +100,14 @@ impl harmos::Plugin for Plugin {
     const CATALOGS: &'static [harmos::operations::Catalog] = &[SidecarCatalog::CATALOG];
 }
 
-impl harmos::builtins::lifecycle::Policy for GuestPlugin {
+impl harmos::builtins::lifecycle::Policy for EmptyPlugin {
     const INITIALIZATION_POLICY: harmos::OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: harmos::OperationPolicy = POLICY;
 }
 
-impl Lifecycle for GuestPlugin {
+impl Lifecycle for EmptyPlugin {
     type Config = ();
-    type Context = harmos::guest::kit::Context;
+    type Context = harmos::sidecar::Supervisor;
     type Error = Infallible;
 
     async fn prepare(_: (), _: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> { panic!("inventory inspection never prepares plugins") }
@@ -132,8 +116,8 @@ impl Lifecycle for GuestPlugin {
     async fn cleanup(&mut self) -> Result<(), Self::Error> { panic!("inventory inspection never cleans up plugins") }
 }
 
-#[harmos::guest(id = "guest_fixture", requires = ())]
-impl harmos::Plugin for GuestPlugin {
+#[harmos::sidecar(id = "empty_fixture", requires = ())]
+impl harmos::Plugin for EmptyPlugin {
     const CATALOGS: &'static [harmos::operations::Catalog] = &[];
 }
 
@@ -143,20 +127,19 @@ impl harmos::Plugin for GuestPlugin {
 
 fn main() {
     assert_eq!(SidecarCatalog::CATALOG.declarations.len(), 1);
-    assert_eq!(GuestCatalog::CATALOG.declarations.len(), 1);
     assert_eq!(ApplicationCatalog::CATALOG.declarations.len(), 1);
 
     assert_eq!(<Plugin as harmos::__private::PluginDeclared>::PROVIDES.len(), 1);
-    assert!(<GuestPlugin as harmos::__private::PluginDeclared>::PROVIDES.is_empty());
+    assert!(<EmptyPlugin as harmos::__private::PluginDeclared>::PROVIDES.is_empty());
 
     let native = <Plugin as harmos::domain::plugin::Declared>::markers().unwrap().concat();
     let native = harmos::domain::inventory::Declaration::inspect(&native, harmos::domain::inventory::Facility::Sidecar).unwrap();
     assert_eq!(native.operations.len(), 1);
     assert_eq!(native.operations[0].id.as_str(), "fixture.sidecar");
 
-    let guest = <GuestPlugin as harmos::domain::plugin::Declared>::markers().unwrap().concat();
-    let guest = harmos::domain::inventory::Declaration::inspect(&guest, harmos::domain::inventory::Facility::Guest).unwrap();
-    assert!(guest.operations.is_empty());
+    let empty = <EmptyPlugin as harmos::domain::plugin::Declared>::markers().unwrap().concat();
+    let empty = harmos::domain::inventory::Declaration::inspect(&empty, harmos::domain::inventory::Facility::Sidecar).unwrap();
+    assert!(empty.operations.is_empty());
 }
 
 /* === Tests === */

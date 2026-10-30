@@ -38,7 +38,7 @@ use harmos_runtime::{Error, Message, MessageError, Result, Runtime};
 
 /* === Type Aliases === */
 
-type Backends = PluginBackend<Resources, Resources, Resources>;
+type Backends = PluginBackend<Resources, Resources>;
 type Seen = Vec<(bool, u32, DeliveryContext)>;
 
 /* === Structs === */
@@ -347,7 +347,6 @@ impl harmos_runtime::Operation for HearingSecond {
 }
 
 impl PluginLifecycle for Host {
-    type Guest = Resources;
     type Sidecar = Resources;
     type Embedded = Resources;
     fn prepare(&mut self, _: &PluginDefinition) -> Result<Backends> {
@@ -501,13 +500,13 @@ fn candidate(managed: bool) -> PluginDefinitions {
     .unwrap()
 }
 
-async fn setup(block: bool, reenter: bool, tail: usize) -> (Runtime<Model>, PluginManager<Resources, Resources, Resources>, Host) {
+async fn setup(block: bool, reenter: bool, tail: usize) -> (Runtime<Model>, PluginManager<Resources, Resources>, Host) {
     setup_source(block, reenter, tail, false).await
 }
 
 async fn setup_source(
     block: bool, reenter: bool, tail: usize, managed: bool,
-) -> (Runtime<Model>, PluginManager<Resources, Resources, Resources>, Host) {
+) -> (Runtime<Model>, PluginManager<Resources, Resources>, Host) {
     let runtime = Runtime::<Model>::launch_with((), (), |setup| {
         setup.resource::<OwnerResource>(OwnerResource(std::sync::OnceLock::new()));
         setup.settings().register(if managed { vec![] } else { Rows::catalog() });

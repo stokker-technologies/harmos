@@ -35,7 +35,7 @@ use super::*;
 /* === Implementations === */
 
 impl Registry {
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(crate) fn generation_commit(&self) -> Result<GenerationCommit<'_>> {
         let state = self.state.lock().expect("operation registry lock is healthy");
         if state.closing {
@@ -76,7 +76,7 @@ impl State {
         self.entries.get(id)?.get(owner)
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(super) fn host_provider(&self, id: &str, contract: &crate::operations::Contract) -> Result<&Arc<Entry>> {
         let mut compatible = self
             .entries
@@ -140,20 +140,20 @@ impl State {
     }
 
     pub(super) fn definitions(&self) -> Vec<OperationDefinition> {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin")]
         let mut ready = BTreeMap::new();
         self.entries
             .values()
             .flat_map(|providers| providers.values())
             .filter(|entry| {
-                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                #[cfg(feature = "plugin")]
                 if entry.sdk.is_some() {
                     return false;
                 }
                 if !entry.active.load(Ordering::Acquire) || !entry.publication.load(Ordering::Acquire) {
                     return false;
                 }
-                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                #[cfg(feature = "plugin")]
                 if let Some(scope) = &entry.plugin {
                     return *ready.entry(scope.generation()).or_insert_with(|| scope.is_ready());
                 }

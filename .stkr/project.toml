@@ -200,55 +200,6 @@ acceptance = 900
 system = 900
 
 [[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-guest::system) & test(=publication_crosses_row)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-guest::system) & test(=registration_precedes_init)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-guest::system) & test(=refusal_preserves_reason)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-guest::system) & test(=shutdown_current_context)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-guest::system) & test(=submitted_children_controls)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-guest::system) & test(=unbound_operations_refused)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-guest::system) & test(=plugin::sdk_lifecycle_retained)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
 category = "acceptance"
 language = "rust"
 select = "binary_id(=harmos-runtime::acceptance) & test(=storage::grpc_descriptors_compile)"
@@ -282,221 +233,6 @@ language = "rust"
 select = "binary_id(=harmos-packaging::acceptance) & test(=proto::exported_sources_compile)"
 timeout_seconds = 120
 reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::dependencies::dependency_admission::background_cleanup_retained)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::dependencies::dependency_admission::cancelled_dependency_admission)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::dependencies::dependency_admission::cancelled_shutdown_cleanup)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::dependencies::dependency_admission::dependencies_share_admission)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::dependencies::dependency_admission::missing_provider_refused)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::dependencies::dependency_admission::shutdown_fences_callers)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::limits::fuel_retains_cause)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::limits::host_resource_settings)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::limits::manager_bounds_wait)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::limits::memory_growth_bounded)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::limits::refusal_keeps_classification)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::limits::trap_discards_instance)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::children_retire_authority)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::declared_operation_roundtrip)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::exact_live_bindings)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::grpc_original_owner)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::inert_plan_denies)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::initialization_children_retired)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::initialization_cleans_failure)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::overlay_preserves_parent)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::phases_retain_capacity)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::shutdown_retains_cleanup)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::stream_lifecycle_preserved)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::wire_alias_refused)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::wrong_catalog_refused)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::publications::bounded_window_gaps)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::publications::initialization_aborts_staging)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::publications::publications_survive_unload)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::publications::replacement_preserves_owner)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[[conventions.testing.overrides]]
-category = "system"
-language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=guest_contract::publications::saved_context_generation)"
-timeout_seconds = 120
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-
-[barrels]
-exclude = ["crates/harmos-runtime/src/prelude.rs"]
-
-# === === Templates === === #
 
 [[templates.scaffolds]]
 path = "crates/cargo-harmos/templates/sidecar"
@@ -671,18 +407,11 @@ lock_commands = [
     "examples/schematic/Cargo.toml",
     "--workspace",
   ],
-  [
-    "cargo",
-    "update",
-    "--manifest-path",
-    "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml",
-    "--workspace",
-  ],
 ]
 
 [version]
 value = "0.1.13"
-files = ["Cargo.toml", "examples/schematic/Cargo.toml", "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"]
+files = ["Cargo.toml", "examples/schematic/Cargo.toml"]
 
 [[package.executables]]
 package = "cargo-harmos"
@@ -701,7 +430,6 @@ targets = ["linux-x86_64"]
 inputs = [
   { path = "target/build/{profile}/{target}/bin/schematic-cli", destination = "schematic-cli" },
   { path = "target/build/{profile}/{target}/bin/plugins/schematic-sidecar", destination = "plugins/schematic-sidecar" },
-  { path = "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm", destination = "plugins/schematic-guest.wasm" },
 ]
 
 [[package.bundles]]
@@ -712,5 +440,4 @@ targets = ["windows-x86_64"]
 inputs = [
   { path = "target/build/{profile}/{target}/bin/schematic-cli.exe", destination = "schematic-cli.exe" },
   { path = "target/build/{profile}/{target}/bin/plugins/schematic-sidecar.exe", destination = "plugins/schematic-sidecar.exe" },
-  { path = "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm", destination = "plugins/schematic-guest.wasm" },
 ]

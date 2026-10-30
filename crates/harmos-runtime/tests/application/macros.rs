@@ -214,7 +214,7 @@ mod counter {
     }
 }
 
-#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-sidecar")]
 mod unified_plugins {
     use std::convert::Infallible;
     use std::time::Duration;
@@ -442,20 +442,6 @@ mod unified_plugins {
             let selected = declaration.listeners;
             assert_eq!(selected, harmos_runtime::listeners::Declarations::of::<Audience>().unwrap());
             assert_eq!(selected[0].callback(), &declaration.contracts.provides[0]);
-            let guest_markers: Vec<_> = ListeningGuest::markers().unwrap().into_iter().flatten().copied().collect();
-            let guest =
-                harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest)
-                    .unwrap();
-            assert_eq!(&guest.listeners, &selected);
-            assert_eq!(guest.listeners[0].callback(), &guest.contracts.provides[0]);
-
-            let guest_markers: Vec<_> = Guest::markers().unwrap().into_iter().flatten().copied().collect();
-            assert_eq!(
-                harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest)
-                    .unwrap()
-                    .listeners,
-                Vec::new()
-            );
         }
         {
             let mut parts = harmos_domain::artifacts::fragments::<serde_json::Value>(
@@ -506,38 +492,6 @@ mod unified_plugins {
         assert_eq!(required, Contracts::of::<Selected>().unwrap());
         assert_eq!(Native::STREAMS[1].id, "unified_extra");
         assert_eq!(Native::DESCRIPTION, "Native Authored Plugin");
-    }
-
-    #[test]
-    fn context_selects_guest() {
-        inspect::<Guest>("guest", 1, 0);
-        assert_eq!(Guest::DESCRIPTION, "Guest Authored Plugin");
-    }
-
-    struct Guest;
-    impl lifecycle::Policy for Guest {
-        const INITIALIZATION_POLICY: OperationPolicy = POLICY;
-        const SHUTDOWN_POLICY: OperationPolicy = POLICY;
-    }
-
-    impl harmos_runtime::Lifecycle for Guest {
-        type Config = ();
-        type Error = Infallible;
-        type Context = harmos_runtime::guest::kit::Context;
-
-        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-            Ok(Self)
-        }
-    }
-
-    #[harmos_runtime::plugin(
-        id = "unified_guest",
-        description = "Guest Authored Plugin",
-        requires = (),
-        streams(Row)
-    )]
-    impl harmos_runtime::Plugin for Guest {
-        const CATALOGS: &'static [harmos_runtime::Catalog] = &[Selected::CATALOG];
     }
 
     struct Catalog;
@@ -656,25 +610,6 @@ mod unified_plugins {
         const CATALOGS: &'static [harmos_runtime::Catalog] = &[Callbacks::CATALOG];
     }
 
-    struct ListeningGuest;
-    impl lifecycle::Policy for ListeningGuest {
-        const INITIALIZATION_POLICY: OperationPolicy = POLICY;
-        const SHUTDOWN_POLICY: OperationPolicy = POLICY;
-    }
-    impl harmos_runtime::Lifecycle for ListeningGuest {
-        type Config = ();
-        type Error = Infallible;
-        type Context = harmos_runtime::guest::kit::Context;
-        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-            Ok(Self)
-        }
-    }
-
-    #[harmos_runtime::plugin(id = "unified_listening_guest", requires = (), listeners = Audience)]
-    impl harmos_runtime::Plugin for ListeningGuest {
-        const CATALOGS: &'static [harmos_runtime::Catalog] = &[Callbacks::CATALOG];
-    }
-
     fn inspect<P: PluginDeclared>(facility: &str, streams: usize, requires: usize) {
         assert_eq!(harmos_runtime::catalog::count(P::PROVIDES), 1);
         assert_eq!(harmos_runtime::catalog::count(P::REQUIRES), requires);
@@ -689,7 +624,6 @@ mod unified_plugins {
             &bytes,
             match facility {
                 "sidecar" => PluginInventory::Facility::Sidecar,
-                "guest" => PluginInventory::Facility::Guest,
                 _ => unreachable!("fixture selects one supported carrier"),
             },
         )
@@ -717,14 +651,6 @@ mod unified_plugins {
                     harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes, harmos_runtime::sidecar::inventory::Facility::Sidecar)
                         .unwrap();
                 assert_eq!(declaration.restart(), None);
-                assert_eq!(declaration.operations.len(), contracts.provides.len());
-                assert_eq!(declaration.streams.len(), streams);
-                declaration.contracts
-            }
-            "guest" => {
-                let declaration =
-                    harmos_runtime::guest::inventory::Declaration::inspect(&bytes, harmos_runtime::guest::inventory::Facility::Guest)
-                        .unwrap();
                 assert_eq!(declaration.operations.len(), contracts.provides.len());
                 assert_eq!(declaration.streams.len(), streams);
                 declaration.contracts

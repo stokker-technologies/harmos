@@ -53,11 +53,7 @@ impl Error {
             )
             | Self::Bindings(Bindings::Limit) => 4,
             Self::Packaging(
-                Packaging::Settings(_)
-                | Packaging::Component(_)
-                | Packaging::ArtifactChanged(_)
-                | Packaging::Collision(_)
-                | Packaging::Declaration(_),
+                Packaging::Settings(_) | Packaging::ArtifactChanged(_) | Packaging::Collision(_) | Packaging::Declaration(_),
             )
             | Self::Bindings(
                 Bindings::Settings(_) | Bindings::Unsupported(_) | Bindings::Collision(_) | Bindings::Selection(_) | Bindings::Exists(_),

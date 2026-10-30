@@ -23,9 +23,8 @@ description = "Build, inspect and package Harmos plugins and generated bindings"
 # === Features === #
 
 [features]
-default = ["sidecar", "guest"]
+default = ["sidecar"]
 sidecar = ["harmos-packaging/sidecar", "dep:ctrlc"]
-guest = ["harmos-packaging/guest", "dep:ctrlc"]
 
 # === Dependencies === #
 

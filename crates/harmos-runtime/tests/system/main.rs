@@ -7,7 +7,7 @@
  * ***
  */
 
-// Walk The Host Alone, With The Stamped Guest, And With The Stamped Sidecar
+// Walk The Host Alone And With The Stamped Sidecar
 
 /* === Modules === */
 
@@ -15,10 +15,6 @@
 mod backend;
 #[path = "../support/storage_fixture.rs"]
 mod fixture;
-#[cfg(feature = "plugin-guest")]
-mod guest;
-#[cfg(all(feature = "plugin-guest", feature = "plugin-sidecar"))]
-mod guest_contract;
 #[path = "../support/report.rs"]
 mod report;
 mod runtime;

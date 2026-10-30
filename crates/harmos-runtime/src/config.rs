@@ -18,8 +18,6 @@ pub use harmos_domain::config::*;
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "plugin-guest")]
-use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
 #[cfg(any(feature = "grpc", feature = "plugin"))]
 use std::time::Duration;
@@ -124,18 +122,6 @@ pub struct PluginSidecarSettings {
     pub calls: NonZeroUsize,
 }
 
-#[cfg(feature = "plugin-guest")]
-#[derive(Clone, Copy, Debug)]
-pub struct PluginGuestSettings {
-    pub component_bytes: NonZeroUsize,
-    pub memory_bytes: NonZeroUsize,
-    pub fuel: NonZeroU64,
-    pub memories: NonZeroUsize,
-    pub table_elements: NonZeroUsize,
-    pub tables: NonZeroUsize,
-    pub instances: NonZeroUsize,
-}
-
 /* === Enums === */
 
 /* === Traits === */
@@ -217,20 +203,6 @@ impl PluginSettings {
     }
 }
 
-#[cfg(feature = "plugin-guest")]
-impl Default for PluginGuestSettings {
-    fn default() -> Self {
-        Self {
-            component_bytes: NonZeroUsize::new(64 * 1024 * 1024).unwrap(),
-            memory_bytes: NonZeroUsize::new(64 * 1024 * 1024).unwrap(),
-            fuel: NonZeroU64::new(10_000_000).unwrap(),
-            memories: NonZeroUsize::new(1).unwrap(),
-            table_elements: NonZeroUsize::new(65_536).unwrap(),
-            tables: NonZeroUsize::new(8).unwrap(),
-            instances: NonZeroUsize::new(8).unwrap(),
-        }
-    }
-}
 #[cfg(feature = "grpc")]
 impl Default for GrpcServerSettings {
     fn default() -> Self {

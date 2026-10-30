@@ -10,8 +10,8 @@
 // One operation failure as every carrier transports it. The cause is written
 // once where the error originates, the operation frame is added once where a
 // call crosses from a plugin into the host, and the step frame belongs to the
-// consumer. Sidecar frames, host refusals, gRPC status details and guest
-// records carry the same value; no carrier re-embeds another's text.
+// consumer. Sidecar frames, host refusals and gRPC status details
+// carry the same value; no carrier re-embeds another's text.
 
 /* === Modules === */
 

@@ -11,15 +11,12 @@
 
 mod bindings;
 
-#[cfg(feature = "guest")]
-mod guest;
-
-#[cfg(any(feature = "sidecar", feature = "guest"))]
+#[cfg(feature = "sidecar")]
 mod inspect;
 
 mod new;
 
-#[cfg(any(feature = "sidecar", feature = "guest"))]
+#[cfg(feature = "sidecar")]
 mod package;
 
 #[cfg(feature = "sidecar")]
@@ -56,10 +53,6 @@ pub enum Command {
     #[command(about = "Build Or Watch Native Sidecar Plugins.")]
     #[cfg(feature = "sidecar")]
     Sidecar(Box<sidecar::Arguments>),
-
-    #[command(about = "Build Or Watch Sandboxed Guest Plugins.")]
-    #[cfg(feature = "guest")]
-    Guest(Box<guest::Arguments>),
 }
 
 /* === Traits === */
@@ -68,15 +61,13 @@ pub enum Command {
 
 impl Command {
     pub fn run(self, cancellation: &harmos_packaging::BuildCancellation) -> Result<(), crate::error::Error> {
-        #[cfg(not(any(feature = "sidecar", feature = "guest")))]
+        #[cfg(not(feature = "sidecar"))]
         let _ = cancellation;
         match self {
             Self::New(arguments) => new::run(arguments).map_err(Into::into),
             Self::Bindings(arguments) => bindings::run(*arguments),
             #[cfg(feature = "sidecar")]
             Self::Sidecar(arguments) => sidecar::run(*arguments, cancellation).map_err(Into::into),
-            #[cfg(feature = "guest")]
-            Self::Guest(arguments) => guest::run(*arguments, cancellation).map_err(Into::into),
         }
     }
 }

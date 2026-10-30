@@ -59,25 +59,21 @@ Storage-engine stories exercise `harmos-storage` without a host runtime; its
 real `WorkerOwner` owns the canonical worker and settlement. Runtime storage
 stories cover host composition, managed journal projection and operation dispatch.
 Inject file journal faults at the public `FileBackend` boundary, retaining its
-parsing, rollback and leasing. The specialized integration entrypoints are
-`harmos-domain/tests/message/main.rs` and `harmos-guest/tests/kit/main.rs`, both
-under `crates/`.
+parsing, rollback and leasing. The specialized message integration entrypoint is
+`crates/harmos-domain/tests/message/main.rs`.
 
-Runtime system tests compose the host baseline with the Schematic guest and
-sidecar artifacts from the example workspace. The sandbox guest covers guest
-policy and cleanup absent from Schematic. Wasmtime component instantiation
-belongs to system tests; inert component metadata and WIT inspection belong to
-integration. Sidecar stories distinguish environment clearing, pre-readiness
-failure, cleanup, withdrawal and fresh-generation recovery; pre-readiness
-failure does not prove a crash after readiness.
+Runtime system tests compose the host baseline with the Schematic sidecar
+from the example workspace. Sidecar stories distinguish environment clearing,
+pre-readiness failure, cleanup, withdrawal and fresh-generation recovery;
+pre-readiness failure does not prove a crash after readiness.
 
-Tests-owned fixtures contain hash-verified inert Product plugin artifacts;
-sandbox inspection reuses Tests-owned sandbox bytes. Integration never executes
-these components. The Tests stamp selects artifacts, libraries and offline inputs
+Tests-owned fixtures contain hash-verified inert Product plugin artifacts.
+Integration inspects metadata without executing those binaries.
+The Tests stamp selects artifacts, libraries and offline inputs
 with hashes; runtime fixture support resolves them, and collected Cargo metadata
 retains producer identity and byte hashes. Acceptance selects the Cargo
-subcommand and both plugin Product artifacts; system selects the Schematic CLI
-and both plugins.
+subcommand and the sidecar Product artifact; system selects the Schematic CLI
+and its sidecar.
 
 Compiler execution for generated projects, macro diagnostics and development
 rebuild/cancellation belongs to acceptance; integration consumes already-built

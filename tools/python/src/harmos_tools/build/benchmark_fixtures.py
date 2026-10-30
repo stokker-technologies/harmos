@@ -31,7 +31,7 @@ from . import bench, fixtures, paths
 
 # === Constants === #
 
-FEATURES = "harmos-runtime/plugin-sidecar,harmos-runtime/plugin-guest,harmos-runtime/grpc"
+FEATURES = "harmos-runtime/plugin-sidecar,harmos-runtime/grpc"
 
 # === Types === #
 
@@ -55,7 +55,6 @@ def build(extra: list[str]) -> Path:
     with temporary.directory() as scratch:
         for package, backend, target in (
             ("schematic-sidecar", "sidecar", []),
-            ("schematic-guest", "guest", ["--target", "wasm32-unknown-unknown"]),
         ):
             capture = fixtures.capture(
                 package, fixtures.SCHEMATIC.parent, "bench", ["-p", package, "--features", "benchmark", *target], scratch

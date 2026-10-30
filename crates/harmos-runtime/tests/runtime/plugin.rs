@@ -95,22 +95,8 @@ fn fragments(facility: &str, owner: &str) -> Vec<u8> {
     bytes
 }
 
-fn guest() -> Vec<u8> {
-    // Empty Component With Inert Metadata
-    let mut bytes = b"\0asm\x0d\0\x01\0".to_vec();
-    let mut section = vec![0]; // Empty custom-section name.
-    section.extend(fragments("guest", "guest_fixture"));
-
-    // Encode The Custom Section Length
-    bytes.push(0);
-    let mut len = section.len();
-    while len >= 128 {
-        bytes.push((len & 127) as u8 | 128);
-        len >>= 7;
-    }
-    bytes.push(len as u8);
-    bytes.extend(section);
-    bytes
+fn alternate() -> Vec<u8> {
+    fragments("sidecar", "alternate_fixture")
 }
 
 fn asset() -> Bundle {
@@ -147,12 +133,12 @@ fn archive(manifest: &[u8], entries: &[(&str, &[u8], tar::EntryType)]) -> Vec<u8
 
 #[test]
 fn independent_files_roundtrip() {
-    // Build Independent Native And Guest Files
+    // Build Independent Native Files
     let staging = tempfile::tempdir().unwrap();
     let marker = staging.path().join("executed");
     let mut native = format!("#!/bin/sh\nprintf executed > '{}'\nexit 73\n", marker.display()).into_bytes();
     native.extend(fragments("sidecar", "native_fixture"));
-    let guest = guest();
+    let alternate = alternate();
     let sources = [
         Source {
             path: "files/icon.svg",
@@ -165,9 +151,9 @@ fn independent_files_roundtrip() {
             executable: Some(executable(Facility::Sidecar)),
         },
         Source {
-            path: "guests/tool.wasm",
-            bytes: &guest,
-            executable: Some(executable(Facility::Guest)),
+            path: "bin/tool",
+            bytes: &alternate,
+            executable: Some(executable(Facility::Sidecar)),
         },
     ];
     let bundle = Bundle::build(identity(), &sources, Limits::default()).unwrap();
@@ -196,7 +182,7 @@ fn independent_files_roundtrip() {
     let inspected = Bundle::inspect(bundle.bytes(), Limits::default()).unwrap();
     assert_eq!(inspected.manifest().identity, identity());
     assert_eq!(inspected.declaration("bin/probe"), Some(&Declaration::inspect(&native, Inspected::Sidecar).unwrap()));
-    assert_eq!(inspected.declaration("guests/tool.wasm"), Some(&Declaration::inspect(&guest, Inspected::Guest).unwrap()));
+    assert_eq!(inspected.declaration("bin/tool"), Some(&Declaration::inspect(&alternate, Inspected::Sidecar).unwrap()));
     let manifest = serde_json::to_value(inspected.manifest()).unwrap();
     assert!(manifest["files"][0]["executable"].get("declaration").is_none());
     for source in &sources {
@@ -211,7 +197,7 @@ fn independent_files_roundtrip() {
     {
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(std::fs::metadata(extracted.path()).unwrap().permissions().mode() & 0o777, 0o700);
-        for (path, mode) in [("bin/probe", 0o755), ("guests/tool.wasm", 0o644), ("files/icon.svg", 0o644)] {
+        for (path, mode) in [("bin/probe", 0o755), ("bin/tool", 0o755), ("files/icon.svg", 0o644)] {
             assert_eq!(std::fs::metadata(extracted.path().join(path)).unwrap().permissions().mode() & 0o777, mode);
         }
     }
@@ -259,7 +245,6 @@ fn executable_owned_registrations() {
         }
         assert!(build(invalid).is_err());
     }
-    assert!(build(executable(Facility::Guest)).is_err());
 
     // One Executable Identity Per Target
     let sources = [

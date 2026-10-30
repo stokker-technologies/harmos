@@ -84,7 +84,7 @@ pub(crate) struct Registry {
     shared: Arc<Shared>,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 #[derive(Clone)]
 pub(crate) struct WeakRegistry(Weak<Shared>);
 
@@ -120,7 +120,7 @@ pub(crate) struct Registration {
     internal: bool,
     published: Arc<AtomicBool>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     plugin: Option<crate::plugin::PluginScope>,
 }
 
@@ -322,7 +322,7 @@ impl Registration {
         if !self.published.load(Ordering::Acquire) {
             return false;
         }
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin")]
         if self.plugin.as_ref().is_some_and(|scope| !scope.is_ready()) {
             return false;
         }
@@ -330,7 +330,7 @@ impl Registration {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin")]
 impl WeakRegistry {
     pub(crate) fn upgrade(&self) -> Option<Registry> {
         self.0.upgrade().map(|shared| Registry { shared })
@@ -338,7 +338,7 @@ impl WeakRegistry {
 }
 
 impl Registry {
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(crate) fn downgrade(&self) -> WeakRegistry {
         WeakRegistry(Arc::downgrade(&self.shared))
     }
@@ -408,7 +408,7 @@ impl Registry {
             scope: scope.map(|scope| scope.id),
             internal,
             published: Arc::new(AtomicBool::new(true)),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin")]
             plugin: None,
         });
         let mut state = self.state();
@@ -428,10 +428,10 @@ impl Registry {
     // Reserve definitions bound to one scope; they become visible on commit.
     pub(crate) fn stage(
         &self, scope: &Arc<Scope>, entries: Vec<(Definition, Arc<dyn Runner>)>,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] plugin: Option<crate::plugin::PluginScope>,
+        #[cfg(feature = "plugin")] plugin: Option<crate::plugin::PluginScope>,
     ) -> Result<Staged> {
         self.check_scope(scope)?;
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin")]
         if plugin.as_ref().is_some_and(|scope| scope.is_closed()) {
             return Err(Error::Closing { domain: "plugin scope" });
         }
@@ -454,7 +454,7 @@ impl Registry {
                 scope: Some(scope.id),
                 internal: false,
                 published: Arc::clone(&published),
-                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                #[cfg(feature = "plugin")]
                 plugin: plugin.clone(),
             }));
         }
@@ -766,7 +766,7 @@ impl Registry {
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.unregister", level = "debug", skip_all)]
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(crate) fn close_plugin(&self, scope: &crate::plugin::PluginScope) {
         let mut state = self.state();
         let ids: std::collections::BTreeSet<_> = state
@@ -785,7 +785,7 @@ impl Registry {
         self.shared.publish(&state);
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin")]
     pub(crate) async fn shutdown_plugin(&self, scope: &crate::plugin::PluginScope) -> Result<()> {
         let ids: Vec<_> = self
             .state()
@@ -1292,7 +1292,7 @@ impl Staged {
             return Err(Error::Closing { domain: "resident scope" });
         }
         for entry in &self.entries {
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin")]
             if entry.plugin.as_ref().is_some_and(|scope| scope.is_closed()) {
                 return Err(Error::Closing { domain: "plugin scope" });
             }

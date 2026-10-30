@@ -16,7 +16,7 @@ Runtime and owning managers SHALL expose register and unregister for supported c
 
 ### Requirement: Qualified Contribution Identity
 
-The host SHALL prefix plugin and guest contributions once with their owner identity. Cross-plugin references SHALL use the qualified identity, while reload generations SHALL remain separate from the stable public ID.
+The host SHALL prefix plugin contributions once with their owner identity. Cross-plugin references SHALL use the qualified identity, while reload generations SHALL remain separate from the stable public ID.
 
 #### Scenario: Plugin Operation
 

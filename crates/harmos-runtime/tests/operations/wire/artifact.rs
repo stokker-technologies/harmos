@@ -64,15 +64,6 @@ inert_plugin!(EmptyNative, "empty_native", harmos_runtime::sidecar::Supervisor, 
 #[cfg(feature = "plugin-sidecar")]
 inert_plugin!(ExplicitEmptyNative, "explicit_empty_native", harmos_runtime::sidecar::Supervisor, &[]);
 
-#[cfg(feature = "plugin-guest")]
-inert_plugin!(Guest, "selected_guest", harmos_runtime::guest::kit::Context, &[Operations::CATALOG]);
-
-#[cfg(feature = "plugin-guest")]
-inert_plugin!(EmptyGuest, "empty_guest", harmos_runtime::guest::kit::Context, &[]);
-
-#[cfg(feature = "plugin-guest")]
-inert_plugin!(ExplicitEmptyGuest, "explicit_empty_guest", harmos_runtime::guest::kit::Context, &[]);
-
 /* === Type Aliases === */
 
 /* === Structs === */
@@ -108,15 +99,6 @@ struct UnselectedDeclaration {}
 struct Response {
     value: u32,
 }
-
-#[cfg(feature = "plugin-guest")]
-struct Guest;
-
-#[cfg(feature = "plugin-guest")]
-struct EmptyGuest;
-
-#[cfg(feature = "plugin-guest")]
-struct ExplicitEmptyGuest;
 
 #[cfg(feature = "plugin-sidecar")]
 struct Native;
@@ -182,23 +164,5 @@ fn native_inventory_contains() {
 
     for bytes in [<EmptyNative as Declared>::markers().unwrap().concat(), <ExplicitEmptyNative as Declared>::markers().unwrap().concat()] {
         assert_eq!(Declaration::inspect(&bytes, Facility::Sidecar).unwrap().operations, vec![]);
-    }
-}
-
-#[cfg(feature = "plugin-guest")]
-#[test]
-fn guest_inventory_contains() {
-    use harmos_domain::inventory::{Declaration, Facility};
-    use harmos_domain::plugin::Declared;
-
-    let bytes = <Guest as Declared>::markers().unwrap().concat();
-    let inspected = Declaration::inspect(&bytes, Facility::Guest).unwrap();
-    let expected = Declarations::of::<Operations>().unwrap();
-    assert_eq!(inspected.operations, expected.clone());
-    assert_eq!(harmos_runtime::operations::Contracts::from_tree(Guest::PROVIDES).unwrap()[0].operation().clone(), expected[0]);
-    assert_ne!(expected[0].id.as_str(), UnselectedDeclaration::ID);
-
-    for bytes in [<EmptyGuest as Declared>::markers().unwrap().concat(), <ExplicitEmptyGuest as Declared>::markers().unwrap().concat()] {
-        assert_eq!(Declaration::inspect(&bytes, Facility::Guest).unwrap().operations, vec![]);
     }
 }

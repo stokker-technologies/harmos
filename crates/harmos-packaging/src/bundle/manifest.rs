@@ -93,7 +93,6 @@ pub struct Limits {
 #[serde(rename_all = "lowercase")]
 pub enum Facility {
     Sidecar,
-    Guest,
 }
 
 /* === Traits === */

@@ -47,9 +47,6 @@ pub enum Error {
     Io(#[from] std::io::Error),
 
     #[error(transparent)]
-    Guest(#[from] harmos::guest::Error),
-
-    #[error(transparent)]
     Edit(#[from] harmos::Error<SchematicError>),
 
     #[error(transparent)]

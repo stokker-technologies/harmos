@@ -56,16 +56,12 @@ Catalog expansion SHALL preserve variant conditions on regenerated variants, por
 
 ### Requirement: Clean Consumer Migration
 The workspace SHALL remove RequestFor, infer_request, operation_for, dependency accessors and DependencyError. Internal lifecycle
-machinery SHALL use Carrier. Consumer documentation SHALL specify vertical operation modules, shared guest authoring exports and
+machinery SHALL use Carrier. Consumer documentation SHALL specify vertical operation modules, portable SDK authoring exports and
 type-owned registration as described in the scenarios below.
 
 #### Scenario: Consumer Invocation
 - **WHEN** a consumer invokes an operation
 - **THEN** it passes the operation struct to runtime.operation and configures retry and lane through the invocation builder
-
-#### Scenario: Guest Execution
-- **WHEN** a Wasm guest executes an authored operation
-- **THEN** it consumes a request clone with declared resources and callees, without authored initialization; Operation, Context and Response re-export host-free SDK types, while plugin lifecycle context remains kit::Context
 
 #### Scenario: Operation Source And Registration
 - **WHEN** a consumer authors and registers an executable operation

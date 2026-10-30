@@ -37,7 +37,6 @@ ROOT = Path(__file__).resolve().parents[5]
 TARGET = ROOT / "target"
 GENERATED = TARGET / "generated"
 SCHEMATIC = ROOT / "examples/schematic/Cargo.toml"
-GUESTS = {"schematic-guest": SCHEMATIC, "harmos-sandbox-guest": ROOT / "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"}
 LIBRARIES = ("harmos", "harmos_sdk", "harmos_sidecar", "harmos_macros", "serde")
 
 # === Types === #
@@ -177,7 +176,7 @@ def collect(tool: Path, manifest: Path, package: str, backend: str, profile: str
 
 def offline_inputs(destination: Path) -> Path:
     """Export The Locked Native Dependencies The Offline Authoring Stories Build From."""
-    manifests = sorted({ROOT / "Cargo.toml", SCHEMATIC, *GUESTS.values()})
+    manifests = sorted({ROOT / "Cargo.toml", SCHEMATIC})
     vendor = ["cargo", "vendor", "--locked", "--versioned-dirs"]
     synced = (manifest for manifest in manifests if manifest != ROOT / "Cargo.toml")
     for manifest in synced:

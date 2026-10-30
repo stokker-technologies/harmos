@@ -26,8 +26,6 @@ use super::{EncodedInvocation, Manager};
 use crate::plugin::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
 use harmos_operations::lifecycle::Initialize;
 
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-use crate::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
 use crate::supervision::executor;
 use crate::{Error, Message, Result};
 
@@ -38,10 +36,6 @@ use crate::{Error, Message, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-
-// The Erased Lifecycle Request Forwarded To A Guest As Its Original Bytes.
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-pub(super) struct Encoded(pub(super) Vec<u8>);
 
 #[must_use = "retain SDK entries through original invocation settlement"]
 pub struct PluginSdkRegistration {
@@ -55,60 +49,6 @@ pub struct PluginSdkRegistration {
 /* === Traits === */
 
 /* === Implementations === */
-
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-impl crate::Message for Encoded {
-    const CODEC: &'static str = "harmos.raw.v1";
-    fn encode(&self) -> Vec<u8> {
-        self.0.clone()
-    }
-
-    fn encoded_size(&self) -> usize {
-        self.0.len()
-    }
-
-    fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, crate::MessageError> {
-        std::mem::size_of::<Self>()
-            .checked_add(bytes.len())
-            .ok_or_else(|| crate::MessageError::borrowed("forwarded request size overflows"))
-    }
-
-    fn decode(bytes: &[u8]) -> std::result::Result<Self, crate::MessageError> {
-        Ok(Self(bytes.to_vec()))
-    }
-}
-
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-impl crate::schema::Described for Encoded {
-    const NAME: &'static str = "harmos::sdk_encoded";
-    const FIELDS: &'static [crate::schema::declaration::Field] = &[];
-    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
-        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
-    >(Self::NAME, Self::FIELDS);
-}
-
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-impl crate::MemorySize for Encoded {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.0.capacity())
-    }
-}
-
-// This Adapter Is Never Declared Or Registered By Its Static Identity.
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-impl OperationDeclaration for Encoded {
-    type Request = Self;
-    type Response = Vec<u8>;
-    type Input = crate::operations::NoStream;
-    type Output = crate::operations::NoStream;
-    const ID: &'static str = "harmos.encoded";
-    const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
-        timeout: harmos_domain::operations::UNBOUNDED,
-        attempt_timeout: harmos_domain::operations::UNBOUNDED,
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    };
-}
 
 impl PluginSdkRegistration {
     pub(super) fn new(operations: Manager, scope: &PluginScope, mut entries: [Arc<Entry>; 2], kind: PluginKind) -> Result<Self> {

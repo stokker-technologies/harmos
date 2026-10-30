@@ -585,7 +585,7 @@ mod tests {
             }
         }
         let mut manifest = crate::inventory::contracts::Manifest {
-            facility: "guest".into(),
+            facility: "sidecar".into(),
             owner: "fixture".into(),
             provides: Vec::new(),
             requires: Vec::new(),

@@ -276,7 +276,7 @@ mod tests {
         for (owner, valid) in cases {
             assert_eq!(super::segment(&owner), valid, "owner {owner:?}");
             assert_eq!(QualifiedId::qualify(&owner, "storage.read_file").is_ok(), valid, "qualified {owner:?}");
-            for facility in ["guest", "sidecar"] {
+            for facility in ["sidecar"] {
                 assert_eq!(crate::inventory::contracts::valid_identity(facility, &owner), valid, "{facility} {owner:?}");
                 let publications = crate::inventory::publications::Manifest {
                     facility: facility.to_owned(),

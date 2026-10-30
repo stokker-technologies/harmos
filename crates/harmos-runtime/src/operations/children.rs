@@ -150,7 +150,7 @@ impl Drop for Child {
 
 /* === Public Functions === */
 
-#[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-sidecar")]
 #[tracing::instrument(target = "harmos::operations", name = "operations.lifecycle", level = "trace", skip_all)]
 pub(crate) async fn lifecycle(invocation: EncodedInvocation, mut cancelled: oneshot::Receiver<()>) -> crate::Result<Vec<u8>> {
     let control = std::sync::Arc::clone(&invocation.control);

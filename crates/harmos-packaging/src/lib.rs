@@ -7,14 +7,12 @@
  * ***
  */
 
-// Reusable Cargo Build, Inert Inspection And Guest Componentization.
+// Reusable Cargo Build, Inert Inspection.
 
 /* === Modules === */
 
 mod build;
 pub mod bundle;
-#[cfg(feature = "guest")]
-mod component;
 pub mod config;
 mod dev;
 mod error;
@@ -28,8 +26,6 @@ pub mod python;
 /* === Re-Exports === */
 
 pub use build::{Artifact, Build, PackageOutput, Schema, build, build_with_cancellation, package, package_with_cancellation};
-#[cfg(feature = "guest")]
-pub use component::componentize;
 pub use dev::{DevEvent, dev};
 pub use error::Error;
 pub use harmos_domain::inventory::{Declaration, DeclarationError, Facility};
@@ -74,8 +70,7 @@ pub struct Inspection {
 
 pub fn inspect(path: &Path) -> Result<Inspection, Error> {
     let bytes = std::fs::read(path)?;
-    let guest = bytes.starts_with(b"\0asm");
-    let facility = if guest { Facility::Guest } else { Facility::Sidecar };
+    let facility = Facility::Sidecar;
     let declaration = Declaration::inspect(&bytes, facility)?;
 
     let mut operations = Vec::with_capacity(declaration.operations.len());
@@ -90,7 +85,7 @@ pub fn inspect(path: &Path) -> Result<Inspection, Error> {
         config: declaration.config,
         operations,
         sha256: digest(&bytes),
-        facility: if guest { "guest" } else { "sidecar" },
+        facility: "sidecar",
     })
 }
 

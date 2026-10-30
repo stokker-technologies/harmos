@@ -30,9 +30,6 @@ pub mod plugin;
 #[cfg(all(not(target_arch = "wasm32"), feature = "plugin-sidecar"))]
 pub mod sidecar;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "plugin-guest"))]
-pub mod guest;
-
 pub mod operations;
 
 pub mod runtime;
@@ -122,8 +119,6 @@ pub use harmos_domain::{
 };
 #[cfg(feature = "plugin-sidecar")]
 pub use harmos_macros::plugin as sidecar;
-#[cfg(feature = "plugin-guest")]
-pub use harmos_macros::plugin as guest;
 pub use harmos_sdk::plugin::Plugin;
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
 

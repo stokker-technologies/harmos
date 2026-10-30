@@ -29,7 +29,7 @@ use harmos_runtime::operations::{OperationDeclaration, Registration, WireDeclara
 
 /* === Type Aliases === */
 
-type PublicBackends = PluginBackend<PublicActivation, PublicActivation, PublicActivation>;
+type PublicBackends = PluginBackend<PublicActivation, PublicActivation>;
 
 /* === Structs === */
 
@@ -73,7 +73,6 @@ struct PrivateCaller;
 /* === Implementations === */
 
 impl PluginLifecycle for PublicHost {
-    type Guest = PublicActivation;
     type Sidecar = PublicActivation;
     type Embedded = PublicActivation;
 
