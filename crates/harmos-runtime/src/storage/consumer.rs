@@ -86,13 +86,6 @@ pub trait StreamConsumer<A: Application>: Send + 'static {
 }
 
 pub trait Series<A: Application>: StreamConsumer<A> {
-    fn reader(
-        &mut self, _stream: crate::streams::Definition, _track: &[String], _start: Bound<Position>, _end: Bound<Position>,
-        _limits: crate::streams::ReadLimits,
-    ) -> impl Future<Output = Result<Box<dyn crate::streams::RowSource>, crate::streams::ReadError>> + Send {
-        async { Err(crate::streams::ReadError::Unsupported) }
-    }
-
     // Rows are spelled out rather than aliased: the census is the list of
     // names an author learns, and an erased row belongs to this signature
     // rather than beside them.
@@ -123,12 +116,6 @@ pub(crate) trait Recording<A: Application>: Send {
 }
 
 pub(crate) trait Serving<A: Application>: Recording<A> {
-    #[allow(clippy::type_complexity)]
-    fn reader<'read>(
-        &'read mut self, stream: crate::streams::Definition, track: &'read [String], start: Bound<Position>, end: Bound<Position>,
-        limits: crate::streams::ReadLimits,
-    ) -> Pin<Box<dyn Future<Output = Result<Box<dyn crate::streams::RowSource>, crate::streams::ReadError>> + Send + 'read>>;
-
     #[allow(clippy::type_complexity)]
     fn rows<'read>(
         &'read mut self, stream: crate::streams::Definition, track: &'read [String], start: Bound<Position>, end: Bound<Position>,
@@ -212,14 +199,6 @@ impl<A: Application> Batch<A> {
 }
 
 impl<A: Application, S: Series<A>> Serving<A> for S {
-    #[allow(clippy::type_complexity)]
-    fn reader<'read>(
-        &'read mut self, stream: crate::streams::Definition, track: &'read [String], start: Bound<Position>, end: Bound<Position>,
-        limits: crate::streams::ReadLimits,
-    ) -> Pin<Box<dyn Future<Output = Result<Box<dyn crate::streams::RowSource>, crate::streams::ReadError>> + Send + 'read>> {
-        Box::pin(Series::reader(self, stream, track, start, end, limits))
-    }
-
     fn rows<'read>(
         &'read mut self, stream: crate::streams::Definition, track: &'read [String], start: Bound<Position>, end: Bound<Position>,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<At<Arc<dyn Any + Send + Sync>>>, crate::streams::BeneathWindow>> + Send + 'read>> {

@@ -1254,20 +1254,6 @@ async fn answer<A: Application>(
 
 async fn serve<A: Application>(request: Request, consumers: &mut Consumers<A>) {
     match request {
-        Request::Reader {
-            stream,
-            track,
-            start,
-            end,
-            limits,
-            permit,
-            reply,
-        } => {
-            if !reply.is_closed() {
-                let answer = consumers.row_reader(stream, &track, start, end, limits).await;
-                let _ = reply.send(crate::streams::Opened { source: answer, permit });
-            }
-        }
         Request::Rows { stream, track, start, end, reply } => {
             let answer = consumers.served(stream, &track, start, end).await;
             let _ = reply.send(answer);

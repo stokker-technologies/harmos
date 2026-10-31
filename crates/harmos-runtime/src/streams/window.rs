@@ -349,58 +349,6 @@ impl Window {
         }
     }
 
-    pub(crate) fn reader<S: serde::Serialize + 'static>(
-        &self, start: Bound<Position>, end: Bound<Position>, limits: super::ReadLimits,
-    ) -> Result<Box<dyn super::RowSource>, super::ReadError> {
-        struct Frozen {
-            cut: super::ReadCut,
-            rows: std::collections::vec_deque::IntoIter<(Position, Row)>,
-        }
-        impl super::RowSource for Frozen {
-            fn cut(&self) -> super::ReadCut {
-                self.cut
-            }
-            fn next(&mut self, cancelled: &AtomicBool) -> Result<Option<crate::state::At<Row>>, super::ReadError> {
-                if cancelled.load(Ordering::Acquire) {
-                    return Err(super::ReadError::Closed);
-                }
-                Ok(self.rows.next().map(|(position, value)| crate::state::At { position, value }))
-            }
-        }
-        let _visibility = self.visibility.read().expect("stream visibility poisoned");
-        let ring = self.ring.read().expect("the ring is never poisoned");
-        if ring.missed > 0 {
-            return Err(super::ReadError::IncompleteCapture);
-        }
-        if ring.standing && reaches_beneath(start, ring.floor) {
-            return Err(super::ReadError::Retained { floor: ring.floor });
-        }
-        let mut bytes = 0usize;
-        let mut rows = VecDeque::new();
-        for (scanned, (_, _, position, row)) in ring.rows.iter().enumerate() {
-            if scanned == limits.rows {
-                return Err(super::ReadError::Limit("window row scan"));
-            }
-            if !admitted(start, end, *position) {
-                continue;
-            }
-            let typed =
-                super::row_value::<S>(row.as_ref()).ok_or_else(|| super::ReadError::Unreadable("window row type mismatch".into()))?;
-            bytes = bytes
-                .checked_add(super::reader::encoded_size(typed, limits.row_bytes)?)
-                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<(Position, Row)>()))
-                .filter(|bytes| *bytes <= limits.pinned_bytes)
-                .ok_or(super::ReadError::Limit("pinned bytes"))?;
-            rows.push_back((*position, Arc::clone(row)));
-        }
-        Ok(Box::new(Frozen {
-            cut: super::ReadCut::Window {
-                delivered: crate::storage::Cursor(ring.last),
-            },
-            rows: rows.into_iter(),
-        }))
-    }
-
     pub(crate) fn since(&self, frontier: u64) -> Advanced {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
         let ring = self.ring.read().expect("the ring is never poisoned");
