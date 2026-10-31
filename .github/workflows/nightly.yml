@@ -132,14 +132,20 @@ jobs:
     - build_bench
     - check_generated_python
     - check_python
-    - check_rust
+    - check_rust_unix
+    - check_rust_windows
     - source
     - validate_coverage_rust
-    - validate_test_rust_acceptance
-    - validate_test_rust_integration
-    - validate_test_rust_starter
-    - validate_test_rust_system
-    - validate_test_rust_unit
+    - validate_test_rust_acceptance_unix
+    - validate_test_rust_acceptance_windows
+    - validate_test_rust_integration_unix
+    - validate_test_rust_integration_windows
+    - validate_test_rust_starter_unix
+    - validate_test_rust_starter_windows
+    - validate_test_rust_system_unix
+    - validate_test_rust_system_windows
+    - validate_test_rust_unit_unix
+    - validate_test_rust_unit_windows
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -303,18 +309,27 @@ jobs:
         github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
       RELEASE_PROFILE: release
     needs:
-    - build_product
-    - build_tests
+    - build_product_unix
+    - build_product_windows
+    - build_tests_unix
+    - build_tests_windows
     - check_generated_python
     - check_python
-    - check_rust
-    - package_rust
-    - prepare_test_fixtures
+    - check_rust_unix
+    - check_rust_windows
+    - package_rust_unix
+    - package_rust_windows
+    - prepare_test_fixtures_unix
+    - prepare_test_fixtures_windows
     - source
-    - validate_test_rust_acceptance
-    - validate_test_rust_integration
-    - validate_test_rust_system
-    - validate_test_rust_unit
+    - validate_test_rust_acceptance_unix
+    - validate_test_rust_acceptance_windows
+    - validate_test_rust_integration_unix
+    - validate_test_rust_integration_windows
+    - validate_test_rust_system_unix
+    - validate_test_rust_system_windows
+    - validate_test_rust_unit_unix
+    - validate_test_rust_unit_windows
     permissions:
       actions: read
       contents: read
@@ -401,9 +416,12 @@ jobs:
       with:
         summary-module: harmos_tools.ci.summary
     needs:
-    - build_product
-    - build_tests
-    - prepare_test_fixtures
+    - build_product_unix
+    - build_product_windows
+    - build_tests_unix
+    - build_tests_windows
+    - prepare_test_fixtures_unix
+    - prepare_test_fixtures_windows
     env:
       MISE_ENABLE_TOOLS: >-
         go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
@@ -556,7 +574,8 @@ jobs:
         go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
       MISE_TASK_SKIP: build
     needs:
-    - build_product
+    - build_product_unix
+    - build_product_windows
     concurrency:
       group: ci-${{ github.workflow }}-check_generated_python-shared-${{ github.run_id }}
       cancel-in-progress: false
@@ -568,14 +587,20 @@ jobs:
     - build_bench
     - check_generated_python
     - check_python
-    - check_rust
+    - check_rust_unix
+    - check_rust_windows
     - source
     - validate_coverage_rust
-    - validate_test_rust_acceptance
-    - validate_test_rust_integration
-    - validate_test_rust_starter
-    - validate_test_rust_system
-    - validate_test_rust_unit
+    - validate_test_rust_acceptance_unix
+    - validate_test_rust_acceptance_windows
+    - validate_test_rust_integration_unix
+    - validate_test_rust_integration_windows
+    - validate_test_rust_starter_unix
+    - validate_test_rust_starter_windows
+    - validate_test_rust_system_unix
+    - validate_test_rust_system_windows
+    - validate_test_rust_unit_unix
+    - validate_test_rust_unit_windows
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -657,14 +682,20 @@ jobs:
     - build_bench
     - check_generated_python
     - check_python
-    - check_rust
+    - check_rust_unix
+    - check_rust_windows
     - source
     - validate_coverage_rust
-    - validate_test_rust_acceptance
-    - validate_test_rust_integration
-    - validate_test_rust_starter
-    - validate_test_rust_system
-    - validate_test_rust_unit
+    - validate_test_rust_acceptance_unix
+    - validate_test_rust_acceptance_windows
+    - validate_test_rust_integration_unix
+    - validate_test_rust_integration_windows
+    - validate_test_rust_starter_unix
+    - validate_test_rust_starter_windows
+    - validate_test_rust_system_unix
+    - validate_test_rust_system_windows
+    - validate_test_rust_unit_unix
+    - validate_test_rust_unit_windows
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -738,10 +769,10 @@ jobs:
     concurrency:
       group: ci-${{ github.workflow }}-bench_rust_system-shared-${{ github.run_id }}
       cancel-in-progress: false
-  build_product:
-    name: Build / Product (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
+  build_product_unix:
+    name: Build / Product (unix)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -758,24 +789,21 @@ jobs:
           github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-build-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-build-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-\\nci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-build-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Product Build
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.build --profile ${{ env.PROFILE }} --output product --task build
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Compile Release Product
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.build --profile release --output product --task build
       if: >-
-        matrix.platform == 'unix' && (true) && (env.PROFILE == 'dev' &&
+        (true) && (env.PROFILE == 'dev' &&
         github.event_name != 'pull_request')
     - name: Archive product
       uses: ./.github/actions/archive-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f62696e222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6c6962222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f70726f64756374222c227461726765742f67656e6572617465642f707974686f6e2f707970726f6a6563742e746f6d6c222c227461726765742f67656e6572617465642f707974686f6e2f737263225d\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: build-product-${{ env.PROFILE }}-unix
@@ -783,10 +811,9 @@ jobs:
         if-no-files-found: error
         retention-days: 7
         compression-level: 0
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -794,7 +821,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.mise-cache-hit != 'true')
       with:
@@ -802,7 +829,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.sccache-cache-hit != 'true')
       with:
@@ -810,19 +837,43 @@ jobs:
         path: ${{ steps.setup_unix.outputs.sccache-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_unix.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'unix' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_unix.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_unix.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_unix.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_unix.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
       with:
         summary-module: ""
+    env:
+      MISE_ENABLE_TOOLS: >-
+        aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
+      COMPILER_CACHE_BACKEND: disk
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+      SCCACHE_CACHE_SIZE: 2G
+      COMPILER_CACHE_MODE: >-
+        ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
+    concurrency:
+      group: >-
+        ci-${{ github.workflow }}-build_product-unix-${{
+        github.run_id }}
+      cancel-in-progress: false
+  build_product_windows:
+    name: Build / Product (windows)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
     - id: setup_windows
       uses: ./.github/actions/setup
       with:
@@ -833,24 +884,21 @@ jobs:
           github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-build-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-build-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-\\nci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-build-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Product Build
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.build --profile ${{ env.PROFILE }} --output product --task build
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Compile Release Product
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.build --profile release --output product --task build
       if: >-
-        matrix.platform == 'windows' && (true) && (env.PROFILE == 'dev' &&
+        (true) && (env.PROFILE == 'dev' &&
         github.event_name != 'pull_request')
     - name: Archive product
       uses: ./.github/actions/archive-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f62696e222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6c6962222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f70726f64756374222c227461726765742f67656e6572617465642f707974686f6e2f707970726f6a6563742e746f6d6c222c227461726765742f67656e6572617465642f707974686f6e2f737263225d\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: build-product-${{ env.PROFILE }}-windows
@@ -858,10 +906,9 @@ jobs:
         if-no-files-found: error
         retention-days: 7
         compression-level: 0
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -869,7 +916,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.mise-cache-hit != 'true')
       with:
@@ -877,7 +924,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.sccache-cache-hit != 'true')
       with:
@@ -885,14 +932,14 @@ jobs:
         path: ${{ steps.setup_windows.outputs.sccache-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_windows.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'windows' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_windows.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
@@ -907,30 +954,15 @@ jobs:
       COMPILER_CACHE_MODE: >-
         ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ""
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ""
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-build_product-${{ matrix.platform }}-${{
+        ci-${{ github.workflow }}-build_product-windows-${{
         github.run_id }}
       cancel-in-progress: false
-  build_tests:
-    name: Build / Tests (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
+  build_tests_unix:
+    name: Build / Tests (unix)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -947,17 +979,14 @@ jobs:
           github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-build-rust-tests-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-build-rust-tests-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-\\nci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-build-rust-tests-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Tests Build
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.build --profile ${{ env.PROFILE }} --output tests --task build:rust:tests
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Archive fixtures
       uses: ./.github/actions/archive-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6669787475726573225d\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: build_rust_tests-fixtures-${{ env.PROFILE }}-unix
@@ -965,12 +994,10 @@ jobs:
         if-no-files-found: error
         retention-days: 7
         compression-level: 0
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Archive tests
       uses: ./.github/actions/archive-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f617263686976652e7461722e7a7374222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f636f6d70696c65722e6a736f6e225d\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: build-tests-${{ env.PROFILE }}-unix
@@ -978,10 +1005,9 @@ jobs:
         if-no-files-found: error
         retention-days: 7
         compression-level: 0
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -989,7 +1015,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.mise-cache-hit != 'true')
       with:
@@ -997,7 +1023,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.sccache-cache-hit != 'true')
       with:
@@ -1005,19 +1031,43 @@ jobs:
         path: ${{ steps.setup_unix.outputs.sccache-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_unix.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'unix' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_unix.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_unix.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_unix.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_unix.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
       with:
         summary-module: ""
+    env:
+      MISE_ENABLE_TOOLS: >-
+        aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
+      COMPILER_CACHE_BACKEND: disk
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+      SCCACHE_CACHE_SIZE: 2G
+      COMPILER_CACHE_MODE: >-
+        ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
+    concurrency:
+      group: >-
+        ci-${{ github.workflow }}-build_tests-unix-${{ github.run_id
+        }}
+      cancel-in-progress: false
+  build_tests_windows:
+    name: Build / Tests (windows)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
     - id: setup_windows
       uses: ./.github/actions/setup
       with:
@@ -1028,17 +1078,14 @@ jobs:
           github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-build-rust-tests-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-build-rust-tests-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-\\nci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-build-rust-tests-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Tests Build
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.build --profile ${{ env.PROFILE }} --output tests --task build:rust:tests
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Archive fixtures
       uses: ./.github/actions/archive-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6669787475726573225d\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: build_rust_tests-fixtures-${{ env.PROFILE }}-windows
@@ -1046,12 +1093,10 @@ jobs:
         if-no-files-found: error
         retention-days: 7
         compression-level: 0
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Archive tests
       uses: ./.github/actions/archive-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f617263686976652e7461722e7a7374222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f636f6d70696c65722e6a736f6e225d\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: build-tests-${{ env.PROFILE }}-windows
@@ -1059,10 +1104,9 @@ jobs:
         if-no-files-found: error
         retention-days: 7
         compression-level: 0
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -1070,7 +1114,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.mise-cache-hit != 'true')
       with:
@@ -1078,7 +1122,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.sccache-cache-hit != 'true')
       with:
@@ -1086,14 +1130,14 @@ jobs:
         path: ${{ steps.setup_windows.outputs.sccache-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_windows.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'windows' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_windows.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
@@ -1108,30 +1152,15 @@ jobs:
       COMPILER_CACHE_MODE: >-
         ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ""
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ""
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-build_tests-${{ matrix.platform }}-${{ github.run_id
+        ci-${{ github.workflow }}-build_tests-windows-${{ github.run_id
         }}
       cancel-in-progress: false
-  check_rust:
-    name: Check / Rust (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
+  check_rust_unix:
+    name: Check / Rust (unix)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -1148,16 +1177,14 @@ jobs:
           github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-check-rust-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-check-rust-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-\\nci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-check-rust-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.build
       env:
         BUILD_SCRIPT: mise run check:rust
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -1165,7 +1192,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.mise-cache-hit != 'true')
       with:
@@ -1173,7 +1200,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.sccache-cache-hit != 'true')
       with:
@@ -1181,19 +1208,41 @@ jobs:
         path: ${{ steps.setup_unix.outputs.sccache-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_unix.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'unix' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_unix.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_unix.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_unix.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_unix.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
       with:
         summary-module: ""
+    env:
+      MISE_ENABLE_TOOLS: >-
+        aqua:koalaman/shellcheck,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
+      COMPILER_CACHE_BACKEND: disk
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+      SCCACHE_CACHE_SIZE: 2G
+      COMPILER_CACHE_MODE: >-
+        ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
+    concurrency:
+      group: ci-${{ github.workflow }}-check_rust-unix-${{ github.run_id }}
+      cancel-in-progress: false
+  check_rust_windows:
+    name: Check / Rust (windows)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
     - id: setup_windows
       uses: ./.github/actions/setup
       with:
@@ -1204,16 +1253,14 @@ jobs:
           github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-check-rust-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-check-rust-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-\\nci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-check-rust-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.build
       env:
         BUILD_SCRIPT: mise run check:rust
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -1221,7 +1268,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.mise-cache-hit != 'true')
       with:
@@ -1229,7 +1276,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.sccache-cache-hit != 'true')
       with:
@@ -1237,14 +1284,14 @@ jobs:
         path: ${{ steps.setup_windows.outputs.sccache-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_windows.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'windows' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_windows.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
@@ -1259,33 +1306,18 @@ jobs:
       COMPILER_CACHE_MODE: >-
         ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ""
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ""
     concurrency:
-      group: ci-${{ github.workflow }}-check_rust-${{ matrix.platform }}-${{ github.run_id }}
+      group: ci-${{ github.workflow }}-check_rust-windows-${{ github.run_id }}
       cancel-in-progress: false
-  package_rust:
-    name: Package / Rust (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
+  package_rust_unix:
+    name: Package / Rust (unix)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     needs:
-    - build_product
+    - build_product_unix
     - check_generated_python
     - check_python
-    - check_rust
+    - check_rust_unix
     - source
     steps:
     - name: Configure Checkout Git
@@ -1302,7 +1334,7 @@ jobs:
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: >-
-        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        ((true || github.event_name == 'pull_request' ||
         startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev'))) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -1310,7 +1342,7 @@ jobs:
         name: build-product-${{ env.PROFILE }}-unix
         path: target/ci
       if: >-
-        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        ((true || github.event_name == 'pull_request' ||
         startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev'))) && (true)
     - name: Extract build / product
@@ -1318,12 +1350,12 @@ jobs:
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
       if: >-
-        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        ((true || github.event_name == 'pull_request' ||
         startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev'))) && (true)
     - run: mise run package:rust --profile ${{ env.PROFILE }}
       if: >-
-        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        ((true || github.event_name == 'pull_request' ||
         startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev'))) && (true)
     - name: Archive package
@@ -1331,7 +1363,7 @@ jobs:
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f7061636b6167652f7b70726f66696c657d2f7b7461726765747d225d\"]"
       if: >-
-        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        ((true || github.event_name == 'pull_request' ||
         startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev'))) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -1342,12 +1374,12 @@ jobs:
         retention-days: 7
         compression-level: 0
       if: >-
-        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        ((true || github.event_name == 'pull_request' ||
         startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev'))) && (true)
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        ((true || github.event_name == 'pull_request' ||
         startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev'))) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
@@ -1357,7 +1389,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        ((true || github.event_name == 'pull_request' ||
         startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev'))) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
@@ -1367,7 +1399,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        ((true || github.event_name == 'pull_request' ||
         startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev'))) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
@@ -1377,7 +1409,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.uv-path }}
     - name: Cache Summary
       if: >-
-        matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
+        ((true || github.event_name == 'pull_request' ||
         startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev'))) && (always())
       env:
@@ -1385,6 +1417,35 @@ jobs:
       uses: ./.github/actions/save-caches
       with:
         summary-module: ""
+    if: >-
+      ((true || github.event_name == 'pull_request' || startsWith(github.ref,
+      'refs/tags/v') || false || (github.event_name == 'push' && github.ref ==
+      'refs/heads/dev')))
+    env:
+      MISE_ENABLE_TOOLS: >-
+        go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+      MISE_TASK_SKIP: build
+    concurrency:
+      group: >-
+        ci-${{ github.workflow }}-package_rust-unix-${{ github.run_id
+        }}
+      cancel-in-progress: false
+  package_rust_windows:
+    name: Package / Rust (windows)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    needs:
+    - build_product_windows
+    - check_generated_python
+    - check_python
+    - check_rust_windows
+    - source
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
     - id: setup_windows
       uses: ./.github/actions/setup
       with:
@@ -1394,7 +1455,7 @@ jobs:
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: >-
-        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        ((true || github.event_name == 'pull_request'
         || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
         && github.ref == 'refs/heads/dev'))) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -1402,7 +1463,7 @@ jobs:
         name: build-product-${{ env.PROFILE }}-windows
         path: target/ci
       if: >-
-        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        ((true || github.event_name == 'pull_request'
         || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
         && github.ref == 'refs/heads/dev'))) && (true)
     - name: Extract build / product
@@ -1410,12 +1471,12 @@ jobs:
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
       if: >-
-        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        ((true || github.event_name == 'pull_request'
         || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
         && github.ref == 'refs/heads/dev'))) && (true)
     - run: mise run package:rust --profile ${{ env.PROFILE }}
       if: >-
-        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        ((true || github.event_name == 'pull_request'
         || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
         && github.ref == 'refs/heads/dev'))) && (true)
     - name: Archive package
@@ -1423,7 +1484,7 @@ jobs:
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f7061636b6167652f7b70726f66696c657d2f7b7461726765747d225d\"]"
       if: >-
-        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        ((true || github.event_name == 'pull_request'
         || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
         && github.ref == 'refs/heads/dev'))) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -1434,12 +1495,12 @@ jobs:
         retention-days: 7
         compression-level: 0
       if: >-
-        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        ((true || github.event_name == 'pull_request'
         || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
         && github.ref == 'refs/heads/dev'))) && (true)
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        ((true || github.event_name == 'pull_request'
         || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
         && github.ref == 'refs/heads/dev'))) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
@@ -1449,7 +1510,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        ((true || github.event_name == 'pull_request'
         || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
         && github.ref == 'refs/heads/dev'))) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
@@ -1459,7 +1520,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        ((true || github.event_name == 'pull_request'
         || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
         && github.ref == 'refs/heads/dev'))) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
@@ -1469,7 +1530,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.uv-path }}
     - name: Cache Summary
       if: >-
-        matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
+        ((true || github.event_name == 'pull_request'
         || startsWith(github.ref, 'refs/tags/v') || false || (github.event_name == 'push'
         && github.ref == 'refs/heads/dev'))) && (always())
       env:
@@ -1485,30 +1546,15 @@ jobs:
       MISE_ENABLE_TOOLS: >-
         go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
       MISE_TASK_SKIP: build
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ""
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ""
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-package_rust-${{ matrix.platform }}-${{ github.run_id
+        ci-${{ github.workflow }}-package_rust-windows-${{ github.run_id
         }}
       cancel-in-progress: false
-  prepare_test_fixtures:
-    name: Prepare / Test Fixtures (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
+  prepare_test_fixtures_unix:
+    name: Prepare / Test Fixtures (unix)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -1525,38 +1571,31 @@ jobs:
           github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-prepare-tests-fixtures-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-prepare-tests-fixtures-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-\\nci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-prepare-tests-fixtures-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-product-${{ env.PROFILE }}-unix
         path: target/ci
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Extract build / product
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build_rust_tests-fixtures-${{ env.PROFILE }}-unix
         path: target/ci
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Extract build:rust:tests / fixtures
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.build
       env:
         BUILD_SCRIPT: mise run prepare:tests:fixtures --profile ${{ env.PROFILE }}
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Archive fixtures
       uses: ./.github/actions/archive-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6669787475726573225d\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: build-fixtures-${{ env.PROFILE }}-unix
@@ -1564,10 +1603,9 @@ jobs:
         if-no-files-found: error
         retention-days: 7
         compression-level: 0
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -1575,7 +1613,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.mise-cache-hit != 'true')
       with:
@@ -1583,7 +1621,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.sccache-cache-hit != 'true')
       with:
@@ -1591,19 +1629,47 @@ jobs:
         path: ${{ steps.setup_unix.outputs.sccache-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_unix.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'unix' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_unix.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_unix.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_unix.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_unix.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
       with:
         summary-module: ""
+    env:
+      MISE_ENABLE_TOOLS: >-
+        aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,uv
+      COMPILER_CACHE_BACKEND: disk
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+      SCCACHE_CACHE_SIZE: 2G
+      COMPILER_CACHE_MODE: >-
+        ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
+        github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
+      MISE_TASK_SKIP: build,build:rust:tests
+    needs:
+    - build_product_unix
+    - build_tests_unix
+    concurrency:
+      group: >-
+        ci-${{ github.workflow }}-prepare_test_fixtures-unix-${{
+        github.run_id }}
+      cancel-in-progress: false
+  prepare_test_fixtures_windows:
+    name: Prepare / Test Fixtures (windows)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
     - id: setup_windows
       uses: ./.github/actions/setup
       with:
@@ -1614,38 +1680,31 @@ jobs:
           github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-prepare-tests-fixtures-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-prepare-tests-fixtures-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-\\nci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-prepare-tests-fixtures-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-product-${{ env.PROFILE }}-windows
         path: target/ci
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Extract build / product
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build_rust_tests-fixtures-${{ env.PROFILE }}-windows
         path: target/ci
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Extract build:rust:tests / fixtures
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.build
       env:
         BUILD_SCRIPT: mise run prepare:tests:fixtures --profile ${{ env.PROFILE }}
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Archive fixtures
       uses: ./.github/actions/archive-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6669787475726573225d\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: build-fixtures-${{ env.PROFILE }}-windows
@@ -1653,10 +1712,9 @@ jobs:
         if-no-files-found: error
         retention-days: 7
         compression-level: 0
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -1664,7 +1722,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.mise-cache-hit != 'true')
       with:
@@ -1672,7 +1730,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.sccache-cache-hit != 'true')
       with:
@@ -1680,14 +1738,14 @@ jobs:
         path: ${{ steps.setup_windows.outputs.sccache-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_windows.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'windows' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_windows.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
@@ -1704,32 +1762,17 @@ jobs:
         github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
       MISE_TASK_SKIP: build,build:rust:tests
     needs:
-    - build_product
-    - build_tests
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ""
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ""
+    - build_product_windows
+    - build_tests_windows
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-prepare_test_fixtures-${{ matrix.platform }}-${{
+        ci-${{ github.workflow }}-prepare_test_fixtures-windows-${{
         github.run_id }}
       cancel-in-progress: false
-  validate_test_rust_acceptance:
-    name: Test / Rust / Acceptance (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
+  validate_test_rust_acceptance_unix:
+    name: Test / Rust / Acceptance (unix)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -1744,41 +1787,33 @@ jobs:
         cache-mode: ""
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-product-${{ env.PROFILE }}-unix
         path: target/ci
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Extract build / product
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-tests-${{ env.PROFILE }}-unix
         path: target/ci
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Extract build:rust:tests / tests
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-fixtures-${{ env.PROFILE }}-unix
         path: target/ci
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Extract prepare:tests:fixtures / fixtures
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - run: mise run test:rust:acceptance --profile ${{ env.PROFILE }}
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: matrix.platform == 'unix' && (true) && (always())
+      if: (true) && (always())
       with:
         name: junit-test_rust_acceptance-${{ env.PROFILE }}-unix
         path: |-
@@ -1789,7 +1824,7 @@ jobs:
         include-hidden-files: true
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -1797,7 +1832,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.mise-cache-hit != 'true')
       with:
@@ -1805,19 +1840,41 @@ jobs:
         path: ${{ steps.setup_unix.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_unix.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'unix' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_unix.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_unix.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_unix.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
       with:
         summary-module: ""
+    env:
+      MISE_ENABLE_TOOLS: >-
+        go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+      MISE_TASK_SKIP: build,build:rust:tests,prepare:tests:fixtures
+    needs:
+    - build_product_unix
+    - build_tests_unix
+    - prepare_test_fixtures_unix
+    concurrency:
+      group: >-
+        ci-${{ github.workflow }}-validate_test_rust_acceptance-unix-${{ github.run_id }}
+      cancel-in-progress: false
+  validate_test_rust_acceptance_windows:
+    name: Test / Rust / Acceptance (windows)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
     - id: setup_windows
       uses: ./.github/actions/setup
       with:
@@ -1826,41 +1883,33 @@ jobs:
         cache-mode: ""
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-product-${{ env.PROFILE }}-windows
         path: target/ci
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Extract build / product
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-tests-${{ env.PROFILE }}-windows
         path: target/ci
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Extract build:rust:tests / tests
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-fixtures-${{ env.PROFILE }}-windows
         path: target/ci
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Extract prepare:tests:fixtures / fixtures
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - run: mise run test:rust:acceptance --profile ${{ env.PROFILE }}
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: matrix.platform == 'windows' && (true) && (always())
+      if: (true) && (always())
       with:
         name: junit-test_rust_acceptance-${{ env.PROFILE }}-windows
         path: |-
@@ -1871,7 +1920,7 @@ jobs:
         include-hidden-files: true
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -1879,7 +1928,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.mise-cache-hit != 'true')
       with:
@@ -1887,14 +1936,14 @@ jobs:
         path: ${{ steps.setup_windows.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_windows.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'windows' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
@@ -1905,33 +1954,17 @@ jobs:
         go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
       MISE_TASK_SKIP: build,build:rust:tests,prepare:tests:fixtures
     needs:
-    - build_product
-    - build_tests
-    - prepare_test_fixtures
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ""
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ""
+    - build_product_windows
+    - build_tests_windows
+    - prepare_test_fixtures_windows
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-validate_test_rust_acceptance-${{ matrix.platform
-        }}-${{ github.run_id }}
+        ci-${{ github.workflow }}-validate_test_rust_acceptance-windows-${{ github.run_id }}
       cancel-in-progress: false
-  validate_test_rust_integration:
-    name: Test / Rust / Integration (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
+  validate_test_rust_integration_unix:
+    name: Test / Rust / Integration (unix)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -1946,31 +1979,25 @@ jobs:
         cache-mode: ""
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-tests-${{ env.PROFILE }}-unix
         path: target/ci
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Extract build:rust:tests / tests
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-fixtures-${{ env.PROFILE }}-unix
         path: target/ci
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Extract prepare:tests:fixtures / fixtures
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - run: mise run test:rust:integration --profile ${{ env.PROFILE }}
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: matrix.platform == 'unix' && (true) && (always())
+      if: (true) && (always())
       with:
         name: junit-test_rust_integration-${{ env.PROFILE }}-unix
         path: |-
@@ -1981,7 +2008,7 @@ jobs:
         include-hidden-files: true
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -1989,7 +2016,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.mise-cache-hit != 'true')
       with:
@@ -1997,19 +2024,40 @@ jobs:
         path: ${{ steps.setup_unix.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_unix.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'unix' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_unix.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_unix.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_unix.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
       with:
         summary-module: ""
+    env:
+      MISE_ENABLE_TOOLS: >-
+        go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+      MISE_TASK_SKIP: build:rust:tests,prepare:tests:fixtures
+    needs:
+    - build_tests_unix
+    - prepare_test_fixtures_unix
+    concurrency:
+      group: >-
+        ci-${{ github.workflow }}-validate_test_rust_integration-unix-${{ github.run_id }}
+      cancel-in-progress: false
+  validate_test_rust_integration_windows:
+    name: Test / Rust / Integration (windows)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
     - id: setup_windows
       uses: ./.github/actions/setup
       with:
@@ -2018,31 +2066,25 @@ jobs:
         cache-mode: ""
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-tests-${{ env.PROFILE }}-windows
         path: target/ci
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Extract build:rust:tests / tests
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-fixtures-${{ env.PROFILE }}-windows
         path: target/ci
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Extract prepare:tests:fixtures / fixtures
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - run: mise run test:rust:integration --profile ${{ env.PROFILE }}
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: matrix.platform == 'windows' && (true) && (always())
+      if: (true) && (always())
       with:
         name: junit-test_rust_integration-${{ env.PROFILE }}-windows
         path: |-
@@ -2053,7 +2095,7 @@ jobs:
         include-hidden-files: true
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -2061,7 +2103,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.mise-cache-hit != 'true')
       with:
@@ -2069,14 +2111,14 @@ jobs:
         path: ${{ steps.setup_windows.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_windows.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'windows' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
@@ -2087,32 +2129,16 @@ jobs:
         go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
       MISE_TASK_SKIP: build:rust:tests,prepare:tests:fixtures
     needs:
-    - build_tests
-    - prepare_test_fixtures
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ""
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ""
+    - build_tests_windows
+    - prepare_test_fixtures_windows
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-validate_test_rust_integration-${{ matrix.platform
-        }}-${{ github.run_id }}
+        ci-${{ github.workflow }}-validate_test_rust_integration-windows-${{ github.run_id }}
       cancel-in-progress: false
-  validate_test_rust_starter:
-    name: Test / Rust / Starter (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
+  validate_test_rust_starter_unix:
+    name: Test / Rust / Starter (unix)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -2127,41 +2153,33 @@ jobs:
         cache-mode: ""
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'unix' && ((true)) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-product-${{ env.PROFILE }}-unix
         path: target/ci
-      if: matrix.platform == 'unix' && ((true)) && (true)
     - name: Extract build / product
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'unix' && ((true)) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-tests-${{ env.PROFILE }}-unix
         path: target/ci
-      if: matrix.platform == 'unix' && ((true)) && (true)
     - name: Extract build:rust:tests / tests
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'unix' && ((true)) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-fixtures-${{ env.PROFILE }}-unix
         path: target/ci
-      if: matrix.platform == 'unix' && ((true)) && (true)
     - name: Extract prepare:tests:fixtures / fixtures
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'unix' && ((true)) && (true)
     - run: mise run test:rust:starter --profile ${{ env.PROFILE }}
-      if: matrix.platform == 'unix' && ((true)) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: matrix.platform == 'unix' && ((true)) && (always())
+      if: ((true)) && (always())
       with:
         name: junit-test_rust_starter-${{ env.PROFILE }}-unix
         path: |-
@@ -2172,7 +2190,7 @@ jobs:
         include-hidden-files: true
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && ((true)) && (success() && (github.ref ==
+        ((true)) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -2180,7 +2198,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && ((true)) && (success() && (github.ref ==
+        ((true)) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.mise-cache-hit != 'true')
       with:
@@ -2188,19 +2206,42 @@ jobs:
         path: ${{ steps.setup_unix.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && ((true)) && (success() && (github.ref ==
+        ((true)) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_unix.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'unix' && ((true)) && (always())
+      if: ((true)) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_unix.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_unix.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_unix.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
       with:
         summary-module: ""
+    env:
+      MISE_ENABLE_TOOLS: >-
+        go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+      MISE_TASK_SKIP: build,build:rust:tests,prepare:tests:fixtures
+    needs:
+    - build_product_unix
+    - build_tests_unix
+    - prepare_test_fixtures_unix
+    concurrency:
+      group: >-
+        ci-${{ github.workflow }}-validate_test_rust_starter-unix-${{
+        github.run_id }}
+      cancel-in-progress: false
+  validate_test_rust_starter_windows:
+    name: Test / Rust / Starter (windows)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
     - id: setup_windows
       uses: ./.github/actions/setup
       with:
@@ -2209,41 +2250,33 @@ jobs:
         cache-mode: ""
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'windows' && ((true)) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-product-${{ env.PROFILE }}-windows
         path: target/ci
-      if: matrix.platform == 'windows' && ((true)) && (true)
     - name: Extract build / product
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'windows' && ((true)) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-tests-${{ env.PROFILE }}-windows
         path: target/ci
-      if: matrix.platform == 'windows' && ((true)) && (true)
     - name: Extract build:rust:tests / tests
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'windows' && ((true)) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-fixtures-${{ env.PROFILE }}-windows
         path: target/ci
-      if: matrix.platform == 'windows' && ((true)) && (true)
     - name: Extract prepare:tests:fixtures / fixtures
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'windows' && ((true)) && (true)
     - run: mise run test:rust:starter --profile ${{ env.PROFILE }}
-      if: matrix.platform == 'windows' && ((true)) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: matrix.platform == 'windows' && ((true)) && (always())
+      if: ((true)) && (always())
       with:
         name: junit-test_rust_starter-${{ env.PROFILE }}-windows
         path: |-
@@ -2254,7 +2287,7 @@ jobs:
         include-hidden-files: true
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && ((true)) && (success() && (github.ref ==
+        ((true)) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -2262,7 +2295,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && ((true)) && (success() && (github.ref ==
+        ((true)) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.mise-cache-hit != 'true')
       with:
@@ -2270,14 +2303,14 @@ jobs:
         path: ${{ steps.setup_windows.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && ((true)) && (success() && (github.ref ==
+        ((true)) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_windows.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'windows' && ((true)) && (always())
+      if: ((true)) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
@@ -2288,33 +2321,18 @@ jobs:
         go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
       MISE_TASK_SKIP: build,build:rust:tests,prepare:tests:fixtures
     needs:
-    - build_product
-    - build_tests
-    - prepare_test_fixtures
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ""
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ""
+    - build_product_windows
+    - build_tests_windows
+    - prepare_test_fixtures_windows
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-validate_test_rust_starter-${{ matrix.platform }}-${{
+        ci-${{ github.workflow }}-validate_test_rust_starter-windows-${{
         github.run_id }}
       cancel-in-progress: false
-  validate_test_rust_system:
-    name: Test / Rust / System (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
+  validate_test_rust_system_unix:
+    name: Test / Rust / System (unix)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -2329,41 +2347,33 @@ jobs:
         cache-mode: ""
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-product-${{ env.PROFILE }}-unix
         path: target/ci
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Extract build / product
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-tests-${{ env.PROFILE }}-unix
         path: target/ci
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Extract build:rust:tests / tests
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-fixtures-${{ env.PROFILE }}-unix
         path: target/ci
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Extract prepare:tests:fixtures / fixtures
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - run: mise run test:rust:system --profile ${{ env.PROFILE }}
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: matrix.platform == 'unix' && (true) && (always())
+      if: (true) && (always())
       with:
         name: junit-test_rust_system-${{ env.PROFILE }}-unix
         path: |-
@@ -2374,7 +2384,7 @@ jobs:
         include-hidden-files: true
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -2382,7 +2392,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.mise-cache-hit != 'true')
       with:
@@ -2390,19 +2400,42 @@ jobs:
         path: ${{ steps.setup_unix.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_unix.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'unix' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_unix.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_unix.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_unix.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
       with:
         summary-module: ""
+    env:
+      MISE_ENABLE_TOOLS: >-
+        go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+      MISE_TASK_SKIP: build,build:rust:tests,prepare:tests:fixtures
+    needs:
+    - build_product_unix
+    - build_tests_unix
+    - prepare_test_fixtures_unix
+    concurrency:
+      group: >-
+        ci-${{ github.workflow }}-validate_test_rust_system-unix-${{
+        github.run_id }}
+      cancel-in-progress: false
+  validate_test_rust_system_windows:
+    name: Test / Rust / System (windows)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
     - id: setup_windows
       uses: ./.github/actions/setup
       with:
@@ -2411,41 +2444,33 @@ jobs:
         cache-mode: ""
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-product-${{ env.PROFILE }}-windows
         path: target/ci
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Extract build / product
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-tests-${{ env.PROFILE }}-windows
         path: target/ci
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Extract build:rust:tests / tests
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-fixtures-${{ env.PROFILE }}-windows
         path: target/ci
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Extract prepare:tests:fixtures / fixtures
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - run: mise run test:rust:system --profile ${{ env.PROFILE }}
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: matrix.platform == 'windows' && (true) && (always())
+      if: (true) && (always())
       with:
         name: junit-test_rust_system-${{ env.PROFILE }}-windows
         path: |-
@@ -2456,7 +2481,7 @@ jobs:
         include-hidden-files: true
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -2464,7 +2489,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.mise-cache-hit != 'true')
       with:
@@ -2472,14 +2497,14 @@ jobs:
         path: ${{ steps.setup_windows.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_windows.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'windows' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
@@ -2490,33 +2515,18 @@ jobs:
         go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
       MISE_TASK_SKIP: build,build:rust:tests,prepare:tests:fixtures
     needs:
-    - build_product
-    - build_tests
-    - prepare_test_fixtures
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ""
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ""
+    - build_product_windows
+    - build_tests_windows
+    - prepare_test_fixtures_windows
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-validate_test_rust_system-${{ matrix.platform }}-${{
+        ci-${{ github.workflow }}-validate_test_rust_system-windows-${{
         github.run_id }}
       cancel-in-progress: false
-  validate_test_rust_unit:
-    name: Test / Rust / Unit (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
+  validate_test_rust_unit_unix:
+    name: Test / Rust / Unit (unix)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -2531,21 +2541,17 @@ jobs:
         cache-mode: ""
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-tests-${{ env.PROFILE }}-unix
         path: target/ci
-      if: matrix.platform == 'unix' && (true) && (true)
     - name: Extract build:rust:tests / tests
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'unix' && (true) && (true)
     - run: mise run test:rust:unit --profile ${{ env.PROFILE }}
-      if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: matrix.platform == 'unix' && (true) && (always())
+      if: (true) && (always())
       with:
         name: junit-test_rust_unit-${{ env.PROFILE }}-unix
         path: |-
@@ -2556,7 +2562,7 @@ jobs:
         include-hidden-files: true
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -2564,7 +2570,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.mise-cache-hit != 'true')
       with:
@@ -2572,19 +2578,41 @@ jobs:
         path: ${{ steps.setup_unix.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_unix.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_unix.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'unix' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_unix.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_unix.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_unix.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_unix.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_unix.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
       with:
         summary-module: ""
+    env:
+      MISE_ENABLE_TOOLS: >-
+        go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+      MISE_TASK_SKIP: build:rust:tests
+    needs:
+    - build_tests_unix
+    concurrency:
+      group: >-
+        ci-${{ github.workflow }}-validate_test_rust_unit-unix-${{
+        github.run_id }}
+      cancel-in-progress: false
+
+  validate_test_rust_unit_windows:
+    name: Test / Rust / Unit (windows)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
     - id: setup_windows
       uses: ./.github/actions/setup
       with:
@@ -2593,21 +2621,17 @@ jobs:
         cache-mode: ""
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-tests-${{ env.PROFILE }}-windows
         path: target/ci
-      if: matrix.platform == 'windows' && (true) && (true)
     - name: Extract build:rust:tests / tests
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
-      if: matrix.platform == 'windows' && (true) && (true)
     - run: mise run test:rust:unit --profile ${{ env.PROFILE }}
-      if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: matrix.platform == 'windows' && (true) && (always())
+      if: (true) && (always())
       with:
         name: junit-test_rust_unit-${{ env.PROFILE }}-windows
         path: |-
@@ -2618,7 +2642,7 @@ jobs:
         include-hidden-files: true
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
       with:
@@ -2626,7 +2650,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.mise-cache-hit != 'true')
       with:
@@ -2634,14 +2658,14 @@ jobs:
         path: ${{ steps.setup_windows.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (true) && (success() && (github.ref ==
+        (true) && (success() && (github.ref ==
         'refs/heads/dev' && github.event_name != 'pull_request') &&
         steps.setup_windows.outputs.uv-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_windows.outputs.uv-path }}
     - name: Cache Summary
-      if: matrix.platform == 'windows' && (true) && (always())
+      if: (true) && (always())
       env:
         CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
       uses: ./.github/actions/save-caches
@@ -2652,24 +2676,9 @@ jobs:
         go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
       MISE_TASK_SKIP: build:rust:tests
     needs:
-    - build_tests
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ""
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ""
+    - build_tests_windows
     concurrency:
       group: >-
-        ci-${{ github.workflow }}-validate_test_rust_unit-${{ matrix.platform }}-${{
+        ci-${{ github.workflow }}-validate_test_rust_unit-windows-${{
         github.run_id }}
       cancel-in-progress: false

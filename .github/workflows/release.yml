@@ -345,10 +345,10 @@ jobs:
       github.event.pull_request.merged && github.event.pull_request.base.ref == 'dev' &&
       startsWith(github.event.pull_request.head.ref, 'release/v')) ||
       (startsWith(github.ref, 'refs/tags/v'))
-  verify:
-    name: Release / Verify (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
+  verify_unix:
+    name: Release / Verify (unix)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -364,7 +364,7 @@ jobs:
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: >-
-        matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
+        (always() && !contains(needs.*.result, 'failure')
         && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -374,7 +374,7 @@ jobs:
         run-id: ${{ needs.validated.outputs.review_run }}
         github-token: ${{ github.token }}
       if: >-
-        matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
+        (always() && !contains(needs.*.result, 'failure')
         && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (true)
     - name: Extract package:rust / package
@@ -382,7 +382,7 @@ jobs:
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
       if: >-
-        matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
+        (always() && !contains(needs.*.result, 'failure')
         && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (true)
     - name: Download Release Manifest
@@ -393,19 +393,19 @@ jobs:
         run-id: ${{ github.run_id }}
         github-token: ${{ github.token }}
       if: >-
-        matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
+        (always() && !contains(needs.*.result, 'failure')
         && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (true)
     - run: mise run release:verify
       env:
         GH_TOKEN: ${{ github.token }}
       if: >-
-        matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
+        (always() && !contains(needs.*.result, 'failure')
         && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (true)
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
+        (always() && !contains(needs.*.result, 'failure')
         && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (success() && (github.ref == 'refs/heads/dev' && github.event_name !=
         'pull_request') && steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
@@ -414,7 +414,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
+        (always() && !contains(needs.*.result, 'failure')
         && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (success() && (github.ref == 'refs/heads/dev' && github.event_name !=
         'pull_request') && steps.setup_unix.outputs.mise-cache-hit != 'true')
@@ -423,7 +423,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
+        (always() && !contains(needs.*.result, 'failure')
         && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (success() && (github.ref == 'refs/heads/dev' && github.event_name !=
         'pull_request') && steps.setup_unix.outputs.uv-cache-hit != 'true')
@@ -432,7 +432,7 @@ jobs:
         path: ${{ steps.setup_unix.outputs.uv-path }}
     - name: Cache Summary
       if: >-
-        matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
+        (always() && !contains(needs.*.result, 'failure')
         && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (always())
       env:
@@ -440,6 +440,33 @@ jobs:
       uses: ./.github/actions/save-caches
       with:
         summary-module: ""
+    env:
+      MISE_ENABLE_TOOLS: go,node,python,rust,uv,git-cliff
+      MISE_TASK_SKIP: package:rust
+      PROFILE: ${{ needs.validated.outputs.review_profile }}
+      RELEASE_BUILD_RUN_ID: ${{ needs.validated.outputs.review_run }}
+      RELEASE_BUILD_SHA: ${{ needs.validated.outputs.review_sha }}
+      RELEASE_BUILD_VERSION: ${{ needs.validated.outputs.review_version }}
+    environment: release
+    needs:
+    - publish
+    - validated
+    if: >-
+      (always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
+      'cancelled') && (startsWith(github.ref, 'refs/tags/v')))
+    permissions:
+      contents: read
+      actions: read
+  verify_windows:
+    name: Release / Verify (windows)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
     - id: setup_windows
       uses: ./.github/actions/setup
       with:
@@ -449,7 +476,7 @@ jobs:
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: >-
-        matrix.platform == 'windows' && (always() && !contains(needs.*.result,
+        (always() && !contains(needs.*.result,
         'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -459,7 +486,7 @@ jobs:
         run-id: ${{ needs.validated.outputs.review_run }}
         github-token: ${{ github.token }}
       if: >-
-        matrix.platform == 'windows' && (always() && !contains(needs.*.result,
+        (always() && !contains(needs.*.result,
         'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (true)
     - name: Extract package:rust / package
@@ -467,7 +494,7 @@ jobs:
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
       if: >-
-        matrix.platform == 'windows' && (always() && !contains(needs.*.result,
+        (always() && !contains(needs.*.result,
         'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (true)
     - name: Download Release Manifest
@@ -478,19 +505,19 @@ jobs:
         run-id: ${{ github.run_id }}
         github-token: ${{ github.token }}
       if: >-
-        matrix.platform == 'windows' && (always() && !contains(needs.*.result,
+        (always() && !contains(needs.*.result,
         'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (true)
     - run: mise run release:verify
       env:
         GH_TOKEN: ${{ github.token }}
       if: >-
-        matrix.platform == 'windows' && (always() && !contains(needs.*.result,
+        (always() && !contains(needs.*.result,
         'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (true)
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (always() && !contains(needs.*.result,
+        (always() && !contains(needs.*.result,
         'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (success() && (github.ref == 'refs/heads/dev' && github.event_name !=
         'pull_request') && steps.setup_windows.outputs.cargo_downloads-cache-hit !=
@@ -500,7 +527,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (always() && !contains(needs.*.result,
+        (always() && !contains(needs.*.result,
         'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (success() && (github.ref == 'refs/heads/dev' && github.event_name !=
         'pull_request') && steps.setup_windows.outputs.mise-cache-hit != 'true')
@@ -509,7 +536,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        matrix.platform == 'windows' && (always() && !contains(needs.*.result,
+        (always() && !contains(needs.*.result,
         'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (success() && (github.ref == 'refs/heads/dev' && github.event_name !=
         'pull_request') && steps.setup_windows.outputs.uv-cache-hit != 'true')
@@ -518,7 +545,7 @@ jobs:
         path: ${{ steps.setup_windows.outputs.uv-path }}
     - name: Cache Summary
       if: >-
-        matrix.platform == 'windows' && (always() && !contains(needs.*.result,
+        (always() && !contains(needs.*.result,
         'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (always())
       env:
@@ -543,18 +570,3 @@ jobs:
     permissions:
       contents: read
       actions: read
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ""
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ""
