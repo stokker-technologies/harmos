@@ -1018,6 +1018,72 @@ jobs:
       uses: ./.github/actions/save-caches
       with:
         summary-module: ""
+    - id: setup_windows
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        cache-backend: disk
+        cache-mode: >-
+          ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
+          github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-check-rust-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-check-rust-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}-\\nci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-check-rust-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        bootstrap: "[]"
+      if: >-
+        matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
+        contains(fromJSON(needs.impact.outputs.jobs), 'check:rust')) && (true)
+    - run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.build
+      env:
+        BUILD_SCRIPT: mise run check:rust
+      if: >-
+        matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
+        contains(fromJSON(needs.impact.outputs.jobs), 'check:rust')) && (true)
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
+        contains(fromJSON(needs.impact.outputs.jobs), 'check:rust')) && (success() &&
+        (github.ref == 'refs/heads/dev' && github.event_name != 'pull_request') &&
+        steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.cargo_downloads-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
+        contains(fromJSON(needs.impact.outputs.jobs), 'check:rust')) && (success() &&
+        (github.ref == 'refs/heads/dev' && github.event_name != 'pull_request') &&
+        steps.setup_windows.outputs.mise-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.mise-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
+        contains(fromJSON(needs.impact.outputs.jobs), 'check:rust')) && (success() &&
+        (github.ref == 'refs/heads/dev' && github.event_name != 'pull_request') &&
+        steps.setup_windows.outputs.sccache-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.sccache-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.sccache-path }}
+    - uses: ./.github/actions/save-caches
+      if: >-
+        matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
+        contains(fromJSON(needs.impact.outputs.jobs), 'check:rust')) && (success() &&
+        (github.ref == 'refs/heads/dev' && github.event_name != 'pull_request') &&
+        steps.setup_windows.outputs.uv-cache-hit != 'true')
+      with:
+        key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup_windows.outputs.uv-path }}
+    - name: Cache Summary
+      if: >-
+        matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
+        contains(fromJSON(needs.impact.outputs.jobs), 'check:rust')) && (always())
+      env:
+        CACHE_RESTORES: "{\"Mise\":\"${{ steps.setup_windows.outputs.mise-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.mise-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.mise-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.setup_windows.outputs.cargo_downloads-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.cargo_downloads-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.cargo_downloads-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.setup_windows.outputs.uv-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.uv-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.uv-outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Compiler\":\"${{ steps.setup_windows.outputs.sccache-cache-hit == 'true' && 'Exact Hit' || steps.setup_windows.outputs.sccache-cache-hit == 'false' && 'Partial Hit' || steps.setup_windows.outputs.sccache-outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      uses: ./.github/actions/save-caches
+      with:
+        summary-module: ""
     env:
       MISE_ENABLE_TOOLS: >-
         aqua:koalaman/shellcheck,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
@@ -1038,9 +1104,14 @@ jobs:
       matrix:
         platform:
         - unix
+        - windows
         include:
         - platform: unix
           runner: ubuntu-24.04
+          minutes: 120
+          container: ""
+        - platform: windows
+          runner: windows-2022
           minutes: 120
           container: ""
     concurrency:
