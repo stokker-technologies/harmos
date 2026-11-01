@@ -864,6 +864,20 @@ runtime.plugin.register_sidecar::<Operations>(executable, settings, lane).await?
 runtime.plugin.initialize().await?;
 ```
 
+Sidecars start with a cleared environment. On Windows, Harmos passes through
+these parent variables when present: `SystemDrive`, `SystemRoot`, `windir`,
+`ProgramData`, `ALLUSERSPROFILE`, `ProgramFiles`, `ProgramFiles(x86)`,
+`ProgramW6432`, `CommonProgramFiles`, `CommonProgramFiles(x86)`,
+`CommonProgramW6432`, `PUBLIC`, `USERPROFILE`, `HOMEDRIVE`, `HOMEPATH`,
+`LOCALAPPDATA`, `APPDATA`, `USERNAME`, `USERDOMAIN`, `COMPUTERNAME`, `PATHEXT`,
+`ComSpec`, `NUMBER_OF_PROCESSORS`, `PROCESSOR_ARCHITECTURE`, and `OS`.
+`SystemRoot` falls back to the Windows system directory if missing or empty;
+`TMP` and `TEMP` use the host's temporary directory. On Unix, only a nonempty
+`TMPDIR` is inherited; `HOME`, `USER`, `LANG`, and `LC_*` remain cleared.
+`PATH` and arbitrary parent variables are cleared on both platforms.
+Use `Executable::variable` to supply additional variables or override inherited
+values, and `Executable::directory` to choose the child's working directory.
+
 Sidecar wire credits bound in-flight encoded frames. Each connection also owns
 one reusable writer scratch buffer bounded by the protocol frame ceiling,
 separate from those credits. Scalar-only writers coalesce small frames to avoid

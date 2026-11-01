@@ -236,6 +236,11 @@ windows-sys = { workspace = true, default-features = true, optional = true }
 name = "integration"
 path = "tests/integration/main.rs"
 
+[[test]]
+name = "system"
+path = "tests/system/main.rs"
+required-features = ["kit", "derive"]
+
 # === Bench Targets === #
 
 [[bench]]
