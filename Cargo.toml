@@ -58,6 +58,7 @@ wasmtime = { version = "=49.0.4", default-features = false, features = [
 ] }
 windows-sys = { version = "0.61.2", default-features = false, features = [
   "Win32_Foundation",
+  "Win32_System_Environment",
   "Win32_System_Pipes",
   "Win32_System_SystemInformation",
 ] }
