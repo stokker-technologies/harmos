@@ -133,12 +133,11 @@ impl LocalReader {
     }
 
     pub(crate) async fn opened(
-        inner: &Arc<Inner>, file: fs::File, range: ByteRange, frozen: Option<Arc<crate::frozen_file::Backing>>,
+        inner: &Arc<Inner>, file: fs::File, path: PathBuf, range: ByteRange, frozen: Option<Arc<crate::frozen_file::Backing>>,
     ) -> Result<Self> {
         let (file, path, identity, initial, end, frozen) = tokio::task::spawn_blocking(move || {
-            let path = opened_path(&file);
             #[cfg(windows)]
-            let file = independent_file(file, &path)?;
+            let file = reopen_file(file, &path)?;
             let description = file.metadata().map_err(|error| io_error("inspect opened source", &path, error))?;
             if !description.is_file() {
                 return Err(Error::InvalidInput {
@@ -477,10 +476,10 @@ fn read_exact_at(file: &fs::File, mut bytes: &mut [u8], mut offset: u64) -> std:
 
 #[cfg(windows)]
 #[expect(unsafe_code, reason = "ReOpenFile preserves the supplied file object while creating a separately owned cursor")]
-fn independent_file(file: fs::File, path: &Path) -> Result<fs::File> {
+fn reopen_file(file: fs::File, path: &Path) -> Result<fs::File> {
     use std::os::windows::io::{AsRawHandle, FromRawHandle};
     use windows_sys::Win32::{
-        Foundation::{ERROR_SHARING_VIOLATION, GENERIC_READ, INVALID_HANDLE_VALUE},
+        Foundation::{ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION, GENERIC_READ, INVALID_HANDLE_VALUE},
         Storage::FileSystem::{FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, ReOpenFile},
     };
 
@@ -497,6 +496,12 @@ fn independent_file(file: fs::File, path: &Path) -> Result<fs::File> {
                 field: "opened file",
                 reason: "source handle does not permit an independent read handle",
             });
+        }
+        // Delete-Pending Objects And Filesystem Filters Can Refuse A New Open.
+        // The Supplied Handle Still Owns Its Read Access. Every Read Specifies
+        // Its Offset, So Capture Progress Never Depends On Its Shared Cursor.
+        if error.raw_os_error() == Some(ERROR_ACCESS_DENIED as i32) {
+            return Ok(file);
         }
         return Err(io_error("reopen independent source", path, error));
     }

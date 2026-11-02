@@ -68,20 +68,22 @@ impl FrozenFile {
     /// Reads the immutable snapshot through its originating storage manager.
     /// The reader owns its file handle and remains valid after this snapshot is dropped.
     pub async fn read(&self, range: ByteRange) -> Result<crate::FileReader> {
-        let file = self.opened_file()?;
-        self.session.open_file_handle(file, range, Some(Arc::clone(&self.backing))).await
+        let (file, path) = self.opened_file()?;
+        self.session.open_file_handle(file, range, Some(Arc::clone(&self.backing)), Some(path)).await
     }
 
-    pub(crate) fn opened_file(&self) -> Result<File> {
+    pub(crate) fn opened_file(&self) -> Result<(File, std::path::PathBuf)> {
         let file = self.backing.file.lock().unwrap();
-        file.as_file().try_clone().map_err(|error| io_error("clone frozen file", file.path(), error))
+        let opened = file.as_file().try_clone().map_err(|error| io_error("clone frozen file", file.path(), error))?;
+        Ok((opened, file.path().to_owned()))
     }
 }
 
 impl<C> StorageManager<C> {
     /// Copies a stable opened range in native bounded batches. Cancellation drops
     /// the partial copy only after any blocking writer releases its actual owners.
-    /// On Windows, `source` must allow a separate read open; exclusive handles are refused.
+    /// On Windows, exclusive handles are refused. A denied independent reopen falls
+    /// back to explicit-offset reads, which can move the OS cursor shared with clones.
     pub async fn freeze_opened_file(&self, source: File, range: ByteRange) -> Result<FrozenFile> {
         let backing = tokio::task::spawn_blocking(move || {
             // Keep The Name Until All Frozen Readers And Captures Release Their Owner.
