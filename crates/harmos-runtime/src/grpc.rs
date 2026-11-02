@@ -12,7 +12,9 @@
 pub mod authentication;
 pub mod dynamic;
 
+pub mod client;
 mod codec;
+mod controlled;
 
 mod decoding;
 mod envelope;
@@ -25,6 +27,7 @@ mod listener;
 
 mod manager;
 pub(crate) mod native;
+mod tls;
 
 mod origin;
 
@@ -46,6 +49,7 @@ pub mod __private {
 pub(crate) use codec::encode_bytes;
 
 pub use codec::{Codec, Encode, EncodeSettings, Encoder, Transcoded, Wire};
+pub use controlled::ControlEnvelope;
 
 pub use decoding::{DecodeSettings, Decoder};
 pub use envelope::{InputEnvelope, OutputEnvelope};
@@ -60,6 +64,7 @@ pub use input::{InputError, input, open};
 
 pub use manager::{Attached, GrpcManager, Settings};
 pub use origin::Origin;
+pub use tls::ServerCertificate;
 
 /* === Imports === */
 
@@ -166,7 +171,7 @@ impl<O: crate::operations::OperationDeclaration, T, E: Unpin> Stream for Respons
 impl<O: crate::operations::OperationDeclaration> Drop for Pending<O> {
     fn drop(&mut self) {
         if !self.delivered {
-            self.instance.cancel();
+            self.instance.request_cancel();
         }
     }
 }

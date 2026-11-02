@@ -368,3 +368,33 @@ async fn stream_lifecycle_preserved() {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn cancel_final_response_guest() {
+    use sandbox::FinishOperation;
+    let _report = crate::report::system();
+    for mode in 0..3 {
+        let runtime = runtime().await;
+        let mut lifecycle = Lifecycle::sandbox(&runtime).await;
+        let mut manager = Manager::new(lifecycle.candidate("cancel-final-response").await).unwrap();
+        manager.initialize(&mut lifecycle).await.unwrap();
+        let handle = runtime.operation(FinishOperation { mode }).start().await.unwrap();
+        loop {
+            let counts = runtime.operation(CountsOperation { value: String::new() }).run().await.unwrap();
+            if counts.value == "1" {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        let result = handle.cancel().await;
+        if mode == 0 {
+            assert_eq!(result.unwrap().value, "42");
+            manager.shutdown(&mut lifecycle).await.unwrap();
+        } else {
+            assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+            super::retire_failed_guest(&mut manager, &mut lifecycle).await;
+        }
+        drop((manager, lifecycle));
+        runtime.shutdown().await.unwrap();
+    }
+}

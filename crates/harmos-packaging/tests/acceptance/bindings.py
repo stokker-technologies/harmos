@@ -85,6 +85,15 @@ def descriptors(target: Path, alpha: Path, beta: Path) -> None:
             assert request == response
         assert operation.codec == "protobuf"
         assert json.loads(operation.contract)["fingerprint"] == operation.fingerprint
+        assert (
+            operation.run_grpc_path
+            == operation.grpc_path.rsplit("/", 1)[0]
+            + "/Run"
+            + operation.grpc_path.rsplit("/", 1)[1]
+        )
+        assert operation.run_request.DESCRIPTOR.fields_by_name["cancel"].number == 3
+        assert operation.run_request.DESCRIPTOR.fields_by_name["finish"].number == 4
+        assert operation.run_response.DESCRIPTOR.fields_by_name["response"].number == 2
         if operation.input is not None:
             assert operation.input is operation.response
             assert operation.rpc_request.DESCRIPTOR.oneofs_by_name["value"]
@@ -591,6 +600,7 @@ def _contract() -> dict[str, Any]:
                 "policy": {
                     "timeout": {"secs": 1, "nanos": 0},
                     "attempt_timeout": {"secs": 1, "nanos": 0},
+                    "cancellation_timeout": {"secs": 0, "nanos": 0},
                     "retries": "never",
                 },
                 "visibility": "public",

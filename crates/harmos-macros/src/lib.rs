@@ -25,6 +25,7 @@ mod presentation;
 
 // Third Party Imports
 use proc_macro::TokenStream;
+use syn::Error;
 // Local Imports
 use identity::Sort;
 
@@ -150,5 +151,13 @@ pub fn message(attribute: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /* === Private Functions === */
+
+fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &str) -> Result<(), Error> {
+    if place.replace(value).is_some() {
+        return Err(Error::new(span, format!("`{name}` is declared only once")));
+    }
+
+    Ok(())
+}
 
 /* === Tests === */

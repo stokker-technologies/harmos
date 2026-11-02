@@ -273,7 +273,7 @@ impl Instances {
             state.active.values().cloned().collect()
         };
         for instance in instances {
-            instance.cancel();
+            instance.request_cancel();
         }
         self.supervisor.stop();
     }

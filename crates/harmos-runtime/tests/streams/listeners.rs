@@ -215,6 +215,7 @@ impl<const FIRST: bool> Listener for Heard<FIRST> {
     const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
 }
@@ -647,7 +648,7 @@ async fn runtime_signals_listener() {
         fn definition(&self) -> harmos_runtime::Result<harmos_runtime::observers::ObserverDefinition> {
             Ok(harmos_runtime::observers::ObserverDefinition {
                 id: "blocked-cleanup".into(),
-                interval: Duration::from_secs(10),
+
                 streams: vec![],
                 demand_keys: vec![],
             })

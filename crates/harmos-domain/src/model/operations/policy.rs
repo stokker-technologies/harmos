@@ -32,6 +32,10 @@ use serde::{Deserialize, Serialize};
 pub struct OperationPolicy {
     pub timeout: Duration,
     pub attempt_timeout: Duration,
+
+    /// Grace After Cancellation; Zero Preserves Immediate Abort.
+    pub cancellation_timeout: Duration,
+
     pub retries: RetryPolicy,
 }
 

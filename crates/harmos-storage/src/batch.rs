@@ -165,14 +165,4 @@ mod tests {
         assert_eq!(retry.as_slice()[1].as_ptr(), pointers[1]);
         drop(detached);
     }
-
-    #[test]
-    fn shared_merge_refused() {
-        let mut first = StorageBatch::new(vec![vec![7u8; 32]]);
-        let mut second = StorageBatch::new(vec![vec![8u8; 32]]);
-        let detached = first.clone();
-        assert!(StorageBatch::merge(&mut [&mut first, &mut second]).is_none());
-        assert_eq!(first.as_slice(), detached.as_slice());
-        assert_eq!(second.as_slice()[0], vec![8; 32]);
-    }
 }

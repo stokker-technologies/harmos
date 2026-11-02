@@ -23,8 +23,8 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Error, Expr, Ident, ItemImpl, LitStr, Meta, Path, PathArguments, Token, Type};
 // Local Imports
-use super::set_once;
 use crate::path::{self, HarmosPath};
+use crate::set_once;
 
 /* === Constants === */
 
@@ -403,9 +403,15 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             ];
 
             fn markers() -> ::std::result::Result<::std::vec::Vec<&'static [u8]>, #harmos::schema::graph::Error> {
+                <Self as #declarations>::markers_with_settings(&#harmos::__private::SchemaSettings::default())
+            }
+
+            fn markers_with_settings(settings: &#harmos::__private::SchemaSettings)
+                -> ::std::result::Result<::std::vec::Vec<&'static [u8]>, #harmos::schema::graph::Error>
+            {
                 #harmos::__private::PluginSchemaMarkers::<Self>(
                     ::std::vec![#identity, #contracts, #publications, #listeners, #observers, #contribution_marker #restart_reference],
-                    &#harmos::__private::SchemaSettings::default(),
+                    settings,
                 )
             }
         }

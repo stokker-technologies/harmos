@@ -95,8 +95,8 @@ async fn control_retains_join() {
     assert_eq!(manager.resident_key(first.id()), manager.resident_key(second.id()));
     assert_eq!(manager.resident(&manager.resident_key(second.id()).unwrap()).unwrap().leases, 2);
 
-    first.cancel();
-    first.cancel();
+    first.request_cancel();
+    first.request_cancel();
     assert!(matches!(manager.resident(&manager.resident_key(second.id()).unwrap()).unwrap().health, Some(ServiceStatus::Stopping)));
     (resources.stopping.notified()).await;
     {
@@ -118,7 +118,7 @@ async fn control_retains_join() {
     let replacement = manager.submit_resident("scoped").await.unwrap();
     replacement.ready().await.unwrap();
     assert_ne!(replacement.id(), first.id());
-    first.cancel();
+    first.request_cancel();
     first.settle().await.unwrap();
     first.release().await.unwrap();
     second.release().await.unwrap();

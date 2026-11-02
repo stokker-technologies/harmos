@@ -83,6 +83,7 @@ async fn preflight_preserves_activation() {
     inventory.iter_mut().find(|(id, _)| id == "provider").unwrap().1[0].policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_millis(200),
         attempt_timeout: Duration::from_millis(200),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
     session.reload_parts(next, inventory, [], &mut host).await.unwrap();

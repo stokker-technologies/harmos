@@ -55,18 +55,6 @@ pub enum SchematicError {
     InvalidRoute,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-pub enum ConfigError {
-    #[error("{variable} is not set")]
-    Missing { variable: &'static str },
-
-    #[error("{variable} is set to an empty value")]
-    Empty { variable: &'static str },
-
-    #[error("{variable} is not valid unicode")]
-    NotUnicode { variable: &'static str },
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum DocumentError {
     #[error(transparent)]

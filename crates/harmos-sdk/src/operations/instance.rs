@@ -44,13 +44,13 @@ pub trait Instance<O: OperationDeclaration>: Send + Sized {
 
     fn status(&self) -> impl Future<Output = Result<Status, Self::Error>> + Send;
 
-    fn cancel(&self) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    fn request_cancel(&self) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     fn join(self) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send;
 
-    fn cancel_and_join(self) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send {
+    fn cancel(self) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send {
         async move {
-            self.cancel().await?;
+            self.request_cancel().await?;
             self.join().await
         }
     }

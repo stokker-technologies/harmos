@@ -105,6 +105,7 @@ impl OperationDeclaration for Encoded {
     const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: harmos_domain::operations::UNBOUNDED,
         attempt_timeout: harmos_domain::operations::UNBOUNDED,
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
 }

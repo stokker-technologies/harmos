@@ -11,14 +11,19 @@
 
 /* === Modules === */
 
+#[cfg(feature = "build-tools")]
 mod build;
 pub mod bundle;
 #[cfg(feature = "guest")]
 mod component;
+#[cfg(feature = "build-tools")]
 pub mod config;
+#[cfg(feature = "build-tools")]
 mod dev;
 mod error;
+#[cfg(feature = "build-tools")]
 mod metadata;
+#[cfg(feature = "build-tools")]
 mod process;
 #[cfg(feature = "generate-proto")]
 pub mod proto;
@@ -27,12 +32,15 @@ pub mod python;
 
 /* === Re-Exports === */
 
+#[cfg(feature = "build-tools")]
 pub use build::{Artifact, Build, PackageOutput, Schema, build, build_with_cancellation, package, package_with_cancellation};
 #[cfg(feature = "guest")]
 pub use component::componentize;
+#[cfg(feature = "build-tools")]
 pub use dev::{DevEvent, dev};
 pub use error::Error;
 pub use harmos_domain::inventory::{Declaration, DeclarationError, Facility};
+#[cfg(feature = "build-tools")]
 pub use process::BuildCancellation;
 
 /* === Imports === */

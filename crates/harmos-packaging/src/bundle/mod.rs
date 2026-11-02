@@ -61,6 +61,12 @@ pub struct Bundle {
 impl Bundle {
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn build(identity: Identity, sources: &[Source<'_>], limits: Limits) -> Result<Self, Error> {
+        Self::build_with_settings(identity, sources, limits, &harmos_domain::config::SchemaSettings::default())
+    }
+
+    pub fn build_with_settings(
+        identity: Identity, sources: &[Source<'_>], limits: Limits, settings: &harmos_domain::config::SchemaSettings,
+    ) -> Result<Self, Error> {
         if sources.len() > limits.files {
             return Err(Error::Limit("file count"));
         }
@@ -97,11 +103,15 @@ impl Bundle {
         let manifest = Manifest { schema: 1, identity, files };
         validate(&manifest, limits)?;
         let bytes = archive::encode(&manifest, &contents, limits)?;
-        Self::inspect(&bytes, limits)
+        Self::inspect_with_settings(&bytes, limits, settings)
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn inspect(bytes: &[u8], limits: Limits) -> Result<Self, Error> {
+        Self::inspect_with_settings(bytes, limits, &harmos_domain::config::SchemaSettings::default())
+    }
+
+    pub fn inspect_with_settings(bytes: &[u8], limits: Limits, settings: &harmos_domain::config::SchemaSettings) -> Result<Self, Error> {
         let (manifest, contents) = archive::decode(bytes, limits)?;
         let mut declarations = BTreeMap::new();
         let mut owners = BTreeSet::new();
@@ -112,7 +122,8 @@ impl Bundle {
                     Facility::Sidecar => harmos_domain::inventory::Facility::Sidecar,
                     Facility::Guest => harmos_domain::inventory::Facility::Guest,
                 };
-                let declaration = Declaration::inspect(content, facility).map_err(|error| invalid(error.to_string()))?;
+                let declaration = Declaration::inspect_with_settings(content, facility, settings)
+                    .map_err(|error| invalid(format!("plugin `{}` executable `{}`: {error}", manifest.identity.name, file.path)))?;
                 if !owners.insert((executable.facility, declaration.id.clone(), &executable.target)) {
                     return Err(invalid("duplicate executable facility, owner, and target"));
                 }

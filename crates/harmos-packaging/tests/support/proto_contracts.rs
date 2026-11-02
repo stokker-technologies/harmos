@@ -28,6 +28,7 @@ use harmos_domain::operations::{OperationPolicy, RetryPolicy};
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: std::time::Duration::from_secs(1),
     attempt_timeout: std::time::Duration::from_secs(1),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 

@@ -136,7 +136,7 @@ async fn preparation_credit_held() {
     let invocation = credit.target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(Text::from("block").encode())).unwrap();
     credit.cleanup.started.notified().await;
     credit.assert_held();
-    invocation.cancel();
+    invocation.request_cancel();
     assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     credit.settle().await;
 }
@@ -274,7 +274,7 @@ async fn own_public_calls() {
     });
     let invocation = own.submit::<Public>(gated_request).unwrap();
     opened.notified().await;
-    invocation.cancel();
+    invocation.request_cancel();
     assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     assert_eq!(own.call::<Public>(Public(request())).await.unwrap().value, 7);
 

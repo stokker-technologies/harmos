@@ -65,6 +65,10 @@ impl Grpc {
         Ok(())
     }
 
+    pub fn run_path(&self) -> String {
+        format!("/{}.{}/Run{}", self.package, self.service, self.method)
+    }
+
     pub fn path(&self) -> String {
         format!("/{}.{}/{}", self.package, self.service, self.method)
     }

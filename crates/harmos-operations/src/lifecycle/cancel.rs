@@ -67,7 +67,7 @@ impl Operation for Cancel {
         let access = context.resource::<harmos_sdk::operations::instances::InstanceAccess>();
 
         let instance = access.0.owned(Id::new(self.instance)).ok_or(Error::UnknownInstance(self.instance))?;
-        instance.cancel();
+        instance.request_cancel();
         Ok(super::InstanceState::from(instance.status()).into())
     }
 }

@@ -43,6 +43,7 @@ use harmos_runtime::{Error, Refusal, Runtime};
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     },
 )]
@@ -158,8 +159,8 @@ async fn queued_cancel_unbuilt() {
     let second_request = request(false);
     let mut second = runtime.operation(second_request).start().await.unwrap();
     assert_eq!(second.status().phase(), OperationPhase::Queued);
-    second.cancel();
-    second.cancel();
+    second.request_cancel();
+    second.request_cancel();
     assert!(second.status().cancellation_requested());
     assert_eq!(second.status().phase(), OperationPhase::Stopping);
     // A cancelled queued instance never initialized, so it owns
@@ -173,9 +174,9 @@ async fn queued_cancel_unbuilt() {
     assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(counts.drops.load(Ordering::SeqCst), 0);
     let third = runtime.operation(request(false)).start().await.unwrap();
-    third.cancel();
+    third.request_cancel();
     assert!(matches!(third.join().await, Err(Error::OperationRefused(Refusal::Cancelled))));
-    first.cancel();
+    first.request_cancel();
     assert!(matches!(first.join().await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();

@@ -213,7 +213,7 @@ impl NamedContract {
             replay: self.operation.replay,
             fingerprint,
         };
-        Ok(Contract::new(operation, fingerprint, self.codec, schema)?.with_grpc(self.grpc)?)
+        Ok(Contract::new_with_settings(operation, fingerprint, self.codec, schema, settings)?.with_grpc(self.grpc)?)
     }
 }
 
@@ -466,6 +466,8 @@ pub(crate) const fn policy<const N: usize>(out: &mut Encoder<N>, value: Operatio
     duration(out, value.timeout);
     out.raw(b",\"attempt_timeout\":");
     duration(out, value.attempt_timeout);
+    out.raw(b",\"cancellation_timeout\":");
+    duration(out, value.cancellation_timeout);
     out.raw(b",\"retries\":");
     match value.retries {
         RetryPolicy::Never => out.quoted("never"),
@@ -871,7 +873,7 @@ mod tests {
             }
             assert!(matches!(
                 crate::artifacts::fragments_with_settings::<Value>(&CONTRACTS, &["contracts"], &mut settings),
-                Err(crate::ScanError::Budget)
+                Err(crate::ScanError::Budget { .. })
             ));
         }
         assert_eq!(count, 9);

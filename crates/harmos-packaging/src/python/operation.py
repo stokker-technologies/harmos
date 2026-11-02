@@ -51,8 +51,15 @@ class Operation[Request: Message, Response: Message, Input: Message, Output: Mes
     grpc_path: str
     rpc_request: type[Message]
     rpc_response: type[Message]
+    run_request: type[Message]
+    run_response: type[Message]
     contract: str
     fingerprint: str
+
+    @property
+    def run_grpc_path(self) -> str:
+        service, method = self.grpc_path.rsplit("/", 1)
+        return f"{service}/Run{method}"
 
     def __post_init__(self) -> None:
         if re.fullmatch(r"[0-9a-f]{64}", self.fingerprint) is None:
@@ -82,8 +89,28 @@ class ResponseStream[Response: Message, Output: Message](Protocol):
     async def response(self) -> Response: ...
 
 
+class OperationHandle[Response: Message, Output: Message](
+    ResponseStream[Response, Output], Protocol
+):
+    """A Started Operation Whose Cancellation Returns Its Final Response"""
+
+    async def cancel(self) -> Response: ...
+
+
 class Invoker(Protocol):
     """Transport Implementations Own Connections, Limits And Cancellation"""
+
+    async def start[
+        Request: Message,
+        Response: Message,
+        Input: Message,
+        Output: Message,
+    ](
+        self,
+        operation: Operation[Request, Response, Input, Output],
+        request: Request,
+        items: AsyncIterator[Input] | None = None,
+    ) -> OperationHandle[Response, Output]: ...
 
     async def call[Request: Message, Response: Message](
         self,

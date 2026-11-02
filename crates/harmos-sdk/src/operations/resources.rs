@@ -40,6 +40,7 @@ pub struct ResourceSet {
 pub struct ExecutionContext {
     resources: ResourceSet,
     pub call: CallContext,
+    pub cancellation: super::Cancellation,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -103,7 +104,11 @@ impl ResourceSet {
 impl ExecutionContext {
     #[doc(hidden)]
     pub fn new(resources: ResourceSet, call: CallContext) -> Self {
-        Self { resources, call }
+        Self {
+            resources,
+            call,
+            cancellation: super::Cancellation::default(),
+        }
     }
 
     pub fn resource<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, ResourceError> {
@@ -119,7 +124,11 @@ impl ExecutionContext {
     pub fn with_resources(&self, mut resources: ResourceSet) -> Self {
         // Trusted Carrier Handles Retain Priority In Each Invocation Snapshot.
         Arc::make_mut(&mut resources.entries).extend(self.resources.entries.iter().map(|(key, value)| (*key, value.clone())));
-        Self::new(resources, self.call.clone())
+        Self {
+            resources,
+            call: self.call.clone(),
+            cancellation: self.cancellation.clone(),
+        }
     }
 }
 

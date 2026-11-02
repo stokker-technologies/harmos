@@ -79,6 +79,7 @@ use harmos_domain::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
 pub const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(60),
     attempt_timeout: Duration::from_secs(15),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::OnTransient {
         max_retries: 3,
         backoff: Backoff::Exponential {
@@ -91,6 +92,7 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 
 pub const STREAM_POLICY: OperationPolicy = OperationPolicy {
     attempt_timeout: POLICY.timeout,
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
     ..POLICY
 };
@@ -98,6 +100,7 @@ pub const STREAM_POLICY: OperationPolicy = OperationPolicy {
 pub const IO_POLICY: OperationPolicy = OperationPolicy {
     timeout: harmos_domain::operations::UNBOUNDED,
     attempt_timeout: harmos_domain::operations::UNBOUNDED,
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 

@@ -71,7 +71,7 @@ impl Manager {
             entry.retirement.store(Retirement::Explicit as u8, Ordering::Release);
             entry.active.store(false, Ordering::Release);
             for control in _pending.values() {
-                control.cancel();
+                control.request_cancel();
             }
             let retired = state.remove_cache(|cached| !cached.target.upgrade().is_some_and(|target| !Arc::ptr_eq(&target, &entry)));
             drop(_pending);

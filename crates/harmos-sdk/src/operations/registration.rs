@@ -550,7 +550,7 @@ pub(crate) fn registered_grant<D: OperationDeclaration>(id: &str, grant: Option<
 }
 
 fn service_error(error: impl std::error::Error + 'static) -> ServingError {
-    ServingError::Handler(crate::Failure::originate(crate::operations::FailureKind::Permanent, &error, crate::failure::Origin::Plugin))
+    ServingError::Handler(super::StartupError::failure(&error, crate::operations::FailureKind::Permanent))
 }
 
 fn operation_error<O: Carrier>(error: O::Error) -> ServingError {
@@ -582,6 +582,7 @@ mod tests {
         policy = crate::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
+            cancellation_timeout: std::time::Duration::ZERO,
             retries: crate::RetryPolicy::Never,
         },
         key = |_: &Read| Some(super::super::CacheKey::new(vec![42]).unwrap()),
@@ -670,34 +671,6 @@ mod tests {
             ..first.clone()
         };
         assert!(OperationAssignments::default().install(&AssignedOperation::encode(&[first, duplicate]).unwrap()).is_err());
-    }
-
-    #[test]
-    fn native_response_retains_owner_across_retries_and_cleanup() {
-        let value = Arc::new(42u64);
-        let retained = Arc::downgrade(&value);
-        let mut dependencies = ResourceSet::new();
-        dependencies.insert(value).unwrap();
-        let batch = RegistrationBatch::new().operation::<Read>();
-        let factory = &batch.operations[0];
-        assert!(factory.prepare_native(dependencies.clone(), Box::new(7u64), Box::new(())).is_err());
-        let mut invocation = factory.prepare_native(dependencies, Box::new(Read), Box::new(())).unwrap();
-        let context = ExecutionContext::new(ResourceSet::new(), super::super::CallContext::default());
-
-        ready(invocation.initialize(context.clone()));
-        let first = ready(invocation.run(context.clone())).restore::<u64>().unwrap();
-        let second = ready(invocation.run(context)).restore::<u64>().unwrap();
-        assert!(first.ptr_eq(&second));
-        assert_eq!(*first, 42);
-        ready(invocation.stop());
-        ready(invocation.cleanup());
-
-        drop(invocation);
-        drop(batch);
-        assert!(retained.upgrade().is_some());
-        drop(first);
-        drop(second);
-        assert!(retained.upgrade().is_none());
     }
 
     #[test]

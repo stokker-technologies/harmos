@@ -110,8 +110,8 @@ pub enum Error {
     #[error("artifact `{artifact}` requires `{dependency}` {required}, but {found} is registered")]
     Incompatible { artifact: String, dependency: String, required: VersionReq, found: Version },
 
-    #[error("artifact dependency cycle reaches `{artifact}`")]
-    Cycle { artifact: String },
+    #[error("artifact dependency cycle among {artifacts:?}")]
+    Cycle { artifacts: Vec<String> },
 }
 
 /* === Traits === */
@@ -266,7 +266,7 @@ impl PluginGraph {
 
         let topology = crate::supervision::dependencies::Graph::new(dependencies).map_err(|error| match error {
             crate::supervision::dependencies::Invalid::Missing { owner, dependency } => Error::Missing { artifact: owner, dependency },
-            crate::supervision::dependencies::Invalid::Cycle { owner } => Error::Cycle { artifact: owner },
+            crate::supervision::dependencies::Invalid::Cycle { members } => Error::Cycle { artifacts: members },
         })?;
         let ordered =
             topology.ordered().iter().map(|id| declared.get(id).expect("every graph node came from the declaration map").clone()).collect();
@@ -293,6 +293,23 @@ impl PluginGraph {
 
     pub(super) fn required_providers(&self, owner: &str) -> &BTreeMap<crate::Identifier, String> {
         &self.required_providers[owner]
+    }
+}
+
+impl Error {
+    /// The one plugin this error refuses, or `None` when several (a cycle) or none are at fault.
+    pub fn artifact(&self) -> Option<&str> {
+        match self {
+            Self::Definition { artifact, .. }
+            | Self::IncompatibleOperation { artifact, .. }
+            | Self::AmbiguousOperation { artifact, .. }
+            | Self::ProviderSelection { artifact, .. }
+            | Self::Missing { artifact, .. }
+            | Self::Incompatible { artifact, .. } => Some(artifact),
+            Self::StreamConflict { second, .. } => Some(second),
+            Self::Duplicate { id } => Some(id),
+            Self::Unknown { .. } | Self::Cycle { .. } => None,
+        }
     }
 }
 

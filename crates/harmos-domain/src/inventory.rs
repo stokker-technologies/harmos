@@ -140,8 +140,13 @@ fn retain_schema(
     use crate::MemorySize;
     use crate::schema::graph::Error;
     let preparation = schema.preparation(settings)?;
+    let bytes = schema.memory_size();
     settings.preparation_bytes =
-        settings.preparation_bytes.get().checked_sub(schema.memory_size()).and_then(std::num::NonZeroUsize::new).ok_or(Error::Budget)?;
+        settings.preparation_bytes.get().checked_sub(bytes).and_then(std::num::NonZeroUsize::new).ok_or(Error::Allowance {
+            budget: "memory bytes",
+            used: bytes,
+            allowed: settings.preparation_bytes.get(),
+        })?;
     // Resolve Named Definitions And Validate The Result Under One Shared Work
     // Allowance Across Every Contract, Source And Publication In The Artifact.
     settings.preparation_work = preparation
@@ -149,7 +154,11 @@ fn retain_schema(
         .checked_mul(2)
         .and_then(|work| settings.preparation_work.get().checked_sub(work))
         .and_then(std::num::NonZeroUsize::new)
-        .ok_or(Error::Budget)?;
+        .ok_or(Error::Allowance {
+            budget: "work",
+            used: preparation.work.saturating_mul(2),
+            allowed: settings.preparation_work.get(),
+        })?;
     Ok(schema)
 }
 

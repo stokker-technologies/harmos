@@ -105,6 +105,14 @@ impl Resource {
 }
 
 impl<O: Streams> Context<'_, O> {
+    pub async fn cancelled(&self) {
+        self.execution.cancellation.cancelled().await;
+    }
+
+    pub fn cancellation_requested(&self) -> bool {
+        self.execution.cancellation.is_requested()
+    }
+
     pub fn call(&self) -> &CallContext {
         &self.execution.call
     }
@@ -205,6 +213,7 @@ mod tests {
         policy = crate::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
+            cancellation_timeout: std::time::Duration::ZERO,
             retries: crate::RetryPolicy::Never,
         },
     )]

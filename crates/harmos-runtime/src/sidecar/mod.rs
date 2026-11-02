@@ -23,7 +23,7 @@ pub use harmos_sidecar::{
 pub use harmos_sidecar::{
     Activation, ActivationId, Activity, CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT, CallError, DemandKey, Instance, Observer,
     ObserverAttachment, ObserverCaller, ObserverContext, ObserverError, ObserverHost, ObserverPublisher, ObserverStreamPublisher,
-    PluginNative, PublicationError, PublishError, Publisher, Supervisor, Tick, run_plugin,
+    PluginNative, PublicationError, PublishError, Publisher, Supervisor, Tick, run_plugin, run_plugin_with_settings,
 };
 
 pub use harmos_sidecar::__private;

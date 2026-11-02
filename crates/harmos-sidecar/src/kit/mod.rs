@@ -40,7 +40,7 @@ pub use identity::ActivationId;
 pub use instance::OperationInstance;
 pub use observer::{Activation, Activity, DemandKey, Instance, Observer, ObserverAttachment, ObserverContext, ObserverError, Tick};
 pub use observer_host::{ObserverCaller, ObserverHost, ObserverPublisher, ObserverStreamPublisher};
-pub use plugin::{PluginNative, run_plugin, serve_plugin_channels};
+pub use plugin::{PluginNative, run_plugin, run_plugin_with_settings, serve_plugin_channels, serve_plugin_channels_with_settings};
 pub use publisher::{Batch, PublishError, Publisher};
 
 /* === Imports === */

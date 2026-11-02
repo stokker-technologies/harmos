@@ -32,6 +32,7 @@ use harmos_runtime::{Message, Runtime, services::ServiceContext, services::Servi
 const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(60),
     attempt_timeout: Duration::from_secs(60),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 

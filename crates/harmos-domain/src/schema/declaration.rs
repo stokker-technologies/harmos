@@ -76,6 +76,7 @@ struct Plan {
     indices: HashMap<&'static str, usize>,
     remaining_bytes: usize,
     remaining_work: usize,
+    settings: SchemaSettings,
 }
 
 /* === Enums === */
@@ -255,11 +256,20 @@ impl Plan {
             indices: HashMap::new(),
             remaining_bytes: settings.preparation_bytes.get(),
             remaining_work: settings.preparation_work.get(),
+            settings: *settings,
         }
     }
     fn charge(&mut self, bytes: usize, work: usize) -> Result<(), Error> {
-        self.remaining_bytes = self.remaining_bytes.checked_sub(bytes).ok_or(Error::Budget)?;
-        self.remaining_work = self.remaining_work.checked_sub(work).ok_or(Error::Budget)?;
+        self.remaining_bytes = self.remaining_bytes.checked_sub(bytes).ok_or(Error::Allowance {
+            budget: "memory bytes",
+            used: (self.settings.preparation_bytes.get() - self.remaining_bytes).saturating_add(bytes),
+            allowed: self.settings.preparation_bytes.get(),
+        })?;
+        self.remaining_work = self.remaining_work.checked_sub(work).ok_or(Error::Allowance {
+            budget: "work",
+            used: (self.settings.preparation_work.get() - self.remaining_work).saturating_add(work),
+            allowed: self.settings.preparation_work.get(),
+        })?;
         Ok(())
     }
     fn insert(&mut self, definition: Definition) -> Result<usize, Error> {

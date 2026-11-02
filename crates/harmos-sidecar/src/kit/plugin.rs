@@ -47,9 +47,17 @@ pub struct PluginNative<P> {
 
 impl<P: Plugin<Context = Supervisor> + Declared> PluginNative<P> {
     pub fn new(capacity: NonZeroUsize) -> std::io::Result<Self> {
-        let markers = std::hint::black_box(P::markers().map_err(std::io::Error::other)?);
-        let declaration = Declaration::inspect(&markers.concat(), Facility::Sidecar).map_err(std::io::Error::other)?;
-        harmos_domain::inventory::publications::validate_match(P::STREAMS, &declaration.streams).map_err(std::io::Error::other)?;
+        Self::new_with_settings(capacity, &harmos_domain::config::SchemaSettings::default())
+    }
+
+    pub fn new_with_settings(capacity: NonZeroUsize, settings: &harmos_domain::config::SchemaSettings) -> std::io::Result<Self> {
+        let markers = std::hint::black_box(
+            P::markers_with_settings(settings).map_err(|error| std::io::Error::other(format!("plugin `{}`: {error}", P::ID)))?,
+        );
+        let declaration = Declaration::inspect_with_settings(&markers.concat(), Facility::Sidecar, settings)
+            .map_err(|error| std::io::Error::other(format!("plugin `{}`: {error}", P::ID)))?;
+        harmos_domain::inventory::publications::validate_match_with_settings(P::STREAMS, &declaration.streams, settings)
+            .map_err(std::io::Error::other)?;
         let manifest = &declaration.contracts;
         let provides = crate::operations::Contracts::from_tree(P::PROVIDES).map_err(std::io::Error::other)?;
         let requires = harmos_domain::inventory::contracts::Required::from_tree(P::REQUIRES).map_err(std::io::Error::other)?;
@@ -144,7 +152,16 @@ pub async fn run_plugin<P>(capacity: NonZeroUsize) -> std::io::Result<()>
 where
     P: Plugin<Context = Supervisor> + Declared,
 {
-    std::hint::black_box(P::markers().map_err(std::io::Error::other)?);
+    run_plugin_with_settings::<P>(capacity, &harmos_domain::config::SchemaSettings::default()).await
+}
+
+pub async fn run_plugin_with_settings<P>(capacity: NonZeroUsize, settings: &harmos_domain::config::SchemaSettings) -> std::io::Result<()>
+where
+    P: Plugin<Context = Supervisor> + Declared,
+{
+    std::hint::black_box(
+        P::markers_with_settings(settings).map_err(|error| std::io::Error::other(format!("plugin `{}`: {error}", P::ID)))?,
+    );
     if catalog::requested(std::env::args_os().skip(1)) {
         let bytes = catalog::encode::<P>()?;
         let mut stdout = tokio::io::stdout();
@@ -153,7 +170,13 @@ where
     }
     #[cfg(any(unix, windows))]
     if let Some(control) = crate::attach::control::inherited()? {
-        return serve_plugin_channels::<P>(capacity, (Box::new(tokio::io::stdin()), Box::new(tokio::io::stdout())), control).await;
+        return serve_plugin_channels_with_settings::<P>(
+            capacity,
+            (Box::new(tokio::io::stdin()), Box::new(tokio::io::stdout())),
+            control,
+            settings,
+        )
+        .await;
     }
     let _ = capacity;
     Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "stdio launch requires an attached binary control channel"))
@@ -165,7 +188,16 @@ pub async fn serve_plugin_channels<P>(
 where
     P: Plugin<Context = Supervisor> + Declared,
 {
-    let native = PluginNative::<P>::new(capacity)?;
+    serve_plugin_channels_with_settings::<P>(capacity, data, control, &harmos_domain::config::SchemaSettings::default()).await
+}
+
+pub async fn serve_plugin_channels_with_settings<P>(
+    capacity: NonZeroUsize, data: crate::transport::Io, control: crate::transport::Io, settings: &harmos_domain::config::SchemaSettings,
+) -> std::io::Result<()>
+where
+    P: Plugin<Context = Supervisor> + Declared,
+{
+    let native = PluginNative::<P>::new_with_settings(capacity, settings)?;
     let opening = Arc::new(tokio::sync::Mutex::new(opening(&native)?));
     super::connection::run_binary(opening, data, control, std::future::pending()).await
 }

@@ -84,16 +84,18 @@ impl<C> StorageManager<C> {
         context.result(span, async { self.open_file(request).await }).await
     }
 
-    /// Reads the supplied file object without changing the caller's cursor.
-    /// On Windows, `file` must allow a separate read open; exclusive handles are refused.
+    /// Reads the supplied file object using explicit offsets, even after its name is deleted.
+    /// On Windows, exclusive handles are refused. If an independent reopen is denied,
+    /// reads use the supplied handle and can move the OS cursor shared with its clones.
     pub async fn read_opened_file(&self, file: std::fs::File, range: ByteRange) -> Result<FileReader> {
-        self.open_file_handle(file, range, None).await
+        self.open_file_handle(file, range, None, None).await
     }
 
     pub(crate) async fn open_file_handle(
-        &self, file: std::fs::File, range: ByteRange, frozen: Option<Arc<crate::frozen_file::Backing>>,
+        &self, file: std::fs::File, range: ByteRange, frozen: Option<Arc<crate::frozen_file::Backing>>, path: Option<std::path::PathBuf>,
     ) -> Result<FileReader> {
-        let reader = LocalReader::opened(&self.inner, file, range, frozen).await?;
+        let path = path.unwrap_or_else(|| crate::local::opened_path(&file));
+        let reader = LocalReader::opened(&self.inner, file, path, range, frozen).await?;
         Ok(FileReader {
             context: crate::execution::Context::current(),
             source: Source::Local(reader),

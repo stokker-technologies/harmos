@@ -518,6 +518,7 @@ mod tests {
         let policy = super::super::OperationPolicy {
             timeout: std::time::Duration::from_secs(17),
             attempt_timeout: std::time::Duration::from_secs(11),
+            cancellation_timeout: std::time::Duration::ZERO,
             ..lifecycle::POLICY
         };
         [

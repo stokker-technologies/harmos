@@ -20,6 +20,8 @@ mod decline;
 mod echo;
 #[path = "contract/fail.rs"]
 mod fail;
+#[path = "contract/finish.rs"]
+mod finish;
 #[path = "contract/provider.rs"]
 mod provider;
 #[path = "contract/read.rs"]
@@ -35,6 +37,7 @@ pub use counts::CountsOperation;
 pub use decline::DeclineOperation;
 pub use echo::EchoOperation;
 pub use fail::FailOperation;
+pub use finish::FinishOperation;
 pub use provider::ProviderEchoOperation;
 pub use read::ReadOperation;
 pub use spin::SpinOperation;
@@ -61,6 +64,7 @@ use harmos_guest as guest;
 const PROBE: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(2),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 
@@ -98,6 +102,7 @@ pub enum Operations {
     FailOperation(FailOperation),
     ReadOperation(ReadOperation),
     CountsOperation(CountsOperation),
+    FinishOperation(FinishOperation),
 }
 
 /* === Traits === */

@@ -46,7 +46,7 @@ use std::{sync::Mutex, time::Duration};
 
 // The Request Carries The Shared Event Log, So It Stays In Process.
 #[harmos_runtime::operation(codec = manual, resources = [harmos_runtime::operations::HostContext], id = "borrowed.request", response = u32, policy = OperationPolicy { timeout: Duration::from_secs(2), attempt_timeout: Duration::from_secs(1),
-    retries: RetryPolicy::OnTransient { max_retries: 1,
+    cancellation_timeout: std::time::Duration::ZERO, retries: RetryPolicy::OnTransient { max_retries: 1,
         backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None } } })]
 #[derive(Clone)]
 struct Request {

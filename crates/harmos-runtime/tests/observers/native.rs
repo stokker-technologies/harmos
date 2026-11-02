@@ -75,7 +75,7 @@ impl harmos_runtime::sidecar::StreamSpec for ConfiguredRow {
 impl Observer<()> for ConfiguredWatch {
     type Error = Error;
     const ID: &'static str = "schema-budget.native";
-    const INTERVAL: Duration = Duration::from_millis(5);
+    const INTERVAL: std::time::Duration = Duration::from_millis(5);
     const STREAMS: &'static [harmos_runtime::sidecar::inventory::publications::Entry] =
         &[harmos_runtime::sidecar::inventory::publications::Entry::of::<ConfiguredRow>()];
 
@@ -109,7 +109,7 @@ impl Counts {
 impl<const PANIC: bool> Observer<()> for Watch<PANIC> {
     type Error = Error;
     const ID: &'static str = "native";
-    const INTERVAL: Duration = Duration::from_millis(5);
+    const INTERVAL: std::time::Duration = Duration::from_millis(5);
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Error> {
         let resolved = context.resource::<Counts>().unwrap();
         let resources = &resolved;
@@ -284,7 +284,7 @@ async fn handles_keep_cleanup() {
     counts.refuse_stop.store(true, Ordering::SeqCst);
     let lease = manager.submit_resident("native").await.unwrap();
     phase(manager, &key(manager, &lease), RUNNING).await;
-    lease.cancel();
+    lease.request_cancel();
     assert!(lease.settle().await.is_err());
     drop(lease);
     assert_eq!(counts.dropped.load(Ordering::SeqCst), 0);
@@ -317,7 +317,7 @@ async fn cleanup_recovery(finalizing: bool) {
     let expected = if finalizing { OperationPhase::Finalizing } else { OperationPhase::Stopping };
     let lease = manager.submit_resident("native").await.unwrap();
     phase(manager, &key(manager, &lease), RUNNING).await;
-    lease.cancel();
+    lease.request_cancel();
     assert!(lease.settle().await.is_err());
     assert!(!lease.status().phase().is_terminal());
     assert!(lease.status().cleanup_pending());

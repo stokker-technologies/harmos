@@ -130,15 +130,9 @@ impl WireTable {
             return Err(ServingError::Startup(Box::new(StartupError::Multiple { errors })));
         }
 
-        let mut staged = Self::new(&self.owner)?;
+        let mut staged = self.configuration()?;
         staged.resources = self.resources.clone();
         staged.trusted_resources = self.trusted_resources.clone();
-        staged.provided.clone_from(&self.provided);
-        staged.capacity = self.capacity;
-        #[cfg(feature = "streaming")]
-        {
-            staged.stream_limits = self.stream_limits;
-        }
         let pending = std::mem::take(&mut self.pending);
         for batch in pending {
             if let Err(source) = staged.register_now(batch) {

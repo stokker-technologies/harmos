@@ -20,4 +20,4 @@
 
 ## Impact
 
-Harmos domain, macros, runtime admission and dispatch, authoring guidance and product guide; consumers (Dokime, HCL) rename `Shared` to `Public` when they adopt this release.
+Harmos domain, macros, runtime admission and dispatch, authoring guidance and product guide; consumers (Dokime, Example Plugin) rename `Shared` to `Public` when they adopt this release.

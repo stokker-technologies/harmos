@@ -71,6 +71,7 @@ struct StopWait(Arc<Cleanup>);
         policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
+            cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::Never,
         },
     )]
@@ -192,7 +193,7 @@ async fn service_stop_observer() {
         fn definition(&self) -> harmos_runtime::Result<harmos_runtime::observers::ObserverDefinition> {
             Ok(harmos_runtime::observers::ObserverDefinition {
                 id: "blocked-observer".into(),
-                interval: Duration::from_secs(10),
+
                 streams: vec![],
                 demand_keys: vec![],
             })

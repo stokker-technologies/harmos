@@ -127,7 +127,7 @@ async fn record_follow_resumes() {
     assert_eq!(second.position, second_position);
     assert!(second.position.sequence > boundaries.accepted.sequence);
     fixture.storage.flush().await.unwrap();
-    instance.cancel();
+    instance.request_cancel();
     assert!(instance.await.is_err());
     drop(receiver);
     let mut request = request;
@@ -138,7 +138,7 @@ async fn record_follow_resumes() {
     write(&fixture.storage, "reconnected").await;
     let third = followed(receiver.recv().await.unwrap());
     assert_eq!(third.item.as_str(), "reconnected");
-    instance.cancel();
+    instance.request_cancel();
     assert!(instance.await.is_err());
     fixture.finish().await;
 }
@@ -183,7 +183,7 @@ async fn stream_follow_sequence() {
     assert_eq!(row.sequence, 17);
     assert_eq!(row.record.position.sequence, 1);
     drop(row);
-    instance.cancel();
+    instance.request_cancel();
     assert!(instance.await.is_err());
     fixture.finish().await;
 }

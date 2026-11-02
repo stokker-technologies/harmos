@@ -67,7 +67,7 @@ impl Manager {
             let ordinary = true;
             if _retain_shutdown && ordinary {
                 for control in _pending.values() {
-                    control.cancel();
+                    control.request_cancel();
                 }
             }
         }

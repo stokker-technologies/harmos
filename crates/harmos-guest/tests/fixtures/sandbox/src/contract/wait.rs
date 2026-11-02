@@ -34,12 +34,14 @@ use super::{Duration, Echoed, OperationPolicy, RetryPolicy};
     operations = [super::ProviderEchoOperation], id = "probe.wait", response = Echoed, policy = OperationPolicy {
         timeout: Duration::from_millis(5),
         attempt_timeout: Duration::from_millis(5),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     }))]
 #[cfg_attr(target_arch = "wasm32", harmos::guest::operation(harmos_path = ::harmos::guest,
     operations = [super::ProviderEchoOperation], id = "probe.wait", response = Echoed, policy = OperationPolicy {
         timeout: Duration::from_millis(5),
         attempt_timeout: Duration::from_millis(5),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     }))]
 #[derive(Clone, PartialEq)]

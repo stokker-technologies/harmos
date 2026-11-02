@@ -36,6 +36,7 @@ use harmos_runtime::{Error, Refusal, Runtime};
 const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(5),
     attempt_timeout: Duration::from_secs(5),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 
@@ -147,7 +148,7 @@ async fn owned_request_survives_caller_cancellation() {
     assert!(retained.owner::<tokio::sync::OwnedSemaphorePermit>().is_some());
 
     // A Native Worker May Own The Request Allocation After The Caller Cancels.
-    assert!(instance.cancel_and_join().await.is_err());
+    assert!(instance.cancel().await.is_err());
     runtime.shutdown().await.unwrap();
     assert_eq!(budget.available_permits(), 0);
     drop(retained);
@@ -187,7 +188,7 @@ async fn host_instances_settle() {
         let (runtime, gate) = runtime().await;
         let instance = submitted(&runtime.operations, HoldDeclaration { value: 1 }).await.unwrap();
         gate.started.notified().await;
-        assert!(instance.cancel_and_join().await.is_err());
+        assert!(instance.cancel().await.is_err());
         assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
         assert_eq!(gate.cleaned.load(Ordering::SeqCst), 1);
         runtime.shutdown().await.unwrap();
@@ -286,7 +287,7 @@ async fn resident_leases_watched() {
     drop(first);
     assert_eq!(operations.resident(&key).unwrap().leases, 1);
     assert_eq!(gate.cleaned.load(Ordering::SeqCst), 0);
-    second.cancel();
+    second.request_cancel();
     let mut phases = Vec::new();
     while let Some(state) = watch.next().await.unwrap() {
         phases.push(state.phase.clone());

@@ -110,6 +110,24 @@ impl GrpcManager {
     }
 
     pub async fn attach(&self, settings: Settings) -> Result<Attached> {
+        self.attach_inner(settings, None).await
+    }
+
+    pub async fn attach_with_certificate(
+        &self, settings: Settings, certificate: super::ServerCertificate, handshake_timeout: std::time::Duration,
+    ) -> Result<Attached> {
+        if settings.tls.is_some() || handshake_timeout.is_zero() || tokio::time::Instant::now().checked_add(handshake_timeout).is_none() {
+            return Err(Error::InvalidInput {
+                field: "gRPC reloadable TLS",
+                reason: "requires no fixed TLS configuration and a positive supported handshake timeout",
+            });
+        }
+        self.attach_inner(settings, Some((certificate, handshake_timeout))).await
+    }
+
+    async fn attach_inner(
+        &self, settings: Settings, certificate: Option<(super::ServerCertificate, std::time::Duration)>,
+    ) -> Result<Attached> {
         settings.validate()?;
         let router = super::routing::Router::new(self.operations.clone(), settings.operations).map_err(|_| Error::InvalidInput {
             field: "gRPC operation settings",
@@ -145,7 +163,7 @@ impl GrpcManager {
                 "starting gRPC listener"
             );
             let routes = routes.into_axum_router().fallback_service(router);
-            Arc::new(listener::Resources::new(settings, routes.into(), state.middleware.clone()))
+            Arc::new(listener::Resources::new(settings, routes.into(), state.middleware.clone(), certificate))
         };
         let (generation, address) = self.host.attach(resources).await?;
         Ok(Attached {
@@ -187,7 +205,7 @@ impl Attached {
 
 impl Drop for Attached {
     fn drop(&mut self) {
-        self.host.cancel(self.generation);
+        self.host.request_cancel(self.generation);
     }
 }
 

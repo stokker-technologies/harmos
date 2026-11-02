@@ -10,6 +10,10 @@
 /* === Modules === */
 
 #[cfg(feature = "plugin-sidecar")]
+#[path = "../observers/cadence.rs"]
+mod cadence;
+
+#[cfg(feature = "plugin-sidecar")]
 #[path = "../observers/execution.rs"]
 mod execution;
 #[cfg(feature = "plugin-sidecar")]
@@ -37,7 +41,6 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use std::time::Duration;
 // Third Party Imports
 use tokio::sync::Semaphore;
 // Local Imports
@@ -132,7 +135,7 @@ impl ObserverBackend for Backend {
     fn definition(&self) -> harmos_runtime::Result<ObserverDefinition> {
         Ok(ObserverDefinition {
             id: self.id.into(),
-            interval: Duration::from_millis(5),
+
             streams: vec![],
             demand_keys: vec![],
         })
@@ -174,7 +177,7 @@ impl ObserverBackend for FinalPublication {
     fn definition(&self) -> harmos_runtime::Result<ObserverDefinition> {
         Ok(ObserverDefinition {
             id: "final".into(),
-            interval: Duration::from_secs(1),
+
             streams: vec![],
             demand_keys: vec![],
         })
@@ -196,7 +199,7 @@ impl ObserverBackend for ReentrantBackend {
         let _ = self.0.manager.resident_definitions();
         Ok(ObserverDefinition {
             id: "retained".into(),
-            interval: Duration::from_secs(1),
+
             streams: vec![],
             demand_keys: vec![],
         })
@@ -350,7 +353,7 @@ async fn cancellation_skips_backend() {
     let resources = runtime.operations.context().resource::<Control>().unwrap();
     let lease = manager.submit_resident("queued").await.unwrap();
     // The Current-Thread Executor Has Not Polled The Queued Backend Yet.
-    lease.cancel();
+    lease.request_cancel();
     lease.settle().await.unwrap();
     let lifecycle = lease.status();
     assert_eq!(lifecycle.outcome(), Some(OperationOutcome::Cancelled));
@@ -463,8 +466,8 @@ async fn instance_cancel_joins() {
     phase(manager, &key, RUNNING).await;
     assert_eq!(leases(manager, &key), 2);
     assert_eq!(first.id(), second.id());
-    first.cancel();
-    first.cancel();
+    first.request_cancel();
+    first.request_cancel();
     reached(&resources.stops).await;
     {
         let settling = first.settle();
@@ -489,7 +492,7 @@ async fn instance_cancel_joins() {
     let replacement = manager.submit_resident("watch").await.unwrap();
     phase(manager, &key, RUNNING).await;
     assert_ne!(replacement.id(), first.id());
-    first.cancel();
+    first.request_cancel();
     first.settle().await.unwrap();
     first.release().await.unwrap();
     second.release().await.unwrap();

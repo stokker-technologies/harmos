@@ -80,6 +80,7 @@ pub(crate) type Request = Compute;
     policy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::OnTransient {
             max_retries: 3,
             backoff: Backoff::Fixed {
@@ -104,6 +105,7 @@ pub(crate) struct Compute {
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_millis(50),
         attempt_timeout: Duration::from_millis(10),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: Compute::POLICY.retries,
     },
 )]

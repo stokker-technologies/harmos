@@ -38,6 +38,7 @@ mod task;
 #[harmos_sdk::operation(harmos_path = ::harmos_sdk, id = "storage.read_file", policy = harmos_sdk::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: harmos_sdk::RetryPolicy::Never,
 })]
 struct OwnerRead;

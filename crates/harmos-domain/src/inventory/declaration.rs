@@ -168,6 +168,12 @@ impl Facility {
 
 impl Declaration {
     pub fn inspect(artifact: &[u8], facility: Facility) -> Result<Self, DeclarationError> {
+        Self::inspect_with_settings(artifact, facility, &crate::config::SchemaSettings::default())
+    }
+
+    pub fn inspect_with_settings(
+        artifact: &[u8], facility: Facility, settings: &crate::config::SchemaSettings,
+    ) -> Result<Self, DeclarationError> {
         let name = facility.as_str();
         let mut identity = None;
         let mut schemas = Vec::new();
@@ -177,7 +183,7 @@ impl Declaration {
         let mut observer_manifests = Vec::new();
         let mut publications = Vec::new();
         let mut restart_policies = Vec::new();
-        let mut settings = crate::config::SchemaSettings::default();
+        let mut settings = *settings;
         for fragment in crate::artifacts::fragments_with_settings::<Fragment>(artifact, &OWNED, &mut settings)? {
             match fragment {
                 Fragment::Plugin(common) => {
@@ -219,7 +225,7 @@ impl Declaration {
         let sections = contributions::select(contribution_manifests, name, &id)?;
         let listeners = listeners::select(listener_manifests, name, &id, &contracts.provides)?.unwrap_or_default();
         let operations = contracts.provides.iter().map(|contract| contract.operation().clone()).collect();
-        let streams = publications::select(publications, name, &id)?;
+        let streams = publications::select_with_settings(publications, name, &id, &settings)?;
 
         let (observers, carrier) = match facility {
             Facility::Sidecar => {
@@ -311,7 +317,7 @@ impl RestartPolicy {
 impl From<ScanError> for DeclarationError {
     fn from(error: ScanError) -> Self {
         match error {
-            ScanError::Budget => Self::Schema(crate::schema::graph::Error::Budget),
+            ScanError::Budget { budget, used, allowed } => Self::Schema(crate::schema::graph::Error::Allowance { budget, used, allowed }),
             ScanError::Oversized => Self::OversizedFragment,
             ScanError::Malformed { source } => Self::Malformed { source },
             ScanError::UnknownKind { kind } => Self::UnknownKind { kind },

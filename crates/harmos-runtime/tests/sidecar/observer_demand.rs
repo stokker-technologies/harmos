@@ -159,12 +159,14 @@ impl harmos_runtime::Operation for Collect {
 const LIFECYCLE: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_millis(500),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 
 const COLLECTION: OperationPolicy = OperationPolicy {
     timeout: LIFECYCLE.timeout.saturating_mul(4),
     attempt_timeout: LIFECYCLE.timeout.saturating_mul(4),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 
@@ -217,7 +219,7 @@ impl harmos_runtime::Plugin for Producer {
     }
 }
 
-#[harmos_runtime::observer(id = "demand.record-only", interval_ms = 5, activation = "demand", demand_keys(RECORD))]
+#[harmos_runtime::observer(interval_ms = 5, id = "demand.record-only", activation = "demand", demand_keys(RECORD))]
 impl RecordOnly {
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
         let resolved = context.resource::<Resources>().unwrap();
@@ -245,7 +247,7 @@ impl RecordOnly {
     }
 }
 
-#[harmos_runtime::observer(id = "demand.mixed", interval_ms = 5, activation = "demand", streams(Row), demand_keys(RECORD, AUXILIARY))]
+#[harmos_runtime::observer(interval_ms = 5, id = "demand.mixed", activation = "demand", streams(Row), demand_keys(RECORD, AUXILIARY))]
 impl Mixed {
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
         let resolved = context.resource::<Resources>().unwrap();
@@ -281,7 +283,7 @@ impl Mixed {
     }
 }
 
-#[harmos_runtime::observer(id = "demand.idle", interval_ms = LIFECYCLE.timeout.as_millis() as u64 * 4, activation = "demand", demand_keys(IDLE))]
+#[harmos_runtime::observer(interval_ms = LIFECYCLE.timeout.as_millis() as u64 * 4, id = "demand.idle", activation = "demand", demand_keys(IDLE))]
 impl Idle {
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
         let resources = context.resource::<Resources>().unwrap();

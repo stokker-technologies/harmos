@@ -38,6 +38,7 @@ mod optional {
 const POLICY: harmos::OperationPolicy = harmos::OperationPolicy {
     timeout: std::time::Duration::MAX,
     attempt_timeout: std::time::Duration::MAX,
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: harmos::RetryPolicy::Never,
 };
 

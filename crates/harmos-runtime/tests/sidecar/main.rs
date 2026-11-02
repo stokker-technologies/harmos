@@ -86,6 +86,7 @@ static GAUGE_DEACTIVATED: AtomicBool = AtomicBool::new(false);
 const GAUGE_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(1),
     attempt_timeout: Duration::from_secs(1),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 
@@ -99,6 +100,7 @@ const GAUGE_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     },
     response = Amplified,
@@ -119,6 +121,7 @@ struct Amplified {
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     },
     response = (),
@@ -133,6 +136,7 @@ struct SampleDeclaration {
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     },
     response = (),
@@ -147,6 +151,7 @@ struct EmitDeclaration {
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     },
     response = (),
@@ -161,6 +166,7 @@ struct PublishPulseDeclaration {
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     },
     response = (),
@@ -173,6 +179,7 @@ struct CollapseDeclaration {}
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     },
     response = (),
@@ -187,6 +194,7 @@ struct FinishDeclaration {
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     },
     response = BudgetedReply,
@@ -580,6 +588,7 @@ impl harmos_operations::lifecycle::Policy for Meter {
     const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;

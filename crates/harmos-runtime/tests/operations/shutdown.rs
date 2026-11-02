@@ -60,6 +60,7 @@ enum Mode {
         policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(2),
+            cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::Never,
         },
     )]
@@ -126,7 +127,7 @@ async fn cancellation_observable_queued() {
     let first = runtime.operation(WaitContractDeclaration { mode: Mode::Hold }).start().await.unwrap();
     trace.started.notified().await;
     let queued = runtime.operation(WaitContractDeclaration { mode: Mode::Count }).start().await.unwrap();
-    queued.cancel();
+    queued.request_cancel();
     assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(trace.counted.load(Ordering::SeqCst), 0);
     trace.release.notify_one();
@@ -135,7 +136,7 @@ async fn cancellation_observable_queued() {
     let running = runtime.operation(WaitContractDeclaration { mode: Mode::Sleep }).start().await.unwrap();
     trace.started.notified().await;
 
-    running.cancel();
+    running.request_cancel();
     assert!(matches!(running.await, Err(Error::OperationRefused(Refusal::Cancelled))));
 
     // The cancelled queued instance was never constructed.

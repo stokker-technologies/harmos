@@ -112,6 +112,7 @@ impl Drop for Seed {
 const LIFECYCLE: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_millis(500),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 
@@ -201,7 +202,7 @@ impl ObserverPublisher<Pulse> for Host {
 impl<const N: u64> Observer<Host> for Watch<N> {
     type Error = PublishError;
     const ID: &'static str = if N == 0 { "custom.first" } else { "custom.second" };
-    const INTERVAL: Duration = Duration::from_millis(5);
+    const INTERVAL: std::time::Duration = Duration::from_millis(5);
     const STREAMS: &'static [publications::Entry] = &[publications::Entry::of::<Published>()];
 
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, PublishError> {

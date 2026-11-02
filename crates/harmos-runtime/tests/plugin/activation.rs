@@ -554,3 +554,17 @@ async fn outbound_caller_ready() {
     ));
     manager.shutdown(&mut host).await.unwrap();
 }
+
+#[test]
+fn graph_errors_name_the_plugins_at_fault() {
+    let cycle = PluginGraph::resolve([
+        definition("left", PluginKind::Sidecar, &["right"]),
+        definition("right", PluginKind::Sidecar, &["left"]),
+        definition("other", PluginKind::Guest, &[]),
+    ])
+    .unwrap_err();
+    assert!(matches!(&cycle, harmos_runtime::plugin::Error::Cycle { artifacts } if artifacts == &["left", "right"]));
+    assert_eq!(cycle.artifact(), None);
+    let missing = PluginGraph::resolve([definition("client", PluginKind::Sidecar, &["absent"])]).unwrap_err();
+    assert_eq!(missing.artifact(), Some("client"));
+}

@@ -53,6 +53,7 @@ struct Text {
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
+            cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::OnTransient {
                 max_retries: 1,
                 backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },

@@ -39,6 +39,7 @@ struct WireRequest {
     policy = facade::__harmos::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(30),
     attempt_timeout: std::time::Duration::from_secs(1),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: facade::__harmos::operations::RetryPolicy::Never,
 },
 )]

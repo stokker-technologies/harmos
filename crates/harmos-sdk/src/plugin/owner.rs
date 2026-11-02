@@ -625,6 +625,7 @@ mod tests {
         const INITIALIZATION_POLICY: crate::OperationPolicy = crate::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
+            cancellation_timeout: std::time::Duration::ZERO,
             retries: crate::RetryPolicy::Never,
         };
         const SHUTDOWN_POLICY: crate::OperationPolicy = Self::INITIALIZATION_POLICY;

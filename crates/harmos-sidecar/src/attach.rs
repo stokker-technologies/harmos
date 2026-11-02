@@ -40,6 +40,36 @@ use crate::inventory::{Declaration, DeclarationError, Facility};
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+// Preserve Windows System And Profile Path Resolution Without Inheriting The Full Environment.
+#[cfg(windows)]
+const WINDOWS_ENVIRONMENT: &[&str] = &[
+    "SystemDrive",
+    "SystemRoot",
+    "windir",
+    "ProgramData",
+    "ALLUSERSPROFILE",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
+    "ProgramW6432",
+    "CommonProgramFiles",
+    "CommonProgramFiles(x86)",
+    "CommonProgramW6432",
+    "PUBLIC",
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "LOCALAPPDATA",
+    "APPDATA",
+    "USERNAME",
+    "USERDOMAIN",
+    "COMPUTERNAME",
+    "PATHEXT",
+    "ComSpec",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "OS",
+];
+
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -253,6 +283,10 @@ impl Attached {
 
 impl Executable {
     pub fn at(path: impl AsRef<Path>) -> Result<Self, ExecutableError> {
+        Self::at_with_settings(path, &harmos_domain::config::SchemaSettings::default())
+    }
+
+    pub fn at_with_settings(path: impl AsRef<Path>, settings: &harmos_domain::config::SchemaSettings) -> Result<Self, ExecutableError> {
         let program = path.as_ref().to_path_buf();
         if !program.is_absolute() {
             return Err(ExecutableError::Relative { path: program });
@@ -262,10 +296,11 @@ impl Executable {
             return Err(ExecutableError::NotFile { path: program });
         }
         let bytes = std::fs::read(&program).map_err(|source| ExecutableError::Unreadable { path: program.clone(), source })?;
-        let declaration = Declaration::inspect(&bytes, Facility::Sidecar).map_err(|source| ExecutableError::Declaration {
-            path: program.clone(),
-            source: Box::new(source),
-        })?;
+        let declaration =
+            Declaration::inspect_with_settings(&bytes, Facility::Sidecar, settings).map_err(|source| ExecutableError::Declaration {
+                path: program.clone(),
+                source: Box::new(source),
+            })?;
         Ok(Self {
             program,
             declaration,
@@ -394,6 +429,11 @@ fn command(
     #[cfg(windows)]
     {
         command.creation_flags(CREATE_NO_WINDOW);
+        for &name in WINDOWS_ENVIRONMENT {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
         command.env("SystemRoot", system_root()?);
         let temporary = std::env::temp_dir();
         command.env("TMP", &temporary).env("TEMP", &temporary);

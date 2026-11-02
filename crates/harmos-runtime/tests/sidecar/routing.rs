@@ -142,6 +142,7 @@ struct Forwarder;
     policy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::OnTransient {
             max_retries: 1,
             backoff: harmos_runtime::operations::Backoff::Fixed {
@@ -355,6 +356,7 @@ impl harmos_operations::lifecycle::Policy for Publishing {
     const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
@@ -414,6 +416,7 @@ impl harmos_operations::lifecycle::Policy for Dependent {
     const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
@@ -475,18 +478,18 @@ impl harmos_runtime::Operation for Amplifying {
 }
 
 impl harmos_runtime::Operation for RetryDeclaration {
-    type Error = Refusal;
+    type Error = std::io::Error;
     async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Amplified>, Self::Error> {
         let resources = ctx.resource::<Provider>();
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         let _guard = RetryGuard(resources.clone());
         let attempt = resources.attempts.fetch_add(1, Ordering::SeqCst);
         if attempt.is_multiple_of(2) {
-            return Err(Refusal::of("one transient failure"));
+            return Err(std::io::Error::other("one transient failure"));
         }
         Ok(Amplified { value: self.value + 2 }.into())
     }
-    fn classify(_: &Refusal) -> harmos_runtime::operations::FailureKind {
+    fn classify(_: &Self::Error) -> harmos_runtime::operations::FailureKind {
         harmos_runtime::operations::FailureKind::Transient
     }
 }

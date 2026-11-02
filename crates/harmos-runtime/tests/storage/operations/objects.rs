@@ -207,7 +207,7 @@ async fn object_follow_resumes() {
     assert_eq!(received.version, second.version);
     drop(received);
     storage.flush().await.unwrap();
-    call.cancel();
+    call.request_cancel();
     assert!(call.await.is_err());
     drop(receiver);
     request.after = Some(second.position);
@@ -223,7 +223,7 @@ async fn object_follow_resumes() {
     let received = receiver.recv().await.unwrap();
     assert_eq!(received.version, third.version);
     drop(received);
-    call.cancel();
+    call.request_cancel();
     assert!(call.await.is_err());
     drop(receiver);
     runtime.shutdown().await.unwrap();

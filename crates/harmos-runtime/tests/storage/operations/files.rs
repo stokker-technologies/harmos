@@ -116,7 +116,7 @@ async fn follow_reconnect_resumes() {
         assert_eq!(chunk.offset, offset);
         offset += chunk.bytes.len() as u64;
     }
-    instance.cancel();
+    instance.request_cancel();
     assert!(instance.await.is_err());
     drop(receiver);
     producer.write_all((b"later").to_vec()).await.unwrap();

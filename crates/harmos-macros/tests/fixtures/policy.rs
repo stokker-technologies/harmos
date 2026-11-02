@@ -23,7 +23,7 @@ use harmos::operations::{OperationPolicy, RetryPolicy};
 /* === Constants === */
 
 pub const POLICY: OperationPolicy =
-    OperationPolicy { timeout: Duration::from_secs(1), attempt_timeout: Duration::from_secs(1), retries: RetryPolicy::Never };
+    OperationPolicy { timeout: Duration::from_secs(1), attempt_timeout: Duration::from_secs(1), cancellation_timeout: std::time::Duration::ZERO, retries: RetryPolicy::Never };
 
 /* === Macros === */
 

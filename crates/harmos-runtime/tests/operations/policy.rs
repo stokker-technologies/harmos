@@ -110,6 +110,7 @@ struct BlockerDeclaration {
     policy = OperationPolicy {
         timeout: Duration::from_secs(30),
         attempt_timeout: Duration::from_secs(1),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::OnTransient {
             max_retries: 4,
             backoff: Backoff::Exponential {
@@ -251,6 +252,7 @@ const fn policy(overall: u64, attempt: u64, retries: usize, delay: u64) -> Opera
     OperationPolicy {
         timeout: Duration::from_millis(overall),
         attempt_timeout: Duration::from_millis(attempt),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: if retries == 0 {
             RetryPolicy::Never
         } else {
@@ -401,7 +403,7 @@ async fn cancellation_skips_backoff() {
     let invocation = runtime.operation(failing::<Retrying>(100)).start().await.unwrap();
     probe.started.notified().await;
     let cancelled = tokio::time::Instant::now();
-    invocation.cancel();
+    invocation.request_cancel();
     assert!(matches!(invocation.await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(cancelled.elapsed(), Duration::ZERO);
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
@@ -446,10 +448,10 @@ async fn calls_settle_retry() {
     let first = runtime.operation(Queued { behavior: Behavior::Gate(gate) }).start().await.unwrap();
     probe.started.notified().await;
     let second = runtime.operation(failing::<Queued>(0)).start().await.unwrap();
-    second.cancel();
+    second.request_cancel();
     assert!(matches!(second.await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-    first.cancel();
+    first.request_cancel();
     assert!(matches!(first.await, Err(Error::OperationRefused(Refusal::Cancelled))));
     // A Cancelled Queued Request Never Starts An Attempt.
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);

@@ -210,7 +210,10 @@ fn shared_checkpoint_schema() {
         preparation_bytes: NonZeroUsize::new(1).unwrap(),
         ..SchemaSettings::default()
     };
-    assert!(matches!(declaration::Named::decode(encoded.iter().map(Vec::as_slice), &constrained), Err(Error::Budget)));
+    assert!(matches!(
+        declaration::Named::decode(encoded.iter().map(Vec::as_slice), &constrained),
+        Err(Error::Allowance { budget: "memory bytes", .. })
+    ));
     let preparation = schema.prepare(&SchemaSettings::default()).unwrap();
     assert_eq!(preparation.definitions, 164);
     wire_round_trip(&schema);
@@ -247,12 +250,12 @@ fn shared_checkpoint_schema() {
         preparation_bytes: NonZeroUsize::new(preparation.bytes - 1).unwrap(),
         ..Default::default()
     };
-    assert!(matches!(schema.prepare(&bounded), Err(Error::Budget)));
+    assert!(matches!(schema.prepare(&bounded), Err(Error::Allowance { budget: "memory bytes", used, allowed }) if used > allowed));
     let bounded = SchemaSettings {
         preparation_work: NonZeroUsize::new(preparation.work - 1).unwrap(),
         ..Default::default()
     };
-    assert!(matches!(schema.prepare(&bounded), Err(Error::Budget)));
+    assert!(matches!(schema.prepare(&bounded), Err(Error::Allowance { budget: "work", used, allowed }) if used > allowed));
 }
 
 #[test]

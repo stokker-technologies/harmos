@@ -256,6 +256,7 @@ impl super::OperationDeclaration for Activation {
     const POLICY: super::OperationPolicy = super::OperationPolicy {
         timeout: harmos_domain::operations::UNBOUNDED,
         attempt_timeout: harmos_domain::operations::UNBOUNDED,
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: super::RetryPolicy::Never,
     };
 }
@@ -1065,7 +1066,7 @@ impl Entry {
 
 impl Running {
     fn stop(&self) {
-        self.settlement.lifecycle().cancel();
+        self.settlement.lifecycle().request_cancel();
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.settle", level = "debug", skip_all)]

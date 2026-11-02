@@ -38,6 +38,7 @@ use harmos::guest::{Host, PublishError};
 const LIFECYCLE: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(2),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 
@@ -196,7 +197,7 @@ async fn submitted(context: &Context) -> Result<(), std::io::Error> {
     }
 
     let cancelled = context.submit::<contract::ProviderEchoOperation>(request("cancelled")).await.map_err(std::io::Error::other)?;
-    if Instance::cancel_and_join(cancelled).await.is_ok() {
+    if Instance::cancel(cancelled).await.is_ok() {
         return Err(std::io::Error::other("a cancelled child must not answer"));
     }
 

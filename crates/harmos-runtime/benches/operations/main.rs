@@ -72,6 +72,7 @@ enum Lanes {
         policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(30),
             attempt_timeout: Duration::from_secs(30),
+            cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::Never,
         },
     )]

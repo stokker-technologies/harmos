@@ -39,7 +39,7 @@ pub struct Model;
     visibility = Public,
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30), attempt_timeout: Duration::from_secs(30),
-        retries: RetryPolicy::Never,
+        cancellation_timeout: std::time::Duration::ZERO, retries: RetryPolicy::Never,
     },
     grpc(package = "benchmark.v1", service = "Commands", method = "Echo"),
 )]

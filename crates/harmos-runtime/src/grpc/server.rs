@@ -69,7 +69,7 @@ impl Authority {
         Self::TrustedHost(operations.execution())
     }
 
-    fn preparation(&self) -> Option<Arc<tokio::sync::Semaphore>> {
+    pub(super) fn preparation(&self) -> Option<Arc<tokio::sync::Semaphore>> {
         match self {
             Self::TrustedHost(operations) => operations.preparation.clone(),
             Self::Binding(binding) => binding.operations.preparation.clone(),
@@ -78,7 +78,7 @@ impl Authority {
         }
     }
 
-    fn contextual<T>(&self, request: &Request<T>) -> Self {
+    pub(super) fn contextual<T>(&self, request: &Request<T>) -> Self {
         let Some(context) = request.extensions().get::<super::inbound::TrustedContext>() else {
             return self.clone();
         };
@@ -90,7 +90,7 @@ impl Authority {
         }
     }
 
-    fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
+    pub(super) fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
         &self, request: StreamItem<O::Request>, endpoints: P,
     ) -> crate::Result<Running<O>> {
         match self {
@@ -201,8 +201,14 @@ where
 pub fn unary<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
     O: OperationDeclaration,
-    W: Wire<O::Request> + Wire<O::Response>,
+    W: Wire<O::Request>
+        + Wire<<O::Input as crate::operations::Direction>::Item>
+        + Wire<<O::Output as crate::operations::Direction>::Item>
+        + Wire<O::Response>,
 {
+    if super::controlled::is_managed(&authority, request.uri().path()) {
+        return super::controlled::serve::<O, W>(authority, settings, request);
+    }
     Box::pin(async move {
         if let Err(error) = settings.validate() {
             return error.into_http();
@@ -222,8 +228,14 @@ where
 pub fn download<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
     O: crate::operations::OperationDeclaration,
-    W: Wire<O::Request> + Wire<<O::Output as crate::operations::Direction>::Item> + Wire<O::Response>,
+    W: Wire<O::Request>
+        + Wire<<O::Input as crate::operations::Direction>::Item>
+        + Wire<<O::Output as crate::operations::Direction>::Item>
+        + Wire<O::Response>,
 {
+    if super::controlled::is_managed(&authority, request.uri().path()) {
+        return super::controlled::serve::<O, W>(authority, settings, request);
+    }
     Box::pin(async move {
         if let Err(error) = settings.validate() {
             return error.into_http();
@@ -248,8 +260,14 @@ where
 pub fn upload<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
     O: crate::operations::OperationDeclaration,
-    W: Wire<O::Request> + Wire<<O::Input as crate::operations::Direction>::Item> + Wire<O::Response>,
+    W: Wire<O::Request>
+        + Wire<<O::Input as crate::operations::Direction>::Item>
+        + Wire<<O::Output as crate::operations::Direction>::Item>
+        + Wire<O::Response>,
 {
+    if super::controlled::is_managed(&authority, request.uri().path()) {
+        return super::controlled::serve::<O, W>(authority, settings, request);
+    }
     Box::pin(async move {
         if let Err(error) = settings.validate() {
             return error.into_http();
@@ -279,6 +297,9 @@ where
         + Wire<<O::Output as crate::operations::Direction>::Item>
         + Wire<O::Response>,
 {
+    if super::controlled::is_managed(&authority, request.uri().path()) {
+        return super::controlled::serve::<O, W>(authority, settings, request);
+    }
     Box::pin(async move {
         if let Err(error) = settings.validate() {
             return error.into_http();

@@ -63,8 +63,8 @@ struct Kinded {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ScanError {
-    #[error("artifact metadata exceeds the schema preparation memory or work budget")]
-    Budget,
+    #[error("schema preparation {budget} budget exceeded: used {used}, allowed {allowed}")]
+    Budget { budget: &'static str, used: usize, allowed: usize },
 
     #[error("a Harmos metadata fragment exceeds its {FRAGMENT_LIMIT}-byte bound")]
     Oversized,
@@ -115,10 +115,19 @@ pub(crate) fn fragments_with_settings<F: DeserializeOwned>(
         let encoded = &bounded[..length];
         cursor = start + length + 1;
 
-        remaining_work = remaining_work.checked_sub(encoded.len()).ok_or(ScanError::Budget)?;
-        let charge =
-            encoded.len().checked_mul(16).and_then(|bytes| bytes.checked_add(4 * std::mem::size_of::<F>())).ok_or(ScanError::Budget)?;
-        remaining_bytes = remaining_bytes.checked_sub(charge).ok_or(ScanError::Budget)?;
+        let work = (settings.preparation_work.get() - remaining_work).saturating_add(encoded.len());
+        remaining_work = remaining_work.checked_sub(encoded.len()).filter(|remaining| *remaining > 0).ok_or(ScanError::Budget {
+            budget: "work",
+            used: work,
+            allowed: settings.preparation_work.get(),
+        })?;
+        let charge = encoded.len() * 16 + 4 * std::mem::size_of::<F>();
+        let bytes = (settings.preparation_bytes.get() - remaining_bytes).saturating_add(charge);
+        remaining_bytes = remaining_bytes.checked_sub(charge).filter(|remaining| *remaining > 0).ok_or(ScanError::Budget {
+            budget: "memory bytes",
+            used: bytes,
+            allowed: settings.preparation_bytes.get(),
+        })?;
         let Kinded { kind } = serde_json::from_slice(encoded).map_err(|source| ScanError::Malformed { source })?;
         if !KINDS.contains(&kind.as_str()) {
             return Err(ScanError::UnknownKind { kind });
@@ -130,11 +139,46 @@ pub(crate) fn fragments_with_settings<F: DeserializeOwned>(
         found.push(serde_json::from_slice(encoded).map_err(|source| ScanError::Malformed { source })?);
     }
 
-    settings.preparation_bytes = std::num::NonZeroUsize::new(remaining_bytes).ok_or(ScanError::Budget)?;
-    settings.preparation_work = std::num::NonZeroUsize::new(remaining_work).ok_or(ScanError::Budget)?;
+    settings.preparation_bytes = std::num::NonZeroUsize::new(remaining_bytes).expect("positive remaining memory");
+    settings.preparation_work = std::num::NonZeroUsize::new(remaining_work).expect("positive remaining work");
     Ok(found)
 }
 
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::SchemaSettings;
+    use std::num::NonZeroUsize;
+
+    #[test]
+    fn preparation_usage_reported() {
+        let encoded = br#"{"kind":"schema","name":"fixture","fields":[]}"#;
+        let mut artifact = Vec::new();
+        for _ in 0..2 {
+            artifact.extend_from_slice(PREFIX);
+            artifact.extend_from_slice(encoded);
+            artifact.push(0);
+        }
+        let bytes = 2 * (encoded.len() * 16 + 4 * std::mem::size_of::<serde_json::Value>());
+        let work = 2 * encoded.len();
+        for (budget, used) in [("memory bytes", bytes), ("work", work)] {
+            let mut settings = SchemaSettings::default();
+            if budget == "work" {
+                settings.preparation_work = NonZeroUsize::new(used - 1).unwrap();
+            } else {
+                settings.preparation_bytes = NonZeroUsize::new(used - 1).unwrap();
+            }
+            let error = fragments_with_settings::<serde_json::Value>(&artifact, &["schema"], &mut settings).unwrap_err();
+            assert!(matches!(error, ScanError::Budget { budget: actual, used: actual_used, allowed }
+                if actual == budget && actual_used == used && allowed == used - 1));
+        }
+        let mut settings = SchemaSettings::default();
+        assert_eq!(fragments_with_settings::<serde_json::Value>(&artifact, &["schema"], &mut settings).unwrap().len(), 2);
+        assert_eq!(settings.preparation_bytes.get(), SchemaSettings::default().preparation_bytes.get() - bytes);
+        assert_eq!(settings.preparation_work.get(), SchemaSettings::default().preparation_work.get() - work);
+    }
+}

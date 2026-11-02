@@ -47,6 +47,7 @@ static OBSERVER_SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<O
 const LIFECYCLE: harmos_runtime::operations::OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_millis(500),
+    cancellation_timeout: std::time::Duration::ZERO,
     retries: harmos_runtime::operations::RetryPolicy::Never,
 };
 
@@ -323,7 +324,7 @@ impl harmos_runtime::Plugin for Ticking {
     }
 }
 
-#[harmos_runtime::observer(streams(TickingPulse), demand_keys(TICKING_DEMAND), activation = "demand", interval_ms = 1)]
+#[harmos_runtime::observer(interval_ms = 1, streams(TickingPulse), demand_keys(TICKING_DEMAND), activation = "demand")]
 impl Producer {
     async fn observe(&mut self, ctx: &ObserverContext<'_, harmos_sidecar::Publisher<Ticking>>) -> Result<(), Infallible> {
         match ctx.publish_on::<TickingPulse>(&support::pulse(ctx.tick().ordinal())).await {
@@ -338,6 +339,7 @@ impl harmos_operations::lifecycle::Policy for Twins {
     const INITIALIZATION_POLICY: harmos_runtime::operations::OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: harmos_runtime::operations::RetryPolicy::Never,
     };
     const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
@@ -566,7 +568,7 @@ impl harmos_runtime::Plugin for SampledTwins {
     }
 }
 
-#[harmos_runtime::observer(streams(Left), activation = "demand", interval_ms = 5)]
+#[harmos_runtime::observer(interval_ms = 5, streams(Left), activation = "demand")]
 impl LeftObserver {
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
         let resolved = context.resource::<ObserverResources>().unwrap();
@@ -592,7 +594,7 @@ impl LeftObserver {
     }
 }
 
-#[harmos_runtime::observer(streams(Right), activation = "demand", interval_ms = 5)]
+#[harmos_runtime::observer(interval_ms = 5, streams(Right), activation = "demand")]
 impl RightObserver {
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
         let resolved = context.resource::<ObserverResources>().unwrap();
@@ -657,7 +659,7 @@ impl harmos_runtime::Plugin for MultiStream {
     }
 }
 
-#[harmos_runtime::observer(streams(FloodRows), interval_ms = 1)]
+#[harmos_runtime::observer(interval_ms = 1, streams(FloodRows))]
 impl Flooding {
     async fn initialize(context: &harmos_sdk::ExecutionContext) -> Result<Self, harmos_sidecar::PublishError> {
         let resolved = context.resource::<super::witness::Witness>().unwrap();

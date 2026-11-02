@@ -108,6 +108,7 @@ fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>, required: 
             json!({
                 "timeout": {"secs": 10, "nanos": 0},
                 "attempt_timeout": {"secs": 10, "nanos": 0},
+                "cancellation_timeout": {"secs": 0, "nanos": 0},
                 "retries": "never"
             })
         );

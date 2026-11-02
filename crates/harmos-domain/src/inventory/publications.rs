@@ -176,7 +176,7 @@ impl NamedManifest {
                     window: stream.window,
                     row,
                 };
-                validate(&stream)?;
+                validate_with_settings(&stream, settings)?;
                 Ok(stream)
             })
             .collect::<Result<_, Error>>()?;
@@ -276,6 +276,12 @@ pub const fn require_subset(outputs: &[&[Entry]], grants: &[Entry]) {
 }
 
 pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str) -> Result<Vec<StreamDeclaration>, Error> {
+    select_with_settings(manifests, facility, owner, &SchemaSettings::default())
+}
+
+pub fn select_with_settings(
+    manifests: Vec<Manifest>, facility: &str, owner: &str, settings: &SchemaSettings,
+) -> Result<Vec<StreamDeclaration>, Error> {
     if !super::contracts::valid_identity(facility, owner) {
         return Err(Error::Identity);
     }
@@ -292,7 +298,7 @@ pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str) -> Result<V
     }
     let mut streams = BTreeMap::new();
     for stream in manifest.streams {
-        validate(&stream)?;
+        validate_with_settings(&stream, settings)?;
         let id = stream.id.clone();
         if streams.insert(id.clone(), stream).is_some() {
             return Err(Error::DuplicateStream { id });
@@ -302,6 +308,10 @@ pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str) -> Result<V
 }
 
 pub fn validate_match(expected: &[Entry], actual: &[StreamDeclaration]) -> Result<(), Error> {
+    validate_match_with_settings(expected, actual, &SchemaSettings::default())
+}
+
+pub fn validate_match_with_settings(expected: &[Entry], actual: &[StreamDeclaration], settings: &SchemaSettings) -> Result<(), Error> {
     let mut authored = BTreeMap::new();
     for entry in expected {
         let metadata = if entry.metadata_json.is_empty() {
@@ -323,12 +333,12 @@ pub fn validate_match(expected: &[Entry], actual: &[StreamDeclaration]) -> Resul
             id: entry.id.to_owned(),
             schema: entry.schema,
             window: entry.window,
-            row: Schema::from_declaration(entry.row, &SchemaSettings::default()).map_err(|source| Error::Fields {
+            row: Schema::from_declaration(entry.row, settings).map_err(|source| Error::Fields {
                 id: entry.id.to_owned(),
                 source: source.into(),
             })?,
         };
-        validate(&stream)?;
+        validate_with_settings(&stream, settings)?;
         if authored.insert(entry.id, stream).is_some() {
             return Err(Error::DuplicateStream { id: entry.id.to_owned() });
         }
@@ -347,6 +357,10 @@ pub fn validate_match(expected: &[Entry], actual: &[StreamDeclaration]) -> Resul
 }
 
 pub fn validate(stream: &StreamDeclaration) -> Result<(), Error> {
+    validate_with_settings(stream, &SchemaSettings::default())
+}
+
+pub fn validate_with_settings(stream: &StreamDeclaration, settings: &SchemaSettings) -> Result<(), Error> {
     if !crate::stream_subset(&stream.id) {
         return Err(Error::InvalidId { id: stream.id.clone() });
     }
@@ -362,7 +376,7 @@ pub fn validate(stream: &StreamDeclaration) -> Result<(), Error> {
             reason: "identifier differs from stream identity".into(),
         });
     }
-    stream.row.prepare(&SchemaSettings::default()).map_err(|source| Error::Fields {
+    stream.row.prepare(settings).map_err(|source| Error::Fields {
         id: stream.id.clone(),
         source: source.into(),
     })?;

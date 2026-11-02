@@ -143,6 +143,7 @@ type IdleManaged =
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30),
         attempt_timeout: Duration::from_millis(5),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     }
 )]
@@ -153,6 +154,7 @@ struct PendingDeclaration {}
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30),
         attempt_timeout: Duration::from_millis(50),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     }
 )]
@@ -166,6 +168,7 @@ struct AnsweringDeclaration {
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30),
         attempt_timeout: Duration::from_millis(100),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     }
 )]
@@ -193,6 +196,7 @@ struct DivergentCatalog;
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30),
         attempt_timeout: Duration::from_millis(10000),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     }
 )]
@@ -359,6 +363,7 @@ impl harmos_operations::lifecycle::Policy for Idle {
     const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
+        cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;

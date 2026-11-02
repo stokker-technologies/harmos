@@ -77,7 +77,7 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
     let mut generated = BTreeSet::new();
     let mut operations = BTreeSet::new();
     for (method, contract) in methods {
-        if !identifier(method) || !names.insert(*method) {
+        if !identifier(method) || !names.insert((*method).to_owned()) {
             return Err(DescriptorError::Name);
         }
         let rust_name = method.to_snake_case();
@@ -99,6 +99,12 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
         }
         if !operations.insert(contract.operation().id.as_str()) {
             return Err(DescriptorError::DuplicateOperation);
+        }
+    }
+    for (method, _) in methods {
+        let managed = format!("Run{method}");
+        if !names.insert(managed.clone()) || !generated.insert(managed.to_snake_case()) {
+            return Err(DescriptorError::Name);
         }
     }
     let mut files = Vec::new();
@@ -130,16 +136,16 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
         let input = match contract.input() {
             Some(_) => {
                 let item = direction("input");
-                envelope(&mut file, &format!("{name}{method}Input"), [("request", request), ("item", item)])
+                envelope(&mut file, &format!("{name}{method}Input"), vec![("request", 1, request.clone()), ("item", 2, item)])
             }
-            None => request,
+            None => request.clone(),
         };
         let output = match contract.output() {
             Some(_) => {
                 let item = direction("output");
-                envelope(&mut file, &format!("{name}{method}Output"), [("item", item), ("response", response)])
+                envelope(&mut file, &format!("{name}{method}Output"), vec![("item", 1, item), ("response", 2, response.clone())])
             }
-            None => response,
+            None => response.clone(),
         };
         service.method.push(MethodDescriptorProto {
             name: Some((*method).into()),
@@ -147,6 +153,30 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
             output_type: Some(output),
             client_streaming: Some(contract.input().is_some()),
             server_streaming: Some(contract.output().is_some()),
+            ..Default::default()
+        });
+        let cancellation = format!("{name}{method}Cancellation");
+        file.message_type.push(DescriptorProto {
+            name: Some(cancellation.clone()),
+            ..Default::default()
+        });
+        let cancellation = format!(".{package}.{cancellation}");
+        let mut incoming = vec![("request", 1, request), ("cancel", 3, cancellation.clone()), ("finish", 4, cancellation)];
+        if contract.input().is_some() {
+            incoming.push(("item", 2, direction("input")));
+        }
+        let mut outgoing = vec![("response", 2, response)];
+        if contract.output().is_some() {
+            outgoing.push(("item", 1, direction("output")));
+        }
+        let input = envelope(&mut file, &format!("{name}{method}RunInput"), incoming);
+        let output = envelope(&mut file, &format!("{name}{method}RunOutput"), outgoing);
+        service.method.push(MethodDescriptorProto {
+            name: Some(format!("Run{method}")),
+            input_type: Some(input),
+            output_type: Some(output),
+            client_streaming: Some(true),
+            server_streaming: Some(true),
             ..Default::default()
         });
     }
@@ -158,19 +188,12 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
 
 /* === Private Functions === */
 
-fn identifier(value: &str) -> bool {
-    let mut bytes = value.bytes();
-    bytes.next().is_some_and(|first| first.is_ascii_alphabetic() || first == b'_')
-        && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-}
-
-fn envelope(file: &mut FileDescriptorProto, name: &str, alternatives: [(&str, String); 2]) -> String {
+fn envelope(file: &mut FileDescriptorProto, name: &str, alternatives: Vec<(&str, i32, String)>) -> String {
     let fields = alternatives
         .into_iter()
-        .enumerate()
-        .map(|(index, (name, type_name))| FieldDescriptorProto {
+        .map(|(name, number, type_name)| FieldDescriptorProto {
             name: Some(name.into()),
-            number: Some(index as i32 + 1),
+            number: Some(number),
             label: Some(Label::Optional as i32),
             r#type: Some(Type::Message as i32),
             type_name: Some(type_name),
@@ -187,7 +210,13 @@ fn envelope(file: &mut FileDescriptorProto, name: &str, alternatives: [(&str, St
         }],
         ..Default::default()
     });
-    format!(".{}.{name}", file.package.as_deref().expect("service package is explicit"))
+    format!(".{}.{name}", file.package.as_deref().expect("explicit service package"))
+}
+
+fn identifier(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    bytes.next().is_some_and(|first| first.is_ascii_alphabetic() || first == b'_')
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
 /* === Tests === */

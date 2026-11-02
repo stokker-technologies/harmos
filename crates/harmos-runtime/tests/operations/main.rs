@@ -17,6 +17,7 @@ use crate::support;
 use fixture::*;
 #[path = "../operations/admission.rs"]
 mod admission;
+pub(crate) mod cancellation;
 #[path = "../operations/causation.rs"]
 mod causation;
 #[path = "../operations/children.rs"]
