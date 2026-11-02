@@ -368,12 +368,13 @@ Transport paths use UTF-8 and reject unrepresentable paths; native readers retai
 the host path representation. Symlink traversal is rejected.
 
 Native `read_opened_file(file, range)` reads the supplied process-local handle,
-preserving its original inode even when its pathname is replaced. On Windows,
-the handle must permit a separate read open; exclusive handles are rejected so
-native reads can keep the caller's cursor independent without reopening by path.
-Keep a named or shareable delete-on-close temporary owner alive through native
-reads and captures; unlinking a temporary before reopening it can fail under
-Windows filesystem filters. `StorageManager::freeze_opened_file` creates a private
+preserving its original file object even when its pathname is replaced or deleted.
+On Windows, exclusive handles are rejected. A separate read open normally keeps
+the caller's OS cursor independent. If reopening is denied, including for a
+delete-pending object, reads use explicit offsets on the supplied handle; these
+reads can move the OS cursor shared with caller clones. Capture offsets remain
+independent. Keep the source bytes stable through a stable capture or freeze.
+`StorageManager::freeze_opened_file` creates a private
 named immutable copy exposing length and SHA-256. `FrozenFile::read` and
 `capture_frozen_file` retain that owner through readers, retries, cancellation
 and blocking I/O. Local filesystem errors include the step, path and native cause;
@@ -864,6 +865,20 @@ runtime.plugin.register_sidecar::<Operations>(executable, settings, lane).await?
 runtime.plugin.initialize().await?;
 ```
 
+Sidecars start with a cleared environment. On Windows, Harmos passes through
+these parent variables when present: `SystemDrive`, `SystemRoot`, `windir`,
+`ProgramData`, `ALLUSERSPROFILE`, `ProgramFiles`, `ProgramFiles(x86)`,
+`ProgramW6432`, `CommonProgramFiles`, `CommonProgramFiles(x86)`,
+`CommonProgramW6432`, `PUBLIC`, `USERPROFILE`, `HOMEDRIVE`, `HOMEPATH`,
+`LOCALAPPDATA`, `APPDATA`, `USERNAME`, `USERDOMAIN`, `COMPUTERNAME`, `PATHEXT`,
+`ComSpec`, `NUMBER_OF_PROCESSORS`, `PROCESSOR_ARCHITECTURE`, and `OS`.
+`SystemRoot` falls back to the Windows system directory if missing or empty;
+`TMP` and `TEMP` use the host's temporary directory. On Unix, only a nonempty
+`TMPDIR` is inherited; `HOME`, `USER`, `LANG`, and `LC_*` remain cleared.
+`PATH` and arbitrary parent variables are cleared on both platforms.
+Use `Executable::variable` to supply additional variables or override inherited
+values, and `Executable::directory` to choose the child's working directory.
+
 Sidecar wire credits bound in-flight encoded frames. Each connection also owns
 one reusable writer scratch buffer bounded by the protocol frame ceiling,
 separate from those credits. Scalar-only writers coalesce small frames to avoid
@@ -1117,3 +1132,20 @@ demand keys; it does not advertise the declared default as an effective interval
 A zero runtime duration, resolution error or panic refuses activation before
 initialization. Initialization retries and sampling use the captured interval;
 changed resources apply on the next activation.
+
+## Reloadable gRPC Certificates
+
+`crates/harmos-runtime/src/grpc/tls.rs` owns `grpc::ServerCertificate`.
+Create it with `ServerCertificate::from_pem(certificate, private_key)` and pass a
+clone to `runtime.grpc().attach_with_certificate(settings, certificate.clone(), handshake_timeout)`.
+The settings must have `tls: None`; the positive handshake timeout is caller-owned.
+This server-authentication-only path uses HTTP/2 ALPN and no client certificates.
+Existing `attach(settings)` and fixed Tonic TLS settings remain available.
+
+Call `certificate.reload(next_certificate, next_private_key)` to validate the PEM
+chain and key match before atomically replacing the resolver's certified key.
+Clones share the same identity. Invalid replacements leave the old identity active.
+New connections authenticate with the replacement; TLS resumption is disabled on
+this path so every connection presents the current certificate. Existing TLS
+connections and RPC streams retain their negotiated state and continue untouched.
+The listener's bind address, admission, middleware and shutdown ownership do not change.

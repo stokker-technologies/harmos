@@ -1080,3 +1080,94 @@ async fn access_never_grant() {
     assert_eq!(call(channel, Some("Bearer alice")).await.unwrap(), "alice");
     runtime.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn reload_certificate_preserves_stream() {
+    use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope, ServerCertificate};
+    use harmos_runtime::operations::Response;
+    use rustls::pki_types::ServerName;
+    let first = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+    let second = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+    let certificate = ServerCertificate::from_pem(first.cert.pem().as_bytes(), first.signing_key.serialize_pem().as_bytes()).unwrap();
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<Behavior>(Behavior::read());
+    })
+    .await
+    .unwrap();
+    runtime.operations.register::<crate::operations::Single<ExchangeDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
+    runtime
+        .grpc()
+        .register_service(Endpoint {
+            authority: harmos_runtime::grpc::server::Authority::trusted_host(&runtime.operations),
+        })
+        .unwrap();
+    let attached = runtime.grpc().attach_with_certificate(settings(), certificate.clone(), Duration::from_secs(2)).await.unwrap();
+    let address = attached.local_addr();
+    let channel = tonic::transport::Endpoint::from_shared(format!("https://{address}"))
+        .unwrap()
+        .tls_config(
+            tonic::transport::ClientTlsConfig::new()
+                .domain_name("localhost")
+                .ca_certificate(tonic::transport::Certificate::from_pem(first.cert.pem())),
+        )
+        .unwrap()
+        .connect()
+        .await
+        .unwrap();
+    let (sender, receiver) = tokio::sync::mpsc::channel(4);
+    sender.send(Response::new(InputEnvelope::<Ask, Reply>::Request(Ask {}))).await.unwrap();
+    sender.send(Response::new(InputEnvelope::Item(Reply { actor: "before".into() }))).await.unwrap();
+    let input = futures_util::stream::unfold(receiver, |mut receiver| async move { receiver.recv().await.map(|value| (value, receiver)) });
+    let mut request = tonic::Request::new(input);
+    request.metadata_mut().insert("authorization", "Bearer alice".parse().unwrap());
+    let mut client = tonic::client::Grpc::new(channel);
+    client.ready().await.unwrap();
+    let (decode, encode) = limits();
+    let codec =
+        Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, Response<InputEnvelope<Ask, Reply>>>::new(decode, encode)
+            .unwrap();
+    let mut stream =
+        client.streaming(request, http::uri::PathAndQuery::from_static("/fixture.Identity/Exchange"), codec).await.unwrap().into_inner();
+    assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(Reply { actor }) if actor == "alice"));
+
+    // Invalid And Mismatched Material Never Replaces The Active Identity.
+    assert!(certificate.reload(b"invalid", b"invalid").is_err());
+    assert!(certificate.reload(second.cert.pem().as_bytes(), first.signing_key.serialize_pem().as_bytes()).is_err());
+    let mut roots = rustls::RootCertStore::empty();
+    roots.add(first.cert.der().clone()).unwrap();
+    roots.add(second.cert.der().clone()).unwrap();
+    let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    config.alpn_protocols = vec![b"h2".to_vec()];
+    let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
+    // A Failed Handshake Retires Only Its Socket, Never The Listening Service.
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut malformed = tokio::net::TcpStream::connect(address).await.unwrap();
+    malformed.write_all(b"plain text on a TLS socket").await.unwrap();
+    let mut discarded = Vec::new();
+    let _ = malformed.read_to_end(&mut discarded).await;
+    drop(malformed);
+
+    let socket = tokio::net::TcpStream::connect(address).await.unwrap();
+    let connection = connector.connect(ServerName::try_from("localhost").unwrap(), socket).await.unwrap();
+    assert_eq!(connection.get_ref().1.peer_certificates().unwrap()[0], *first.cert.der());
+    drop(connection);
+
+    certificate.reload(second.cert.pem().as_bytes(), second.signing_key.serialize_pem().as_bytes()).unwrap();
+    sender.send(Response::new(InputEnvelope::Item(Reply { actor: "after".into() }))).await.unwrap();
+    assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(Reply { actor }) if actor == "alice"));
+    let socket = tokio::net::TcpStream::connect(address).await.unwrap();
+    let connection = connector.connect(ServerName::try_from("localhost").unwrap(), socket).await.unwrap();
+    assert_eq!(connection.get_ref().1.peer_certificates().unwrap()[0], *second.cert.der());
+    drop(connection);
+    drop(sender);
+    assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Response(Reply { actor }) if actor == "alice"));
+    assert!(stream.message().await.unwrap().is_none());
+    drop(stream);
+    attached.detach().await.unwrap();
+    runtime.shutdown().await.unwrap();
+}

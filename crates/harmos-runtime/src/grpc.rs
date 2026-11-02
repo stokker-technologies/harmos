@@ -27,6 +27,7 @@ mod listener;
 
 mod manager;
 pub(crate) mod native;
+mod tls;
 
 mod origin;
 
@@ -63,6 +64,7 @@ pub use input::{InputError, input, open};
 
 pub use manager::{Attached, GrpcManager, Settings};
 pub use origin::Origin;
+pub use tls::ServerCertificate;
 
 /* === Imports === */
 
