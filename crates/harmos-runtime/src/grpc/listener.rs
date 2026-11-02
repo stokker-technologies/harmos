@@ -27,6 +27,7 @@ use std::{
 };
 
 // Third Party Imports
+use futures_util::StreamExt;
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     net::{TcpListener, TcpStream},
@@ -56,6 +57,7 @@ type Pending<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 pub(super) struct Resources {
     settings: Settings,
+    certificate: Option<(super::ServerCertificate, std::time::Duration)>,
     routes: tonic::service::Routes,
     middleware: Arc<[Arc<dyn Middleware>]>,
     stopping: watch::Sender<bool>,
@@ -96,6 +98,11 @@ struct Connection {
     _permit: OwnedSemaphorePermit,
 }
 
+struct Accepted {
+    stream: Pin<Box<dyn Io>>,
+    info: TcpConnectInfo,
+}
+
 /* === Enums === */
 
 /* === Traits === */
@@ -110,12 +117,19 @@ pub(super) trait Host: Send + Sync {
     fn local_addr(&self) -> Option<SocketAddr>;
 }
 
+trait Io: AsyncRead + AsyncWrite + Send {}
+impl<T: AsyncRead + AsyncWrite + Send> Io for T {}
+
 /* === Implementations === */
 
 impl Resources {
-    pub(super) fn new(settings: Settings, routes: tonic::service::Routes, middleware: Vec<Arc<dyn Middleware>>) -> Self {
+    pub(super) fn new(
+        settings: Settings, routes: tonic::service::Routes, middleware: Vec<Arc<dyn Middleware>>,
+        certificate: Option<(super::ServerCertificate, std::time::Duration)>,
+    ) -> Self {
         Self {
             settings,
+            certificate,
             routes,
             middleware: middleware.into(),
             stopping: watch::channel(false).0,
@@ -324,6 +338,27 @@ impl<A: Application> Resident<A> for Listener {
             });
             Some((connection, (listener, slots, stopping)))
         });
+        let certificate = self.resources.certificate.clone();
+        let incoming = incoming
+            .map(move |connection| {
+                let certificate = certificate.clone();
+                async move {
+                    let connection = connection?;
+                    let info = connection.connect_info();
+                    let stream: Pin<Box<dyn Io>> = match certificate {
+                        Some((certificate, timeout)) => {
+                            let stream = tokio::time::timeout(timeout, certificate.acceptor().accept(connection))
+                                .await
+                                .map_err(|error| std::io::Error::new(std::io::ErrorKind::ConnectionAborted, error))?
+                                .map_err(|error| std::io::Error::new(std::io::ErrorKind::ConnectionAborted, error))?;
+                            Box::pin(stream)
+                        }
+                        None => Box::pin(connection),
+                    };
+                    Ok::<_, std::io::Error>(Accepted { stream, info })
+                }
+            })
+            .buffer_unordered(self.resources.settings.connections.get());
         let inbound = Inbound {
             routes: self.resources.routes.clone(),
             middleware: self.resources.middleware.clone(),
@@ -375,6 +410,31 @@ impl<A: Application> Resident<A> for Listener {
 
     async fn cleanup(&mut self) -> Result<()> {
         Ok(())
+    }
+}
+
+impl Connected for Accepted {
+    type ConnectInfo = TcpConnectInfo;
+    fn connect_info(&self) -> TcpConnectInfo {
+        self.info.clone()
+    }
+}
+
+impl AsyncRead for Accepted {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buffer: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+        self.stream.as_mut().poll_read(cx, buffer)
+    }
+}
+
+impl AsyncWrite for Accepted {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, bytes: &[u8]) -> Poll<std::io::Result<usize>> {
+        self.stream.as_mut().poll_write(cx, bytes)
+    }
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        self.stream.as_mut().poll_flush(cx)
+    }
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        self.stream.as_mut().poll_shutdown(cx)
     }
 }
 

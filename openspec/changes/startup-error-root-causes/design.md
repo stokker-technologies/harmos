@@ -10,7 +10,7 @@ SDK operations/startup.rs owns classification and readable Display. SDK registra
 
 ## Locked Inventory
 
-SDK startup report/classification, SDK registration and serving carrier mapping, runtime reexports, inline classification/carrier/rendering tests, product guide; README reviewed and unaffected. No new dependency graph, author contracts or hilti-hcl edits.
+SDK startup report/classification, SDK registration and serving carrier mapping, runtime reexports, inline classification/carrier/rendering tests, product guide; README reviewed and unaffected. No new dependency graph, author contracts or example-plugin edits.
 
 ## Paired Consumer
 

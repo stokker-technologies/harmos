@@ -44,6 +44,8 @@ grpc = [
   "dep:tonic",
   "dep:prost-reflect",
   "tonic/tls-ring",
+  "dep:rustls",
+  "dep:tokio-rustls",
 ]
 # Protobuf Descriptor Projection For The Runtime Transport.
 generate-proto = ["dep:harmos-packaging", "harmos-packaging/generate-proto"]
@@ -101,6 +103,8 @@ tokio = { workspace = true, default-features = true, features = ["rt", "sync", "
 
 # Networking
 http-body = { workspace = true, optional = true }
+rustls = { workspace = true, features = ["ring", "std"], optional = true }
+tokio-rustls = { workspace = true, features = ["ring"], optional = true }
 tonic = { workspace = true, default-features = true, optional = true }
 tonic-reflection = { workspace = true, features = ["server"], optional = true }
 
@@ -130,6 +134,7 @@ tracing-perfetto-file = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 # Utilities
+rcgen = { workspace = true, features = ["pem", "ring"] }
 
 # Serialization
 arrow-array = { workspace = true }

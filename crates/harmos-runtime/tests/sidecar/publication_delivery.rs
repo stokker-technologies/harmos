@@ -399,23 +399,19 @@ async fn catalog_precedes_initialization() {
     use harmos_runtime::plugin::{PluginArtifact, PluginContributions, PluginDefinition, PluginDefinitions};
     use std::sync::atomic::Ordering::SeqCst;
 
-    for case in 0..5 {
+    for case in 1..5 {
         let counts = ObserverCounts::default();
         let seed = ObserverSeed::new(&counts);
         let capacity = std::num::NonZeroUsize::new(4).unwrap();
         let inner = harmos_sidecar::PluginNative::<SampledTwins>::new(capacity).unwrap();
         let mut observers = inner.observers();
         let reason = match case {
-            0 => {
-                observers[0].interval = Duration::ZERO;
-                "interval must be positive"
-            }
             1 => {
                 observers.pop();
                 "observers differ from the admitted catalog"
             }
             2 => {
-                observers[0].interval += Duration::from_nanos(1);
+                observers[0].activation = harmos_sidecar::Activation::Plugin;
                 "observers differ from the admitted catalog"
             }
             3 => {
@@ -446,7 +442,7 @@ async fn catalog_precedes_initialization() {
             },
         };
         let definitions = PluginDefinitions::new([definition], []);
-        if matches!(case, 0 | 3 | 4) {
+        if matches!(case, 3 | 4) {
             assert!(inert.unwrap_err().to_string().contains(reason), "case {case}");
             assert!(definitions.is_err(), "invalid inventory fails manager preflight before attachment");
             assert_eq!(counts.initialized.load(SeqCst), 0);
@@ -680,7 +676,6 @@ fn explicit_artifact_grants() {
     assert_eq!(selected.observers.len(), 1);
     assert_eq!(source.observers(), selected.observers);
     assert_eq!(selected.observers[0].id, observers[0].id);
-    assert_eq!(selected.observers[0].interval, observers[0].interval);
     assert_eq!(selected.observers[0].activation, harmos_runtime::sidecar::Activation::Demand);
     assert_eq!(selected.observers[0].streams, MultiStream::STREAMS.iter().map(|entry| entry.id).collect::<Vec<_>>());
 

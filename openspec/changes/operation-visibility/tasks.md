@@ -14,7 +14,7 @@ This worktree owns 1.1, 1.3, 1.4 and their 1.5 regressions: domain visibility/co
 
 ## 2. Delivery
 
-- [ ] 2.1 Ships in the next Harmos release; Dokime and HCL adopt the rename with the version pin.
+- [ ] 2.1 Ships in the next Harmos release; Dokime and Example Plugin adopt the rename with the version pin.
 
 ## Workflow Follow-Up
 

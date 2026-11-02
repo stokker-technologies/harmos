@@ -23,8 +23,8 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Error, Fields, ItemStruct, LitInt, LitStr, Meta, Token, Type};
 // Local Imports
-use crate::artifact::set_once;
 use crate::path::{self, HarmosPath};
+use crate::set_once;
 
 /* === Constants === */
 

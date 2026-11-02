@@ -65,7 +65,6 @@ where
     fn definition(&self) -> Result<ObserverDefinition> {
         Ok(ObserverDefinition {
             id: self.instance.id().to_owned(),
-            interval: self.instance.interval(),
             demand_keys: self.instance.demand_keys().iter().map(|key| key.name()).collect(),
             streams: self
                 .instance

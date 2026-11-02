@@ -10,6 +10,10 @@
 /* === Modules === */
 
 #[cfg(feature = "plugin-sidecar")]
+#[path = "../observers/cadence.rs"]
+mod cadence;
+
+#[cfg(feature = "plugin-sidecar")]
 #[path = "../observers/execution.rs"]
 mod execution;
 #[cfg(feature = "plugin-sidecar")]
@@ -37,7 +41,6 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use std::time::Duration;
 // Third Party Imports
 use tokio::sync::Semaphore;
 // Local Imports
@@ -132,7 +135,7 @@ impl ObserverBackend for Backend {
     fn definition(&self) -> harmos_runtime::Result<ObserverDefinition> {
         Ok(ObserverDefinition {
             id: self.id.into(),
-            interval: Duration::from_millis(5),
+
             streams: vec![],
             demand_keys: vec![],
         })
@@ -174,7 +177,7 @@ impl ObserverBackend for FinalPublication {
     fn definition(&self) -> harmos_runtime::Result<ObserverDefinition> {
         Ok(ObserverDefinition {
             id: "final".into(),
-            interval: Duration::from_secs(1),
+
             streams: vec![],
             demand_keys: vec![],
         })
@@ -196,7 +199,7 @@ impl ObserverBackend for ReentrantBackend {
         let _ = self.0.manager.resident_definitions();
         Ok(ObserverDefinition {
             id: "retained".into(),
-            interval: Duration::from_secs(1),
+
             streams: vec![],
             demand_keys: vec![],
         })

@@ -470,10 +470,6 @@ impl harmos_sdk::operations::Host for HostContext {
     async fn submit_owned<O: OperationDeclaration>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
         self.borrow().submit_owned::<O>(request, claims)
     }
-
-    async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<super::Response<O::Response>> {
-        self.borrow().submit::<O>(request)?.await
-    }
 }
 
 pub(crate) fn fresh_instance() -> Result<OperationInstanceId> {

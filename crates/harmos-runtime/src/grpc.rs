@@ -27,6 +27,7 @@ mod listener;
 
 mod manager;
 pub(crate) mod native;
+mod tls;
 
 pub mod middleware;
 
@@ -60,6 +61,7 @@ pub use harmos_sdk::grpc::{encoded_len, encoded_len_admitted};
 pub use input::{InputError, input, open};
 
 pub use manager::{Attached, GrpcManager, Settings};
+pub use tls::ServerCertificate;
 
 /* === Imports === */
 
