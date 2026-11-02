@@ -53,6 +53,7 @@ pub struct OpenedCapture {
 struct State {
     session: crate::StorageManager<crate::ErasedCatalog>,
     file: std::fs::File,
+    diagnostic: std::path::PathBuf,
     range: ByteRange,
     reader: Option<FileReader>,
     target: StorageFile,
@@ -107,10 +108,11 @@ enum Step {
 
 impl<C> StorageManager<C> {
     pub fn capture_frozen_file(&self, source: crate::FrozenFile, target: StorageFile) -> Result<OpenedCapture> {
-        let file = source.opened_file()?;
+        let (file, path) = source.opened_file()?;
         let range = ByteRange { offset: 0, limit: Some(source.length()) };
         let mut capture = self.capture_opened_file(file, target, range, CaptureConsistency::Stable);
         let state = capture.state.as_mut().expect("new capture retains source state");
+        state.diagnostic = path;
         if Arc::ptr_eq(&self.inner, &source.session.inner) {
             state.session = source.session.clone();
         }
@@ -122,10 +124,12 @@ impl<C> StorageManager<C> {
         &self, file: std::fs::File, target: StorageFile, range: ByteRange, consistency: CaptureConsistency,
     ) -> OpenedCapture {
         let offset = target.length();
+        let diagnostic = crate::local::opened_path(&file);
         OpenedCapture {
             state: Some(State {
                 session: self.erased(),
                 file,
+                diagnostic,
                 range,
                 reader: None,
                 target,
@@ -283,12 +287,10 @@ impl State {
                     }
                     range.limit = Some(length);
                 }
-                let file = self.file.try_clone().map_err(|error| {
-                    let path = crate::local::opened_path(&self.file);
-                    crate::local::io_error("clone capture source", &path, error)
-                })?;
+                let file =
+                    self.file.try_clone().map_err(|error| crate::local::io_error("clone capture source", &self.diagnostic, error))?;
                 let frozen = self.frozen.as_ref().map(|source| Arc::clone(&source.backing));
-                let mut reader = self.session.open_file_handle(file, range, frozen).await?;
+                let mut reader = self.session.open_file_handle(file, range, frozen, Some(self.diagnostic.clone())).await?;
                 self.remaining_prefix = self.offset;
                 if let Request::Synchronize(length) | Request::FinishAt(length) = self.request {
                     let observation = reader.observation().expect("opened capture reads its original handle");
