@@ -40,6 +40,36 @@ use crate::inventory::{Declaration, DeclarationError, Facility};
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+// Preserve Windows System And Profile Path Resolution Without Inheriting The Full Environment.
+#[cfg(windows)]
+const WINDOWS_ENVIRONMENT: &[&str] = &[
+    "SystemDrive",
+    "SystemRoot",
+    "windir",
+    "ProgramData",
+    "ALLUSERSPROFILE",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
+    "ProgramW6432",
+    "CommonProgramFiles",
+    "CommonProgramFiles(x86)",
+    "CommonProgramW6432",
+    "PUBLIC",
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "LOCALAPPDATA",
+    "APPDATA",
+    "USERNAME",
+    "USERDOMAIN",
+    "COMPUTERNAME",
+    "PATHEXT",
+    "ComSpec",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "OS",
+];
+
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -399,6 +429,11 @@ fn command(
     #[cfg(windows)]
     {
         command.creation_flags(CREATE_NO_WINDOW);
+        for &name in WINDOWS_ENVIRONMENT {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
         command.env("SystemRoot", system_root()?);
         let temporary = std::env::temp_dir();
         command.env("TMP", &temporary).env("TEMP", &temporary);
