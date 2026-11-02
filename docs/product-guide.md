@@ -1132,3 +1132,20 @@ demand keys; it does not advertise the declared default as an effective interval
 A zero runtime duration, resolution error or panic refuses activation before
 initialization. Initialization retries and sampling use the captured interval;
 changed resources apply on the next activation.
+
+## Reloadable gRPC Certificates
+
+`crates/harmos-runtime/src/grpc/tls.rs` owns `grpc::ServerCertificate`.
+Create it with `ServerCertificate::from_pem(certificate, private_key)` and pass a
+clone to `runtime.grpc().attach_with_certificate(settings, certificate.clone(), handshake_timeout)`.
+The settings must have `tls: None`; the positive handshake timeout is caller-owned.
+This server-authentication-only path uses HTTP/2 ALPN and no client certificates.
+Existing `attach(settings)` and fixed Tonic TLS settings remain available.
+
+Call `certificate.reload(next_certificate, next_private_key)` to validate the PEM
+chain and key match before atomically replacing the resolver's certified key.
+Clones share the same identity. Invalid replacements leave the old identity active.
+New connections authenticate with the replacement; TLS resumption is disabled on
+this path so every connection presents the current certificate. Existing TLS
+connections and RPC streams retain their negotiated state and continue untouched.
+The listener's bind address, admission, middleware and shutdown ownership do not change.
