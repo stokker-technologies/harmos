@@ -116,6 +116,34 @@ impl Plugin for Catalog {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> std::io::Result<()> {
+    if std::env::args().nth(1).as_deref() == Some("--environment-probe") {
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::{OsStrExt, OsStringExt};
+            use windows_sys::Win32::System::Environment::ExpandEnvironmentStringsW;
+
+            let program_data = std::env::var_os("ProgramData").expect("the parent provides ProgramData");
+            let source = program_data.encode_wide().chain(Some(0)).collect::<Vec<_>>();
+            // SAFETY: The Source Is NUL-Terminated; A Null Destination With Zero Size Queries The Required Capacity.
+            #[allow(unsafe_code)]
+            let capacity = unsafe { ExpandEnvironmentStringsW(source.as_ptr(), std::ptr::null_mut(), 0) };
+            if capacity == 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            let mut destination = vec![0_u16; capacity as usize];
+            // SAFETY: Both Buffers Are Valid For The Synchronous Call And The Destination Has The Queried Capacity.
+            #[allow(unsafe_code)]
+            let length = unsafe { ExpandEnvironmentStringsW(source.as_ptr(), destination.as_mut_ptr(), capacity) };
+            if length == 0 || length > capacity {
+                return Err(std::io::Error::other("ProgramData expansion failed"));
+            }
+            let expanded = std::ffi::OsString::from_wide(&destination[..length as usize - 1]);
+            std::fs::create_dir_all(std::path::Path::new(&expanded).join("harmos-probe"))?;
+        }
+        let environment = std::env::vars().collect::<std::collections::BTreeMap<_, _>>();
+        serde_json::to_writer(std::io::stdout(), &environment)?;
+        return Ok(());
+    }
     harmos_sidecar::run_plugin::<Catalog>(std::num::NonZeroUsize::new(1).unwrap()).await
 }
 

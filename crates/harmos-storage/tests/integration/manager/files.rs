@@ -696,6 +696,197 @@ async fn opened_capture_keeps_source_identity() {
 }
 
 #[tokio::test]
+async fn opened_deleted_capture() {
+    let mut policy = config();
+    policy.response.batch_bytes = NonZeroUsize::new(8).unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let expected = b"retained opened bytes";
+    for late_delete in [false, true] {
+        let f = Fixture::new(policy.clone()).await;
+        let path = directory.path().join("source");
+        std::fs::write(&path, expected).unwrap();
+        let source = std::fs::OpenOptions::new().read(true).write(true).open(&path).unwrap();
+        if !late_delete {
+            std::fs::remove_file(&path).unwrap();
+        }
+        let target = f.storage.produce_file(metadata("deleted-capture", expected)).await.unwrap();
+        let mut capture = f.storage.capture_opened_file(
+            source.try_clone().unwrap(),
+            target,
+            ByteRange { offset: 0, limit: None },
+            CaptureConsistency::Stable,
+        );
+        if late_delete {
+            std::fs::remove_file(&path).unwrap();
+        }
+        // A Replacement Name Must Never Become The Capture Source.
+        std::fs::write(&path, b"replacement").unwrap();
+
+        let mut left = f.storage.read_opened_file(source.try_clone().unwrap(), ByteRange { offset: 1, limit: Some(6) }).await.unwrap();
+        let mut right = f.storage.read_opened_file(source.try_clone().unwrap(), ByteRange { offset: 9, limit: Some(6) }).await.unwrap();
+        let mut left_bytes = Vec::new();
+        let mut right_bytes = Vec::new();
+        loop {
+            let (first, second) = tokio::join!(left.next(), right.next());
+            let (Some(first), Some(second)) = (first.unwrap(), second.unwrap()) else { break };
+            left_bytes.extend_from_slice(first.bytes());
+            right_bytes.extend_from_slice(second.bytes());
+        }
+        assert_eq!(left_bytes, &expected[1..7]);
+        assert_eq!(right_bytes, &expected[9..15]);
+        drop((left, right));
+
+        let reference = capture.finish().await.unwrap();
+        let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
+        let mut actual = Vec::new();
+        while let Some(batch) = reader.next().await.unwrap() {
+            actual.extend_from_slice(batch.bytes());
+        }
+        assert_eq!(actual, expected);
+        drop((reader, capture));
+
+        let frozen = f.storage.freeze_opened_file(source, ByteRange { offset: 0, limit: None }).await.unwrap();
+        let target = f.storage.produce_file(metadata("deleted-frozen", expected)).await.unwrap();
+        let mut capture = f.storage.capture_frozen_file(frozen, target).unwrap();
+        let reference = capture.finish().await.unwrap();
+        let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
+        let mut actual = Vec::new();
+        while let Some(batch) = reader.next().await.unwrap() {
+            actual.extend_from_slice(batch.bytes());
+        }
+        assert_eq!(actual, expected);
+        drop((reader, capture));
+        std::fs::remove_file(path).unwrap();
+        f.finish().await;
+    }
+}
+
+#[cfg(target_os = "windows")]
+mod windows {
+    use super::*;
+
+    #[tokio::test]
+    #[expect(unsafe_code, reason = "the disposition buffer and owned source handle remain live throughout the synchronous call")]
+    async fn opened_posix_capture() {
+        use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
+        use windows_sys::Win32::Foundation::GENERIC_READ;
+        use windows_sys::Win32::Storage::FileSystem::{
+            DELETE, FILE_DISPOSITION_FLAG_DELETE, FILE_DISPOSITION_FLAG_POSIX_SEMANTICS, FILE_DISPOSITION_INFO_EX, FileDispositionInfoEx,
+            SetFileInformationByHandle,
+        };
+
+        let directory = tempfile::tempdir().unwrap();
+        for semantics in [0, FILE_DISPOSITION_FLAG_POSIX_SEMANTICS] {
+            let f = Fixture::new(config()).await;
+            let path = directory.path().join("source");
+            let expected = b"posix deleted bytes";
+            std::fs::write(&path, expected).unwrap();
+            let source = std::fs::File::open(&path).unwrap();
+            let deleter = std::fs::OpenOptions::new().access_mode(DELETE | GENERIC_READ).open(&path).unwrap();
+            let disposition = FILE_DISPOSITION_INFO_EX {
+                Flags: FILE_DISPOSITION_FLAG_DELETE | semantics,
+            };
+            // SAFETY: The Handle And Correctly Sized Input Buffer Stay Live For The Call.
+            let deleted = unsafe {
+                SetFileInformationByHandle(
+                    deleter.as_raw_handle(),
+                    FileDispositionInfoEx,
+                    (&disposition as *const FILE_DISPOSITION_INFO_EX).cast(),
+                    std::mem::size_of_val(&disposition) as u32,
+                )
+            };
+            assert_ne!(deleted, 0, "{}", std::io::Error::last_os_error());
+            drop(deleter);
+            if semantics == FILE_DISPOSITION_FLAG_POSIX_SEMANTICS {
+                assert!(!path.exists());
+            }
+            let target = f.storage.produce_file(metadata("posix-capture", expected)).await.unwrap();
+            let mut capture = f.storage.capture_opened_file(
+                source.try_clone().unwrap(),
+                target,
+                ByteRange { offset: 0, limit: None },
+                CaptureConsistency::Stable,
+            );
+            let reference = capture.finish().await.unwrap();
+            let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
+            assert_eq!(reader.next().await.unwrap().unwrap().bytes(), expected);
+            drop((reader, capture));
+            let frozen = f.storage.freeze_opened_file(source, ByteRange { offset: 0, limit: None }).await.unwrap();
+            let mut reader = frozen.read(ByteRange { offset: 0, limit: None }).await.unwrap();
+            let target = f.storage.produce_file(metadata("posix-frozen", expected)).await.unwrap();
+            let mut capture = f.storage.capture_frozen_file(frozen, target).unwrap();
+            let reference = capture.finish().await.unwrap();
+            assert_eq!(reference.sha256, <[u8; 32]>::from(Sha256::digest(expected)));
+            drop(capture);
+            assert_eq!(reader.next().await.unwrap().unwrap().bytes(), expected);
+            drop(reader);
+            f.finish().await;
+        }
+    }
+
+    #[tokio::test]
+    #[expect(unsafe_code, reason = "all security buffers and the owned handle remain live during synchronous calls")]
+    async fn opened_denied_reopen() {
+        use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
+        use windows_sys::Win32::{
+            Foundation::{GENERIC_READ, GENERIC_WRITE},
+            Security::{
+                ACL, ACL_REVISION, DACL_SECURITY_INFORMATION, InitializeAcl, InitializeSecurityDescriptor, SECURITY_DESCRIPTOR,
+                SetKernelObjectSecurity, SetSecurityDescriptorDacl,
+            },
+            Storage::FileSystem::WRITE_DAC,
+        };
+
+        let f = Fixture::new(config()).await;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("source");
+        let expected = b"readable deleted source";
+        std::fs::write(&path, expected).unwrap();
+        let source = std::fs::OpenOptions::new().access_mode(GENERIC_READ | GENERIC_WRITE | WRITE_DAC).open(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        // Deny New Opens After Unlinking; The Existing Handle Retains Read Access.
+        // The Unlinked Scratch Object Is Reclaimed When Its Last Handle Closes.
+        let mut acl = ACL::default();
+        let mut descriptor = SECURITY_DESCRIPTOR::default();
+        let descriptor_ptr = (&mut descriptor as *mut SECURITY_DESCRIPTOR).cast();
+        // SAFETY: Each Buffer Is Correctly Sized And Lives Through All Uses.
+        unsafe {
+            assert_ne!(InitializeAcl(&mut acl, std::mem::size_of_val(&acl) as u32, ACL_REVISION), 0);
+            assert_ne!(InitializeSecurityDescriptor(descriptor_ptr, 1), 0);
+            assert_ne!(SetSecurityDescriptorDacl(descriptor_ptr, 1, &acl, 0), 0);
+            assert_ne!(SetKernelObjectSecurity(source.as_raw_handle(), DACL_SECURITY_INFORMATION, descriptor_ptr), 0);
+        }
+        let mut left = f.storage.read_opened_file(source.try_clone().unwrap(), ByteRange { offset: 1, limit: Some(6) }).await.unwrap();
+        let mut right = f.storage.read_opened_file(source.try_clone().unwrap(), ByteRange { offset: 9, limit: Some(6) }).await.unwrap();
+        let (first, second) = tokio::join!(left.next(), right.next());
+        assert_eq!(first.unwrap().unwrap().bytes(), &expected[1..7]);
+        assert_eq!(second.unwrap().unwrap().bytes(), &expected[9..15]);
+        drop((left, right));
+        let target = f.storage.produce_file(metadata("denied-capture", expected)).await.unwrap();
+        let mut capture = f.storage.capture_opened_file(
+            source.try_clone().unwrap(),
+            target,
+            ByteRange { offset: 0, limit: None },
+            CaptureConsistency::Stable,
+        );
+        let reference = capture.finish().await.unwrap();
+        let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
+        assert_eq!(reader.next().await.unwrap().unwrap().bytes(), expected);
+        drop(reader);
+        let frozen = f.storage.freeze_opened_file(source.try_clone().unwrap(), ByteRange { offset: 0, limit: None }).await.unwrap();
+        source.set_len(expected.len() as u64 + 1).unwrap();
+        assert!(matches!(capture.finish().await, Err(Error::InvalidInput { field: "capture source", .. })));
+        drop((source, capture));
+        let mut reader = frozen.read(ByteRange { offset: 0, limit: None }).await.unwrap();
+        drop(frozen);
+        assert_eq!(reader.next().await.unwrap().unwrap().bytes(), expected);
+        drop(reader);
+        f.finish().await;
+    }
+}
+
+#[tokio::test]
 async fn opened_capture_retries_exact_failed_chunk() {
     use std::io::Write;
     let f = Fixture::new(config()).await;
