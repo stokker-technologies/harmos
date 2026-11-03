@@ -116,6 +116,14 @@ jobs:
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.release.run identity
+    - name: Verify Target Commit Required CI
+      shell: python
+      run: |-
+        import runpy
+        runpy.run_path('.github/actions/review-release/checks.py', run_name='__main__')
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RELEASE_TARGET_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
     - run: mise run release:tag
       env:
         RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
@@ -166,6 +174,7 @@ jobs:
       == 'dev' && startsWith(github.event.pull_request.head.ref, 'release/v'))
     environment: release
     permissions:
+      checks: read
       contents: read
       actions: read
       id-token: write
@@ -214,6 +223,14 @@ jobs:
       uses: ./.github/actions/extract-build
       with:
         command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+    - name: Verify Target Commit Required CI
+      shell: python
+      run: |-
+        import runpy
+        runpy.run_path('.github/actions/review-release/checks.py', run_name='__main__')
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RELEASE_TARGET_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
     - name: Show Trusted Publishing Identity
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
@@ -288,6 +305,7 @@ jobs:
       'cancelled') && (startsWith(github.ref, 'refs/tags/v'))
     environment: release
     permissions:
+      checks: read
       contents: write
       actions: read
       id-token: write

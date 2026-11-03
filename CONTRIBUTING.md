@@ -25,6 +25,26 @@ changing a contract; flag unrelated stale examples rather than hiding them.
 Use Conventional Commit subjects and keep generated files with their source.
 The root uv workspace owns the Python environment and lockfile.
 
+Harmos owns its workflows, composite actions and CI/release tooling. The Hub
+renders editable baselines; only explicit `stkr project ci render` overwrites CI.
+PRs run selected suites. Dev pushes select package dependencies (checks, Product
+and Tests compilation, and both native packages), skipping suites, fixture
+preparation and Release / Dry. Merges to dev remain ungated.
+
+Git dependencies are allowed on dev and ordinary PRs. Release PRs (`release/v*`
+into dev), tagging and publication reject resolved git dependencies, including
+transitive ones. Nightly warns and skips incompatible crate dry publication
+while retaining its checks, builds, packages, suites, coverage and benchmarks.
+
+Edge replaces one mutable `edge` GitHub prerelease after each green
+dev build-and-package run. It consumes that run's native tool archives, Schematic
+ZIPs and plugin bundles from both platforms; plugin download names include their
+producer target. One serialized publisher drafts the release, uploads and
+verifies every asset including SHA256SUMS, moves the tag once, then publishes.
+Downloads are unavailable while drafted; interrupted uploads remain drafted for
+retry instead of exposing incomplete downloads. Stable releases retain their
+separate download inventory.
+
 ## Tests And Checks
 
 Run targeted checks while implementing. After all agreed source work is
@@ -54,6 +74,10 @@ Use benchmarks for performance measurements rather than tightening test deadline
 For a focused Rust compiler check or selected test, use `mise run build:rust:focused`
 with the Cargo operation and selection arguments. This task applies the standard
 compiler-output preflight; it does not replace the final validation graph.
+
+`mise run test:tooling` tests impact selection, release evidence and atomic
+channel publication without compiling products or contacting publication APIs.
+It also runs as part of `check:python`.
 
 Storage-engine stories exercise `harmos-storage` without a host runtime; its
 real `WorkerOwner` owns the canonical worker and settlement. Runtime storage
@@ -106,6 +130,19 @@ are included temporarily in crates and restored afterwards.
 Before the first release with this workflow layout, the owner must register
 crates.io Trusted Publishing against `release.yml`, environment `release`, for
 `stokker-technologies/harmos`, replacing the previous workflow identity.
+
+Release reviews squash into dev. Before tagging or publishing, `release.yml`
+queries GitHub for the exact target SHA's latest dev push run, its successful
+`CI / Required` check and any additional required contexts in main's ruleset.
+Missing or pending proof waits up to 30 minutes; failed proof refuses release.
+Rerun Release after repairing CI if this gate times out. The green release-review
+rehearsal and artifact checks remain required before tagging and fast-forwarding main.
+
+The repository owner must configure an active branch ruleset targeting `main`
+with **Require Status Checks To Pass** and `CI / Required` from GitHub Actions.
+Retain deletion and force-push protections and the release identity's narrow
+fast-forward permission without a blanket bypass of required checks. Do not add
+this gate to dev. Workflow changes do not configure repository settings.
 
 ## Reporting Issues
 

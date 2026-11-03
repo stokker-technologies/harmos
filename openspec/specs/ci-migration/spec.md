@@ -1,12 +1,12 @@
 # ci-migration Specification
 
 ## Purpose
-Keep Harmos aligned with the shared Hub CI graph while preserving native platform coverage, required delivery gates and release behavior.
+Preserve Harmos native platform coverage and release behavior through project-owned workflows, actions and tooling, initially seeded from editable Hub baselines.
 
 ## Requirements
 
 ### Requirement: Adopt The Agreed Hub Contract
-The product SHALL migrate its authored tasks and configuration and canonically generated tooling/workflows to the locked Hub CI contracts while preserving required native platform coverage, artifact dependencies and release behavior.
+The product SHALL own its tasks, configuration, tooling and workflows while preserving required native platform coverage, artifact dependencies and release behavior. Ordinary Hub updates SHALL leave CI untouched; only explicit `stkr project ci render` SHALL overwrite CI baselines.
 
 #### Scenario: Candidate Delivery
 - **WHEN** complete source passes applicable local proof
@@ -25,8 +25,8 @@ CI SHALL select runner labels from project configuration and use hosted defaults
 
 #### Scenario: Heavy Windows Build
 
-- **WHEN** the Windows Product build is rendered
-- **THEN** it selects the explicitly declared local Windows runner and preserves its required checks and artifact outputs
+- **WHEN** the Windows Product build is selected
+- **THEN** it uses the declared GitHub-hosted Windows runner and preserves its required checks and artifact outputs
 
 #### Scenario: Lightweight Repository Check
 

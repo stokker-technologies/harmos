@@ -32,7 +32,7 @@ from ..process import spawn_flags
 # isort: split
 from ..build import storage
 from ..package import changelog
-from . import policy
+from . import pins, policy
 
 # Type Checking Imports
 
@@ -74,6 +74,7 @@ def publish_crates(directory: Path, *, sleep=time.sleep, clock=time.monotonic) -
     storage.preflight(directory)
     if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
         raise policy.ToolError("crate publication requires clean source before generated CHANGELOG staging")
+    pins.check(directory)
     packages = publishable(directory)
     deadline = clock() + RATE_BUDGET
     with changelog.staged(directory, packages):
@@ -82,6 +83,10 @@ def publish_crates(directory: Path, *, sleep=time.sleep, clock=time.monotonic) -
 
 def rehearse_crates(directory: Path, *, skip_published: bool = True) -> None:
     """Dry-Run Crates In Publication Order Without Publishing Credentials."""
+    nightly = os.environ.get("GITHUB_WORKFLOW_REF", "").split("/workflows/")[-1].startswith("nightly.yml@")
+    nightly = nightly or os.environ.get("CI_SIMULATE") == "1" and os.environ.get("CI_PIPELINE_KIND") == "nightly"
+    if not pins.check(directory, warn=nightly):
+        return
     with policy.credential_free(policy.policy(directory, "release")):
         storage.preflight(directory)
         packages = publishable(directory)
@@ -192,17 +197,17 @@ def request(
         else:
             if channel:
                 resource = endpoint.split("?", 1)[0]
-                links = re.fullmatch(r"releases/dev-channel/assets/links(?:/[0-9]+)?", resource)
+                links = re.fullmatch(r"releases/edge/assets/links(?:/[0-9]+)?", resource)
                 allowed = (
                     resource == "releases"
                     and method == "POST"
-                    or resource == "releases/dev-channel"
+                    or resource == "releases/edge"
                     and method in {"GET", "PUT"}
                     or links
                     and method in {"GET", "POST", "DELETE"}
                 )
                 if not allowed:
-                    raise policy.ToolError("dev channel requires native job-token release endpoints")
+                    raise policy.ToolError("edge requires native job-token release endpoints")
             cleanup = method == "DELETE" and endpoint.startswith("repository/branches/release%2Fv")
             merging = method == "PUT" and re.fullmatch(r"merge_requests/[0-9]+/merge", endpoint) is not None
             tagging = method == "POST" and endpoint in {"repository/tags", "repository/commits"} or cleanup or merging
@@ -215,7 +220,7 @@ def request(
                 raise policy.ToolError("GitLab release write endpoint is not allowed")
             if channel:
                 if not job_token:
-                    raise policy.ToolError("dev channel requires native CI_JOB_TOKEN")
+                    raise policy.ToolError("edge requires native CI_JOB_TOKEN")
                 headers = {"JOB-TOKEN": job_token}
             elif tagging:
                 if not token:

@@ -121,7 +121,7 @@ run = [{ task = "check:repository" }, { task = "check:rust" }, { task = "check:p
 
 [tasks."check:python"]
 description = "Check Python"
-run = [{ task = "format:python --check" }, { task = "lint:python" }]
+run = [{ task = "format:python --check" }, { task = "lint:python" }, { task = "test:tooling" }]
 
 [tasks."check:python:generated"]
 description = "Check Generated Python"
@@ -188,6 +188,10 @@ run = [
 # === Dev === #
 
 # === Test === #
+
+[tasks."test:tooling"]
+description = "Test CI And Release Tooling"
+run = "uv run --locked --project tools/python python -m unittest discover -s tools/python/tests -v"
 
 [tasks.test]
 description = "Test Every Layer"

@@ -74,15 +74,30 @@ def select(plan: dict, paths: set[str] | None) -> set[str]:
             return full
         for rule in matching:
             selected.update(rule["jobs"])
+    return close(graph, selected)
+
+
+def close(graph: dict, selected: set[str]) -> set[str]:
+    """Include Every Dependency; Unknown Jobs Conservatively Select The Full Graph."""
+    selected = set(selected)
     pending = list(selected)
     while pending:
         job = pending.pop()
         if job not in graph:
-            return full
+            return set(graph)
         for dependency in graph[job]:
             if dependency not in selected:
                 selected.add(dependency)
                 pending.append(dependency)
+    return selected
+
+
+def scope(plan: dict, selected: set[str], value: str = "") -> set[str]:
+    """Keep Package Producers And Warm Tests Compilation On Dev Pushes."""
+    if value == "package":
+        return close(plan["dependencies"], selected & {"build:rust:tests", "package:rust", "package:python"})
+    if value:
+        raise ValueError(f"unknown impact scope: {value}")
     return selected
 
 
@@ -96,6 +111,7 @@ def main(plan: dict) -> None:
     target = os.environ.get("IMPACT_TARGET")
     paths = changed_paths(target) if target else None
     selected = select(plan, paths)
+    selected = scope(plan, selected, os.environ.get("IMPACT_SCOPE", ""))
     if "document" in plan:
         document = plan["document"]
         original = [job for job in document.values() if isinstance(job, dict) and "stage" in job]
