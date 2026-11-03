@@ -228,13 +228,24 @@ class EdgeTests(unittest.TestCase):
                     data = b"checksum"
                     (directory / "SHA256SUMS").write_bytes(data)
                     files = [{"name": "SHA256SUMS", "path": "SHA256SUMS", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}]
-                    release = {} if missing_release else {"id": 17, "tag_name": edge.TAG, "draft": False}
-                    assets = []
-                    published = False
-                    verified = []
+                    release: dict = {} if missing_release else {"id": 17, "tag_name": edge.TAG, "draft": False}
+                    assets: list[dict] = []
+                    published: list[bool] = []
+                    verified: list[str] = []
 
-                    def document(settings, endpoint, method="GET", body=None, **kwargs):
-                        nonlocal published
+                    def document(
+                        settings,
+                        endpoint,
+                        method="GET",
+                        body=None,
+                        *,
+                        release=release,
+                        published=published,
+                        verified=verified,
+                        fault=fault,
+                        missing_release=missing_release,
+                        **kwargs,
+                    ):
                         if endpoint.startswith("actions/"):
                             return {"workflow_runs": []}
                         if endpoint == "releases/tags/edge":
@@ -255,9 +266,11 @@ class EdgeTests(unittest.TestCase):
                                 return result if result["tag_name"] == edge.TAG else None
                             return copy.deepcopy(release) if release else None
                         if endpoint == "releases" and method == "POST":
+                            assert isinstance(body, dict)
                             release.update({"id": 17, **body, "tag_name": "untagged-placeholder"})
                             return copy.deepcopy(release)
                         if endpoint == "releases/17" and method == "PATCH":
+                            assert isinstance(body, dict)
                             release.update(body)
                             if body.get("draft") is True:
                                 release["tag_name"] = "untagged-placeholder"
@@ -266,7 +279,7 @@ class EdgeTests(unittest.TestCase):
                                 self.assertEqual(body["target_commitish"], "a" * 40)
                                 self.assertTrue(body["prerelease"])
                                 self.assertEqual(body["make_latest"], "false")
-                                published = True
+                                published.append(True)
                             return copy.deepcopy(release)
                         if endpoint == "git/ref/tags/edge":
                             return None if missing_release else {"object": {"sha": "b" * 40}}
@@ -274,7 +287,7 @@ class EdgeTests(unittest.TestCase):
                             return {}
                         raise AssertionError((endpoint, method))
 
-                    def pages(settings, endpoint, **kwargs):
+                    def pages(settings, endpoint, *, release=release, assets=assets, published=published, fault=fault, **kwargs):
                         if endpoint == "releases":
                             return [copy.deepcopy(release)] if release else []
                         self.assertEqual(endpoint, "releases/17/assets")
@@ -293,10 +306,11 @@ class EdgeTests(unittest.TestCase):
                             result[0]["state"] = "new"
                         return result
 
-                    def request(settings, endpoint, method, data=None, **kwargs):
+                    def request(settings, endpoint, method, data=None, *, assets=assets, **kwargs):
                         if method == "DELETE":
                             assets.clear()
                             return
+                        assert isinstance(data, bytes)
                         assets.append(
                             {
                                 "id": 2,
