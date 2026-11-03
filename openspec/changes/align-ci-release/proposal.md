@@ -12,7 +12,7 @@ green evidence for the exact release commit.
 - Select package dependencies and Tests compilation on dev pushes; dev merges stay ungated.
 - Allow git dependencies in development; reject them on release reviews and publication.
 - Verify the release commit's required checks before tagging or publishing.
-- Replace one mutable dev-channel release while drafted, verify all downloads,
+- Replace one mutable edge release while drafted, verify all downloads,
   move its tag once, then publish the complete set.
 - Document project CI ownership and the owner-managed main ruleset.
 

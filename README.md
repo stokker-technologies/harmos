@@ -127,7 +127,7 @@ The [release downloads](https://github.com/stokker-technologies/harmos/releases/
 also provide `cargo-harmos` tool archives with README, LICENSE and generated
 CHANGELOG. See the [installation guide](docs/product-guide.md#tool-installation)
 for archive names and checksum verification. The rolling
-[Dev Channel](https://github.com/stokker-technologies/harmos/releases/tag/dev-channel)
+[Edge](https://github.com/stokker-technologies/harmos/releases/tag/edge)
 provides unsigned tool archives, Schematic ZIPs and plugin bundles from the latest
 green dev build, with SHA256SUMS. Its downloads change in place after each build.
 

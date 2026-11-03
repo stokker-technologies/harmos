@@ -1,4 +1,4 @@
-name: Dev Channel
+name: Edge
 "on":
   workflow_run:
     workflows:
@@ -18,9 +18,9 @@ env:
 jobs:
   publish:
     concurrency:
-      group: dev-channel
+      group: edge
       cancel-in-progress: false
-    name: Dev Channel / Publish
+    name: Edge / Publish
     runs-on: ubuntu-latest
     timeout-minutes: 120
     if: >-
@@ -56,10 +56,10 @@ jobs:
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.artifacts extract --archive target/ci/package-dev-rust-unix.tar.zst
-    - name: Stage And Publish Dev Channel
+    - name: Stage And Publish Edge
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
-        harmos_tools.release.dev_channel
+        harmos_tools.release.edge
       env:
         GH_TOKEN: ${{ github.token }}
         GITHUB_TOKEN: ${{ github.token }}

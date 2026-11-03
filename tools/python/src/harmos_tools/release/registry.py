@@ -197,17 +197,17 @@ def request(
         else:
             if channel:
                 resource = endpoint.split("?", 1)[0]
-                links = re.fullmatch(r"releases/dev-channel/assets/links(?:/[0-9]+)?", resource)
+                links = re.fullmatch(r"releases/edge/assets/links(?:/[0-9]+)?", resource)
                 allowed = (
                     resource == "releases"
                     and method == "POST"
-                    or resource == "releases/dev-channel"
+                    or resource == "releases/edge"
                     and method in {"GET", "PUT"}
                     or links
                     and method in {"GET", "POST", "DELETE"}
                 )
                 if not allowed:
-                    raise policy.ToolError("dev channel requires native job-token release endpoints")
+                    raise policy.ToolError("edge requires native job-token release endpoints")
             cleanup = method == "DELETE" and endpoint.startswith("repository/branches/release%2Fv")
             merging = method == "PUT" and re.fullmatch(r"merge_requests/[0-9]+/merge", endpoint) is not None
             tagging = method == "POST" and endpoint in {"repository/tags", "repository/commits"} or cleanup or merging
@@ -220,7 +220,7 @@ def request(
                 raise policy.ToolError("GitLab release write endpoint is not allowed")
             if channel:
                 if not job_token:
-                    raise policy.ToolError("dev channel requires native CI_JOB_TOKEN")
+                    raise policy.ToolError("edge requires native CI_JOB_TOKEN")
                 headers = {"JOB-TOKEN": job_token}
             elif tagging:
                 if not token:

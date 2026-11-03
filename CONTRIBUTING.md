@@ -36,7 +36,7 @@ into dev), tagging and publication reject resolved git dependencies, including
 transitive ones. Nightly warns and skips incompatible crate dry publication
 while retaining its checks, builds, packages, suites, coverage and benchmarks.
 
-Dev Channel replaces one mutable `dev-channel` GitHub prerelease after each green
+Edge replaces one mutable `edge` GitHub prerelease after each green
 dev build-and-package run. It consumes that run's native tool archives, Schematic
 ZIPs and plugin bundles from both platforms; plugin download names include their
 producer target. One serialized publisher drafts the release, uploads and

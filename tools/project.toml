@@ -510,7 +510,7 @@ platforms = ["unix", "windows"]
 visibility = "public"
 
 [release]
-dev_channel = true
+edge = true
 crates_bootstrap_secret = "CARGO_REGISTRY_TOKEN"
 lock_commands = [
   [

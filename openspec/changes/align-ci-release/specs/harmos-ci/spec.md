@@ -21,7 +21,7 @@ Release tagging and publication SHALL require green exact-commit required CI.
 - AND repository settings remain owner-managed
 
 ### Requirement: Atomic Development Downloads
-One serialized publisher SHALL replace the mutable dev-channel release after
+One serialized publisher SHALL replace the mutable edge release after
 a green dev build-and-package run, consuming its exact-SHA artifacts for both
 platforms and all distribution assets in their package catalogs.
 

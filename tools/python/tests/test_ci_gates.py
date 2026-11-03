@@ -12,6 +12,7 @@
 # Standard Library Imports
 import copy
 import hashlib
+import itertools
 import json
 import os
 import runpy
@@ -23,7 +24,7 @@ from unittest.mock import patch
 # Third Party Imports
 # Local Imports
 from harmos_tools.ci import impact, simulate
-from harmos_tools.release import dev_channel, layout, pins, policy, registry, run
+from harmos_tools.release import edge, layout, pins, policy, registry, run
 
 # Type Checking Imports
 
@@ -203,17 +204,19 @@ class PinTests(unittest.TestCase):
             preflight.assert_not_called()
 
 
-class ChannelTests(unittest.TestCase):
+class EdgeTests(unittest.TestCase):
     def test_atomic_replacement(self):
-        for failing_upload in (None, "linux.zip", "windows.zip", "SHA256SUMS", "corrupt", "missing", "no-digest"):
-            with self.subTest(failing_upload=failing_upload), tempfile.TemporaryDirectory() as temporary:
+        for failing_upload, missing_release in itertools.product(
+            (None, "linux.zip", "windows.zip", "SHA256SUMS", "corrupt", "missing", "no-digest"), (False, True)
+        ):
+            with self.subTest(failing_upload=failing_upload, missing_release=missing_release), tempfile.TemporaryDirectory() as temporary:
                 directory = Path(temporary)
                 files = []
                 for name in ("linux.zip", "windows.zip", "SHA256SUMS"):
                     data = name.encode()
                     (directory / name).write_bytes(data)
                     files.append({"name": name, "path": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()})
-                release: dict = {"id": 17, "draft": False, "body": "", "tag_name": dev_channel.TAG}
+                release: dict = {} if missing_release else {"id": 17, "draft": False, "body": "", "tag_name": edge.TAG}
                 assets: list[dict] = [{"id": 1, "name": "obsolete.zip", "size": 3}]
                 tag_moves = []
                 published = []
@@ -229,18 +232,27 @@ class ChannelTests(unittest.TestCase):
                     files=files,
                     tag_moves=tag_moves,
                     published=published,
+                    missing_release=missing_release,
                     **kwargs,
                 ):
                     if endpoint.startswith("actions/"):
                         return {"workflow_runs": []}
-                    if endpoint == "releases/tags/dev-channel":
-                        return None if release["draft"] else copy.deepcopy(release)
-                    if endpoint == "git/ref/tags/dev-channel":
-                        return {"object": {"sha": "b" * 40}}
-                    if endpoint == "git/refs/tags/dev-channel" and method == "PATCH":
+                    if endpoint == "releases/tags/edge":
+                        return None if not release or release["draft"] else copy.deepcopy(release)
+                    if endpoint == "releases" and method == "POST":
+                        assert isinstance(body, dict)
+                        self.assertEqual(body["tag_name"], "edge")
+                        self.assertTrue(body["draft"])
+                        release.update({"id": 17, **body})
+                        return copy.deepcopy(release)
+                    if endpoint == "git/ref/tags/edge":
+                        return None if missing_release else {"object": {"sha": "b" * 40}}
+                    if (endpoint == "git/refs/tags/edge" and method == "PATCH") or (endpoint == "git/refs" and method == "POST"):
                         assert isinstance(body, dict)
                         self.assertTrue(release["draft"])
                         self.assertEqual({item["name"] for item in assets}, {item["name"] for item in files})
+                        if method == "POST":
+                            self.assertEqual(body["ref"], "refs/tags/edge")
                         tag_moves.append(body["sha"])
                         return {}
                     if endpoint == "releases/17" and method == "PATCH":
@@ -277,7 +289,7 @@ class ChannelTests(unittest.TestCase):
 
                 def pages(settings, endpoint, *, release=release, assets=assets, failure=failure, **kwargs):
                     if endpoint == "releases":
-                        return [copy.deepcopy(release)]
+                        return [copy.deepcopy(release)] if release else []
                     result = copy.deepcopy(assets)
                     if len(result) == 3 and failure[0] == "corrupt":
                         result[-1]["digest"] = "sha256:" + "0" * 64
@@ -292,12 +304,12 @@ class ChannelTests(unittest.TestCase):
                 ):
                     if failing_upload and failing_upload != "no-digest":
                         with self.assertRaises(policy.ToolError):
-                            dev_channel._github(directory, {}, files, "a" * 40, "7", "notes")
+                            edge._github(directory, {}, files, "a" * 40, "7", "notes")
                         self.assertTrue(release["draft"])
                         self.assertEqual(tag_moves, [])
                         self.assertEqual(published, [])
                         failure[0] = None
-                    dev_channel._github(directory, {}, files, "a" * 40, "7", "notes")
+                    edge._github(directory, {}, files, "a" * 40, "7", "notes")
                 self.assertFalse(release["draft"])
                 self.assertEqual(tag_moves, ["a" * 40])
                 self.assertEqual(len(published), 1)
@@ -325,7 +337,7 @@ class CatalogTests(unittest.TestCase):
                     source.write_bytes(data)
                     assets[relative] = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
                 (packaged / "catalog.json").write_text(json.dumps({"profile": "dev", "assets": assets}), encoding="utf-8")
-            dev_channel._include_packages(directory, targets)
+            edge._include_packages(directory, targets)
             files = layout.uploads(directory, staged=True)
             names = {item["name"] for item in files}
             expected = {"CHANGELOG.md", "SHA256SUMS"}
@@ -336,13 +348,13 @@ class CatalogTests(unittest.TestCase):
             run._checksums(shared / run.SUMS, inventory)
             source.write_bytes(b"changed")
             with self.assertRaises(policy.ToolError):
-                dev_channel._include_packages(directory, targets)
+                edge._include_packages(directory, targets)
 
     def test_missing_platform(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             with patch.object(layout, "uploads", return_value=[]), self.assertRaises(FileNotFoundError):
-                dev_channel._include_packages(directory, ["windows-x86_64"])
+                edge._include_packages(directory, ["windows-x86_64"])
 
 
 # === Public Functions === #
