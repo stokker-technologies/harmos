@@ -206,7 +206,9 @@ class PinTests(unittest.TestCase):
 
 class EdgeTests(unittest.TestCase):
     def test_publish_lookup(self):
-        publishers = (edge._github,)
+        template = ROOT / "crates/cargo-harmos/templates/guest/tools/python/src/project_tools/release/edge.py.tmpl"
+        rendered = runpy.run_path(str(template), run_name="harmos_tools.release.edge_template")
+        publishers = (edge._github, rendered["_github"])
         faults = (
             None,
             "missing",
@@ -332,6 +334,55 @@ class EdgeTests(unittest.TestCase):
                         else:
                             publisher(directory, {}, files, "a" * 40, "7", "notes")
                     self.assertEqual(verified, ["releases/tags/edge"])
+
+    def test_immutable_release(self):
+        template = ROOT / "crates/cargo-harmos/templates/guest/tools/python/src/project_tools/release/edge.py.tmpl"
+        rendered = runpy.run_path(str(template), run_name="harmos_tools.release.edge_template")
+        for publisher, stage in itertools.product((edge._github, rendered["_github"]), ("existing", "published")):
+            with self.subTest(publisher=publisher.__module__, stage=stage), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                data = b"checksum"
+                (directory / "SHA256SUMS").write_bytes(data)
+                files = [{"name": "SHA256SUMS", "path": "SHA256SUMS", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}]
+                release = {"id": 17, "tag_name": edge.TAG, "draft": False, "immutable": stage == "existing"}
+                assets: list[dict] = []
+                uploads: list[str] = []
+
+                def document(settings, endpoint, method="GET", body=None, *, release=release, **kwargs):
+                    if endpoint.startswith("actions/"):
+                        return {"workflow_runs": []}
+                    if endpoint == "releases/tags/edge":
+                        return copy.deepcopy(release)
+                    if endpoint == "releases/17" and method == "PATCH":
+                        assert isinstance(body, dict)
+                        release.update(body)
+                        # A Repository With Release Immutability Freezes The Release Once Published.
+                        release["immutable"] = body.get("draft") is False
+                        return copy.deepcopy(release)
+                    if endpoint.startswith("git/"):
+                        return {}
+                    raise AssertionError((endpoint, method))
+
+                def pages(settings, endpoint, *, assets=assets, **kwargs):
+                    return copy.deepcopy(assets)
+
+                def request(settings, endpoint, method, data=None, *, assets=assets, uploads=uploads, **kwargs):
+                    uploads.append(method)
+                    if method == "DELETE":
+                        assets.clear()
+                        return
+                    assert isinstance(data, bytes)
+                    digest = "sha256:" + hashlib.sha256(data).hexdigest()
+                    assets.append({"id": 2, "name": "SHA256SUMS", "size": len(data), "state": "uploaded", "digest": digest})
+
+                with (
+                    patch.object(registry, "document", side_effect=document),
+                    patch.object(registry, "pages", side_effect=pages),
+                    patch.object(registry, "request", side_effect=request),
+                    self.assertRaisesRegex(policy.ToolError, "Enable release immutability"),
+                ):
+                    publisher(directory, {}, files, "a" * 40, "7", "notes")
+                self.assertEqual(uploads, [] if stage == "existing" else ["POST"])
 
     def test_atomic_replacement(self):
         for failing_upload, missing_release in itertools.product(
