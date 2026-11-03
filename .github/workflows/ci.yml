@@ -171,8 +171,8 @@ jobs:
         target: >-
           ${{ github.event_name == 'pull_request' && github.base_ref != '' &&
           !startsWith(github.head_ref, 'release/') && format('origin/{0}', github.base_ref) ||
-          github.event_name == 'push' && github.ref == 'refs/heads/dev' && github.event.before ||
-          '' }}
+          false && github.event.before || '' }}
+        scope: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' && 'package' || '' }}
     if: >-
       (true) && (github.event_name != 'pull_request' || (github.event.action !=
       'closed' && !github.event.pull_request.draft))
@@ -272,9 +272,8 @@ jobs:
         github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
     if: >-
       ((always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
-      'cancelled') && (github.event_name == 'pull_request' || github.event_name ==
-      'workflow_dispatch' || github.event_name == 'push' && github.ref ==
-      'refs/heads/dev')) && needs.impact.result == 'success' &&
+      'cancelled') && (github.event_name == 'pull_request' && github.base_ref == 'dev' &&
+      startsWith(github.head_ref, 'release/v'))) && needs.impact.result == 'success' &&
       contains(fromJSON(needs.impact.outputs.jobs), 'release:publish:dry')) && (github.event_name != 'pull_request' ||
       (github.event.action != 'closed' && !github.event.pull_request.draft))
     permissions:
@@ -502,14 +501,6 @@ jobs:
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'build')) && (true)
-    - name: Compile Release Product
-      run: >-
-        mise exec -- uv run --locked --project tools/python python -m
-        harmos_tools.ci.build --profile release --output product --task build
-      if: >-
-        matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
-        contains(fromJSON(needs.impact.outputs.jobs), 'build')) && (env.PROFILE == 'dev' &&
-        github.event_name != 'pull_request')
     - name: Archive product
       uses: ./.github/actions/archive-build
       with:
@@ -592,14 +583,6 @@ jobs:
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'build')) && (true)
-    - name: Compile Release Product
-      run: >-
-        mise exec -- uv run --locked --project tools/python python -m
-        harmos_tools.ci.build --profile release --output product --task build
-      if: >-
-        matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
-        contains(fromJSON(needs.impact.outputs.jobs), 'build')) && (env.PROFILE == 'dev'
-        && github.event_name != 'pull_request')
     - name: Archive product
       uses: ./.github/actions/archive-build
       with:

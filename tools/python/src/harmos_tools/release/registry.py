@@ -32,7 +32,7 @@ from ..process import spawn_flags
 # isort: split
 from ..build import storage
 from ..package import changelog
-from . import policy
+from . import pins, policy
 
 # Type Checking Imports
 
@@ -74,6 +74,7 @@ def publish_crates(directory: Path, *, sleep=time.sleep, clock=time.monotonic) -
     storage.preflight(directory)
     if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
         raise policy.ToolError("crate publication requires clean source before generated CHANGELOG staging")
+    pins.check(directory)
     packages = publishable(directory)
     deadline = clock() + RATE_BUDGET
     with changelog.staged(directory, packages):
@@ -82,6 +83,10 @@ def publish_crates(directory: Path, *, sleep=time.sleep, clock=time.monotonic) -
 
 def rehearse_crates(directory: Path, *, skip_published: bool = True) -> None:
     """Dry-Run Crates In Publication Order Without Publishing Credentials."""
+    nightly = os.environ.get("GITHUB_WORKFLOW_REF", "").split("/workflows/")[-1].startswith("nightly.yml@")
+    nightly = nightly or os.environ.get("CI_SIMULATE") == "1" and os.environ.get("CI_PIPELINE_KIND") == "nightly"
+    if not pins.check(directory, warn=nightly):
+        return
     with policy.credential_free(policy.policy(directory, "release")):
         storage.preflight(directory)
         packages = publishable(directory)

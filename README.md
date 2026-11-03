@@ -126,8 +126,10 @@ On Windows, run the corresponding executable under
 The [release downloads](https://github.com/stokker-technologies/harmos/releases/latest)
 also provide `cargo-harmos` tool archives with README, LICENSE and generated
 CHANGELOG. See the [installation guide](docs/product-guide.md#tool-installation)
-for archive names and checksum verification. Schematic examples remain in source
-and CI packages.
+for archive names and checksum verification. The rolling
+[Dev Channel](https://github.com/stokker-technologies/harmos/releases/tag/dev-channel)
+provides unsigned tool archives, Schematic ZIPs and plugin bundles from the latest
+green dev build, with SHA256SUMS. Its downloads change in place after each build.
 
 Harmos is pre-1.0; public APIs and plugin contracts can change. Keep application
 and plugin revisions aligned and review release notes before updating. Stored data

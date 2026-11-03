@@ -1,0 +1,65 @@
+name: Dev Channel
+"on":
+  workflow_run:
+    workflows:
+    - CI
+    types:
+    - completed
+    branches:
+    - dev
+permissions:
+  contents: write
+  actions: read
+env:
+  PROFILE: dev
+  RELEASE_PROFILE: dev
+  MISE_LOCKED: "1"
+  MISE_EXPERIMENTAL: "1"
+jobs:
+  publish:
+    concurrency:
+      group: dev-channel
+      cancel-in-progress: false
+    name: Dev Channel / Publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'dev' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.event.workflow_run.head_sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: ./.github/actions/setup
+      with:
+        platform: unix
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: package-dev-rust-windows
+        path: target/ci
+        github-token: ${{ github.token }}
+        run-id: ${{ github.event.workflow_run.id }}
+    - name: Extract package-dev-rust-windows
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.artifacts extract --archive target/ci/package-dev-rust-windows.tar.zst
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: package-dev-rust-unix
+        path: target/ci
+        github-token: ${{ github.token }}
+        run-id: ${{ github.event.workflow_run.id }}
+    - name: Extract package-dev-rust-unix
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.artifacts extract --archive target/ci/package-dev-rust-unix.tar.zst
+    - name: Stage And Publish Dev Channel
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.release.dev_channel
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_TOKEN: ${{ github.token }}

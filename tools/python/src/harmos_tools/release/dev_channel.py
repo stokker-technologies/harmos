@@ -10,9 +10,11 @@
 # === Imports === #
 
 # Standard Library Imports
+import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import tomllib
 import urllib.parse
@@ -66,12 +68,13 @@ def publish(directory: Path) -> None:
         raise policy.ToolError("dev channel checkout must match the source CI commit")
     source_run = f"[{identifier}]({url})"
     endpoint = f"releases/tags/{TAG}" if github else f"releases/{TAG}"
-    previous = registry.document(settings, endpoint, channel=True)
+    previous = _github_release(settings) if github else registry.document(settings, endpoint, channel=True)
     previous_notes = (previous or {}).get("body" if github else "description", "")
     with policy.credential_free(settings, profile="dev"):
         run._refuse_overrides(directory)
         content = _notes(directory, settings, sha, source_run, previous_notes)
         run.dry(directory, settings, profile="dev", require_all=True, release_notes=content)
+        _include_packages(directory, settings["targets"])
     files = layout.uploads(directory, staged=True)
     notes = (directory / run.ASSETS / run.SHARED / "CHANGELOG.md").read_text(encoding="utf-8")
     if github:
@@ -81,6 +84,54 @@ def publish(directory: Path) -> None:
 
 
 # === Private Functions === #
+
+
+def _include_packages(directory: Path, targets: list[str]) -> None:
+    """Include Every Cataloged Distribution From Both Native Package Jobs."""
+    root = directory / run.ASSETS
+    files = [
+        {**item, "path": Path(item["path"]).relative_to(run.ASSETS).as_posix()}
+        for item in layout.uploads(directory, staged=True)
+        if item["name"] != run.SUMS
+    ]
+    for target in targets:
+        packaged = policy.inside(directory, f"target/package/dev/{target}")
+        catalog = json.loads((packaged / "catalog.json").read_text(encoding="utf-8"))
+        if catalog["profile"] != "dev" or not catalog["assets"]:
+            raise policy.ToolError("dev channel requires a complete dev package catalog")
+        for relative, expected in sorted(catalog["assets"].items()):
+            source = run.packages.regular(packaged, relative)
+            data = source.read_bytes()
+            digest = hashlib.sha256(data).hexdigest()
+            if digest != expected["sha256"] or len(data) != expected["bytes"]:
+                raise policy.ToolError(f"dev package differs from its catalog: {relative}")
+            # Native Plugin Bundles Share Names; Qualify Them By Their Producer Target.
+            name = f"{target}-{source.name}" if source.suffix == ".harmos" else source.name
+            existing = next((item for item in files if item["name"].casefold() == name.casefold()), None)
+            if existing:
+                if existing["sha256"] != digest or existing["size"] != len(data):
+                    raise policy.ToolError(f"dev channel download names collide: {name}")
+                continue
+            destination = policy.inside(root, f"{target}/{name}")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, destination)
+            files.append(run._describe(root, destination))
+    sums = root / run.SHARED / run.SUMS
+    sums.write_text("".join(f"{item['sha256']}  {item['name']}\n" for item in files), encoding="utf-8")
+    files.append(run._describe(root, sums))
+    layout.upload_manifest(directory, root, files)
+    layout.uploads(directory, staged=True)
+
+
+def _github_release(settings: dict) -> dict | None:
+    release = registry.document(settings, f"releases/tags/{TAG}", channel=True)
+    if release is not None:
+        return release
+    # The Tag Lookup Can Omit Drafts; Recover Interrupted Publication By Listing.
+    drafts = [item for item in registry.pages(settings, "releases", channel=True) if item.get("tag_name") == TAG]
+    if len(drafts) > 1:
+        raise policy.ToolError("multiple dev channel releases require owner reconciliation")
+    return drafts[0] if drafts else None
 
 
 def _superseded(release: dict | None, identifier: str, field: str) -> bool:
@@ -167,7 +218,7 @@ def _notes(directory: Path, settings: dict, sha: str, source_run: str, previous:
                 capture=True,
             )
             lines.extend(["### Changes Since The Previous Build", "", changes.strip(), ""])
-    lines.append("The *Source code* archives below belong to the tag, not to this build; use the commit link instead.")
+    lines.append("The tag and source archives identify this build; use the commit link for its permanent revision.")
     return "\n".join(lines) + "\n"
 
 
@@ -187,19 +238,11 @@ def _github(
     if latest and any(int(item["id"]) > int(identifier) for item in latest["workflow_runs"]):
         print("dev channel superseded by a newer successful CI run")
         return
-    release = registry.document(settings, f"releases/tags/{TAG}", channel=True)
+    release = _github_release(settings)
     if _superseded(release, identifier, "body"):
         return
     if release and release.get("immutable"):
         raise policy.ToolError("dev-channel assets are immutable; a rolling channel requires an existing mutable release")
-    if registry.document(settings, f"git/ref/tags/{TAG}", channel=True) is None:
-        registry.document(
-            settings,
-            "git/refs",
-            "POST",
-            {"ref": f"refs/tags/{TAG}", "sha": sha},
-            channel=True,
-        )
     if release is None:
         release = registry.document(
             settings,
@@ -207,6 +250,7 @@ def _github(
             "POST",
             {
                 "tag_name": TAG,
+                "target_commitish": sha,
                 "name": "Dev Channel",
                 "prerelease": True,
                 "draft": True,
@@ -215,6 +259,8 @@ def _github(
             channel=True,
         )
     endpoint = f"releases/{release['id']}"
+    # Hide The Channel Before Replacing Any Download; Failed Uploads Leave A Draft.
+    registry.document(settings, endpoint, "PATCH", {"draft": True}, channel=True)
     # Remove Every Old Download, Including Assets No Longer Declared.
     assets = registry.pages(settings, f"{endpoint}/assets", channel=True)
     for asset in assets:
@@ -231,6 +277,33 @@ def _github(
             upload=True,
             channel=True,
         )
+    uploaded = registry.pages(settings, f"{endpoint}/assets", channel=True)
+    actual = {asset["name"]: asset["size"] for asset in uploaded}
+    expected = {item["name"]: item["size"] for item in files}
+    if (
+        len(uploaded) != len(files)
+        or actual != expected
+        or "SHA256SUMS" not in actual
+        or any(asset.get("state") != "uploaded" for asset in uploaded)
+    ):
+        raise policy.ToolError("dev channel upload inventory is incomplete; leaving it drafted")
+    for asset in uploaded:
+        expected_digest = next(item["sha256"] for item in files if item["name"] == asset["name"])
+        digest = asset.get("digest")
+        if digest is None:
+            downloaded = registry.request(settings, f"releases/assets/{asset['id']}", binary=True, channel=True)
+            if downloaded is None:
+                raise policy.ToolError("dev channel upload could not be verified; leaving it drafted")
+            digest = "sha256:" + hashlib.sha256(downloaded).hexdigest()
+        if digest != "sha256:" + expected_digest:
+            raise policy.ToolError("dev channel upload digest differs; leaving it drafted")
+
+    # Move The Channel Once, Only After Every Platform And Checksum Is Uploaded.
+    tag = registry.document(settings, f"git/ref/tags/{TAG}", channel=True)
+    if tag is None:
+        registry.document(settings, "git/refs", "POST", {"ref": f"refs/tags/{TAG}", "sha": sha}, channel=True)
+    else:
+        registry.document(settings, f"git/refs/tags/{TAG}", "PATCH", {"sha": sha, "force": True}, channel=True)
     registry.document(
         settings,
         endpoint,

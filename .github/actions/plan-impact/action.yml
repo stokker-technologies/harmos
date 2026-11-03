@@ -9,6 +9,10 @@ inputs:
     description: Target
     required: false
     default: ""
+  scope:
+    description: Limit Selection To Package Dependencies And Tests Compilation
+    required: false
+    default: ""
 outputs:
   jobs:
     description: Selected logical jobs
@@ -24,3 +28,4 @@ runs:
     env:
       IMPACT_PLAN: ${{ inputs.plan }}
       IMPACT_TARGET: ${{ inputs.target }}
+      IMPACT_SCOPE: ${{ inputs.scope }}

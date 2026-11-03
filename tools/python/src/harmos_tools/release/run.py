@@ -34,7 +34,7 @@ from .. import temporary
 from ..package import run as packages
 from ..package.changelog import notes
 from ..test import archive
-from . import layout, policy, registry, screenshots, version
+from . import layout, pins, policy, registry, screenshots, version
 
 # Type Checking Imports
 
@@ -329,6 +329,7 @@ def publish(directory: Path, settings: dict) -> None:
     sha = _revision(directory)
     version.run(directory, "check")
     registry.require_tag(directory, tag)
+    pins.check(directory)
     _refuse_overrides(directory)
     targets = list(settings.get("targets", []))
     if not targets:
@@ -446,6 +447,7 @@ def tag(directory: Path, settings: dict) -> None:
     """Tag An Exactly Rehearsed Merged Release Review, Then Fast-Forward main."""
     sha = _revision(directory)
     event = _tag_event(directory, settings, sha)
+    pins.check(directory)
     review = registry.release_review(settings, sha, registry.RELEASE_BRANCH + release_tag(directory))
     if review is None:
         raise policy.ToolError("the revision has no merged release review")
