@@ -310,6 +310,8 @@ def _github(
         "PATCH",
         {
             "body": notes,
+            "tag_name": TAG,
+            "target_commitish": sha,
             "name": "Harmos Edge",
             "prerelease": True,
             "draft": False,
@@ -317,6 +319,22 @@ def _github(
         },
         channel=True,
     )
+
+    published = registry.document(settings, f"releases/tags/{TAG}", channel=True)
+    if (
+        not published
+        or published.get("id") != release["id"]
+        or published.get("tag_name") != TAG
+        or published.get("target_commitish") != sha
+        or published.get("draft") is not False
+        or published.get("prerelease") is not True
+    ):
+        raise policy.ToolError("edge publication could not be verified at releases/tags/edge")
+    published_assets = registry.pages(settings, f"releases/{published['id']}/assets", channel=True)
+    expected = {item["name"]: item["size"] for item in files}
+    actual = {asset["name"]: asset["size"] for asset in published_assets}
+    if len(published_assets) != len(files) or actual != expected or any(asset.get("state") != "uploaded" for asset in published_assets):
+        raise policy.ToolError("published edge asset inventory differs from the staged downloads")
 
 
 def _gitlab(settings: dict, files: list[dict], sha: str, identifier: str, notes: str) -> None:
