@@ -205,6 +205,185 @@ class PinTests(unittest.TestCase):
 
 
 class EdgeTests(unittest.TestCase):
+    def test_publish_lookup(self):
+        template = ROOT / "crates/cargo-harmos/templates/guest/tools/python/src/project_tools/release/edge.py.tmpl"
+        rendered = runpy.run_path(str(template), run_name="harmos_tools.release.edge_template")
+        publishers = (edge._github, rendered["_github"])
+        faults = (
+            None,
+            "missing",
+            "id",
+            "tag_name",
+            "target_commitish",
+            "draft",
+            "prerelease",
+            "missing-asset",
+            "extra-asset",
+            "duplicate-asset",
+            "wrong-size",
+            "pending-asset",
+        )
+        for publisher, missing_release, fault in itertools.product(publishers, (False, True), faults):
+            with self.subTest(publisher=publisher.__module__, missing_release=missing_release, fault=fault):
+                with tempfile.TemporaryDirectory() as temporary:
+                    directory = Path(temporary)
+                    data = b"checksum"
+                    (directory / "SHA256SUMS").write_bytes(data)
+                    files = [{"name": "SHA256SUMS", "path": "SHA256SUMS", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}]
+                    release: dict = {} if missing_release else {"id": 17, "tag_name": edge.TAG, "draft": False}
+                    assets: list[dict] = []
+                    published: list[bool] = []
+                    verified: list[str] = []
+
+                    def document(
+                        settings,
+                        endpoint,
+                        method="GET",
+                        body=None,
+                        *,
+                        release=release,
+                        published=published,
+                        verified=verified,
+                        fault=fault,
+                        missing_release=missing_release,
+                        **kwargs,
+                    ):
+                        if endpoint.startswith("actions/"):
+                            return {"workflow_runs": []}
+                        if endpoint == "releases/tags/edge":
+                            if published:
+                                verified.append(endpoint)
+                                if fault == "missing":
+                                    return None
+                                result = copy.deepcopy(release)
+                                changes = {
+                                    "id": 99,
+                                    "tag_name": "untagged-placeholder",
+                                    "target_commitish": "b" * 40,
+                                    "draft": True,
+                                    "prerelease": False,
+                                }
+                                if fault in changes:
+                                    result[fault] = changes[fault]
+                                return result if result["tag_name"] == edge.TAG else None
+                            return copy.deepcopy(release) if release else None
+                        if endpoint == "releases" and method == "POST":
+                            assert isinstance(body, dict)
+                            release.update({"id": 17, **body, "tag_name": "untagged-placeholder"})
+                            return copy.deepcopy(release)
+                        if endpoint == "releases/17" and method == "PATCH":
+                            assert isinstance(body, dict)
+                            release.update(body)
+                            if body.get("draft") is True:
+                                release["tag_name"] = "untagged-placeholder"
+                            if body.get("draft") is False:
+                                self.assertEqual(body["tag_name"], edge.TAG)
+                                self.assertEqual(body["target_commitish"], "a" * 40)
+                                self.assertTrue(body["prerelease"])
+                                self.assertEqual(body["make_latest"], "false")
+                                published.append(True)
+                            return copy.deepcopy(release)
+                        if endpoint == "git/ref/tags/edge":
+                            return None if missing_release else {"object": {"sha": "b" * 40}}
+                        if endpoint.startswith("git/"):
+                            return {}
+                        raise AssertionError((endpoint, method))
+
+                    def pages(settings, endpoint, *, release=release, assets=assets, published=published, fault=fault, **kwargs):
+                        if endpoint == "releases":
+                            return [copy.deepcopy(release)] if release else []
+                        self.assertEqual(endpoint, "releases/17/assets")
+                        result = copy.deepcopy(assets)
+                        if not published:
+                            return result
+                        if fault == "missing-asset":
+                            return []
+                        if fault == "extra-asset":
+                            result.append({"id": 99, "name": "obsolete.zip", "size": 3, "state": "uploaded"})
+                        if fault == "duplicate-asset":
+                            result.append(copy.deepcopy(result[0]))
+                        if fault == "wrong-size":
+                            result[0]["size"] += 1
+                        if fault == "pending-asset":
+                            result[0]["state"] = "new"
+                        return result
+
+                    def request(settings, endpoint, method, data=None, *, assets=assets, **kwargs):
+                        if method == "DELETE":
+                            assets.clear()
+                            return
+                        assert isinstance(data, bytes)
+                        assets.append(
+                            {
+                                "id": 2,
+                                "name": "SHA256SUMS",
+                                "size": len(data),
+                                "state": "uploaded",
+                                "digest": "sha256:" + hashlib.sha256(data).hexdigest(),
+                            }
+                        )
+
+                    with (
+                        patch.object(registry, "document", side_effect=document),
+                        patch.object(registry, "pages", side_effect=pages),
+                        patch.object(registry, "request", side_effect=request),
+                    ):
+                        if fault:
+                            with self.assertRaisesRegex(policy.ToolError, "edge"):
+                                publisher(directory, {}, files, "a" * 40, "7", "notes")
+                        else:
+                            publisher(directory, {}, files, "a" * 40, "7", "notes")
+                    self.assertEqual(verified, ["releases/tags/edge"])
+
+    def test_immutable_release(self):
+        template = ROOT / "crates/cargo-harmos/templates/guest/tools/python/src/project_tools/release/edge.py.tmpl"
+        rendered = runpy.run_path(str(template), run_name="harmos_tools.release.edge_template")
+        for publisher, stage in itertools.product((edge._github, rendered["_github"]), ("existing", "published")):
+            with self.subTest(publisher=publisher.__module__, stage=stage), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                data = b"checksum"
+                (directory / "SHA256SUMS").write_bytes(data)
+                files = [{"name": "SHA256SUMS", "path": "SHA256SUMS", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}]
+                release = {"id": 17, "tag_name": edge.TAG, "draft": False, "immutable": stage == "existing"}
+                assets: list[dict] = []
+                uploads: list[str] = []
+
+                def document(settings, endpoint, method="GET", body=None, *, release=release, **kwargs):
+                    if endpoint.startswith("actions/"):
+                        return {"workflow_runs": []}
+                    if endpoint == "releases/tags/edge":
+                        return copy.deepcopy(release)
+                    if endpoint == "releases/17" and method == "PATCH":
+                        assert isinstance(body, dict)
+                        release.update(body)
+                        # A Repository With Release Immutability Freezes The Release Once Published.
+                        release["immutable"] = body.get("draft") is False
+                        return copy.deepcopy(release)
+                    if endpoint.startswith("git/"):
+                        return {}
+                    raise AssertionError((endpoint, method))
+
+                def pages(settings, endpoint, *, assets=assets, **kwargs):
+                    return copy.deepcopy(assets)
+
+                def request(settings, endpoint, method, data=None, *, assets=assets, uploads=uploads, **kwargs):
+                    uploads.append(method)
+                    if method == "DELETE":
+                        assets.clear()
+                        return
+                    assert isinstance(data, bytes)
+                    digest = "sha256:" + hashlib.sha256(data).hexdigest()
+                    assets.append({"id": 2, "name": "SHA256SUMS", "size": len(data), "state": "uploaded", "digest": digest})
+
+                with (
+                    patch.object(registry, "document", side_effect=document),
+                    patch.object(registry, "pages", side_effect=pages),
+                    patch.object(registry, "request", side_effect=request),
+                    self.assertRaisesRegex(policy.ToolError, "Enable release immutability"),
+                ):
+                    publisher(directory, {}, files, "a" * 40, "7", "notes")
+                self.assertEqual(uploads, [] if stage == "existing" else ["POST"])
+
     def test_atomic_replacement(self):
         for failing_upload, missing_release in itertools.product(
             (None, "linux.zip", "windows.zip", "SHA256SUMS", "corrupt", "missing", "no-digest"), (False, True)

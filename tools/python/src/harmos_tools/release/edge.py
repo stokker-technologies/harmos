@@ -33,6 +33,12 @@ from . import layout, policy, registry, run
 # === Constants === #
 
 TAG = "edge"
+TITLE = "Edge"
+# GitHub Release Immutability Freezes Tags And Assets, Which A Rolling Release Cannot Survive.
+IMMUTABLE = (
+    "the edge release is immutable; the repository owner must disable "
+    "Settings > General > Releases > Enable release immutability before edge can publish"
+)
 
 # === Types === #
 
@@ -242,7 +248,7 @@ def _github(
     if _superseded(release, identifier, "body"):
         return
     if release and release.get("immutable"):
-        raise policy.ToolError("edge assets are immutable; a rolling channel requires an existing mutable release")
+        raise policy.ToolError(IMMUTABLE)
     if release is None:
         release = registry.document(
             settings,
@@ -251,7 +257,7 @@ def _github(
             {
                 "tag_name": TAG,
                 "target_commitish": sha,
-                "name": "Harmos Edge",
+                "name": TITLE,
                 "prerelease": True,
                 "draft": True,
                 "make_latest": "false",
@@ -310,13 +316,33 @@ def _github(
         "PATCH",
         {
             "body": notes,
-            "name": "Harmos Edge",
+            "tag_name": TAG,
+            "target_commitish": sha,
+            "name": TITLE,
             "prerelease": True,
             "draft": False,
             "make_latest": "false",
         },
         channel=True,
     )
+
+    published = registry.document(settings, f"releases/tags/{TAG}", channel=True)
+    if published and published.get("immutable"):
+        raise policy.ToolError(IMMUTABLE)
+    if (
+        not published
+        or published.get("id") != release["id"]
+        or published.get("tag_name") != TAG
+        or published.get("target_commitish") != sha
+        or published.get("draft") is not False
+        or published.get("prerelease") is not True
+    ):
+        raise policy.ToolError("edge publication could not be verified at releases/tags/edge")
+    published_assets = registry.pages(settings, f"releases/{published['id']}/assets", channel=True)
+    expected = {item["name"]: item["size"] for item in files}
+    actual = {asset["name"]: asset["size"] for asset in published_assets}
+    if len(published_assets) != len(files) or actual != expected or any(asset.get("state") != "uploaded" for asset in published_assets):
+        raise policy.ToolError("published edge asset inventory differs from the staged downloads")
 
 
 def _gitlab(settings: dict, files: list[dict], sha: str, identifier: str, notes: str) -> None:
@@ -329,7 +355,7 @@ def _gitlab(settings: dict, files: list[dict], sha: str, identifier: str, notes:
             settings,
             "releases",
             "POST",
-            {"tag_name": TAG, "ref": sha, "name": "Harmos Edge", "description": notes},
+            {"tag_name": TAG, "ref": sha, "name": TITLE, "description": notes},
             channel=True,
         )
     # Links Address This Job's Unexpiring Staged Artifacts, Never A Moving Branch.
@@ -355,7 +381,7 @@ def _gitlab(settings: dict, files: list[dict], sha: str, identifier: str, notes:
         settings,
         endpoint,
         "PUT",
-        {"name": "Harmos Edge", "description": notes},
+        {"name": TITLE, "description": notes},
         channel=True,
     )
 

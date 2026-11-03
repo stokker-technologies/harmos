@@ -45,6 +45,25 @@ Downloads are unavailable while drafted; interrupted uploads remain drafted for
 retry instead of exposing incomplete downloads. Stable releases retain their
 separate download inventory.
 
+The rolling GitHub prerelease is titled `Edge` under the `edge` tag. Publication
+sets that tag explicitly and then verifies the release and every asset at
+`releases/tags/edge`. A rolling release must stay replaceable: with GitHub
+release immutability enabled, the publisher fails and names the owner setting
+(Settings > General > Releases > Enable release immutability) instead of
+publishing a frozen release.
+
+Every project uses the workflows `CI`, `Nightly`, `Edge`, `Release` and
+`Mirror`. Run names read `<Workflow> / <Purpose>`: `CI / Validation`,
+`CI / Draft Review`, `CI / Closed Review`, `Nightly / Validation`,
+`Edge / Publication`, `Release / Preparation`, `Release / Tagging`,
+`Release / Publication` and `Mirror / Synchronization`. Job names read
+`<Stage> / <Subject>[ / <Kind>] [(<platform>)]`, such as `Check / Python`,
+`Test / Rust / Unit (windows)`, `Release / Tag`, `Edge / Publish` or
+`Mirror / Push`; `CI / Required` is the aggregate gate. Release starts only for
+manual preparation, `v*` tag pushes and merged PRs into dev that change
+`tools/project.toml`, which every release review does; its jobs still require
+a `release/v*` head, so ordinary merges start no Release run.
+
 ## Tests And Checks
 
 Run targeted checks while implementing. After all agreed source work is
