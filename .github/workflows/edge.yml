@@ -1,4 +1,5 @@
 name: Edge
+run-name: Edge / Publication
 "on":
   workflow_run:
     workflows:

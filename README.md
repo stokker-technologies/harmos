@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/stokker-technologies/harmos)](https://github.com/stokker-technologies/harmos/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/stokker-technologies/harmos/ci.yml?branch=dev&label=CI)](https://github.com/stokker-technologies/harmos/actions/workflows/ci.yml)
-[![CI / Nightly](https://img.shields.io/github/actions/workflow/status/stokker-technologies/harmos/nightly.yml?branch=dev&label=CI%20%2F%20Nightly)](https://github.com/stokker-technologies/harmos/actions/workflows/nightly.yml)
+[![Nightly](https://img.shields.io/github/actions/workflow/status/stokker-technologies/harmos/nightly.yml?branch=dev&label=Nightly)](https://github.com/stokker-technologies/harmos/actions/workflows/nightly.yml)
 [![crates.io](https://img.shields.io/crates/v/harmos)](https://crates.io/crates/harmos)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 

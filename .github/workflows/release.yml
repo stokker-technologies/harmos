@@ -1,4 +1,7 @@
 name: Release
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch' && 'Release / Preparation' ||
+  github.event_name == 'push' && 'Release / Publication' || 'Release / Tagging' }}
 "on":
   workflow_dispatch: {}
   pull_request:
@@ -6,6 +9,9 @@ name: Release
     - closed
     branches:
     - dev
+    # Only Release Reviews Change The Version Policy; Ordinary Merges Start No Release Run.
+    paths:
+    - tools/project.toml
   push:
     tags:
     - v*

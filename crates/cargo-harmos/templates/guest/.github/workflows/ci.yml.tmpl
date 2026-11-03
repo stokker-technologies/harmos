@@ -170,13 +170,6 @@ jobs:
         mise exec -- uv run --locked --project tools/python python -m
         project_tools.ci.build --profile ${{ env.PROFILE }} --output product --task build
       if: matrix.platform == 'unix' && (true) && (true)
-    - name: Compile Release Product
-      run: >-
-        mise exec -- uv run --locked --project tools/python python -m
-        project_tools.ci.build --profile release --output product --task build
-      if: >-
-        matrix.platform == 'unix' && (true) && (env.PROFILE == 'dev' &&
-        github.event_name != 'pull_request')
     - name: Archive product
       uses: ./.github/actions/archive-build
       with:
@@ -245,13 +238,6 @@ jobs:
         mise exec -- uv run --locked --project tools/python python -m
         project_tools.ci.build --profile ${{ env.PROFILE }} --output product --task build
       if: matrix.platform == 'windows' && (true) && (true)
-    - name: Compile Release Product
-      run: >-
-        mise exec -- uv run --locked --project tools/python python -m
-        project_tools.ci.build --profile release --output product --task build
-      if: >-
-        matrix.platform == 'windows' && (true) && (env.PROFILE == 'dev' &&
-        github.event_name != 'pull_request')
     - name: Archive product
       uses: ./.github/actions/archive-build
       with:
