@@ -24,7 +24,7 @@ from unittest.mock import patch
 # Third Party Imports
 # Local Imports
 from harmos_tools.ci import impact, simulate
-from harmos_tools.release import channel, layout, pins, policy, registry, run
+from harmos_tools.release import layout, nightly, pins, policy, registry, run
 
 # Type Checking Imports
 
@@ -43,30 +43,30 @@ class ImpactTests(unittest.TestCase):
     def test_dev_and_review(self):
         plan = simulate.PLAN["impact"]
         full = impact.select(plan, {"Cargo.toml"})
-        development = impact.scope(plan, full, "package")
-        self.assertTrue({"package:rust", "build:rust:tests"} <= development)
-        self.assertFalse(any(job.startswith(("test:", "release:", "bench:", "prepare:")) for job in development))
+        development = impact.scope(plan, full, "build")
+        self.assertTrue({"build", "build:rust:tests", "check:rust"} <= development)
+        self.assertFalse(any(job.startswith(("test:", "release:", "bench:", "prepare:", "package:")) for job in development))
         self.assertTrue(any(job.startswith("test:") for job in impact.scope(plan, full)))
         for job in development:
             self.assertTrue(set(plan["dependencies"][job]) <= development)
         action = runpy.run_path(str(ROOT / ".github/actions/plan-impact/run.py"))
-        self.assertEqual(action["scope"](plan, action["select"](plan, {"Cargo.toml"}), "package"), development)
+        self.assertEqual(action["scope"](plan, action["select"](plan, {"Cargo.toml"}), "build"), development)
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         authored = next(line.removeprefix("        plan: ") for line in workflow.splitlines() if line.startswith("        plan: "))
         hosted_plan = json.loads(json.loads(authored))
-        self.assertEqual(impact.scope(hosted_plan, impact.select(hosted_plan, {"Cargo.toml"}), "package"), development)
+        self.assertEqual(impact.scope(hosted_plan, impact.select(hosted_plan, {"Cargo.toml"}), "build"), development)
         print("Dev Impact:", ", ".join(sorted(development)))
         print("PR Impact:", ", ".join(sorted(full)))
 
     def test_guidance_scope(self):
         plan = simulate.PLAN["impact"]
         selected = impact.select(plan, {"CONTRIBUTING.md"})
-        self.assertEqual(impact.scope(plan, selected, "package"), set())
+        self.assertEqual(impact.scope(plan, selected, "build"), set())
 
     def test_conservative_scope(self):
-        plan = {"dependencies": {"package:rust": ["producer"], "producer": []}, "rules": []}
+        plan = {"dependencies": {"package:rust": ["build"], "build": ["producer"], "producer": []}, "rules": []}
         self.assertEqual(impact.close(plan["dependencies"], {"unknown"}), set(plan["dependencies"]))
-        self.assertEqual(impact.scope(plan, {"package:rust"}, "package"), {"package:rust", "producer"})
+        self.assertEqual(impact.scope(plan, {"package:rust", "build"}, "build"), {"build", "producer"})
         with self.assertRaises(ValueError):
             impact.scope(plan, set(), "typo")
 
@@ -76,7 +76,7 @@ class ImpactTests(unittest.TestCase):
         for pipeline in ("dev", "pr", "nightly", "release"):
             with self.subTest(pipeline=pipeline):
                 contexts = {pipeline, "pr"} if pipeline == "release" else {pipeline}
-                selected = impact.scope(plan["impact"], full, "package" if pipeline == "dev" else "")
+                selected = impact.scope(plan["impact"], full, "build" if pipeline == "dev" else "")
                 jobs = [
                     job
                     for job in plan["jobs"]
@@ -89,8 +89,10 @@ class ImpactTests(unittest.TestCase):
                 self.assertEqual("test:rust:unit" in ids, pipeline != "dev")
                 self.assertEqual("test:rust:starter" in ids, pipeline == "nightly")
                 self.assertEqual("bench:rust:unit" in ids, pipeline == "nightly")
+                self.assertEqual("package:rust" in ids, pipeline != "dev")
                 for producer in ("build", "build:rust:tests", "package:rust"):
-                    self.assertEqual({job["platform"] for job in jobs if job["id"] == producer}, {"unix", "windows"})
+                    expected = set() if producer == "package:rust" and pipeline == "dev" else {"unix", "windows"}
+                    self.assertEqual({job["platform"] for job in jobs if job["id"] == producer}, expected)
                 keys = {job["key"] for job in jobs}
                 for job in jobs:
                     dependencies = job.get("pipeline_needs", {}).get("release-review" if pipeline == "release" else pipeline, job["needs"])
@@ -204,11 +206,8 @@ class PinTests(unittest.TestCase):
             preflight.assert_not_called()
 
 
-class ChannelTests(unittest.TestCase):
+class PublicationTests(unittest.TestCase):
     def test_publish_lookup(self):
-        template = ROOT / "crates/cargo-harmos/templates/guest/tools/python/src/project_tools/release/edge.py.tmpl"
-        rendered = runpy.run_path(str(template), run_name="harmos_tools.release.edge_template")
-        publishers = (channel._github, rendered["_github"])
         faults = (
             None,
             "missing",
@@ -223,14 +222,14 @@ class ChannelTests(unittest.TestCase):
             "wrong-size",
             "pending-asset",
         )
-        for publisher, missing_release, fault in itertools.product(publishers, (False, True), faults):
+        for publisher, missing_release, fault in itertools.product((nightly._github,), (False, True), faults):
             with self.subTest(publisher=publisher.__module__, missing_release=missing_release, fault=fault):
                 with tempfile.TemporaryDirectory() as temporary:
                     directory = Path(temporary)
                     data = b"checksum"
                     (directory / "SHA256SUMS").write_bytes(data)
                     files = [{"name": "SHA256SUMS", "path": "SHA256SUMS", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}]
-                    release: dict = {} if missing_release else {"id": 17, "tag_name": channel.EDGE.tag, "draft": False}
+                    release: dict = {} if missing_release else {"id": 17, "tag_name": nightly.TAG, "draft": False}
                     assets: list[dict] = []
                     published: list[bool] = []
                     verified: list[str] = []
@@ -250,7 +249,7 @@ class ChannelTests(unittest.TestCase):
                     ):
                         if endpoint.startswith("actions/"):
                             return {"workflow_runs": []}
-                        if endpoint == "releases/tags/edge":
+                        if endpoint == "releases/tags/nightly":
                             if published:
                                 verified.append(endpoint)
                                 if fault == "missing":
@@ -265,7 +264,7 @@ class ChannelTests(unittest.TestCase):
                                 }
                                 if fault in changes:
                                     result[fault] = changes[fault]
-                                return result if result["tag_name"] == channel.EDGE.tag else None
+                                return result if result["tag_name"] == nightly.TAG else None
                             return copy.deepcopy(release) if release else None
                         if endpoint == "releases" and method == "POST":
                             assert isinstance(body, dict)
@@ -277,13 +276,13 @@ class ChannelTests(unittest.TestCase):
                             if body.get("draft") is True:
                                 release["tag_name"] = "untagged-placeholder"
                             if body.get("draft") is False:
-                                self.assertEqual(body["tag_name"], channel.EDGE.tag)
+                                self.assertEqual(body["tag_name"], nightly.TAG)
                                 self.assertEqual(body["target_commitish"], "a" * 40)
                                 self.assertTrue(body["prerelease"])
                                 self.assertEqual(body["make_latest"], "false")
                                 published.append(True)
                             return copy.deepcopy(release)
-                        if endpoint == "git/ref/tags/edge":
+                        if endpoint == "git/ref/tags/nightly":
                             return None if missing_release else {"object": {"sha": "b" * 40}}
                         if endpoint.startswith("git/"):
                             return {}
@@ -329,29 +328,27 @@ class ChannelTests(unittest.TestCase):
                         patch.object(registry, "request", side_effect=request),
                     ):
                         if fault:
-                            with self.assertRaisesRegex(policy.ToolError, "edge"):
+                            with self.assertRaisesRegex(policy.ToolError, "nightly"):
                                 publisher(directory, {}, files, "a" * 40, "7", "notes")
                         else:
                             publisher(directory, {}, files, "a" * 40, "7", "notes")
-                    self.assertEqual(verified, ["releases/tags/edge"])
+                    self.assertEqual(verified, ["releases/tags/nightly"])
 
     def test_immutable_release(self):
-        template = ROOT / "crates/cargo-harmos/templates/guest/tools/python/src/project_tools/release/edge.py.tmpl"
-        rendered = runpy.run_path(str(template), run_name="harmos_tools.release.edge_template")
-        for publisher, stage in itertools.product((channel._github, rendered["_github"]), ("existing", "published")):
+        for publisher, stage in itertools.product((nightly._github,), ("existing", "published")):
             with self.subTest(publisher=publisher.__module__, stage=stage), tempfile.TemporaryDirectory() as temporary:
                 directory = Path(temporary)
                 data = b"checksum"
                 (directory / "SHA256SUMS").write_bytes(data)
                 files = [{"name": "SHA256SUMS", "path": "SHA256SUMS", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}]
-                release = {"id": 17, "tag_name": channel.EDGE.tag, "draft": False, "immutable": stage == "existing"}
+                release = {"id": 17, "tag_name": nightly.TAG, "draft": False, "immutable": stage == "existing"}
                 assets: list[dict] = []
                 uploads: list[str] = []
 
                 def document(settings, endpoint, method="GET", body=None, *, release=release, **kwargs):
                     if endpoint.startswith("actions/"):
                         return {"workflow_runs": []}
-                    if endpoint == "releases/tags/edge":
+                    if endpoint == "releases/tags/nightly":
                         return copy.deepcopy(release)
                     if endpoint == "releases/17" and method == "PATCH":
                         assert isinstance(body, dict)
@@ -395,7 +392,7 @@ class ChannelTests(unittest.TestCase):
                     data = name.encode()
                     (directory / name).write_bytes(data)
                     files.append({"name": name, "path": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()})
-                release: dict = {} if missing_release else {"id": 17, "draft": False, "body": "", "tag_name": channel.EDGE.tag}
+                release: dict = {} if missing_release else {"id": 17, "draft": False, "body": "", "tag_name": nightly.TAG}
                 assets: list[dict] = [{"id": 1, "name": "obsolete.zip", "size": 3}]
                 tag_moves = []
                 published = []
@@ -416,22 +413,22 @@ class ChannelTests(unittest.TestCase):
                 ):
                     if endpoint.startswith("actions/"):
                         return {"workflow_runs": []}
-                    if endpoint == "releases/tags/edge":
+                    if endpoint == "releases/tags/nightly":
                         return None if not release or release["draft"] else copy.deepcopy(release)
                     if endpoint == "releases" and method == "POST":
                         assert isinstance(body, dict)
-                        self.assertEqual(body["tag_name"], "edge")
+                        self.assertEqual(body["tag_name"], "nightly")
                         self.assertTrue(body["draft"])
                         release.update({"id": 17, **body})
                         return copy.deepcopy(release)
-                    if endpoint == "git/ref/tags/edge":
+                    if endpoint == "git/ref/tags/nightly":
                         return None if missing_release else {"object": {"sha": "b" * 40}}
-                    if (endpoint == "git/refs/tags/edge" and method == "PATCH") or (endpoint == "git/refs" and method == "POST"):
+                    if (endpoint == "git/refs/tags/nightly" and method == "PATCH") or (endpoint == "git/refs" and method == "POST"):
                         assert isinstance(body, dict)
                         self.assertTrue(release["draft"])
                         self.assertEqual({item["name"] for item in assets}, {item["name"] for item in files})
                         if method == "POST":
-                            self.assertEqual(body["ref"], "refs/tags/edge")
+                            self.assertEqual(body["ref"], "refs/tags/nightly")
                         tag_moves.append(body["sha"])
                         return {}
                     if endpoint == "releases/17" and method == "PATCH":
@@ -483,12 +480,12 @@ class ChannelTests(unittest.TestCase):
                 ):
                     if failing_upload and failing_upload != "no-digest":
                         with self.assertRaises(policy.ToolError):
-                            channel._github(directory, {}, files, "a" * 40, "7", "notes")
+                            nightly._github(directory, {}, files, "a" * 40, "7", "notes")
                         self.assertTrue(release["draft"])
                         self.assertEqual(tag_moves, [])
                         self.assertEqual(published, [])
                         failure[0] = None
-                    channel._github(directory, {}, files, "a" * 40, "7", "notes")
+                    nightly._github(directory, {}, files, "a" * 40, "7", "notes")
                 self.assertFalse(release["draft"])
                 self.assertEqual(tag_moves, ["a" * 40])
                 self.assertEqual(len(published), 1)
@@ -510,11 +507,11 @@ class NightlyTests(unittest.TestCase):
                 patch.dict(os.environ, {**base, "GITHUB_EVENT_NAME": event, "GITHUB_REF": ref}, clear=True),
             ):
                 if eligible:
-                    source = channel._github_source(channel.NIGHTLY)
+                    source = nightly._github_source()
                     self.assertEqual(source, ("a" * 40, "41", "https://github.com/owner/repo/actions/runs/41"))
                 else:
                     with self.assertRaises(policy.ToolError):
-                        channel._github_source(channel.NIGHTLY)
+                        nightly._github_source()
 
     def test_publication(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -561,7 +558,7 @@ class NightlyTests(unittest.TestCase):
                 patch.object(registry, "pages", side_effect=pages),
                 patch.object(registry, "request", side_effect=request),
             ):
-                channel._github(directory, {}, files, "a" * 40, "41", "notes", channel.NIGHTLY)
+                nightly._github(directory, {}, files, "a" * 40, "41", "notes")
             self.assertEqual(references, [{"ref": "refs/tags/nightly", "sha": "a" * 40}])
             published = {key: release[key] for key in ("tag_name", "name", "prerelease", "draft", "target_commitish")}
             self.assertEqual(
@@ -581,7 +578,7 @@ class CatalogTests(unittest.TestCase):
             layout.upload_manifest(directory, root, [run._describe(root, path) for path in shared.iterdir()])
             targets = ["linux-x86_64", "windows-x86_64"]
             for target in targets:
-                packaged = directory / "target/package/dev" / target
+                packaged = directory / "target/package/release" / target
                 assets = {}
                 for relative in (f"rust/tool-{target}.zip", f"rust/schematic-{target}.zip", "producer/plugin.harmos"):
                     source = packaged / relative
@@ -589,8 +586,8 @@ class CatalogTests(unittest.TestCase):
                     data = (target + relative).encode()
                     source.write_bytes(data)
                     assets[relative] = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
-                (packaged / "catalog.json").write_text(json.dumps({"profile": "dev", "assets": assets}), encoding="utf-8")
-            channel._include_packages(directory, targets, "dev")
+                (packaged / "catalog.json").write_text(json.dumps({"profile": "release", "assets": assets}), encoding="utf-8")
+            nightly._include_packages(directory, targets)
             files = layout.uploads(directory, staged=True)
             names = {item["name"] for item in files}
             expected = {"CHANGELOG.md", "SHA256SUMS"}
@@ -601,13 +598,13 @@ class CatalogTests(unittest.TestCase):
             run._checksums(shared / run.SUMS, inventory)
             source.write_bytes(b"changed")
             with self.assertRaises(policy.ToolError):
-                channel._include_packages(directory, targets, "dev")
+                nightly._include_packages(directory, targets)
 
     def test_missing_platform(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             with patch.object(layout, "uploads", return_value=[]), self.assertRaises(FileNotFoundError):
-                channel._include_packages(directory, ["windows-x86_64"], "dev")
+                nightly._include_packages(directory, ["windows-x86_64"])
 
 
 # === Public Functions === #

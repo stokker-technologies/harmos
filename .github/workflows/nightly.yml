@@ -2741,7 +2741,7 @@ jobs:
     - name: Stage And Publish Nightly
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
-        harmos_tools.release.channel nightly
+        harmos_tools.release.nightly
       env:
         GH_TOKEN: ${{ github.token }}
         GITHUB_TOKEN: ${{ github.token }}

@@ -27,38 +27,42 @@ The root uv workspace owns the Python environment and lockfile.
 
 Harmos owns its workflows, composite actions and CI/release tooling. The Hub
 renders editable baselines; only explicit `stkr project ci render` overwrites CI.
-PRs run selected suites. Dev pushes select package dependencies (checks, Product
-and Tests compilation, and both native packages), skipping suites, fixture
-preparation and Release / Dry. Merges to dev remain ungated.
+PRs run selected suites. Dev pushes run only the quick checks and Product and
+Tests compilation; they package and publish nothing. Merges to dev remain
+ungated.
 
 Git dependencies are allowed on dev and ordinary PRs. Release PRs (`release/v*`
 into dev), tagging and publication reject resolved git dependencies, including
 transitive ones. Nightly warns and skips incompatible crate dry publication
 while retaining its checks, builds, packages, suites, coverage and benchmarks.
 
-Edge replaces one mutable `edge` GitHub prerelease after each green
-dev build-and-package run. It consumes that run's native tool archives, Schematic
-ZIPs and plugin bundles from both platforms; plugin download names include their
-producer target. One serialized publisher drafts the release, uploads and
-verifies every asset including SHA256SUMS, moves the tag once, then publishes.
-Downloads are unavailable while drafted; interrupted uploads remain drafted for
-retry instead of exposing incomplete downloads. Stable releases retain their
-separate download inventory.
+Nightly is the provisional release channel: one mutable GitHub prerelease
+titled `Nightly` under the `nightly` tag, built from dev in the release profile.
+It runs on its schedule and on manual dispatch; a scheduled run skips when the
+`nightly` tag already points at dev HEAD, while a manual run always builds.
+Publication depends only on the build and package jobs and consumes that run's
+native tool archives, Schematic ZIPs and plugin bundles from both platforms;
+plugin download names include their producer target. Tests, benchmarks and
+coverage run in parallel and may fail, so a nightly can be broken: the final
+`Nightly / Report` job appends the suite result and run URL to the release
+notes. Benchmark results stay CI artifacts, never release assets.
 
-The rolling GitHub prerelease is titled `Edge` under the `edge` tag. Publication
-sets that tag explicitly and then verifies the release and every asset at
-`releases/tags/edge`. A rolling release must stay replaceable: with GitHub
-release immutability enabled, the publisher fails and names the owner setting
-(Settings > General > Releases > Enable release immutability) instead of
-publishing a frozen release.
+One serialized publisher drafts the release, uploads and verifies every asset
+including SHA256SUMS, moves the tag once, then publishes and verifies the
+release and every asset at `releases/tags/nightly`. Downloads are unavailable
+while drafted; interrupted uploads remain drafted for retry instead of exposing
+incomplete downloads. Stable releases retain their separate download inventory.
+A mutable prerelease must stay replaceable: with GitHub release immutability
+enabled, the publisher fails and names the owner setting (Settings > General >
+Releases > Enable release immutability) instead of publishing a frozen
+release.
 
-Every project uses the workflows `CI`, `Nightly`, `Edge`, `Release` and
-`Mirror`. Run names read `<Workflow> / <Purpose>`: `CI / Validation`,
+Every project uses the workflows `CI`, `Nightly`, `Release` and `Mirror`. Run names read `<Workflow> / <Purpose>`: `CI / Validation`,
 `CI / Draft Review`, `CI / Closed Review`, `Nightly / Validation`,
-`Edge / Publication`, `Release / Preparation`, `Release / Tagging`,
+`Release / Preparation`, `Release / Tagging`,
 `Release / Publication` and `Mirror / Synchronization`. Job names read
 `<Stage> / <Subject>[ / <Kind>] [(<platform>)]`, such as `Check / Python`,
-`Test / Rust / Unit (windows)`, `Release / Tag`, `Edge / Publish` or
+`Test / Rust / Unit (windows)`, `Release / Tag`, `Nightly / Publish` or
 `Mirror / Push`; `CI / Required` is the aggregate gate. Release starts only for
 manual preparation, `v*` tag pushes and merged PRs into dev that change
 `tools/project.toml`, which every release review does; its jobs still require

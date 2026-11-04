@@ -6,7 +6,7 @@ CI only through explicit rendering. Hosted runners and existing caches SHALL rem
 
 #### Scenario: Development Push
 - WHEN dev CI plans a source change
-- THEN checks, package producers and Tests compilation run on both platforms without suites or release dry validation
+- THEN checks and Product and Tests compilation run on both platforms without packages, suites or release dry validation
 - AND PRs retain selected suites and nightly retains the complete workload
 - AND merges to dev remain ungated
 
@@ -21,9 +21,10 @@ Release tagging and publication SHALL require green exact-commit required CI.
 - AND repository settings remain owner-managed
 
 ### Requirement: Atomic Development Downloads
-One serialized publisher SHALL replace the mutable edge release after
-a green dev build-and-package run, consuming its exact-SHA artifacts for both
-platforms and all distribution assets in their package catalogs.
+One serialized publisher SHALL replace the mutable nightly release after the
+nightly run's build and package jobs, independent of its suites, consuming its
+exact-SHA release-profile artifacts for both platforms and all distribution
+assets in their package catalogs.
 
 #### Scenario: Interrupted Upload
 - WHEN any upload fails before the full inventory including SHA256SUMS is verified
