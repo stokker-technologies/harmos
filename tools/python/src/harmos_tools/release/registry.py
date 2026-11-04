@@ -47,6 +47,12 @@ RATE_BUDGET = 5400
 REHEARSAL_CHECK = "Release / Rehearsal"
 RELEASE_BRANCH = "release/"
 GITLAB_REHEARSAL_JOB = "Release / Rehearsal"
+# Transient Provider Failures Retry With Doubling Pauses; Only Idempotent Methods Retry Server Errors.
+RETRY_ATTEMPTS = 4
+RETRY_PAUSE_SECONDS = 2
+THROTTLED = frozenset({429})
+TRANSIENT = frozenset({500, 502, 503, 504})
+IDEMPOTENT = frozenset({"GET", "PUT", "PATCH", "DELETE"})
 
 # === Types === #
 
@@ -244,18 +250,25 @@ def request(
         raise policy.ToolError("release.provider must be github or gitlab")
     if data is not None:
         headers["Content-Type"] = "application/octet-stream" if binary else "application/json"
-    native = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.build_opener(ProviderRedirect()).open(native, timeout=60) as response:
-            return response.read()
-    except urllib.error.HTTPError as error:
-        if error.code == 404 and method == "GET":
-            return None
-        message = error.read().decode("utf-8", errors="replace")
-        for secret in (token, os.environ.get("CI_JOB_TOKEN")):
-            if secret:
-                message = message.replace(secret, "***")
-        raise policy.ToolError(f"release provider {method} failed: HTTP {error.code}: {message}") from error
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        native = urllib.request.Request(url, data=data, headers=headers, method=method)
+        try:
+            with urllib.request.build_opener(ProviderRedirect()).open(native, timeout=60) as response:
+                return response.read()
+        except urllib.error.HTTPError as error:
+            # A Retried Delete Whose Earlier Attempt Landed Finds Nothing Left To Remove.
+            if error.code == 404 and (method == "GET" or method == "DELETE" and attempt > 1):
+                return None
+            message = error.read().decode("utf-8", errors="replace")
+            for secret in (token, os.environ.get("CI_JOB_TOKEN")):
+                if secret:
+                    message = message.replace(secret, "***")
+            retry = error.code in THROTTLED or error.code in TRANSIENT and method in IDEMPOTENT
+            if not retry or attempt == RETRY_ATTEMPTS:
+                raise policy.ToolError(f"release provider {method} failed: HTTP {error.code}: {message}") from error
+            print(f"release provider {method} {endpoint}: HTTP {error.code}; retrying ({attempt}/{RETRY_ATTEMPTS})", flush=True)
+            _pause(RETRY_PAUSE_SECONDS * 2 ** (attempt - 1))
+    raise AssertionError("unreachable")
 
 
 def document(settings: dict, endpoint: str, method: str = "GET", body: dict | None = None, *, channel: bool = False) -> Any:
@@ -596,6 +609,10 @@ def remote_tag(settings: dict, tag: str) -> str | None:
 
 
 # === Private Functions === #
+
+
+def _pause(seconds: float) -> None:
+    time.sleep(seconds)
 
 
 def _publish_crates(directory: Path, packages: dict, deadline: float, *, sleep, clock) -> None:

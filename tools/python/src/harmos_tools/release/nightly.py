@@ -66,7 +66,7 @@ def publish(directory: Path) -> None:
 
     source_run = f"[{identifier}]({url})"
     endpoint = f"releases/tags/{TAG}" if github else f"releases/{TAG}"
-    previous = _github_release(settings) if github else registry.document(settings, endpoint, channel=True)
+    previous = registry.document(settings, endpoint, channel=True)
     previous_notes = (previous or {}).get("body" if github else "description", "")
     with policy.credential_free(settings, profile=PROFILE):
         run._refuse_overrides(directory)
@@ -141,22 +141,6 @@ def _include_packages(directory: Path, targets: list[str]) -> None:
     files.append(run._describe(root, sums))
     layout.upload_manifest(directory, root, files)
     layout.uploads(directory, staged=True)
-
-
-def _github_release(settings: dict) -> dict | None:
-    release = registry.document(settings, f"releases/tags/{TAG}", channel=True)
-    if release is not None:
-        return release
-    # The Tag Lookup Omits Drafts, And A Drafted Release Lists Under An Untagged Placeholder;
-    # Recover Interrupted Publication By Its Title.
-    drafts = [
-        item
-        for item in registry.pages(settings, "releases", channel=True)
-        if item.get("tag_name") == TAG or (item.get("draft") is True and item.get("name") == TITLE)
-    ]
-    if len(drafts) > 1:
-        raise policy.ToolError(f"multiple {TAG} releases require owner reconciliation")
-    return drafts[0] if drafts else None
 
 
 def _superseded(release: dict | None, identifier: str, field: str) -> bool:
@@ -255,108 +239,165 @@ def _github(
     identifier: str,
     notes: str,
 ) -> None:
-    release = _github_release(settings)
-    if _superseded(release, identifier, "body"):
+    previous = registry.document(settings, f"releases/tags/{TAG}", channel=True)
+    if _superseded(previous, identifier, "body"):
         print("nightly already carries a newer run")
         return
-    if release and release.get("immutable"):
+    if previous and previous.get("immutable"):
         raise policy.ToolError(IMMUTABLE)
-    if release is None:
-        release = registry.document(
+
+    # Stage A Complete Replacement As A Separate Draft; The Published Channel Stays Untouched Until The Swap.
+    staged = registry.document(
+        settings,
+        "releases",
+        "POST",
+        {
+            "tag_name": f"{TAG}-{identifier}",
+            "target_commitish": sha,
+            "name": TITLE,
+            "body": notes,
+            "prerelease": True,
+            "draft": True,
+            "make_latest": "false",
+        },
+        channel=True,
+    )
+    endpoint = f"releases/{staged['id']}"
+    try:
+        for item in files:
+            _upload(directory, settings, endpoint, item)
+        _verify_assets(settings, endpoint, files, "upload inventory is incomplete")
+    except Exception:
+        _discard(settings, staged["id"])
+        raise
+
+    # Swap: Move The Tag, Release It From The Previous Channel, Then Publish The Staged Draft.
+    # Updating A Ref Across Workflow Changes Needs The Workflows Permission The Job Token Cannot Hold;
+    # Recreating The Tag Does Not.
+    reference = registry.document(settings, f"git/ref/tags/{TAG}", channel=True)
+    original = (reference or {}).get("object", {}).get("sha")
+    try:
+        _point_tag(settings, original, sha)
+        if previous:
+            registry.document(settings, f"releases/{previous['id']}", "PATCH", {"draft": True}, channel=True)
+        registry.document(
             settings,
-            "releases",
-            "POST",
-            {
-                "tag_name": TAG,
-                "target_commitish": sha,
-                "name": TITLE,
-                "prerelease": True,
-                "draft": True,
-                "make_latest": "false",
-            },
+            endpoint,
+            "PATCH",
+            {"tag_name": TAG, "target_commitish": sha, "draft": False},
             channel=True,
         )
-    endpoint = f"releases/{release['id']}"
-    # Hide The Channel Before Replacing Any Download; Failed Uploads Leave A Draft.
-    registry.document(settings, endpoint, "PATCH", {"draft": True}, channel=True)
-    # Remove Every Old Download, Including Assets No Longer Declared.
+        published = registry.document(settings, f"releases/tags/{TAG}", channel=True)
+        if (
+            not published
+            or published.get("id") != staged["id"]
+            or published.get("tag_name") != TAG
+            or published.get("target_commitish") != sha
+            or published.get("draft") is not False
+            or published.get("prerelease") is not True
+        ):
+            raise policy.ToolError(f"{TAG} publication could not be verified at releases/tags/{TAG}")
+        _verify_assets(settings, f"releases/{published['id']}", files, "published asset inventory differs from the staged downloads")
+    except Exception:
+        _restore(settings, staged["id"], previous, original)
+        raise
+    if published.get("immutable"):
+        raise policy.ToolError(IMMUTABLE)
+
+    # Retire The Replaced Release And Every Draft Interrupted Runs Left Behind.
+    for release in registry.pages(settings, "releases", channel=True):
+        if release.get("id") != staged["id"] and (release.get("draft") is True and release.get("name") == TITLE):
+            registry.request(settings, f"releases/{release['id']}", "DELETE", channel=True)
+
+
+def _upload(directory: Path, settings: dict, endpoint: str, item: dict) -> None:
+    """Upload One Download, Replacing A Partial Asset Of The Same Name Left By A Failed Attempt."""
+    path = policy.inside(directory, item["path"])
+    name = urllib.parse.quote(item["name"], safe="")
+    for attempt in range(1, registry.RETRY_ATTEMPTS + 1):
+        try:
+            registry.request(
+                settings,
+                f"{endpoint}/assets?name={name}",
+                "POST",
+                path.read_bytes(),
+                binary=True,
+                upload=True,
+                channel=True,
+            )
+            return
+        except policy.ToolError:
+            if attempt == registry.RETRY_ATTEMPTS:
+                raise
+            for asset in registry.pages(settings, f"{endpoint}/assets", channel=True):
+                if asset["name"] == item["name"]:
+                    registry.request(settings, f"releases/assets/{asset['id']}", "DELETE", channel=True)
+
+
+def _verify_assets(settings: dict, endpoint: str, files: list[dict], failure: str) -> None:
     assets = registry.pages(settings, f"{endpoint}/assets", channel=True)
-    for asset in assets:
-        registry.request(settings, f"releases/assets/{asset['id']}", "DELETE", channel=True)
-    for item in files:
-        path = policy.inside(directory, item["path"])
-        name = urllib.parse.quote(item["name"], safe="")
-        registry.request(
-            settings,
-            f"{endpoint}/assets?name={name}",
-            "POST",
-            path.read_bytes(),
-            binary=True,
-            upload=True,
-            channel=True,
-        )
-    uploaded = registry.pages(settings, f"{endpoint}/assets", channel=True)
-    actual = {asset["name"]: asset["size"] for asset in uploaded}
+    actual = {asset["name"]: asset["size"] for asset in assets}
     expected = {item["name"]: item["size"] for item in files}
     if (
-        len(uploaded) != len(files)
+        len(assets) != len(files)
         or actual != expected
         or "SHA256SUMS" not in actual
-        or any(asset.get("state") != "uploaded" for asset in uploaded)
+        or any(asset.get("state") != "uploaded" for asset in assets)
     ):
-        raise policy.ToolError(f"{TAG} upload inventory is incomplete; leaving it drafted")
-    for asset in uploaded:
+        raise policy.ToolError(f"{TAG} {failure}")
+    for asset in assets:
         expected_digest = next(item["sha256"] for item in files if item["name"] == asset["name"])
         digest = asset.get("digest")
         if digest is None:
             downloaded = registry.request(settings, f"releases/assets/{asset['id']}", binary=True, channel=True)
             if downloaded is None:
-                raise policy.ToolError(f"{TAG} upload could not be verified; leaving it drafted")
+                raise policy.ToolError(f"{TAG} upload could not be verified")
             digest = "sha256:" + hashlib.sha256(downloaded).hexdigest()
         if digest != "sha256:" + expected_digest:
-            raise policy.ToolError(f"{TAG} upload digest differs; leaving it drafted")
+            raise policy.ToolError(f"{TAG} upload digest differs")
 
-    # Move The Channel Once, Only After Every Platform And Checksum Is Uploaded.
-    # Updating A Ref Across Workflow Changes Needs The Workflows Permission The Job Token Cannot Hold;
-    # Recreating The Tag While The Release Is Still Drafted Does Not.
+
+def _point_tag(settings: dict, current: str | None, sha: str) -> None:
+    if current == sha:
+        return
+    if current is not None:
+        registry.request(settings, f"git/refs/tags/{TAG}", "DELETE", channel=True)
+    registry.document(settings, "git/refs", "POST", {"ref": f"refs/tags/{TAG}", "sha": sha}, channel=True)
+
+
+def _discard(settings: dict, release: int) -> None:
+    try:
+        registry.request(settings, f"releases/{release}", "DELETE", channel=True)
+    except policy.ToolError as error:
+        print(f"nightly: the staged draft remains for the next run to retire: {error}", file=sys.stderr)
+
+
+def _restore(settings: dict, staged: int, previous: dict | None, original: str | None) -> None:
+    """Return The Channel To The Previous Release After A Failed Swap; Report What Could Not Be Undone."""
+    steps = [lambda: registry.document(settings, f"releases/{staged}", "PATCH", {"draft": True}, channel=True)]
+    if original is not None:
+        steps.append(lambda: _point_tag(settings, _tag(settings), original))
+    if previous:
+        steps.append(
+            lambda: registry.document(
+                settings,
+                f"releases/{previous['id']}",
+                "PATCH",
+                {"tag_name": TAG, "draft": False},
+                channel=True,
+            )
+        )
+    steps.append(lambda: _discard(settings, staged))
+    for step in steps:
+        try:
+            step()
+        except policy.ToolError as error:
+            print(f"nightly: restoring the previous channel failed: {error}", file=sys.stderr)
+
+
+def _tag(settings: dict) -> str | None:
     reference = registry.document(settings, f"git/ref/tags/{TAG}", channel=True)
-    if (reference or {}).get("object", {}).get("sha") != sha:
-        if reference is not None:
-            registry.document(settings, f"git/refs/tags/{TAG}", "DELETE", channel=True)
-        registry.document(settings, "git/refs", "POST", {"ref": f"refs/tags/{TAG}", "sha": sha}, channel=True)
-    registry.document(
-        settings,
-        endpoint,
-        "PATCH",
-        {
-            "body": notes,
-            "tag_name": TAG,
-            "target_commitish": sha,
-            "name": TITLE,
-            "prerelease": True,
-            "draft": False,
-            "make_latest": "false",
-        },
-        channel=True,
-    )
-
-    published = registry.document(settings, f"releases/tags/{TAG}", channel=True)
-    if published and published.get("immutable"):
-        raise policy.ToolError(IMMUTABLE)
-    if (
-        not published
-        or published.get("id") != release["id"]
-        or published.get("tag_name") != TAG
-        or published.get("target_commitish") != sha
-        or published.get("draft") is not False
-        or published.get("prerelease") is not True
-    ):
-        raise policy.ToolError(f"{TAG} publication could not be verified at releases/tags/{TAG}")
-    published_assets = registry.pages(settings, f"releases/{published['id']}/assets", channel=True)
-    expected = {item["name"]: item["size"] for item in files}
-    actual = {asset["name"]: asset["size"] for asset in published_assets}
-    if len(published_assets) != len(files) or actual != expected or any(asset.get("state") != "uploaded" for asset in published_assets):
-        raise policy.ToolError(f"published {TAG} asset inventory differs from the staged downloads")
+    return (reference or {}).get("object", {}).get("sha")
 
 
 def _gitlab(settings: dict, files: list[dict], sha: str, identifier: str, notes: str) -> None:
