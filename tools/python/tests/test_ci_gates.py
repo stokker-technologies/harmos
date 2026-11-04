@@ -24,7 +24,7 @@ from unittest.mock import patch
 # Third Party Imports
 # Local Imports
 from harmos_tools.ci import impact, simulate
-from harmos_tools.release import edge, layout, pins, policy, registry, run
+from harmos_tools.release import channel, layout, pins, policy, registry, run
 
 # Type Checking Imports
 
@@ -204,11 +204,11 @@ class PinTests(unittest.TestCase):
             preflight.assert_not_called()
 
 
-class EdgeTests(unittest.TestCase):
+class ChannelTests(unittest.TestCase):
     def test_publish_lookup(self):
         template = ROOT / "crates/cargo-harmos/templates/guest/tools/python/src/project_tools/release/edge.py.tmpl"
         rendered = runpy.run_path(str(template), run_name="harmos_tools.release.edge_template")
-        publishers = (edge._github, rendered["_github"])
+        publishers = (channel._github, rendered["_github"])
         faults = (
             None,
             "missing",
@@ -230,7 +230,7 @@ class EdgeTests(unittest.TestCase):
                     data = b"checksum"
                     (directory / "SHA256SUMS").write_bytes(data)
                     files = [{"name": "SHA256SUMS", "path": "SHA256SUMS", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}]
-                    release: dict = {} if missing_release else {"id": 17, "tag_name": edge.TAG, "draft": False}
+                    release: dict = {} if missing_release else {"id": 17, "tag_name": channel.EDGE.tag, "draft": False}
                     assets: list[dict] = []
                     published: list[bool] = []
                     verified: list[str] = []
@@ -265,7 +265,7 @@ class EdgeTests(unittest.TestCase):
                                 }
                                 if fault in changes:
                                     result[fault] = changes[fault]
-                                return result if result["tag_name"] == edge.TAG else None
+                                return result if result["tag_name"] == channel.EDGE.tag else None
                             return copy.deepcopy(release) if release else None
                         if endpoint == "releases" and method == "POST":
                             assert isinstance(body, dict)
@@ -277,7 +277,7 @@ class EdgeTests(unittest.TestCase):
                             if body.get("draft") is True:
                                 release["tag_name"] = "untagged-placeholder"
                             if body.get("draft") is False:
-                                self.assertEqual(body["tag_name"], edge.TAG)
+                                self.assertEqual(body["tag_name"], channel.EDGE.tag)
                                 self.assertEqual(body["target_commitish"], "a" * 40)
                                 self.assertTrue(body["prerelease"])
                                 self.assertEqual(body["make_latest"], "false")
@@ -338,13 +338,13 @@ class EdgeTests(unittest.TestCase):
     def test_immutable_release(self):
         template = ROOT / "crates/cargo-harmos/templates/guest/tools/python/src/project_tools/release/edge.py.tmpl"
         rendered = runpy.run_path(str(template), run_name="harmos_tools.release.edge_template")
-        for publisher, stage in itertools.product((edge._github, rendered["_github"]), ("existing", "published")):
+        for publisher, stage in itertools.product((channel._github, rendered["_github"]), ("existing", "published")):
             with self.subTest(publisher=publisher.__module__, stage=stage), tempfile.TemporaryDirectory() as temporary:
                 directory = Path(temporary)
                 data = b"checksum"
                 (directory / "SHA256SUMS").write_bytes(data)
                 files = [{"name": "SHA256SUMS", "path": "SHA256SUMS", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}]
-                release = {"id": 17, "tag_name": edge.TAG, "draft": False, "immutable": stage == "existing"}
+                release = {"id": 17, "tag_name": channel.EDGE.tag, "draft": False, "immutable": stage == "existing"}
                 assets: list[dict] = []
                 uploads: list[str] = []
 
@@ -395,7 +395,7 @@ class EdgeTests(unittest.TestCase):
                     data = name.encode()
                     (directory / name).write_bytes(data)
                     files.append({"name": name, "path": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()})
-                release: dict = {} if missing_release else {"id": 17, "draft": False, "body": "", "tag_name": edge.TAG}
+                release: dict = {} if missing_release else {"id": 17, "draft": False, "body": "", "tag_name": channel.EDGE.tag}
                 assets: list[dict] = [{"id": 1, "name": "obsolete.zip", "size": 3}]
                 tag_moves = []
                 published = []
@@ -483,16 +483,90 @@ class EdgeTests(unittest.TestCase):
                 ):
                     if failing_upload and failing_upload != "no-digest":
                         with self.assertRaises(policy.ToolError):
-                            edge._github(directory, {}, files, "a" * 40, "7", "notes")
+                            channel._github(directory, {}, files, "a" * 40, "7", "notes")
                         self.assertTrue(release["draft"])
                         self.assertEqual(tag_moves, [])
                         self.assertEqual(published, [])
                         failure[0] = None
-                    edge._github(directory, {}, files, "a" * 40, "7", "notes")
+                    channel._github(directory, {}, files, "a" * 40, "7", "notes")
                 self.assertFalse(release["draft"])
                 self.assertEqual(tag_moves, ["a" * 40])
                 self.assertEqual(len(published), 1)
                 self.assertEqual({item["name"] for item in published[0]}, {item["name"] for item in files})
+
+
+class NightlyTests(unittest.TestCase):
+    def test_source_eligibility(self):
+        base = {"GITHUB_SHA": "a" * 40, "GITHUB_RUN_ID": "41", "GITHUB_REPOSITORY": "owner/repo", "GITHUB_SERVER_URL": "https://github.com"}
+        for event, ref, eligible in (
+            ("schedule", "refs/heads/dev", True),
+            ("workflow_dispatch", "refs/heads/dev", True),
+            ("workflow_dispatch", "refs/heads/feature", False),
+            ("workflow_run", "refs/heads/dev", False),
+            ("push", "refs/heads/dev", False),
+        ):
+            with (
+                self.subTest(event=event, ref=ref),
+                patch.dict(os.environ, {**base, "GITHUB_EVENT_NAME": event, "GITHUB_REF": ref}, clear=True),
+            ):
+                if eligible:
+                    source = channel._github_source(channel.NIGHTLY)
+                    self.assertEqual(source, ("a" * 40, "41", "https://github.com/owner/repo/actions/runs/41"))
+                else:
+                    with self.assertRaises(policy.ToolError):
+                        channel._github_source(channel.NIGHTLY)
+
+    def test_publication(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            data = b"checksum"
+            (directory / "SHA256SUMS").write_bytes(data)
+            files = [{"name": "SHA256SUMS", "path": "SHA256SUMS", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}]
+            release: dict = {}
+            assets: list[dict] = []
+            references: list[dict] = []
+
+            def document(settings, endpoint, method="GET", body=None, **kwargs):
+                self.assertFalse(endpoint.startswith("actions/"), "nightly never yields to dev push runs")
+                body = body or {}
+                if endpoint == "releases/tags/nightly":
+                    return copy.deepcopy(release) if release and not release["draft"] else None
+                if endpoint == "releases" and method == "POST":
+                    release.update({"id": 17, **body})
+                    return copy.deepcopy(release)
+                if endpoint == "releases/17" and method == "PATCH":
+                    release.update(body)
+                    return copy.deepcopy(release)
+                if endpoint == "git/ref/tags/nightly":
+                    return None
+                if endpoint == "git/refs" and method == "POST":
+                    references.append(body)
+                    return {}
+                raise AssertionError((endpoint, method))
+
+            def request(settings, endpoint, method="GET", data=None, **kwargs):
+                if method == "DELETE":
+                    assets.clear()
+                    return None
+                assert isinstance(data, bytes)
+                digest = "sha256:" + hashlib.sha256(data).hexdigest()
+                assets.append({"id": 2, "name": "SHA256SUMS", "size": len(data), "state": "uploaded", "digest": digest})
+                return None
+
+            def pages(settings, endpoint, **kwargs):
+                return [] if endpoint == "releases" else copy.deepcopy(assets)
+
+            with (
+                patch.object(registry, "document", side_effect=document),
+                patch.object(registry, "pages", side_effect=pages),
+                patch.object(registry, "request", side_effect=request),
+            ):
+                channel._github(directory, {}, files, "a" * 40, "41", "notes", channel.NIGHTLY)
+            self.assertEqual(references, [{"ref": "refs/tags/nightly", "sha": "a" * 40}])
+            published = {key: release[key] for key in ("tag_name", "name", "prerelease", "draft", "target_commitish")}
+            self.assertEqual(
+                published, {"tag_name": "nightly", "name": "Nightly", "prerelease": True, "draft": False, "target_commitish": "a" * 40}
+            )
 
 
 class CatalogTests(unittest.TestCase):
@@ -516,7 +590,7 @@ class CatalogTests(unittest.TestCase):
                     source.write_bytes(data)
                     assets[relative] = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
                 (packaged / "catalog.json").write_text(json.dumps({"profile": "dev", "assets": assets}), encoding="utf-8")
-            edge._include_packages(directory, targets)
+            channel._include_packages(directory, targets, "dev")
             files = layout.uploads(directory, staged=True)
             names = {item["name"] for item in files}
             expected = {"CHANGELOG.md", "SHA256SUMS"}
@@ -527,13 +601,13 @@ class CatalogTests(unittest.TestCase):
             run._checksums(shared / run.SUMS, inventory)
             source.write_bytes(b"changed")
             with self.assertRaises(policy.ToolError):
-                edge._include_packages(directory, targets)
+                channel._include_packages(directory, targets, "dev")
 
     def test_missing_platform(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             with patch.object(layout, "uploads", return_value=[]), self.assertRaises(FileNotFoundError):
-                edge._include_packages(directory, ["windows-x86_64"])
+                channel._include_packages(directory, ["windows-x86_64"], "dev")
 
 
 # === Public Functions === #
