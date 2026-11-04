@@ -381,6 +381,25 @@ class PublicationTests(unittest.TestCase):
                     publisher(directory, {}, files, "a" * 40, "7", "notes")
                 self.assertEqual(uploads, [] if stage == "existing" else ["POST"])
 
+    def test_interrupted_draft_recovery(self):
+        stable = {"id": 3, "draft": False, "name": "v0.1.13", "tag_name": "v0.1.13"}
+        interrupted = {"id": 17, "draft": True, "name": nightly.TITLE, "tag_name": "untagged-placeholder"}
+        for listed, expected in (
+            ([stable], None),
+            ([stable, interrupted], 17),
+            ([stable, interrupted, {**interrupted, "id": 18}], "multiple"),
+        ):
+            with (
+                self.subTest(listed=[item["id"] for item in listed]),
+                patch.object(registry, "document", return_value=None),
+                patch.object(registry, "pages", return_value=copy.deepcopy(listed)),
+            ):
+                if expected == "multiple":
+                    with self.assertRaisesRegex(policy.ToolError, "owner reconciliation"):
+                        nightly._github_release({})
+                else:
+                    self.assertEqual((nightly._github_release({}) or {}).get("id"), expected)
+
     def test_atomic_replacement(self):
         for failing_upload, missing_release in itertools.product(
             (None, "linux.zip", "windows.zip", "SHA256SUMS", "corrupt", "missing", "no-digest"), (False, True)

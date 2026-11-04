@@ -147,8 +147,13 @@ def _github_release(settings: dict) -> dict | None:
     release = registry.document(settings, f"releases/tags/{TAG}", channel=True)
     if release is not None:
         return release
-    # The Tag Lookup Can Omit Drafts; Recover Interrupted Publication By Listing.
-    drafts = [item for item in registry.pages(settings, "releases", channel=True) if item.get("tag_name") == TAG]
+    # The Tag Lookup Omits Drafts, And A Drafted Release Lists Under An Untagged Placeholder;
+    # Recover Interrupted Publication By Its Title.
+    drafts = [
+        item
+        for item in registry.pages(settings, "releases", channel=True)
+        if item.get("tag_name") == TAG or (item.get("draft") is True and item.get("name") == TITLE)
+    ]
     if len(drafts) > 1:
         raise policy.ToolError(f"multiple {TAG} releases require owner reconciliation")
     return drafts[0] if drafts else None
