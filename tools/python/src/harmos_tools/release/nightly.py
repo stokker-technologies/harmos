@@ -245,6 +245,10 @@ def _github(
         return
     if previous and previous.get("immutable"):
         raise policy.ToolError(IMMUTABLE)
+    # The Job Token Cannot Create A Ref Whose Workflows Differ From Dev's Without The Workflows Permission.
+    if _workflows_moved(settings, sha):
+        print(f"{TAG} superseded by a dev workflow change; the next nightly publishes")
+        return
 
     # Stage A Complete Replacement As A Separate Draft; The Published Channel Stays Untouched Until The Swap.
     staged = registry.document(
@@ -308,6 +312,17 @@ def _github(
     for release in registry.pages(settings, "releases", channel=True):
         if release.get("id") != staged["id"] and (release.get("draft") is True and release.get("name") == TITLE):
             registry.request(settings, f"releases/{release['id']}", "DELETE", channel=True)
+
+
+def _workflows_moved(settings: dict, sha: str) -> bool:
+    """Whether Dev's Head Now Carries Different Workflow Files Than The Build Commit."""
+    head = registry.document(settings, "git/ref/heads/dev", channel=True)["object"]["sha"]
+    return head != sha and _workflows(settings, head) != _workflows(settings, sha)
+
+
+def _workflows(settings: dict, revision: str) -> str | None:
+    entries = registry.document(settings, f"contents/.github?ref={revision}", channel=True) or []
+    return next((entry["sha"] for entry in entries if entry["name"] == "workflows" and entry["type"] == "dir"), None)
 
 
 def _upload(directory: Path, settings: dict, endpoint: str, item: dict) -> None:

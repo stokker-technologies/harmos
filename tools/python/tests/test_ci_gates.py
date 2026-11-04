@@ -274,6 +274,21 @@ class PublicationTests(unittest.TestCase):
                             nightly._github(directory, {}, files, NEW, "7", "notes")
                 self.assertEqual((github.releases, github.assets, github.tag), before)
 
+    def test_dev_workflow_change_supersedes(self):
+        for workflows, published in (("changed", False), ("same", True)):
+            with self.subTest(workflows=workflows), tempfile.TemporaryDirectory() as temporary:
+                directory, files = _staged_files(Path(temporary))
+                github = FakeGitHub(previous=True)
+                github.dev = LATER
+                github.workflows[LATER] = "changed-workflows" if workflows == "changed" else github.workflows[NEW]
+                before = copy.deepcopy((github.releases, github.assets, github.tag))
+                with github.patched():
+                    nightly._github(directory, {}, files, NEW, "7", "notes")
+                if published:
+                    self.assertEqual(github.published()["target_commitish"], NEW)
+                else:
+                    self.assertEqual((github.releases, github.assets, github.tag), before)
+
     def test_repository_immutability_is_reported(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory, files = _staged_files(Path(temporary))
@@ -334,6 +349,8 @@ class FakeGitHub:
         self.faults = set(faults or ())
         self.immutable = immutable
         self.tag = OLD if previous else None
+        self.dev = NEW
+        self.workflows = {OLD: "previous-workflows", NEW: "build-workflows"}
         self.releases: dict[int, dict] = {}
         self.assets: dict[int, list[dict]] = {}
         self.next_id = 10
@@ -397,6 +414,14 @@ class FakeGitHub:
             return copy.deepcopy(release)
         if endpoint == f"git/ref/tags/{nightly.TAG}":
             return {"object": {"sha": self.tag}} if self.tag else None
+        if endpoint == "git/ref/heads/dev":
+            return {"object": {"sha": self.dev}}
+        if endpoint.startswith("contents/.github?ref="):
+            revision = endpoint.split("=", 1)[1]
+            return [
+                {"name": "actions", "type": "dir", "sha": "actions"},
+                {"name": "workflows", "type": "dir", "sha": self.workflows[revision]},
+            ]
         if endpoint == "git/refs" and method == "POST":
             self._fault("tag-create", body["sha"] == NEW)
             if self.tag is not None:
@@ -516,6 +541,7 @@ class CatalogTests(unittest.TestCase):
 
 OLD = "b" * 40
 NEW = "a" * 40
+LATER = "c" * 40
 
 
 def _staged_files(directory: Path) -> tuple[Path, list[dict]]:
