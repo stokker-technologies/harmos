@@ -312,11 +312,13 @@ def _github(
             raise policy.ToolError(f"{TAG} upload digest differs; leaving it drafted")
 
     # Move The Channel Once, Only After Every Platform And Checksum Is Uploaded.
+    # Updating A Ref Across Workflow Changes Needs The Workflows Permission The Job Token Cannot Hold;
+    # Recreating The Tag While The Release Is Still Drafted Does Not.
     reference = registry.document(settings, f"git/ref/tags/{TAG}", channel=True)
-    if reference is None:
+    if (reference or {}).get("object", {}).get("sha") != sha:
+        if reference is not None:
+            registry.document(settings, f"git/refs/tags/{TAG}", "DELETE", channel=True)
         registry.document(settings, "git/refs", "POST", {"ref": f"refs/tags/{TAG}", "sha": sha}, channel=True)
-    else:
-        registry.document(settings, f"git/refs/tags/{TAG}", "PATCH", {"sha": sha, "force": True}, channel=True)
     registry.document(
         settings,
         endpoint,

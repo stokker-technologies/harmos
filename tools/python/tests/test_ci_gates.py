@@ -396,6 +396,7 @@ class PublicationTests(unittest.TestCase):
                 assets: list[dict] = [{"id": 1, "name": "obsolete.zip", "size": 3}]
                 tag_moves = []
                 published = []
+                tag = [None if missing_release else "b" * 40]
 
                 def document(
                     settings,
@@ -408,7 +409,7 @@ class PublicationTests(unittest.TestCase):
                     files=files,
                     tag_moves=tag_moves,
                     published=published,
-                    missing_release=missing_release,
+                    tag=tag,
                     **kwargs,
                 ):
                     if endpoint.startswith("actions/"):
@@ -422,13 +423,18 @@ class PublicationTests(unittest.TestCase):
                         release.update({"id": 17, **body})
                         return copy.deepcopy(release)
                     if endpoint == "git/ref/tags/nightly":
-                        return None if missing_release else {"object": {"sha": "b" * 40}}
-                    if (endpoint == "git/refs/tags/nightly" and method == "PATCH") or (endpoint == "git/refs" and method == "POST"):
-                        assert isinstance(body, dict)
+                        return {"object": {"sha": tag[0]}} if tag[0] else None
+                    if (endpoint == "git/refs/tags/nightly" and method == "DELETE") or (endpoint == "git/refs" and method == "POST"):
                         self.assertTrue(release["draft"])
                         self.assertEqual({item["name"] for item in assets}, {item["name"] for item in files})
-                        if method == "POST":
-                            self.assertEqual(body["ref"], "refs/tags/nightly")
+                        if method == "DELETE":
+                            self.assertIsNotNone(tag[0])
+                            tag[0] = None
+                            return None
+                        assert isinstance(body, dict)
+                        self.assertIsNone(tag[0], "the channel tag must be recreated, never updated in place")
+                        self.assertEqual(body["ref"], "refs/tags/nightly")
+                        tag[0] = body["sha"]
                         tag_moves.append(body["sha"])
                         return {}
                     if endpoint == "releases/17" and method == "PATCH":
