@@ -317,7 +317,7 @@ jobs:
       MISE_TASK_SKIP: package:rust
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      SCCACHE_CACHE_SIZE: 2G
+      SCCACHE_CACHE_SIZE: 8G
       COMPILER_CACHE_MODE: >-
         ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
@@ -501,7 +501,7 @@ jobs:
         aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      SCCACHE_CACHE_SIZE: 2G
+      SCCACHE_CACHE_SIZE: 8G
       COMPILER_CACHE_MODE: >-
         ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
@@ -905,7 +905,7 @@ jobs:
         aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      SCCACHE_CACHE_SIZE: 2G
+      SCCACHE_CACHE_SIZE: 8G
       COMPILER_CACHE_MODE: >-
         ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
@@ -1091,7 +1091,7 @@ jobs:
         aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      SCCACHE_CACHE_SIZE: 2G
+      SCCACHE_CACHE_SIZE: 8G
       COMPILER_CACHE_MODE: >-
         ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
@@ -1227,7 +1227,7 @@ jobs:
         aqua:koalaman/shellcheck,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      SCCACHE_CACHE_SIZE: 2G
+      SCCACHE_CACHE_SIZE: 8G
       COMPILER_CACHE_MODE: >-
         ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
@@ -1652,7 +1652,7 @@ jobs:
         aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,uv
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      SCCACHE_CACHE_SIZE: 2G
+      SCCACHE_CACHE_SIZE: 8G
       COMPILER_CACHE_MODE: >-
         ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
         github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
