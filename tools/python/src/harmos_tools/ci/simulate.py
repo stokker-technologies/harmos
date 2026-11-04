@@ -269,7 +269,7 @@ def main() -> int:
         ]
         if options.pipeline in ("pr", "dev") and not release_review:
             selected = impact.select(PLAN["impact"], None) if options.pipeline == "dev" else impact.selection(root, PLAN["impact"])
-            selected = impact.scope(PLAN["impact"], selected, "package" if options.pipeline == "dev" else "")
+            selected = impact.scope(PLAN["impact"], selected, "build" if options.pipeline == "dev" else "")
             impact_empty = bool(jobs) and not selected
             jobs = [job for job in jobs if job["id"] in selected]
         if set(platforms) != set(PLAN["platforms"]):

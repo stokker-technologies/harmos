@@ -93,9 +93,10 @@ def close(graph: dict, selected: set[str]) -> set[str]:
 
 
 def scope(plan: dict, selected: set[str], value: str = "") -> set[str]:
-    """Keep Package Producers And Warm Tests Compilation On Dev Pushes."""
-    if value == "package":
-        return close(plan["dependencies"], selected & {"build:rust:tests", "package:rust", "package:python"})
+    """Keep Only The Quick Checks And Builds On Dev Pushes; Nightly Owns Packaging."""
+    if value == "build":
+        quick = {job for job in selected if job.startswith("check:") or job in {"build", "build:rust:tests"}}
+        return close(plan["dependencies"], quick)
     if value:
         raise ValueError(f"unknown impact scope: {value}")
     return selected
