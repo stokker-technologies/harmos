@@ -60,7 +60,7 @@ jobs:
     - name: Stage And Publish Edge
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
-        harmos_tools.release.edge
+        harmos_tools.release.channel edge
       env:
         GH_TOKEN: ${{ github.token }}
         GITHUB_TOKEN: ${{ github.token }}

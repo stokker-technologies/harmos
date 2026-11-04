@@ -19,10 +19,34 @@ concurrency:
   group: nightly-${{ github.run_id }}
   cancel-in-progress: false
 jobs:
+  gate:
+    name: Plan / Nightly
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      build: ${{ steps.gate.outputs.build }}
+    steps:
+    - id: gate
+      name: Skip An Unchanged Scheduled Nightly
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        build=true
+        if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+          published=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/nightly" --jq .object.sha 2>/dev/null || true)
+          if [ "$published" = "$GITHUB_SHA" ]; then
+            build=false
+            echo "::notice::nightly already points at $GITHUB_SHA; skipping the scheduled run"
+          fi
+        fi
+        echo "build=$build" >> "$GITHUB_OUTPUT"
   source:
     name: Check / Repository
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    needs:
+    - gate
+    if: needs.gate.outputs.build == 'true'
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -76,6 +100,9 @@ jobs:
     name: Check / Python
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    needs:
+    - gate
+    if: needs.gate.outputs.build == 'true'
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -416,6 +443,9 @@ jobs:
     name: Build / Bench
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    needs:
+    - gate
+    if: needs.gate.outputs.build == 'true'
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -743,6 +773,9 @@ jobs:
     name: Build / Product (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.minutes }}
+    needs:
+    - gate
+    if: needs.gate.outputs.build == 'true'
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -918,6 +951,9 @@ jobs:
     name: Build / Tests (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.minutes }}
+    needs:
+    - gate
+    if: needs.gate.outputs.build == 'true'
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -1119,6 +1155,9 @@ jobs:
     name: Check / Rust (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.minutes }}
+    needs:
+    - gate
+    if: needs.gate.outputs.build == 'true'
     steps:
     - name: Configure Checkout Git
       run: git config --global core.longpaths true
@@ -2660,3 +2699,94 @@ jobs:
         ci-${{ github.workflow }}-validate_test_rust_unit-${{ matrix.platform }}-${{
         github.run_id }}
       cancel-in-progress: false
+  publish:
+    name: Nightly / Publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    needs:
+    - package_rust
+    if: github.ref == 'refs/heads/dev'
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: nightly-publication
+      cancel-in-progress: false
+    steps:
+    - name: Configure Checkout Git
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: ./.github/actions/setup
+      with:
+        platform: unix
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: package-${{ env.PROFILE }}-rust-unix
+        path: target/ci
+    - name: Extract package-${{ env.PROFILE }}-rust-unix
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst --profile ${{ env.PROFILE }}
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: package-${{ env.PROFILE }}-rust-windows
+        path: target/ci
+    - name: Extract package-${{ env.PROFILE }}-rust-windows
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst --profile ${{ env.PROFILE }}
+    - name: Stage And Publish Nightly
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.release.channel nightly
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_TOKEN: ${{ github.token }}
+  report:
+    name: Nightly / Report
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs:
+    - publish
+    - source
+    - check_python
+    - bench_rust_unit
+    - release_dry_nightly
+    - validate_coverage_rust
+    - build_bench
+    - check_generated_python
+    - bench_rust_integration
+    - bench_rust_system
+    - build_product
+    - build_tests
+    - check_rust
+    - package_rust
+    - prepare_test_fixtures
+    - validate_test_rust_acceptance
+    - validate_test_rust_integration
+    - validate_test_rust_starter
+    - validate_test_rust_system
+    - validate_test_rust_unit
+    if: always() && needs.publish.result == 'success'
+    permissions:
+      contents: write
+    steps:
+    - name: Append The Suite Result
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SUITE: >-
+          ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') ||
+          contains(needs.*.result, 'skipped')) && 'failed' || 'passed' }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        notes="$RUNNER_TEMP/nightly-notes.md"
+        gh release view nightly --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$notes"
+        if ! grep -qF "($RUN_URL)" "$notes"; then
+          echo "::notice::a newer run replaced nightly; leaving its notes unchanged"
+          exit 0
+        fi
+        printf '\n**Suite:** %s, %s\n' "$SUITE" "$RUN_URL" >> "$notes"
+        gh release edit nightly --repo "$GITHUB_REPOSITORY" --notes-file "$notes"

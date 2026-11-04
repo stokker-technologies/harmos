@@ -511,6 +511,7 @@ visibility = "public"
 
 [release]
 edge = true
+nightly = true
 crates_bootstrap_secret = "CARGO_REGISTRY_TOKEN"
 lock_commands = [
   [
