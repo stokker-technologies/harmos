@@ -10,14 +10,17 @@
 # === Imports === #
 
 # Standard Library Imports
+import contextlib
 import copy
 import hashlib
-import itertools
+import io
 import json
 import os
 import runpy
 import tempfile
 import unittest
+import urllib.error
+import urllib.parse
 from pathlib import Path
 from unittest.mock import patch
 
@@ -207,314 +210,241 @@ class PinTests(unittest.TestCase):
 
 
 class PublicationTests(unittest.TestCase):
-    def test_publish_lookup(self):
-        faults = (
-            None,
-            "missing",
-            "id",
-            "tag_name",
-            "target_commitish",
-            "draft",
-            "prerelease",
-            "missing-asset",
-            "extra-asset",
-            "duplicate-asset",
-            "wrong-size",
-            "pending-asset",
-        )
-        for publisher, missing_release, fault in itertools.product((nightly._github,), (False, True), faults):
-            with self.subTest(publisher=publisher.__module__, missing_release=missing_release, fault=fault):
-                with tempfile.TemporaryDirectory() as temporary:
-                    directory = Path(temporary)
-                    data = b"checksum"
-                    (directory / "SHA256SUMS").write_bytes(data)
-                    files = [{"name": "SHA256SUMS", "path": "SHA256SUMS", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}]
-                    release: dict = {} if missing_release else {"id": 17, "tag_name": nightly.TAG, "draft": False}
-                    assets: list[dict] = []
-                    published: list[bool] = []
-                    verified: list[str] = []
+    def test_publication_replaces_previous(self):
+        for previous in (True, False):
+            with self.subTest(previous=previous), tempfile.TemporaryDirectory() as temporary:
+                directory, files = _staged_files(Path(temporary))
+                github = FakeGitHub(previous=previous)
+                github.releases[3] = {"id": 3, "name": "v0.1.2", "tag_name": "v0.1.2", "draft": False, "prerelease": False}
+                github.releases[4] = {"id": 4, "name": nightly.TITLE, "tag_name": "untagged-4", "draft": True, "prerelease": True}
+                github.assets.update({3: [], 4: []})
+                with github.patched():
+                    nightly._github(directory, {}, files, NEW, "7", "notes")
+                published = github.published()
+                self.assertEqual(published["target_commitish"], NEW)
+                self.assertTrue(published["prerelease"])
+                self.assertEqual(github.tag, NEW)
+                self.assertEqual({asset["name"] for asset in github.assets[published["id"]]}, {item["name"] for item in files})
+                self.assertEqual(set(github.releases), {3, published["id"]})
 
-                    def document(
-                        settings,
-                        endpoint,
-                        method="GET",
-                        body=None,
-                        *,
-                        release=release,
-                        published=published,
-                        verified=verified,
-                        fault=fault,
-                        missing_release=missing_release,
-                        **kwargs,
-                    ):
-                        if endpoint.startswith("actions/"):
-                            return {"workflow_runs": []}
-                        if endpoint == "releases/tags/nightly":
-                            if published:
-                                verified.append(endpoint)
-                                if fault == "missing":
-                                    return None
-                                result = copy.deepcopy(release)
-                                changes = {
-                                    "id": 99,
-                                    "tag_name": "untagged-placeholder",
-                                    "target_commitish": "b" * 40,
-                                    "draft": True,
-                                    "prerelease": False,
-                                }
-                                if fault in changes:
-                                    result[fault] = changes[fault]
-                                return result if result["tag_name"] == nightly.TAG else None
-                            return copy.deepcopy(release) if release else None
-                        if endpoint == "releases" and method == "POST":
-                            assert isinstance(body, dict)
-                            release.update({"id": 17, **body, "tag_name": "untagged-placeholder"})
-                            return copy.deepcopy(release)
-                        if endpoint == "releases/17" and method == "PATCH":
-                            assert isinstance(body, dict)
-                            release.update(body)
-                            if body.get("draft") is True:
-                                release["tag_name"] = "untagged-placeholder"
-                            if body.get("draft") is False:
-                                self.assertEqual(body["tag_name"], nightly.TAG)
-                                self.assertEqual(body["target_commitish"], "a" * 40)
-                                self.assertTrue(body["prerelease"])
-                                self.assertEqual(body["make_latest"], "false")
-                                published.append(True)
-                            return copy.deepcopy(release)
-                        if endpoint == "git/ref/tags/nightly":
-                            return None if missing_release else {"object": {"sha": "b" * 40}}
-                        if endpoint.startswith("git/"):
-                            return {}
-                        raise AssertionError((endpoint, method))
+    def test_failure_before_swap_keeps_previous(self):
+        for fault in ("create", "upload:linux.zip", "upload:SHA256SUMS", "size", "pending", "digest"):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as temporary:
+                directory, files = _staged_files(Path(temporary))
+                github = FakeGitHub(previous=True, faults={fault})
+                before = copy.deepcopy((github.releases, github.assets, github.tag))
+                with github.patched(), self.assertRaises(policy.ToolError):
+                    nightly._github(directory, {}, files, NEW, "7", "notes")
+                self.assertEqual((github.releases, github.assets, github.tag), before)
 
-                    def pages(settings, endpoint, *, release=release, assets=assets, published=published, fault=fault, **kwargs):
-                        if endpoint == "releases":
-                            return [copy.deepcopy(release)] if release else []
-                        self.assertEqual(endpoint, "releases/17/assets")
-                        result = copy.deepcopy(assets)
-                        if not published:
-                            return result
-                        if fault == "missing-asset":
-                            return []
-                        if fault == "extra-asset":
-                            result.append({"id": 99, "name": "obsolete.zip", "size": 3, "state": "uploaded"})
-                        if fault == "duplicate-asset":
-                            result.append(copy.deepcopy(result[0]))
-                        if fault == "wrong-size":
-                            result[0]["size"] += 1
-                        if fault == "pending-asset":
-                            result[0]["state"] = "new"
-                        return result
+    def test_transient_upload_failure_retries(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory, files = _staged_files(Path(temporary))
+            github = FakeGitHub(previous=True, faults={"partial:windows.zip"})
+            with github.patched():
+                nightly._github(directory, {}, files, NEW, "7", "notes")
+            names = [asset["name"] for asset in github.assets[github.published()["id"]]]
+            self.assertEqual(sorted(names), sorted(item["name"] for item in files))
 
-                    def request(settings, endpoint, method, data=None, *, assets=assets, **kwargs):
-                        if method == "DELETE":
-                            assets.clear()
-                            return
-                        assert isinstance(data, bytes)
-                        assets.append(
-                            {
-                                "id": 2,
-                                "name": "SHA256SUMS",
-                                "size": len(data),
-                                "state": "uploaded",
-                                "digest": "sha256:" + hashlib.sha256(data).hexdigest(),
-                            }
-                        )
+    def test_failure_during_swap_restores_previous(self):
+        for fault in ("tag-create", "draft-previous", "publish", "lookup"):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as temporary:
+                directory, files = _staged_files(Path(temporary))
+                github = FakeGitHub(previous=True, faults={fault})
+                before = copy.deepcopy((github.releases, github.assets, github.tag))
+                with github.patched(), self.assertRaises(policy.ToolError):
+                    nightly._github(directory, {}, files, NEW, "7", "notes")
+                self.assertEqual((github.releases, github.assets, github.tag), before)
 
-                    with (
-                        patch.object(registry, "document", side_effect=document),
-                        patch.object(registry, "pages", side_effect=pages),
-                        patch.object(registry, "request", side_effect=request),
-                    ):
-                        if fault:
-                            with self.assertRaisesRegex(policy.ToolError, "nightly"):
-                                publisher(directory, {}, files, "a" * 40, "7", "notes")
-                        else:
-                            publisher(directory, {}, files, "a" * 40, "7", "notes")
-                    self.assertEqual(verified, ["releases/tags/nightly"])
-
-    def test_immutable_release(self):
-        for publisher, stage in itertools.product((nightly._github,), ("existing", "published")):
-            with self.subTest(publisher=publisher.__module__, stage=stage), tempfile.TemporaryDirectory() as temporary:
-                directory = Path(temporary)
-                data = b"checksum"
-                (directory / "SHA256SUMS").write_bytes(data)
-                files = [{"name": "SHA256SUMS", "path": "SHA256SUMS", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}]
-                release = {"id": 17, "tag_name": nightly.TAG, "draft": False, "immutable": stage == "existing"}
-                assets: list[dict] = []
-                uploads: list[str] = []
-
-                def document(settings, endpoint, method="GET", body=None, *, release=release, **kwargs):
-                    if endpoint.startswith("actions/"):
-                        return {"workflow_runs": []}
-                    if endpoint == "releases/tags/nightly":
-                        return copy.deepcopy(release)
-                    if endpoint == "releases/17" and method == "PATCH":
-                        assert isinstance(body, dict)
-                        release.update(body)
-                        # A Repository With Release Immutability Freezes The Release Once Published.
-                        release["immutable"] = body.get("draft") is False
-                        return copy.deepcopy(release)
-                    if endpoint.startswith("git/"):
-                        return {}
-                    raise AssertionError((endpoint, method))
-
-                def pages(settings, endpoint, *, assets=assets, **kwargs):
-                    return copy.deepcopy(assets)
-
-                def request(settings, endpoint, method, data=None, *, assets=assets, uploads=uploads, **kwargs):
-                    uploads.append(method)
-                    if method == "DELETE":
-                        assets.clear()
-                        return
-                    assert isinstance(data, bytes)
-                    digest = "sha256:" + hashlib.sha256(data).hexdigest()
-                    assets.append({"id": 2, "name": "SHA256SUMS", "size": len(data), "state": "uploaded", "digest": digest})
-
-                with (
-                    patch.object(registry, "document", side_effect=document),
-                    patch.object(registry, "pages", side_effect=pages),
-                    patch.object(registry, "request", side_effect=request),
-                    self.assertRaisesRegex(policy.ToolError, "Enable release immutability"),
-                ):
-                    publisher(directory, {}, files, "a" * 40, "7", "notes")
-                self.assertEqual(uploads, [] if stage == "existing" else ["POST"])
-
-    def test_interrupted_draft_recovery(self):
-        stable = {"id": 3, "draft": False, "name": "v0.1.13", "tag_name": "v0.1.13"}
-        interrupted = {"id": 17, "draft": True, "name": nightly.TITLE, "tag_name": "untagged-placeholder"}
-        for listed, expected in (
-            ([stable], None),
-            ([stable, interrupted], 17),
-            ([stable, interrupted, {**interrupted, "id": 18}], "multiple"),
-        ):
-            with (
-                self.subTest(listed=[item["id"] for item in listed]),
-                patch.object(registry, "document", return_value=None),
-                patch.object(registry, "pages", return_value=copy.deepcopy(listed)),
-            ):
-                if expected == "multiple":
-                    with self.assertRaisesRegex(policy.ToolError, "owner reconciliation"):
-                        nightly._github_release({})
+    def test_superseded_and_immutable_previous(self):
+        for state in ("superseded", "immutable"):
+            with self.subTest(state=state), tempfile.TemporaryDirectory() as temporary:
+                directory, files = _staged_files(Path(temporary))
+                github = FakeGitHub(previous=True)
+                if state == "superseded":
+                    github.releases[1]["body"] = "| CI Run | [9](https://example.invalid/9) |"
                 else:
-                    self.assertEqual((nightly._github_release({}) or {}).get("id"), expected)
+                    github.releases[1]["immutable"] = True
+                before = copy.deepcopy((github.releases, github.assets, github.tag))
+                with github.patched():
+                    if state == "superseded":
+                        nightly._github(directory, {}, files, NEW, "7", "notes")
+                    else:
+                        with self.assertRaisesRegex(policy.ToolError, "Enable release immutability"):
+                            nightly._github(directory, {}, files, NEW, "7", "notes")
+                self.assertEqual((github.releases, github.assets, github.tag), before)
 
-    def test_atomic_replacement(self):
-        for failing_upload, missing_release in itertools.product(
-            (None, "linux.zip", "windows.zip", "SHA256SUMS", "corrupt", "missing", "no-digest"), (False, True)
-        ):
-            with self.subTest(failing_upload=failing_upload, missing_release=missing_release), tempfile.TemporaryDirectory() as temporary:
-                directory = Path(temporary)
-                files = []
-                for name in ("linux.zip", "windows.zip", "SHA256SUMS"):
-                    data = name.encode()
-                    (directory / name).write_bytes(data)
-                    files.append({"name": name, "path": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()})
-                release: dict = {} if missing_release else {"id": 17, "draft": False, "body": "", "tag_name": nightly.TAG}
-                assets: list[dict] = [{"id": 1, "name": "obsolete.zip", "size": 3}]
-                tag_moves = []
-                published = []
-                tag = [None if missing_release else "b" * 40]
+    def test_repository_immutability_is_reported(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory, files = _staged_files(Path(temporary))
+            github = FakeGitHub(previous=True, immutable=True)
+            with github.patched(), self.assertRaisesRegex(policy.ToolError, "Enable release immutability"):
+                nightly._github(directory, {}, files, NEW, "7", "notes")
+            self.assertEqual(github.published()["target_commitish"], NEW)
 
-                def document(
-                    settings,
-                    endpoint,
-                    method="GET",
-                    body=None,
-                    *,
-                    release=release,
-                    assets=assets,
-                    files=files,
-                    tag_moves=tag_moves,
-                    published=published,
-                    tag=tag,
-                    **kwargs,
-                ):
-                    if endpoint.startswith("actions/"):
-                        return {"workflow_runs": []}
-                    if endpoint == "releases/tags/nightly":
-                        return None if not release or release["draft"] else copy.deepcopy(release)
-                    if endpoint == "releases" and method == "POST":
-                        assert isinstance(body, dict)
-                        self.assertEqual(body["tag_name"], "nightly")
-                        self.assertTrue(body["draft"])
-                        release.update({"id": 17, **body})
-                        return copy.deepcopy(release)
-                    if endpoint == "git/ref/tags/nightly":
-                        return {"object": {"sha": tag[0]}} if tag[0] else None
-                    if (endpoint == "git/refs/tags/nightly" and method == "DELETE") or (endpoint == "git/refs" and method == "POST"):
-                        self.assertTrue(release["draft"])
-                        self.assertEqual({item["name"] for item in assets}, {item["name"] for item in files})
-                        if method == "DELETE":
-                            self.assertIsNotNone(tag[0])
-                            tag[0] = None
-                            return None
-                        assert isinstance(body, dict)
-                        self.assertIsNone(tag[0], "the channel tag must be recreated, never updated in place")
-                        self.assertEqual(body["ref"], "refs/tags/nightly")
-                        tag[0] = body["sha"]
-                        tag_moves.append(body["sha"])
-                        return {}
-                    if endpoint == "releases/17" and method == "PATCH":
-                        assert isinstance(body, dict)
-                        if body.get("draft") is False:
-                            published.append(copy.deepcopy(assets))
-                        release.update(body)
-                        return copy.deepcopy(release)
-                    raise AssertionError((endpoint, method))
 
-                failure = [failing_upload]
-
-                def request(settings, endpoint, method="GET", data=None, *, release=release, assets=assets, failure=failure, **kwargs):
-                    self.assertTrue(release["draft"], "asset mutation exposed a partial public channel")
-                    if method == "GET":
-                        asset = next(item for item in assets if endpoint.endswith("/" + str(item["id"])))
-                        return asset["name"].encode()
-                    if method == "DELETE":
-                        assets.clear()
-                        return
-                    name = endpoint.split("name=")[1]
-                    if name == failure[0]:
-                        raise policy.ToolError("upload interrupted")
-                    assert isinstance(data, bytes)
-                    assets.append(
-                        {
-                            "id": len(assets) + 2,
-                            "name": name,
-                            "size": len(data),
-                            "state": "uploaded",
-                            "digest": None if failure[0] == "no-digest" else "sha256:" + hashlib.sha256(data).hexdigest(),
-                        }
-                    )
-
-                def pages(settings, endpoint, *, release=release, assets=assets, failure=failure, **kwargs):
-                    if endpoint == "releases":
-                        return [copy.deepcopy(release)] if release else []
-                    result = copy.deepcopy(assets)
-                    if len(result) == 3 and failure[0] == "corrupt":
-                        result[-1]["digest"] = "sha256:" + "0" * 64
-                    if len(result) == 3 and failure[0] == "missing":
-                        result.pop()
-                    return result
-
+class ProviderRetryTests(unittest.TestCase):
+    def test_transient_responses(self):
+        cases = (
+            ("DELETE", [502, 404], None, 2),
+            ("GET", [503, 503, 200], b"{}", 3),
+            ("POST", [429, 200], b"{}", 2),
+            ("POST", [502], policy.ToolError, 1),
+            ("PATCH", [502, 502, 502, 502], policy.ToolError, registry.RETRY_ATTEMPTS),
+            ("PUT", [404], policy.ToolError, 1),
+        )
+        for method, codes, expected, calls in cases:
+            with self.subTest(method=method, codes=codes):
+                opener = FakeOpener(codes)
+                pauses: list[float] = []
                 with (
-                    patch.object(registry, "document", side_effect=document),
-                    patch.object(registry, "pages", side_effect=pages),
-                    patch.object(registry, "request", side_effect=request),
+                    patch.dict(os.environ, {"GH_TOKEN": "token"}, clear=True),
+                    patch.object(registry.urllib.request, "build_opener", return_value=opener),
+                    patch.object(registry, "_pause", side_effect=pauses.append),
                 ):
-                    if failing_upload and failing_upload != "no-digest":
+                    settings = {"provider": "github", "repository": "owner/repo"}
+                    if expected is policy.ToolError:
                         with self.assertRaises(policy.ToolError):
-                            nightly._github(directory, {}, files, "a" * 40, "7", "notes")
-                        self.assertTrue(release["draft"])
-                        self.assertEqual(tag_moves, [])
-                        self.assertEqual(published, [])
-                        failure[0] = None
-                    nightly._github(directory, {}, files, "a" * 40, "7", "notes")
-                self.assertFalse(release["draft"])
-                self.assertEqual(tag_moves, ["a" * 40])
-                self.assertEqual(len(published), 1)
-                self.assertEqual({item["name"] for item in published[0]}, {item["name"] for item in files})
+                            registry.request(settings, "releases/1", method)
+                    else:
+                        self.assertEqual(registry.request(settings, "releases/1", method), expected)
+                self.assertEqual(opener.methods, [method] * calls)
+                self.assertEqual(pauses, [registry.RETRY_PAUSE_SECONDS * 2**index for index in range(calls - 1)])
+
+
+class FakeOpener:
+    """Answer Each Provider Request With The Next Scripted Status."""
+
+    def __init__(self, codes: list[int]):
+        self.codes = list(codes)
+        self.methods: list[str] = []
+
+    def open(self, request, timeout):
+        self.methods.append(request.get_method())
+        code = self.codes.pop(0)
+        if code != 200:
+            raise urllib.error.HTTPError(request.full_url, code, "failure", {}, io.BytesIO(b"{}"))
+        return io.BytesIO(b"{}")
+
+
+class FakeGitHub:
+    """An In-Memory Release Provider With GitHub's Draft, Tag And Asset Semantics And Injectable Faults."""
+
+    def __init__(self, *, previous: bool, faults: set[str] | None = None, immutable: bool = False):
+        self.faults = set(faults or ())
+        self.immutable = immutable
+        self.tag = OLD if previous else None
+        self.releases: dict[int, dict] = {}
+        self.assets: dict[int, list[dict]] = {}
+        self.next_id = 10
+        if previous:
+            self.releases[1] = {
+                "id": 1,
+                "name": nightly.TITLE,
+                "tag_name": nightly.TAG,
+                "target_commitish": OLD,
+                "draft": False,
+                "prerelease": True,
+                "body": "",
+            }
+            self.assets[1] = [{"id": 1, "name": "old.zip", "size": 3, "state": "uploaded"}]
+
+    def patched(self) -> contextlib.ExitStack:
+        stack = contextlib.ExitStack()
+        stack.enter_context(patch.object(registry, "document", side_effect=self.document))
+        stack.enter_context(patch.object(registry, "pages", side_effect=self.pages))
+        stack.enter_context(patch.object(registry, "request", side_effect=self.request))
+        return stack
+
+    def published(self) -> dict:
+        (release,) = [item for item in self.releases.values() if item["tag_name"] == nightly.TAG and item["draft"] is False]
+        return release
+
+    def _fault(self, name: str, applies: bool = True, *, once: bool = True) -> None:
+        if applies and name in self.faults:
+            if once:
+                self.faults.discard(name)
+            raise policy.ToolError(f"injected {name}")
+
+    def document(self, settings, endpoint, method="GET", body=None, **kwargs):
+        body = copy.deepcopy(body or {})
+        if endpoint == f"releases/tags/{nightly.TAG}":
+            matches = [item for item in self.releases.values() if item["tag_name"] == nightly.TAG and item["draft"] is False]
+            self._fault("lookup", any(item["id"] >= 10 for item in matches))
+            return copy.deepcopy(matches[0]) if matches else None
+        if endpoint == "releases" and method == "POST":
+            self._fault("create")
+            identity, self.next_id = self.next_id, self.next_id + 1
+            self.releases[identity] = {"id": identity, **body}
+            self.assets[identity] = []
+            return copy.deepcopy(self.releases[identity])
+        if endpoint.startswith("releases/") and method == "PATCH":
+            release = self.releases[int(endpoint.split("/")[1])]
+            if release.get("immutable"):
+                raise policy.ToolError("immutable release")
+            if body.get("draft") is True:
+                self._fault("draft-previous", release["id"] < 10)
+                # GitHub Lists A Release Patched Back To Draft Under An Untagged Placeholder.
+                release.update(body, tag_name=f"untagged-{release['id']}")
+            else:
+                self._fault("publish", release["id"] >= 10)
+                others = (item for item in self.releases.values() if item["id"] != release["id"])
+                if any(item["tag_name"] == body.get("tag_name") and not item["draft"] for item in others):
+                    raise policy.ToolError("tag_name already_exists")
+                release.update(body)
+                if self.immutable:
+                    release["immutable"] = True
+            return copy.deepcopy(release)
+        if endpoint == f"git/ref/tags/{nightly.TAG}":
+            return {"object": {"sha": self.tag}} if self.tag else None
+        if endpoint == "git/refs" and method == "POST":
+            self._fault("tag-create", body["sha"] == NEW)
+            if self.tag is not None:
+                raise policy.ToolError("Reference already exists")
+            self.tag = body["sha"]
+            return {}
+        raise AssertionError((endpoint, method))
+
+    def pages(self, settings, endpoint, **kwargs):
+        if endpoint == "releases":
+            return copy.deepcopy(list(self.releases.values()))
+        assets = copy.deepcopy(self.assets[int(endpoint.split("/")[1])])
+        for fault, change in (("size", {"size": 0}), ("pending", {"state": "new"}), ("digest", {"digest": "sha256:" + "0" * 64})):
+            if fault in self.faults and assets:
+                assets[0].update(change)
+        return assets
+
+    def request(self, settings, endpoint, method="GET", data=None, **kwargs):
+        if endpoint == f"git/refs/tags/{nightly.TAG}" and method == "DELETE":
+            self.tag = None
+            return
+        if endpoint.startswith("releases/assets/") and method == "DELETE":
+            identity = int(endpoint.rsplit("/", 1)[1])
+            for assets in self.assets.values():
+                assets[:] = [asset for asset in assets if asset["id"] != identity]
+            return
+        if method == "DELETE":
+            identity = int(endpoint.split("/")[1])
+            del self.releases[identity]
+            del self.assets[identity]
+            return
+        release, name = int(endpoint.split("/")[1]), urllib.parse.unquote(endpoint.split("name=")[1])
+        # A Persistent Upload Fault Outlasts Every Retry.
+        self._fault(f"upload:{name}", once=False)
+        assert isinstance(data, bytes)
+        self.assets[release].append(
+            {
+                "id": self.next_id,
+                "name": name,
+                "size": len(data),
+                "state": "uploaded",
+                "digest": "sha256:" + hashlib.sha256(data).hexdigest(),
+            }
+        )
+        self.next_id += 1
+        # The Upload Lands But The Response Is Lost, Leaving A Same-Name Asset For The Retry To Replace.
+        self._fault(f"partial:{name}")
+        return
 
 
 class NightlyTests(unittest.TestCase):
@@ -537,58 +467,6 @@ class NightlyTests(unittest.TestCase):
                 else:
                     with self.assertRaises(policy.ToolError):
                         nightly._github_source()
-
-    def test_publication(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            data = b"checksum"
-            (directory / "SHA256SUMS").write_bytes(data)
-            files = [{"name": "SHA256SUMS", "path": "SHA256SUMS", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}]
-            release: dict = {}
-            assets: list[dict] = []
-            references: list[dict] = []
-
-            def document(settings, endpoint, method="GET", body=None, **kwargs):
-                self.assertFalse(endpoint.startswith("actions/"), "nightly never yields to dev push runs")
-                body = body or {}
-                if endpoint == "releases/tags/nightly":
-                    return copy.deepcopy(release) if release and not release["draft"] else None
-                if endpoint == "releases" and method == "POST":
-                    release.update({"id": 17, **body})
-                    return copy.deepcopy(release)
-                if endpoint == "releases/17" and method == "PATCH":
-                    release.update(body)
-                    return copy.deepcopy(release)
-                if endpoint == "git/ref/tags/nightly":
-                    return None
-                if endpoint == "git/refs" and method == "POST":
-                    references.append(body)
-                    return {}
-                raise AssertionError((endpoint, method))
-
-            def request(settings, endpoint, method="GET", data=None, **kwargs):
-                if method == "DELETE":
-                    assets.clear()
-                    return None
-                assert isinstance(data, bytes)
-                digest = "sha256:" + hashlib.sha256(data).hexdigest()
-                assets.append({"id": 2, "name": "SHA256SUMS", "size": len(data), "state": "uploaded", "digest": digest})
-                return None
-
-            def pages(settings, endpoint, **kwargs):
-                return [] if endpoint == "releases" else copy.deepcopy(assets)
-
-            with (
-                patch.object(registry, "document", side_effect=document),
-                patch.object(registry, "pages", side_effect=pages),
-                patch.object(registry, "request", side_effect=request),
-            ):
-                nightly._github(directory, {}, files, "a" * 40, "41", "notes")
-            self.assertEqual(references, [{"ref": "refs/tags/nightly", "sha": "a" * 40}])
-            published = {key: release[key] for key in ("tag_name", "name", "prerelease", "draft", "target_commitish")}
-            self.assertEqual(
-                published, {"tag_name": "nightly", "name": "Nightly", "prerelease": True, "draft": False, "target_commitish": "a" * 40}
-            )
 
 
 class CatalogTests(unittest.TestCase):
@@ -635,6 +513,19 @@ class CatalogTests(unittest.TestCase):
 # === Public Functions === #
 
 # === Private Functions === #
+
+OLD = "b" * 40
+NEW = "a" * 40
+
+
+def _staged_files(directory: Path) -> tuple[Path, list[dict]]:
+    files = []
+    for name in ("linux.zip", "windows.zip", "SHA256SUMS"):
+        data = name.encode()
+        (directory / name).write_bytes(data)
+        files.append({"name": name, "path": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+    return directory, files
+
 
 # === Entry Point === #
 
