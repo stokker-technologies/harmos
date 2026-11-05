@@ -223,27 +223,22 @@ impl Manager {
         }
     }
 
-    #[cfg(any(feature = "grpc", feature = "plugin-sidecar"))]
-    pub(in crate::operations) async fn activate_resident<O, R>(&self, id: &str, resources: Arc<R>, holder: Identity) -> Result<Running<O>>
-    where
-        O: OperationDeclaration<Response = ()>,
-        R: Send + Sync + 'static,
-    {
-        let scope = self.resident.scope(resources)?;
-        let lease = self.resident.activate(self, id, &scope, std::any::TypeId::of::<R>(), holder, false).await?;
-        Ok(Self::resident_instance(lease))
-    }
-
     // Activate the resident `id` over `resources`. Activations sharing the same
     // resources share its instance; each handle holds one lease.
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) async fn submit_resident_in(&self, id: &str, resources: Arc<harmos_sdk::ExecutionContext>) -> Result<Running<Activation>> {
-        self.activate_resident::<Activation, harmos_sdk::ExecutionContext>(id, resources, Identity::Host).await
+        // Retirement Must Not Recreate A Scope For An Old Connection.
+        let scope = self.resident.scope_of(&resources).ok_or(crate::Error::Closing { domain: "observer scope" })?;
+        let lease =
+            self.resident.activate(self, id, &scope, std::any::TypeId::of::<harmos_sdk::ExecutionContext>(), Identity::Host, false).await?;
+        Ok(Self::resident_instance(lease))
     }
 
     #[cfg(feature = "grpc")]
     pub(crate) async fn submit_infrastructure<R: Send + Sync + 'static>(&self, id: &str, resources: Arc<R>) -> Result<Running<Activation>> {
-        self.activate_resident::<Activation, R>(id, resources, Identity::Host).await
+        let scope = self.resident.scope(resources)?;
+        let lease = self.resident.activate(self, id, &scope, std::any::TypeId::of::<R>(), Identity::Host, false).await?;
+        Ok(Self::resident_instance(lease))
     }
 
     // Activate the resident `id` over the runtime's own resources.

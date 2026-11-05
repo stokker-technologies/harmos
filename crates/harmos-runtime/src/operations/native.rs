@@ -57,6 +57,7 @@ struct NativeState {
     fingerprint: [u8; 32],
     sdk: Option<harmos_operations::lifecycle::Action>,
     acknowledged: bool,
+    observer_stop: Option<harmos_sdk::operations::Cancellation>,
     _capacity: Option<OwnedSemaphorePermit>,
 }
 
@@ -91,6 +92,7 @@ pub(crate) struct Encoded<E = ()> {
     grpc: bool,
     payload: Vec<u8>,
     capacity: Option<OwnedSemaphorePermit>,
+    observer_stop: Option<harmos_sdk::operations::Cancellation>,
     endpoints: PhantomData<fn() -> E>,
 }
 
@@ -221,6 +223,7 @@ impl<E> Message for Encoded<E> {
             payload: bytes.to_vec(),
             grpc: false,
             capacity: None,
+            observer_stop: None,
             endpoints: PhantomData,
         })
     }
@@ -302,6 +305,7 @@ impl<E: 'static> crate::grpc::Wire<Encoded<E>> for Forwarded {
                 payload: payload.to_vec(),
                 grpc: true,
                 capacity: None,
+                observer_stop: None,
                 endpoints: PhantomData,
             },
             claim,
@@ -520,6 +524,7 @@ impl Native {
             fingerprint: definition.fingerprint.0,
             sdk: None,
             acknowledged: false,
+            observer_stop: None,
             _capacity: capacity,
         };
         Ok(state)
@@ -601,6 +606,14 @@ impl Native {
             requests,
             submitted: Default::default(),
         };
+        let observer_stop = state.observer_stop.as_ref().filter(|_| matches!(phase, Phase::Attempt));
+        let stopping = async {
+            match observer_stop {
+                Some(stopping) => stopping.cancelled().await,
+                None => std::future::pending::<()>().await,
+            }
+        };
+        tokio::pin!(stopping);
         let command = match phase {
             Phase::Initialize => WireCommand::Initialize { invocation, context: token },
             Phase::Stream(epoch) => WireCommand::StreamAttempt {
@@ -623,6 +636,10 @@ impl Native {
                 biased;
                 answer = &mut running => break answer?,
                 _ = context.scope().cancellation().cancelled(), if !cancellation_sent => {
+                    cancellation_sent = true;
+                    self.endpoint.phase(WireCommand::Cancel { invocation }).await?;
+                }
+                () = &mut stopping, if !cancellation_sent => {
                     cancellation_sent = true;
                     self.endpoint.phase(WireCommand::Cancel { invocation }).await?;
                 }
@@ -779,12 +796,14 @@ impl<E: super::StreamEndpoints + Shape> Carrier for EncodedOperation<E> {
                             fingerprint: definition.fingerprint.0,
                             sdk: action,
                             acknowledged: false,
+                            observer_stop: None,
                             _capacity: Some(capacity),
                         })
                     }
                 }?;
 
                 state.grpc = request.grpc;
+                state.observer_stop = request.observer_stop.take();
                 self.state = Some(state);
             }
             let state = self.state.as_mut().expect("original remote state");
@@ -1046,10 +1065,13 @@ pub(super) fn dispatch(
             "operation request exceeds the native frame limit",
         ))));
     }
+    // Stop Observers Cooperatively Before Retiring Their Attempt Context.
+    let observer_stop = matches!(binding.selection, Selection::Observe(_)).then(harmos_sdk::operations::Cancellation::default);
     let request = Encoded {
         grpc: false,
         payload: input.payload,
         capacity: Some(capacity),
+        observer_stop: observer_stop.clone(),
         endpoints: PhantomData,
     };
     // Bytes Are Already Encoded; The Selected Remote WireTable Owns Decoding.
@@ -1073,7 +1095,13 @@ pub(super) fn dispatch(
         super::wire::budget(timeout, submitted)?;
         Ok(payload)
     });
-    Ok(super::EncodedInvocation { id, generation, outcome, control })
+    Ok(super::EncodedInvocation {
+        id,
+        generation,
+        outcome,
+        control,
+        observer_stop,
+    })
 }
 
 /* === Private Functions === */

@@ -60,6 +60,9 @@ struct Counts {
     collected: AtomicUsize,
     rejected: AtomicUsize,
     released: AtomicUsize,
+    capture_supervisor: AtomicBool,
+    supervisor: Mutex<Option<Supervisor>>,
+    callbacks_finished: AtomicUsize,
     // Announces every counted step.
     progress: tokio::sync::watch::Sender<()>,
 }
@@ -94,6 +97,8 @@ struct Idle(Arc<Counts>);
 struct Collect {}
 
 struct Collecting(Arc<Counts>);
+
+struct Observation(Arc<Counts>);
 
 /* === Enums === */
 
@@ -139,6 +144,13 @@ impl Drop for Resources {
 impl Drop for Collecting {
     fn drop(&mut self) {
         self.0.collected.fetch_add(1, SeqCst);
+        self.0.progress.send_replace(());
+    }
+}
+
+impl Drop for Observation {
+    fn drop(&mut self) {
+        self.0.callbacks_finished.fetch_add(1, SeqCst);
         self.0.progress.send_replace(());
     }
 }
@@ -196,7 +208,10 @@ impl harmos_runtime::Lifecycle for Producer {
         Ok(plugin)
     }
 
-    async fn initialize(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
+    async fn initialize(&mut self, supervisor: &Supervisor) -> Result<(), Self::Error> {
+        if self.resources.counts.capture_supervisor.load(SeqCst) {
+            *self.resources.counts.supervisor.lock().unwrap() = Some(supervisor.clone());
+        }
         self.resources.counts.initialized.fetch_add(1, SeqCst);
         self.resources.counts.progress.send_replace(());
         Ok(())
@@ -261,6 +276,7 @@ impl Mixed {
             ctx.host().supervisor().call::<Collect>(Collect {}).await.unwrap();
         }
         if self.0.block_observe.load(SeqCst) {
+            let _observation = Observation(Arc::clone(&self.0));
             self.0.observed[1].fetch_add(1, SeqCst);
             self.0.progress.send_replace(());
             std::future::pending::<()>().await;
@@ -470,6 +486,141 @@ async fn release_suspended_observer(key: DemandKey, blocked_callback: bool) {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn cooperative_stop_joins_callback_before_attempt_returns() {
+    use harmos_domain::Message as _;
+    use harmos_sdk::operations::{WireAnswer, WireCommand};
+    use harmos_sdk::plugin::Attachment as _;
+
+    let carrier_counts = Arc::new(Counts::default());
+    carrier_counts.capture_supervisor.store(true, SeqCst);
+    let seed = Seed::new(&carrier_counts);
+    let capacity = std::num::NonZeroUsize::new(2).unwrap();
+    let source = harmos_sidecar::PluginNative::<Producer>::new(capacity).unwrap();
+    let mut fixture =
+        Managed::attach(source, serde_json::to_vec(&seed.id).unwrap(), Lanes::Open, capacity, vec![], std::convert::identity).await;
+    fixture.publication().await.unwrap();
+    fixture.initialize().await.unwrap();
+    let supervisor = carrier_counts.supervisor.lock().unwrap().take().unwrap();
+
+    // Drive The Real Observe Control With A Callback Suspended On Its Own Thread.
+    let counts = Arc::new(Counts::default());
+    counts.block_observe.store(true, SeqCst);
+    let mut table = harmos_sdk::__private::WireTable::new("stopping").unwrap();
+    table.capacity(capacity);
+    table.provide_resource(Arc::new(supervisor)).unwrap();
+    table.provide_resource(Arc::new(Resources { counts: Arc::clone(&counts) })).unwrap();
+    let attachment =
+        ObserverAttachment::<Publisher<Producer>>::from_catalog::<Observers>(<Producer as harmos_domain::plugin::Declared>::STREAMS)
+            .unwrap();
+    attachment.bind(&mut table).unwrap();
+    table.validate_binding().unwrap();
+    let context = Arc::new(table.context());
+    let contract = harmos_domain::observers::contract().unwrap();
+    let request = harmos_domain::observers::ControlRequest {
+        observer: "demand.mixed".to_owned(),
+        generation: 1,
+    };
+    table.prepare(1, "stopping.harmos_observe", contract.operation().fingerprint.0, 1, request.encode()).unwrap();
+    let initialized = table.begin(WireCommand::Initialize { invocation: 1, context: [1; 32] }, Arc::clone(&context)).await;
+    assert!(matches!(initialized, WireAnswer::Ready { .. }));
+    let attempt = table.begin(
+        WireCommand::Attempt {
+            invocation: 1,
+            context: [2; 32],
+            values: vec![],
+        },
+        Arc::clone(&context),
+    );
+    tokio::pin!(attempt);
+    tokio::select! {
+        result = &mut attempt => panic!("observer returned before cancellation: {result:?}"),
+        () = until(&counts, || counts.observed[1].load(SeqCst) == 1) => {}
+    }
+
+    let cancelled = table.begin(WireCommand::Cancel { invocation: 1 }, Arc::clone(&context)).await;
+    assert!(matches!(cancelled, WireAnswer::Ready { .. }));
+    assert!(matches!(attempt.await, WireAnswer::Ready { .. }));
+    assert_eq!(counts.callbacks_finished.load(SeqCst), 1, "the attempt reply follows callback destruction");
+    let repeated = table
+        .begin(
+            WireCommand::Attempt {
+                invocation: 1,
+                context: [3; 32],
+                values: vec![],
+            },
+            Arc::clone(&context),
+        )
+        .await;
+    assert!(matches!(repeated, WireAnswer::Failed { .. }), "a stopped activation cannot restart before cleanup");
+    let finalized = table.begin(WireCommand::Finalize { invocation: 1 }, context).await;
+    assert!(matches!(finalized, WireAnswer::Ready { .. }));
+    assert_eq!(counts.stopped[1].load(SeqCst), 1);
+    assert_eq!(counts.cleaned[1].load(SeqCst), 1);
+    table.settle().await.unwrap();
+    drop(table);
+
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn demand_during_retirement_survives_reload() {
+    let counts = Arc::new(Counts::default());
+    let seed = Seed::new(&counts);
+    let capacity = std::num::NonZeroUsize::new(2).unwrap();
+    let source = harmos_sidecar::PluginNative::<Producer>::new(capacity).unwrap();
+    let mut fixture = Managed::attach(
+        source,
+        serde_json::to_vec(&seed.id).unwrap(),
+        Lanes::Open,
+        capacity,
+        vec![RECORD.name(), AUXILIARY.name()],
+        std::convert::identity,
+    )
+    .await;
+    fixture.publication().await.unwrap();
+    let demands = fixture.demands();
+    let auxiliary = demands.hold(&AUXILIARY.name()).unwrap();
+    fixture.initialize().await.unwrap();
+    until(&counts, || counts.observed[1].load(SeqCst) > 0).await;
+
+    // A New Demand Arrives After Admission Closes, While An Existing Observer Still Publishes.
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    fixture.pause_retirement(entered.clone(), release.clone());
+    let record;
+    {
+        let shutdown = fixture.shutdown();
+        tokio::pin!(shutdown);
+        tokio::select! {
+            result = &mut shutdown => panic!("shutdown completed before retirement release: {result:?}"),
+            () = entered.notified() => {}
+        }
+        record = demands.hold(&RECORD.name()).unwrap();
+        let before = counts.observed[1].load(SeqCst);
+        tokio::select! {
+            result = &mut shutdown => panic!("shutdown completed before retirement release: {result:?}"),
+            () = until(&counts, || counts.observed[1].load(SeqCst) >= before + 3) => {}
+        }
+        release.notify_one();
+        shutdown.await.unwrap();
+    }
+    assert_eq!(counts.started[0].load(SeqCst), 0);
+    assert_eq!(counts.stopped[1].load(SeqCst), 1);
+    assert_eq!(counts.released.load(SeqCst), 1);
+
+    let replacement_seed = Seed::new(&counts);
+    fixture.reload(serde_json::to_vec(&replacement_seed.id).unwrap()).await.unwrap();
+    until(&counts, || counts.observed[0].load(SeqCst) > 0 && counts.started[1].load(SeqCst) == 2).await;
+    drop((record, auxiliary));
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.shutdown().await.unwrap();
+    assert_eq!(counts.stopped[0].load(SeqCst), 1);
+    assert_eq!(counts.stopped[1].load(SeqCst), 2);
+    assert_eq!(counts.released.load(SeqCst), 2);
+}
 
 #[tokio::test]
 async fn released_demand_interrupts_blocked_callback() {

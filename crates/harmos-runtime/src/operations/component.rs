@@ -560,7 +560,14 @@ fn sdk_dispatch(
             reason: "uncached SDK response unexpectedly shared",
         })
     });
-    Ok(super::EncodedInvocation { id, generation, outcome, control })
+    Ok(super::EncodedInvocation {
+        id,
+        generation,
+        outcome,
+        control,
+        #[cfg(feature = "plugin-sidecar")]
+        observer_stop: None,
+    })
 }
 
 fn classify(error: &ComponentError) -> FailureKind {

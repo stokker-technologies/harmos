@@ -73,6 +73,9 @@ pub struct EncodedInvocation {
     pub(super) generation: super::OperationGeneration,
     pub(super) outcome: Outcome,
     pub(crate) control: Arc<crate::supervision::instance::Instance>,
+
+    #[cfg(feature = "plugin-sidecar")]
+    pub(crate) observer_stop: Option<harmos_sdk::operations::Cancellation>,
 }
 
 /* === Enums === */
@@ -464,7 +467,14 @@ pub(super) fn dispatch_prepared(
         }
         Ok(response.try_unwrap().unwrap_or_else(|response| response.to_vec()))
     });
-    Ok(EncodedInvocation { id, generation, outcome, control })
+    Ok(EncodedInvocation {
+        id,
+        generation,
+        outcome,
+        control,
+        #[cfg(feature = "plugin-sidecar")]
+        observer_stop: None,
+    })
 }
 
 pub(super) fn available(target: &Weak<Entry>, source: &Source) -> Result<()> {

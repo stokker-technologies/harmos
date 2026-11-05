@@ -54,6 +54,7 @@ struct Observe<H> {
     attachment: Arc<ObserverAttachment<H>>,
     running: Option<Running>,
     activity: Option<Activity>,
+    ended: bool,
 }
 
 struct Interrupt<'a>(&'a mut Option<oneshot::Sender<()>>);
@@ -140,6 +141,7 @@ where
             attachment,
             running: None,
             activity: None,
+            ended: false,
         })
     }
 
@@ -147,6 +149,9 @@ where
         &mut self, context: ExecutionContext, control: &mut <Self::Declaration as harmos_domain::OperationDeclaration>::Request,
         _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<crate::operations::Response<()>, Refusal> {
+        if self.ended {
+            return Err(Refusal::of("observer activation ended"));
+        }
         if self.running.is_none() {
             if self.attachment.closing.load(Ordering::Acquire) {
                 return Err(Refusal::of("observer admission is closing"));
@@ -158,17 +163,35 @@ where
                 context.resource::<Supervisor>().map_err(Refusal::of)?.as_ref().clone(),
             )?);
         }
-        let running = self.running.as_mut().expect("spawned activation");
-        let failed = running.failed.as_mut();
-        // Cancelling This Attempt Interrupts The Observing Thread
-        let _interrupt = Interrupt(&mut running.stop);
-        let failure = match failed {
-            Some(failed) => failed.await.ok(),
-            None => None,
+        let (failure, stopping) = {
+            let running = self.running.as_mut().expect("spawned activation");
+            let failed = running.failed.as_mut();
+            // Hard Cancellation Still Interrupts The Observing Thread.
+            let _interrupt = Interrupt(&mut running.stop);
+            tokio::select! {
+                biased;
+                () = context.cancellation.cancelled() => (None, true),
+                failure = async {
+                    match failed {
+                        Some(failed) => failed.await.ok(),
+                        None => None,
+                    }
+                } => (failure, false),
+            }
         };
-        running.failed.take();
-        match failure {
+
+        // The Attempt Keeps Its Host Context Until The Thread Has Returned.
+        let running = self.running.as_mut().expect("spawned activation");
+        if !stopping {
+            running.failed.take();
+        }
+        let (activity, joined_failure) = running.join().await;
+        self.activity = activity;
+        self.running.take();
+        self.ended = true;
+        match failure.or(joined_failure) {
             Some(failure) => Err(Refusal::of(failure)),
+            None if stopping => Ok(crate::operations::Response::new(())),
             None => Err(Refusal::of("observer activation ended")),
         }
     }
@@ -251,10 +274,11 @@ impl Running {
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
         }
-        let activity = match self.returned.take() {
+        let activity = match self.returned.as_mut() {
             Some(returned) => returned.await.ok(),
             None => None,
         };
+        self.returned.take();
         // Joining the activation also settles its failure sender. Cancellation
         // of run must not discard an error that shutdown still needs to report.
         let failure = self.failed.take().and_then(|mut failed| failed.try_recv().ok());
