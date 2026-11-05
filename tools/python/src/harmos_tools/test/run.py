@@ -89,11 +89,11 @@ def test(
             junit = scratch / "junit.xml"
             command = vitest.run(extra, junit, deadline)
 
-        environment["TEST_PROFILE"] = profile
-        environment.pop("TEST_REPORT_DIR", None)
+        environment["STKR_TEST_PROFILE"] = profile
+        environment.pop("STKR_TEST_REPORT_DIR", None)
         if category == "system":
             traces = report.native_directory(directory, report.TRACES / profile / paths.target() / key)
-            environment["TEST_REPORT_DIR"] = str(traces)
+            environment["STKR_TEST_REPORT_DIR"] = str(traces)
         lane = _lane(
             directory,
             rules,
@@ -152,8 +152,8 @@ def coverage(
         else:
             raise policy.TestError("coverage is measured for rust and python")
 
-        environment["TEST_PROFILE"] = profile
-        environment.pop("TEST_REPORT_DIR", None)
+        environment["STKR_TEST_PROFILE"] = profile
+        environment.pop("STKR_TEST_REPORT_DIR", None)
         lane = _lane(
             directory,
             rules,
@@ -496,7 +496,7 @@ def _bench_rust(
         baselines = _criterion_baselines(home)
         since = time.time()
         environment = dict(os.environ, CRITERION_HOME=str(home.resolve()))
-        environment.pop("TEST_REPORT_DIR", None)
+        environment.pop("STKR_TEST_REPORT_DIR", None)
         code, peak = _measured(
             [str(directory / message["executable"]), "--bench", "--baseline-lenient", BASELINE, *extra],
             directory / manifest.parent,
@@ -562,7 +562,7 @@ def _bench_python(
     output.unlink(missing_ok=True)
     cwd = directory / project
     environment = pytest.environment(directory)
-    environment.pop("TEST_REPORT_DIR", None)
+    environment.pop("STKR_TEST_REPORT_DIR", None)
     status, peak = _measured(pytest.bench(cwd, category, output, extra), cwd, environment)
     if not output.is_file():
         raise policy.TestError("pytest-benchmark wrote no results")

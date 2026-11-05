@@ -16,8 +16,8 @@ env:
   pnpm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
   UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 concurrency:
-  group: nightly-${{ github.run_id }}
-  cancel-in-progress: false
+  group: nightly
+  cancel-in-progress: true
 jobs:
   gate:
     name: Plan / Nightly
@@ -2638,7 +2638,7 @@ jobs:
       contents: write
       actions: read
     concurrency:
-      group: nightly-publication
+      group: nightly-publish
       cancel-in-progress: false
     steps:
     - name: Configure Checkout Git
