@@ -21,6 +21,7 @@ version = { workspace = true }
 [features]
 default = []
 fft = []
+datafusion = ["dep:datafusion"]
 
 # === Dependencies === #
 
@@ -73,6 +74,7 @@ tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 # Networking
 
 # Storage
+datafusion = { workspace = true, optional = true }
 
 # UI
 

@@ -9,6 +9,9 @@
 
 /* === Modules === */
 
+#[cfg(feature = "datafusion")]
+mod datafusion;
+
 mod directory;
 mod json;
 mod json_sessions;
