@@ -2633,7 +2633,7 @@ jobs:
     timeout-minutes: 120
     needs:
     - package_rust
-    if: github.ref == 'refs/heads/dev'
+    if: always() && github.ref == 'refs/heads/dev' && needs.package_rust.result == 'success'
     permissions:
       contents: write
       actions: read

@@ -18,7 +18,10 @@ import io
 import json
 import os
 import runpy
+import subprocess
+import sys
 import tempfile
+import tomllib
 import unittest
 import urllib.error
 import urllib.parse
@@ -29,6 +32,7 @@ from unittest.mock import patch
 # Local Imports
 from harmos_tools.ci import impact, simulate
 from harmos_tools.release import layout, nightly, pins, policy, registry, run
+from harmos_tools.test import preflight
 
 # Type Checking Imports
 
@@ -101,6 +105,96 @@ class ImpactTests(unittest.TestCase):
                 for job in jobs:
                     dependencies = job.get("pipeline_needs", {}).get("release-review" if pipeline == "release" else pipeline, job["needs"])
                     self.assertTrue(set(dependencies) <= keys, (job["key"], set(dependencies) - keys))
+
+
+class MachineTests(unittest.TestCase):
+    def test_lock_lifecycle(self):
+        program = """
+import json
+import os
+import sys
+from pathlib import Path
+from harmos_tools.build import machine
+
+cache = Path(sys.argv[1])
+machine._cache = lambda: cache
+os.environ.pop(machine.INHERITED, None)
+path = cache / "native-build.lock"
+path.write_bytes(b"\\0" + json.dumps({"pid": -1}).encode())
+identity = path.stat().st_ino
+with machine.lock():
+    with path.open("rb") as stream:
+        stream.seek(1)
+        holder = json.load(stream)
+    assert holder["pid"] == os.getpid()
+    print(json.dumps(holder), flush=True)
+    with machine.lock():
+        assert os.environ[machine.INHERITED] == str(path)
+    assert path.stat().st_ino == identity
+assert path.exists()
+assert path.read_bytes()[1:] == b""
+assert machine.INHERITED not in os.environ
+"""
+        with tempfile.TemporaryDirectory() as cache:
+            result = subprocess.run(
+                [sys.executable, "-m", "harmos_tools.build.machine", "--", sys.executable, "-c", program, cache],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            holder = json.loads(next(line for line in result.stdout.splitlines() if line.startswith("{")))
+            self.assertEqual(holder["workspace"], str(ROOT))
+
+
+class StarterTests(unittest.TestCase):
+    def test_version_preflight(self):
+        templates = ROOT / "crates/cargo-harmos/templates"
+        expected = [
+            ((templates / kind / "mise.toml.tmpl").read_bytes(), (templates / kind / "mise.lock.tmpl").read_bytes())
+            for kind in ("guest", "sidecar")
+        ]
+        installed = []
+        directories = []
+        trusted = set()
+        fail = False
+
+        def execute(arguments, **options):
+            directory = options["cwd"]
+            operation = arguments[1]
+            if operation == "trust":
+                trusted.add(directory)
+            elif operation == "untrust":
+                trusted.remove(directory)
+            elif operation == "install":
+                configuration = (directory / "mise.toml").read_bytes()
+                lock = (directory / "mise.lock").read_bytes()
+                tools = tomllib.loads(configuration.decode())["tools"]
+                self.assertEqual(set(options["env"]["MISE_ENABLE_TOOLS"].split(",")), set(tools))
+                self.assertNotIn("UV_PROJECT_ENVIRONMENT", options["env"])
+                self.assertIn(directory, trusted)
+                installed.append((configuration, lock))
+                directories.append(directory)
+                if fail and len(installed) == len(expected):
+                    raise subprocess.CalledProcessError(1, arguments)
+            return subprocess.CompletedProcess(arguments, 0)
+
+        with (
+            patch.object(preflight.os, "environ", dict(os.environ, UV_PROJECT_ENVIRONMENT="another-project")),
+            patch.object(preflight.subprocess, "run", side_effect=execute),
+        ):
+            preflight._install_starters()
+            self.assertCountEqual(installed, expected)
+            self.assertFalse(trusted)
+            installed.clear()
+            fail = True
+            with self.assertRaises(subprocess.CalledProcessError):
+                preflight._install_starters()
+        self.assertCountEqual(installed, expected)
+        self.assertFalse(trusted)
+        self.assertTrue(all(not directory.exists() for directory in directories))
 
 
 class ReleaseChecksTests(unittest.TestCase):

@@ -14,15 +14,18 @@
 import argparse
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
 import tomllib
+from functools import partial
 from pathlib import Path
 
 # Third Party Imports
 
 # Local Imports
+from .. import temporary
 from ..build.fixtures import ROOT
 from ..build import paths
 
@@ -69,25 +72,7 @@ def main(arguments: list[str] | None = None) -> None:
         sys.exit(f"fixture input {missing[0]} is absent; run mise run build:rust:tests")
 
     if options.starter:
-        # Starter Stories Share Mise's Runtime Links; Install Only Their Declared Tools Before Nextest Starts Them.
-        environment = dict(os.environ)
-        templates = ROOT / "crates/cargo-harmos/templates"
-        guest = (templates / "guest/mise.toml.tmpl").read_text(encoding="utf-8")
-        sidecar = (templates / "sidecar/mise.toml.tmpl").read_text(encoding="utf-8")
-        tools = set(tomllib.loads(guest)["tools"]) | set(tomllib.loads(sidecar)["tools"])
-        names = sorted(tools)
-        environment["MISE_ENABLE_TOOLS"] = ",".join(names)
-        environment.pop("UV_PROJECT_ENVIRONMENT", None)
-        subprocess.run(
-            ["mise", "install"],
-            cwd=ROOT,
-            env=environment,
-            check=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            stdin=sys.stdin,
-            stdout=sys.stdout,
-            stderr=sys.stderr,
-        )
+        _install_starters()
 
     # The Native Runner Verifies Selected Stamp Hashes And Archive Ownership.
     # Only Hosts Used Here And Acceptance Compiler Inputs Need Executable Modes.
@@ -104,6 +89,35 @@ def main(arguments: list[str] | None = None) -> None:
 
 
 # === Private Functions === #
+
+
+def _install_starters() -> None:
+    # Resolve Each Starter's Locked Versions Before Parallel Stories Share Mise's Runtime Links.
+    environment = dict(os.environ)
+    environment.pop("UV_PROJECT_ENVIRONMENT", None)
+    templates = ROOT / "crates/cargo-harmos/templates"
+    with temporary.directory() as scratch:
+        for kind in ("guest", "sidecar"):
+            directory = scratch / kind
+            directory.mkdir()
+            for name in ("mise.toml", "mise.lock"):
+                shutil.copyfile(templates / kind / f"{name}.tmpl", directory / name)
+            tools = tomllib.loads((directory / "mise.toml").read_text(encoding="utf-8"))["tools"]
+            selected = environment | {"MISE_ENABLE_TOOLS": ",".join(sorted(tools))}
+            execute = partial(
+                subprocess.run,
+                cwd=directory,
+                env=selected,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                stdin=sys.stdin,
+                stdout=sys.stdout,
+                stderr=sys.stderr,
+            )
+            execute(["mise", "trust", "mise.toml"], check=True)
+            try:
+                execute(["mise", "install"], check=True)
+            finally:
+                execute(["mise", "untrust", "mise.toml"], check=False)
 
 
 def _input(fixtures: Path, relative: str) -> Path:
