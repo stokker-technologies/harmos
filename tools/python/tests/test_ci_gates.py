@@ -30,7 +30,7 @@ from unittest.mock import patch
 
 # Third Party Imports
 # Local Imports
-from harmos_tools.ci import impact, simulate
+from harmos_tools.ci import environment, impact, simulate
 from harmos_tools.release import layout, nightly, pins, policy, registry, run
 from harmos_tools.test import preflight
 
@@ -45,6 +45,21 @@ ROOT = Path(__file__).resolve().parents[3]
 # === Types === #
 
 # === Classes === #
+
+
+class SetupTests(unittest.TestCase):
+    def test_setup_roots_roundtrip_through_step_environment(self):
+        setup = runpy.run_path(str(ROOT / ".github/actions/setup/run.py"))
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            values = setup["roots"]({}, directory / "checkout", directory / "home")
+            exported, paths = directory / "environment", directory / "paths"
+            exported.write_text("".join(f"{name}={value}\n" for name, value in values.items()), encoding="utf-8")
+            paths.write_text("", encoding="utf-8")
+            self.assertEqual(environment.read(exported, paths, {}), values)
+            exported.write_text("RUNNER_TEMP=override\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                environment.read(exported, paths, {})
 
 
 class ImpactTests(unittest.TestCase):
@@ -139,6 +154,7 @@ assert machine.INHERITED not in os.environ
             result = subprocess.run(
                 [sys.executable, "-c", program, cache],
                 cwd=ROOT,
+                env=dict(os.environ, LOCALAPPDATA=str(Path(cache) / "wrapper"), XDG_CACHE_HOME=str(Path(cache) / "wrapper")),
                 check=True,
                 capture_output=True,
                 text=True,

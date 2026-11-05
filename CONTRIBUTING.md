@@ -23,7 +23,9 @@ application-owned persistence. Update affected consumers and examples when
 changing a contract; flag unrelated stale examples rather than hiding them.
 
 Use Conventional Commit subjects and keep generated files with their source.
-The root uv workspace owns the Python environment and lockfile.
+The root uv workspace owns the Python environment and lockfile. Rust compile
+and coverage tasks use the machine-wide cache-directory lock, including focused
+checks, and share a capped local sccache across independent worktree targets.
 
 Harmos owns its workflows, composite actions and CI/release tooling. The Hub
 renders editable baselines; only explicit `stkr project ci render` overwrites CI.
