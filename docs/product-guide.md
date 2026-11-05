@@ -1022,6 +1022,7 @@ in its output. HTML rendering uses Plotters and does not require Gnuplot.
 
 ## Documentation
 
+- [Repository Tooling](tooling.md) — workstation build locking and shared compiler cache.
 - [Runnable Examples](examples.md) — application composition and plugin integration.
 - [Schematic Walkthrough](schematic.md) — the example application, its crates and backends.
 - [Public Rust API](../crates/harmos/src/lib.rs) — the SDK facade and module documentation.

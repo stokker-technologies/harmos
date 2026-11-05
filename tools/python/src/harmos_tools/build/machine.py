@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import BinaryIO
 
 # Third Party Imports
-
 # Local Imports
 from ..process import spawn_flags
 
@@ -61,7 +60,14 @@ def lock() -> Generator[None]:
             previous = file.read().decode("utf-8", errors="replace")
             if previous.strip():
                 print(f"Recovered Stale Build Holder Metadata: {previous}", flush=True)
-            holder = {"pid": os.getpid(), "workspace": str(Path.cwd()), "started": datetime.now(UTC).isoformat(), "command": sys.argv}
+            holder = {
+                "pid": os.getpid(),
+                "project": Path(__file__).parents[1].name.removesuffix("_tools"),
+                "workspace": str(Path.cwd()),
+                "task": os.environ.get("MISE_TASK_NAME", " ".join(sys.argv)),
+                "started": datetime.now(UTC).isoformat(),
+                "command": sys.argv,
+            }
             file.seek(0)
             file.write(b"\0")
             file.seek(1)
@@ -97,7 +103,11 @@ def _operating_system_lock(file: BinaryIO) -> Generator[None]:
     if os.name != "nt":
         import fcntl
 
-        fcntl.flock(file, fcntl.LOCK_EX)
+        try:
+            fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            _waiting(file)
+            fcntl.flock(file, fcntl.LOCK_EX)
         try:
             yield
         finally:
@@ -131,13 +141,30 @@ def _operating_system_lock(file: BinaryIO) -> Generator[None]:
     kernel.UnlockFileEx.restype = wintypes.BOOL
     handle = msvcrt.get_osfhandle(file.fileno())
     overlapped = Overlapped()
-    if not kernel.LockFileEx(handle, 2, 0, 1, 0, ctypes.byref(overlapped)):
-        raise ctypes.WinError(ctypes.get_last_error())
+    if not kernel.LockFileEx(handle, 3, 0, 1, 0, ctypes.byref(overlapped)):
+        if ctypes.get_last_error() != 33:  # ERROR_LOCK_VIOLATION
+            raise ctypes.WinError(ctypes.get_last_error())
+        _waiting(file)
+        if not kernel.LockFileEx(handle, 2, 0, 1, 0, ctypes.byref(overlapped)):
+            raise ctypes.WinError(ctypes.get_last_error())
     try:
         yield
     finally:
         if not kernel.UnlockFileEx(handle, 0, 1, 0, ctypes.byref(overlapped)):
             raise ctypes.WinError(ctypes.get_last_error())
+
+
+def _waiting(file: BinaryIO) -> None:
+    file.seek(1)
+    previous = file.read().decode("utf-8", errors="replace")
+    try:
+        owner = json.loads(previous) if previous.strip() else {}
+    except json.JSONDecodeError:
+        owner = {}
+    pid = owner.get("pid", "Unknown")
+    project = owner.get("project", owner.get("workspace", "Unknown"))
+    task = owner.get("task", owner.get("command", "Unknown"))
+    print(f"Waiting For Build Lock Held By {pid} {project} {task}", flush=True)
 
 
 # === Entry Point === #
@@ -148,14 +175,23 @@ if __name__ == "__main__":
         arguments = arguments[1:]
     if not arguments:
         raise SystemExit("pass an existing mise task invocation")
+    # Reuse The Tooling Interpreter In Nested Python Commands.
+    if arguments[0] == "python":
+        arguments[0] = sys.executable
     with lock():
         environment = dict(os.environ)
         environment.pop("UV_PROJECT_ENVIRONMENT", None)
-        if not environment.get("CI"):
-            environment.setdefault("RUSTC_WRAPPER", "sccache")
-            environment.setdefault("SCCACHE_DIR", str(_cache() / "sccache"))
-            environment.setdefault("SCCACHE_CACHE_SIZE", "20G")
-            environment["CARGO_INCREMENTAL"] = "0"
+        if not environment.get("CI") and environment.get("RUSTC_WRAPPER") == "sccache" and not environment.get("STKR_LOCAL_COMPILER_CACHE"):
+            from ..ci import compiler
+
+            os.environ.update(environment, COMPILER_CACHE_BACKEND="disk", COMPILER_CACHE_MODE="READ_WRITE", STKR_LOCAL_COMPILER_CACHE="1")
+            statistics = {}
+            try:
+                status = compiler.run(arguments, statistics=statistics)
+            except compiler.CacheError:
+                raise SystemExit(1) from None
+            print(f"Local Compiler Cache: {statistics.get('cache_hits')} Hits, {statistics.get('cache_misses')} Misses", flush=True)
+            raise SystemExit(status)
         result = subprocess.run(
             arguments,
             env=environment,
