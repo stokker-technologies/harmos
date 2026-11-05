@@ -43,7 +43,6 @@ use std::sync::atomic::Ordering;
 
 // Journaled Storage Holding Two Durable Revisions Of One Object.
 struct Revisions {
-    _directory: tempfile::TempDir,
     storage: StorageManager<Objects>,
     first: Experiment,
     first_receipt: ObjectReceipt,
@@ -51,6 +50,7 @@ struct Revisions {
     earlier: StorageCursor,
     durable: StorageCursor,
     schema: SchemaKey,
+    _directory: tempfile::TempDir,
 }
 
 /* === Enums === */

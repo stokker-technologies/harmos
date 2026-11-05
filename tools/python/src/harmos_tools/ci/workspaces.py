@@ -12,6 +12,7 @@
 
 # Standard Library Imports
 import ctypes
+import hashlib
 import json
 import os
 import re
@@ -50,11 +51,11 @@ class Owner:
         return Path(self.record["root"])
 
     def save(self) -> None:
-        staging = self.path.with_suffix(".tmp")
-        if linked(staging):
-            raise ValueError("workspace ownership staging must not be linked")
-        staging.write_text(json.dumps(self.record), encoding="utf-8")
-        staging.replace(self.path)
+        if linked(self.root):
+            raise ValueError("workspace ownership must not be linked")
+        if self.record["version"] == 2 and self.root.exists():
+            write(self.root / MARKER, self.record)
+        write(self.path, self.record)
 
     def starting(self) -> str:
         self.record["command"] = {"platform": sys.platform, "job": "project-ci-" + uuid.uuid4().hex, "state": "launching"}
@@ -70,17 +71,21 @@ class Owner:
         self.save()
 
     def cleanup(self, preserve: Callable[[Path], None]) -> None:
+        if linked(self.root) or linked(self.root / MARKER):
+            raise ValueError("workspace ownership must not be linked")
         if not self.root.exists():
             self.record["phase"] = "clean"
             self.save()
             return
-        if linked(self.root) or linked(self.root / MARKER):
-            raise ValueError("workspace ownership must not be linked")
         marker = json.loads((self.root / MARKER).read_text(encoding="utf-8"))
-        if marker != {key: self.record[key] for key in ("repository", "run", "job", "nonce", "root")}:
+        expected = (
+            self.record if self.record["version"] == 2 else {key: self.record[key] for key in ("repository", "run", "job", "nonce", "root")}
+        )
+        if marker != expected:
             raise ValueError("workspace ownership marker does not match")
-        if self.record.get("command") and command_live(self.record["command"]):
+        if "command" in self.record and command_live(self.record["command"]):
             raise containers.Busy("workspace command is live or its ownership is unknown")
+        verify_tree(self.root)
         preserve(self.root / "workspace")
         for path in self.root.iterdir():
             if path.name == MARKER:
@@ -114,7 +119,7 @@ def linked(path: Path) -> bool:
 def command_live(command: dict) -> bool:
     if not isinstance(command, dict) or not isinstance(command.get("job"), str) or command.get("platform") != sys.platform:
         return True
-    if command.get("state") != "running" or re.fullmatch(r"project-ci-[a-f0-9]{32}", command["job"]) is None:
+    if command.get("state") not in ("launching", "running") or re.fullmatch(r"project-ci-[a-f0-9]{32}", command["job"]) is None:
         return True
     if os.name == "nt":
         kernel = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -178,12 +183,11 @@ def job(output: Path, repository: str, run: str, key: str, preserve: Callable[[P
         if re.fullmatch(r"[a-zA-Z0-9_-]+", repository) is None or re.fullmatch(r"[a-zA-Z0-9_-]+", key) is None:
             raise ValueError("invalid workspace identity")
         if stable:
-            root = Path(tempfile.gettempdir()).resolve() / f"project-ci-job-{repository}-{key}"
-            root.mkdir()
+            root = Path(tempfile.gettempdir()).resolve() / f"project-ci-job-{repository}-{key}-v2"
         else:
-            root = Path(tempfile.mkdtemp(prefix="project-ci-job-"))
+            root = Path(tempfile.gettempdir()).resolve() / f"project-ci-job-{repository}-{uuid.uuid4().hex}-v2"
         record = {
-            "version": 1,
+            "version": 2,
             "repository": repository,
             "output": str(output.resolve()),
             "run": run,
@@ -192,22 +196,29 @@ def job(output: Path, repository: str, run: str, key: str, preserve: Callable[[P
             "root": str(root),
             "phase": "active",
         }
-        owner = Owner(path, record)
-        (root / MARKER).write_text(
-            json.dumps({name: record[name] for name in ("repository", "run", "job", "nonce", "root")}), encoding="utf-8"
-        )
-        owner.save()
-        try:
-            yield owner
-        finally:
-            cleanup(owner, preserve)
+        with lease(root, repository):
+            if root.exists() or linked(root):
+                raise ValueError(f"scratch retained at {root}; inspect its ownership marker and rerun ci:simulate for recovery")
+            # Publish The Directory And Its Self-Contained Ownership Together.
+            with tempfile.TemporaryDirectory(prefix="project-ci-stage-") as staging:
+                staged = Path(staging)
+                write(staged / MARKER, record)
+                publish(staged, root)
+            owner = Owner(path, record)
+            try:
+                owner.save()
+                yield owner
+            finally:
+                cleanup(owner, preserve, required=True)
 
 
-def cleanup(owner: Owner, preserve: Callable[[Path], None]) -> None:
+def cleanup(owner: Owner, preserve: Callable[[Path], None], *, required: bool = False) -> None:
     try:
         owner.cleanup(preserve)
     except (OSError, ValueError, RuntimeError) as error:
         print(f"Simulation retained workspace ownership {owner.path}: {error}", file=sys.stderr, flush=True)
+        if required:
+            raise
 
 
 def reconcile(root: Path, repository: str, preserve: Callable[[Path, str, Path], None]) -> None:
@@ -224,22 +235,53 @@ def reconcile(root: Path, repository: str, preserve: Callable[[Path, str, Path],
                 record = json.loads(path.read_text(encoding="utf-8"))
                 if not valid(path, record, repository) or record["phase"] == "clean":
                     continue
-                cleanup(Owner(path, record), lambda workspace, output=path.parent, key=record["job"]: preserve(output, key, workspace))
+                with lease(Path(record["root"]), repository):
+                    cleanup(Owner(path, record), lambda workspace, output=path.parent, key=record["job"]: preserve(output, key, workspace))
         except (OSError, ValueError, RuntimeError) as error:
             print(f"Simulation retained workspace ownership {path}: {error}", file=sys.stderr, flush=True)
+
+
+def recover(output: Path, repository: str, preserve: Callable[[Path, str, Path], None]) -> None:
+    """Recover Scratch Even When Its Original Checkout And Run Records Are Gone."""
+    for root in sorted(Path(tempfile.gettempdir()).resolve().glob(f"project-ci-job-{repository}-*")):
+        try:
+            with lease(root, repository):
+                if linked(root) or linked(root / MARKER):
+                    raise ValueError("scratch or ownership marker is linked")
+                record = json.loads((root / MARKER).read_text(encoding="utf-8"))
+                if not isinstance(record, dict) or record.get("version") != 2:
+                    raise ValueError("legacy marker cannot prove owner liveness")
+                if not all(isinstance(record.get(name), str) for name in ("output", "job")):
+                    raise ValueError("invalid scratch ownership marker")
+                old_path = Path(record.get("output", "")) / f"{record.get('job', '')}.workspace-owner.json"
+                if not valid(old_path, record, repository) or Path(record["root"]) != root:
+                    raise ValueError("invalid scratch ownership marker")
+                # Retain Recovered Diagnostics In This Run, Without Recreating A Retired Checkout.
+                destination = output / "recovered" / record["run"]
+                destination.mkdir(parents=True, exist_ok=True)
+                owner = Owner(destination / old_path.name, record)
+                owner.cleanup(lambda workspace, destination=destination, key=record["job"]: preserve(destination, key, workspace))
+        except (OSError, ValueError, RuntimeError) as error:
+            print(
+                f"Simulation retained scratch {root}: {error}. Inspect the marker and stop its owner before manual removal; "
+                "unverifiable legacy scratch is never deleted automatically.",
+                file=sys.stderr,
+                flush=True,
+            )
 
 
 # === Private Functions === #
 
 
 def valid(path: Path, record: object, repository: str) -> bool:
-    if not isinstance(record, dict) or record.get("version") != 1 or record.get("repository") != repository:
+    if not isinstance(record, dict) or record.get("version") not in (1, 2) or record.get("repository") != repository:
         return False
-    if not all(isinstance(record.get(key), str) for key in ("run", "job", "nonce", "root")):
+    if not all(isinstance(record.get(key), str) for key in ("output", "run", "job", "nonce", "root")):
         return False
     target = Path(record["root"])
     return (
-        record.get("output") == str(path.parent.resolve())
+        Path(record["output"]).is_absolute()
+        and record["output"] == str(path.parent.resolve())
         and path.name == f"{record['job']}.workspace-owner.json"
         and re.fullmatch(r"[a-zA-Z0-9_-]+", record["run"]) is not None
         and re.fullmatch(r"[a-zA-Z0-9_-]+", record["job"]) is not None
@@ -247,8 +289,73 @@ def valid(path: Path, record: object, repository: str) -> bool:
         and target.is_absolute()
         and target.parent == Path(tempfile.gettempdir()).resolve()
         and target.name.startswith("project-ci-job-")
+        and (
+            record["version"] == 1
+            or re.fullmatch(rf"project-ci-job-{re.escape(repository)}-(?:{re.escape(record['job'])}|[a-f0-9]{{32}})-v2", target.name)
+            is not None
+        )
         and record.get("phase") in ("active", "clean")
     )
+
+
+def write(path: Path, record: dict) -> None:
+    staging = path.with_suffix(".tmp")
+    if linked(path) or linked(staging):
+        raise ValueError("workspace ownership must not be linked")
+    with staging.open("w", encoding="utf-8") as file:
+        json.dump(record, file)
+        file.flush()
+        os.fsync(file.fileno())
+    staging.replace(path)
+
+
+def verify_tree(root: Path) -> None:
+    device = root.stat().st_dev
+    pending = [root]
+    while pending:
+        with os.scandir(pending.pop()) as entries:
+            for entry in entries:
+                if entry.is_symlink() or entry.is_junction() or not entry.is_dir(follow_symlinks=False):
+                    continue
+                if os.stat(entry.path, follow_symlinks=False).st_dev != device:
+                    raise ValueError("scratch contains a foreign filesystem; retain it for inspection")
+                pending.append(Path(entry.path))
+
+
+def publish(staged: Path, root: Path) -> None:
+    if os.name == "nt":
+        staged.rename(root)
+        return
+    # Linux rename() Can Replace A Foreign Empty Directory Created After The Existence Check.
+    library = ctypes.CDLL(None, use_errno=True)
+    rename = getattr(library, "renameat2", None)
+    if rename is None:
+        raise OSError("atomic scratch publication requires Linux renameat2 or Windows rename")
+    rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    rename.restype = ctypes.c_int
+    if rename(-100, os.fsencode(staged), -100, os.fsencode(root), 1):
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error), str(root))
+
+
+@contextmanager
+def lease(root: Path, repository: str) -> Generator[None]:
+    cache = (
+        Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
+        if os.name == "nt"
+        else Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    )
+    directory = cache / "ci-simulation" / repository / "workspace-leases"
+    if any(linked(part) for part in (directory, *directory.parents)):
+        raise ValueError("scratch lease storage must not be linked")
+    directory.mkdir(parents=True, exist_ok=True)
+    identity = hashlib.sha256(os.path.normcase(str(root)).encode()).hexdigest()
+    path = directory / f"{identity}.lock"
+    if linked(path):
+        raise ValueError("scratch lease must not be linked")
+    path.touch(exist_ok=True)
+    with containers.lease(path):
+        yield
 
 
 # === Entry Point === #

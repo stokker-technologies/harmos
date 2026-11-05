@@ -48,10 +48,10 @@ struct Expansion {
 
 // Journaled Storage Holding Saved Records Of One Declared Schema.
 struct Mapped {
-    _directory: tempfile::TempDir,
     storage: StorageManager,
     schema: SchemaKey,
     at: StorageCursor,
+    _directory: tempfile::TempDir,
 }
 
 /* === Enums === */
