@@ -821,6 +821,7 @@ def docker(
             for key, value in environment.items()
             if key
             in (
+                "CI",
                 "PROFILE",
                 "RELEASE_PROFILE",
                 "CARGO_INCREMENTAL",
