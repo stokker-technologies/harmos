@@ -114,10 +114,9 @@ impl Progress {
 
     fn record(&self) {
         self.transferred.store(true, Ordering::Release);
-        // Bare Channels And Guest Endpoints Need No Host Deadline Clock.
-        if self.moved.receiver_count() != 0 {
-            self.moved.send_modify(|moved| *moved = Some(tokio::time::Instant::now()));
-        }
+        // Unknown Wasm Guests Have No Clock; Their Host Owns The Deadline.
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        self.moved.send_modify(|moved| *moved = Some(tokio::time::Instant::now()));
     }
 }
 
