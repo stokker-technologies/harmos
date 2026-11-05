@@ -21,7 +21,7 @@ version = { workspace = true }
 default = ["derive"]
 derive = ["harmos-domain/derive", "dep:harmos-macros"]
 grpc = ["dep:prost"]
-streaming = ["dep:tokio"]
+streaming = ["dep:tokio", "tokio/time"]
 
 # === Dependencies === #
 
