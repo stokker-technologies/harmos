@@ -68,8 +68,15 @@ struct Observed {
     session: Session,
     terminal: Option<Code>,
     deadline: Shutdown,
+    progress: Option<watch::Sender<tokio::time::Instant>>,
+    operation: Option<String>,
     stopping: Shutdown,
     ended: bool,
+}
+
+struct Moving {
+    body: Body,
+    progress: watch::Sender<tokio::time::Instant>,
 }
 
 /* === Enums === */
@@ -93,10 +100,11 @@ impl Service<http::Request<Body>> for Inbound {
         let mut routes = self.routes.clone();
         let entries = self.middleware.clone();
         let timeout = self.timeout;
-        let streaming = self
-            .operations
-            .grpc_binding(request.uri().path())
-            .is_ok_and(|binding| binding.contract().input().is_some() || binding.contract().output().is_some());
+        let streaming = self.operations.grpc_binding(request.uri().path()).ok().and_then(|binding| {
+            let contract = binding.contract();
+            (contract.input().is_some() || contract.output().is_some())
+                .then(|| (contract.operation().id.to_string(), contract.operation().policy.timeout))
+        });
         let stopping = self.stopping.clone();
         Box::pin(
             async move {
@@ -128,15 +136,20 @@ impl Service<http::Request<Body>> for Inbound {
                     return Ok(status.into_http());
                 }
                 let mut context = session.context();
-                if !streaming {
+                if streaming.is_none() {
                     context.insert(crate::operations::context::Deadline(deadline)).expect("transport owns the deadline type");
                 } else {
                     request.headers_mut().remove("grpc-timeout");
                 }
                 request.extensions_mut().insert(TrustedContext(context));
-                // Operation Execution Owns Stream Silence; Opening Has Its Own Bound.
-                let mut response_deadline: Shutdown =
-                    if streaming { Box::pin(std::future::pending()) } else { Box::pin(tokio::time::sleep_until(deadline)) };
+                let (progress, mut response_deadline, operation): (_, Shutdown, _) = match streaming {
+                    Some((operation, idle)) => {
+                        let (progress, observed) = watch::channel(tokio::time::Instant::now());
+                        request = request.map(|body| Body::new(Moving { body, progress: progress.clone() }));
+                        (Some(progress), Box::pin(idle_deadline(observed, idle)), Some(operation))
+                    }
+                    None => (None, Box::pin(tokio::time::sleep_until(deadline)), None),
+                };
                 let response = tokio::select! {
                     biased;
                     _ = shutdown(stopping.clone()) => {
@@ -145,7 +158,7 @@ impl Service<http::Request<Body>> for Inbound {
                     }
                     _ = &mut response_deadline => {
                         session.observe(Code::DeadlineExceeded);
-                        return Ok(Status::deadline_exceeded("RPC deadline elapsed").into_http());
+                        return Ok(deadline_status(operation.as_deref()).into_http());
                     }
                     response = routes.call(request) => response.expect("router is infallible"),
                 };
@@ -163,6 +176,8 @@ impl Service<http::Request<Body>> for Inbound {
                         session,
                         terminal,
                         deadline: response_deadline,
+                        progress,
+                        operation,
                         stopping: Box::pin(shutdown(stopping)),
                         ended: false,
                     })
@@ -205,10 +220,15 @@ impl http_body::Body for Observed {
             self.ended = true;
             self.trace.take();
             self.body = Body::empty();
-            return Poll::Ready(Some(Ok(trailers(Status::deadline_exceeded("RPC deadline elapsed")))));
+            return Poll::Ready(Some(Ok(trailers(deadline_status(self.operation.as_deref())))));
         }
         match Pin::new(&mut self.body).poll_frame(cx) {
             Poll::Ready(Some(Ok(frame))) => {
+                if frame.is_data()
+                    && let Some(progress) = &self.progress
+                {
+                    progress.send_replace(tokio::time::Instant::now());
+                }
                 if let Some(trailers) = frame.trailers_ref() {
                     self.ended = true;
                     self.trace.take();
@@ -238,9 +258,59 @@ impl http_body::Body for Observed {
     }
 }
 
+impl http_body::Body for Moving {
+    type Data = bytes::Bytes;
+    type Error = Status;
+    fn poll_frame(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<http_body::Frame<Self::Data>, Status>>> {
+        let frame = Pin::new(&mut self.body).poll_frame(cx);
+        if matches!(&frame, Poll::Ready(Some(Ok(frame))) if frame.is_data()) {
+            self.progress.send_replace(tokio::time::Instant::now());
+        }
+        frame
+    }
+    fn is_end_stream(&self) -> bool {
+        http_body::Body::is_end_stream(&self.body)
+    }
+    fn size_hint(&self) -> http_body::SizeHint {
+        http_body::Body::size_hint(&self.body)
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+async fn idle_deadline(mut progress: watch::Receiver<tokio::time::Instant>, idle: Duration) {
+    loop {
+        let last = *progress.borrow_and_update();
+        let remaining = idle.saturating_sub(tokio::time::Instant::now().saturating_duration_since(last));
+        if remaining.is_zero() {
+            return;
+        }
+        tokio::select! {
+            biased;
+            changed = progress.changed() => {
+                if changed.is_err() {
+                    tokio::time::sleep(remaining).await;
+                    return;
+                }
+            }
+            _ = tokio::time::sleep(remaining) => {
+                if tokio::time::Instant::now().saturating_duration_since(*progress.borrow()) >= idle {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+fn deadline_status(operation: Option<&str>) -> Status {
+    let status = Status::deadline_exceeded("RPC deadline elapsed");
+    match operation {
+        Some(operation) => super::server::in_operation(status, operation),
+        None => status,
+    }
+}
 
 fn trailers(status: Status) -> http_body::Frame<bytes::Bytes> {
     let mut headers = http::HeaderMap::new();

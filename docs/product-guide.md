@@ -825,9 +825,11 @@ each transferred item rearms the deadline, so a continuously progressing transfe
 can outlive `timeout`. Silence before the first item and while waiting for the
 final response is also bounded. Streaming execution uses this idle budget rather
 than a total `attempt_timeout`; unary attempts retain their total attempt bound.
-A transport `grpc-timeout` caps only non-streaming operations. The listener bounds
-middleware and stream opening separately, then delegates stream lifetime to the
-operation. FOLLOW streams must emit heartbeats within their idle budget, even
+Admission applies the `grpc-timeout` cap only to non-streaming operation budgets.
+Streaming clients omit total `grpc-timeout` to follow the idle policy. The listener bounds
+middleware and stream opening separately, and applies the operation policy as a
+traffic idle deadline through buffered output draining. Operation execution also
+tracks item movement, so partial wire frames cannot keep a stalled handler alive. FOLLOW streams must emit heartbeats within their idle budget, even
 when no data changes. Request retry rules and all size limits are unchanged.
 Resident restart behavior belongs to `ServicePolicy { stop_timeout, restart }`
 using `RestartPolicy::OnFailure`. Register one typed service against the frozen

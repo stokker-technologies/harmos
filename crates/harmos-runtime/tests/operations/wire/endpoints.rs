@@ -30,7 +30,7 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::{
-    Backoff, CacheKey, Jitter, OperationDeclaration, OperationPolicy, RetryPolicy, StreamInput, StreamOutput, StreamSettings, stream,
+    Backoff, CacheKey, Jitter, OperationPolicy, RetryPolicy, StreamInput, StreamOutput, StreamSettings, stream,
 };
 use harmos_runtime::{Error, Runtime};
 
@@ -761,6 +761,6 @@ async fn grpc_stall_names_operation() {
     .await;
     let status = tonic::Status::from_header_map(response.headers()).expect("deadline status");
     assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
-    assert!(status.message().contains(SlowDeclaration::ID), "{status}");
+    assert!(status.message().contains(<SlowDeclaration as harmos_runtime::operations::OperationDeclaration>::ID), "{status}");
     runtime.shutdown().await.unwrap();
 }
