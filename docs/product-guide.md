@@ -521,6 +521,15 @@ passed to `finish` and preserve the same exact rank and interpolation semantics.
 Snapshot reads run concurrently; closing storage waits for those in
 flight.
 
+`storage::query::quantiles::Quantiles` stores finite f64 projections for exact
+linear percentiles without decoding source evidence again. Its constructor
+bounds numeric payload memory, including spill buffering; `values` consumes the
+spool with a separate caller-supplied rank scratch budget and cancellation check.
+A zero payload budget spills immediately. Rank scratch exhaustion returns an
+error; selection never substitutes an approximation.
+Both `push` and `values` may perform blocking file I/O; async consumers run their
+fold and rank selection on blocking workers.
+
 For storage-authoritative refresh, query an explicit `cursor_saved()` and then
 await `wait_saved_after(&cursor)` before querying the returned newer cursor.
 The passive wait coalesces advances without missing changes between snapshot
