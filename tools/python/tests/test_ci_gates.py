@@ -26,7 +26,7 @@ import unittest
 import urllib.error
 import urllib.parse
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 # Third Party Imports
 # Local Imports
@@ -120,6 +120,41 @@ class ImpactTests(unittest.TestCase):
                 for job in jobs:
                     dependencies = job.get("pipeline_needs", {}).get("release-review" if pipeline == "release" else pipeline, job["needs"])
                     self.assertTrue(set(dependencies) <= keys, (job["key"], set(dependencies) - keys))
+
+
+class SimulationTests(unittest.TestCase):
+    def test_docker_preserves_job_environment(self):
+        class Captured(Exception):
+            pass
+
+        owner = Mock(record={"container": "test-container", "volume": "test-volume"})
+        owner.create.side_effect = Captured
+        values = {"CI": "job-active", "PROFILE": "test-profile", "PRIVATE_VALUE": "excluded"}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            with (
+                patch.object(simulate.containers, "job", return_value=contextlib.nullcontext(owner)),
+                patch.object(simulate, "evidence"),
+                self.assertRaises(Captured),
+            ):
+                simulate.docker(
+                    {"key": "test", "image": "test-image", "minutes": 1},
+                    workspace,
+                    root,
+                    "repository",
+                    "run",
+                    values,
+                    ["true"],
+                    {},
+                    io.StringIO(),
+                    {},
+                )
+        arguments = owner.create.call_args.args[0]
+        forwarded = dict(arguments[index + 1].split("=", 1) for index, value in enumerate(arguments) if value == "--env")
+        self.assertEqual({key: forwarded.get(key) for key in ("CI", "PROFILE")}, {key: values[key] for key in ("CI", "PROFILE")})
+        self.assertNotIn("PRIVATE_VALUE", forwarded)
 
 
 class MachineTests(unittest.TestCase):
