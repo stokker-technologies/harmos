@@ -33,9 +33,9 @@ use super::{Model, State};
 
 pub struct Fixture {
     pub settings: StorageSettings,
-    _directory: tempfile::TempDir,
     pub storage: StorageManager,
     pub runtime: Runtime<Model>,
+    _directory: tempfile::TempDir,
 }
 /* === Enums === */
 

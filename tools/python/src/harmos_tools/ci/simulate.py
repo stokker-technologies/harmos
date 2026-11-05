@@ -250,6 +250,7 @@ def main() -> int:
         token = uuid.uuid4().hex[:12]
         run_owner = runs.owner(root / "target/ci/simulation", identity, token)
         output = run_owner.__enter__()
+        workspaces.recover(output, identity, recover_workspace)
         platforms = options.platform or PLAN["platforms"]
         executors = {platform: "native" if platform == "windows" else "docker" for platform in platforms}
         for selection in options.executor or []:

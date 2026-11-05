@@ -45,11 +45,11 @@ use super::waveforms::{self, Sample};
 
 // Journaled Storage Holding Durable Three-Phase Stream Samples.
 struct Nominal {
-    _directory: tempfile::TempDir,
     storage: StorageManager,
     schema: SchemaKey,
     samples: Vec<Sample>,
     durable: StorageCursor,
+    _directory: tempfile::TempDir,
 }
 
 /* === Enums === */
