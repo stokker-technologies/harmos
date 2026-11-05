@@ -10,6 +10,7 @@
 /* === Modules === */
 
 mod directory;
+mod exact_quantile_spill;
 mod json;
 mod json_sessions;
 mod manager;
