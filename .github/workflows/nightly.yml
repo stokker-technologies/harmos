@@ -59,7 +59,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
     - run: mise run check:repository
     - uses: ./.github/actions/save-caches
@@ -115,7 +115,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
     - run: mise run check:python
     - uses: ./.github/actions/save-caches
@@ -180,7 +180,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"bench_baselines\":{\"key\":\"ci-v5-bench-baselines-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-bench-rust-unit-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}\",\"path\":\"target/benchmarks/\",\"restore-keys\":\"ci-v5-bench-baselines-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-bench-rust-unit-\"},\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"bench_baselines\":{\"key\":\"ci-v5-bench-baselines-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-bench-rust-unit-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}\",\"path\":\"target/benchmarks/\",\"restore-keys\":\"ci-v5-bench-baselines-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-bench-rust-unit-\"},\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
@@ -258,7 +258,7 @@ jobs:
         cache-backend: disk
         cache-mode: >-
           ${{ github.ref == 'refs/heads/dev' && 'READ_WRITE' || 'READ_ONLY' }}
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
@@ -357,7 +357,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
@@ -451,7 +451,7 @@ jobs:
         cache-backend: disk
         cache-mode: >-
           ${{ github.ref == 'refs/heads/dev' && 'READ_WRITE' || 'READ_ONLY' }}
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-release-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-release-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-release-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-release-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
     - name: Bench Build
       run: >-
@@ -524,7 +524,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
@@ -603,7 +603,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"bench_baselines\":{\"key\":\"ci-v5-bench-baselines-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-bench-rust-integration-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}\",\"path\":\"target/benchmarks/\",\"restore-keys\":\"ci-v5-bench-baselines-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-bench-rust-integration-\"},\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"bench_baselines\":{\"key\":\"ci-v5-bench-baselines-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-bench-rust-integration-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}\",\"path\":\"target/benchmarks/\",\"restore-keys\":\"ci-v5-bench-baselines-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-bench-rust-integration-\"},\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
@@ -692,7 +692,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"bench_baselines\":{\"key\":\"ci-v5-bench-baselines-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-bench-rust-system-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}\",\"path\":\"target/benchmarks/\",\"restore-keys\":\"ci-v5-bench-baselines-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-bench-rust-system-\"},\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"bench_baselines\":{\"key\":\"ci-v5-bench-baselines-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-bench-rust-system-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}\",\"path\":\"target/benchmarks/\",\"restore-keys\":\"ci-v5-bench-baselines-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-bench-rust-system-\"},\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
@@ -773,7 +773,7 @@ jobs:
         cache-backend: disk
         cache-mode: >-
           ${{ github.ref == 'refs/heads/dev' && 'READ_WRITE' || 'READ_ONLY' }}
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'unix' && (true) && (true)
     - name: Product Build
@@ -840,7 +840,7 @@ jobs:
         cache-backend: disk
         cache-mode: >-
           ${{ github.ref == 'refs/heads/dev' && 'READ_WRITE' || 'READ_ONLY' }}
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'windows' && (true) && (true)
     - name: Product Build
@@ -949,7 +949,7 @@ jobs:
         cache-backend: disk
         cache-mode: >-
           ${{ github.ref == 'refs/heads/dev' && 'READ_WRITE' || 'READ_ONLY' }}
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'unix' && (true) && (true)
     - name: Tests Build
@@ -1021,7 +1021,7 @@ jobs:
         cache-backend: disk
         cache-mode: >-
           ${{ github.ref == 'refs/heads/dev' && 'READ_WRITE' || 'READ_ONLY' }}
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'windows' && (true) && (true)
     - name: Tests Build
@@ -1135,7 +1135,7 @@ jobs:
         cache-backend: disk
         cache-mode: >-
           ${{ github.ref == 'refs/heads/dev' && 'READ_WRITE' || 'READ_ONLY' }}
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'unix' && (true) && (true)
     - run: >-
@@ -1182,7 +1182,7 @@ jobs:
         cache-backend: disk
         cache-mode: >-
           ${{ github.ref == 'refs/heads/dev' && 'READ_WRITE' || 'READ_ONLY' }}
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'windows' && (true) && (true)
     - run: >-
@@ -1271,7 +1271,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: >-
         matrix.platform == 'unix' && ((true || github.event_name == 'pull_request' ||
@@ -1363,7 +1363,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: >-
         matrix.platform == 'windows' && ((true || github.event_name == 'pull_request'
@@ -1494,7 +1494,7 @@ jobs:
         cache-backend: disk
         cache-mode: >-
           ${{ github.ref == 'refs/heads/dev' && 'READ_WRITE' || 'READ_ONLY' }}
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -1574,7 +1574,7 @@ jobs:
         cache-backend: disk
         cache-mode: >-
           ${{ github.ref == 'refs/heads/dev' && 'READ_WRITE' || 'READ_ONLY' }}
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -1696,7 +1696,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -1778,7 +1778,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -1898,7 +1898,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -1970,7 +1970,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -2079,7 +2079,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'unix' && ((true)) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -2161,7 +2161,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'windows' && ((true)) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -2281,7 +2281,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -2363,7 +2363,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -2483,7 +2483,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'unix' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -2545,7 +2545,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: ""
         cache-mode: ""
-        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
+        caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
       if: matrix.platform == 'windows' && (true) && (true)
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
