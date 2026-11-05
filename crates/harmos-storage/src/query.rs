@@ -11,9 +11,9 @@
 
 /* === Modules === */
 
+mod accumulate;
 #[cfg(feature = "datafusion")]
 pub mod datafusion;
-mod accumulate;
 mod execute;
 mod object_schemas;
 mod order_stats;
