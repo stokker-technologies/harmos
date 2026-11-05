@@ -12,6 +12,7 @@
 # Standard Library Imports
 import contextlib
 import copy
+import email.message
 import hashlib
 import io
 import json
@@ -338,7 +339,7 @@ class FakeOpener:
         self.methods.append(request.get_method())
         code = self.codes.pop(0)
         if code != 200:
-            raise urllib.error.HTTPError(request.full_url, code, "failure", {}, io.BytesIO(b"{}"))
+            raise urllib.error.HTTPError(request.full_url, code, "failure", email.message.Message(), io.BytesIO(b"{}"))
         return io.BytesIO(b"{}")
 
 
