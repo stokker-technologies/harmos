@@ -213,13 +213,13 @@ impl ObserverBackend for Backend {
             }
         };
 
-        // Cancel The Invocation; The Sidecar Stops And Cleans Up The Observer
+        // Join The Observing Thread Before Its Invocation Loses The Host Call Context.
         activation.begin_stopping();
         let stopped = ended.is_none();
         let result = match ended {
             Some(result) => result,
             None => {
-                invocation.request_cancel();
+                invocation.observer_stop.as_ref().expect("native observer owns its stop signal").request();
                 tokio::select! {
                     result = &mut invocation => result,
                     () = remote.fence() => return Err(failure(SidecarError::Unavailable)),
@@ -392,7 +392,7 @@ pub(super) async fn demand(
     let Some(context) = remote.context.get().and_then(Weak::upgrade) else {
         return;
     };
-    if let Some(plugin) = plugin
+    if let Some(plugin) = &plugin
         && plugin.ready().await.is_err()
     {
         return;
@@ -407,10 +407,15 @@ pub(super) async fn demand(
             if !active {
                 leases.remove(&definition.id);
             } else if !leases.contains_key(&definition.id) {
+                // Existing Controls Retain Their Publication Lease During Retirement.
+                if plugin.as_ref().is_some_and(crate::plugin::PluginScope::is_closed) {
+                    continue;
+                }
                 match operations.submit_resident_in(&definition.id, Arc::clone(&context)).await {
                     Ok(lease) => {
                         leases.insert(definition.id.clone(), lease);
                     }
+                    Err(_) if plugin.as_ref().is_some_and(crate::plugin::PluginScope::is_closed) => {}
                     Err(crate::Error::Closing { .. }) => return,
                     Err(error) => {
                         let _ = arrivals.send(Arrival::ObserverFailed(error.to_string())).await;

@@ -37,3 +37,14 @@ RUSTC_WRAPPER= mise run build
 In PowerShell use `$env:RUSTC_WRAPPER = ''; mise run build`, then remove
 the override with `Remove-Item Env:RUSTC_WRAPPER`. The build lock remains active.
 `mise run test:tooling` proves serialization and OS release after a holder dies.
+
+## Focused Integration Tests
+
+The integration task accepts a nextest filter and repeat count while retaining
+the configured per-test deadlines. It consumes the existing test archive and fixtures:
+
+```sh
+mise run test:rust:integration --filter 'package(=harmos-runtime) & test(=sidecar::observer_demand::demand_survives_reload)' --stress-count 50
+```
+
+Select `--profile release` to use an archive and fixtures from a Nightly build.

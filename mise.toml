@@ -238,11 +238,15 @@ run = [
 
 [tasks."test:rust:integration"]
 description = "Test Integration Rust"
-usage = 'flag "--profile <profile>" default="dev"'
+usage = '''
+flag "--profile <profile>" default="dev"
+flag "--filter <filter>"
+flag "--stress-count <count>"
+'''
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category integration --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category integration --language rust --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category integration --language rust --profile {{usage.profile}}{% if usage.filter or usage.stress_count %} --{% endif %}{% if usage.filter %} -E \"{{usage.filter}}\"{% endif %}{% if usage.stress_count %} --stress-count {{usage.stress_count}}{% endif %}",
 ]
 
 [tasks."test:rust:acceptance"]
