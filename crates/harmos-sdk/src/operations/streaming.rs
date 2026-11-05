@@ -114,7 +114,10 @@ impl Progress {
 
     fn record(&self) {
         self.transferred.store(true, Ordering::Release);
-        self.moved.send_modify(|moved| *moved = Some(tokio::time::Instant::now()));
+        // Bare Channels And Guest Endpoints Need No Host Deadline Clock.
+        if self.moved.receiver_count() != 0 {
+            self.moved.send_modify(|moved| *moved = Some(tokio::time::Instant::now()));
+        }
     }
 }
 

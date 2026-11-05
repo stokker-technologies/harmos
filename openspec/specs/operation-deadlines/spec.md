@@ -1,7 +1,9 @@
-# operation-deadlines Specification
+# Operation Deadlines Specification
 
 ## Purpose
-TBD - created by archiving change idle-stream-deadlines. Update Purpose after archive.
+
+Bound stalled streaming work without imposing a total transfer duration, while
+preserving total deadlines for unary operations and bounded response draining.
 
 ## Requirements
 
@@ -19,3 +21,7 @@ Streaming operations SHALL interpret policy timeout as maximum silence and unary
 #### Scenario: Unary Total Deadline
 - **WHEN** a unary operation takes longer than timeout
 - **THEN** it expires despite any unrelated activity
+
+#### Scenario: Buffered Output Draining
+- **WHEN** a handler has settled but buffered gRPC output stops moving beyond policy timeout
+- **THEN** the listener ends the stream with DeadlineExceeded naming the operation

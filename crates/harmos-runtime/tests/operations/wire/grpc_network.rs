@@ -1236,3 +1236,87 @@ async fn native_stream_progress_outlives_listener_and_operation_totals() {
     tokio::time::resume();
     runtime.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn settled_stream_drain_keeps_idle_deadline() {
+    use harmos_runtime::grpc::OutputEnvelope;
+    #[harmos_runtime::operation(resources = [tokio::sync::Notify], id = "grpc.buffered", response = (), output = Vec<u8>,
+        policy = WHO_POLICY, visibility = Public, grpc(package = "fixture", service = "Deadlines", method = "Buffered"))]
+    struct Buffered {}
+    impl harmos_runtime::Operation for Buffered {
+        type Error = Error;
+        async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<()>> {
+            for _ in 0..32 {
+                ctx.streams().send_with(128 * 1024 + 64, || Ok(vec![7; 128 * 1024])).await?;
+            }
+            ctx.resource::<tokio::sync::Notify>().notify_one();
+            Ok(().into())
+        }
+    }
+    let finished = Arc::new(tokio::sync::Notify::new());
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<tokio::sync::Notify>(finished.clone()).operations::<crate::operations::Single<Buffered>>(Lanes::Open);
+    })
+    .await
+    .unwrap();
+    let mut settings = settings();
+    let capacity = NonZeroUsize::new(2 * 1024 * 1024).unwrap();
+    settings.operations.output = StreamSettings {
+        items: NonZeroUsize::new(64).unwrap(),
+        bytes: NonZeroUsize::new(8 * 1024 * 1024).unwrap(),
+    };
+    settings.operations.encode = EncodeSettings {
+        message_bytes: capacity,
+        buffer_bytes: capacity,
+    };
+    let attached = runtime.grpc().attach(settings).await.unwrap();
+    let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr()))
+        .unwrap()
+        .initial_stream_window_size(Some(1024))
+        .connect()
+        .await
+        .unwrap();
+    let mut client = tonic::client::Grpc::new(channel);
+    client.ready().await.unwrap();
+    let mut output = client
+        .server_streaming(
+            tonic::Request::new(harmos_runtime::operations::Response::new(Buffered {})),
+            http::uri::PathAndQuery::from_static("/fixture.Deadlines/Buffered"),
+            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Vec<u8>, ()>, harmos_runtime::operations::Response<Buffered>>::new(
+                DecodeSettings {
+                    message_bytes: capacity,
+                    retained_bytes: capacity,
+                },
+                EncodeSettings {
+                    message_bytes: capacity,
+                    buffer_bytes: capacity,
+                },
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap()
+        .into_inner();
+    finished.notified().await;
+    assert!(matches!(&*output.message().await.unwrap().unwrap(), OutputEnvelope::Item(_)));
+    tokio::time::pause();
+    let awake = tokio::spawn(async {
+        loop {
+            tokio::task::yield_now().await;
+        }
+    });
+    tokio::time::advance(Duration::from_secs(3)).await;
+    let status = loop {
+        match output.message().await {
+            Err(status) => break status,
+            Ok(Some(_)) => {}
+            Ok(None) => panic!("a stalled buffered drain must expire"),
+        }
+    };
+    assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
+    assert!(status.message().contains("grpc.buffered"), "{status}");
+    awake.abort();
+    let _ = awake.await;
+    tokio::time::resume();
+    runtime.shutdown().await.unwrap();
+}
