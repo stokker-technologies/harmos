@@ -16,6 +16,7 @@ mod execute;
 mod object_schemas;
 mod order_stats;
 mod ordering;
+pub mod quantiles;
 mod reader;
 mod reduction;
 mod source;

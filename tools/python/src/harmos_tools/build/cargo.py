@@ -23,7 +23,7 @@ from typing import Any
 # Local Imports
 from ..ci import summary
 from ..process import spawn_flags
-from . import paths, storage
+from . import machine, paths, storage
 
 # Type Checking Imports
 
@@ -109,6 +109,7 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
     return path
 
 
+@machine.lock()
 def focused(directory: Path, operation: str, arguments: Sequence[str]) -> int:
     if operation not in ("build", "check", "test", "clippy", "run"):
         raise ValueError("focused compilation requires build, check, test, clippy or run")
