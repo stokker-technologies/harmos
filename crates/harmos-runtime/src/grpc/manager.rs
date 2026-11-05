@@ -163,7 +163,7 @@ impl GrpcManager {
                 "starting gRPC listener"
             );
             let routes = routes.into_axum_router().fallback_service(router);
-            Arc::new(listener::Resources::new(settings, routes.into(), state.middleware.clone(), certificate))
+            Arc::new(listener::Resources::new(settings, routes.into(), self.operations.clone(), state.middleware.clone(), certificate))
         };
         let (generation, address) = self.host.attach(resources).await?;
         Ok(Attached {

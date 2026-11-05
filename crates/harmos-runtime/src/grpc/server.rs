@@ -143,7 +143,7 @@ where
         Box::pin(async move {
             let (output, items) = crate::operations::stream(settings.output).map_err(status)?;
             let instance = authority.submit_charged::<O, _>(request.into_inner(), output).map_err(status)?;
-            let output = super::stream(instance, items).map(|result| result.map_err(status));
+            let output = super::stream(instance, items).map(|result| result.map_err(|error| in_operation(status(error), O::ID)));
             Ok(Response::new(Box::pin(output) as Self::ResponseStream))
         })
     }
@@ -166,7 +166,7 @@ where
                 .map_err(|_| Status::deadline_exceeded("operation opening timed out"))??;
             let (input, endpoint) = crate::operations::stream(settings.input).map_err(status)?;
             let instance = authority.submit_charged::<O, _>(request, endpoint).map_err(status)?;
-            super::input(instance, input, incoming).await.map(Response::new).map_err(input_status)
+            super::input(instance, input, incoming).await.map(Response::new).map_err(|error| in_operation(input_status(error), O::ID))
         })
     }
 }
@@ -190,7 +190,8 @@ where
             let (input, receiving) = crate::operations::stream(settings.input).map_err(status)?;
             let (sending, output) = crate::operations::stream(settings.output).map_err(status)?;
             let instance = authority.submit_charged::<O, _>(request, (receiving, sending)).map_err(status)?;
-            let output = super::exchange(instance, input, incoming, output).map(|result| result.map_err(input_status));
+            let output = super::exchange(instance, input, incoming, output)
+                .map(|result| result.map_err(|error| in_operation(input_status(error), O::ID)));
             Ok(Response::new(Box::pin(output) as Self::ResponseStream))
         })
     }
@@ -444,6 +445,20 @@ pub(super) fn status(error: Error) -> Status {
     status.set_source(Arc::new(error));
     status
 }
+pub(super) fn in_operation(status: Status, operation: &str) -> Status {
+    if status.code() != tonic::Code::DeadlineExceeded {
+        return status;
+    }
+    let mut named = Status::with_details_and_metadata(
+        status.code(),
+        format!("operation {operation}: {}", status.message()),
+        bytes::Bytes::copy_from_slice(status.details()),
+        status.metadata().clone(),
+    );
+    named.set_source(Arc::new(status));
+    named
+}
+
 fn input_status(error: InputError) -> Status {
     let explicit = match &error {
         InputError::Operation(error) => explicit_status(error),

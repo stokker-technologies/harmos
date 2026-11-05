@@ -111,6 +111,10 @@ impl<D: OperationDeclaration> Bound<D> {
 }
 
 impl<D: OperationDeclaration> Body<super::Response<Payload<D>>> for Bound<D> {
+    fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
+        self.physical.instance.progress()
+    }
+
     fn transferred(&self) -> bool {
         self.physical.instance.transferred()
     }

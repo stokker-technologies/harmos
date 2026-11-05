@@ -52,6 +52,7 @@ struct Endpoint {
 }
 
 struct Pending {
+    operation: String,
     invocation: EncodedInvocation,
     streams: Option<WireStreams>,
     forward: Option<Forward>,
@@ -134,7 +135,7 @@ impl Pending {
                 biased;
                 result = &mut self.invocation, if !self.settled => {
                     self.settled = true;
-                    self.response = Some(result.map_err(server::status)?);
+                    self.response = Some(result.map_err(|error| server::in_operation(server::status(error), &self.operation))?);
                 }
                 result = async { self.forward.as_mut().expect("enabled input").await }, if self.forward.is_some() => {
                     self.forward = None;
@@ -192,6 +193,7 @@ impl Endpoint {
             )
             .map_err(server::status)?;
         Ok(Pending {
+            operation: binding.contract().operation().id.to_string(),
             invocation,
             streams,
             output,

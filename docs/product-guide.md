@@ -819,7 +819,16 @@ root container; existing optional message fields retain their current shape.
 of the original operation request. Large payloads belong in streams. The low-level `Carrier` lifecycle is used for carrier proxies
 and lifecycle controls; services retain their separate `Service` lifecycle.
 
-`OperationPolicy` controls overall timeout, attempt timeout and request retries.
+`OperationPolicy::timeout` bounds total duration for operations without streams.
+For an operation with an input or output stream, it bounds idle time instead:
+each transferred item rearms the deadline, so a continuously progressing transfer
+can outlive `timeout`. Silence before the first item and while waiting for the
+final response is also bounded. Streaming execution uses this idle budget rather
+than a total `attempt_timeout`; unary attempts retain their total attempt bound.
+A transport `grpc-timeout` caps only non-streaming operations. The listener bounds
+middleware and stream opening separately, then delegates stream lifetime to the
+operation. FOLLOW streams must emit heartbeats within their idle budget, even
+when no data changes. Request retry rules and all size limits are unchanged.
 Resident restart behavior belongs to `ServicePolicy { stop_timeout, restart }`
 using `RestartPolicy::OnFailure`. Register one typed service against the frozen
 resource context:

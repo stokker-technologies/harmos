@@ -191,7 +191,9 @@ impl<O: OperationDeclaration> tonic::server::StreamingService<StreamItem<Control
                 }
                 Ok(false)
             });
-            let events: Events<O> = Box::pin(super::stream(instance, items).map(|answer| answer.map_err(server::status)));
+            let events: Events<O> = Box::pin(
+                super::stream(instance, items).map(|answer| answer.map_err(|error| server::in_operation(server::status(error), O::ID))),
+            );
             let state = (events, Some(forward), control);
             let output = futures_util::stream::unfold(Some(state), |state| async move {
                 let (mut events, mut forward, control) = state?;

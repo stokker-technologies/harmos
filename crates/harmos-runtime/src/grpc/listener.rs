@@ -59,6 +59,7 @@ pub(super) struct Resources {
     settings: Settings,
     certificate: Option<(super::ServerCertificate, std::time::Duration)>,
     routes: tonic::service::Routes,
+    operations: Manager,
     middleware: Arc<[Arc<dyn Middleware>]>,
     stopping: watch::Sender<bool>,
     address: Mutex<Option<SocketAddr>>,
@@ -124,13 +125,14 @@ impl<T: AsyncRead + AsyncWrite + Send> Io for T {}
 
 impl Resources {
     pub(super) fn new(
-        settings: Settings, routes: tonic::service::Routes, middleware: Vec<Arc<dyn Middleware>>,
+        settings: Settings, routes: tonic::service::Routes, operations: Manager, middleware: Vec<Arc<dyn Middleware>>,
         certificate: Option<(super::ServerCertificate, std::time::Duration)>,
     ) -> Self {
         Self {
             settings,
             certificate,
             routes,
+            operations,
             middleware: middleware.into(),
             stopping: watch::channel(false).0,
             address: Mutex::new(None),
@@ -361,6 +363,7 @@ impl<A: Application> Resident<A> for Listener {
             .buffer_unordered(self.resources.settings.connections.get());
         let inbound = Inbound {
             routes: self.resources.routes.clone(),
+            operations: self.resources.operations.clone(),
             middleware: self.resources.middleware.clone(),
             timeout: self.resources.settings.request_timeout,
             stopping: self.resources.stopping.subscribe(),

@@ -145,6 +145,9 @@ pub trait NativeInstance: Send {
     fn stop(&mut self) -> ServiceFuture<'_, ()>;
     fn cleanup(&mut self) -> ServiceFuture<'_, ()>;
     fn transferred(&self) -> bool;
+
+    #[cfg(feature = "streaming")]
+    fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>>;
 }
 
 /* === Implementations === */
@@ -510,6 +513,11 @@ impl<O: Carrier> NativeInstance for NativeOperation<O> {
             self.operation = None;
             Ok(())
         })
+    }
+
+    #[cfg(feature = "streaming")]
+    fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
+        super::EndpointSet::progress(&self.endpoints)
     }
 
     fn transferred(&self) -> bool {

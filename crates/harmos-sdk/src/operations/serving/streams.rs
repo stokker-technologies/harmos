@@ -16,10 +16,7 @@
 // Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::Arc;
 use std::task::Poll;
 
 // Third Party Imports
@@ -59,8 +56,8 @@ pub struct WireStreams {
     output_codec: Option<super::protobuf::ItemCodec>,
 }
 
-struct Sending<T>(Mutex<Option<StreamOutput<T>>>, Arc<AtomicBool>);
-struct Receiving<T>(Mutex<StreamInput<T>>, Arc<AtomicBool>);
+struct Sending<T>(Mutex<Option<StreamOutput<T>>>, Arc<super::super::streaming::Progress>);
+struct Receiving<T>(Mutex<StreamInput<T>>, Arc<super::super::streaming::Progress>);
 #[derive(Clone, Copy)]
 struct State {
     epoch: u64,
@@ -359,7 +356,7 @@ impl<T: Message + MemorySize + Send + 'static> Input for Sending<T> {
         Ok(())
     }
     fn transferred(&self) -> bool {
-        self.1.load(Ordering::Acquire)
+        self.1.transferred()
     }
 }
 impl<T: Message + MemorySize + Send + 'static> Encoder for Receiving<T> {
@@ -413,7 +410,7 @@ impl<T: Message + MemorySize + Send + 'static> Encoder for Receiving<T> {
         })
     }
     fn transferred(&self) -> bool {
-        self.1.load(Ordering::Acquire)
+        self.1.transferred()
     }
 }
 

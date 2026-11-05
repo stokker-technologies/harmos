@@ -66,6 +66,7 @@ pub(super) struct Execution {
 struct Budget {
     submitted: tokio::time::Instant,
     timeout: Duration,
+    progress: Vec<watch::Receiver<Option<tokio::time::Instant>>>,
 }
 
 /* === Enums === */
@@ -79,6 +80,10 @@ enum Stage<O> {
 /* === Traits === */
 
 pub(super) trait Body<O>: Send {
+    fn progress(&self) -> Vec<watch::Receiver<Option<tokio::time::Instant>>> {
+        Vec::new()
+    }
+
     fn transferred(&self) -> bool {
         false
     }
@@ -107,7 +112,8 @@ pub(super) trait Body<O>: Send {
 
 impl Budget {
     fn remaining(&self) -> Duration {
-        self.timeout.saturating_sub(executor::now().saturating_duration_since(self.submitted))
+        let last = self.progress.iter().filter_map(|receiver| *receiver.borrow()).max().unwrap_or(self.submitted);
+        self.timeout.saturating_sub(executor::now().saturating_duration_since(last.max(self.submitted)))
     }
 }
 
@@ -144,6 +150,7 @@ pub(super) async fn execute<O: Send + 'static>(
     let budget = Budget {
         submitted,
         timeout: prepared.policy.timeout,
+        progress: prepared.body.progress(),
     };
     let mut middleware = prepared.middleware.take();
     let mut refusal = prepared.refusal.take();
@@ -281,6 +288,7 @@ async fn attempts<O: Send + 'static>(
         let core = ScopeCore::new(instances.clone(), admission.clone(), cause, Arc::downgrade(instance));
         let answer = cooperative(
             prepared.policy.attempt_timeout.min(remaining),
+            budget,
             prepared.policy.cancellation_timeout,
             core.cancellation(),
             Box::pin(
@@ -352,10 +360,32 @@ async fn bounded<O>(timeout: Duration, future: Attempt<'_, O>, cancelled: &mut w
 }
 
 async fn cooperative<O>(
-    timeout: Duration, grace: Duration, signal: &harmos_sdk::operations::Cancellation, future: Attempt<'_, O>,
+    timeout: Duration, budget: &Budget, grace: Duration, signal: &harmos_sdk::operations::Cancellation, future: Attempt<'_, O>,
     cancelled: &mut watch::Receiver<bool>,
 ) -> Stage<O> {
-    let running = executor::timeout(timeout, future);
+    let running = async {
+        if budget.progress.is_empty() {
+            return executor::timeout(timeout, future).await;
+        }
+        tokio::pin!(future);
+        loop {
+            let changed = futures_util::future::select_all(budget.progress.iter().map(|receiver| {
+                let mut receiver = receiver.clone();
+                let observed = *receiver.borrow_and_update();
+                Box::pin(async move {
+                    if receiver.wait_for(|moved| *moved != observed).await.is_err() {
+                        std::future::pending::<()>().await;
+                    }
+                })
+            }));
+            let remaining = budget.remaining();
+            tokio::select! {
+                biased;
+                _ = changed => {}
+                answer = executor::timeout(remaining, &mut future) => return answer,
+            }
+        }
+    };
     tokio::pin!(running);
     if let Some(answer) = interruptible(&mut running, cancelled).await {
         return match answer {
@@ -402,7 +432,12 @@ mod tests {
             started.notify_one();
             std::future::pending().await
         });
-        let running = cooperative(Duration::from_millis(10), Duration::from_secs(1), &signal, work, &mut cancelled);
+        let budget = Budget {
+            submitted: executor::now(),
+            timeout: Duration::from_millis(10),
+            progress: Vec::new(),
+        };
+        let running = cooperative(Duration::from_millis(10), &budget, Duration::from_secs(1), &signal, work, &mut cancelled);
         tokio::pin!(running);
         tokio::select! {
             _ = &mut running => panic!("attempt must remain pending"),

@@ -1001,7 +1001,9 @@ async fn observes_cancel_deadline() {
         assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(_)));
         assert!(trace.lock().unwrap().is_empty());
         if expired {
-            assert_eq!(stream.message().await.err().expect("stream deadline must fail").code(), tonic::Code::DeadlineExceeded);
+            let status = stream.message().await.err().expect("stream deadline must fail");
+            assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
+            assert!(status.message().contains("grpc.hold"), "{status}");
         }
         drop(stream);
         (stopped.acquire()).await.unwrap().forget();
@@ -1169,5 +1171,68 @@ async fn reload_certificate_preserves_stream() {
     assert!(stream.message().await.unwrap().is_none());
     drop(stream);
     attached.detach().await.unwrap();
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn native_stream_progress_outlives_listener_and_operation_totals() {
+    use harmos_runtime::grpc::OutputEnvelope;
+    #[harmos_runtime::operation(resources = [tokio::sync::Semaphore], id = "grpc.progress", response = u32, output = u32,
+        policy = WHO_POLICY, visibility = Public, grpc(package = "fixture", service = "Deadlines", method = "Progress"))]
+    struct Progress {}
+    impl harmos_runtime::Operation for Progress {
+        type Error = Error;
+        async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<u32>> {
+            ctx.streams().send_with(4, || Ok(0)).await?;
+            for value in 1..=4 {
+                ctx.resource::<tokio::sync::Semaphore>().acquire().await.unwrap().forget();
+                ctx.streams().send_with(4, || Ok(value)).await?;
+            }
+            Ok(4.into())
+        }
+    }
+    let next = Arc::new(tokio::sync::Semaphore::new(0));
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<tokio::sync::Semaphore>(next.clone()).operations::<crate::operations::Single<Progress>>(Lanes::Open);
+    })
+    .await
+    .unwrap();
+    let mut settings = settings();
+    settings.request_timeout = Duration::from_secs(1);
+    let attached = runtime.grpc().attach(settings).await.unwrap();
+    let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
+    let mut client = tonic::client::Grpc::new(channel);
+    client.ready().await.unwrap();
+    let (decode, encode) = limits();
+    let mut output = client
+        .server_streaming(
+            tonic::Request::new(harmos_runtime::operations::Response::new(Progress {})),
+            http::uri::PathAndQuery::from_static("/fixture.Deadlines/Progress"),
+            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<Progress>>::new(
+                decode, encode,
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(matches!(&*output.message().await.unwrap().unwrap(), OutputEnvelope::Item(0)));
+    tokio::time::pause();
+    // Keep Socket Delivery From Auto-Advancing The Paused Clock.
+    let awake = tokio::spawn(async {
+        loop {
+            tokio::task::yield_now().await;
+        }
+    });
+    for value in 1..=4 {
+        tokio::time::advance(Duration::from_millis(1500)).await;
+        next.add_permits(1);
+        assert!(matches!(&*output.message().await.unwrap().unwrap(), OutputEnvelope::Item(item) if *item == value));
+    }
+    assert!(matches!(&*output.message().await.unwrap().unwrap(), OutputEnvelope::Response(4)));
+    assert!(output.message().await.unwrap().is_none());
+    awake.abort();
+    let _ = awake.await;
+    tokio::time::resume();
     runtime.shutdown().await.unwrap();
 }

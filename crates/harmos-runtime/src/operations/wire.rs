@@ -439,6 +439,7 @@ pub(super) fn dispatch_prepared(
 ) -> Result<EncodedInvocation> {
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
+    let streaming = submission.entry.contract.as_ref().is_some_and(|contract| contract.input().is_some() || contract.output().is_some());
     let harmos_sdk::__private::PreparedNative { instance, grant, key, .. } = prepared;
     let instance = std::sync::Mutex::new(Some(instance));
     let binding = super::authored::factory_with::<Encoded, ()>(operations, move |_, ()| {
@@ -458,7 +459,9 @@ pub(super) fn dispatch_prepared(
     let outcome = Box::pin(async move {
         let response = invocation.await?;
         available(&target, &source)?;
-        budget(timeout, submitted)?;
+        if !streaming {
+            budget(timeout, submitted)?;
+        }
         Ok(response.try_unwrap().unwrap_or_else(|response| response.to_vec()))
     });
     Ok(EncodedInvocation { id, generation, outcome, control })
