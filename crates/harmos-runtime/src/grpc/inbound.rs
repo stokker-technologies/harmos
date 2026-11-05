@@ -52,6 +52,7 @@ type Shutdown = Pin<Box<dyn Future<Output = ()> + Send>>;
 #[derive(Clone)]
 pub(super) struct Inbound {
     pub(super) routes: tonic::service::Routes,
+    pub(super) operations: crate::operations::Manager,
     pub(super) middleware: Arc<[Arc<dyn Middleware>]>,
     pub(super) timeout: Duration,
     pub(super) stopping: watch::Receiver<bool>,
@@ -66,7 +67,7 @@ struct Observed {
     body: Body,
     session: Session,
     terminal: Option<Code>,
-    deadline: Pin<Box<tokio::time::Sleep>>,
+    deadline: Shutdown,
     stopping: Shutdown,
     ended: bool,
 }
@@ -92,6 +93,10 @@ impl Service<http::Request<Body>> for Inbound {
         let mut routes = self.routes.clone();
         let entries = self.middleware.clone();
         let timeout = self.timeout;
+        let streaming = self
+            .operations
+            .grpc_binding(request.uri().path())
+            .is_ok_and(|binding| binding.contract().input().is_some() || binding.contract().output().is_some());
         let stopping = self.stopping.clone();
         Box::pin(
             async move {
@@ -123,15 +128,22 @@ impl Service<http::Request<Body>> for Inbound {
                     return Ok(status.into_http());
                 }
                 let mut context = session.context();
-                context.insert(crate::operations::context::Deadline(deadline)).expect("transport owns the deadline type");
+                if !streaming {
+                    context.insert(crate::operations::context::Deadline(deadline)).expect("transport owns the deadline type");
+                } else {
+                    request.headers_mut().remove("grpc-timeout");
+                }
                 request.extensions_mut().insert(TrustedContext(context));
+                // Operation Execution Owns Stream Silence; Opening Has Its Own Bound.
+                let mut response_deadline: Shutdown =
+                    if streaming { Box::pin(std::future::pending()) } else { Box::pin(tokio::time::sleep_until(deadline)) };
                 let response = tokio::select! {
                     biased;
                     _ = shutdown(stopping.clone()) => {
                         session.observe(Code::Unavailable);
                         return Ok(Status::unavailable("gRPC listener is stopping").into_http());
                     }
-                    _ = tokio::time::sleep_until(deadline) => {
+                    _ = &mut response_deadline => {
                         session.observe(Code::DeadlineExceeded);
                         return Ok(Status::deadline_exceeded("RPC deadline elapsed").into_http());
                     }
@@ -150,7 +162,7 @@ impl Service<http::Request<Body>> for Inbound {
                         body,
                         session,
                         terminal,
-                        deadline: Box::pin(tokio::time::sleep_until(deadline)),
+                        deadline: response_deadline,
                         stopping: Box::pin(shutdown(stopping)),
                         ended: false,
                     })

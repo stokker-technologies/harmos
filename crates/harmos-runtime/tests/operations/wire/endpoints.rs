@@ -30,7 +30,7 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::{
-    Backoff, CacheKey, Jitter, OperationPolicy, RetryPolicy, StreamInput, StreamOutput, StreamSettings, stream,
+    Backoff, CacheKey, Jitter, OperationDeclaration, OperationPolicy, RetryPolicy, StreamInput, StreamOutput, StreamSettings, stream,
 };
 use harmos_runtime::{Error, Runtime};
 
@@ -635,4 +635,132 @@ async fn parent_cancellation<const CHARGED: bool>() {
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     bounded(runtime.shutdown()).await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn stream_progress_outlives_total_timeout() {
+    let trace = Arc::new(Trace::default());
+    let runtime = runtime_with_resource(trace).await;
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    let (input, receiving) = channel();
+    let (sending, output) = channel();
+    let instance =
+        runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
+    instance.ready().await.unwrap();
+    for value in 1..=4 {
+        tokio::time::advance(Duration::from_secs(2)).await;
+        input.send_with(4, || Ok(value)).await.unwrap();
+        assert_eq!(*output.recv().await.unwrap(), value + 1);
+    }
+    drop(input);
+    assert_eq!(*instance.await.unwrap(), 10);
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn stream_stall_expires_after_progress() {
+    let trace = Arc::new(Trace::default());
+    let runtime = runtime_with_resource(trace).await;
+    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    let (input, receiving) = channel();
+    let (sending, output) = channel();
+    let instance =
+        runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
+    input.send_with(4, || Ok(7)).await.unwrap();
+    assert_eq!(*output.recv().await.unwrap(), 8);
+    tokio::time::advance(Duration::from_secs(4)).await;
+    assert!(matches!(instance.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn unary_keeps_total_deadline() {
+    #[harmos_runtime::operation(id = "deadlines.unary", response = (), policy = OperationPolicy {
+        timeout: Duration::from_secs(3), attempt_timeout: Duration::from_secs(3),
+        cancellation_timeout: Duration::ZERO, retries: RetryPolicy::Never,
+    })]
+    struct Unary;
+    impl harmos_runtime::Operation for Unary {
+        type Error = Error;
+        async fn run(self, _: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<()>> {
+            tokio::time::sleep(Duration::from_secs(8)).await;
+            Ok(().into())
+        }
+    }
+    let runtime = runtime_with_resource(Arc::new(Trace::default())).await;
+    runtime.operations.register::<crate::operations::Single<Unary>>(Lanes::Open).await.unwrap();
+    let instance = runtime.operations.submit::<Unary>(Unary).unwrap();
+    instance.ready().await.unwrap();
+    tokio::time::advance(Duration::from_secs(4)).await;
+    assert!(matches!(instance.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn stream_final_response_wait_is_idle_bounded() {
+    #[harmos_runtime::operation(resources = [Notify], id = "deadlines.final", response = (), input = u32, policy = ForwardDeclaration::POLICY)]
+    struct Final;
+    impl harmos_runtime::Operation for Final {
+        type Error = Error;
+        async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<()>> {
+            while ctx.streams().recv().await.is_some() {}
+            ctx.resource::<Notify>().notify_one();
+            std::future::pending().await
+        }
+    }
+    let finished_input = Arc::new(Notify::new());
+    let runtime = runtime_with_resource(finished_input.clone()).await;
+    runtime.operations.register::<crate::operations::Single<Final>>(Lanes::Open).await.unwrap();
+    let (input, receiving) = channel();
+    let instance = runtime.operations.submit_endpoints::<Final, _>(Final, receiving).unwrap();
+    instance.ready().await.unwrap();
+    tokio::time::advance(Duration::from_secs(2)).await;
+    input.send_with(4, || Ok(1)).await.unwrap();
+    drop(input);
+    finished_input.notified().await;
+    tokio::time::advance(Duration::from_secs(2)).await;
+    assert!(instance.status().outcome().is_none());
+    tokio::time::advance(Duration::from_secs(2)).await;
+    assert!(matches!(instance.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
+    runtime.shutdown().await.unwrap();
+}
+
+#[cfg(feature = "grpc")]
+#[tokio::test(start_paused = true)]
+async fn grpc_stall_names_operation() {
+    use harmos_runtime::grpc::{DecodeSettings, EncodeSettings, InputEnvelope};
+    let runtime = runtime_with_resource(Arc::new(Gate::default())).await;
+    runtime.operations.register::<crate::operations::Single<SlowDeclaration>>(Lanes::Open).await.unwrap();
+    let capacity = NonZeroUsize::new(4096).unwrap();
+    let settings = harmos_runtime::grpc::server::Settings {
+        calls: NonZeroUsize::new(1).unwrap(),
+        decode: DecodeSettings {
+            message_bytes: capacity,
+            retained_bytes: capacity,
+        },
+        encode: EncodeSettings {
+            message_bytes: capacity,
+            buffer_bytes: capacity,
+        },
+        input: StreamSettings { items: capacity, bytes: capacity },
+        output: StreamSettings { items: capacity, bytes: capacity },
+        opening_timeout: Duration::from_secs(1),
+    };
+    let frames = futures_util::stream::iter([frame(&InputEnvelope::Request(SlowDeclaration {})), frame(&InputEnvelope::Item(1))])
+        .chain(futures_util::stream::pending());
+    use futures_util::StreamExt;
+    let request = tonic::codegen::http::Request::builder()
+        .header("content-type", "application/grpc")
+        .body(tonic::body::Body::new(request_body(frames)))
+        .unwrap();
+    let response = harmos_runtime::grpc::server::upload::<SlowDeclaration, harmos_runtime::grpc::Transcoded>(
+        harmos_runtime::grpc::server::Authority::trusted_host(&runtime.operations),
+        settings,
+        request,
+    )
+    .await;
+    let status = tonic::Status::from_header_map(response.headers()).expect("deadline status");
+    assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
+    assert!(status.message().contains(SlowDeclaration::ID), "{status}");
+    runtime.shutdown().await.unwrap();
 }

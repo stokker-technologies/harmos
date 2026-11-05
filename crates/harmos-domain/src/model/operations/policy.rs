@@ -30,7 +30,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OperationPolicy {
+    /// Maximum Silence Between Stream Items, Or Total Duration Without Streams.
     pub timeout: Duration,
+
+    /// Total Attempt Bound For Operations Without Streams.
     pub attempt_timeout: Duration,
 
     /// Grace After Cancellation; Zero Preserves Immediate Abort.

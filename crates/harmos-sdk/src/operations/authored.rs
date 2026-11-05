@@ -47,6 +47,10 @@ pub trait EndpointSet: Send + Sized + 'static {
     fn transferred(&self) -> bool {
         Self::item_types() != (None, None)
     }
+    #[cfg(feature = "streaming")]
+    fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
+        Vec::new()
+    }
 }
 
 pub trait InputEndpoint: Send + Sized + 'static {
@@ -59,6 +63,10 @@ pub trait InputEndpoint: Send + Sized + 'static {
     fn transferred(&self) -> bool {
         true
     }
+    #[cfg(feature = "streaming")]
+    fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
+        Vec::new()
+    }
 }
 pub trait OutputEndpoint: Send + Sized + 'static {
     #[cfg(feature = "streaming")]
@@ -69,6 +77,10 @@ pub trait OutputEndpoint: Send + Sized + 'static {
     type Item: Send + 'static;
     fn transferred(&self) -> bool {
         true
+    }
+    #[cfg(feature = "streaming")]
+    fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
+        Vec::new()
     }
 }
 
@@ -129,6 +141,13 @@ impl<I: InputEndpoint, O: OutputEndpoint> EndpointSet for (I, O) {
         let (input, incoming) = I::bind_wire(limits)?;
         let (output, outgoing) = O::bind_wire(limits)?;
         Ok(((input, output), incoming.combine(outgoing)))
+    }
+
+    #[cfg(feature = "streaming")]
+    fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
+        let mut progress = self.0.progress();
+        progress.extend(self.1.progress());
+        progress
     }
 
     fn transferred(&self) -> bool {

@@ -25,7 +25,7 @@ use std::{
 };
 
 // Third Party Imports
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
 
 // Local Imports
 use super::RequestClaims;
@@ -41,17 +41,22 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /* === Structs === */
 
+pub(crate) struct Progress {
+    transferred: AtomicBool,
+    moved: watch::Sender<Option<tokio::time::Instant>>,
+}
+
 pub struct StreamOutput<T, E = Error> {
     error: std::marker::PhantomData<fn() -> E>,
     sender: mpsc::Sender<StreamItem<T>>,
     budget: Arc<Semaphore>,
     limit: usize,
-    transferred: Arc<AtomicBool>,
+    transferred: Arc<Progress>,
 }
 
 pub struct StreamInput<T> {
     receiver: tokio::sync::Mutex<mpsc::Receiver<StreamItem<T>>>,
-    transferred: Arc<AtomicBool>,
+    transferred: Arc<Progress>,
 }
 
 pub struct StreamItem<T> {
@@ -98,13 +103,32 @@ pub enum Error {
 
 /* === Implementations === */
 
+impl Progress {
+    pub(crate) fn subscribe(&self) -> watch::Receiver<Option<tokio::time::Instant>> {
+        self.moved.subscribe()
+    }
+
+    pub(crate) fn transferred(&self) -> bool {
+        self.transferred.load(Ordering::Acquire)
+    }
+
+    fn record(&self) {
+        self.transferred.store(true, Ordering::Release);
+        self.moved.send_modify(|moved| *moved = Some(tokio::time::Instant::now()));
+    }
+}
+
 impl<T: Message + MemorySize + Send + 'static> super::EndpointSet for StreamInput<T> {
     fn bind_wire(limits: super::WireStreamLimits) -> Result<(Self, super::WireStreams), super::ServingError> {
         <Self as super::WireEndpoints>::bind(limits)
     }
 
     fn transferred(&self) -> bool {
-        self.transferred.load(Ordering::Acquire)
+        self.transferred.transferred()
+    }
+
+    fn progress(&self) -> Vec<watch::Receiver<Option<tokio::time::Instant>>> {
+        vec![self.transferred.subscribe()]
     }
     fn item_types() -> (Option<std::any::TypeId>, Option<std::any::TypeId>) {
         (Some(std::any::TypeId::of::<T>()), None)
@@ -116,7 +140,11 @@ impl<T: Message + MemorySize + Send + 'static, E: 'static> super::EndpointSet fo
     }
 
     fn transferred(&self) -> bool {
-        self.transferred.load(Ordering::Acquire)
+        self.transferred.transferred()
+    }
+
+    fn progress(&self) -> Vec<watch::Receiver<Option<tokio::time::Instant>>> {
+        vec![self.transferred.subscribe()]
     }
     fn item_types() -> (Option<std::any::TypeId>, Option<std::any::TypeId>) {
         (None, Some(std::any::TypeId::of::<T>()))
@@ -128,7 +156,11 @@ impl<T: Message + MemorySize + Send + 'static> super::InputEndpoint for StreamIn
     }
 
     fn transferred(&self) -> bool {
-        self.transferred.load(Ordering::Acquire)
+        self.transferred.transferred()
+    }
+
+    fn progress(&self) -> Vec<watch::Receiver<Option<tokio::time::Instant>>> {
+        vec![self.transferred.subscribe()]
     }
     type Item = T;
 }
@@ -138,7 +170,11 @@ impl<T: Message + MemorySize + Send + 'static, E: 'static> super::OutputEndpoint
     }
 
     fn transferred(&self) -> bool {
-        self.transferred.load(Ordering::Acquire)
+        self.transferred.transferred()
+    }
+
+    fn progress(&self) -> Vec<watch::Receiver<Option<tokio::time::Instant>>> {
+        vec![self.transferred.subscribe()]
     }
     type Item = T;
 }
@@ -240,12 +276,16 @@ impl<T> StreamInput<T> {
     }
 
     pub fn try_recv(&mut self) -> std::result::Result<StreamItem<T>, mpsc::error::TryRecvError> {
-        self.receiver.get_mut().try_recv()
+        let item = self.receiver.get_mut().try_recv()?;
+        self.transferred.record();
+        Ok(item)
     }
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.recv", level = "trace", skip_all)]
     pub async fn recv(&self) -> Option<StreamItem<T>> {
-        self.receiver.lock().await.recv().await
+        let item = self.receiver.lock().await.recv().await?;
+        self.transferred.record();
+        Some(item)
     }
 
     pub fn close(&mut self) {
@@ -254,7 +294,7 @@ impl<T> StreamInput<T> {
 }
 
 impl<T, E> StreamOutput<T, E> {
-    pub(crate) fn transfer_flag(&self) -> Arc<AtomicBool> {
+    pub(crate) fn transfer_flag(&self) -> Arc<Progress> {
         self.transferred.clone()
     }
 
@@ -323,7 +363,7 @@ impl<T: MemorySize, E: From<Error>> StreamOutput<T, E> {
             // Only This Stream's Charge Follows The Item; The Producer's Charge Ends At Hand-Off.
             let delivery = item.delivery.take().filter(|_| !original);
             item._bytes = delivery.unwrap_or(item._bytes);
-            self.transferred.store(true, Ordering::Release);
+            self.transferred.record();
             slot.send(item);
             return Ok(());
         }
@@ -339,7 +379,7 @@ impl<T: MemorySize, E: From<Error>> StreamOutput<T, E> {
         // Ownership Moves To The Consumer: Release The Producer's Charge Once This Stream Holds Its Own.
         item._bytes = permit.claim;
         item.delivery = None;
-        self.transferred.store(true, Ordering::Release);
+        self.transferred.record();
         permit.slot.send(item);
         Ok(())
     }
@@ -357,7 +397,7 @@ impl<T: MemorySize, E: From<Error>> StreamPermit<'_, T, E> {
         }
         let value = make()?;
         let item = StreamItem::charged(value, self.claim)?;
-        self.output.transferred.store(true, Ordering::Release);
+        self.output.transferred.record();
         self.slot.send(item);
         Ok(())
     }
@@ -377,7 +417,7 @@ impl<T: MemorySize + Send + Sync + 'static, E: From<Error>> StreamPermit<'_, T, 
             return Err(closed().into());
         }
         let item = StreamItem::charged_owned(value, self.claim)?;
-        self.output.transferred.store(true, Ordering::Release);
+        self.output.transferred.record();
         self.slot.send(item);
         Ok(())
     }
@@ -411,7 +451,10 @@ pub fn channel<T, E: From<Error>>(settings: StreamSettings) -> Result<(StreamOut
     let bytes = settings.bytes.get();
     validate(&settings)?;
     let (sender, receiver) = mpsc::channel(settings.items.get());
-    let transferred = Arc::new(AtomicBool::new(false));
+    let transferred = Arc::new(Progress {
+        transferred: AtomicBool::new(false),
+        moved: watch::channel(None).0,
+    });
     Ok((
         StreamOutput {
             error: std::marker::PhantomData,

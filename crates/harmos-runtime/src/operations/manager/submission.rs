@@ -218,7 +218,11 @@ impl Manager {
         )?;
         job.policy = policy;
         #[cfg(feature = "grpc")]
-        if let Some(deadline) = self.call_context().get::<crate::operations::context::Deadline>() {
+        if !<O::Input as crate::operations::Direction>::STREAMED
+            && !<O::Output as crate::operations::Direction>::STREAMED
+            && !entry.contract.as_ref().is_some_and(|contract| contract.input().is_some() || contract.output().is_some())
+            && let Some(deadline) = self.call_context().get::<crate::operations::context::Deadline>()
+        {
             job.policy.timeout = job.policy.timeout.min(deadline.0.saturating_duration_since(submitted));
         }
         if !middleware.is_empty() {
