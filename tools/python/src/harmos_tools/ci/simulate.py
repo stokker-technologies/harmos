@@ -679,6 +679,7 @@ def _run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: st
             and not name.startswith(("COMPILER_CACHE_", "SCCACHE_", "GITHUB_", "CI_", "CARGO_PROFILE_"))
         }
         environment.update(
+            CI="true",
             PROFILE=graph_profile,
             RELEASE_PROFILE=graph_profile,
             CARGO_INCREMENTAL="0",
