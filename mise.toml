@@ -36,6 +36,10 @@ git-cliff = "2.14.2"
 # === Environment === #
 
 [env]
+RUSTC_WRAPPER = "{{ get_env(name='RUSTC_WRAPPER', default='') if get_env(name='CI', default='') else get_env(name='RUSTC_WRAPPER', default='sccache') }}"
+SCCACHE_DIR = "{{ get_env(name='SCCACHE_DIR', default='') if get_env(name='CI', default='') else (get_env(name='LOCALAPPDATA', default=env.HOME ~ '/AppData/Local') if os() == 'windows' else get_env(name='XDG_CACHE_HOME', default=env.HOME ~ '/.cache')) ~ '/sccache' }}"
+SCCACHE_CACHE_SIZE = "{{ get_env(name='SCCACHE_CACHE_SIZE', default='') if get_env(name='CI', default='') else '20G' }}"
+CARGO_INCREMENTAL = "{{ get_env(name='CARGO_INCREMENTAL', default='') if get_env(name='CI', default='') else '0' }}"
 
 # === Variables === #
 
@@ -151,7 +155,9 @@ run = [{ task = "format:rust --check" }, { task = "lint:rust" }, "cargo-machete 
 description = "Build Packageable Products"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
-run = ["uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build --profile {{usage.profile}}"]
+run = [
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build --profile {{usage.profile}}",
+]
 
 [tasks."build:rust:bench"]
 description = "Build Benchmark Executables"
@@ -245,7 +251,7 @@ usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category acceptance --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} -- -E \"!test(/^authoring::/)\"",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} -- -E \"!test(/^authoring::/)\"",
 ]
 
 [tasks."test:rust:coverage"]
@@ -266,7 +272,7 @@ flag "--filter <filter>"
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category acceptance --starter --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} -- -E \"test(/^authoring::/)\"{% if usage.filter %} -E \"{{usage.filter}}\"{% endif %}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} -- -E \"test(/^authoring::/)\"{% if usage.filter %} -E \"{{usage.filter}}\"{% endif %}",
 ]
 
 [tasks."test:rust:system"]

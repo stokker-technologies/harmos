@@ -152,7 +152,7 @@ assert machine.INHERITED not in os.environ
 """
         with tempfile.TemporaryDirectory() as cache:
             result = subprocess.run(
-                [sys.executable, "-m", "harmos_tools.build.machine", "--", sys.executable, "-c", program, cache],
+                [sys.executable, "-c", program, cache],
                 cwd=ROOT,
                 env=dict(os.environ, LOCALAPPDATA=str(Path(cache) / "wrapper"), XDG_CACHE_HOME=str(Path(cache) / "wrapper")),
                 check=True,
