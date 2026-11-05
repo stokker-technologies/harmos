@@ -98,6 +98,25 @@ For a focused Rust compiler check or selected test, use `mise run build:rust:foc
 with the Cargo operation and selection arguments. This task applies the standard
 compiler-output preflight; it does not replace the final validation graph.
 
+Local compile and test invocations use the project-owned workstation wrapper:
+
+```sh
+mise exec -- uv run --locked --project tools/python python -m harmos_tools.build.machine -- mise run test:tooling
+```
+
+It holds the shared OS-cache `native-build.lock` until the task and its children
+finish, reuses the lock for nested tasks, and recovers abandoned holder metadata.
+Local builds share the OS-cache `sccache` directory with a 20 GiB default cap;
+`SCCACHE_DIR` and `SCCACHE_CACHE_SIZE` can select an existing machine cache and cap.
+Each worktree retains its own Cargo target. CI keeps its declared caches and job graph.
+
+To reproduce one generated compiler story from the existing test archive, narrow
+the Starter task through the same wrapper:
+
+```sh
+mise exec -- uv run --locked --project tools/python python -m harmos_tools.build.machine -- mise run test:rust:starter --profile release --filter 'test(=authoring::sidecar_starter_works)'
+```
+
 `mise run test:tooling` tests impact selection, release evidence and atomic
 channel publication without compiling products or contacting publication APIs.
 It also runs as part of `check:python`.
