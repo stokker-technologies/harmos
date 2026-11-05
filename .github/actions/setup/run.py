@@ -64,7 +64,7 @@ def roots(environment, workspace, home):
         "MISE_CARGO_HOME": str(cargo),
         "MISE_ROOT_ID": hashlib.sha256(str(data.resolve()).encode()).hexdigest(),
         "WORKSPACE_ROOT_ID": hashlib.sha256(str(workspace.resolve()).encode()).hexdigest(),
-        "RUNNER_IMAGE_ID": environment.get("ImageOS", os.name) + "-" + environment.get("ImageVersion", "self"),
+        "CI_RUNNER_IMAGE_ID": environment.get("ImageOS", os.name) + "-" + environment.get("ImageVersion", "self"),
     }
 
 
@@ -264,7 +264,7 @@ def main():
                 for name, cache in json.loads(os.environ.get("CACHE_PLAN", "{}")).items():
                     for field in ("path", "key", "restore-keys"):
                         value = cache.get(field, "")
-                        for variable in ("MISE_DATA_DIR", "MISE_ROOT_ID", "WORKSPACE_ROOT_ID", "RUNNER_IMAGE_ID"):
+                        for variable in ("MISE_DATA_DIR", "MISE_ROOT_ID", "WORKSPACE_ROOT_ID", "CI_RUNNER_IMAGE_ID"):
                             value = value.replace("<" + variable + ">", os.environ[variable])
                         if field == "path" and not value.strip():
                             raise ValueError(f"cache path is empty: {name}")
