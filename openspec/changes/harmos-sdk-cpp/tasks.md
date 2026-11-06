@@ -6,6 +6,7 @@
 - [ ] 1.2 Implement registration, metadata, lifecycle, operations, observers and streams.
 - [ ] 1.3 Add a sample sidecar and documentation.
 - [ ] 1.4 Add the toolchain to CI on Linux and Windows, and the release path.
+- [ ] 1.5 Verify vcpkg gRPC on Linux and Windows and mise's CMake and Ninja, then publish the source archive and hash on releases.
 
 ## 2. Final Validation
 
