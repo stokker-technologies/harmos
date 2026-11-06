@@ -19,7 +19,6 @@ import json
 import os
 import runpy
 import subprocess
-import sys
 import tempfile
 import tomllib
 import unittest
