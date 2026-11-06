@@ -253,6 +253,11 @@ impl ObserverActivation {
         }
     }
 
+    #[cfg(feature = "plugin-sidecar")]
+    pub(crate) fn is_stopping(&self) -> bool {
+        *self.stopping.borrow()
+    }
+
     // Keep a failed physical cleanup owned by this activation for a later retry.
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn retain<R: supervision::cleanup::Resource>(&self, resource: R, failure: Arc<Error>) {

@@ -69,6 +69,11 @@ impl Children {
     pub(crate) async fn call(
         &self, call: WireChildCall, submitted: tokio::time::Instant, mut cancelled: oneshot::Receiver<()>,
     ) -> Result<Vec<u8>, Refusal> {
+        let operation = call.operation.clone();
+        let refusal = |error| {
+            let refused = refused(error);
+            Refusal::failed(refused.code(), refused.into_failure().in_operation(operation.clone()))
+        };
         let (answer, answered) = oneshot::channel();
         let request = ChildRequest {
             operation: call.operation,
@@ -87,9 +92,9 @@ impl Children {
             biased;
             _ = &mut cancelled => {
                 let error: Error = Error::OperationRefused(crate::Refusal::Cancelled);
-                return Err(refused(error));
+                return Err(refusal(error));
             }
-            admitted = admission => admitted.map_err(refused)?,
+            admitted = admission => admitted.map_err(refusal)?,
         };
         let invocation = Child { invocation: Some(invocation) };
         if call.submit {
@@ -97,7 +102,9 @@ impl Children {
             self.submitted.lock().expect("submitted child lock is healthy").insert(id.value(), invocation);
             return Ok(id.value().encode());
         }
-        drained(invocation, cancelled).await
+        drained(invocation, cancelled)
+            .await
+            .map_err(|refused| Refusal::failed(refused.code(), refused.into_failure().in_operation(operation)))
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.control", level = "trace", skip_all)]

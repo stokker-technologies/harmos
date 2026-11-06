@@ -124,6 +124,7 @@ where
                                                 .map_or_else(|error| Absorbed::Malformed(error.to_string()), |()| Absorbed::Carried);
                                         }
                                     };
+                                    let operation = call.operation.clone();
                                     match if call.generation_context.as_ref().is_some_and(|token| {
                                         self.plugin.as_ref().is_some_and(|scope| scope.accepts_generation_context(token))
                                     }) {
@@ -145,12 +146,20 @@ where
                                         })
                                     } {
                                         Ok(invocation) => Box::pin(async move {
-                                            crate::operations::children::lifecycle(invocation, cancelled)
-                                                .await
-                                                .map_err(crate::operations::children::refused)
+                                            crate::operations::children::lifecycle(invocation, cancelled).await.map_err(|error| {
+                                                let refusal = crate::operations::children::refused(error);
+                                                harmos_domain::Refusal::failed(
+                                                    refusal.code(),
+                                                    refusal.into_failure().in_operation(operation),
+                                                )
+                                            })
                                         }),
                                         Err(error) => {
                                             let refusal = crate::operations::children::refused(error);
+                                            let refusal = harmos_domain::Refusal::failed(
+                                                refusal.code(),
+                                                refusal.into_failure().in_operation(operation),
+                                            );
                                             return self
                                                 .send(Frame::Refusal { id, refusal })
                                                 .await

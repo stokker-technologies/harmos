@@ -388,7 +388,7 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
         self.resolve()?;
         let candidate = PluginDefinitions {
             graph: self.graph.clone(),
-            rebuilt: BTreeSet::new(),
+            rebuilt: self.failed.intersection(selected).cloned().collect(),
         };
         let mut plan = self.plan_reload(candidate)?;
         plan.impact.select(selected);
@@ -605,7 +605,8 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
         let mut changed = candidate.rebuilt.clone();
         for definition in self.graph.ordered().iter().chain(candidate.graph.ordered()) {
             if !current.same_contract(&definition.id, &candidate.graph)
-                || !self.instances.get(&definition.id).is_some_and(|instance| instance.ready())
+                || (!self.instances.get(&definition.id).is_some_and(|instance| instance.ready())
+                    && !self.instances.get(&definition.id).is_some_and(|instance| instance.cleanup.is_some()))
             {
                 changed.insert(definition.id.clone());
             }
@@ -624,7 +625,7 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
         self.resolve()?;
         let candidate = PluginDefinitions {
             graph: self.graph.clone(),
-            rebuilt: BTreeSet::new(),
+            rebuilt: self.failed.clone(),
         };
         let plan = self.plan_reload(candidate)?;
         self.transition(plan, FailureScope::Instance, lifecycle).await
