@@ -115,17 +115,7 @@ def _configured(command: Sequence[str] | str, shell: str | None, *, statistics: 
     with tempfile.TemporaryDirectory(prefix="project-sccache-") as temporary:
         # Ignore Persistent Runner Configuration And Use Only The Declared Store.
         configuration = Path(temporary) / "config"
-        contents = ""
-        if not os.environ.get("CI"):
-            root = Path(__file__).resolve().parents[5]
-            workspace = root.parent.parent if root.parent.name.endswith(".wt") else root.parent
-            checkouts = {root}
-            checkouts.update(path for path in workspace.iterdir() if (path / ".git").exists())
-            checkouts.update(
-                path for group in workspace.glob("*.wt") if group.is_dir() for path in group.iterdir() if (path / ".git").is_file()
-            )
-            contents = "basedirs = " + json.dumps(sorted(path.as_posix() for path in checkouts)) + "\n"
-        configuration.write_text(contents, encoding="utf-8")
+        configuration.write_text("", encoding="utf-8")
         environment.update(
             SCCACHE_CONF=str(configuration),
             SCCACHE_CACHED_CONF=str(Path(temporary) / "cached-config"),
