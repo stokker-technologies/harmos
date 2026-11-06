@@ -90,6 +90,26 @@ pub struct Stage {
     pub id: String,
 }
 
+#[guest::message(harmos_path = guest)]
+pub struct RetryChoice {
+    pub retries: u32,
+    pub delay_millis: u64,
+}
+impl guest::operations::ContextValue for RetryChoice {
+    const KEY: &'static str = "fixture.retry_choice";
+}
+impl RetryChoice {
+    pub fn policy(&self) -> RetryPolicy {
+        RetryPolicy::OnTransient {
+            max_retries: usize::try_from(self.retries).expect("retry count fits this target"),
+            backoff: Backoff::Fixed {
+                delay: Duration::from_millis(self.delay_millis),
+                jitter: Jitter::None,
+            },
+        }
+    }
+}
+
 /* === Enums === */
 
 #[cfg_attr(not(target_arch = "wasm32"), harmos_domain::catalog(harmos_path = ::harmos_domain))]

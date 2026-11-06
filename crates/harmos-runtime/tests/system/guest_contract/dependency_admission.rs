@@ -50,14 +50,23 @@ async fn dependencies_share_admission() {
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone()).await;
     let mut manager = harmos_runtime::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "dependencies").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    assert_eq!(runtime.operations.call::<EchoOperation>(EchoOperation { say: "dependency:normal".into() }).await.unwrap().said, "normal");
+    assert_eq!(
+        runtime.operations.operation::<EchoOperation>(EchoOperation { say: "dependency:normal".into() }).await.unwrap().said,
+        "normal"
+    );
     for (say, message) in [("refuse", "provider refusal"), ("timeout", "deadline elapsed")] {
-        let error = runtime.operations.call::<EchoOperation>(EchoOperation { say: format!("dependency:{say}") }).await.unwrap_err();
+        let error = runtime.operations.operation::<EchoOperation>(EchoOperation { say: format!("dependency:{say}") }).await.unwrap_err();
         assert!(
             matches!(component_error(&error), harmos_runtime::operations::ComponentError::Remote(failure) if failure.code() == harmos_runtime::operations::FailureKind::Permanent && failure.cause().contains(message)),
             "{error:?}"
         );
     }
+    let before = provider.observed.lock().unwrap().len();
+    let configured = runtime.operations.with_value(super::super::sandbox::RetryChoice { retries: 1, delay_millis: 1 }).unwrap();
+    let refused = configured.operation::<EchoOperation>(EchoOperation { say: "dependency:retry".into() }).await.unwrap_err();
+    assert!(matches!(component_error(&refused), harmos_runtime::operations::ComponentError::Remote(failure)
+        if failure.code() == harmos_runtime::operations::FailureKind::Permanent));
+    assert_eq!(provider.observed.lock().unwrap().len(), before);
     manager.shutdown(&mut lifecycle).await.unwrap();
     assert_eq!(*provider.observed.lock().unwrap(), ["initialize", "normal"]);
 
@@ -79,7 +88,7 @@ async fn cancelled_dependency_admission() {
     invocation.request_cancel();
     assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     provider.cancelled.notified().await;
-    let after = runtime.operations.call::<EchoOperation>(EchoOperation { say: "after cancellation".into() }).await.unwrap_err();
+    let after = runtime.operations.operation::<EchoOperation>(EchoOperation { say: "after cancellation".into() }).await.unwrap_err();
     assert!(matches!(component_error(&after), harmos_runtime::operations::ComponentError::Unavailable));
     retire_failed_guest(&mut manager, &mut lifecycle).await;
 
@@ -127,12 +136,12 @@ async fn shutdown_fences_callers() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let stale = runtime.operations.caller(&manager.caller("client").unwrap()).unwrap();
     assert_eq!(
-        runtime.operations.call::<ForwardDeclaration>(ForwardDeclaration { say: "dependency:roundtrip".into() }).await.unwrap().said,
+        runtime.operations.operation::<ForwardDeclaration>(ForwardDeclaration { say: "dependency:roundtrip".into() }).await.unwrap().said,
         "roundtrip"
     );
     manager.shutdown(&mut lifecycle).await.unwrap();
     assert_eq!(*provider.observed.lock().unwrap(), ["initialize", "roundtrip"]);
-    assert!(stale.call::<EchoOperation>(EchoOperation { say: "closed".into() }).await.is_err());
+    assert!(stale.operation::<EchoOperation>(EchoOperation { say: "closed".into() }).await.is_err());
     manager.shutdown(&mut lifecycle).await.unwrap();
     assert!(!provider.observed.lock().unwrap().iter().any(|say| say == "cleanup"));
 

@@ -481,7 +481,7 @@ sorting and reductions, retaining their query slot through output. Cancellation
 stops detached reduction work and releases temporary files.
 
 Native callers can attach their own allocation owner with
-`operations::RequestClaims::retain(owner)` and submit using `Host::call_owned` or
+`operations::RequestClaims::retain(owner)` and submit using `OperationHost::call_owned` or
 `submit_owned`. Accepted work retains that owner after caller cancellation.
 Guest and sidecar bindings refuse process-local claims.
 
@@ -601,7 +601,7 @@ const POLICY: harmos::OperationPolicy = crate::POLICY;
 pub struct Reading { pub value: f64 }
 
 #[harmos::operation(id = "temperature.read", response = Reading, policy = POLICY,
-    visibility = Public, resources = [Device])]
+    visibility = Public, resources = [Device], replay = harmos::operations::ReplaySafety::Idempotent)]
 pub struct Read { pub channel: u32 }
 
 /* === Enums === */
@@ -697,6 +697,8 @@ pub enum Operations {
     Desktop(desktop::Inspect),
 }
 
+use harmos::operations::InvocationExt;
+
 impl harmos::Lifecycle for Product {
     type Config = ProductSettings;
     type Error = DeviceError;
@@ -718,8 +720,9 @@ impl harmos::Lifecycle for Product {
     async fn cleanup(&mut self) -> Result<(), Self::Error> { self.device.close().await }
 }
 
+let retry = settings.retry;
 let runtime = harmos::Runtime::<Product>::launch(origin, settings).await?;
-let reading = runtime.operation(Read { channel: 3 }).retry(retry).lane(Lane::Interactive).run().await?;
+let reading = runtime.operation(Read { channel: 3 }).retry(retry).lane(Lane::Interactive).await?;
 runtime.shutdown().await?;
 ```
 
@@ -751,7 +754,17 @@ plugin requirements. Explicit grants still belong to the plugin. There are three
 
 `input = Item` and `output = Item` derive `StreamEndpoints`: `()` for unary calls, `StreamInput<Item>`, `StreamOutput<Item>`,
 or their pair. Borrow endpoints with `ctx.streams() -> &Self::StreamEndpoints`; input receives serialize through an asynchronous mutex.
-Invocation builders accept `.endpoints(...)` and remain inert until `.start()` or `.run()`.
+Every authoring surface returns the SDK `Invocation<H: OperationHost, O, E = ()>` from `ctx.operation(request)`.
+Await it to receive `Response<T>`, which dereferences to the value; `into_owned()` moves the payload out, cloning only when shared.
+`.start().await?` returns an owned instance, and `.endpoints(...)` supplies its declared endpoints. Builders are inert until awaited or started.
+Runtime `.lane(...)` is supplied by `operations::InvocationExt`; templates have no lane option. Use `operations.submit_at` for dynamic registrations.
+
+The operation macro owns the default policy. An option overrides only that call; a later call without options uses the declaration unchanged.
+Pass `.retry(settings.retry)` from settings, parameters or configuration. Retry overrides never change operation or attempt deadlines.
+Enabling call-site retry requires declared `Idempotent` or `Deduplicated` replay safety; unknown safety is refused before execution.
+Declaration defaults retain their existing semantics: transient failures may retry with unknown safety, while ambiguous failures require replay safety.
+Sidecar and guest child envelopes carry the optional retry policy to host admission. The host execution loop owns every attempt;
+`operations::middleware::Middleware::attempt` observes each completed attempt with its number and outcome for durable application evidence.
 
 Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
 Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.
@@ -1078,9 +1091,10 @@ The existing convenience methods retain Harmos defaults. Memory and work
 refusals report attempted usage and the allowed amount; bundle errors also name
 the package and executable. Aggregate provides/requires fragments are unsupported.
 
-Protocol, artifact, envelope, journal and schema formats are v1. Only current
-shapes are supported; there are no old-peer checks, historical shape converters,
-legacy decoders or journal upgrades.
+Operation envelopes are v2 and carry optional call-site retry policy. Protocol,
+artifact, journal and schema formats remain v1. Only current shapes are supported;
+incompatible envelope versions are refused, with no historical converters or
+journal upgrades. Rebuild sidecars and guests against the same SDK.
 
 ## Transaction Reversibility
 

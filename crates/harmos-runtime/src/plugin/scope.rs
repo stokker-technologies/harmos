@@ -835,7 +835,7 @@ mod tests {
         let invocation = scope.operation::<Read, Lanes>(Read);
         scope.register_batch(batch.clone().lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
         assert_eq!(initialized.load(Ordering::SeqCst), 0);
-        assert_eq!(*invocation.run().await.unwrap(), 7);
+        assert_eq!(*invocation.await.unwrap(), 7);
         assert_eq!(initialized.load(Ordering::SeqCst), 1);
         assert!(scope.unregister(&crate::QualifiedId::parse("host.read").unwrap()).await.is_err());
 

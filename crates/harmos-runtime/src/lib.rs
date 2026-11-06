@@ -109,10 +109,10 @@ pub use harmos_domain::{
     Backoff, Digest, Fingerprint, Jitter, OperationDeclaration, OperationDefinition, OperationPolicy, Portable, QualifiedId, RestartPolicy,
     RetryPolicy, ServicePolicy,
 };
-pub use harmos_sdk::operations::{EndpointSet, Response};
+pub use harmos_sdk::operations::{EndpointSet, OperationHost, Response};
 pub use harmos_sdk::{Context, Dependent, Executable, ExecutionContext, Lifecycle, Operation, Resource, ResourceError, Service, Setup};
 pub use operations::refusal::Refusal;
-pub use operations::{Catalog, Invocation, Lane, Running};
+pub use operations::{Catalog, Invocation, InvocationExt, Lane, Running};
 pub use runtime::{Handle, Runtime, StartupError};
 pub use services::{ServiceContext, ServiceManager};
 

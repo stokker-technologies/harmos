@@ -364,7 +364,7 @@ impl Component {
                 }
                 Some(request) = incoming.recv() => {
                     if request.answer.is_closed() { continue; }
-                    let child = context.submit_encoded_at(&request.operation, request.fingerprint, request.generation, request.payload, request.submitted, request.values);
+                    let child = context.submit_encoded_at(&request.operation, (request.fingerprint, request.generation), request.payload, request.submitted, request.values, request.retry);
                     // A Cancelled Admission Reply Still Cancels Its Admitted Child
                     if let Err(Ok(child)) = request.answer.send(child) { child.request_cancel(); }
                 }
@@ -542,13 +542,9 @@ fn sdk_dispatch(
 ) -> crate::Result<super::EncodedInvocation> {
     submission.preparation = input.preparation;
     let (scope, ancestors) = parent.map_or((None, &[][..]), |parent| (Some(parent.scope), parent.ancestors));
-    let invocation = operations.admit_entry::<super::sdk::Encoded, ()>(
-        (super::sdk::Encoded(input.payload).into(), ()),
-        scope,
-        ancestors,
-        &source,
-        submission,
-    )?;
+    let mut request = super::binding::Request::from(super::sdk::Encoded(input.payload));
+    request.retry = input.retry;
+    let invocation = operations.admit_entry::<super::sdk::Encoded, ()>((request, ()), scope, ancestors, &source, submission)?;
     let id = invocation.id();
     let generation = invocation.generation();
     let control = Arc::clone(&invocation.control);

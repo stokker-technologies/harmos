@@ -35,8 +35,8 @@ pub mod __private {
 pub use harmos_domain::*;
 pub use lifecycle::Lifecycle;
 pub use operations::{
-    Catalog, Context, Dependent, EndpointSet, Executable, ExecutionContext, InputEndpoint, Instance, Operation, OperationCatalog,
-    OutputEndpoint, Resource, ResourceError, Response, ServingError, StartupError,
+    Catalog, Context, Dependent, EndpointSet, Executable, ExecutionContext, InputEndpoint, Instance, Invocation, Operation,
+    OperationCatalog, OperationHost, OutputEndpoint, Resource, ResourceError, Response, ServingError, StartupError,
 };
 pub use plugin::Plugin;
 pub use services::Service;

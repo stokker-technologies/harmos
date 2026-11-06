@@ -127,10 +127,11 @@ async fn runtime_selected_ids() {
     assert_ne!(definition.fingerprint, ReadContractDeclaration::definition().fingerprint);
     assert!(runtime.operations.definitions().contains(&definition));
     assert!(matches!(
-        runtime.operation(OtherRead { nested: false }).id(&id).run().await,
+        runtime.operations.submit_at::<OtherRead>(&id, OtherRead { nested: false }),
         Err(harmos_runtime::Error::InvalidInput { field: "operation", .. })
     ));
-    let typed = runtime.handle().operation(ReadContractDeclaration { nested: false }).id(&id).run().await.unwrap();
+    let typed =
+        runtime.operations.submit_at::<ReadContractDeclaration>(&id, ReadContractDeclaration { nested: false }).unwrap().await.unwrap();
     assert_eq!((typed.device.as_str(), typed.seen), ("configured", 0));
     let qualified = format!("host.{id}");
     let bytes = runtime.operations.call_encoded(&qualified, ReadContractDeclaration { nested: false }.encode()).await.unwrap();

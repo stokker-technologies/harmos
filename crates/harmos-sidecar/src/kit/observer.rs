@@ -36,7 +36,7 @@ use futures_util::FutureExt;
 use tokio::time::{Instant, MissedTickBehavior, interval};
 // Local Imports
 use super::identity::{ActivationId, Identity};
-use super::{ObserverCaller, ObserverHost, ObserverPublisher, ObserverStreamPublisher, PublicationError, Supervisor};
+use super::{ObserverHost, ObserverPublisher, ObserverStreamPublisher, PublicationError, Supervisor};
 use harmos_domain::inventory::publications;
 
 /* === Constants === */
@@ -281,11 +281,12 @@ impl<H> ObserverContext<'_, H> {
         self.host.publish_on(self, row).await
     }
 
-    pub async fn call<C>(&self, request: H::Request) -> Result<H::Response, H::Error>
+    pub fn operation<C>(&self, request: C) -> harmos_sdk::operations::Invocation<H, C>
     where
-        H: ObserverCaller<C>,
+        H: harmos_sdk::operations::OperationHost + Clone,
+        C: harmos_sdk::operations::OperationDeclaration<Request = C>,
     {
-        self.host.call(self, request).await
+        harmos_sdk::operations::Invocation::new(self.host.clone(), request)
     }
 
     fn check_stream(&self, id: &'static str, version: u32) -> Result<(), PublicationError> {

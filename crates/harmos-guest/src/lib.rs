@@ -25,7 +25,7 @@ pub mod catalog {
 }
 pub use harmos_domain::listeners;
 pub use harmos_sdk::operations;
-pub use harmos_sdk::operations::Host;
+pub use harmos_sdk::operations::OperationHost;
 pub use harmos_sdk::operations::{Backoff, CacheKey, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 pub use harmos_sdk::{Context, Dependent, Executable, Lifecycle, Operation, Plugin, Resource, Response, Service, Setup};
 

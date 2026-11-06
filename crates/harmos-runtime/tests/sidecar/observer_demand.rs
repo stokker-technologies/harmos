@@ -24,7 +24,7 @@ use std::time::Duration;
 
 // Local Imports
 use super::operations::{Lanes, Managed};
-use harmos_runtime::operations::Host as _;
+use harmos_runtime::operations::OperationHost as _;
 use harmos_runtime::operations::OperationPhase;
 use harmos_runtime::operations::resident::{Key, Kind, Snapshot};
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
@@ -277,7 +277,7 @@ impl Mixed {
     }
     async fn observe(&mut self, ctx: &ObserverContext<'_, Publisher<Producer>>) -> Result<(), Infallible> {
         if self.0.collect_callback.load(SeqCst) {
-            ctx.host().supervisor().call::<Collect>(Collect {}).await.unwrap();
+            ctx.host().supervisor().operation::<Collect>(Collect {}).await.unwrap();
         }
         if self.0.block_observe.load(SeqCst) {
             let _observation = Observation(Arc::clone(&self.0));

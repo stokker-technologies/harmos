@@ -25,7 +25,7 @@ use super::lifecycle::{GuestOperations, Lifecycle, Resources};
 use super::sandbox::{EchoOperation, Echoed, ProviderEchoOperation};
 use super::{Bank, GuestLanes, component_error, retire_failed_guest, runtime};
 use harmos_runtime::Runtime;
-use harmos_runtime::operations::Host as _;
+use harmos_runtime::operations::OperationHost as _;
 use harmos_runtime::operations::{OperationDeclaration, OperationPolicy};
 use harmos_sidecar::Attach;
 
@@ -177,7 +177,7 @@ impl harmos_runtime::Operation for ProviderRead {
 impl harmos_runtime::Operation for ForwardDeclaration {
     type Error = harmos_domain::Refusal;
     async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Echoed>, Self::Error> {
-        ctx.resource::<harmos_sidecar::Supervisor>().call::<EchoOperation>(EchoOperation { say: self.say }).await.map_err(Self::Error::of)
+        ctx.operation(EchoOperation { say: self.say }).await.map_err(Self::Error::from)
     }
 }
 

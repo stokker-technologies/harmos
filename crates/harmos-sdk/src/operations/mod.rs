@@ -33,11 +33,11 @@ mod surface;
 #[doc(hidden)]
 pub use authored::Carrier;
 pub use authored::{EndpointSet, Executable, InputEndpoint, OutputEndpoint};
-pub use calls::{CallFuture, Caller, Calls, InvocationError, Target};
+pub use calls::{CallFuture, Caller, Calls, ChildInstance, ControlFuture, InvocationError, StartFuture, Target};
 pub use cancellation::Cancellation;
 pub use harmos_domain::operations::*;
 pub use instance::Instance;
-pub use operation::{Authored, Context, Dependent, Operation, Resource, Shape, Streams};
+pub use operation::{AttemptInstance, AttemptOperationHost, Authored, Context, Dependent, Operation, Resource, Shape, Streams};
 pub(crate) use registration::RegistrationBatch;
 pub use registration::{Catalog, NativeInstance, OperationCatalog, OperationFactory, ServiceFactory, ServiceInstance};
 pub(crate) use resources::ResourceSet;
@@ -55,7 +55,7 @@ pub use serving::{WireEndpoints, WireStreamLimits, WireStreams};
 pub use startup::{StartupError, StartupIssue, StartupReport};
 #[cfg(feature = "streaming")]
 pub use streaming::{Error as StreamError, StreamInput, StreamItem, StreamOutput, StreamPermit, StreamSettings, stream};
-pub use surface::{Host, RequestClaims};
+pub use surface::{Invocation, OperationHost, RequestClaims};
 
 /* === Imports === */
 

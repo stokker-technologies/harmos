@@ -83,7 +83,7 @@ mod runtime {
     // Local Imports
     use super::super::ProviderEchoOperation;
     use super::{EchoOperation, Echoed};
-    use harmos::guest::{Host, OperationRefusal};
+    use harmos::guest::{OperationHost, OperationRefusal};
 
     /* === Constants === */
 
@@ -126,7 +126,7 @@ mod runtime {
                         .clone()
                         .ok_or_else(|| OperationRefusal::of("plugin context is absent"))?;
                     return saved
-                        .call::<super::super::ProviderEchoOperation>(ProviderEchoOperation { say: value.into() })
+                        .operation::<super::super::ProviderEchoOperation>(ProviderEchoOperation { say: value.into() })
                         .await
                         .map(harmos::guest::operations::Response::into_owned)
                         .map_err(OperationRefusal::of);
@@ -134,11 +134,12 @@ mod runtime {
 
                 // Calls Through The Current Context
                 if let Some(say) = self.say.strip_prefix("dependency:") {
-                    return sdk
-                        .operation(ProviderEchoOperation { say: say.to_owned() })
-                        .await
-                        .map(harmos::guest::operations::Response::into_owned)
-                        .map_err(OperationRefusal::of);
+                    let invocation = sdk.operation(ProviderEchoOperation { say: say.to_owned() });
+                    let response = match sdk.call().value::<super::super::RetryChoice>().map_err(OperationRefusal::of)? {
+                        Some(settings) => invocation.retry(settings.policy()).await,
+                        None => invocation.await,
+                    };
+                    return response.map(harmos::guest::operations::Response::into_owned).map_err(OperationRefusal::from);
                 }
                 if let Some(value) = self.say.strip_prefix("publish:") {
                     crate::progress(context, value).await.map_err(OperationRefusal::from)?;

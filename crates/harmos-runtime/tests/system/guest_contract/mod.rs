@@ -34,7 +34,6 @@ use harmos_runtime::guest::Error;
 use schematic::model::Point;
 use schematic_operations::schematic::propose;
 use support::Bank;
-use support::fixtures::component as load;
 
 /* === Constants === */
 
@@ -70,12 +69,28 @@ async fn runtime() -> Runtime<Bank> {
 
 fn schematic() -> Vec<u8> {
     static COMPONENT: OnceLock<Vec<u8>> = OnceLock::new();
-    COMPONENT.get_or_init(|| load("schematic-guest")).clone()
+    COMPONENT
+        .get_or_init(|| {
+            if std::env::var_os("HARMOS_FOCUSED_FIXTURES").is_some() {
+                harmos_packaging::componentize(&support::fixtures::inspection("schematic-guest")).unwrap()
+            } else {
+                support::fixtures::component("schematic-guest")
+            }
+        })
+        .clone()
 }
 
 fn sandbox() -> Vec<u8> {
     static COMPONENT: OnceLock<Vec<u8>> = OnceLock::new();
-    COMPONENT.get_or_init(|| load("harmos-sandbox-guest")).clone()
+    COMPONENT
+        .get_or_init(|| {
+            if std::env::var_os("HARMOS_FOCUSED_FIXTURES").is_some() {
+                harmos_packaging::componentize(&support::fixtures::inspection("harmos-sandbox-guest")).unwrap()
+            } else {
+                support::fixtures::component("harmos-sandbox-guest")
+            }
+        })
+        .clone()
 }
 
 // A Route From The Origin To `(x, 4)` Turns At `(x, 0)`

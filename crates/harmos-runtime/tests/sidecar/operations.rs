@@ -32,7 +32,7 @@ use tokio::sync::Notify;
 // Local Imports
 use super::assembly;
 use crate::sidecar::support::Bank;
-use harmos_runtime::operations::Host as _;
+use harmos_runtime::operations::OperationHost as _;
 use harmos_runtime::operations::{Declarations, OperationDeclaration, OperationDefinition as Definition, OperationPolicy, RetryPolicy};
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginLifecycleAuthority,
@@ -222,11 +222,11 @@ impl harmos_runtime::Operation for ReadDeclaration {
         if counts.call_child.load(Ordering::SeqCst) {
             let previous = counts.saved.lock().unwrap().take();
             if let Some(previous) = previous {
-                assert!(previous.call::<RefreshDeclaration>(RefreshDeclaration {}).await.is_err());
+                assert!(previous.operation::<RefreshDeclaration>(RefreshDeclaration {}).await.is_err());
                 counts.stale_refused.fetch_add(1, Ordering::SeqCst);
             }
             *counts.saved.lock().unwrap() = Some((*context).clone());
-            context.call::<RefreshDeclaration>(RefreshDeclaration {}).await.map_err(std::io::Error::other)?;
+            context.operation::<RefreshDeclaration>(RefreshDeclaration {}).await.map_err(std::io::Error::other)?;
         }
         if attempt.is_multiple_of(2) {
             return Err(std::io::Error::other("one transient failure"));
@@ -719,7 +719,7 @@ fn notices(_: &ServiceContext<Bank>, _: Notice) {}
 // Drives submitted children through the sidecar binding of the host.
 async fn submitted(host: &harmos_runtime::sidecar::Supervisor, counts: &Counts) -> Result<(), harmos_sidecar::CallError> {
     use harmos_runtime::operations::instance::Phase;
-    use harmos_runtime::operations::{Host, Instance};
+    use harmos_runtime::operations::{Instance, OperationHost};
 
     // Status, Then Join
     let joined = host.submit::<RefreshDeclaration>(RefreshDeclaration {}).await?;
@@ -751,7 +751,7 @@ async fn submitted(host: &harmos_runtime::sidecar::Supervisor, counts: &Counts) 
     counts.refresh_started.notified().await;
     let id = Instance::detach(detached);
     // Built-ins are ordinary requirements: an undeclared caller is refused.
-    let refused = host.call::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
+    let refused = host.operation::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
     *counts.detached_status.lock().unwrap() = refused.err().map(|error| {
         std::iter::successors(Some(&error as &(dyn std::error::Error + 'static)), |error| error.source())
             .map(ToString::to_string)

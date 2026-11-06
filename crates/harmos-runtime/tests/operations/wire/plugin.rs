@@ -276,7 +276,7 @@ impl PluginLifecycle for Host {
         if definition.id != "fixture" {
             if self.call_during_setup && definition.id == "client" {
                 // Source is staged; its declared provider was committed earlier.
-                assert_eq!(self.operations.caller(&caller)?.call::<Public>(Public(request())).await?.value, 7);
+                assert_eq!(self.operations.caller(&caller)?.operation::<Public>(Public(request())).await?.value, 7);
             }
             return Ok(());
         }

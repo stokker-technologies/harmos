@@ -144,9 +144,9 @@ async fn builtin_grpc_roundtrip() {
     assert!(!parked.status().cancellation_requested());
 
     // The Submitting Host Reads And Cancels Its Own Instance
-    let owned = runtime.operation(Status::of(id)).run().await.unwrap();
+    let owned = runtime.operation(Status::of(id)).await.unwrap();
     assert_eq!(owned.phase, "running");
-    let cancelled = runtime.operation(Cancel::of(id)).run().await.unwrap();
+    let cancelled = runtime.operation(Cancel::of(id)).await.unwrap();
     assert!(cancelled.cancellation_requested);
     assert!(parked.await.is_err());
     drop(attached);
@@ -165,9 +165,9 @@ async fn external_authority_parity() {
     .unwrap();
     runtime.operations.register::<crate::operations::Single<GuardedDeclaration>>(Lanes::Open).await.unwrap();
     runtime.operations.register::<crate::operations::Single<DescendantDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<harmos_operations::Host>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<harmos_operations::OperationHost>(Lanes::Open).await.unwrap();
     // Internal Boot Work Does Not Freeze The Later Listener Policy.
-    assert_eq!(runtime.operation(GuardedDeclaration {}).run().await.unwrap().actor, "host:anonymous");
+    assert_eq!(runtime.operation(GuardedDeclaration {}).await.unwrap().actor, "host:anonymous");
     let mode = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let operations = Arc::new(runtime.operations.clone());
     let policy = Arc::new(ExternalAccess {
@@ -211,7 +211,7 @@ async fn external_authority_parity() {
     let mut context = harmos_runtime::operations::CallContext::default();
     context.insert(Principal("bob".into())).unwrap();
     assert_eq!(
-        runtime.operations.with_context(context).call::<DescendantDeclaration>(DescendantDeclaration {}).await.unwrap().actor,
+        runtime.operations.with_context(context).operation::<DescendantDeclaration>(DescendantDeclaration {}).await.unwrap().actor,
         "host:bob"
     );
     assert_eq!(external_call(channel.clone(), Some("Bearer carol"), "/fixture.Identity/Guarded").await.unwrap(), "external:carol");

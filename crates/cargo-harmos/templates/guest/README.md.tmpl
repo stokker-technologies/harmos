@@ -22,7 +22,10 @@ Keep generated tooling current with `stkr project update` when adopting company 
 ## Operation Context
 
 Operations consume their request in `run(self, ctx: harmos::Context<'_, Self>)`. Declare `resources` and `operations` on the operation; use
-`ctx.resource::<T>()`, `ctx.operation(request)` and `ctx.streams()`. Plugin lifecycle hooks use `harmos::guest::kit::Context`.
+`ctx.resource::<T>()`, `ctx.operation(request).await?` and `ctx.streams()`. The shared SDK `Invocation` also accepts `.retry(policy)`,
+`.endpoints(...)` and `.start()`. Policy defaults belong to the operation macro; take retry overrides from settings or configuration.
+Await returns `Response<T>`: borrow it like the value, or use `into_owned()` to take the payload. Declared `operations` still authorize child calls.
+Plugin lifecycle hooks use `harmos::guest::kit::Context`; import `harmos::guest::OperationHost` to invoke operations on that carrier host.
 
 ## Plugin Lifecycle
 

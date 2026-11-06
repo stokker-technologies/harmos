@@ -22,7 +22,7 @@ mod dependency_routing;
 
 // Local Imports
 use super::*;
-use harmos_runtime::operations::Host as _;
+use harmos_runtime::operations::OperationHost as _;
 use harmos_runtime::operations::{Declarations, NativeError, PluginRegistration, PluginSdkRegistration};
 use harmos_runtime::plugin::{
     PluginBackend, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginManager, PluginTransition, Requirement, Router,
@@ -46,11 +46,12 @@ macro_rules! forward {
         impl harmos_runtime::Operation for $name {
             type Error = Refusal;
             async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Amplified>, Self::Error> {
-                ctx.resource::<Supervisor>().call::<AmplifyDeclaration>(AmplifyDeclaration { value: self.value }).await
-                    .map_err(|error| match error {
-                        harmos_sidecar::CallError::Refused { code, failure } => Refusal::failed(code, failure),
-                        error => Refusal::of(error),
-                    })
+                let invocation = ctx.operation(AmplifyDeclaration { value: self.value });
+                let response = match ctx.call().value::<RetryChoice>().map_err(Refusal::of)? {
+                    Some(settings) => invocation.retry(settings.policy()).await,
+                    None => invocation.await,
+                };
+                response.map_err(Refusal::from)
             }
         }
     };
@@ -58,7 +59,22 @@ macro_rules! forward {
 
 forward!(Forward, "caller.forward", [AmplifyDeclaration]);
 
-forward!(UnauthorizedForward, "unauthorized.forward", []);
+#[harmos_runtime::operation(resources = [Forwarder, Supervisor], id = "unauthorized.forward", policy = AmplifyDeclaration::POLICY, response = Amplified)]
+#[derive(Clone, PartialEq)]
+struct UnauthorizedForward {
+    value: i64,
+}
+impl harmos_runtime::Operation for UnauthorizedForward {
+    type Error = Refusal;
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Amplified>, Self::Error> {
+        ctx.resource::<Supervisor>().operation::<AmplifyDeclaration>(AmplifyDeclaration { value: self.value }).await.map_err(|error| {
+            match error {
+                harmos_sidecar::CallError::Refused { code, failure } => Refusal::failed(code, failure),
+                error => Refusal::of(error),
+            }
+        })
+    }
+}
 
 /* === Type Aliases === */
 
@@ -137,6 +153,26 @@ struct UnauthorizedEndpoint {
 }
 
 struct Forwarder;
+
+#[harmos_runtime::message]
+struct RetryChoice {
+    retries: u32,
+    delay_millis: u64,
+}
+impl harmos_runtime::operations::ContextValue for RetryChoice {
+    const KEY: &'static str = "test.retry_choice";
+}
+impl RetryChoice {
+    fn policy(&self) -> RetryPolicy {
+        RetryPolicy::OnTransient {
+            max_retries: usize::try_from(self.retries).expect("retry count fits this target"),
+            backoff: harmos_runtime::Backoff::Fixed {
+                delay: Duration::from_millis(self.delay_millis),
+                jitter: harmos_runtime::Jitter::None,
+            },
+        }
+    }
+}
 
 #[harmos_runtime::operation(resources = [Provider], id = "provider.retry",
     policy = OperationPolicy {
@@ -432,15 +468,18 @@ impl harmos_runtime::Lifecycle for Dependent {
     }
 
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Refusal> {
-        context.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 11 }).await.map_err(Refusal::from)?;
+        context.operation::<AmplifyDeclaration>(AmplifyDeclaration { value: 11 }).await.map_err(Refusal::from)?;
         if self.notify {
-            context.call::<SampleDeclaration>(SampleDeclaration { value: 99 }).await.map_err(Refusal::from)?;
+            context.operation::<SampleDeclaration>(SampleDeclaration { value: 99 }).await.map_err(Refusal::from)?;
         }
         Ok(())
     }
 
     async fn stop(&mut self, context: &Self::Context) -> Result<(), Refusal> {
-        context.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 22 }).await.expect("provider remains available through cleanup");
+        context
+            .operation::<AmplifyDeclaration>(AmplifyDeclaration { value: 22 })
+            .await
+            .expect("provider remains available through cleanup");
         Ok(())
     }
 }

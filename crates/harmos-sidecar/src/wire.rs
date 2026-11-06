@@ -160,15 +160,17 @@ impl Frame {
             return usize::MAX;
         }
         let prepare = WireCommand::prepare_encoded_len(u64::MAX, operation, [255; 32], u64::MAX, payload).unwrap_or(usize::MAX);
-        call_encoded_len(u64::MAX, WIRE_METHOD, prepare).max(Self::child_payload_encoded_len(operation, u64::MAX, payload, true, &[]))
+        call_encoded_len(u64::MAX, WIRE_METHOD, prepare).max(Self::child_payload_encoded_len(operation, u64::MAX, payload, true, &[], None))
     }
 
     /// Bounds a child call using its actual portable values and generation presence.
     /// Only the unknown outer identifier is bounded by its maximal encoded width.
     pub fn child_payload_encoded_len(
         operation: &str, generation: u64, payload: usize, generation_context: bool, values: &[CallValue],
+        retry: Option<harmos_sdk::operations::RetryPolicy>,
     ) -> usize {
-        let child = WireChildCall::payload_encoded_len(operation, generation, payload, generation_context, values).unwrap_or(usize::MAX);
+        let child =
+            WireChildCall::payload_encoded_len(operation, generation, payload, generation_context, values, retry).unwrap_or(usize::MAX);
         call_encoded_len(u64::MAX, CHILD_METHOD, child)
     }
 
@@ -347,6 +349,7 @@ mod tests {
                 generation: u64::MAX,
                 payload: vec![255; size],
                 submit: true,
+                retry: None,
             };
             let child = Frame::Call {
                 id: u64::MAX,
@@ -380,7 +383,7 @@ mod tests {
             payload: vec![255; 16384],
         }];
         for generation in [false, true] {
-            let empty = WireChildCall::payload_encoded_len("op", u64::MAX, 0, generation, &values).unwrap();
+            let empty = WireChildCall::payload_encoded_len("op", u64::MAX, 0, generation, &values, None).unwrap();
             for size in [0, 127, 128, 16383, 16384] {
                 let call = WireChildCall {
                     context: [255; 32],
@@ -391,13 +394,14 @@ mod tests {
                     generation: u64::MAX,
                     payload: vec![0; size],
                     submit: false,
+                    retry: None,
                 };
                 let frame = Frame::Call {
                     id: u64::MAX,
                     method: CHILD_METHOD.into(),
                     params: call.encode().unwrap().into(),
                 };
-                assert_eq!(Frame::child_payload_encoded_len("op", u64::MAX, size, generation, &values), frame.encoded_len());
+                assert_eq!(Frame::child_payload_encoded_len("op", u64::MAX, size, generation, &values, None), frame.encoded_len());
                 assert_eq!(Frame::child_encoded_from_empty(empty, size), frame.encoded_len());
             }
         }
@@ -409,7 +413,7 @@ mod tests {
         let mut high = Frame::LIMIT + 1;
         while low + 1 < high {
             let middle = low + (high - low) / 2;
-            if Frame::child_payload_encoded_len("op", u64::MAX, middle, true, &[]) <= Frame::LIMIT {
+            if Frame::child_payload_encoded_len("op", u64::MAX, middle, true, &[], None) <= Frame::LIMIT {
                 low = middle;
             } else {
                 high = middle;
@@ -424,6 +428,7 @@ mod tests {
             generation: u64::MAX,
             payload: vec![0; low],
             submit: true,
+            retry: None,
         };
         let frame = Frame::Call {
             id: u64::MAX,

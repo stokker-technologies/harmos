@@ -174,7 +174,12 @@ pub(super) async fn execute<O: Send + 'static>(
                 queue.release();
                 match initialize(&instances, &admission, prepared.body.as_mut(), &mut cancelled, &budget, &instance, cause).await {
                     Err(error) => Err(error),
-                    Ok(()) => attempts(&instances, &admission, &mut prepared, &mut cancelled, &budget, &instance, cause).await,
+                    Ok(()) => {
+                        prepared.middleware = middleware.take();
+                        let answer = attempts(&instances, &admission, &mut prepared, &mut cancelled, &budget, &instance, cause).await;
+                        middleware = prepared.middleware.take();
+                        answer
+                    }
                 }
             }
         },
@@ -301,6 +306,19 @@ async fn attempts<O: Send + 'static>(
         )
         .await;
         let mut children = core.close();
+        if let Some(middleware) = &prepared.middleware {
+            let outcome = match &answer {
+                Stage::Completed(Ok(_)) => Outcome::Succeeded,
+                Stage::Completed(Err(Error::OperationRefused(Refusal::Cancelled))) | Stage::Cancelled => Outcome::Cancelled,
+                Stage::Completed(Err(Error::OperationRefused(Refusal::TimedOut))) | Stage::Expired => Outcome::TimedOut,
+                Stage::Completed(Err(_)) => Outcome::Failed,
+            };
+            // Record Each Completed Attempt Before Its Result Or Retry Is Exposed.
+            if let Err(error) = middleware.attempt(super::middleware::AttemptObservation { attempt, outcome }).await {
+                children.drain().await;
+                return Err(error);
+            }
+        }
         if *cancelled.borrow() && !matches!(answer, Stage::Completed(Ok(_))) {
             children.drain().await;
             return Err(Refusal::Cancelled.into());

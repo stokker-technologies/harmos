@@ -151,7 +151,7 @@ async fn wire_bindings_execute() {
             .unwrap();
         assert_eq!(Text::decode(&encoded).unwrap().value, "complete:1");
         assert_eq!(*resources.events.lock().unwrap(), ["run", "drop"]);
-        let answer = runtime.operation(ReadContractDeclaration { value: "local".to_owned() }).run().await.unwrap();
+        let answer = runtime.operation(ReadContractDeclaration { value: "local".to_owned() }).await.unwrap();
         assert_eq!(answer.value, "local:1");
         runtime.shutdown().await.unwrap();
     }

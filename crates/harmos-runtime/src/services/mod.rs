@@ -271,8 +271,9 @@ impl<A: Application> Resident<A> for AuthoredService {
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             ServiceOwner::Plugin(scope) => dependencies.insert(Arc::new(scope.clone())).map_err(|_| harmos_sdk::ServingError::Catalog)?,
         }
-        let call = harmos_sdk::ExecutionContext::new(dependencies, harmos_sdk::operations::Host::context(&context.operations).clone())
-            .with_resources(context.operations.resources().clone());
+        let call =
+            harmos_sdk::ExecutionContext::new(dependencies, harmos_sdk::operations::OperationHost::context(&context.operations).clone())
+                .with_resources(context.operations.resources().clone());
         self.instance = Some(self.factory.initialize(call.clone()).await?);
         context.ready();
         tokio::select! {
@@ -397,7 +398,13 @@ impl<A: Application> ServiceContext<A> {
     }
 }
 
-impl<A: Application> harmos_sdk::operations::Host for ServiceContext<A> {
+impl<A: Application> harmos_sdk::operations::OperationHost for ServiceContext<A> {
+    async fn invoke<O: crate::operations::OperationDeclaration, E: harmos_sdk::operations::EndpointSet>(
+        &self, request: O::Request, retry: Option<crate::RetryPolicy>, endpoints: E,
+    ) -> Result<Self::Instance<O>> {
+        harmos_sdk::operations::OperationHost::invoke::<O, E>(&self.operations, request, retry, endpoints).await
+    }
+
     fn publish_on<S: harmos_domain::StreamSpec>(
         &self, row: &S::Row,
     ) -> impl std::future::Future<Output = std::result::Result<(), Self::Error>> + Send
@@ -411,24 +418,24 @@ impl<A: Application> harmos_sdk::operations::Host for ServiceContext<A> {
     type Instance<O: OperationDeclaration> = Running<O>;
 
     fn context(&self) -> &CallContext {
-        harmos_sdk::operations::Host::context(&self.operations)
+        harmos_sdk::operations::OperationHost::context(&self.operations)
     }
 
     fn with_value<T: ContextValue>(&self, value: T) -> std::result::Result<Self, ContextError> {
-        let operations = harmos_sdk::operations::Host::with_value(&self.operations, value)?;
+        let operations = harmos_sdk::operations::OperationHost::with_value(&self.operations, value)?;
         let mut child = self.clone();
         child.operations = operations;
         Ok(child)
     }
 
     fn submit<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Running<O>>> + Send {
-        harmos_sdk::operations::Host::submit::<O>(&self.operations, request)
+        harmos_sdk::operations::OperationHost::submit::<O>(&self.operations, request)
     }
 
     fn submit_owned<O: OperationDeclaration>(
         &self, request: O::Request, claims: crate::operations::RequestClaims,
     ) -> impl Future<Output = Result<Running<O>>> + Send {
-        harmos_sdk::operations::Host::submit_owned::<O>(&self.operations, request, claims)
+        harmos_sdk::operations::OperationHost::submit_owned::<O>(&self.operations, request, claims)
     }
 }
 

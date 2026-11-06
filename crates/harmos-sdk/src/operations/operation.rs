@@ -24,11 +24,12 @@ use std::sync::Arc;
 // Local Imports
 #[cfg(feature = "streaming")]
 use super::Stream;
-use super::calls::{Calls, InvocationError, Target};
+use super::calls::{Calls, ChildInstance, InvocationError, Target};
 use super::{
     CallContext, Carrier, EndpointSet, Executable, ExecutionContext, FailureKind, Invokes, NoStream, OperationDeclaration, Requires,
     Response,
 };
+use super::{ContextError, ContextValue, Instance, Invocation, OperationHost, RetryPolicy};
 
 /* === Constants === */
 
@@ -55,6 +56,16 @@ pub struct Context<'a, O: Streams> {
 // The Carrier Behind Every Authored Operation; Each Attempt Runs A Clone Of
 // The Request So A Retry Keeps The Original.
 pub struct Authored<O>(PhantomData<fn() -> O>);
+
+#[derive(Clone)]
+pub struct AttemptOperationHost {
+    execution: ExecutionContext,
+}
+
+pub struct AttemptInstance<O: OperationDeclaration> {
+    inner: Box<dyn ChildInstance>,
+    operation: PhantomData<fn() -> O>,
+}
 
 /* === Enums === */
 
@@ -130,16 +141,67 @@ impl<O: Streams> Context<'_, O> {
     }
 
     // Invoke A Declared Operation With This Attempt's Call Metadata; The Callee's Policy Applies.
-    pub fn operation<T>(&self, request: T) -> impl Future<Output = Result<Response<T::Response>, InvocationError>> + Send + use<'_, O, T>
+    pub fn operation<T>(&self, request: T) -> Invocation<AttemptOperationHost, T>
     where
         O: Invokes<T>,
         T: OperationDeclaration<Request = T> + Send,
     {
-        let calls = self.execution.resource::<Calls>().map_err(|_| InvocationError::Unavailable { operation: T::ID });
-        async move {
-            let response = calls?.0.call(Target::of::<T>(), Box::new(request)).await?;
-            response.restore::<T::Response>().ok_or(InvocationError::Response { operation: T::ID })
-        }
+        Invocation::new(AttemptOperationHost { execution: self.execution.clone() }, request)
+    }
+}
+
+impl OperationHost for AttemptOperationHost {
+    type Error = InvocationError;
+    type Instance<T: OperationDeclaration> = AttemptInstance<T>;
+
+    fn context(&self) -> &CallContext {
+        &self.execution.call
+    }
+    fn with_value<T: ContextValue>(&self, value: T) -> Result<Self, ContextError> {
+        let mut child = self.clone();
+        child.execution.call = self.execution.call.with_value(value)?;
+        Ok(child)
+    }
+
+    async fn invoke<T: OperationDeclaration, E: EndpointSet>(
+        &self, request: T::Request, retry: Option<RetryPolicy>, endpoints: E,
+    ) -> Result<AttemptInstance<T>, InvocationError> {
+        let calls = self.execution.resource::<Calls>().map_err(|_| InvocationError::Unavailable { operation: T::ID })?;
+        let inner = calls.0.start(Target::of::<T>(), Box::new(request), retry, Box::new(endpoints), self.execution.call.clone()).await?;
+        Ok(AttemptInstance { inner, operation: PhantomData })
+    }
+    async fn submit<T: OperationDeclaration>(&self, request: T::Request) -> Result<AttemptInstance<T>, InvocationError> {
+        self.invoke::<T, ()>(request, None, ()).await
+    }
+    async fn submit_owned<T: OperationDeclaration>(
+        &self, _: T::Request, _: super::RequestClaims,
+    ) -> Result<AttemptInstance<T>, InvocationError> {
+        Err(InvocationError::Options { operation: T::ID })
+    }
+    async fn publish_on<S: crate::StreamSpec>(&self, _: &S::Row) -> Result<(), InvocationError>
+    where
+        S::Row: crate::Message,
+    {
+        Err(InvocationError::Unavailable { operation: S::ID })
+    }
+}
+
+impl<O: OperationDeclaration> Instance<O> for AttemptInstance<O> {
+    type Error = InvocationError;
+    fn id(&self) -> super::instance::Id {
+        self.inner.id()
+    }
+    fn status(&self) -> impl Future<Output = Result<super::instance::Status, InvocationError>> + Send {
+        self.inner.status()
+    }
+    fn request_cancel(&self) -> impl Future<Output = Result<(), InvocationError>> + Send {
+        self.inner.request_cancel()
+    }
+    async fn join(self) -> Result<Response<O::Response>, InvocationError> {
+        self.inner.join().await?.restore::<O::Response>().ok_or(InvocationError::Response { operation: O::ID })
+    }
+    fn detach(self) -> super::instance::Id {
+        self.inner.detach()
     }
 }
 

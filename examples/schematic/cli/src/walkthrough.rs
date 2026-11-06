@@ -157,7 +157,7 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
         .collect();
     let schematic = model::Snapshot { symbols, connections };
     let validation = ValidateSchematic { schematic: schematic.clone() };
-    let validation = runtime.operation(validation).run().await?;
+    let validation = runtime.operation(validation).await?;
     println!("Validation: {} diagnostics", validation.diagnostics.len());
 
     let from = snapshot.symbol(SymbolId(1)).position;
@@ -166,7 +166,7 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
         from: model::Point { x: from.x, y: from.y },
         to: model::Point { x: to.x, y: to.y },
     };
-    let proposed = runtime.operation(request).run().await?;
+    let proposed = runtime.operation(request).await?;
     let points = proposed.points.iter().map(|point| Point::new(point.x, point.y)).collect();
     let change = ApplyRoute { net: NetId(1), points };
     state.commit(change).await?;

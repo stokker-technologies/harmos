@@ -222,7 +222,7 @@ async fn owner_name_permissions() {
         assert!(runtime.plugin.initialize().await.is_err(), "{owner}");
         assert_eq!(runtime.plugin.status(owner).unwrap().state, PluginState::Failed);
         assert!(runtime.operations.definition(RestrictedCaller::ID).is_err());
-        runtime.operation(RootHost).run().await.unwrap();
+        runtime.operation(RootHost).await.unwrap();
         runtime.shutdown().await.unwrap();
     }
 }
@@ -241,7 +241,7 @@ async fn private_owner_permissions() {
         assert!(runtime.plugin.initialize().await.is_err(), "{owner}");
         assert_eq!(runtime.plugin.status(owner).unwrap().state, PluginState::Failed);
         assert!(runtime.operations.definition(PrivateCaller::ID).is_err());
-        runtime.operation(RootPrivate).run().await.unwrap();
+        runtime.operation(RootPrivate).await.unwrap();
         runtime.shutdown().await.unwrap();
     }
 }

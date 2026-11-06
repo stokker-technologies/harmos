@@ -81,6 +81,9 @@ pub struct WireChildCall {
     // owned by the calling attempt until joined, released or detached.
     #[serde(default)]
     pub submit: bool,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry: Option<super::RetryPolicy>,
 }
 
 // Drives one child the same attempt submitted; the host resolves the instance
