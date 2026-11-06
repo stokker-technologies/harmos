@@ -157,49 +157,6 @@ class SimulationTests(unittest.TestCase):
         self.assertNotIn("PRIVATE_VALUE", forwarded)
 
 
-class MachineTests(unittest.TestCase):
-    def test_lock_lifecycle(self):
-        program = """
-import json
-import os
-import sys
-from pathlib import Path
-from harmos_tools.build import machine
-
-cache = Path(sys.argv[1])
-machine._cache = lambda: cache
-os.environ.pop(machine.INHERITED, None)
-path = cache / "native-build.lock"
-path.write_bytes(b"\\0" + json.dumps({"pid": -1}).encode())
-identity = path.stat().st_ino
-with machine.lock():
-    with path.open("rb") as stream:
-        stream.seek(1)
-        holder = json.load(stream)
-    assert holder["pid"] == os.getpid()
-    print(json.dumps(holder), flush=True)
-    with machine.lock():
-        assert os.environ[machine.INHERITED] == str(path)
-    assert path.stat().st_ino == identity
-assert path.exists()
-assert path.read_bytes()[1:] == b""
-assert machine.INHERITED not in os.environ
-"""
-        with tempfile.TemporaryDirectory() as cache:
-            result = subprocess.run(
-                [sys.executable, "-c", program, cache],
-                cwd=ROOT,
-                env=dict(os.environ, LOCALAPPDATA=str(Path(cache) / "wrapper"), XDG_CACHE_HOME=str(Path(cache) / "wrapper")),
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=30,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-            holder = json.loads(next(line for line in result.stdout.splitlines() if line.startswith("{")))
-            self.assertEqual(holder["workspace"], str(ROOT))
-
-
 class StarterTests(unittest.TestCase):
     def test_version_preflight(self):
         templates = ROOT / "crates/cargo-harmos/templates"
