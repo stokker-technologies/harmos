@@ -380,17 +380,6 @@ impl<A: Application> Consumers<A> {
             .chain(self.series.iter_mut().map(|series| series.as_mut() as &mut dyn Recording<A>))
     }
 
-    #[tracing::instrument(target = "harmos::storage", name = "storage.row_reader", level = "debug", skip_all)]
-    pub(crate) async fn row_reader(
-        &mut self, stream: crate::streams::Definition, track: &[String], start: std::ops::Bound<Position>, end: std::ops::Bound<Position>,
-        limits: crate::streams::ReadLimits,
-    ) -> Result<Box<dyn crate::streams::RowSource>, crate::streams::ReadError> {
-        match &mut self.series {
-            Some(series) => series.reader(stream, track, start, end, limits).await,
-            None => Err(crate::streams::ReadError::Unserved),
-        }
-    }
-
     #[tracing::instrument(target = "harmos::storage", name = "storage.served", level = "debug", skip_all)]
     pub(crate) async fn served(
         &mut self, stream: crate::streams::Definition, track: &[String], start: std::ops::Bound<Position>, end: std::ops::Bound<Position>,

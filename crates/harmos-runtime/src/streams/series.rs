@@ -60,29 +60,14 @@ pub struct Aggregated {
     pub value: f64,
 }
 
-pub(crate) struct Opened {
-    pub(crate) source: Result<Box<dyn crate::streams::RowSource>, crate::streams::ReadError>,
-    pub(crate) permit: tokio::sync::OwnedSemaphorePermit,
-}
-
 #[derive(Clone)]
 pub(crate) struct Tier {
     sender: mpsc::Sender<Request>,
-    readers: Arc<tokio::sync::Semaphore>,
 }
 
 /* === Enums === */
 
 pub(crate) enum Request {
-    Reader {
-        stream: Definition,
-        track: Vec<String>,
-        start: Bound<Position>,
-        end: Bound<Position>,
-        limits: crate::streams::ReadLimits,
-        permit: tokio::sync::OwnedSemaphorePermit,
-        reply: oneshot::Sender<Opened>,
-    },
     Rows {
         stream: Definition,
         track: Vec<String>,
@@ -164,37 +149,7 @@ impl Tier {
     pub(crate) fn channel(capacity: usize) -> (Self, mpsc::Receiver<Request>) {
         let (sender, receiver) = mpsc::channel(capacity.max(1));
 
-        (
-            Self {
-                sender,
-                readers: Arc::new(tokio::sync::Semaphore::new(capacity.max(1))),
-            },
-            receiver,
-        )
-    }
-
-    pub(crate) fn reader_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, crate::streams::ReadError> {
-        self.readers.clone().try_acquire_owned().map_err(|_| crate::streams::ReadError::Busy)
-    }
-
-    pub(crate) async fn reader(
-        &self, stream: Definition, track: Vec<String>, start: Bound<Position>, end: Bound<Position>, limits: crate::streams::ReadLimits,
-        permit: tokio::sync::OwnedSemaphorePermit,
-    ) -> Result<Opened, crate::streams::ReadError> {
-        let (reply, answer) = oneshot::channel();
-        self.sender
-            .send(Request::Reader {
-                stream,
-                track,
-                start,
-                end,
-                limits,
-                permit,
-                reply,
-            })
-            .await
-            .map_err(|_| crate::streams::ReadError::Closed)?;
-        answer.await.map_err(|_| crate::streams::ReadError::Closed)
+        (Self { sender }, receiver)
     }
 
     pub(crate) async fn rows(
