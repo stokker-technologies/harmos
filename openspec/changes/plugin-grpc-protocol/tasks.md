@@ -12,7 +12,7 @@
 ## 2. Validation and Delivery
 
 - [x] 2.1 Record the focused mise test result, run `check:rust` and the required diff scan. No full simulation; the real-path story failed and later gates were not run.
-- [ ] 2.2 Commit and push feat/plugin-grpc-prototype, verify remote SHA; no PR or merge.
+- [x] 2.2 Commit and push feat/plugin-grpc-prototype, verify remote SHA; no PR or merge.
 - [x] 2.3 Preserve evidence in design.md, cargo clean only the owned targets, and keep the locked worktree.
 
 ## 3. Deferred Migration
