@@ -30,6 +30,21 @@ RUSTC_WRAPPER= mise run build
 In PowerShell use `$env:RUSTC_WRAPPER = ''; mise run build`, then remove
 the override with `Remove-Item Env:RUSTC_WRAPPER`.
 
+## Focused Cargo Selections
+
+`build:rust:focused` accepts `build`, `check`, `test`, `clippy` and `run`, with
+explicit Cargo selectors. It retains compiler-output preflight and runs matching
+Clippy before compilation. Test filters and executable arguments follow `--`:
+
+```sh
+mise run build:rust:focused -- test --locked -p harmos-sidecar --test integration -- --list
+mise run build:rust:focused -- run --locked --profile bench --manifest-path examples/schematic/Cargo.toml -p schematic-sidecar --features prototype-grpc --bin schematic-grpc-prototype -- --measure
+```
+
+The second command is the opt-in sidecar transport experiment; its measured gates
+and limitations live in `openspec/changes/plugin-grpc-protocol/design.md`.
+Focused tests always use Cargo's unoptimized test profile.
+
 ## Focused Integration Tests
 
 The integration task accepts a nextest filter and repeat count while retaining

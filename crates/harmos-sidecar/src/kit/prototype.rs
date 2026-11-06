@@ -314,6 +314,43 @@ where
 
 /* === Public Functions === */
 
+pub async fn framed_arrow() -> std::io::Result<()> {
+    use crate::Frame;
+    use crate::transport::Connection;
+    let control = crate::attach::control::inherited()?.ok_or_else(|| std::io::Error::other("attached control channel required"))?;
+    let Connection { sender, mut receiver, mut driver } =
+        Connection::new((Box::new(tokio::io::stdin()), Box::new(tokio::io::stdout())), control);
+    let driving = tokio::spawn(async move { driver.run().await });
+    while let Some(received) = receiver.receive().await? {
+        let Frame::Call { id, method, params } = received.frame else {
+            return Err(std::io::Error::other("Arrow fixture expects a call"));
+        };
+        if let Some(receipt) = received.consumption {
+            receipt.consumed()?;
+        }
+        if method == "complete" {
+            sender.send(Frame::Answer { id, result: Vec::new().into() }).await?;
+            continue;
+        }
+        if method != "arrow" || params.len() <= 8 {
+            return Err(std::io::Error::other("Arrow fixture request shape"));
+        }
+        let count = u64::from_le_bytes(params[..8].try_into().map_err(std::io::Error::other)?);
+        let payload = params[8..].to_vec();
+        for sequence in 0..count {
+            sender
+                .send(Frame::Answer {
+                    id: sequence,
+                    result: payload.clone().into(),
+                })
+                .await?;
+        }
+        sender.drain().await?;
+    }
+    sender.close();
+    driving.await.map_err(std::io::Error::other)?.map_err(std::io::Error::other)
+}
+
 pub fn credentials() -> std::io::Result<String> {
     let mut token = [0u8; 32];
     getrandom::fill(&mut token).map_err(std::io::Error::other)?;
@@ -386,7 +423,29 @@ fn lifecycle_payload(operation: &str, payload: &[u8]) -> Result<Option<Vec<u8>>,
     use harmos_operations::lifecycle::{Initialize, Shutdown};
     use harmos_sdk::grpc::{DecodeInput, decode};
     if operation.ends_with(".harmos.initialize") {
-        return decode::<Initialize>(DecodeInput::new(payload)).map(|request| Some(request.encode())).map_err(internal);
+        use prost::Message as _;
+        let request = codec::Initialization::decode(payload).map_err(internal)?;
+        let assignments = request
+            .assignments
+            .into_iter()
+            .map(|entry| {
+                Ok(harmos_sdk::operations::AssignedOperation {
+                    operation: entry.operation,
+                    fingerprint: entry
+                        .fingerprint
+                        .as_slice()
+                        .try_into()
+                        .map_err(|_| Status::invalid_argument("assignment fingerprint length"))?,
+                    generation: entry.generation,
+                })
+            })
+            .collect::<Result<Vec<_>, Status>>()?;
+        let request = Initialize {
+            config_json: request.config_json,
+            generation_context: request.generation_context,
+            assignments: harmos_sdk::operations::AssignedOperation::encode(&assignments).map_err(internal)?,
+        };
+        return Ok(Some(request.encode()));
     }
     if operation.ends_with(".harmos.shutdown") {
         return decode::<Shutdown>(DecodeInput::new(payload)).map(|request| Some(request.encode())).map_err(internal);

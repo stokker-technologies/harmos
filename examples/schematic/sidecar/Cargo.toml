@@ -28,7 +28,7 @@ required-features = ["prototype-grpc"]
 
 [features]
 benchmark = []
-prototype-grpc = ["dep:harmos-sidecar", "dep:serde_json"]
+prototype-grpc = ["dep:arrow-array", "dep:arrow-ipc", "dep:arrow-schema", "dep:harmos-sidecar", "dep:serde_json"]
 
 # === Dependencies === #
 
@@ -51,6 +51,9 @@ tracing-subscriber = { workspace = true }
 # Utilities
 
 # Serialization
+arrow-array = { workspace = true, optional = true }
+arrow-ipc = { workspace = true, optional = true }
+arrow-schema = { workspace = true, optional = true }
 serde_json = { workspace = true, default-features = true, optional = true }
 
 # Configuration

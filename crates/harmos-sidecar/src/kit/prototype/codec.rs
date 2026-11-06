@@ -60,6 +60,30 @@ pub struct Packet {
     pub count: u64,
 }
 
+#[derive(Clone, PartialEq, Message)]
+pub(super) struct Initialization {
+    #[prost(bytes = "vec", tag = "1")]
+    pub config_json: Vec<u8>,
+
+    #[prost(bytes = "vec", tag = "2")]
+    pub generation_context: Vec<u8>,
+
+    #[prost(message, repeated, tag = "3")]
+    pub assignments: Vec<Assignment>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(super) struct Assignment {
+    #[prost(string, tag = "1")]
+    pub operation: String,
+
+    #[prost(bytes = "vec", tag = "2")]
+    pub fingerprint: Vec<u8>,
+
+    #[prost(uint64, tag = "3")]
+    pub generation: u64,
+}
+
 #[derive(Clone, Default)]
 pub(super) struct Codec;
 

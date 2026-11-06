@@ -11,6 +11,8 @@
 
 /* === Modules === */
 
+mod measurement;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -42,6 +44,12 @@ use harmos_sidecar::kit::prototype::{Settings, serve};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args().any(|argument| argument == "--measure") {
+        return measurement::run().await;
+    }
+    if std::env::args().any(|argument| argument == "--framed-arrow") {
+        return harmos_sidecar::kit::prototype::framed_arrow().await.map_err(Into::into);
+    }
     // Receive Credentials On The Private Parent Pipe, Never Arguments Or Environment.
     let mut input = BufReader::new(tokio::io::stdin());
     let mut configuration = String::new();

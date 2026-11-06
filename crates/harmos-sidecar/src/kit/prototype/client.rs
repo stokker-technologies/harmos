@@ -185,7 +185,31 @@ impl OperationHost for Host {
     async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>, Error> {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let mut payload = Vec::new();
-        harmos_sdk::grpc::encode(&request, &mut payload)?;
+        if O::ID == "harmos.initialize" {
+            use harmos_domain::Message;
+            use prost::Message as _;
+            let request = harmos_operations::lifecycle::Initialize::decode(&request.encode())?;
+            let assignments: Vec<harmos_sdk::operations::AssignedOperation> = if request.assignments.is_empty() {
+                Vec::new()
+            } else {
+                postcard::from_bytes(&request.assignments).map_err(|error| Error::Response(error.to_string()))?
+            };
+            let initialization = codec::Initialization {
+                config_json: request.config_json,
+                generation_context: request.generation_context,
+                assignments: assignments
+                    .into_iter()
+                    .map(|entry| codec::Assignment {
+                        operation: entry.operation,
+                        fingerprint: entry.fingerprint.to_vec(),
+                        generation: entry.generation,
+                    })
+                    .collect(),
+            };
+            payload = initialization.encode_to_vec();
+        } else {
+            harmos_sdk::grpc::encode(&request, &mut payload)?;
+        }
         let packet = Packet {
             invocation: id,
             phase: 1,
