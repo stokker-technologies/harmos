@@ -6,9 +6,10 @@ Mise is the public entry point. The project-owned Python task wrappers live in
 
 ## Workstation Builds
 
-Native compile tasks run concurrently across repositories and worktrees, with
-no workstation build lock or added worker/thread limits. The task wrappers keep
-the standard compiler-output preflight and share the bounded compiler cache.
+Compiling tasks run through `tools/python/src/harmos_tools/build/machine.py`, which starts the
+shared compiler cache for the command. Nothing serializes compilation: tasks in
+any repository or worktree run at the same time, and no worker or compiler
+thread limits are added.
 
 For non-CI runs, `mise.toml` selects `RUSTC_WRAPPER=sccache`,
 `SCCACHE_DIR=<OS user cache>/sccache`, `SCCACHE_CACHE_SIZE=20G` and disables
@@ -17,8 +18,8 @@ cacheable crate compilations can reuse results across worktrees. CI retains
 its existing per-profile cache settings. sccache is already a pinned mise tool.
 Local wrappers reuse the existing `ci/compiler.py` foreground-server helper with
 an owned endpoint, so an older daemon cannot silently select another store.
-Only that owned server is stopped after the command; each task prints its cache
-hit and miss counts.
+Concurrent tasks each own a server on the same store. Only that owned server is
+stopped after the command; each task prints its cache hit and miss counts.
 If allocation failures recur, disable it for one run by setting
 `RUSTC_WRAPPER` to an empty value:
 
@@ -28,8 +29,6 @@ RUSTC_WRAPPER= mise run build
 
 In PowerShell use `$env:RUSTC_WRAPPER = ''; mise run build`, then remove
 the override with `Remove-Item Env:RUSTC_WRAPPER`.
-`mise run test:tooling` proves concurrent task entry and child exit-code
-propagation.
 
 ## Focused Integration Tests
 
