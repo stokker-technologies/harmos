@@ -18,7 +18,7 @@ use std::collections::BTreeSet;
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Mutex};
 // Third Party Imports
 use tokio::sync::watch;
 // Local Imports
@@ -128,10 +128,6 @@ pub enum StreamPublicationError {
 /* === Implementations === */
 
 impl<A: Application> StreamManager<A> {
-    pub async fn admit(&self, owner: &str, declaration: StreamDeclaration) -> Result<PublicationLease, StreamAdmissionError> {
-        Ok(self.admit_all(owner, [declaration]).await?.remove(0))
-    }
-
     pub fn validate_publications(
         &self, owner: &str, declarations: impl IntoIterator<Item = StreamDeclaration>,
     ) -> Result<(), StreamAdmissionError> {
@@ -142,106 +138,6 @@ impl<A: Application> StreamManager<A> {
         let _visibility = self.windows.visibility.read().expect("stream visibility poisoned");
         let windows = self.windows.windows.read().expect("stream registry poisoned");
         validate_existing(&windows, &definitions, false)
-    }
-
-    pub async fn admit_all(
-        &self, owner: &str, declarations: impl IntoIterator<Item = StreamDeclaration>,
-    ) -> Result<Vec<PublicationLease>, StreamAdmissionError> {
-        let definitions = publication_definitions(owner, declarations)?;
-        let validations = definitions
-            .iter()
-            .map(|definition| {
-                crate::schema::Validator::from_schema(
-                    definition.schema().expect("plugin definitions own a row schema"),
-                    &self.schema_settings,
-                )
-                .map_err(crate::schema::Error::from)
-                .map(Arc::new)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        {
-            let _visibility = self.windows.visibility.read().expect("stream visibility poisoned");
-            let windows = self.windows.windows.read().expect("stream registry poisoned");
-            validate_existing(&windows, &definitions, true)?;
-        }
-        if self.closed.load(Ordering::Acquire) {
-            return Err(StreamAdmissionError::Closed);
-        }
-        let mut floors = Vec::with_capacity(definitions.len());
-        for definition in &definitions {
-            floors.push(self.tier.seal(definition.clone(), Vec::new()).await);
-        }
-
-        let _visibility = self.windows.visibility.read().expect("stream visibility poisoned");
-        let mut windows = self.windows.windows.write().expect("stream registry poisoned");
-        if self.closed.load(Ordering::Acquire) {
-            return Err(StreamAdmissionError::Closed);
-        }
-        validate_existing(&windows, &definitions, true)?;
-        let mut leases = Vec::with_capacity(definitions.len());
-        for ((definition, floor), validation) in definitions.into_iter().zip(floors).zip(validations) {
-            let revisions = windows.entry(Arc::<str>::from(definition.id())).or_default();
-            // A presentation-only edit keeps the wire revision and retained rows.
-            // Existing readers keep their immutable descriptor; new discovery sees
-            // the replacement's authored metadata.
-            if let Some(previous) = revisions.get(&definition.version())
-                && (previous.is_staged()
-                    || previous.definition.metadata() != definition.metadata()
-                    || previous.definition.row_metadata() != definition.row_metadata())
-            {
-                revisions.insert(
-                    definition.version(),
-                    Arc::new(Wired {
-                        validation: Some(Arc::clone(&validation)),
-                        window: Arc::clone(&previous.window),
-                        definition: definition.clone(),
-                        publisher: Mutex::new(Weak::new()),
-                        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-                        staged: None,
-                    }),
-                );
-            }
-            let wired = revisions
-                .entry(definition.version())
-                .or_insert_with(|| {
-                    let wired = Arc::new(Wired {
-                        validation: Some(Arc::clone(&validation)),
-                        window: Arc::new(
-                            window::Window::wired(
-                                definition.window(),
-                                floor,
-                                Arc::clone(&self.windows.sequence),
-                                self.windows.pump.clone(),
-                            )
-                            .visible_with(self.windows.visibility.clone()),
-                        ),
-                        definition,
-                        publisher: Mutex::new(Weak::new()),
-                        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-                        staged: None,
-                    });
-                    if floor > Position::ORIGIN && floor <= *self.applied.borrow() {
-                        wired.window.stands_on(floor);
-                    }
-                    wired
-                })
-                .clone();
-            let active = Arc::new(Mutex::new(true));
-            *wired.publisher.lock().expect("stream publisher poisoned") = Arc::downgrade(&active);
-            leases.push(PublicationLease {
-                stream: PluginStream {
-                    wired,
-                    tier: self.tier.clone(),
-                    closed: Arc::clone(&self.closed),
-                    pool: self.windows.publications.clone(),
-                    ingest: self.windows.ingest.clone(),
-                },
-                active,
-                applied: self.applied.clone(),
-                sequence: AtomicU64::new(0),
-            });
-        }
-        Ok(leases)
     }
 
     pub fn publication(&self, id: &str, version: u32) -> Option<PluginStream> {
@@ -520,19 +416,6 @@ impl PluginStream {
 
     pub fn demand(&self) -> Demand {
         Demand::of(&self.wired.window)
-    }
-}
-
-impl Wired {
-    fn is_staged(&self) -> bool {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-        {
-            self.staged.is_some()
-        }
-        #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
-        {
-            false
-        }
     }
 }
 
