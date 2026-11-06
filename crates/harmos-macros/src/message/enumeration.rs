@@ -78,7 +78,7 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool, s
         let mut initial = Vec::new();
         for (position, field) in variant.fields.iter_mut().enumerate() {
             let ident = field.ident.clone().unwrap_or_else(|| format_ident!("field_{position}"));
-            // Validate The Same Portable Field Shapes As Struct Messages
+            // Validate the Same Portable Field Shapes as Struct Messages
             let (required_message, kind, cardinality) = encoding(&field.ty, &harmos).map_err(|error| {
                 Error::new(
                     field.span(),

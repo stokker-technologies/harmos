@@ -486,7 +486,7 @@ fn decode_message(definition: &Definition, input: DecodeInput<'_>, bytes: &mut V
 
 fn decode_members(definition: &Definition, input: DecodeInput<'_>, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     let fields = (definition.fields)();
-    // Check Every Occurrence Of A Known Field Before Any Is Selected
+    // Check Every Occurrence of a Known Field Before Any Is Selected
     input.fields(&mut |occurrence| {
         if let Some(field) = fields.iter().find(|field| field.tag == occurrence.tag) {
             check(field, occurrence)?;

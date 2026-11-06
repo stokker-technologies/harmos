@@ -7,7 +7,7 @@
  * ***
  */
 
-// Immutable Paged Query Tables For Derived Evidence
+// Immutable Paged Query Tables for Derived Evidence
 
 /* === Modules === */
 

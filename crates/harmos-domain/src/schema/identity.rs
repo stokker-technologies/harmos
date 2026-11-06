@@ -7,7 +7,7 @@
  * ***
  */
 
-// Canonical Schema Traversal And Structural Identity
+// Canonical Schema Traversal and Structural Identity
 
 /* === Modules === */
 

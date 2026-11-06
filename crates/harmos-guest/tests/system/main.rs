@@ -52,7 +52,7 @@ wasmtime::component::bindgen!({
 
 /* === Structs === */
 
-// Records Every Host Call A Guest Makes And Answers The Provider From A Script
+// Records Every Host Call a Guest Makes and Answers the Provider from a Script
 #[derive(Default)]
 struct Stub {
     calls: Vec<Call>,

@@ -19,7 +19,7 @@ mod bindings {
 
 /* === Re-Exports === */
 
-// Both Phases And SDK Calls Use The Original Store's Async Operation Function
+// Both Phases and SDK Calls Use the Original Store's Async Operation Function
 pub(super) use bindings::{Plugin, PluginIndices, harmos::guest::capabilities};
 
 /* === Imports === */

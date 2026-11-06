@@ -147,7 +147,7 @@ fn retain_schema(
             used: bytes,
             allowed: settings.preparation_bytes.get(),
         })?;
-    // Resolve Named Definitions And Validate The Result Under One Shared Work
+    // Resolve Named Definitions and Validate the Result Under One Shared Work
     // Allowance Across Every Contract, Source And Publication In The Artifact.
     settings.preparation_work = preparation
         .work

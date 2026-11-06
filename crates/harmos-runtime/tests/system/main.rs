@@ -7,7 +7,7 @@
  * ***
  */
 
-// Walk The Host Alone, With The Stamped Guest, And With The Stamped Sidecar
+// Walk the Host Alone, with the Stamped Guest, and with the Stamped Sidecar
 
 /* === Modules === */
 
@@ -28,7 +28,7 @@ mod sidecar;
 #[path = "../support/mod.rs"]
 mod support;
 
-// The Lanes The Storage Fixture Serves Its Operations On
+// The Lanes the Storage Fixture Serves Its Operations On
 mod operations {
     pub(crate) use super::support::Lanes;
 }

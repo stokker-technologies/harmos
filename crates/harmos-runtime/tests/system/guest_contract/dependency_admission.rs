@@ -104,7 +104,7 @@ async fn missing_provider_refused() {
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone()).await;
     let candidate = dependency_candidate(&mut lifecycle, "idle").await;
     let missing = candidate.definitions().filter(|definition| definition.id != "provider").cloned();
-    // No Plugin Provides It, So Planning Routes It To The Host, Whose Preflight Refuses It
+    // No Plugin Provides It, So Planning Routes It to the Host, Whose Preflight Refuses It
     let planned = harmos_runtime::plugin::PluginDefinitions::new(missing, []).unwrap();
     let routed = planned
         .host_requirements()

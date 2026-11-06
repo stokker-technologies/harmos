@@ -193,7 +193,7 @@ async fn demand_survives_reload() {
 async fn batches_keep_order() {
     let capacity = std::num::NonZeroUsize::new(2).unwrap();
     let source = harmos_sidecar::PluginNative::<Batches>::new(capacity).unwrap();
-    // A Decoded 100-Row Batch Outgrows The Usual 4 KiB Preparation Budget
+    // A Decoded 100-Row Batch Outgrows the Usual 4 KiB Preparation Budget
     let runtime = assembly(|setup| {
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: std::num::NonZeroUsize::new(64 * 1024),
@@ -243,7 +243,7 @@ async fn batches_keep_order() {
     assert_eq!(stamps("batches.timed").await, (0..100).map(|sample| (sample, TIMED_BASE + 1_000 * sample as i64)).collect::<Vec<_>>());
     // Kit Clock Monotonicity Is Exercised In The Publisher's Controlled-Clock Unit Story.
     assert_eq!(stamps("batches.clocked").await, (0..100).map(|sample| (sample, TIMED_BASE + 1_000 * sample as i64)).collect::<Vec<_>>());
-    // The Backwards Row And Everything After It Stay Unpublished
+    // The Backwards Row and Everything After It Stay Unpublished
     assert_eq!(stamps("batches.stamped").await, vec![(1, TIMED_BASE), (2, TIMED_BASE + 1_000), (3, TIMED_BASE + 1_000), (4, TIMED_BASE),]);
     fixture.runtime.shutdown().await.unwrap();
 }
@@ -255,7 +255,7 @@ async fn held_ingest_lossless() {
     let source = harmos_sidecar::PluginNative::<Flood>::new(capacity).unwrap();
     let mut fixture =
         Managed::attach(source, serde_json::to_vec(witness.key()).unwrap(), Lanes::Open, capacity, vec![], std::convert::identity).await;
-    // The Host's Ingest Follows Before The Producer Starts
+    // The Host's Ingest Follows Before the Producer Starts
     let mut feed = fixture.runtime.streams.follow(Cursor::ORIGIN);
     fixture.publication().await.unwrap();
     fixture.initialize().await.unwrap();
@@ -283,7 +283,7 @@ async fn held_ingest_lossless() {
     })
     .await;
 
-    // Every Row Arrived Once, In Order, Through A Window Of 8
+    // Every Row Arrived Once, in Order, Through a Window of 8
     assert_eq!(samples, (0..FLOOD_ROWS).collect::<Vec<_>>());
     assert!(batches > 1, "the producer was paced across ingest batches");
     fixture.shutdown().await.unwrap();

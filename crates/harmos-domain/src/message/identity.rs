@@ -7,7 +7,7 @@
  * ***
  */
 
-// Portable Schema And Content Identity Values
+// Portable Schema and Content Identity Values
 
 /* === Modules === */
 

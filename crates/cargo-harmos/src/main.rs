@@ -38,7 +38,7 @@ use clap::Parser;
 /* === Structs === */
 
 #[derive(Parser)]
-#[command(name = "cargo harmos", version, about = "Build And Inspect Harmos Plugin Artifacts")]
+#[command(name = "cargo harmos", version, about = "Build and Inspect Harmos Plugin Artifacts")]
 struct Arguments {
     #[command(subcommand)]
     command: commands::Command,

@@ -7,7 +7,7 @@
  * ***
  */
 
-// Stored Entry Kinds Shared By Scans And Live Subscriptions
+// Stored Entry Kinds Shared by Scans and Live Subscriptions
 
 /* === Modules === */
 

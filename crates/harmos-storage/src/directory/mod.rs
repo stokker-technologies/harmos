@@ -7,7 +7,7 @@
  * ***
  */
 
-// Charged Directory Discovery And Native Change Subscription
+// Charged Directory Discovery and Native Change Subscription
 
 /* === Modules === */
 

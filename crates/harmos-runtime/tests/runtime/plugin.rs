@@ -96,12 +96,12 @@ fn fragments(facility: &str, owner: &str) -> Vec<u8> {
 }
 
 fn guest() -> Vec<u8> {
-    // Empty Component With Inert Metadata
+    // Empty Component with Inert Metadata
     let mut bytes = b"\0asm\x0d\0\x01\0".to_vec();
     let mut section = vec![0]; // Empty custom-section name.
     section.extend(fragments("guest", "guest_fixture"));
 
-    // Encode The Custom Section Length
+    // Encode the Custom Section Length
     bytes.push(0);
     let mut len = section.len();
     while len >= 128 {
@@ -147,7 +147,7 @@ fn archive(manifest: &[u8], entries: &[(&str, &[u8], tar::EntryType)]) -> Vec<u8
 
 #[test]
 fn independent_files_roundtrip() {
-    // Build Independent Native And Guest Files
+    // Build Independent Native and Guest Files
     let staging = tempfile::tempdir().unwrap();
     let marker = staging.path().join("executed");
     let mut native = format!("#!/bin/sh\nprintf executed > '{}'\nexit 73\n", marker.display()).into_bytes();
@@ -172,7 +172,7 @@ fn independent_files_roundtrip() {
     ];
     let bundle = Bundle::build(identity(), &sources, Limits::default()).unwrap();
 
-    // Source Order Does Not Change The Archive
+    // Source Order Does Not Change the Archive
     let reversed = [
         Source {
             path: sources[2].path,
@@ -192,7 +192,7 @@ fn independent_files_roundtrip() {
     ];
     assert_eq!(bundle.bytes(), Bundle::build(identity(), &reversed, Limits::default()).unwrap().bytes());
 
-    // Inspection Preserves Each File And Its Declaration
+    // Inspection Preserves Each File and Its Declaration
     let inspected = Bundle::inspect(bundle.bytes(), Limits::default()).unwrap();
     assert_eq!(inspected.manifest().identity, identity());
     assert_eq!(inspected.declaration("bin/probe"), Some(&Declaration::inspect(&native, Inspected::Sidecar).unwrap()));
@@ -206,7 +206,7 @@ fn independent_files_roundtrip() {
     }
     let extracted = inspected.extract(staging.path()).unwrap();
 
-    // Extraction Preserves Permissions And Never Executes Native Code
+    // Extraction Preserves Permissions and Never Executes Native Code
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -221,7 +221,7 @@ fn independent_files_roundtrip() {
     assert_eq!(std::fs::read(extracted.path().join("manifest.json")).unwrap(), serde_json::to_vec(inspected.manifest()).unwrap());
     assert!(!marker.exists(), "neither inspection nor extraction executes native code");
 
-    // Dropping The Extraction Removes Its Owned Directory
+    // Dropping the Extraction Removes Its Owned Directory
     let path = extracted.path().to_owned();
     drop(extracted);
     assert!(!path.exists());
@@ -248,7 +248,7 @@ fn executable_owned_registrations() {
     let valid = build(export.clone()).unwrap();
     assert_eq!(valid.manifest().files[0].executable.as_ref().unwrap().registrations, executable(Facility::Sidecar).registrations);
 
-    // Reject Invalid Or Duplicated Registration Metadata
+    // Reject Invalid or Duplicated Registration Metadata
     for change in 0..4 {
         let mut invalid = executable(Facility::Sidecar);
         match change {
@@ -261,7 +261,7 @@ fn executable_owned_registrations() {
     }
     assert!(build(executable(Facility::Guest)).is_err());
 
-    // One Executable Identity Per Target
+    // One Executable Identity per Target
     let sources = [
         Source {
             path: "bin/one",
@@ -364,7 +364,7 @@ fn tampered_archives_refused() {
         }
         assert!(Bundle::inspect(&archive(&serde_json::to_vec(&value).unwrap(), &ordinary), Limits::default()).is_err());
     }
-    // Reject Duplicate Fields And Impossible Entry Sizes
+    // Reject Duplicate Fields and Impossible Entry Sizes
     let duplicated = String::from_utf8(manifest).unwrap().replacen("\"schema\":1", "\"schema\":1,\"schema\":1", 1);
     assert!(Bundle::inspect(&archive(duplicated.as_bytes(), &ordinary), Limits::default()).is_err());
     let mut impossible_size = bundle.bytes().to_vec();

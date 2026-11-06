@@ -113,7 +113,7 @@ where
 {
     supported_observers::<P>().map_err(refusal)?;
     super::context::retain();
-    // Decode Before Allocating An Instance Or Preparing Authored State
+    // Decode Before Allocating an Instance or Preparing Authored State
     let command: WireCommand = WireCommand::decode(&command).map_err(refusal)?;
     let (table, assignments) = TABLE.with_borrow_mut(|active| {
         if let Some(instance) = active {
@@ -180,7 +180,7 @@ where
     dependencies.insert(context).map_err(refusal)?;
     let context = harmos_sdk::operations::ExecutionContext::new(dependencies, call);
     let phase = table.lock().map_err(refusal)?.begin(command, Arc::new(context));
-    // The Original Slot Owns Work While Both Instance And Table Borrows Are Free
+    // The Original Slot Owns Work While Both Instance and Table Borrows Are Free
     let answer = phase.await;
     answer.encode().map_err(refusal)
 }

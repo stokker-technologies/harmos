@@ -130,7 +130,7 @@ fn artifacts_embed_metadata() {
         .chain(["schematic.analyze.exchange", "schematic.analyze.upload", "schematic.list.directories"])
         .collect::<BTreeSet<_>>();
     let portable = SHARED.into_iter().collect::<BTreeSet<_>>();
-    // Only The Native Sidecar Publishes Analysis Progress, Through The Host
+    // Only the Native Sidecar Publishes Analysis Progress, Through the Host
     let publishing = BTreeSet::from(["host.publish"]);
     let progress = BTreeSet::from(["schematic.analysis_progress"]);
     let none = BTreeSet::new();

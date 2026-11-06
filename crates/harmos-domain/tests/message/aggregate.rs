@@ -67,7 +67,7 @@ const EVERY: [Aggregate; 11] = [
 
 /* === Structs === */
 
-// The Aggregate Reaches Every Field Cardinality Of A Derived Message
+// The Aggregate Reaches Every Field Cardinality of a Derived Message
 #[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct Summary {

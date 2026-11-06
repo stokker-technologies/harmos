@@ -7,7 +7,7 @@
  * ***
  */
 
-// Inspect Guest Component World And Inventory
+// Inspect Guest Component World and Inventory
 
 /* === Modules === */
 
@@ -63,7 +63,7 @@ fn digest(world: &str) -> u64 {
 
 #[test]
 fn world_hash_unchanged() {
-    // Different Operation Catalogs Do Not Change The Component World
+    // Different Operation Catalogs Do Not Change the Component World
     let schematic = world(&fixtures::inspection("schematic-guest"));
     let sandbox = world(&fixtures::inspection("harmos-sandbox-guest"));
 

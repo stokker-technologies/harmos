@@ -55,7 +55,7 @@ struct Reading {
 
 /* === Private Functions === */
 
-// Every Saved Record Of One Schema As (Item, Value), Through The Query Path
+// Every Saved Record of One Schema as (Item, Value), Through the Query Path
 async fn saved(storage: &StorageManager, schema: &SchemaKey) -> Vec<(String, i64)> {
     let query = harmos_runtime::storage::Query {
         at: storage.cursor_saved(),
@@ -102,7 +102,7 @@ fn served(runtime: &Runtime<Bank>) -> Vec<String> {
 #[tokio::test]
 async fn runtime_baseline_walks() {
     let _report = crate::report::system();
-    // Boot The Host Over A Journal On Disk
+    // Boot the Host over a Journal on Disk
     let root = tempfile::tempdir().unwrap();
     let settings = JsonStorageSettings {
         root: root.path().to_path_buf(),
@@ -120,7 +120,7 @@ async fn runtime_baseline_walks() {
     .unwrap();
     assert!(storage.status().running);
 
-    // Read The Catalog Before And After Serving Storage
+    // Read the Catalog Before and After Serving Storage
     assert!(!served(&runtime).iter().any(|id| id.starts_with("storage_")), "nothing is served before the host registers it");
     runtime.operations.register::<harmos_operations::storage::Storage>(Lanes::Open).await.unwrap();
     let catalogue = served(&runtime);
@@ -128,7 +128,7 @@ async fn runtime_baseline_walks() {
         assert!(catalogue.iter().any(|id| id == required), "missing {required}");
     }
 
-    // Declare A Schema, Write Records Of It And Read Them Back Once Saved
+    // Declare a Schema, Write Records of It and Read Them Back Once Saved
     let schema = schema();
     let declaration = <Reading as Described>::DEFINITION;
     let graph = Graph::from_declaration(declaration, &SchemaSettings::default()).unwrap();

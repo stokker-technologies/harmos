@@ -201,7 +201,7 @@ impl Inputs {
 
 /* === Private Functions === */
 
-// Cargo Creates A Missing Output Directory Atomically Through A Sibling Named After It Plus Six Random Characters
+// Cargo Creates a Missing Output Directory Atomically Through a Sibling Named After It Plus Six Random Characters
 fn staging_sibling(root: &Path, path: &Path) -> bool {
     let (Some(parent), Some(name)) = (root.parent(), root.file_name().and_then(|name| name.to_str())) else {
         return false;

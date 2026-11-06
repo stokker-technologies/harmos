@@ -7,7 +7,7 @@
  * ***
  */
 
-// Journaled Stream And File Read Stories Over Balanced Three-Phase Samples
+// Journaled Stream and File Read Stories over Balanced Three-Phase Samples
 
 /* === Modules === */
 

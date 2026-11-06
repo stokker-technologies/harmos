@@ -157,7 +157,7 @@ impl Endpoint {
         &self, scope: &crate::plugin::PluginScope, request: harmos_sdk::operations::publication::Publication<'_>,
         context: &crate::operations::Context<'_>,
     ) -> crate::Result<()> {
-        // Calls On One Stream Stage In Arrival Order
+        // Calls on One Stream Stage in Arrival Order
         let turn = self.turns.lock().expect("native publication turns poisoned").entry(request.stream.to_owned()).or_default().clone();
         let _turn = turn.lock().await;
         let lease = scope.publication_in(context, request.stream, request.schema)?;

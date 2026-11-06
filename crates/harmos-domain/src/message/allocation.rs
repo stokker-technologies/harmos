@@ -7,7 +7,7 @@
  * ***
  */
 
-// Checked Decoding Memory Arithmetic And Exact-Capacity Containers
+// Checked Decoding Memory Arithmetic and Exact-Capacity Containers
 
 /* === Modules === */
 

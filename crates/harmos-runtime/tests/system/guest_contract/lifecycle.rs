@@ -167,7 +167,7 @@ impl harmos_runtime::Operation for Echo {
     async fn run(self, _: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<wire::Echoed>> {
         let request = self.0;
         let result: ::core::result::Result<wire::Echoed, Self::Error> = async move {
-            // The Waiting Probe Asks For An Answer That Never Comes Before Its Deadline
+            // The Waiting Probe Asks for an Answer That Never Comes Before Its Deadline
             if request.say == "slow" {
                 std::future::pending::<()>().await;
             }
@@ -311,7 +311,7 @@ impl Resources {
                     }
                     Err(error) => {
                         if self.serving.as_ref().is_some_and(|serving| serving.operations().is_err()) {
-                            // Report The Terminal Refusal Once, Retaining Original Cleanup Owners
+                            // Report the Terminal Refusal Once, Retaining Original Cleanup Owners
                             self.shutdown_attempted = true;
                             self.initialized = false;
                         }
@@ -357,7 +357,7 @@ impl Lifecycle<schematic_operations::Operations> {
 }
 
 impl Lifecycle<GuestOperations> {
-    // The Sandbox Requires Host Publication And An Embedded Provider In Its Own Lane
+    // The Sandbox Requires Host Publication and an Embedded Provider in Its Own Lane
     pub(super) async fn sandbox_in(runtime: &Runtime<Bank>, lane: super::GuestLanes) -> Self {
         runtime.operations.register::<PublicationOperations>(lane).await.unwrap();
         let mut lifecycle = Self::for_component(runtime, super::sandbox(), lane);
@@ -431,7 +431,7 @@ impl<C> Lifecycle<C> {
 
 /* === Private Functions === */
 
-// Serves The Sandbox's Requirements From The Host When No Plugin Provides Them
+// Serves the Sandbox's Requirements from the Host When No Plugin Provides Them
 pub(super) async fn serve_host(runtime: &Runtime<Bank>, lane: super::GuestLanes) {
     runtime.operations.register::<PublicationOperations>(lane).await.unwrap();
     runtime.operations.register::<EchoOperations>(lane).await.unwrap();

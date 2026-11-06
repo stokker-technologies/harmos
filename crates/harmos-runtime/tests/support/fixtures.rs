@@ -7,7 +7,7 @@
  * ***
  */
 
-// Locate The Fixtures The One Build Stamped And The Package Binaries Nextest Exposes
+// Locate the Fixtures the One Build Stamped and the Package Binaries Nextest Exposes
 #![allow(dead_code)]
 
 /* === Modules === */
@@ -125,7 +125,7 @@ pub fn binary(name: &str, compiled: Option<&str>) -> PathBuf {
     path.unwrap_or_else(|| panic!("{variable} is unset and the package does not own {name}"))
 }
 
-// The Vendored Protobuf Compiler Travels With The Stamped Offline Inputs, Not The Build Runner's Registry
+// The Vendored Protobuf Compiler Travels with the Stamped Offline Inputs, Not the Build Runner's Registry
 pub fn protoc() -> PathBuf {
     let platform = match (std::env::consts::OS, std::env::consts::ARCH) {
         ("linux", "x86_64") => "linux-x86_64",

@@ -133,7 +133,7 @@ async fn builtin_grpc_roundtrip() {
     let parked = runtime.operation(ParkedContract {}).start().await.unwrap();
     let id = parked.id();
 
-    // An External Caller Neither Sees Nor Cancels A Host Instance
+    // An External Caller Neither Sees nor Cancels a Host Instance
     let status = builtin_call::<Status, InstanceState>(channel.clone(), "/harmos.host.v1.Operations/Status", Status::of(id)).await;
     assert!(status.is_err());
     let unknown = harmos_runtime::operations::OperationInstanceId::new(u64::MAX);
@@ -143,7 +143,7 @@ async fn builtin_grpc_roundtrip() {
     assert_eq!(foreign.unwrap_err().code(), cancel.unwrap_err().code());
     assert!(!parked.status().cancellation_requested());
 
-    // The Submitting Host Reads And Cancels Its Own Instance
+    // The Submitting Host Reads and Cancels Its Own Instance
     let owned = runtime.operation(Status::of(id)).await.unwrap();
     assert_eq!(owned.phase, "running");
     let cancelled = runtime.operation(Cancel::of(id)).await.unwrap();
@@ -302,7 +302,7 @@ async fn empty_manager_attaches() {
         assert!(runtime.grpc().local_addr().is_none());
         assert!(call(channel, None).await.is_err(), "round {round} released");
     }
-    // A Dropped Listener Settles Before The Next One Binds The Same Address
+    // A Dropped Listener Settles Before the Next One Binds the Same Address
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let address = attached.local_addr();
     drop(attached);

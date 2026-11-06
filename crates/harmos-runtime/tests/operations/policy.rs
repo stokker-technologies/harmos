@@ -94,7 +94,7 @@ macro_rules! scripted {
 
 /* === Structs === */
 
-// Each Request Carries Its Scripted Behavior, Which Can Hold A Shared Gate,
+// Each Request Carries Its Scripted Behavior, Which Can Hold a Shared Gate,
 // So Every Policy Request Stays In Process.
 #[harmos_runtime::operation(resources = [BlockerOwner], codec = manual, id = "policy.blocker",
     response = u64,

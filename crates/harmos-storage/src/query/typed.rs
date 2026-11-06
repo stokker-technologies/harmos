@@ -7,7 +7,7 @@
  * ***
  */
 
-// Typed Historical Reads Decoded From Stored Bytes
+// Typed Historical Reads Decoded from Stored Bytes
 
 /* === Modules === */
 

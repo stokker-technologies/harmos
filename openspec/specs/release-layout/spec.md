@@ -20,13 +20,13 @@ that carry arguments, preserving flag and profile forwarding.
 Harmos SHALL publish library crates and its declared Cargo tool archive with
 generated changelogs, while keeping example bundles in CI packages only.
 
-#### Scenario: Tool And Example Packaging
+#### Scenario: Tool and Example Packaging
 
 - **WHEN** matching native packages are staged for release
 - **THEN** downloads contain the Cargo tool archive, CHANGELOG.md and SHA256SUMS
 - **AND** Schematic bundles and internal publication manifests are not downloads
 
-#### Scenario: Crate Changelogs And Pins
+#### Scenario: Crate Changelogs and Pins
 
 - **WHEN** library crates are dry-run for publication
 - **THEN** each crate contains generated CHANGELOG.md and exact sibling versions

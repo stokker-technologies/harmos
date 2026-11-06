@@ -15,6 +15,6 @@ The listener SHALL preserve existing connections during certificate replacement 
 ### Requirement: Bounded Safe Recovery
 The implementation SHALL preserve lifecycle and certificate replacement safety.
 
-#### Scenario: Invalid Replacement Or Shutdown
+#### Scenario: Invalid Replacement or Shutdown
 - **WHEN** replacement material is invalid or the listener shuts down
 - **THEN** invalid material leaves the active certificate intact and background work stops before admission closes

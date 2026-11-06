@@ -211,7 +211,7 @@ impl<A: Wire> JournalConsumer<A> for Journal<A> {
             return self.checkpoint;
         }
 
-        // Forwarded Frames Are Written Exactly As Stored
+        // Forwarded Frames Are Written Exactly as Stored
         let mut frames = BTreeMap::new();
         for (_, line) in std::mem::take(&mut self.forward) {
             let Ok(group) = members(&line) else {
@@ -222,7 +222,7 @@ impl<A: Wire> JournalConsumer<A> for Journal<A> {
             frames.insert(first, (end, line));
         }
 
-        // Every Other Entry Is Encoded, One Whole Commit Per Frame
+        // Every Other Entry Is Encoded, One Whole Commit per Frame
         let mut index = 0;
         while index < entries.len() {
             let entry = &entries[index];
@@ -246,7 +246,7 @@ impl<A: Wire> JournalConsumer<A> for Journal<A> {
             index += count;
         }
 
-        // Frames Append Only Where The Copy Ends
+        // Frames Append Only Where the Copy Ends
         for (first, (end, line)) in frames {
             if Some(first.0) != self.written.0.checked_add(1) {
                 self.halted = true;

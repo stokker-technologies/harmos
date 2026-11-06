@@ -218,7 +218,7 @@ def recover_worktrees(root: Path, identity: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Simulate The Declared CI Graph")
+    parser = argparse.ArgumentParser(description="Simulate the Declared CI Graph")
     parser.add_argument("--pipeline", choices=("pr", "dev", "release", "nightly"), default="pr")
     parser.add_argument("--platform", action="append", choices=("windows", "unix"))
     parser.add_argument("--executor", action="append", help="platform=native|docker")

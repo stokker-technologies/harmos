@@ -7,7 +7,7 @@
  * ***
  */
 
-// The Sandbox Guest's Declarations, Included By The Host Stories That Drive It
+// The Sandbox Guest's Declarations, Included by the Host Stories That Drive It
 #![allow(dead_code)]
 
 /* === Modules === */

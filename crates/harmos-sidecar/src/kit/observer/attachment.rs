@@ -109,7 +109,7 @@ impl<H: ObserverHost> ObserverAttachment<H> {
 }
 
 impl<H: ObserverHost> Attachment<Supervisor> for ObserverAttachment<H> {
-    // Bind The Built-In Observe Control Before Initialization
+    // Bind the Built-In Observe Control Before Initialization
     fn bind(self: Arc<Self>, table: &mut WireTable) -> Result<(), ServingError> {
         self.resources.set(Arc::new(table.context())).map_err(|_| ServingError::Catalog)?;
         table.provide_resource(Arc::clone(&self)).map_err(|_| ServingError::Catalog)?;
@@ -240,7 +240,7 @@ impl Running {
                 return;
             };
             let resources = Arc::clone(attachment.resources.get().expect("observer attachment bound before activation"));
-            // Binding Happens On The Activation's Own Thread
+            // Binding Happens on the Activation's Own Thread
             let bound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| H::bind(Arc::clone(&resources), host)));
             let activated = bound.map_err(|_| ObserverError::BindingPanicked).and_then(|bound| instance.activate(resources, bound));
             // The Activity Owns The Activation Now. Release this thread's

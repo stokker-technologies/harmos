@@ -214,7 +214,7 @@ impl<T: MemorySize> MemorySize for Option<T> {
     }
 }
 
-// The Heap Pointee Owns Its Full Resident Size Beside The Inline Pointer
+// The Heap Pointee Owns Its Full Resident Size Beside the Inline Pointer
 impl<T: MemorySize> MemorySize for Box<T> {
     fn memory_size(&self) -> usize {
         let owned = (**self).memory_size();

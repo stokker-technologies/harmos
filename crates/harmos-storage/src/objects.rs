@@ -223,7 +223,7 @@ impl<C> StorageManager<C> {
         if let Some(receipts) = receipts {
             return Ok(receipts);
         }
-        // A Matching Retry Reconstructs The Same Revision Tokens From Its Fixed
+        // A Matching Retry Reconstructs the Same Revision Tokens from Its Fixed
         // Original Group Frontier. No Payload Is Revalidated Or Readmitted.
         let first = last.checked_sub(positions as u64 - 2).ok_or_else(|| invalid("invalid object group receipt"))?;
         let mut receipts = Vec::with_capacity(count.get());

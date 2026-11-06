@@ -117,7 +117,7 @@ async fn guest_composition_walks() {
         })
         .await
         .unwrap();
-    assert_eq!(validated.diagnostics, ["Duplicate Symbol IDs", "Connection 1 To 2 References A Missing Symbol"]);
+    assert_eq!(validated.diagnostics, ["Duplicate Symbol IDs", "Connection 1 to 2 References a Missing Symbol"]);
 
     // Scene 6: Analysis Streams Its Findings Before Its Response
     let settings = harmos_runtime::operations::StreamSettings {

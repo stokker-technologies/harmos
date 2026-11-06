@@ -7,7 +7,7 @@
  * ***
  */
 
-// Registration Catalogs And Initialization Gate Admission Of One Sidecar Generation
+// Registration Catalogs and Initialization Gate Admission of One Sidecar Generation
 
 /* === Modules === */
 
@@ -216,7 +216,7 @@ async fn readiness_requires_init() {
         initialization.await.unwrap();
     }
 
-    // Readiness Follows Initialization And Ends With Shutdown
+    // Readiness Follows Initialization and Ends with Shutdown
     publications::ready(ready.clone()).await;
     service_status(services.watch_residents(), NAME, |value| matches!(value, ServiceStatus::Running { .. })).await;
     assert_eq!(marks.count("initialized"), 1);
@@ -294,7 +294,7 @@ async fn restart_closes_admission() {
     let _lease = runtime.operations.submit_resident(NAME).await.unwrap();
     service_status(runtime.operations.watch_residents(), NAME, |status| matches!(status, ServiceStatus::Running { .. })).await;
 
-    // The Restarted Generation Registers A Changed Catalog And Is Refused
+    // The Restarted Generation Registers a Changed Catalog and Is Refused
     marks.mark("catalog-changed");
     marks.mark("crash");
     let status = service_status(runtime.operations.watch_residents(), NAME, |value| matches!(value, ServiceStatus::Inactive { .. })).await;

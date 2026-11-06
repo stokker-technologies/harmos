@@ -6,7 +6,7 @@
 #
 # ***
 
-"""Resolve Task Outputs By Profile And Native Target"""
+"""Resolve Task Outputs by Profile and Native Target"""
 
 # === Imports === #
 
@@ -79,7 +79,7 @@ def replace(directory: Path, source: Path, destination: Path, *, origin: Path | 
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Resolve A Nominal Task Output")
+    parser = argparse.ArgumentParser(description="Resolve a Nominal Task Output")
     parser.add_argument("stage", choices=STAGES)
     parser.add_argument("--profile", choices=PROFILES, default="dev")
     parser.add_argument("--target")

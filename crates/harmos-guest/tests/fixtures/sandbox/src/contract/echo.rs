@@ -107,7 +107,7 @@ mod runtime {
             let carrier = sdk.resource::<harmos::guest::kit::Context>();
             let context = carrier.as_ref();
             let result: Result<Echoed, OperationRefusal> = async move {
-                // Calls Through The Saved Initialization Context
+                // Calls Through the Saved Initialization Context
                 if let Some(value) = self.say.strip_prefix("saved-publish:") {
                     let saved = owner
                         .initialized_context
@@ -132,7 +132,7 @@ mod runtime {
                         .map_err(OperationRefusal::of);
                 }
 
-                // Calls Through The Current Context
+                // Calls Through the Current Context
                 if let Some(say) = self.say.strip_prefix("dependency:") {
                     let invocation = sdk.operation(ProviderEchoOperation { say: say.to_owned() });
                     let response = match sdk.call().value::<super::super::RetryChoice>().map_err(OperationRefusal::of)? {
@@ -150,7 +150,7 @@ mod runtime {
                     }
                 }
 
-                // Memory The Sandbox Must Refuse
+                // Memory the Sandbox Must Refuse
                 if self.say == "grow" {
                     std::hint::black_box(vec![1u8; 128 * 1024 * 1024]);
                 }

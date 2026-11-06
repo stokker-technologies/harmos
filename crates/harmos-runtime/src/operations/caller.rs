@@ -300,7 +300,7 @@ impl Source {
                 id: *id,
             };
         }
-        // A Host Provider Serving A Plugin Requirement Acts For That Caller
+        // A Host Provider Serving a Plugin Requirement Acts for That Caller
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         if entry.plugin().is_none() && _origin.scope.is_some() {
             return self.clone();

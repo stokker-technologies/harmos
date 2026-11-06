@@ -37,7 +37,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 /* === Structs === */
 
 #[derive(Parser)]
-#[command(version, about = "Run The Schematic Editor Walkthrough")]
+#[command(version, about = "Run the Schematic Editor Walkthrough")]
 struct Args {
     #[arg(long, conflicts_with = "sidecar", num_args = 0..=1)]
     guest: Option<Option<PathBuf>>,

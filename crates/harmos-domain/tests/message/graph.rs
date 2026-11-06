@@ -7,7 +7,7 @@
  * ***
  */
 
-// Shared Schema Preparation And Recursive Contracts
+// Shared Schema Preparation and Recursive Contracts
 
 /* === Modules === */
 
@@ -168,7 +168,7 @@ fn typed_recursive_declaration() {
 #[test]
 fn shared_checkpoint_schema() {
     let schema: Schema = serde_json::from_str(CHECKPOINT).unwrap();
-    // Resolve The Same Complete Contract Through Inert Named Fragments
+    // Resolve the Same Complete Contract Through Inert Named Fragments
     let named: Vec<declaration::Named> = schema
         .definitions
         .iter()

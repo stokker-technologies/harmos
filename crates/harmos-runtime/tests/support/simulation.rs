@@ -7,7 +7,7 @@
  * ***
  */
 
-// Share The Deterministic Script Between Stories And Benchmarks
+// Share the Deterministic Script Between Stories and Benchmarks
 
 /* === Modules === */
 

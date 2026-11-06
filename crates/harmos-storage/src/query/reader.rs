@@ -43,7 +43,7 @@ use harmos_domain::model::storage::ArrowIpc;
 
 /* === Constants === */
 
-// Two Protobuf Keys (Five Bytes Each) And Two Length Varints (Ten Bytes Each),
+// Two Protobuf Keys (Five Bytes Each) and Two Length Varints (Ten Bytes Each),
 // Less The Postcard Variant And Length Bytes They Replace.
 const PROTOBUF_FRAMING: usize = 30;
 
@@ -430,7 +430,7 @@ impl QueryReader {
 
             // The Wire Output Adds Its Envelope Around The Arrow Bytes Field.
             let envelope = QueryOutput::Batch(ArrowIpc::new(output.ipc_bytes().to_vec()));
-            // Protobuf Frames This One-Variant Bytes Envelope With Two Keys And Two
+            // Protobuf Frames This One-Variant Bytes Envelope with Two Keys and Two
             // Length Prefixes Beyond The Postcard Bytes; Bound Both Encodings.
             let encoded = crate::Message::encoded_size(&envelope).saturating_add(PROTOBUF_FRAMING);
             drop(envelope);

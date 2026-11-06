@@ -7,7 +7,7 @@
  * ***
  */
 
-// Static Shared Type Declarations And Inert Metadata
+// Static Shared Type Declarations and Inert Metadata
 
 /* === Modules === */
 

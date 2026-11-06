@@ -294,7 +294,7 @@ async fn retired_control_refused() {
     } = harmos_sidecar::transport::Connection::new((read, write), control.expect("the in-process attachment carries a control channel"));
     let driving = tokio::spawn(async move { driver.run().await });
 
-    // Activation Answers On The Same Exchange
+    // Activation Answers on the Same Exchange
     outgoing
         .send(harmos_sidecar::Frame::Call {
             id: 1,
@@ -306,7 +306,7 @@ async fn retired_control_refused() {
     let answer = received(incoming.receive().await.expect("the exchange remains valid"));
     assert!(matches!(answer, Some(harmos_sidecar::Frame::Answer { id: 1, .. })));
 
-    // The Retired Control Method Is Refused As Unknown
+    // The Retired Control Method Is Refused as Unknown
     outgoing
         .send(harmos_sidecar::Frame::Call {
             id: 2,
@@ -374,7 +374,7 @@ async fn public_private_handlers() {
 async fn generated_entry_attaches() {
     GAUGE_DEACTIVATED.store(false, Ordering::SeqCst);
 
-    // Bind The Original SDK Owner Before Authored Initialization
+    // Bind the Original SDK Owner Before Authored Initialization
     let capacity = NonZeroUsize::new(16).unwrap();
     let source = harmos_sidecar::PluginNative::<Gauge>::new(capacity).unwrap();
     let mut fixture = operations::Managed::attach(
@@ -405,7 +405,7 @@ async fn generated_entry_attaches() {
         "the operation frame prints its own line, never the cause"
     );
 
-    // A Nested Transport Failure Arrives As One Cause And One Operation Frame
+    // A Nested Transport Failure Arrives as One Cause and One Operation Frame
     let error = fixture.call::<GetMeasureDeclaration>(GetMeasureDeclaration { value: i64::MIN }).await.unwrap_err();
     let failure = error.failure().expect("the handler failure crosses as a structured value");
     assert_eq!(failure.cause(), "connection reset");
