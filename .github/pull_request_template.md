@@ -10,6 +10,6 @@
 
 <!-- List commands and results, platform, and relevant Cargo features. Repository gate: mise run ci:simulate. State checks not run or failing and why. Include comparable evidence for performance claims. -->
 
-## Compatibility And Documentation
+## Compatibility and Documentation
 
 <!-- Describe effects on public APIs, stored data, wire contracts, or plugins. Identify migration and updates to callers, README, and examples. Write None if unaffected. -->

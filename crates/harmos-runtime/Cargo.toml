@@ -29,7 +29,7 @@ bench = false
 
 # === Features === #
 
-# Core Runtime And Authoring Are Always Available
+# Core Runtime and Authoring Are Always Available
 [features]
 default = []
 plugin = ["dep:petgraph", "dep:semver", "semver/serde", "dep:harmos-packaging"]

@@ -28,7 +28,7 @@
 
 /* === Structs === */
 
-// Identity Is Authored On The Unified Implementation, Where Its Contract Is Known
+// Identity Is Authored on the Unified Implementation, Where Its Contract Is Known
 #[harmos::plugin(description = "A bridge.", id = "bridge", requires = ())]
 pub struct Bridge;
 

@@ -293,7 +293,7 @@ async fn host_requirements_route() {
         callers: BTreeMap::new(),
     };
 
-    // A Requirement The Host Does Not Provide Exactly Is Refused Before Preparation
+    // A Requirement the Host Does Not Provide Exactly Is Refused Before Preparation
     let selected = WireDeclaration::of::<Publish>().contract().unwrap();
     let mut drift = selected.operation().clone();
     drift.policy.timeout = std::time::Duration::from_secs(10);
@@ -303,7 +303,7 @@ async fn host_requirements_route() {
     assert!(matches!(refused.initialize(&mut host).await, Err(Error::NotRegistered { domain: "host provider", .. })));
     assert!(host.callers.is_empty());
 
-    // The Exact Requirement Routes To The Host Provider For The Original Caller
+    // The Exact Requirement Routes to the Host Provider for the Original Caller
     let chosen = requiring(vec![required(selected.clone(), vec![])]);
     let mut manager = PluginManager::new(chosen.clone()).unwrap();
     manager.initialize(&mut host).await.unwrap();
@@ -374,7 +374,7 @@ async fn host_visibility_enforced() {
         .unwrap();
     assert_eq!(String::decode(&response).unwrap(), "encoded host");
 
-    // Revoke The Exact Managed Generation Before Its Replacement Becomes Ready
+    // Revoke the Exact Managed Generation Before Its Replacement Becomes Ready
     host.owner.prepared.store(0, Ordering::SeqCst);
     manager.reload(definitions("second"), &mut host).await.unwrap();
     assert_ne!(scope.generation(), host.scope.as_ref().unwrap().generation());

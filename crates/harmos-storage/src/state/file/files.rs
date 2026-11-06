@@ -7,7 +7,7 @@
  * ***
  */
 
-// State File Ownership And Durable Replacement
+// State File Ownership and Durable Replacement
 
 /* === Modules === */
 

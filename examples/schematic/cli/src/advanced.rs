@@ -42,7 +42,7 @@ use schematic_app::operations::{AnalyzeSchematic, ListDirectories};
 /* === Public Functions === */
 
 pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result<()> {
-    // Drain A Bounded Streaming Analysis
+    // Drain a Bounded Streaming Analysis
     let settings = StreamSettings {
         items: NonZeroUsize::MIN,
         bytes: NonZeroUsize::new(4096).unwrap(),
@@ -60,7 +60,7 @@ pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result
     analysis.cancel_and_settle().await?;
     println!("Cancelled analysis and waited for settlement");
 
-    // Only The Native Sidecar Has Filesystem Access
+    // Only the Native Sidecar Has Filesystem Access
     if native {
         let request = ListDirectories {};
         let response = runtime.operation(request).await?;

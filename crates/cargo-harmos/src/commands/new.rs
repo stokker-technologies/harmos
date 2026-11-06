@@ -152,7 +152,7 @@ fn localized(text: &str, root: &Path) -> Result<String, Error> {
     let mut lines = Vec::new();
 
     for line in text.lines() {
-        // A Table Header Ends The Current Sub-Table
+        // A Table Header Ends the Current Sub-Table
         if line.starts_with('[') {
             dependency = line == "[dependencies.harmos]";
         }

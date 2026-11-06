@@ -116,7 +116,7 @@ mod runtime {
             let carrier = ctx.resource::<harmos::guest::kit::Context>();
             owner.ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-            // Call Metadata And Explicit Child Overlays
+            // Call Metadata and Explicit Child Overlays
             if self.value == "context-leaf" {
                 let stage = ctx.call().value::<Stage>().map_err(std::io::Error::other)?.expect("the caller set a stage");
                 return Ok(Value { value: stage.id }.into());
@@ -137,7 +137,7 @@ mod runtime {
                 return Ok(Value { value: "leaf:1".into() }.into());
             }
 
-            // Retry State Belongs To The Declared Resource, Never The Request
+            // Retry State Belongs to the Declared Resource, Never the Request
             let attempt = {
                 let mut attempts = owner.attempts.lock().map_err(|error| std::io::Error::other(error.to_string()))?;
                 let attempt = attempts.entry(self.value.clone()).or_default();
@@ -167,7 +167,7 @@ mod runtime {
                     .insert(self.value.clone(), carrier.as_ref().clone());
             }
             if attempt == 1 {
-                // The Next Attempt Must Receive The Original Request Clone
+                // The Next Attempt Must Receive the Original Request Clone
                 self.value.push_str(":mutated");
                 return Err(std::io::Error::other("first transient attempt"));
             }

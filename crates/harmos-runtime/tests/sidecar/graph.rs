@@ -528,7 +528,7 @@ async fn dependency_precedes_admission() {
     assert_eq!(client.count("probe-initialized"), 1);
     assert_eq!(client.count("probe-finalized"), 1);
 
-    // Reverse Retirement Keeps The Provider Through The Client's Shutdown Call
+    // Reverse Retirement Keeps the Provider Through the Client's Shutdown Call
     fixture.runtime.shutdown().await.unwrap();
     assert_eq!(client.count("dependency-shutdown"), 1);
     assert_eq!(provider.count("read-started-2"), 1);

@@ -108,7 +108,7 @@ fn undoing(name: &Ident, inverse: &Path, harmos: &HarmosPath) -> TokenStream {
 
             impl #name {
 
-                // The Described Body Names The Declared Inverse In Its Header,
+                // The Described Body Names the Declared Inverse in Its Header,
                 // So A Body That Returns Another Change Does Not Compile.
                 pub fn __harmos_check_inverse<S, C>(&self)
                 where

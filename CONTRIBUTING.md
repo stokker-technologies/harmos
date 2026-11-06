@@ -70,7 +70,7 @@ manual preparation, `v*` tag pushes and merged PRs into dev that change
 `tools/project.toml`, which every release review does; its jobs still require
 a `release/v*` head, so ordinary merges start no Release run.
 
-## Tests And Checks
+## Tests and Checks
 
 Run targeted checks while implementing. After all agreed source work is
 complete and targeted proof passes, push the authorized candidate and immediately

@@ -19,7 +19,7 @@ request fields and accessed through Context.
 - **WHEN** the consumer enables runtime
 - **THEN** the same operation request implements Operation in its runtime module
 
-### Requirement: Consuming Execution And Shared Definition
+### Requirement: Consuming Execution and Shared Definition
 Authors SHALL implement Operation with an error associated type and consuming run method. The macro SHALL use the struct as its request,
 default response to (), derive StreamEndpoints and expose its shared OperationDefinition. Each attempt SHALL execute a clone of the
 original request. Carrier lifecycle state SHALL remain under the distinct Handler contract.

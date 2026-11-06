@@ -31,7 +31,7 @@ bench = false
 [features]
 default = ["derive", "kit"]
 kit = ["harmos-operations/lifecycle", "transport", "dep:getrandom"]
-# The Shared Process Boundary Without Plugin Authoring Or Callback Runners
+# The Shared Process Boundary Without Plugin Authoring or Callback Runners
 transport = ["dep:sha2", "dep:getrandom", "dep:libc", "dep:postcard", "dep:futures-util", "dep:tokio", "dep:windows-sys"]
 
 derive = ["harmos-domain/derive", "harmos-sdk/derive", "dep:harmos-macros"]

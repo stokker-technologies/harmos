@@ -325,7 +325,7 @@ fn expand(
 
     let declared_type = emit_declaration.then(|| {
         quote! {
-            // Catalog Projection Never Constructs A Member
+            // Catalog Projection Never Constructs a Member
             #[allow(dead_code, clippy::large_enum_variant, clippy::enum_variant_names)]
             #declared
         }

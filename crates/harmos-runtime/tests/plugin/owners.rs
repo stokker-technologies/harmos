@@ -7,7 +7,7 @@
  * ***
  */
 
-// Plugin Owner Admission And Authority
+// Plugin Owner Admission and Authority
 
 /* === Modules === */
 

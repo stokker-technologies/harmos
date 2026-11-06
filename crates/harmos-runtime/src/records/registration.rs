@@ -171,7 +171,7 @@ impl Registry {
         })?;
         let construction_bytes = destination.checked_add(compilation).ok_or_else(limit)?;
         let mut construction = Construction::new(self, construction_bytes)?;
-        // Compile Outside The Registry Lock Under The Original Shared Budget
+        // Compile Outside the Registry Lock Under the Original Shared Budget
         let validation = Validator::from_schema(&graph, settings).map_err(|source| Error::RecordSchema {
             source: crate::schema::Error::Graph(source),
         })?;

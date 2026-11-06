@@ -30,7 +30,7 @@ use harmos_sdk::grpc::{self, DecodeInput, prost};
 
 /* === Structs === */
 
-// The Previous Wire Schema Is An Independent Compatibility Oracle
+// The Previous Wire Schema Is an Independent Compatibility Oracle
 #[derive(Clone, PartialEq, prost::Message)]
 #[prost(prost_path = "harmos_sdk::grpc::prost")]
 struct PreviousPublication {
@@ -53,7 +53,7 @@ struct PreviousPublication {
     payload: Vec<u8>,
 }
 
-// A Batch Appends Following Rows As Repeated Tag 7 To The Single-Row Shape
+// A Batch Appends Following Rows as Repeated Tag 7 to the Single-Row Shape
 #[derive(Clone, PartialEq, prost::Message)]
 #[prost(prost_path = "harmos_sdk::grpc::prost")]
 struct BatchedPublication {

@@ -1,4 +1,4 @@
-# Harmos Snippets For Zed
+# Harmos Snippets for Zed
 
 `stkr project editors install` generates `.vscode/stkr.code-snippets` and
 `.zed/stkr.code-snippets` from the selected company templates. Import the Zed

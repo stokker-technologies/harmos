@@ -7,7 +7,7 @@
  * ***
  */
 
-// Inspect The Stamped Plugin Metadata Through The Cargo Subcommand
+// Inspect the Stamped Plugin Metadata Through the Cargo Subcommand
 
 /* === Modules === */
 
@@ -43,7 +43,7 @@ use super::fixtures;
 
 /* === Private Functions === */
 
-// Cargo Invokes Its Subcommand With The Subcommand Name First
+// Cargo Invokes Its Subcommand with the Subcommand Name First
 fn cargo_harmos(directory: &Path, arguments: &[&std::ffi::OsStr]) -> Output {
     let tool = fixtures::artifact("cargo-harmos");
 

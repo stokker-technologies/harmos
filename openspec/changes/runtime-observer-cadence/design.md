@@ -26,7 +26,7 @@ The owner approved an ignored checkout-local Cargo patch during implementation.
 No path-resolved lockfile or override is committed. A verified published upstream
 revision and final Dokime pin remain follow-up work under separate authorization.
 
-## Ownership And Acceptance
+## Ownership and Acceptance
 
 Implementation Lead owns Harmos source, macros, consumers, tests and docs.
 The orchestrator owns this specification, final review, checks and commits.

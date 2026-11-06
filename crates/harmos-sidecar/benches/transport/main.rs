@@ -363,7 +363,7 @@ async fn throughput_case(
                         bytes += publication.payload.len();
                     }
                 }
-                // This Bench Exercises The Direct Carrier, Not Root Authorization
+                // This Bench Exercises the Direct Carrier, Not Root Authorization
                 outgoing
                     .send(Frame::Answer {
                         id,

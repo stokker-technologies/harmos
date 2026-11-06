@@ -734,7 +734,7 @@ async fn submitted(host: &harmos_runtime::sidecar::Supervisor, counts: &Counts) 
     counts.refresh_started.notified().await;
     assert!(Instance::cancel(cancelled).await.is_err());
 
-    // Dropping The Handle Releases The Child
+    // Dropping the Handle Releases the Child
     let dropped = host.submit::<RefreshDeclaration>(RefreshDeclaration {}).await?;
     counts.refresh_started.notified().await;
     let cleaned = counts.refresh_cleaned.load(Ordering::SeqCst);
@@ -746,7 +746,7 @@ async fn submitted(host: &harmos_runtime::sidecar::Supervisor, counts: &Counts) 
     })
     .await;
 
-    // Detaching Keeps The Child Running Within This Attempt
+    // Detaching Keeps the Child Running Within This Attempt
     let detached = host.submit::<RefreshDeclaration>(RefreshDeclaration {}).await?;
     counts.refresh_started.notified().await;
     let id = Instance::detach(detached);

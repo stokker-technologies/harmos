@@ -78,7 +78,7 @@ def descriptors(target: Path, alpha: Path, beta: Path) -> None:
         if operation.id.startswith("fixture_"):
             assert operation.request is operation.response
         else:
-            # The Request And Response Are Distinct Messages Of The Same Shape
+            # The Request and Response Are Distinct Messages of the Same Shape
             assert operation.request is not operation.response
             request = [field.name for field in operation.request.DESCRIPTOR.fields]
             response = [field.name for field in operation.response.DESCRIPTOR.fields]
@@ -188,7 +188,7 @@ def install(target: Path, alpha: Path, beta: Path) -> None:
         assert not any(
             name.endswith(("Cargo.toml", ".rs")) for name in archive.getnames()
         )
-    # Remove Producer Source From Both Installations' Import And Build Paths
+    # Remove Producer Source from Both Installations' Import and Build Paths
     held = target / "producer-source-held"
     alpha.rename(held)
     for archive, destination in (
@@ -373,7 +373,7 @@ def _raises(error: type[Exception], call: Callable[[Any], Any], value: Any) -> N
 
 
 def _reserved(package: types.ModuleType, operation: Any) -> None:
-    # The Generated And The Runtime Projection Escape A Reserved Member Alike
+    # The Generated and the Runtime Projection Escape a Reserved Member Alike
     contract = json.loads(operation.contract)
     raw = contract["schema"]["definitions"][0][0]
     assert raw["name"] == "Clear" and raw["tag"] == 7

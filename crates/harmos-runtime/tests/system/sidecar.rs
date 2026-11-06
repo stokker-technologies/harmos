@@ -143,7 +143,7 @@ async fn sidecar_composition_walks() {
         executable = executable.variable("STKR_TEST_REPORT_DIR", directory);
     }
     assert_eq!(executable.declaration().id, PLUGIN);
-    // Typed Native Calls Prepare Their Encoded Requests Within An Explicit Host Budget
+    // Typed Native Calls Prepare Their Encoded Requests Within an Explicit Host Budget
     let runtime = Runtime::<Host>::launch_with((), (), |setup| {
         let preparation_bytes = NonZeroUsize::new(64 * 1024).unwrap();
         let settings = harmos_runtime::operations::Settings {

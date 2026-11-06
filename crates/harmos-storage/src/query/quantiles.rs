@@ -7,7 +7,7 @@
  * ***
  */
 
-// Exact Linear Percentiles Over A Bounded Numeric Spool
+// Exact Linear Percentiles over a Bounded Numeric Spool
 
 /* === Modules === */
 

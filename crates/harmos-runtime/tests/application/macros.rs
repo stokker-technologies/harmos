@@ -424,7 +424,7 @@ mod unified_plugins {
         assert_eq!(namespaces, ["dokime.catalog", "studio.panels"]);
         let catalog = declaration.section("dokime.catalog").unwrap();
         assert_eq!(catalog.decode::<serde_json::Value>().unwrap()["kinds"][0], "bench");
-        // A Host That Does Not Own A Namespace Simply Never Asks For It
+        // A Host That Does Not Own a Namespace Simply Never Asks for It
         assert!(declaration.section("unknown.host").is_none());
         let mut registrar = harmos_domain::Registrar::new();
         <Contributing as harmos_runtime::Plugin>::register(&mut registrar).unwrap();

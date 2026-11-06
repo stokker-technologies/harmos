@@ -99,7 +99,7 @@ impl Project {
 
     fn command(&self, program: impl AsRef<std::ffi::OsStr>) -> Command {
         let mut command = fixtures::command(program);
-        // The Starter Runs As Its Author Would, Outside The Lane That Runs This Story
+        // The Starter Runs as Its Author Would, Outside the Lane That Runs This Story
         let inherited = std::env::vars_os().filter_map(|(name, _)| {
             let value = name.to_str()?;
             let isolated = value.starts_with("NEXTEST")
@@ -122,7 +122,7 @@ impl Project {
             .env("UV_CACHE_DIR", self.directory.path().join("uv-cache"))
             .env("UV_OFFLINE", "1")
             .env("UV_CONFIG_FILE", self.directory.path().join("uv.toml"))
-            // The Rendered Starter Ignore List Omits Python Bytecode, Which Would Otherwise Change The Tree Its Stamp Binds
+            // The Rendered Starter Ignore List Omits Python Bytecode, Which Would Otherwise Change the Tree Its Stamp Binds
             .env("PYTHONDONTWRITEBYTECODE", "1");
         command
     }

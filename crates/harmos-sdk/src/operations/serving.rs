@@ -772,7 +772,7 @@ impl WireTable {
         if !self.ordinary_closed || self.prepared.values().any(|slot| !slot.lifecycle && !slot.is_finished()) {
             return Err(ServingError::Unsettled);
         }
-        // Hand Off Retired Owners So The Caller Can Drop Them Outside Its Lock
+        // Hand Off Retired Owners So the Caller Can Drop Them Outside Its Lock
         let retired_slots = self.prepared.extract_if(.., |_, slot| !slot.lifecycle).collect::<Vec<_>>();
         let retired_handlers = self.handlers.extract_if(.., |_, handler| !handler.lifecycle).collect::<Vec<_>>();
         let retired_services = std::mem::take(&mut self.services);

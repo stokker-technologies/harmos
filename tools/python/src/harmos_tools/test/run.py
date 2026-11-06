@@ -369,7 +369,7 @@ def _lane(
     if not junit.is_file():
         raise policy.TestError(f"{key}: the runner exited {status} without a JUnit report")
 
-    # Stories, Deadlines And Liveness Overruns
+    # Stories, Deadlines and Liveness Overruns
     text = junit.read_text(encoding="utf-8")
     package = Path(project).name if project != "." else directory.name
     found = report.cases(text, category, language, package)

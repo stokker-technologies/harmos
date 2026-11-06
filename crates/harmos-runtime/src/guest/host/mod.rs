@@ -359,7 +359,7 @@ impl<A: Application> Loaded<A> {
         let instance =
             self.component.instantiate_async(&mut store).await.map_err(|source| Error::Guest { message: format!("{source:#}") })?;
         let sdk = self.sdk.load(&mut store, &instance).map_err(|source| Error::Guest { message: format!("{source:#}") })?;
-        // Collect Inert Metadata On The Original Store Before P Exists
+        // Collect Inert Metadata on the Original Store Before P Exists
         let collected = store.run_concurrent(async |accessor| sdk.call_register(accessor).await).await.and_then(|result| result);
         let registrations = match collected {
             Ok(Ok(registrations)) => Ok(registrations

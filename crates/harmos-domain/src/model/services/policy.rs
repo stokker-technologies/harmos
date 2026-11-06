@@ -7,7 +7,7 @@
  * ***
  */
 
-// Resident Service Stop Deadlines And Restart Credit
+// Resident Service Stop Deadlines and Restart Credit
 
 /* === Modules === */
 

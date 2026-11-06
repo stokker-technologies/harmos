@@ -337,7 +337,7 @@ impl Context<'_> {
         self.origin.identity == super::caller::Identity::Host
     }
 
-    // Revalidate The Caller Before Every Streamed Destination
+    // Revalidate the Caller Before Every Streamed Destination
     pub(crate) fn admit_stream_grant(&self, grant: &harmos_domain::plugin::Grant) -> Result<()> {
         self.source.check()?;
         match &self.origin.grants {

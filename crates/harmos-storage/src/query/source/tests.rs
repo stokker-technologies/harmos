@@ -7,7 +7,7 @@
  * ***
  */
 
-// Verify Column Decoding Against The Previous Row Tree
+// Verify Column Decoding Against the Previous Row Tree
 
 /* === Modules === */
 

@@ -60,7 +60,7 @@ Storage SHALL support explicitly bounded independent file I/O while preserving p
 - **WHEN** two independent files have admitted chunks and the configured limit permits both
 - **THEN** their backend writes may progress concurrently while a subsequent chunk of either file waits for that file's preceding completion
 
-#### Scenario: Shutdown And Failure
+#### Scenario: Shutdown and Failure
 
 - **WHEN** an action fails or shutdown begins with file actions dispatched
 - **THEN** dispatched actions settle before backend teardown and required pending data is neither silently discarded nor duplicated
@@ -96,7 +96,7 @@ Typed/Arrow queries, object/file reads and retained collections SHALL compose th
 - **WHEN** a consumer retains prior results and requests another page or point read
 - **THEN** prior data SHALL remain valid independently of the next read without a shared read-pool reservation
 
-#### Scenario: Active Reader And Collection Lifetimes
+#### Scenario: Active Reader and Collection Lifetimes
 
 - **WHEN** a reader waits for an active query slot
 - **THEN** the configured pending-query limit SHALL apply, cancellation SHALL release its slot, and previously returned pages SHALL remain valid through their last owners

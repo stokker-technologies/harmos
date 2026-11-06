@@ -101,7 +101,7 @@ async fn fuel_retains_cause() {
 async fn manager_bounds_wait() {
     let _report = crate::report::system();
     let runtime = runtime().await;
-    // The Embedded Provider Never Answers The Waiting Probe
+    // The Embedded Provider Never Answers the Waiting Probe
     let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();

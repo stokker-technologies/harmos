@@ -7,7 +7,7 @@
  * ***
  */
 
-// State Journal Replay And Checkpoint Compaction
+// State Journal Replay and Checkpoint Compaction
 
 /* === Modules === */
 

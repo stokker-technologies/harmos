@@ -89,14 +89,14 @@ where
         let host = (self.factory)(Arc::clone(&resources));
         let mut activity = self.instance.activate(resources, host).map_err(failed)?;
 
-        // Observe Until Stopped Or Unable To Continue
+        // Observe Until Stopped or Unable to Continue
         let readiness = activation.readiness();
         let interrupted = tokio::select! {
             failure = activity.observe(readiness) => Some(failure),
             () = activation.stopping() => None,
         };
 
-        // Stop And Clean Up Whatever The Activation Acquired
+        // Stop and Clean Up Whatever the Activation Acquired
         activation.begin_stopping();
         let closed = match activity.stop().await {
             Ok(()) => {

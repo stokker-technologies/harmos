@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # ***
-"""Validate The Exact Cargo Configuration Before Its Compilation"""
+"""Validate the Exact Cargo Configuration Before Its Compilation"""
 
 # === Imports === #
 
@@ -86,7 +86,7 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
         str(path),
         *extra,
     ]
-    with summary.phase("Compilation And Archive"), path.with_name(reader.MESSAGES).open("w", encoding="utf-8") as output:
+    with summary.phase("Compilation and Archive"), path.with_name(reader.MESSAGES).open("w", encoding="utf-8") as output:
         result = subprocess.run(
             command,
             stdin=sys.stdin,
@@ -184,19 +184,19 @@ def artifacts(directory: Path, messages: Path) -> Iterator[dict[str, Any]]:
 
 def main() -> None:
     if sys.argv[1:2] == ["focused"]:
-        parser = argparse.ArgumentParser(description="Compile An Explicit Local Rust Selection")
+        parser = argparse.ArgumentParser(description="Compile an Explicit Local Rust Selection")
         parser.add_argument("operation", choices=("build", "check", "test", "clippy"))
         parser.add_argument("arguments", nargs=argparse.REMAINDER)
         options = parser.parse_args(sys.argv[2:])
         raise SystemExit(focused(Path.cwd(), options.operation, options.arguments))
     if sys.argv[1:2] == ["archive"]:
-        parser = argparse.ArgumentParser(description="Build A Nextest Archive")
+        parser = argparse.ArgumentParser(description="Build a Nextest Archive")
         parser.add_argument("--profile", choices=("dev", "release"), default="dev")
         options, extra = parser.parse_known_args(sys.argv[2:])
         extra = extra[1:] if extra[:1] == ["--"] else extra
         archive(Path.cwd(), options.profile, extra)
         return
-    parser = argparse.ArgumentParser(description="Validate A Declared Cargo Target In Build")
+    parser = argparse.ArgumentParser(description="Validate a Declared Cargo Target in Build")
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     options = parser.parse_args()
     arguments = options.arguments[1:] if options.arguments[:1] == ["--"] else options.arguments

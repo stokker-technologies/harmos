@@ -7,7 +7,7 @@
  * ***
  */
 
-// Checksummed JSON Lines For State Persistence
+// Checksummed JSON Lines for State Persistence
 
 /* === Modules === */
 

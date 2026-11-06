@@ -268,7 +268,7 @@ async fn resident_leases_watched() {
         })
         .unwrap();
 
-    // Activations Over The Same Resources Share One Instance
+    // Activations over the Same Resources Share One Instance
     let first = operations.submit_resident(TickerDeclaration::ID).await.unwrap();
     let second = operations.submit_resident(TickerDeclaration::ID).await.unwrap();
     assert_eq!(first.id(), second.id());
@@ -279,7 +279,7 @@ async fn resident_leases_watched() {
     let status = operations.operation::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await.unwrap();
     assert_eq!(status.phase, Phase::Running.as_str());
 
-    // A Watch Streams Every Change Until The Instance Stops
+    // A Watch Streams Every Change Until the Instance Stops
     let settings = harmos_runtime::operations::StreamSettings {
         items: std::num::NonZeroUsize::new(16).unwrap(),
         bytes: std::num::NonZeroUsize::new(4096).unwrap(),
@@ -303,7 +303,7 @@ async fn resident_leases_watched() {
     second.settle().await.unwrap();
     assert_eq!(gate.cleaned.load(Ordering::SeqCst), 1);
 
-    // A Stopped Resident Leaves The Index Like A Settled Request
+    // A Stopped Resident Leaves the Index Like a Settled Request
     let stopped = operations.operation::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
     assert!(hidden(stopped.err()));
     runtime.shutdown().await.unwrap();

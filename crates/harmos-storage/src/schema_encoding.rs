@@ -92,7 +92,7 @@ impl<'de> Visitor<'de> for StorageVisitor {
             key: None,
             encoding: None,
         };
-        // Forward Only The Graph Fields To The Canonical Seed Without Buffering
+        // Forward Only the Graph Fields to the Canonical Seed Without Buffering
         // The JSON Object Or Allocating A Second Representation Of Its Fields.
         let schema = crate::schema::graph::Seed {
             settings: &harmos_domain::config::SchemaSettings::default(),

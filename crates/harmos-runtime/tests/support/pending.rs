@@ -7,7 +7,7 @@
  * ***
  */
 
-// Assert That A Future Stays Parked Without Waiting On The Clock
+// Assert That a Future Stays Parked Without Waiting on the Clock
 
 /* === Modules === */
 

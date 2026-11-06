@@ -19,7 +19,7 @@ The pipeline SHALL have separate independent Product and Tests jobs per selected
 - **WHEN** a user invokes the development installer task
 - **THEN** only required product outputs are built and test binaries are not added by default.
 
-#### Scenario: Native And Wasm Proof
+#### Scenario: Native and Wasm Proof
 
 - **WHEN** the canonical candidate is validated
 - **THEN** Linux and Windows enforce canonical shipping tests and actual shipping Wasm producers; optional local extended tasks retain noncanonical feature/target coverage.

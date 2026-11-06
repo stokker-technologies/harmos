@@ -9,7 +9,7 @@ Define the runtime registration contract for Harmos consumers.
 
 Runtime and owning managers SHALL expose register and unregister for supported contributions. Managers SHALL own authoritative registry/lifecycle state. Unregistration SHALL support individual identity-based removal without a retained handle or removal of a whole catalog. This change SHALL not introduce inspect.
 
-#### Scenario: Removal Without A Handle
+#### Scenario: Removal Without a Handle
 
 - **WHEN** an authorized caller unregisters an individual contribution by its qualified identity
 - **THEN** the owning manager withdraws and settles that contribution without requiring its original registration handle or removing unrelated catalog members.
@@ -59,7 +59,7 @@ Plugin scopes SHALL support dynamic service and operation registration through t
 
 Enum catalogs SHALL organize large operation inventories and register their members as a batch through register. Entries SHALL remain individually addressable and removable. Batch validation SHALL precede publication; an invalid member SHALL not leave a partially registered batch.
 
-#### Scenario: Individual Removal From A Catalog
+#### Scenario: Individual Removal from a Catalog
 
 - **WHEN** a catalog registers Read and Calibrate and an authorized caller unregisters Read by qualified identity
 - **THEN** Calibrate remains registered and no catalog handle is required.

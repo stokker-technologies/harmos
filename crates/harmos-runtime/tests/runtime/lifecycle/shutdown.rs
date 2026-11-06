@@ -161,7 +161,7 @@ async fn services_stop_first() {
     let mut context = std::task::Context::from_waker(&waker);
     assert!(std::future::Future::poll(changed.as_mut(), &mut context).is_pending());
 
-    // Observe The Stop Notification Synchronously, Before Scheduling Cleanup
+    // Observe the Stop Notification Synchronously, Before Scheduling Cleanup
     runtime.shutdown().await.unwrap();
     assert_eq!(cancelled.get(), Some(&false));
     assert!(lease.status().cancellation_requested());

@@ -22,7 +22,7 @@ and cleanup(). Application SHALL extend Lifecycle and retain its non-resource ty
 - **WHEN** a sidecar or guest activates and stops
 - **THEN** its original owner follows the same prepare, initialize, serve, stop, cleanup order.
 
-### Requirement: Single Setup And Frozen Resources
+### Requirement: Single Setup and Frozen Resources
 
 Setup SHALL be the single registration surface, with mutable resource insertion and, only
 for applications, lane settings and operation placement. A::Lanes SHALL declare itself.

@@ -9,7 +9,7 @@ Define the message authoring contract for Harmos consumers.
 
 Portable messages SHALL expose type-level fingerprint() for complete canonical schema identity and value-level digest() for canonical contents combined with schema identity. Algorithms and formats SHALL be stable across processes and supported languages, with explicit floating-point semantics and support for nested and recursive schemas.
 
-#### Scenario: Type And Value Identity
+#### Scenario: Type and Value Identity
 
 - **WHEN** two values share a message type but differ in canonical encoded contents
 - **THEN** they share a schema fingerprint and their content-digest inputs differ.
@@ -19,7 +19,7 @@ Portable messages SHALL expose type-level fingerprint() for complete canonical s
 - **WHEN** a nested message schema changes
 - **THEN** its enclosing message fingerprint reflects the changed schema.
 
-### Requirement: Encoding And Sizing
+### Requirement: Encoding and Sizing
 
 Messages SHALL expose encode(), decode(bytes), encode_into(buffer), encoded_size() and memory_size(). Encoded size SHALL measure canonical serialized bytes; memory size SHALL preserve inline and owned-allocation accounting including capacity. Decoding SHALL retain memory-admission safeguards.
 

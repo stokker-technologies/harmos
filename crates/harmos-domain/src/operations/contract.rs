@@ -267,7 +267,7 @@ impl Contract {
         Ok(self)
     }
 
-    // Only The Closed SDK Action Can Construct Reserved Metadata
+    // Only the Closed SDK Action Can Construct Reserved Metadata
     pub(crate) fn lifecycle(
         action: crate::model::operations::lifecycle::Action, policy: super::OperationPolicy,
     ) -> Result<Self, ContractError> {

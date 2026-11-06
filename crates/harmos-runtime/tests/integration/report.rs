@@ -7,7 +7,7 @@
  * ***
  */
 
-// Qualify Native Span Lifetimes, Parent Tracks And Causal Flows
+// Qualify Native Span Lifetimes, Parent Tracks and Causal Flows
 
 /* === Modules === */
 

@@ -321,7 +321,7 @@ impl<T: Carrier> Prepared for State<T> {
             let mut physical = self.physical.take().expect("original operation for cleanup");
             let future = async move {
                 let result = guarded(async {
-                    // An Operation That Never Initialized Owns Nothing To Stop
+                    // An Operation That Never Initialized Owns Nothing to Stop
                     let Some(operation) = physical.operation.as_mut() else {
                         return Ok(());
                     };

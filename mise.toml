@@ -7,7 +7,7 @@ github_attestations = false
 # === Tools === #
 
 [tools]
-# Languages And Runtimes
+# Languages and Runtimes
 go = "1.27.3"
 node = "26.12.1"
 python = "3.15.2"
@@ -22,12 +22,12 @@ uv = "0.13.6"
 "github:bnjbvr/cargo-machete" = "0.9.2"
 sccache = "0.19.0"
 
-# Formatting And Linting
+# Formatting and Linting
 "aqua:koalaman/shellcheck" = "0.11.0"
 "go:github.com/rhysd/actionlint/cmd/actionlint" = "v1.7.13-0.20260417151945-fd33e9f582a0"
 taplo = "0.10.0"
 
-# Release And Signing
+# Release and Signing
 git-cliff = "2.14.2"
 
 # Project Statistics
@@ -48,7 +48,7 @@ CARGO_INCREMENTAL = "{{ get_env(name='CARGO_INCREMENTAL', default='') if get_env
 # === Prepare === #
 
 [tasks."prepare:tests:fixtures"]
-description = "Join Independently Built Product And Test Fixtures"
+description = "Join Independently Built Product and Test Fixtures"
 usage = '''
 flag "--profile <profile>" default="dev"
 flag "--focused-messages <path>"
@@ -108,7 +108,7 @@ run = [
 ]
 
 [tasks."lint:rust"]
-description = "Lint Rust Over Every Product And Tests Selection"
+description = "Lint Rust over Every Product and Tests Selection"
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.cargo -- --locked --workspace --lib --bins --tests --profile test",
@@ -120,7 +120,7 @@ run = [
 # === Check === #
 
 [tasks.check]
-description = "Check Every Language And Workflows"
+description = "Check Every Language and Workflows"
 run = [{ task = "check:repository" }, { task = "check:rust" }, { task = "check:python" }]
 
 [tasks."check:python"]
@@ -137,7 +137,7 @@ run = [
 ]
 
 [tasks."check:repository"]
-description = "Check Repository Configuration And Conventions"
+description = "Check Repository Configuration and Conventions"
 run = [
   { task = "format:toml --check" },
   "uv run --locked --project tools/python python -m harmos_tools.ci.mise",
@@ -179,12 +179,12 @@ run = [
 ]
 
 [tasks."build:rust:focused"]
-description = "Compile And Run A Focused Rust Selection"
+description = "Compile and Run a Focused Rust Selection"
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.cargo focused"
 
 [tasks."build:rust:tests"]
-description = "Build The Shared Test Archive And Fixtures"
+description = "Build the Shared Test Archive and Fixtures"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
@@ -196,7 +196,7 @@ run = [
 # === Test === #
 
 [tasks."test:tooling"]
-description = "Test CI And Release Tooling"
+description = "Test CI and Release Tooling"
 run = "uv run --locked --project tools/python python -m unittest discover -s tools/python/tests -v"
 
 [tasks.test]
@@ -218,7 +218,7 @@ run = [
 ]
 
 [tasks."test:rust:extended"]
-description = "Build And Test Optional Local Feature And Target Configurations"
+description = "Build and Test Optional Local Feature and Target Configurations"
 usage = 'flag "--profile <profile>" default="dev"'
 run = [
   { task = "build --profile {{usage.profile}}" },
@@ -259,7 +259,7 @@ run = [
 ]
 
 [tasks."test:rust:coverage"]
-description = "Measure Coverage Over Instrumented Lanes"
+description = "Measure Coverage over Instrumented Lanes"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
@@ -268,7 +268,7 @@ run = [
 ]
 
 [tasks."test:rust:starter"]
-description = "Prove Standalone Starter Compiler Contracts In Nightly Validation"
+description = "Prove Standalone Starter Compiler Contracts in Nightly Validation"
 usage = '''
 flag "--profile <profile>" default="release"
 flag "--filter <filter>"
@@ -305,7 +305,7 @@ run = [
 ]
 
 [tasks."bench:rust:extended"]
-description = "Build And Run Optional Local Feature Benchmarks"
+description = "Build and Run Optional Local Feature Benchmarks"
 usage = 'flag "--refresh-baseline"'
 run = [{ task = "build:rust:bench --extended" }, { task = "bench --extended{% if usage.refresh_baseline %} --refresh-baseline{% endif %}" }]
 
@@ -354,7 +354,7 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.p
 # === CI === #
 
 [tasks."ci:simulate"]
-description = "Simulate The Declared CI Graph Locally"
+description = "Simulate the Declared CI Graph Locally"
 usage = '''
 flag "--pipeline <kind>" default=pr
 flag "--platform <platform>"
@@ -365,15 +365,15 @@ run = "uv run --locked --project tools/python python -m harmos_tools.ci.simulate
 # === Release === #
 
 [tasks."release:prepare"]
-description = "Prepare The Release Branch"
+description = "Prepare the Release Branch"
 run = "uv run --locked --project tools/python python -m harmos_tools.release.run prepare"
 
 [tasks."release:publish"]
-description = "Publish A Tagged Release"
+description = "Publish a Tagged Release"
 run = [{ task = "release:publish:assets" }, { task = "release:publish:finalize" }]
 
 [tasks."release:publish:assets"]
-description = "Draft The Release With Its Signed Assets"
+description = "Draft the Release with Its Signed Assets"
 run = "uv run --locked --project tools/python python -m harmos_tools.release.run publish"
 
 [tasks."release:publish:dry"]
@@ -385,7 +385,7 @@ run = [
 ]
 
 [tasks."release:publish:finalize"]
-description = "Publish The Drafted Release"
+description = "Publish the Drafted Release"
 run = "uv run --locked --project tools/python python -m harmos_tools.release.run finalize"
 
 [tasks."release:publish:rust"]
@@ -397,11 +397,11 @@ description = "Rehearse Existing Release Packages Without Credentials"
 run = "uv run --locked --project tools/python python -m harmos_tools.release.run rehearse"
 
 [tasks."release:tag"]
-description = "Tag A Merged Release Review And Fast-Forward Main"
+description = "Tag a Merged Release Review and Fast-Forward Main"
 run = "uv run --locked --project tools/python python -m harmos_tools.release.run tag"
 
 [tasks."release:verify"]
-description = "Verify Published Release Assets And Opted-In Installers"
+description = "Verify Published Release Assets and Opted-In Installers"
 run = "uv run --locked --project tools/python python -m harmos_tools.release.run verify"
 
 # === Clean === #

@@ -32,7 +32,7 @@ type Result<T> = ::std::result::Result<T, MessageError>;
 
 /* === Structs === */
 
-// Manual Codec Without Default Or Prost Message
+// Manual Codec Without Default or Prost Message
 #[derive(Clone, Debug, PartialEq)]
 struct Native {
     value: u64,

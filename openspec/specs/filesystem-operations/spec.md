@@ -20,7 +20,7 @@ The system SHALL expose stored and executing-host local files through one FileSo
 - **WHEN** a requested path traverses a symlink
 - **THEN** the operation SHALL reject it without reading or capturing the target
 
-### Requirement: Hash And Capture
+### Requirement: Hash and Capture
 HashFile SHALL return bytes_read and SHA-256 for the selected source/range using bounded buffers. CaptureFile SHALL create an independent immutable durable FileReference and hash during transfer. Stable-source capture SHALL reject detected mutation and SHALL NOT claim an atomic snapshot guarantee.
 
 #### Scenario: Independent Capture
@@ -34,22 +34,22 @@ HashFile SHALL return bytes_read and SHA-256 for the selected source/range using
 ### Requirement: File Following
 FollowFile SHALL accept Beginning, End or At(offset), emit bounded data and explicit truncation/replacement events, and own cancellation and watch/polling lifetimes. Existing staged-production following SHALL remain a distinct supported capability with migrated callers.
 
-#### Scenario: Follow Changes And Cancel
+#### Scenario: Follow Changes and Cancel
 - **WHEN** a followed local file grows, truncates or is replaced
 - **THEN** the reader SHALL deliver available bytes and the corresponding change events without silently treating replacement as continuation, and cancellation SHALL release resources
 
-### Requirement: Directory Selection And Watching
+### Requirement: Directory Selection and Watching
 ListDirectory and WatchDirectory SHALL share root, recursion and ordered include/exclude rules. Rules SHALL match case-sensitive slash-relative paths with star confined to a segment, double-star crossing segments, last match winning and unmatched paths excluded. Traversal SHALL not prune excluded ancestors when descendants can match and SHALL not follow symlinks.
 
 #### Scenario: Later Descendant Inclusion
 - **WHEN** an excluded directory contains a descendant matched by a later include rule
 - **THEN** the descendant SHALL still be discovered
 
-#### Scenario: Initial Scan And Overflow
+#### Scenario: Initial Scan and Overflow
 - **WHEN** watching begins with include_existing enabled while files change
 - **THEN** Existing and InitialScanComplete SHALL coordinate with subsequent Created, Modified, Removed and Renamed events, and uncertainty or notification overflow SHALL produce RescanRequired rather than silent loss
 
-### Requirement: Composed Resource Policy And Measurement
+### Requirement: Composed Resource Policy and Measurement
 The system SHALL compose filesystem and capture/replay/state resource settings under their existing owners, retain ordinary shared data ownership without restoring the superseded storage read pool, and measure applicable hash/capture/read/follow/directory workloads after the combined implementation. New workloads SHALL be identified as having no historical baseline.
 
 #### Scenario: Retained Buffers

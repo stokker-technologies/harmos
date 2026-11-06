@@ -7,7 +7,7 @@
  * ***
  */
 
-// Decode Validated Payload Events Into Arrow Columns
+// Decode Validated Payload Events into Arrow Columns
 
 /* === Modules === */
 

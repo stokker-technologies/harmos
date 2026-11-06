@@ -34,7 +34,7 @@ pub const MAX_NAME_BYTES: usize = 256;
 
 /* === Macros === */
 
-// Scalar Wrapper Payloads, With Their Fixed Field-One Identity
+// Scalar Wrapper Payloads, with Their Fixed Field-One Identity
 macro_rules! wrapper {
     ($($ty:ty => $kind:ident),* $(,)?) => {$(
         impl Described for $ty {
