@@ -82,6 +82,18 @@ impl Entry {
         if origin.has_lifecycle_loan() {
             return self.available_for_lifecycle();
         }
+        #[cfg(feature = "plugin-sidecar")]
+        if origin.resident
+            && self.active.load(Ordering::Acquire)
+            && self.publication.load(Ordering::Acquire)
+            && self
+                .plugin
+                .as_ref()
+                .is_some_and(|scope| scope.has_committed() && origin.scope.as_ref().is_some_and(|caller| caller.same_activation(scope)))
+        {
+            // The Original Observer Can Finish Its Own Calls Until Its Stop Joins.
+            return Ok(());
+        }
         let _ = origin;
         self.available()
     }

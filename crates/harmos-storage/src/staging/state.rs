@@ -203,7 +203,7 @@ impl State {
         if let Some(session) = &file.session {
             match &completed {
                 FileCompleted::Finished(_) => {
-                    tracing::info!(file = %file.staging.id, generation = session.generation, offset = file.length, reason = "producer finished", "file production completed")
+                    tracing::debug!(file = %file.staging.id, generation = session.generation, offset = file.length, reason = "producer finished", "file production completed")
                 }
                 FileCompleted::Aborted => {
                     tracing::info!(file = %file.staging.id, generation = session.generation, offset = file.length, reason = session.reason, "file production ended; partial bytes retained")

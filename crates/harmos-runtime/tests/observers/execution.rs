@@ -57,6 +57,7 @@ struct Callback(Resources);
 #[derive(Clone, Copy)]
 enum Behavior {
     FailFirst,
+    Repeated,
     Panic,
     Hang,
 }
@@ -101,9 +102,10 @@ impl Watch {
 
         match ctx.host().behavior {
             Behavior::FailFirst if ctx.tick().ordinal() == 1 => Err(std::io::Error::other("tick refused")),
+            Behavior::Repeated if ctx.tick().ordinal() != 4 => Err(std::io::Error::other("tick refused")),
             Behavior::Panic => panic!("callback panic is isolated"),
             Behavior::Hang => std::future::pending().await,
-            Behavior::FailFirst => Ok(()),
+            Behavior::FailFirst | Behavior::Repeated => Ok(()),
         }
     }
 
@@ -319,6 +321,24 @@ async fn diagnostics_preserve_scope() {
         assert!(output.contains(r#"observer="execution.watch""#), "{output}");
         assert!(output.contains(&format!("activation_id={}", task.activation)), "{output}");
     }
+}
+
+#[tokio::test]
+async fn repeated_refusals_coalesce() {
+    let diagnostics = Diagnostics::default();
+    let writer = diagnostics.clone();
+    let subscriber = tracing_subscriber::fmt().without_time().with_ansi(false).with_writer(move || writer.clone()).finish();
+    let dispatch = tracing::Dispatch::new(subscriber);
+    let (mut task, mut events) = tracing::dispatcher::with_default(&dispatch, || start(Behavior::Repeated, None));
+    assert_eq!(next(&mut events).await, Event::Opened);
+    for tick in 1..=6 {
+        assert_eq!(next(&mut events).await, Event::Tick(tick, 73));
+        assert_eq!(next(&mut events).await, Event::Dropped);
+    }
+    task.shutdown().await.unwrap();
+    let output = String::from_utf8(diagnostics.0.lock().unwrap().clone()).unwrap();
+    assert_eq!(output.matches("observer callback refused").count(), 2, "{output}");
+    assert_eq!(output.matches("observer callback recovered").count(), 1, "{output}");
 }
 
 #[tokio::test]

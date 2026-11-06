@@ -834,6 +834,17 @@ impl<E: super::StreamEndpoints + Shape> Carrier for EncodedOperation<E> {
             Ok(Opaque(payload))
         }
         .await;
+        let result = match result {
+            Err(NativeError::Unavailable | NativeError::Transport(SidecarError::Unavailable))
+                if matches!(&self.binding.selection, Selection::Sdk(definition) if self.binding.native.scope()
+                    .and_then(|scope| scope.lifecycle()).is_some_and(|pair| pair[1].contract().operation() == definition)) =>
+            {
+                // Only Shutdown Treats A Physically Joined Carrier As Its Goal State.
+                self.binding.native.endpoint.settle().await?;
+                Ok(Opaque(Vec::new()))
+            }
+            result => result,
+        };
         result.map(::core::convert::Into::into).map_err(|error| match &self.state {
             Some(state) => error.in_operation(state.operation.as_str()),
             None => error,

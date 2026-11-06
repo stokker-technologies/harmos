@@ -57,6 +57,10 @@ async fn cleanup_preserves_peers() {
     ));
     assert!(host.operations().call_encoded("provider.fixture.run", request_payload()).await.is_ok());
     assert!(host.operations().call_encoded("other.fixture.run", request_payload()).await.is_ok());
+    let peer = session.status("other").unwrap().generation;
+    session.reload_parts(next.clone(), inventories(&next), ["other".to_owned()], &mut host).await.unwrap();
+    assert_ne!(session.status("other").unwrap().generation, peer);
+    assert!(session.status("client").unwrap().cleanup_pending);
     let operations = host.operations().clone();
     let cleanup = session.cleanup();
     drop(session);
@@ -72,7 +76,7 @@ async fn cleanup_preserves_peers() {
     assert!(matches!(cleanup.status(), PluginCleanupStatus::Settled));
     let control = host.control.lock().unwrap();
     for owner in ["client", "provider", "other"] {
-        assert_eq!(control.backend_drops.get(owner), Some(&1));
+        assert_eq!(control.backend_drops.get(owner), Some(&(if owner == "other" { 2 } else { 1 })));
     }
 }
 
@@ -121,6 +125,22 @@ async fn cleanup_quiesces_owner() {
         assert_eq!(control.backend_drops.get("client"), Some(&1));
     }
     session.shutdown(&mut host).await.unwrap();
+}
+
+#[tokio::test]
+async fn failed_owner_retries() {
+    let mut manager = session();
+    let mut host = Host::new().await;
+    manager.initialize(&mut host).await.unwrap();
+    let previous = manager.status("client").unwrap().generation;
+    host.control.lock().unwrap().fail_stop = Some("client".into());
+    let next = plan();
+    assert!(manager.reload_parts(next.clone(), inventories(&next), ["provider".into()], &mut host).await.is_err());
+    host.control.lock().unwrap().fail_stop = None;
+    manager.initialize(&mut host).await.unwrap();
+    assert_ne!(manager.status("client").unwrap().generation, previous);
+    assert_eq!(manager.ready().count(), 3);
+    manager.shutdown(&mut host).await.unwrap();
 }
 
 #[tokio::test]

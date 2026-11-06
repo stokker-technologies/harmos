@@ -84,8 +84,8 @@ pub enum CallError {
     #[error("caller may not invoke operation `{operation}` without a matching host assignment")]
     Unassigned { operation: &'static str },
 
-    // The host's refusal carries the failure unchanged; this layer names only
-    // the operation the host attributed it to.
+    // Keep Administrative Causes Visible Even In Callers That Only Retain Display.
+    // Application Failures Still Carry Their Cause Through The Original Source.
     #[error("{}", refused_line(*.code, .failure))]
     Refused {
         code: i64,
@@ -616,8 +616,11 @@ impl Supervisor {
 
 fn refused_line(code: i64, failure: &harmos_domain::Failure) -> String {
     match failure.context().operation() {
+        Some(operation) if matches!(code, -32_606 | -32_607) => {
+            format!("operation `{operation}` refused ({code}): {}", failure.cause())
+        }
         Some(operation) => format!("operation `{operation}` failed"),
-        None => format!("the host refused the call ({code})"),
+        None => format!("host call refused ({code}): {}", failure.cause()),
     }
 }
 
@@ -637,6 +640,15 @@ mod tests {
     use harmos_domain::operations::CallValue;
     use harmos_operations::{storage::ReadFile, streams::Publish};
     use harmos_sdk::operations::WireChildCall;
+
+    #[test]
+    fn deadline_cause_survives() {
+        let failure =
+            harmos_domain::Failure::new(harmos_domain::operations::FailureKind::Permanent, "deadline elapsed").in_operation("device.read");
+        let error = CallError::Refused { code: -32_607, failure };
+        let displayed = error.to_string();
+        assert!(displayed.contains("device.read") && displayed.contains("deadline elapsed") && displayed.contains("-32607"));
+    }
 
     struct Samples;
 

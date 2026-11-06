@@ -909,7 +909,9 @@ explicit activation cycle, including crashes after readiness; successful startup
 does not replenish it. Status retains the lifetime startup count, last failure
 class, retry deadline and cleanup state, including stopping while the original
 retirement owner is still settling. Invalid configuration/contracts are terminal. Explicit stop cancels restarts for the plugin and its dependents;
-failed cleanup prevents a fresh physical attempt. Plugin restart never replays
+failed cleanup prevents a fresh physical attempt of that generation and its dependents.
+An unrelated reload does not retry retained failed cleanup; explicit initialization
+or a reload selecting the failed owner retries it. Plugin restart never replays
 uncertain operation calls or streaming transfers. Guest `shutdown_timeout` bounds
 the complete stop wait, including SDK settlement, authored shutdown and physical
 finalization. A timeout retains the same invocation and cleanup owners; retrying
@@ -920,6 +922,12 @@ retirement owner. Caller abandonment, explicit stop and runtime shutdown interru
 reload initialization and fence each new generation; cleanup retains ownership
 until settlement. A committed replacement remains the source for later explicit
 activation. `remove(id)` requires registered dependents to be removed first.
+
+Native retirement joins observers before SDK shutdown. An observer retains access
+to its own generation's operations while its stop is joining; ordinary callers
+remain fenced. A carrier already physically joined satisfies native shutdown,
+while authored cleanup failures remain failures. Unexpected exits while serving
+remain visible faults.
 
 Embedded operation contributions and host contributions register resource-free
 catalogs through `register::<Operations>(lane)`. Plugin scopes retain their
