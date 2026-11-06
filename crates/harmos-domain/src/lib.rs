@@ -81,7 +81,7 @@ pub use inventory::StreamDeclaration;
 pub use inventory::publications::StreamSpec;
 pub use metadata::{Identifier, IdentifierError, Metadata};
 pub use refusal::{FAILED, RESERVED, Refusal, UNKNOWN, UNREADABLE, reserved};
-pub use registration::{Registrar, Registration, RegistrationError};
+pub use registration::{CATALOG_EXPORT_FLAG, Registrar, Registration, RegistrationError};
 pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]

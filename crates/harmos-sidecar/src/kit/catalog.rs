@@ -23,7 +23,7 @@ use crate::{Plugin, Registrar, Registration, RegistrationError};
 
 /* === Constants === */
 
-pub const CATALOG_EXPORT_FLAG: &str = "--harmos-export-catalog-v1";
+pub use harmos_domain::CATALOG_EXPORT_FLAG;
 
 pub const CATALOG_EXPORT_LIMIT: usize = crate::Frame::LIMIT;
 
