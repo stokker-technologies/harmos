@@ -19,6 +19,8 @@ mod local;
 mod observer;
 mod observer_host;
 mod plugin;
+#[cfg(feature = "prototype-grpc")]
+pub mod prototype;
 mod publisher;
 mod task;
 

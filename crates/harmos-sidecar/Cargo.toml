@@ -37,6 +37,7 @@ transport = ["dep:sha2", "dep:getrandom", "dep:libc", "dep:postcard", "dep:futur
 derive = ["harmos-domain/derive", "harmos-sdk/derive", "dep:harmos-macros"]
 # Optional Payload Codec Only; No Host Networking Or gRPC Carrier
 grpc = ["harmos-sdk/grpc"]
+prototype-grpc = ["kit", "grpc", "dep:bytes", "dep:http-body", "dep:prost", "dep:tonic"]
 streaming = ["harmos-sdk/streaming"]
 
 # === Dependencies === #
@@ -57,11 +58,13 @@ thiserror = { workspace = true, default-features = true }
 tracing = { workspace = true, default-features = true }
 
 # Utilities
+bytes = { workspace = true, optional = true }
 getrandom = { workspace = true, features = ["std"], optional = true }
 sha2 = { workspace = true, default-features = true, optional = true }
 
 # Serialization
 postcard = { workspace = true, optional = true }
+prost = { workspace = true, features = ["derive"], optional = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true }
 
@@ -87,6 +90,8 @@ tokio = { workspace = true, default-features = true, features = [
 ], optional = true }
 
 # Networking
+http-body = { workspace = true, optional = true }
+tonic = { workspace = true, features = ["transport", "codegen", "router"], optional = true }
 
 # Storage
 

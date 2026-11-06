@@ -19,16 +19,23 @@ version.workspace = true
 
 # === Package Targets === #
 
+[[bin]]
+name = "schematic-grpc-prototype"
+path = "src/prototype.rs"
+required-features = ["prototype-grpc"]
+
 # === Features === #
 
 [features]
 benchmark = []
+prototype-grpc = ["dep:harmos-sidecar", "dep:serde_json"]
 
 # === Dependencies === #
 
 [dependencies]
 # Local
 harmos = { workspace = true, features = ["sidecar"] }
+harmos-sidecar = { workspace = true, features = ["prototype-grpc"], optional = true }
 schematic-domain = { path = "../domain" }
 schematic-operations = { path = "../operations", features = ["runtime"] }
 
@@ -44,6 +51,7 @@ tracing-subscriber = { workspace = true }
 # Utilities
 
 # Serialization
+serde_json = { workspace = true, default-features = true, optional = true }
 
 # Configuration
 
@@ -103,9 +111,20 @@ schematic-operations = { path = "../operations" }
 
 # === Dev Dependencies === #
 
+[dev-dependencies]
+# Serialization
+arrow-array = { workspace = true }
+arrow-ipc = { workspace = true }
+arrow-schema = { workspace = true }
+
 # === Target Dependencies === #
 
 # === Test Targets === #
+
+[[test]]
+name = "system-prototype"
+path = "tests/system/main.rs"
+required-features = ["prototype-grpc"]
 
 # === Bench Targets === #
 

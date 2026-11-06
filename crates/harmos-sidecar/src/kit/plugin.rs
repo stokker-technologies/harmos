@@ -204,7 +204,7 @@ where
 
 /* === Private Functions === */
 
-fn opening<P>(native: &PluginNative<P>) -> std::io::Result<Opening>
+pub(super) fn opening<P>(native: &PluginNative<P>) -> std::io::Result<Opening>
 where
     P: Plugin<Context = Supervisor> + Declared,
 {
