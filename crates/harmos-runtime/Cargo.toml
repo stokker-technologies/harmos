@@ -43,9 +43,6 @@ grpc = [
   "dep:bytes",
   "dep:tonic",
   "dep:prost-reflect",
-  "dep:tonic-web",
-  "dep:tower",
-  "dep:tower-http",
   "tonic/tls-ring",
   "dep:rustls",
   "dep:tokio-rustls",
@@ -110,9 +107,6 @@ rustls = { workspace = true, features = ["ring", "std"], optional = true }
 tokio-rustls = { workspace = true, features = ["ring"], optional = true }
 tonic = { workspace = true, default-features = true, optional = true }
 tonic-reflection = { workspace = true, features = ["server"], optional = true }
-tonic-web = { workspace = true, optional = true }
-tower = { workspace = true, optional = true }
-tower-http = { workspace = true, optional = true }
 
 # Storage
 

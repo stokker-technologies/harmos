@@ -123,8 +123,6 @@ pub fn settings() -> harmos_runtime::grpc::Settings {
         address: "127.0.0.1:0".parse().unwrap(),
         operations: wire_settings(),
         reflection: false,
-        web: false,
-        allowed_origins: Vec::new(),
         tls: None,
         connections: nz(4),
         calls_per_connection: nz(8),

@@ -60,7 +60,7 @@ features imply `runtime`.
 | `plugin` | Shared plugin management, activation, routing, and reload. |
 | `sidecar` | Native process authoring and hosting with matching module attributes. |
 | `guest` | Wasm guest authoring and native sandbox hosting with matching module attributes. |
-| `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. Includes `generate-proto`. |
+| `grpc` | gRPC, reflection and TLS; settings select their use. Includes `generate-proto`. |
 | `generate-proto` | Protobuf descriptor projection used by runtime transport. |
 | `signal` | Signal-processing kernels. |
 | `signal-fft` | FFT support; includes `signal`. |
@@ -265,11 +265,6 @@ Registration freezes at first external access, allowing earlier internal boot
 work. Internal host calls retain their authority; external calls and descendants
 retain their authenticated context and separate cache identity. Existing
 explicitly anonymous routes keep their behavior when no authorizer is configured.
-
-For browser gRPC-Web clients, enable `GrpcSettings::web` and list exact
-`grpc::Origin` values in `allowed_origins`. Configured origins receive preflight
-and response headers; other origins are refused. Authentication still applies
-to actual calls. An empty origin list emits no CORS headers.
 
 Detaching or shutting down a gRPC listener ends in-flight calls with `Unavailable`
 and closes its connections gracefully; connections that cannot drain, such as

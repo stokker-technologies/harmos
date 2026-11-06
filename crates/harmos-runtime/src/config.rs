@@ -70,10 +70,6 @@ pub struct GrpcSettings {
     pub address: std::net::SocketAddr,
     pub operations: GrpcServerSettings,
     pub reflection: bool,
-    pub web: bool,
-    // Exact browser origins allowed through the gRPC-Web listener.
-    // An empty list emits no CORS headers.
-    pub allowed_origins: Vec<crate::grpc::Origin>,
     pub tls: Option<tonic::transport::ServerTlsConfig>,
     pub connections: NonZeroUsize,
     pub calls_per_connection: NonZeroUsize,
@@ -261,8 +257,6 @@ impl Default for GrpcSettings {
             address: ([127, 0, 0, 1], 0).into(),
             operations: GrpcServerSettings::default(),
             reflection: false,
-            web: false,
-            allowed_origins: Vec::new(),
 
             tls: None,
             connections: NonZeroUsize::new(64).unwrap(),

@@ -117,9 +117,6 @@ rustls = { version = "0.23.46", default-features = false }
 tokio-rustls = { version = "0.26.4", default-features = false }
 tonic = { version = "0.14.8", default-features = false }
 tonic-reflection = { version = "0.14.8", default-features = false }
-tonic-web = { version = "0.14.8", default-features = false }
-tower = { version = "0.5.3", default-features = false, features = ["util"] }
-tower-http = { version = "0.7.1", default-features = false, features = ["cors"] }
 
 # Storage
 

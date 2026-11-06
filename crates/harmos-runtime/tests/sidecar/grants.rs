@@ -289,8 +289,6 @@ async fn external_request_grants() {
         address: "127.0.0.1:0".parse().unwrap(),
         operations: harmos_runtime::grpc::server::Settings::default(),
         reflection: false,
-        web: false,
-        allowed_origins: Vec::new(),
         tls: None,
         connections: std::num::NonZeroUsize::new(4).unwrap(),
         calls_per_connection: std::num::NonZeroUsize::new(8).unwrap(),

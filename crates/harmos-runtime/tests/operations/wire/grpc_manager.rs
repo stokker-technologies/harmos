@@ -535,8 +535,6 @@ fn settings() -> harmos_runtime::grpc::Settings {
         operations: harmos_runtime::grpc::server::Settings::default(),
         reflection: false,
         address: "127.0.0.1:0".parse().unwrap(),
-        web: false,
-        allowed_origins: Vec::new(),
         tls: None,
         connections: NonZeroUsize::new(4).unwrap(),
         calls_per_connection: NonZeroUsize::new(8).unwrap(),
@@ -638,22 +636,6 @@ async fn external_catalog(
             None => return Ok(entries),
         }
     }
-}
-
-async fn web(address: std::net::SocketAddr, method: &str, path: &str, headers: &[(&str, &str)]) -> String {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
-    let mut request = format!("{method} {path} HTTP/1.1\r\nHost: harmos\r\nConnection: close\r\n");
-    for (name, value) in headers {
-        request.push_str(&format!("{name}: {value}\r\n"));
-    }
-    let body: &[u8] = if method == "POST" { b"\0\0\0\0\0" } else { b"" };
-    request.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
-    stream.write_all(request.as_bytes()).await.unwrap();
-    stream.write_all(body).await.unwrap();
-    let mut response = Vec::new();
-    (stream.read_to_end(&mut response)).await.unwrap();
-    String::from_utf8_lossy(&response).to_ascii_lowercase()
 }
 
 async fn failures<F: Future<Output = ()>>(
