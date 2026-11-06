@@ -100,9 +100,11 @@ impl Context {
     }
 
     pub(crate) async fn result<T>(&self, span: tracing::Span, future: impl Future<Output = crate::Result<T>>) -> crate::Result<T> {
-        let future = async {
+        // Keep both handles inside the captured dispatcher through completion and drop.
+        let outcome_span = span.clone();
+        let future = async move {
             let result = future.await;
-            tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+            outcome_span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
             result
         };
         self.scope(tracing::Instrument::instrument(future, span)).await
