@@ -164,7 +164,7 @@ async fn sidecar_composition_walks() {
     assert_eq!(failed.attempts, 1);
     assert!(failed.last_failure.is_some());
     assert!(failed.next_retry.is_none());
-    assert!(runtime.operation(ListDirectories {}).run().await.is_err());
+    assert!(runtime.operation(ListDirectories {}).await.is_err());
     runtime.plugin.stop(PLUGIN).await.unwrap();
     runtime.plugin.stop(PLUGIN).await.unwrap();
     let settled = runtime.plugin.status(PLUGIN).unwrap();
@@ -176,7 +176,7 @@ async fn sidecar_composition_walks() {
     let ready = runtime.plugin.status(PLUGIN).unwrap();
     assert_ne!(ready.generation, failed.generation);
     assert_eq!(ready.state, PluginState::Ready);
-    let directories = runtime.operation(ListDirectories {}).run().await.unwrap();
+    let directories = runtime.operation(ListDirectories {}).await.unwrap();
     assert_eq!(directories.directories, ["boards"]);
 
     // Scene 3: A Unary Operation Crosses The Same Native Transport
@@ -185,7 +185,6 @@ async fn sidecar_composition_walks() {
             from: Point { x: 0, y: 0 },
             to: Point { x: 3, y: 4 },
         })
-        .run()
         .await
         .unwrap();
     assert_eq!(routed.points, [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 }]);
@@ -249,12 +248,12 @@ async fn sidecar_composition_walks() {
     let reloaded = runtime.plugin.status(PLUGIN).unwrap();
     assert_eq!(reloaded.state, PluginState::Ready);
     assert_ne!(ready.generation, reloaded.generation);
-    assert_eq!(runtime.operation(ListDirectories {}).run().await.unwrap().directories, ["boards"]);
+    assert_eq!(runtime.operation(ListDirectories {}).await.unwrap().directories, ["boards"]);
 
     // Scene 8: Shutdown Reaps The Owned Child And Withdraws Its Operations
     runtime.plugin.stop(PLUGIN).await.unwrap();
     runtime.plugin.stop(PLUGIN).await.unwrap();
     assert!(!runtime.plugin.status(PLUGIN).unwrap().cleanup_pending);
-    assert!(runtime.operation(ListDirectories {}).run().await.is_err());
+    assert!(runtime.operation(ListDirectories {}).await.is_err());
     runtime.shutdown().await.unwrap();
 }

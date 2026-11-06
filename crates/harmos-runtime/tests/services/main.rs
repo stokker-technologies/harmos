@@ -172,7 +172,7 @@ async fn shutdown_preserves_work() {
     manager.shutdown_residents().await.unwrap();
     assert!(matches!(manager.submit_resident("late").await, Err(Error::Closing { .. })));
     runtime.operations.register::<Operations>(Lanes::Open).await.unwrap();
-    assert_eq!(*runtime.operations.call::<PingContractDeclaration>(PingContractDeclaration {}).await.unwrap(), 42);
+    assert_eq!(*runtime.operations.operation::<PingContractDeclaration>(PingContractDeclaration {}).await.unwrap(), 42);
     runtime.shutdown().await.unwrap();
 }
 

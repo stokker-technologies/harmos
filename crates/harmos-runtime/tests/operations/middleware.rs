@@ -104,7 +104,7 @@ impl harmos_runtime::Operation for OverlayParentDeclaration {
         assert_eq!(stage.id, "parent");
         let child = context.with_value(Stage { id: "child".into() })?;
         assert_eq!(child.context().require::<Stage>()?.id, "child");
-        let answer = child.call::<OverlayChildDeclaration>(OverlayChildDeclaration {}).await?;
+        let answer = child.operation::<OverlayChildDeclaration>(OverlayChildDeclaration {}).await?;
         Ok(format!("{actor}:parent:{answer}").into())
     }
 }
@@ -126,7 +126,7 @@ impl harmos_runtime::Operation for DeclareParentDeclaration {
         let host = ctx.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
         let actor = context.context().require::<Principal>()?.0;
-        let child = context.call::<DeclareChildDeclaration>(DeclareChildDeclaration {}).await?;
+        let child = context.operation::<DeclareChildDeclaration>(DeclareChildDeclaration {}).await?;
         Ok(format!("{actor}:{child}").into())
     }
 }
@@ -199,6 +199,7 @@ fn portable_preserves_local() {
         generation: u64::MAX,
         payload: ().encode(),
         submit: true,
+        retry: None,
     };
     let encoded = call.encode().unwrap();
     let decoded = harmos_runtime::operations::WireChildCall::decode(&encoded).unwrap();
@@ -247,9 +248,9 @@ async fn child_preserves_authority() {
     let mut original = context("alice");
     original.insert_portable(Stage { id: "parent".into() }).unwrap();
     let operations = runtime.operations.with_context(original.clone());
-    assert_eq!(&*operations.call::<OverlayParentDeclaration>(OverlayParentDeclaration {}).await.unwrap(), "alice:parent:alice:child");
+    assert_eq!(&*operations.operation::<OverlayParentDeclaration>(OverlayParentDeclaration {}).await.unwrap(), "alice:parent:alice:child");
     assert_eq!(original.require::<Stage>().unwrap().id, "parent");
-    assert_eq!(&*operations.call::<OverlayChildDeclaration>(OverlayChildDeclaration {}).await.unwrap(), "alice:parent");
+    assert_eq!(&*operations.operation::<OverlayChildDeclaration>(OverlayChildDeclaration {}).await.unwrap(), "alice:parent");
     runtime.shutdown().await.unwrap();
 }
 
@@ -268,7 +269,7 @@ async fn children_inherit_principals() {
             .unwrap();
     }
     let alice = runtime.operations.with_context(context("alice"));
-    assert_eq!(&*alice.call::<DeclareParentDeclaration>(DeclareParentDeclaration {}).await.unwrap(), "alice:alice");
+    assert_eq!(&*alice.operation::<DeclareParentDeclaration>(DeclareParentDeclaration {}).await.unwrap(), "alice:alice");
     assert_eq!(
         *events.lock().unwrap(),
         [
@@ -294,8 +295,8 @@ async fn children_inherit_principals() {
     );
     let bob = runtime.operations.with_context(context("bob"));
     let (a, b) = tokio::join!(
-        alice.call::<DeclareParentDeclaration>(DeclareParentDeclaration {}),
-        bob.call::<DeclareParentDeclaration>(DeclareParentDeclaration {})
+        alice.operation::<DeclareParentDeclaration>(DeclareParentDeclaration {}),
+        bob.operation::<DeclareParentDeclaration>(DeclareParentDeclaration {})
     );
     assert_eq!(&*a.unwrap(), "alice:alice");
     assert_eq!(&*b.unwrap(), "bob:bob");
@@ -309,7 +310,9 @@ async fn layers_skips_layers() {
     for (name, reject) in [("first", false), ("reject", true), ("unreached", false)] {
         runtime.operations.register_middleware(Arc::new(Policy { name, events: events.clone(), reject })).unwrap();
     }
-    assert!(runtime.operations.with_context(context("alice")).call::<DeclareParentDeclaration>(DeclareParentDeclaration {}).await.is_err());
+    assert!(
+        runtime.operations.with_context(context("alice")).operation::<DeclareParentDeclaration>(DeclareParentDeclaration {}).await.is_err()
+    );
     assert_eq!(
         *events.lock().unwrap(),
         [
@@ -374,7 +377,7 @@ async fn retries_preserve_principal() {
             reject: false,
         }))
         .unwrap();
-    let answer = runtime.operations.with_context(context("alice")).call::<RetryDeclaration>(RetryDeclaration {}).await.unwrap();
+    let answer = runtime.operations.with_context(context("alice")).operation::<RetryDeclaration>(RetryDeclaration {}).await.unwrap();
     assert_eq!(&*answer, "alice:3");
     assert_eq!(*events.lock().unwrap(), ["once enter middleware.retry", "once observe middleware.retry"]);
     runtime.shutdown().await.unwrap();

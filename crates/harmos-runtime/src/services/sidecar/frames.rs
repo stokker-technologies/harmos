@@ -132,11 +132,11 @@ where
                                             |caller| {
                                                 caller.submit_encoded_at(
                                                     &call.operation,
-                                                    call.fingerprint,
-                                                    call.generation,
+                                                    (call.fingerprint, call.generation),
                                                     call.payload,
                                                     submitted,
                                                     call.values,
+                                                    call.retry,
                                                 )
                                             },
                                         )

@@ -102,13 +102,13 @@ async fn setup() -> Fixture {
 async fn schema_registry_roundtrip() {
     let f = setup().await;
     let request = request(&f, "nested");
-    let accepted = f.runtime.operation(request.clone()).run().await.unwrap();
-    let repeated = f.runtime.operation(request.clone()).run().await.unwrap();
+    let accepted = f.runtime.operation(request.clone()).await.unwrap();
+    let repeated = f.runtime.operation(request.clone()).await.unwrap();
     assert_eq!(*accepted, *repeated);
     assert_eq!(f.storage.cursor_accepted(), *accepted);
     let mut conflict = request.clone();
     conflict.schema.key.version = NonZeroU32::new(2).unwrap();
-    assert!(f.runtime.operation(conflict).run().await.is_err());
+    assert!(f.runtime.operation(conflict).await.is_err());
     let at = f.storage.flush().await.unwrap();
     let query = Query {
         at: at.clone(),

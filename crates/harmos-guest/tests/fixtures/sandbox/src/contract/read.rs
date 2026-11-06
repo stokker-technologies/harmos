@@ -124,9 +124,10 @@ mod runtime {
             if self.value == "context-parent" {
                 let parent = ctx.call().value::<Stage>().map_err(std::io::Error::other)?.expect("the caller set a stage");
                 let caller = carrier.with_value(Stage { id: "child".into() }).map_err(std::io::Error::other)?;
-                let child = harmos::guest::Host::call::<ReadOperation>(&caller, ReadOperation { value: "context-leaf".into() })
-                    .await
-                    .map_err(std::io::Error::other)?;
+                let child =
+                    harmos::guest::OperationHost::operation::<ReadOperation>(&caller, ReadOperation { value: "context-leaf".into() })
+                        .await
+                        .map_err(std::io::Error::other)?;
                 return Ok(Value {
                     value: format!("{}:{}", parent.id, child.value),
                 }
@@ -146,7 +147,9 @@ mod runtime {
             if self.value == "parent" {
                 let saved = owner.saved_attempts.lock().map_err(|error| std::io::Error::other(error.to_string()))?.remove(&self.value);
                 if let Some(saved) = saved
-                    && harmos::guest::Host::call::<ReadOperation>(&saved, ReadOperation { value: "leaf".into() }).await.is_ok()
+                    && harmos::guest::OperationHost::operation::<ReadOperation>(&saved, ReadOperation { value: "leaf".into() })
+                        .await
+                        .is_ok()
                 {
                     return Err(std::io::Error::other("stale context was accepted"));
                 }

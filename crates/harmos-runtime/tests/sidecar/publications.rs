@@ -446,7 +446,8 @@ impl harmos_runtime::Lifecycle for Batches {
             }
         };
         let pulse = |sample: u64| harmos_runtime::Message::encode(&support::pulse(sample));
-        let publish = |request| harmos_runtime::operations::Host::call::<harmos_operations::streams::Publish>(context, request);
+        let publish =
+            |request| harmos_runtime::operations::OperationHost::operation::<harmos_operations::streams::Publish>(context, request);
         let raw_id = <RawRows as harmos_runtime::StreamSpec>::ID;
         let refused = publish(raw(raw_id, 1, None, vec![(pulse(2), None), (vec![0xff; 3], None), (pulse(4), None)])).await;
         if refused.is_ok() {

@@ -10,7 +10,7 @@
 // The host one authored body uses wherever it runs: in process over
 // the operation manager, in a sidecar over the connection frames, or in a guest
 // over the Wasm imports. Storage and other host services are reached as
-// declared operations through `call` and `submit`, never as per-kit methods.
+// declared operations through the shared invocation and instance contract.
 
 /* === Modules === */
 
@@ -19,13 +19,17 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{any::Any, future::Future, sync::Arc};
+use std::{
+    any::Any,
+    future::{Future, IntoFuture},
+    sync::Arc,
+};
 
 // Third Party Imports
 
 // Local Imports
 use super::instance::Instance;
-use super::{CallContext, ContextError, ContextValue, OperationDeclaration, Response};
+use super::{CallContext, ContextError, ContextValue, EndpointSet, OperationDeclaration, Response, RetryPolicy};
 use crate::{Message, StreamSpec};
 
 /* === Constants === */
@@ -42,15 +46,40 @@ pub struct RequestClaims {
     owner: Arc<dyn Any + Send + Sync>,
 }
 
+#[must_use = "an invocation runs when awaited or started"]
+pub struct Invocation<H: OperationHost, O: OperationDeclaration, E: EndpointSet = ()> {
+    host: H,
+    request: O::Request,
+    retry: Option<RetryPolicy>,
+    endpoints: E,
+}
+
 /* === Enums === */
 
 /* === Traits === */
 
-// The Carrier Host Preserves Authorization For Child Calls.
-pub trait Host: Send + Sync + Sized {
+// The Carrier OperationHost Preserves Authorization For Child Calls.
+pub trait OperationHost: Send + Sync + Sized {
     type Error: std::error::Error + Send + Sync + 'static;
 
     type Instance<O: OperationDeclaration>: Instance<O, Error = Self::Error>;
+
+    fn operation<O: OperationDeclaration<Request = O>>(&self, request: O) -> Invocation<Self, O>
+    where
+        Self: Clone,
+    {
+        Invocation::new(self.clone(), request)
+    }
+
+    fn invoke<O: OperationDeclaration, E: EndpointSet>(
+        &self, request: O::Request, retry: Option<RetryPolicy>, endpoints: E,
+    ) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
+
+    fn resolve<O: OperationDeclaration, E: EndpointSet>(
+        &self, request: O::Request, retry: Option<RetryPolicy>, endpoints: E,
+    ) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send {
+        async move { self.invoke::<O, E>(request, retry, endpoints).await?.join().await }
+    }
 
     fn context(&self) -> &CallContext;
 
@@ -70,13 +99,6 @@ pub trait Host: Send + Sync + Sized {
         async move { self.submit_owned::<O>(request, claims).await?.join().await }
     }
 
-    fn call<O: OperationDeclaration>(
-        &self, request: O::Request,
-    ) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send {
-        let submitted = self.submit::<O>(request);
-        async move { submitted.await?.join().await }
-    }
-
     // Publish one row on a declared stream through the host's `host.publish`.
     fn publish_on<S: StreamSpec>(&self, row: &S::Row) -> impl Future<Output = Result<(), Self::Error>> + Send
     where
@@ -88,6 +110,50 @@ pub trait Host: Send + Sync + Sized {
 }
 
 /* === Implementations === */
+
+impl<H: OperationHost, O: OperationDeclaration> Invocation<H, O> {
+    pub fn new(host: H, request: O::Request) -> Self {
+        Self {
+            host,
+            request,
+            retry: None,
+            endpoints: (),
+        }
+    }
+}
+
+impl<H: OperationHost, O: OperationDeclaration, E: EndpointSet> Invocation<H, O, E> {
+    pub fn retry(mut self, policy: RetryPolicy) -> Self {
+        self.retry = Some(policy);
+        self
+    }
+
+    pub fn endpoints<F: EndpointSet>(self, endpoints: F) -> Invocation<H, O, F> {
+        Invocation {
+            host: self.host,
+            request: self.request,
+            retry: self.retry,
+            endpoints,
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn host_mut(&mut self) -> &mut H {
+        &mut self.host
+    }
+
+    pub async fn start(self) -> Result<H::Instance<O>, H::Error> {
+        self.host.invoke::<O, E>(self.request, self.retry, self.endpoints).await
+    }
+}
+
+impl<H: OperationHost + 'static, O: OperationDeclaration, E: EndpointSet> IntoFuture for Invocation<H, O, E> {
+    type Output = Result<Response<O::Response>, H::Error>;
+    type IntoFuture = std::pin::Pin<Box<dyn Future<Output = Self::Output> + Send>>;
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(async move { self.host.resolve::<O, E>(self.request, self.retry, self.endpoints).await })
+    }
+}
 
 impl RequestClaims {
     pub fn retain(owner: Arc<dyn Any + Send + Sync>) -> Self {

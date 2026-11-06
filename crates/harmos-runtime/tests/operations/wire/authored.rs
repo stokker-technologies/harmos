@@ -116,7 +116,7 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
 async fn registration_does_not_execute_requests() {
     let (runtime, trace) = runtime().await;
     assert_eq!(trace.entered.load(Ordering::SeqCst), 0);
-    let response = runtime.operation(ReadContractDeclaration { mode: Mode::Complete }).run().await.unwrap();
+    let response = runtime.operation(ReadContractDeclaration { mode: Mode::Complete }).await.unwrap();
     assert_eq!(response.value, 7);
     assert_eq!(trace.entered.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -138,7 +138,7 @@ async fn cancellation_drops_attempt_state() {
 #[tokio::test]
 async fn panic_drops_attempt_state() {
     let (runtime, trace) = runtime().await;
-    let result = runtime.operation(ReadContractDeclaration { mode: Mode::Panic }).run().await;
+    let result = runtime.operation(ReadContractDeclaration { mode: Mode::Panic }).await;
     assert!(matches!(result, Err(Error::OperationPanicked { .. })));
     assert_eq!(trace.entered.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -262,8 +262,8 @@ mod listed {
         .unwrap();
         let observed = Arc::new(runtime.operations.clone());
         owner.operations.set(Arc::downgrade(&observed)).unwrap();
-        let first = runtime.operation(CachedOwnerDeclaration { value: 0 }).run().await.unwrap();
-        let cached = runtime.operation(CachedOwnerDeclaration { value: 0 }).run().await.unwrap();
+        let first = runtime.operation(CachedOwnerDeclaration { value: 0 }).await.unwrap();
+        let cached = runtime.operation(CachedOwnerDeclaration { value: 0 }).await.unwrap();
         assert!(first.ptr_eq(&cached));
         assert_eq!(owner.ran.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 0);
@@ -288,8 +288,8 @@ mod listed {
         })
         .await
         .unwrap();
-        let inferred = runtime.operation(InferredOwnedDeclaration { value: 0 }).run().await.unwrap();
-        let declared = runtime.operation(DeclaredOwnedDeclaration { value: 0 }).run().await.unwrap();
+        let inferred = runtime.operation(InferredOwnedDeclaration { value: 0 }).await.unwrap();
+        let declared = runtime.operation(DeclaredOwnedDeclaration { value: 0 }).await.unwrap();
         assert_eq!(*inferred, 7_u32);
         assert_eq!(*declared, 7_u32);
         assert!(std::ptr::eq(inferred.as_ref(), original.as_ref()));

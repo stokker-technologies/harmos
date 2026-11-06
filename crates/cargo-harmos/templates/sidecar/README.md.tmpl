@@ -19,6 +19,13 @@ The scaffold uses the explicitly selected Harmos source revision or local checko
 Install `cargo-harmos` to run `mise run dev`; it is the development tool used to create this project.
 Keep generated tooling current with `stkr project update` when adopting company tooling changes.
 
+## Operation Context
+
+Call declared children with `ctx.operation(request).await?`; the SDK `Invocation` accepts `.retry(policy)`, `.endpoints(...)` and `.start()`.
+The operation macro owns defaults. Take retry overrides from settings or configuration; enabling them requires declared replay safety.
+Await returns `Response<T>`, which dereferences to the value; `into_owned()` takes the payload. `ctx.call()` remains the handler metadata accessor.
+Import `harmos::OperationHost` for operation invocation on the lifecycle carrier host.
+
 ## Plugin Lifecycle
 
 `Lifecycle::prepare(config, setup)` constructs the plugin and registers shared resources

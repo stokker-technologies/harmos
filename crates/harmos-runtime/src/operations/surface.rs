@@ -23,7 +23,7 @@ use std::future::Future;
 
 // Local Imports
 use super::caller::Source;
-use super::{CallContext, Context, ContextError, ContextValue, Manager, OperationDeclaration, Response, Running};
+use super::{CallContext, Context, ContextError, ContextValue, Manager, OperationDeclaration, Running};
 use super::{EndpointSet, Lane, RetryPolicy};
 use crate::{Error, Result};
 
@@ -35,104 +35,113 @@ use crate::{Error, Result};
 
 /* === Structs === */
 
-#[must_use = "an invocation runs only when start or run is awaited"]
-pub struct Invocation<O: OperationDeclaration, L: Lane, E: EndpointSet = ()> {
-    target: Target,
-    id: Option<String>,
-    request: O::Request,
-    retry: Option<RetryPolicy>,
+#[derive(Clone)]
+pub struct RuntimeOperationHost<L: Lane> {
+    operations: Option<Manager>,
+    source: Source,
+    context: CallContext,
     lane: Option<L>,
-    endpoints: E,
 }
 
 /* === Enums === */
 
-enum Target {
-    Host(Manager),
-
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-    Plugin(crate::plugin::PluginScope),
-}
-
 /* === Traits === */
+
+pub trait InvocationExt<L: Lane>: Sized {
+    fn lane(self, lane: L) -> Self;
+}
 
 /* === Implementations === */
 
-impl<O: OperationDeclaration, L: Lane> Invocation<O, L> {
-    pub(crate) fn new(operations: Manager, request: O::Request) -> Self {
+impl<L: Lane, O: OperationDeclaration, E: EndpointSet> InvocationExt<L>
+    for harmos_sdk::operations::Invocation<RuntimeOperationHost<L>, O, E>
+{
+    fn lane(mut self, lane: L) -> Self {
+        self.host_mut().lane = Some(lane);
+        self
+    }
+}
+
+impl<L: Lane> RuntimeOperationHost<L> {
+    fn new(operations: Manager) -> Self {
         Self {
-            target: Target::Host(operations),
-            id: None,
-            request,
-            retry: None,
+            context: operations.call_context().clone(),
+            operations: Some(operations),
+            source: Source::Host,
             lane: None,
-            endpoints: (),
+        }
+    }
+
+    fn manager(&self) -> Result<Manager> {
+        match &self.operations {
+            Some(operations) => Ok(operations.with_context(self.context.clone())),
+            None => {
+                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                if let Source::Scope(scope) = &self.source {
+                    return Ok(scope.operation_manager()?.with_context(self.context.clone()));
+                }
+                Err(Error::Closing { domain: "operation host" })
+            }
         }
     }
 }
 
-impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
-    pub fn id(mut self, id: impl Into<String>) -> Self {
-        self.id = Some(id.into());
-        self
+impl<L: Lane> harmos_sdk::operations::OperationHost for RuntimeOperationHost<L> {
+    type Error = Error;
+    type Instance<O: OperationDeclaration> = Running<O>;
+    fn context(&self) -> &CallContext {
+        &self.context
     }
-
-    pub fn retry(mut self, policy: RetryPolicy) -> Self {
-        self.retry = Some(policy);
-        self
+    fn with_value<T: ContextValue>(&self, value: T) -> std::result::Result<Self, ContextError> {
+        let mut child = self.clone();
+        child.context = self.context.with_value(value)?;
+        Ok(child)
     }
-
-    pub fn lane(mut self, lane: L) -> Self {
-        self.lane = Some(lane);
-        self
-    }
-
-    pub fn endpoints<F: EndpointSet>(self, endpoints: F) -> Invocation<O, L, F> {
-        Invocation {
-            target: self.target,
-            id: self.id,
-            request: self.request,
-            retry: self.retry,
-            lane: self.lane,
-            endpoints,
-        }
-    }
-
-    pub async fn start(self) -> Result<Running<O>> {
-        if E::item_types() != super::item_types::<O>() {
-            return Err(Error::InvalidInput {
-                field: "operation endpoints",
-                reason: "endpoint items differ from the declaration",
-            });
-        }
-        let mut request = super::binding::Request::from(self.request);
-        request.retry = self.retry;
+    async fn invoke<O: OperationDeclaration, E: EndpointSet>(
+        &self, request: O::Request, retry: Option<RetryPolicy>, endpoints: E,
+    ) -> Result<Running<O>> {
+        validate_endpoints::<O, E>()?;
+        let mut request = super::binding::Request::from(request);
+        request.retry = retry;
         request.lane = self.lane.map(|lane| lane.name());
-        let (operations, source) = match self.target {
-            Target::Host(operations) => (operations, Source::Host),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-            Target::Plugin(scope) => (scope.operation_manager()?, Source::Scope(scope)),
-        };
-        let id = self.id.as_deref().unwrap_or(O::ID);
-        operations.admit_at::<O, E>(id, (request, self.endpoints), None, &[], &source, None)
+        self.manager()?.admit::<O, E>((request, endpoints), None, &[], &self.source, None)
     }
+    async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>> {
+        self.invoke::<O, ()>(request, None, ()).await
+    }
+    async fn submit_owned<O: OperationDeclaration>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
+        self.manager()?.admit::<O, ()>((super::binding::Request::owned(request, claims), ()), None, &[], &self.source, None)
+    }
+    async fn publish_on<S: harmos_domain::StreamSpec>(&self, row: &S::Row) -> Result<()>
+    where
+        S::Row: harmos_domain::Message,
+    {
+        harmos_operations::streams::publish_on::<_, S>(self, row).await
+    }
+}
 
-    pub async fn run(self) -> Result<Response<O::Response>> {
-        self.start().await?.join().await
+pub(super) fn validate_endpoints<O: OperationDeclaration, E: EndpointSet>() -> Result<()> {
+    if E::item_types() != super::item_types::<O>() {
+        return Err(Error::InvalidInput {
+            field: "operation endpoints",
+            reason: "endpoint items differ from the declaration",
+        });
     }
+    Ok(())
 }
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl crate::plugin::PluginScope {
-    pub fn operation<O: OperationDeclaration<Request = O>, L: Lane>(&self, request: O) -> Invocation<O, L> {
-        Invocation {
-            target: Target::Plugin(self.clone()),
-            id: None,
-            request,
-            retry: None,
+    pub fn operation<O: OperationDeclaration<Request = O>, L: Lane>(
+        &self, request: O,
+    ) -> harmos_sdk::operations::Invocation<RuntimeOperationHost<L>, O> {
+        let host = RuntimeOperationHost {
+            operations: None,
+            source: Source::Scope(self.clone()),
+            context: CallContext::default(),
             lane: None,
-            endpoints: (),
-        }
+        };
+        harmos_sdk::operations::Invocation::new(host, request)
     }
 
     pub async fn register<C: harmos_sdk::operations::OperationCatalog, L: Lane>(&self, lane: L) -> Result<()> {
@@ -204,8 +213,10 @@ impl<A: crate::Application> crate::Runtime<A> {
         self.operations.unregister(id).await
     }
 
-    pub fn operation<O: OperationDeclaration<Request = O>>(&self, request: O) -> Invocation<O, A::Lanes> {
-        Invocation::new(self.operations.execution(), request)
+    pub fn operation<O: OperationDeclaration<Request = O>>(
+        &self, request: O,
+    ) -> harmos_sdk::operations::Invocation<RuntimeOperationHost<A::Lanes>, O> {
+        harmos_sdk::operations::Invocation::new(RuntimeOperationHost::new(self.operations.execution()), request)
     }
 }
 
@@ -242,12 +253,28 @@ impl<A: crate::Application> crate::runtime::Handle<A> {
         self.operations.unregister(id).await
     }
 
-    pub fn operation<O: OperationDeclaration<Request = O>>(&self, request: O) -> Invocation<O, A::Lanes> {
-        Invocation::new(self.operations.execution(), request)
+    pub fn operation<O: OperationDeclaration<Request = O>>(
+        &self, request: O,
+    ) -> harmos_sdk::operations::Invocation<RuntimeOperationHost<A::Lanes>, O> {
+        harmos_sdk::operations::Invocation::new(RuntimeOperationHost::new(self.operations.execution()), request)
     }
 }
 
-impl<L: Lane> harmos_sdk::operations::Host for super::OperationManager<L> {
+impl<L: Lane> super::OperationManager<L> {
+    pub fn operation<O: OperationDeclaration>(
+        &self, request: O::Request,
+    ) -> harmos_sdk::operations::Invocation<RuntimeOperationHost<L>, O> {
+        harmos_sdk::operations::Invocation::new(RuntimeOperationHost::new(self.execution()), request)
+    }
+}
+
+impl<L: Lane> harmos_sdk::operations::OperationHost for super::OperationManager<L> {
+    async fn invoke<O: OperationDeclaration, E: EndpointSet>(
+        &self, request: O::Request, retry: Option<RetryPolicy>, endpoints: E,
+    ) -> Result<Running<O>> {
+        self.execution().invoke::<O, E>(request, retry, endpoints).await
+    }
+
     fn publish_on<S: harmos_domain::StreamSpec>(
         &self, row: &S::Row,
     ) -> impl std::future::Future<Output = std::result::Result<(), Self::Error>> + Send
@@ -280,7 +307,16 @@ impl<L: Lane> harmos_sdk::operations::Host for super::OperationManager<L> {
     }
 }
 
-impl harmos_sdk::operations::Host for Manager {
+impl harmos_sdk::operations::OperationHost for Manager {
+    async fn invoke<O: OperationDeclaration, E: EndpointSet>(
+        &self, request: O::Request, retry: Option<RetryPolicy>, endpoints: E,
+    ) -> Result<Running<O>> {
+        validate_endpoints::<O, E>()?;
+        let mut request = super::binding::Request::from(request);
+        request.retry = retry;
+        self.admit::<O, E>((request, endpoints), None, &[], &Source::Host, None)
+    }
+
     fn publish_on<S: harmos_domain::StreamSpec>(
         &self, row: &S::Row,
     ) -> impl std::future::Future<Output = std::result::Result<(), Self::Error>> + Send
@@ -313,7 +349,16 @@ impl harmos_sdk::operations::Host for Manager {
     }
 }
 
-impl harmos_sdk::operations::Host for Context<'_> {
+impl harmos_sdk::operations::OperationHost for Context<'_> {
+    async fn invoke<O: OperationDeclaration, E: EndpointSet>(
+        &self, request: O::Request, retry: Option<RetryPolicy>, endpoints: E,
+    ) -> Result<Running<O>> {
+        validate_endpoints::<O, E>()?;
+        let mut request = super::binding::Request::from(request);
+        request.retry = retry;
+        self.operations.submit_scoped::<O, E>((request, endpoints), &self.scope, &self.admission, &self.source, None)
+    }
+
     fn publish_on<S: harmos_domain::StreamSpec>(
         &self, row: &S::Row,
     ) -> impl std::future::Future<Output = std::result::Result<(), Self::Error>> + Send
@@ -362,6 +407,7 @@ mod tests {
     use super::*;
     use crate::Application;
     use crate::operations::RegistrationExt;
+    use crate::operations::Response;
     use std::sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -393,7 +439,7 @@ mod tests {
     }
 
     #[crate::operation(harmos_path = crate, resources = [AtomicUsize, crate::operations::HostContext],
-        id = "test.probe", response = u64,
+        id = "test.probe", response = u64, replay = super::super::ReplaySafety::Idempotent,
         policy = crate::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
@@ -526,7 +572,7 @@ mod tests {
         ));
         let invocation = runtime.operation(Probe { value: 1 });
         assert_eq!(initialized.load(Ordering::SeqCst), 0);
-        assert!(invocation.run().await.is_err());
+        assert!(invocation.await.is_err());
         assert_eq!(initialized.load(Ordering::SeqCst), 1);
 
         let retry = RetryPolicy::OnTransient {
@@ -536,9 +582,9 @@ mod tests {
                 jitter: crate::Jitter::None,
             },
         };
-        assert_eq!(*runtime.operation(Probe { value: 1 }).retry(retry).run().await.unwrap(), 0);
+        assert_eq!(*runtime.operation(Probe { value: 1 }).retry(retry).await.unwrap(), 0);
         assert_eq!(initialized.load(Ordering::SeqCst), 2);
-        assert!(runtime.operation(Probe { value: 1 }).run().await.is_err());
+        assert!(runtime.operation(Probe { value: 1 }).await.is_err());
         assert_eq!(initialized.load(Ordering::SeqCst), 3);
         assert_eq!(runtime.operations.definition(Probe::ID).unwrap().policy.retries, RetryPolicy::Never);
         runtime.operations.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();

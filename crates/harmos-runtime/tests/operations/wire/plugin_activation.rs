@@ -150,7 +150,7 @@ async fn plugin_catalog_lifecycle() {
     assert_eq!(runtime.operations.definitions().len(), 8);
     assert_eq!(runtime.operations.owner(Compute::ID).unwrap().as_str(), "fixture");
     assert!(matches!(runtime.operations.stage_plugin(host.scope.as_ref().unwrap(), |_| Ok(())), Err(Error::InvalidInput { .. })));
-    assert_eq!(runtime.operation(request()).run().await.unwrap().value, 7);
+    assert_eq!(runtime.operation(request()).await.unwrap().value, 7);
 
     manager.shutdown(&mut host).await.unwrap();
     assert!(runtime.operations.definitions().is_empty());
@@ -171,7 +171,7 @@ async fn staging_releases_names() {
     manager.initialize(&mut host).await.unwrap();
     assert_eq!(runtime.operations.definitions().len(), 8);
     assert_eq!(runtime.operations.owner(Compute::ID).unwrap().as_str(), "fixture");
-    assert_eq!(runtime.operation(request()).run().await.unwrap().value, 7);
+    assert_eq!(runtime.operation(request()).await.unwrap().value, 7);
     manager.shutdown(&mut host).await.unwrap();
     runtime.shutdown().await.unwrap();
 }
@@ -214,7 +214,7 @@ async fn unregister_cancel_retained() {
     assert_registration_conflict(replacement.initialize(&mut next).await);
     runtime.operations.unregister(&id).await.unwrap();
     replacement.initialize(&mut next).await.unwrap();
-    assert_eq!(runtime.operation(request()).run().await.unwrap().value, 7);
+    assert_eq!(runtime.operation(request()).await.unwrap().value, 7);
     replacement.shutdown(&mut next).await.unwrap();
     running.runtime.shutdown().await.unwrap();
 }
@@ -246,11 +246,11 @@ async fn own_public_calls() {
     manager.initialize(&mut host).await.unwrap();
 
     let own = runtime.operations.caller(&host.callers["fixture"]).unwrap();
-    assert_eq!(own.call::<Public>(Public(request())).await.unwrap().value, 7);
+    assert_eq!(own.operation::<Public>(Public(request())).await.unwrap().value, 7);
     let bytes = own.call_encoded(&format!("fixture.{}", Echo::ID), Text::from("own").encode()).await.unwrap();
     assert_eq!(String::decode(&bytes).unwrap(), "own:1");
 
-    let entries = own.call::<Discover>(Discover).await.unwrap();
+    let entries = own.operation::<Discover>(Discover).await.unwrap();
     let entries: Vec<harmos_operations::host::DiscoveredOperation> = serde_json::from_slice(&entries).unwrap();
     assert!(entries.iter().any(|entry| entry.contract.operation().id.as_str() == Echo::ID && entry.owner.as_str() == "fixture"));
 
@@ -276,7 +276,7 @@ async fn own_public_calls() {
     opened.notified().await;
     invocation.request_cancel();
     assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
-    assert_eq!(own.call::<Public>(Public(request())).await.unwrap().value, 7);
+    assert_eq!(own.operation::<Public>(Public(request())).await.unwrap().value, 7);
 
     let mut replacement: Vec<_> = candidate.definitions().cloned().collect();
     replacement[0].configuration = br#"{"generation":2}"#.to_vec();
@@ -290,7 +290,7 @@ async fn own_public_calls() {
         let response = grpc_call::<Echo>(harmos_runtime::grpc::server::Authority::Plugin(own)).await;
         assert_eq!(response.headers()["grpc-status"], "16");
     }
-    assert_eq!(next.call::<Public>(Public(request())).await.unwrap().value, 7);
+    assert_eq!(next.operation::<Public>(Public(request())).await.unwrap().value, 7);
     manager.shutdown(&mut host).await.unwrap();
     runtime.shutdown().await.unwrap();
 }
@@ -303,9 +303,9 @@ async fn plugin_caller_authorization() {
     host.call_during_setup = true;
     manager.initialize(&mut host).await.unwrap();
     let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
-    assert_eq!(caller.call::<Public>(Public(request())).await.unwrap().value, 7);
+    assert_eq!(caller.operation::<Public>(Public(request())).await.unwrap().value, 7);
     // Parent is public; its resource-owner context can call its private child.
-    assert_eq!(caller.call::<Parent>(Parent(request())).await.unwrap().value, 7);
+    assert_eq!(caller.operation::<Parent>(Parent(request())).await.unwrap().value, 7);
     let (requests, decoded) = harmos_runtime::operations::stream(harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::new(1).unwrap(),
         bytes: NonZeroUsize::new(4096).unwrap(),
@@ -357,7 +357,7 @@ async fn plugin_caller_authorization() {
         assert!(matches!(source.submit::<Public>(Public(request())), Err(Error::OperationUnauthorized { .. })));
     }
     assert_eq!(host.owner.prepared.load(std::sync::atomic::Ordering::SeqCst), prepared);
-    assert_eq!(runtime.operations.caller(&host.callers["fixture"]).unwrap().call::<Compute>(request()).await.unwrap().value, 7);
+    assert_eq!(runtime.operations.caller(&host.callers["fixture"]).unwrap().operation::<Compute>(request()).await.unwrap().value, 7);
     manager.shutdown(&mut host).await.unwrap();
     assert!(matches!(caller.submit::<Public>(Public(request())), Err(Error::OperationCaller { .. })));
     let (output, input) = harmos_runtime::operations::stream::<u32>(harmos_runtime::operations::StreamSettings {
@@ -388,9 +388,9 @@ async fn operation_cache_partitioned() {
     manager.initialize(&mut host).await.unwrap();
     let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
     let keyed = || Public(Request { keyed: true, ..request() });
-    let host_response = runtime.operation(keyed()).run().await.unwrap();
-    let first = caller.call::<Public>(keyed()).await.unwrap();
-    let again = caller.call::<Public>(keyed()).await.unwrap();
+    let host_response = runtime.operation(keyed()).await.unwrap();
+    let first = caller.operation::<Public>(keyed()).await.unwrap();
+    let again = caller.operation::<Public>(keyed()).await.unwrap();
     assert!(!host_response.ptr_eq(&first));
     assert!(first.ptr_eq(&again));
     assert_eq!(host.owner.runs.load(std::sync::atomic::Ordering::SeqCst), 2);
@@ -401,9 +401,9 @@ async fn operation_cache_partitioned() {
     manager.reload(PluginDefinitions::new(next, []).unwrap(), &mut host).await.unwrap();
     assert!(matches!(caller.submit::<Public>(keyed()), Err(Error::OperationCaller { .. })));
     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
-    let next = replacement.call::<Public>(keyed()).await.unwrap();
+    let next = replacement.operation::<Public>(keyed()).await.unwrap();
     assert!(!first.ptr_eq(&next));
-    assert!(host_response.ptr_eq(&runtime.operation(keyed()).run().await.unwrap()));
+    assert!(host_response.ptr_eq(&runtime.operation(keyed()).await.unwrap()));
     manager.shutdown(&mut host).await.unwrap();
     runtime.shutdown().await.unwrap();
 }
@@ -419,7 +419,7 @@ async fn requirement_revokes_operation() {
     assert!(matches!(old.submit::<Public>(Public(request())), Err(Error::OperationCaller { .. })));
     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
     assert!(matches!(replacement.submit::<Public>(Public(request())), Err(Error::OperationUnauthorized { .. })));
-    assert_eq!(runtime.operation(Public(request())).run().await.unwrap().value, 7);
+    assert_eq!(runtime.operation(Public(request())).await.unwrap().value, 7);
     manager.shutdown(&mut host).await.unwrap();
     runtime.shutdown().await.unwrap();
 }
@@ -483,7 +483,7 @@ async fn encoded_calls_authorized() {
         "own:1"
     );
     // The client's public parent invokes its own private child as the bound owner.
-    assert_eq!(&*client.call::<NestedDeclaration>(NestedDeclaration::from("nested")).await.unwrap(), "nested:1");
+    assert_eq!(&*client.operation::<NestedDeclaration>(NestedDeclaration::from("nested")).await.unwrap(), "nested:1");
     let prepared = host.owner.prepared.load(std::sync::atomic::Ordering::SeqCst);
     // Malformed payloads must not replace authorization failures with codec errors.
     assert!(matches!(client.submit_encoded(&format!("fixture.{}", PrivateEcho::ID), vec![0xff]), Err(Error::OperationUnauthorized { .. })));
@@ -602,7 +602,7 @@ async fn provider_selection_reload() {
     assert_eq!(before.generation(), first_provider);
     assert_eq!(before.await.unwrap().as_str(), "shared:before");
     assert!(matches!(
-        runtime.operation(SelectedDeclaration::from("ambiguous")).run().await,
+        runtime.operation(SelectedDeclaration::from("ambiguous")).await,
         Err(Error::InvalidInput { field: "operation provider", .. })
     ));
     let first_generation = host.scopes["first"].generation();

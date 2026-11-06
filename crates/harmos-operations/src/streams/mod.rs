@@ -48,20 +48,24 @@ pub enum Streams {
 #[cfg(feature = "lifecycle")]
 pub fn publish_on<H, S>(host: &H, row: &S::Row) -> impl std::future::Future<Output = std::result::Result<(), H::Error>> + Send
 where
-    H: harmos_sdk::operations::Host,
+    H: harmos_sdk::operations::OperationHost,
     S: harmos_domain::StreamSpec,
     S::Row: harmos_domain::Message,
 {
     use harmos_domain::Message;
-    let published = host.call::<Publish>(Publish {
-        stream: S::ID.to_owned(),
-        schema: S::VERSION,
-        sequence: None,
-        published_unix_micros: None,
-        context: None,
-        payload: row.encode(),
-        following: Vec::new(),
-    });
+    let published = host.resolve::<Publish, ()>(
+        Publish {
+            stream: S::ID.to_owned(),
+            schema: S::VERSION,
+            sequence: None,
+            published_unix_micros: None,
+            context: None,
+            payload: row.encode(),
+            following: Vec::new(),
+        },
+        None,
+        (),
+    );
     async move {
         published.await?;
         Ok(())

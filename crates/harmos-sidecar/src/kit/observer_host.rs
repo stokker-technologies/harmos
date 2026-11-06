@@ -19,8 +19,8 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::{CallError, ObserverContext, PublicationError, Supervisor};
-use harmos_domain::{Message, StreamSpec, inventory::publications};
+use super::{ObserverContext, PublicationError, Supervisor};
+use harmos_domain::{StreamSpec, inventory::publications};
 
 /* === Constants === */
 
@@ -54,38 +54,11 @@ where
     fn publish_on(&self, context: &ObserverContext<'_, Self>, row: &S::Row) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
-pub trait ObserverCaller<C>: Send + Sync + Sized {
-    type Request: Send;
-    type Response: Send;
-    type Error: std::error::Error + Send + Sync + 'static;
-
-    fn call(
-        &self, context: &ObserverContext<'_, Self>, request: Self::Request,
-    ) -> impl Future<Output = Result<Self::Response, Self::Error>> + Send;
-}
-
 /* === Implementations === */
 
 impl ObserverHost for Supervisor {
     fn bind(_: Arc<harmos_sdk::ExecutionContext>, supervisor: Supervisor) -> Self {
         supervisor
-    }
-}
-
-impl<C> ObserverCaller<C> for Supervisor
-where
-    C: harmos_domain::operations::OperationDeclaration,
-{
-    type Request = C::Request;
-    type Response = C::Response;
-    type Error = CallError;
-
-    async fn call(&self, _: &ObserverContext<'_, Self>, request: Self::Request) -> Result<Self::Response, Self::Error> {
-        let bytes = self.child_call::<C>(&request, false).await?;
-        C::Response::decode(bytes.as_slice()).map_err(|error| CallError::Malformed {
-            method: C::ID,
-            message: error.to_string(),
-        })
     }
 }
 

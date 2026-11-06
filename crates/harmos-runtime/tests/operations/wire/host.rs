@@ -365,7 +365,7 @@ async fn host_visibility_enforced() {
     ));
     assert!(!encoded.load(Ordering::SeqCst));
     assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 0);
-    assert_eq!(*runtime.operation(ControlDeclaration::from("host")).run().await.unwrap(), "host");
+    assert_eq!(*runtime.operation(ControlDeclaration::from("host")).await.unwrap(), "host");
 
     let response = runtime
         .operations
@@ -388,7 +388,7 @@ async fn host_visibility_enforced() {
             .is_err()
     );
     assert!(!encoded.load(Ordering::SeqCst));
-    assert_eq!(*runtime.operation(ControlDeclaration::from("replacement")).run().await.unwrap(), "replacement");
+    assert_eq!(*runtime.operation(ControlDeclaration::from("replacement")).await.unwrap(), "replacement");
     manager.shutdown(&mut host).await.unwrap();
     assert!(runtime.operation(ControlDeclaration::from("closed")).start().await.is_err());
     runtime.shutdown().await.unwrap();

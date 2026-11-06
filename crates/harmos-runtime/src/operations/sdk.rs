@@ -224,6 +224,7 @@ impl PluginSdkRegistration {
             Source::Host,
             None,
             EncodedInput {
+                retry: None,
                 payload,
                 preparation: Some(preparation),
                 #[cfg(feature = "plugin-sidecar")]

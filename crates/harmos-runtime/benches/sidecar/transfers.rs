@@ -98,7 +98,7 @@ async fn upload(fixture: &Fixture, batches: Vec<Batch>, mode: &str, transfer: u6
     if mode == "unary" {
         let mut total = Receipt { records: 0, samples: 0, bytes: 0 };
         for (index, batch) in batches.into_iter().enumerate() {
-            let receipt = fixture.runtime.operation(Put { transfer, first: index == 0, batch }).run().await.unwrap();
+            let receipt = fixture.runtime.operation(Put { transfer, first: index == 0, batch }).await.unwrap();
             total.records += receipt.records;
             total.samples += receipt.samples;
             total.bytes += receipt.bytes;
@@ -118,7 +118,7 @@ async fn download(fixture: &Fixture, mode: &str, count: usize, transfer: u64) ->
         let mut batches = Vec::with_capacity(count);
         let mut total = Receipt { records: 0, samples: 0, bytes: 0 };
         for _ in 0..count {
-            let batch = fixture.runtime.operation(Take { transfer }).run().await.unwrap().into_owned();
+            let batch = fixture.runtime.operation(Take { transfer }).await.unwrap().into_owned();
             total.records += batch.records.len() as u64;
             total.samples += batch.samples.len() as u64;
             total.bytes += batch.bytes.len() as u64;

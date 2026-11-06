@@ -345,8 +345,8 @@ impl RegistrationBatch {
 }
 
 impl OperationFactory {
-    pub fn accepts_target(&self, target: &super::Target) -> bool {
-        (self.native_types)() == ((target.request)(), (target.response)(), std::any::TypeId::of::<()>())
+    pub fn accepts_target(&self, target: &super::Target, endpoints: std::any::TypeId) -> bool {
+        (self.native_types)() == ((target.request)(), (target.response)(), endpoints)
     }
 
     pub fn accepts_native<D: OperationDeclaration, P: 'static>(&self) -> bool {

@@ -81,10 +81,10 @@ async fn operation_retries_three() {
         session: file.session().unwrap().clone(),
     };
     f.data.control.fence_failures.store(3, Ordering::SeqCst);
-    let first = f.runtime.operation(request.clone()).run().await.unwrap();
+    let first = f.runtime.operation(request.clone()).await.unwrap();
     assert_eq!(first.session.generation, 2);
     assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 0);
-    assert_eq!(*f.runtime.operation(request).run().await.unwrap(), *first);
+    assert_eq!(*f.runtime.operation(request).await.unwrap(), *first);
     f.finish().await;
 }
 
@@ -146,10 +146,10 @@ async fn budgets_never_multiply() {
         session: file.session().unwrap().clone(),
     };
     f.data.control.fence_failures.store(5, Ordering::SeqCst);
-    assert!(f.runtime.operation(request.clone()).run().await.is_err());
+    assert!(f.runtime.operation(request.clone()).await.is_err());
     assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 1);
     f.data.control.fence_failures.store(0, Ordering::SeqCst);
-    assert_eq!(f.runtime.operation(request).run().await.unwrap().session.generation, 2);
+    assert_eq!(f.runtime.operation(request).await.unwrap().session.generation, 2);
     f.finish().await;
 }
 

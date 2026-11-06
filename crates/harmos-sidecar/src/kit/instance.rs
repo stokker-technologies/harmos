@@ -28,7 +28,9 @@ use super::{CallError, Supervisor};
 use harmos_domain::operations::instance::{Id, Status};
 use harmos_domain::{Message, StreamSpec};
 use harmos_operations::lifecycle::InstanceState;
-use harmos_sdk::operations::{CallContext, ContextError, ContextValue, Host, Instance, OperationDeclaration, Response, WireChildAction};
+use harmos_sdk::operations::{
+    CallContext, ContextError, ContextValue, Instance, OperationDeclaration, OperationHost, Response, WireChildAction,
+};
 
 /* === Constants === */
 
@@ -44,6 +46,13 @@ pub struct OperationInstance<O> {
     id: Id,
     released: bool,
     _operation: PhantomData<fn() -> O>,
+}
+
+pub(super) struct Child {
+    pub(super) host: Supervisor,
+    pub(super) id: Id,
+    pub(super) target: harmos_sdk::operations::Target,
+    pub(super) released: bool,
 }
 
 /* === Enums === */
@@ -120,7 +129,36 @@ impl<O: OperationDeclaration> Instance<O> for OperationInstance<O> {
     }
 }
 
-impl Host for Supervisor {
+impl OperationHost for Supervisor {
+    async fn resolve<O: OperationDeclaration, E: harmos_sdk::operations::EndpointSet>(
+        &self, request: O::Request, retry: Option<harmos_sdk::operations::RetryPolicy>, _endpoints: E,
+    ) -> Result<Response<O::Response>, CallError> {
+        if E::item_types() != (None, None) {
+            return Err(CallError::Unavailable);
+        }
+        let bytes = self.child_call::<O>(&request, false, retry).await?;
+        decode_response::<O>(&bytes)
+    }
+
+    async fn invoke<O: OperationDeclaration, E: harmos_sdk::operations::EndpointSet>(
+        &self, request: O::Request, retry: Option<harmos_sdk::operations::RetryPolicy>, _endpoints: E,
+    ) -> Result<Self::Instance<O>, CallError> {
+        if E::item_types() != (None, None) {
+            return Err(CallError::Unavailable);
+        }
+        let bytes = self.child_call::<O>(&request, true, retry).await?;
+        let id = u64::decode(&bytes).map_err(|error| CallError::Malformed {
+            method: O::ID,
+            message: error.to_string(),
+        })?;
+        Ok(OperationInstance {
+            host: self.clone(),
+            id: Id::new(id),
+            released: false,
+            _operation: PhantomData,
+        })
+    }
+
     async fn publish_on<S: StreamSpec>(&self, row: &S::Row) -> Result<(), CallError>
     where
         S::Row: Message,
@@ -142,7 +180,7 @@ impl Host for Supervisor {
     }
 
     async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<OperationInstance<O>, CallError> {
-        let bytes = self.child_call::<O>(&request, true).await?;
+        let bytes = self.child_call::<O>(&request, true, None).await?;
         let id = u64::decode(bytes.as_slice()).map_err(|error| CallError::Malformed {
             method: O::ID,
             message: error.to_string(),
@@ -161,12 +199,56 @@ impl Host for Supervisor {
         Err(CallError::LocalResources { method: O::ID })
     }
 
-    async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<Response<O::Response>, CallError> {
-        let bytes = self.child_call::<O>(&request, false).await?;
-        decode_response::<O>(&bytes)
-    }
-
     // Sequence and timestamp each row as the stream publisher does.
+}
+
+impl harmos_sdk::operations::ChildInstance for Child {
+    fn id(&self) -> Id {
+        self.id
+    }
+    fn status(&self) -> harmos_sdk::operations::ControlFuture<'_, Status> {
+        Box::pin(async move {
+            let result = async {
+                let bytes = self.host.child_control(self.id, WireChildAction::Status).await?;
+                decode_status(bytes.as_slice())
+            }
+            .await;
+            result.map_err(|error: CallError| harmos_sdk::operations::InvocationError::failed(self.target.id, error))
+        })
+    }
+    fn request_cancel(&self) -> harmos_sdk::operations::ControlFuture<'_, ()> {
+        Box::pin(async move {
+            self.host
+                .child_control(self.id, WireChildAction::Cancel)
+                .await
+                .map(|_| ())
+                .map_err(|error| harmos_sdk::operations::InvocationError::failed(self.target.id, error))
+        })
+    }
+    fn join(mut self: Box<Self>) -> harmos_sdk::operations::CallFuture<'static> {
+        Box::pin(async move {
+            let bytes = self
+                .host
+                .child_control(self.id, WireChildAction::Join)
+                .await
+                .map_err(|error| harmos_sdk::operations::InvocationError::failed(self.target.id, error))?;
+            self.released = true;
+            (self.target.decode)(&bytes).map_err(|error| harmos_sdk::operations::InvocationError::failed(self.target.id, error))
+        })
+    }
+    fn detach(mut self: Box<Self>) -> Id {
+        self.host.child_control_detached(self.id, WireChildAction::Detach);
+        self.released = true;
+        self.id
+    }
+}
+
+impl Drop for Child {
+    fn drop(&mut self) {
+        if !self.released {
+            self.host.child_control_detached(self.id, WireChildAction::Release);
+        }
+    }
 }
 
 /* === Public Functions === */

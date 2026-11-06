@@ -148,13 +148,12 @@ impl Fixture {
                 from: schematic_domain::model::Point { x: 0, y: 0 },
                 to: schematic_domain::model::Point { x: 3, y: 4 },
             })
-            .run()
             .await
             .unwrap()
     }
 
     pub async fn payload(&self, request: validate::ValidateSchematic) -> harmos_runtime::operations::Response<validate::Validation> {
-        self.runtime.operation(request).run().await.unwrap()
+        self.runtime.operation(request).await.unwrap()
     }
 
     pub async fn verify_filesystem(&self) {
@@ -169,7 +168,7 @@ impl Fixture {
                 range: ByteRange { offset: 5, limit: Some(10) },
             },
         };
-        let answer = self.runtime.operation(request).run().await.unwrap();
+        let answer = self.runtime.operation(request).await.unwrap();
         assert_eq!(answer.bytes_read, 10);
         assert_eq!(answer.sha256, <[u8; 32]>::from(Sha256::digest(&bytes[5..15])));
     }

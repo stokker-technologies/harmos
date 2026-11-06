@@ -334,7 +334,7 @@ impl harmos_runtime::operations::Operation for DescendantDeclaration {
         let host = context.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
         let result: ::core::result::Result<Reply, Self::Error> = async move {
-            let response = context.call::<GuardedDeclaration>(GuardedDeclaration {}).await?;
+            let response = context.operation::<GuardedDeclaration>(GuardedDeclaration {}).await?;
             Ok(Reply { actor: response.actor.clone() })
         }
         .await;

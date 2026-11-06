@@ -62,6 +62,7 @@ pub use context::ContextMut;
 pub use grpc::GrpcBinding;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcMethod;
+pub use harmos_sdk::operations::Invocation;
 pub use harmos_sdk::operations::{
     Backoff, CHILD_METHOD, CacheKey, CacheKeyError, CallValue, Callees, Catalog, Codec, ContextError, ContextValue, Contract,
     ContractError, Contracts, Declarations, Dependent, Direction, Entry, Executable, FailureKind, Grpc, InvocationError, Invokes, Jitter,
@@ -70,12 +71,12 @@ pub use harmos_sdk::operations::{
     Stream, Visibility, WIRE_METHOD, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand,
     WireDeclaration, WireEndpoints, WireStreamLimits, WireStreams, item_types,
 };
-pub use harmos_sdk::operations::{CallContext, Cancellation, Host, Instance, RequestClaims, Response, instance};
+pub use harmos_sdk::operations::{CallContext, Cancellation, Instance, OperationHost, RequestClaims, Response, instance};
 pub use lane::{Capacity, Lane, LaneSet, LaneSettings};
 #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 pub use remote::{RemoteStreamError, StreamEndpoints, StreamPeer};
 pub use scope::Scope;
-pub use surface::Invocation;
+pub use surface::{InvocationExt, RuntimeOperationHost};
 
 pub use crate::config::OperationSettings as Settings;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]

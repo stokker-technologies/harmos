@@ -190,7 +190,7 @@ async fn children_attempt_lifetime() {
             assert_eq!(counts.finished.load(Ordering::SeqCst), 2);
         }
         let saved = counts.saved.lock().unwrap().take().unwrap();
-        assert!(saved.call::<RefreshDeclaration>(RefreshDeclaration {}).await.is_err());
+        assert!(saved.operation::<RefreshDeclaration>(RefreshDeclaration {}).await.is_err());
         fixture.shutdown().await.unwrap();
         fixture.runtime.shutdown().await.unwrap();
     }

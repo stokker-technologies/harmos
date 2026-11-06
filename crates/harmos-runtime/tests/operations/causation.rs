@@ -255,7 +255,7 @@ async fn filtered_trace_behaves() {
     let capture = TraceCapture::default();
     let subscriber = tracing_subscriber::registry().with(capture.clone()).with(tracing::level_filters::LevelFilter::OFF);
     async {
-        runtime.operation(NoteContractDeclaration { label: "filtered".to_owned() }).run().await.unwrap();
+        runtime.operation(NoteContractDeclaration { label: "filtered".to_owned() }).await.unwrap();
     }
     .with_subscriber(subscriber)
     .await;

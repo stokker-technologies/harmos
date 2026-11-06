@@ -43,8 +43,15 @@ pub(super) type Dispatch = fn(&Manager, Submission, Source, Option<Parent<'_>>, 
 
 struct Encoded;
 
+#[derive(Default)]
+struct EncodedOptions {
+    expected: Option<([u8; 32], u64)>,
+    retry: Option<super::RetryPolicy>,
+}
+
 pub(super) struct EncodedInput {
     pub(super) payload: Vec<u8>,
+    pub(super) retry: Option<super::RetryPolicy>,
     pub(super) preparation: Option<OwnedSemaphorePermit>,
 
     #[cfg(feature = "plugin-sidecar")]
@@ -151,13 +158,13 @@ impl Manager {
     pub(super) fn submit_encoded_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>,
     ) -> Result<EncodedInvocation> {
-        self.submit_encoded_at_as(operation, payload, source, parent, executor::now(), None)
+        self.submit_encoded_at_as(operation, payload, source, parent, executor::now(), EncodedOptions::default())
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.submit_encoded_at_as", level = "debug", skip_all)]
     fn submit_encoded_at_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>, submitted: tokio::time::Instant,
-        expected: Option<([u8; 32], u64)>,
+        options: EncodedOptions,
     ) -> Result<EncodedInvocation> {
         let origin = source.check()?;
         let qualified = crate::QualifiedId::parse(operation).map_err(|_| Error::InvalidInput {
@@ -172,6 +179,15 @@ impl Manager {
             },
             error => error,
         })?;
+        self.dispatch_encoded(entry, payload, source, parent, submitted, options)
+    }
+
+    fn dispatch_encoded(
+        &self, entry: Arc<Entry>, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>, submitted: tokio::time::Instant,
+        options: EncodedOptions,
+    ) -> Result<EncodedInvocation> {
+        let EncodedOptions { expected, retry } = options;
+        let origin = source.check()?;
         entry.available_to(&origin)?;
         entry.authorize(&origin)?;
         if expected.is_some_and(|(fingerprint, generation)| {
@@ -198,6 +214,7 @@ impl Manager {
             source,
             parent,
             EncodedInput {
+                retry,
                 payload,
                 preparation: None,
                 #[cfg(feature = "plugin-sidecar")]
@@ -324,6 +341,7 @@ impl PluginCallback {
             source,
             None,
             EncodedInput {
+                retry: None,
                 payload,
                 preparation: Some(preparation),
                 #[cfg(feature = "plugin-sidecar")]
@@ -345,8 +363,8 @@ impl PluginControl {
 #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
 impl super::Caller {
     pub(crate) fn submit_encoded_at(
-        &self, operation: &str, fingerprint: [u8; 32], generation: u64, payload: Vec<u8>, submitted: tokio::time::Instant,
-        values: Vec<super::CallValue>,
+        &self, operation: &str, identity: ([u8; 32], u64), payload: Vec<u8>, submitted: tokio::time::Instant,
+        values: Vec<super::CallValue>, retry: Option<super::RetryPolicy>,
     ) -> Result<EncodedInvocation> {
         let context = self.operations.call_context().with_values(values)?;
         self.operations.with_context(context).submit_encoded_at_as(
@@ -355,7 +373,7 @@ impl super::Caller {
             Source::Plugin(self.source.clone()),
             None,
             submitted,
-            Some((fingerprint, generation)),
+            EncodedOptions { expected: Some(identity), retry },
         )
     }
 }
@@ -375,8 +393,8 @@ impl super::Context<'_> {
 
     #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(crate) fn submit_encoded_at(
-        &self, operation: &str, fingerprint: [u8; 32], generation: u64, payload: Vec<u8>, submitted: tokio::time::Instant,
-        values: Vec<super::CallValue>,
+        &self, operation: &str, identity: ([u8; 32], u64), payload: Vec<u8>, submitted: tokio::time::Instant,
+        values: Vec<super::CallValue>, retry: Option<super::RetryPolicy>,
     ) -> Result<EncodedInvocation> {
         let context = self.operations.call_context().with_values(values)?;
         self.operations.with_context(context).submit_encoded_at_as(
@@ -388,12 +406,28 @@ impl super::Context<'_> {
                 ancestors: self.admission.held(),
             }),
             submitted,
-            Some((fingerprint, generation)),
+            EncodedOptions { expected: Some(identity), retry },
         )
     }
 
     pub async fn call_encoded(&self, operation: &str, payload: Vec<u8>) -> Result<Vec<u8>> {
         self.submit_encoded(operation, payload)?.await
+    }
+
+    pub(super) fn submit_encoded_target(
+        &self, entry: Arc<Entry>, payload: Vec<u8>, retry: Option<super::RetryPolicy>,
+    ) -> Result<EncodedInvocation> {
+        self.operations.dispatch_encoded(
+            entry,
+            payload,
+            self.source.clone(),
+            Some(Parent {
+                scope: &self.scope,
+                ancestors: self.admission.held(),
+            }),
+            executor::now(),
+            EncodedOptions { expected: None, retry },
+        )
     }
 }
 
@@ -433,7 +467,9 @@ pub(super) fn dispatch_native(
             source: Arc::new(source),
         })?;
     drop(input.payload);
-    dispatch_prepared(operations, submission, source, parent, prepared, super::binding::Request::from(Vec::new()))
+    let mut request = super::binding::Request::from(Vec::new());
+    request.retry = input.retry;
+    dispatch_prepared(operations, submission, source, parent, prepared, request)
 }
 
 pub(super) fn dispatch_prepared(
@@ -561,7 +597,10 @@ mod tests {
                 Source::Host,
                 None,
                 executor::now(),
-                Some((fingerprint, generation)),
+                EncodedOptions {
+                    expected: Some((fingerprint, generation)),
+                    retry: None,
+                },
             )
         };
         assert!(matches!(submit(wrong, generation), Err(Error::InvalidInput { field: "encoded operation identity", .. })));

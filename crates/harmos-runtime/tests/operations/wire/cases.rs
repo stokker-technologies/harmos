@@ -458,7 +458,7 @@ async fn children_refuse_held() {
     let runtime = runtime_with_owner(owner.clone()).await;
     runtime.operations.register::<crate::operations::Single<PrivateEchoDeclaration>>(Lanes::Serial).await.unwrap();
     runtime.operations.register::<crate::operations::Single<SameLaneDeclaration>>(Lanes::Serial).await.unwrap();
-    let error = runtime.operation(SameLaneDeclaration::from("child")).run().await.unwrap_err();
+    let error = runtime.operation(SameLaneDeclaration::from("child")).await.unwrap_err();
     let Error::OperationFailed { source, .. } = error else {
         panic!("nested refusal retained");
     };
@@ -474,7 +474,7 @@ async fn success_joins_unawaited() {
     let runtime = runtime_with_owner(owner.clone()).await;
     runtime.operations.register::<crate::operations::Single<PrivateEchoDeclaration>>(Lanes::Open).await.unwrap();
     runtime.operations.register::<crate::operations::Single<DetachedDeclaration>>(Lanes::Open).await.unwrap();
-    assert_eq!(&*runtime.operation(DetachedDeclaration::from("ignored")).run().await.unwrap(), "parent");
+    assert_eq!(&*runtime.operation(DetachedDeclaration::from("ignored")).await.unwrap(), "parent");
     assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", PrivateEchoDeclaration::ID).unwrap()).await.unwrap();
     runtime.shutdown().await.unwrap();

@@ -80,7 +80,11 @@ async fn guest_composition_walks() {
     assert!(runtime.plugin.status(PLUGIN).is_none());
 
     // Scene 2: The Stamped Schematic Guest Declares Itself Before Instantiation
-    let bytes = support::fixtures::component("schematic-guest");
+    let bytes = if std::env::var_os("HARMOS_FOCUSED_FIXTURES").is_some() {
+        harmos_packaging::componentize(&support::fixtures::inspection("schematic-guest")).unwrap()
+    } else {
+        support::fixtures::component("schematic-guest")
+    };
     let host = harmos_runtime::guest::Host::new(&runtime).unwrap();
     let loaded = host.load(&bytes).unwrap();
     let declaration = loaded.declaration();
@@ -100,7 +104,7 @@ async fn guest_composition_walks() {
     assert_eq!(ready.state, PluginState::Ready);
 
     // Scene 4: A Typed Caller Routes Through The Guest
-    let routed = runtime.operation(route()).run().await.unwrap();
+    let routed = runtime.operation(route()).await.unwrap();
     assert_eq!(routed.points, corner());
 
     // Scene 5: Validation Reports Every Diagnostic Of A Broken Schematic
@@ -111,7 +115,6 @@ async fn guest_composition_walks() {
                 connections: vec![Connection { from: 1, to: 2 }],
             },
         })
-        .run()
         .await
         .unwrap();
     assert_eq!(validated.diagnostics, ["Duplicate Symbol IDs", "Connection 1 To 2 References A Missing Symbol"]);
@@ -139,12 +142,12 @@ async fn guest_composition_walks() {
     let reloaded = runtime.plugin.status(PLUGIN).unwrap();
     assert_eq!(reloaded.state, PluginState::Ready);
     assert_ne!(reloaded.generation, ready.generation);
-    let routed = runtime.operation(route()).run().await.unwrap();
+    let routed = runtime.operation(route()).await.unwrap();
     assert_eq!(routed.points, corner());
 
     // Scene 8: Stopping The Guest Withdraws Its Operations
     runtime.plugin.stop(PLUGIN).await.unwrap();
-    assert!(runtime.operation(route()).run().await.is_err());
+    assert!(runtime.operation(route()).await.is_err());
 
     // Scene 9: The Host Stops Cleanly
     runtime.shutdown().await.unwrap();

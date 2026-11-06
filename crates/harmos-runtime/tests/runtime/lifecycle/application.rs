@@ -290,7 +290,7 @@ async fn lifecycle_with_overrides() {
         .await
         .unwrap();
         assert!(Arc::ptr_eq(&runtime.operations.context().resource::<Counter>().unwrap(), &fake));
-        assert_eq!(*runtime.operation(Read).run().await.unwrap(), 41);
+        assert_eq!(*runtime.operation(Read).await.unwrap(), 41);
         let pending = runtime.operation(Pending).start().await.unwrap();
         fake.entered.notified().await;
         let (first, second) = tokio::join!(runtime.shutdown(), runtime.shutdown());
