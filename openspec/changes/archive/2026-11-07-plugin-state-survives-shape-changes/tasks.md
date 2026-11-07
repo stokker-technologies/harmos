@@ -8,6 +8,6 @@
 
 ## Validation and Retirement
 
-- [ ] 2.1 Run focused acceptance and affected crate tests through mise.
-- [ ] 2.2 Build workspace test targets through build:rust:tests and run lint:rust; repair failures.
-- [ ] 2.3 Validate and retire this OpenSpec change after source review and the required clean diff scan.
+- [x] 2.1 Run focused acceptance and affected crate tests through mise.
+- [x] 2.2 Build workspace test targets through build:rust:tests and run lint:rust; repair failures.
+- [x] 2.3 Validate and retire this OpenSpec change after source review and the required clean diff scan.
