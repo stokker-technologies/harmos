@@ -262,10 +262,15 @@ impl Build {
                 .map(|relative| to.join(relative))
                 .map_err(|_| Error::Settings("build receipt paths do not share the selected source root".into()))
         };
-        let artifacts = self.artifacts.iter().map(|artifact| relocate(&artifact.path)).collect::<Result<Vec<_>, _>>()?;
+        let artifacts = self
+            .artifacts
+            .iter()
+            .map(|artifact| Ok((relocate(&artifact.path)?, artifact.symbols.as_deref().map(relocate).transpose()?)))
+            .collect::<Result<Vec<_>, Error>>()?;
         let schemas = self.schemas.iter().map(|schema| relocate(&schema.directory)).collect::<Result<Vec<_>, _>>()?;
-        for (artifact, path) in self.artifacts.iter_mut().zip(artifacts) {
+        for (artifact, (path, symbols)) in self.artifacts.iter_mut().zip(artifacts) {
             artifact.path = path;
+            artifact.symbols = symbols;
         }
         for (schema, directory) in self.schemas.iter_mut().zip(schemas) {
             schema.directory = directory;
@@ -751,3 +756,28 @@ fn read_messages(reader: impl BufRead, selected: &BTreeMap<String, String>) -> R
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relocation_moves_symbols() {
+        let mut build = Build {
+            backend: BuildBackend::Sidecar,
+            profile: BuildProfile::Dev,
+            target: "x86_64-pc-windows-msvc".into(),
+            artifacts: vec![Artifact {
+                producer: "plugin".into(),
+                name: "plugin".into(),
+                path: PathBuf::from("old/debug/harmos/plugin/plugin.exe"),
+                sha256: String::new(),
+                symbols: Some(PathBuf::from("old/debug/deps/plugin.pdb")),
+            }],
+            schemas: Vec::new(),
+        };
+        build.relocate(Path::new("old"), Path::new("new")).unwrap();
+        assert_eq!(build.artifacts[0].path, PathBuf::from("new/debug/harmos/plugin/plugin.exe"));
+        assert_eq!(build.artifacts[0].symbols, Some(PathBuf::from("new/debug/deps/plugin.pdb")));
+    }
+}
