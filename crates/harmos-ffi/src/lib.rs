@@ -402,5 +402,51 @@ mod tests {
             hrm_error_free(&mut error);
         }
         assert!(error.message.data.is_null());
+
+        // Enter A Production Export With A Panicking Rust Destructor.
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+        struct PanicOnDrop(Arc<AtomicBool>);
+        impl Drop for PanicOnDrop {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+                panic!("injected destructor panic");
+            }
+        }
+        let dropped = Arc::new(AtomicBool::new(false));
+        let bomb = PanicOnDrop(Arc::clone(&dropped));
+        // SAFETY: The Literal And Error Slot Remain Valid; This Test Owns The Returned Handle.
+        let native = unsafe { hrm_plugin_new(c"panic".as_ptr(), 1, &mut error) };
+        assert!(!native.is_null());
+        let schema = serde_json::from_value(serde_json::json!({
+            "root": 0, "definitions": [[
+                {"name": "request", "tag": 1, "kind": {"type": "message", "definition": 1}, "cardinality": "required"},
+                {"name": "response", "tag": 2, "kind": {"type": "message", "definition": 2}, "cardinality": "required"}
+            ], [], []]
+        }))
+        .unwrap();
+        let policy = OperationPolicy {
+            timeout: std::time::Duration::from_secs(5),
+            attempt_timeout: std::time::Duration::from_secs(5),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: RetryPolicy::Never,
+        };
+        // SAFETY: The Unserved Handle Is Unique And Remains Owned Until The Export Below.
+        unsafe { &mut *native }
+            .plugin
+            .as_mut()
+            .unwrap()
+            .operation("panic.drop", schema, policy, move |_, _| {
+                std::hint::black_box(&bomb);
+                Ok(serde_json::json!({}))
+            })
+            .unwrap();
+        // SAFETY: No Callbacks Started; This Consumes The Original Allocation Exactly Once.
+        unsafe {
+            hrm_plugin_free(native);
+        }
+        assert!(dropped.load(Ordering::SeqCst));
     }
 }

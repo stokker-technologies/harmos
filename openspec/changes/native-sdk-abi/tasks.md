@@ -13,9 +13,9 @@
 ## Validation and Delivery
 
 - [x] 2.1 Run the focused C++ system story and panic test.
-- [ ] 2.2 Run focused existing Rust sidecar tests and check:rust.
+- [x] 2.2 Run focused existing Rust sidecar tests and check:rust.
 - [x] 2.3 Run Linux proof if the repository container is ready; otherwise record exactly what is missing.
-- [ ] 2.4 Scan CLEAN before each normal push; verify remote SHA; clean native Cargo outputs and retain worktree by 16:30.
+- [x] 2.4 Scan CLEAN before each normal push; verify remote SHA; clean native Cargo outputs and retain worktree by 16:30.
 
 ## Workflow Follow-Up
 

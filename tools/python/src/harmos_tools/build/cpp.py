@@ -176,7 +176,7 @@ def main() -> None:
         )
         if status:
             raise SystemExit(status)
-        status = cargo.focused(root, "test", ["--locked", "-p", "harmos-ffi", "--lib", "--", "panic_is_contained_at_the_abi_boundary"])
+        status = cargo.focused(root, "test", ["--locked", "-p", "harmos-ffi", "--tests", "--", "panic_is_contained_at_the_abi_boundary"])
         raise SystemExit(status)
 
 

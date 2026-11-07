@@ -75,7 +75,9 @@ canonical schema's variant and product shapes.
 host, retaining the parent attempt. `ctx.check_cancelled()` throws on a requested
 cancellation. `ctx.publish("temperature", batch)` consumes the batch's Arrow C
 Data Interface structures. A name is local to the plugin; the exported stream
-is `bench.temperature`.
+is `bench.temperature`. Its publication row is the shared `ArrowIpc` envelope,
+so the retained window counts batches. Column schemas travel within IPC batches;
+this prototype does not freeze column schemas across publications.
 
 The driver is simulated: temperature is `20 + channel * 0.5`; capture adds
 `0.25` per sample. A negative channel throws. A zero sample count publishes one
@@ -112,7 +114,8 @@ hrm_error_free
   are freed with `hrm_error_free`. Both frees reset the value and accept empty
   values. Never free these allocations through C++ allocators.
 - Callbacks execute on Rust-owned blocking threads. Their context, request and
-  output slots are borrowed until return. The callback/user pair remains valid
+  output slots are borrowed until return. Context methods run on that callback's
+  Rust-owned thread. The callback/user pair remains valid
   until serve settles; callbacks may run concurrently. Return response JSON in
   a buffer allocated through `hrm_buffer_copy`. Return failure with an error
   message allocated through the same function. Rust consumes both outputs.
@@ -149,7 +152,9 @@ The focused story covers discovery with nominal Rust contracts, a typed response
 a nested call, Arrow contents, cancellation settlement, foreign exception failure,
 continued use and physical shutdown through the host's joined ending receipt.
 Separate codec tests compare native Postcard and JSON conversion. Linux proof
-depends on an already provisioned repository container; its observed result is
-recorded in the OpenSpec change. No full simulation or full test lane is required
+was not run: the existing repository Linux executor/tool cache lacks pinned
+CMake 4.1.2. Rust, Python, uv, sccache, g++ and make are already present there.
+Installing CMake in that managed cache is the remaining prerequisite; no new
+provisioning was performed. No full simulation or full test lane is required
 for this branch assessment. Dokime's Python SDK adopting the shared Rust codec
 is a follow-up; Dokime is unchanged.

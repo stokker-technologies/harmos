@@ -47,7 +47,8 @@ example and prototype before any shipping commitment.
 
 ## Linux Executor Availability
 
-The cached repository Ubuntu 24.04 executor has mise, g++, make and system
-Python, but no rustc, cargo, pinned CMake or uv on PATH. Linux remains unproven;
-installing/activating those tools in that executor is required before its story
-can run. No new container provisioning is authorized for this assessment.
+The cached repository Ubuntu 24.04 executor and its existing tool cache provide
+Rust 1.99.1/Cargo, Python 3.15.2, uv 0.13.6, sccache 0.19.0, g++ and make.
+Pinned CMake 4.1.2 is absent from that cache and the image. Linux remains
+unproven; it needs that CMake installation in the managed tool cache before the
+story can run. No new container provisioning was performed for this assessment.
