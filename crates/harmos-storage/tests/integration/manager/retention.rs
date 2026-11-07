@@ -143,6 +143,90 @@ async fn labels<C>(
 /* === Tests === */
 
 #[tokio::test]
+async fn snapshots_progress_during_persistence() {
+    // Save the Revision Whose Reads Must Remain Independent of a Later Write.
+    let data = Arc::new(Data::<Objects>::with_catalog(history()));
+    let backends = StorageBackends {
+        primary: data.clone(),
+        state: Arc::new(Recovery::new(history())),
+    };
+    let storage = StorageManager::<Objects>::new(backends, storage_settings()).unwrap();
+    super::fixture::start(&storage).await;
+    let first = Experiment {
+        id: "first".into(),
+        label: "saved".into(),
+    };
+    let receipt = storage.write_object(&first).await.unwrap();
+    storage.flush().await.unwrap();
+    data.snapshots_released().await;
+
+    // Hold Ordered Persistence While Both Pin Acquisition and Release Complete.
+    data.control.block_write.store(true, Ordering::SeqCst);
+    let second = Experiment {
+        id: "second".into(),
+        label: "pending".into(),
+    };
+    let pending = storage.write_object(&second).await.unwrap();
+    let flushing = {
+        let storage = storage.clone();
+        tokio::spawn(async move { storage.flush_until(&pending.position).await })
+    };
+    data.control.write_entered.notified().await;
+    let read = storage.read_object::<Experiment>(&first.id, ObjectVersion::Exact(receipt.version.clone())).await.unwrap().unwrap();
+    assert_eq!(read.value, first);
+    data.snapshots_released().await;
+    assert!(!flushing.is_finished());
+    data.control.block_write.store(false, Ordering::SeqCst);
+    data.control.write_release.notify_one();
+    let durable = flushing.await.unwrap().unwrap();
+
+    // Hold Immutable File Publication Without Blocking an Existing Revision's Pin.
+    let metadata = FileMetadata {
+        id: Identifier::new("pending-report").unwrap(),
+        scope: None,
+        media_type: "application/octet-stream".into(),
+        expected_length: Some(6),
+        expected_sha256: None,
+    };
+    let mut file = storage.create_file(metadata).await.unwrap();
+    file.write_all(b"report".to_vec()).await.unwrap();
+    data.control.block_finish.store(true, Ordering::SeqCst);
+    let finishing = tokio::spawn(async move { file.finish().await });
+    data.control.finish_entered.notified().await;
+    let read = storage.read_object::<Experiment>(&first.id, ObjectVersion::Exact(receipt.version.clone())).await.unwrap().unwrap();
+    assert_eq!(read.value, first);
+    data.snapshots_released().await;
+    assert_eq!(storage.cursor_saved(), durable);
+    data.control.block_finish.store(false, Ordering::SeqCst);
+    data.control.finish_release.notify_one();
+    let reference = finishing.await.unwrap().unwrap();
+    let durable = storage.flush_until(&reference.position).await.unwrap();
+
+    // A Pin Being Established Excludes Pruning While Other Writes Still Progress.
+    data.control.block_view.store(true, Ordering::SeqCst);
+    let reading = {
+        let storage = storage.clone();
+        let id = first.id.clone();
+        tokio::spawn(async move { storage.read_object::<Experiment>(&id, ObjectVersion::Exact(receipt.version)).await })
+    };
+    data.control.view_entered.notified().await;
+    let encoded = Objects::encode(&first, NonZeroUsize::new(16 * 1024).unwrap()).unwrap();
+    storage.release_object_history(&encoded.schema, &encoded.item, &durable).await.unwrap();
+    let third = Experiment {
+        id: first.id.clone(),
+        label: "replacement".into(),
+    };
+    storage.write_object(&third).await.unwrap();
+    storage.flush().await.unwrap();
+    data.control.block_view.store(false, Ordering::SeqCst);
+    data.control.view_release.notify_one();
+    let pinned = reading.await.unwrap().unwrap().unwrap();
+    assert_eq!(pinned.value, first);
+    data.snapshots_released().await;
+    storage.close().await.unwrap();
+}
+
+#[tokio::test]
 async fn reads_pin_cursor() {
     let r = Revisions::new().await;
 
