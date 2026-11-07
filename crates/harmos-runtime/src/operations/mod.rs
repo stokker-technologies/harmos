@@ -64,7 +64,9 @@ pub use context::ContextMut;
 pub use grpc::GrpcBinding;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcMethod;
+pub use harmos_sdk::__private::{ErasedResponse, PreparedNative, ResourceSet, ServiceFuture};
 pub use harmos_sdk::operations::Invocation;
+pub use harmos_sdk::operations::NativeInstance;
 pub use harmos_sdk::operations::{
     Backoff, CHILD_METHOD, CacheKey, CacheKeyError, CallValue, Callees, Catalog, Codec, ContextError, ContextValue, Contract,
     ContractError, Contracts, Declarations, Dependent, Direction, Entry, Executable, FailureKind, Grpc, InvocationError, Invokes, Jitter,
