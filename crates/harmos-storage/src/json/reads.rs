@@ -99,8 +99,10 @@ impl Log {
 
     pub fn objects(&self, snapshot: &BackendSnapshot, selection: &ObjectSelection, page: ScanPage) -> Result<Vec<ObjectEntry>> {
         let generation = self.pin(snapshot)?;
-        if selection.versions == ObjectVersions::Revisions {
-            for (position, pruned) in self.pruned.range((std::ops::Bound::Excluded(page.after), std::ops::Bound::Included(snapshot.at.sequence))) {
+        if selection.versions == ObjectVersions::Revisions && page.after < snapshot.at.sequence {
+            for (position, pruned) in
+                self.pruned.range((std::ops::Bound::Excluded(page.after), std::ops::Bound::Included(snapshot.at.sequence)))
+            {
                 if *pruned > generation {
                     continue;
                 }
