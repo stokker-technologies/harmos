@@ -70,6 +70,7 @@ pub(super) struct Inputs {
     pub(super) roots: BTreeSet<PathBuf>,
     pub(super) files: BTreeSet<PathBuf>,
     pub(super) excluded: BTreeSet<PathBuf>,
+    pub(super) ignored: BTreeSet<PathBuf>,
 }
 
 /* === Enums === */
@@ -144,6 +145,7 @@ impl Metadata {
             roots,
             files: BTreeSet::new(),
             excluded: BTreeSet::from([self.target_directory.clone(), self.output_directory(settings)?]),
+            ignored: BTreeSet::new(),
         };
         inputs.files.insert(self.workspace_root.join("Cargo.toml"));
         inputs.files.insert(self.workspace_root.join("Cargo.lock"));
@@ -180,23 +182,26 @@ impl Inputs {
             roots: BTreeSet::from([directory]),
             files: BTreeSet::from([manifest]),
             excluded: BTreeSet::from([target]),
+            ignored: BTreeSet::new(),
         })
     }
 
     pub(super) fn with(mut self, policy: &crate::config::DevSettings) -> Self {
         for path in &policy.watch {
-            if path.is_file() {
-                self.files.insert(path.clone());
-            } else {
+            if path.is_dir() {
                 self.roots.insert(path.clone());
+            } else {
+                self.files.insert(path.clone());
             }
         }
-        self.excluded.extend(policy.ignore.iter().cloned());
+        self.ignored.extend(policy.ignore.iter().cloned());
         self
     }
 
     pub(super) fn relevant(&self, path: &Path) -> bool {
-        if self.excluded.iter().any(|root| path.starts_with(root) || staging_sibling(root, path)) {
+        if self.excluded.iter().any(|root| path.starts_with(root) || staging_sibling(root, path))
+            || self.ignored.iter().any(|ignored| path.starts_with(ignored))
+        {
             return false;
         }
         if self.files.contains(path) || self.files.iter().any(|file| file.starts_with(path)) {
@@ -245,6 +250,7 @@ mod tests {
             roots: BTreeSet::from([root.clone(), PathBuf::from("dependency")]),
             files: BTreeSet::from([output.join("schema.rs"), root.join("Cargo.toml")]),
             excluded: BTreeSet::from([output.clone()]),
+            ignored: BTreeSet::new(),
         };
         assert!(!inputs.relevant(&output.join("schema.rs")));
         assert!(!inputs.relevant(&output.join("nested/new.rs")));
@@ -260,19 +266,23 @@ mod tests {
     #[test]
     fn extra_paths_watched() {
         let root = PathBuf::from("project");
+        let shared = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
         let inputs = Inputs {
             roots: BTreeSet::from([root.clone()]),
             files: BTreeSet::new(),
             excluded: BTreeSet::new(),
+            ignored: BTreeSet::new(),
         };
         let policy = crate::config::DevSettings {
-            watch: vec![PathBuf::from("shared")],
-            ignore: vec![root.join("fixtures")],
+            watch: vec![shared.clone(), root.join("generated.toml")],
+            ignore: vec![root.join("cache")],
             ..Default::default()
         };
         let inputs = inputs.with(&policy);
-        assert!(inputs.relevant(&PathBuf::from("shared/model.rs")));
-        assert!(!inputs.relevant(&root.join("fixtures/large.bin")));
+        assert!(inputs.relevant(&shared.join("model.rs")));
+        assert!(inputs.files.contains(&root.join("generated.toml")));
+        assert!(!inputs.relevant(&root.join("cache/large.bin")));
+        assert!(inputs.relevant(&root.join("cacheQTpmEx/model.rs")));
         assert!(inputs.relevant(&root.join("src/lib.rs")));
     }
 
@@ -283,6 +293,7 @@ mod tests {
             roots: BTreeSet::from([root.clone()]),
             files: BTreeSet::from([root.join("Cargo.toml")]),
             excluded: BTreeSet::from([root.join("build")]),
+            ignored: BTreeSet::new(),
         };
         assert!(!inputs.relevant(&root.join("buildyQTpmE")));
         assert!(!inputs.relevant(&root.join("buildyQTpmE/debug")));
