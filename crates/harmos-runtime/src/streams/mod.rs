@@ -39,7 +39,9 @@ pub use listeners::{PluginListenerBindings, PluginListenerRegistration};
 pub use manager::{Query, Seal, StreamFeed, StreamManager, Survey};
 pub use publication::ManagedPublication;
 pub(crate) use publication::row_value;
-pub use publications::{PluginStream, PublicationLease, PublicationRow, StreamAdmissionError, StreamPublicationError};
+pub use publications::{
+    PluginStream, PublicationLease, PublicationRow, STREAM_CONTRACT_CHANGED, StreamAdmissionError, StreamPublicationError,
+};
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub use registration::StreamRegistration;

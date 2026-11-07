@@ -152,7 +152,14 @@ impl Calls {
         self.staged.send_replace(Staging::Pending);
     }
 
-    pub(super) fn refuse(&self, reason: String) {
+    pub(super) fn refuse(&self, error: &(dyn std::error::Error + 'static)) {
+        let reason = match harmos_domain::Failure::find(error) {
+            Some(failure) => SidecarError::Refused {
+                code: failure.refusal_code().unwrap_or(harmos_domain::FAILED),
+                failure: failure.clone(),
+            },
+            None => SidecarError::Malformed(error.to_string()),
+        };
         self.staged.send_replace(Staging::Refused(reason));
     }
 

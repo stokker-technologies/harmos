@@ -32,6 +32,14 @@ report as the `harmos.startup` structured detail on the existing failure;
 Original refusal codes, detail maps and diagnostics remain in the report. Display
 renders readable root prose rather than Rust Debug output.
 
+A plugin stream whose row schema or window differs from the definition already
+admitted by this backend is refused with
+`harmos::streams::STREAM_CONTRACT_CHANGED` (`-32608`). Restart the backend to load
+the new definition; the refusal leaves the running generation in place. Hosts
+can compare `Failure::refusal_code()` with this constant, including the failures
+in `StartupReport::roots` when handling a startup aggregate. The sidecar, guest
+and pre-stop validation paths preserve the code without parsing message text.
+
 Classification is scoped to one startup/prepare pass. If the pass contains a
 runtime preparation/construction failure, every `MissingResource` in that pass
 is a consequence, regardless of reporting order. Other failures remain separate

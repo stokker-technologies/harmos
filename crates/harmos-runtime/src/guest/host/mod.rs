@@ -303,6 +303,11 @@ impl<A: Application> Host<A> {
 }
 
 impl<A: Application> Loaded<A> {
+    pub(crate) fn validate_publications(&self) -> Result<(), Error> {
+        self.streams.validate_publications(&self.declaration.id, self.declaration.streams.clone())?;
+        Ok(())
+    }
+
     pub(crate) fn duplicate(&self) -> Result<Self, Error> {
         let component = self.component.clone();
         let sdk = sdk::PluginIndices::new(&component).map_err(|source| Error::Component {

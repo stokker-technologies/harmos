@@ -110,7 +110,7 @@ enum Staging {
     Pending,
     Staged,
     // Preserve The Attempt Refusal For Callers Awaiting Staging.
-    Refused(String),
+    Refused(SidecarError),
 }
 
 struct Request {
