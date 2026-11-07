@@ -156,6 +156,19 @@ impl OperationAssignments {
         self.entries.set(entries).map_err(|_| super::ServingError::Catalog)
     }
 
+    pub fn resolve_contract(&self, contract: &super::Contract) -> Result<&AssignedOperation, super::ServingError> {
+        let id = contract.operation().id.as_str();
+        let entry = self
+            .entries
+            .get()
+            .and_then(|entries| entries.iter().find(|entry| entry.operation.split_once('.').is_some_and(|(_, local)| local == id)))
+            .ok_or_else(|| super::ServingError::Unknown { operation: id.to_owned() })?;
+        if entry.fingerprint != contract.fingerprint().0 {
+            return Err(super::ServingError::Identity { operation: entry.operation.clone() });
+        }
+        Ok(entry)
+    }
+
     pub fn resolve<O: super::OperationDeclaration>(&self) -> Result<&AssignedOperation, super::ServingError> {
         self.resolve_target(&super::Target::of::<O>())
     }

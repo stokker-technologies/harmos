@@ -38,6 +38,7 @@ derive = ["harmos-domain/derive", "harmos-sdk/derive", "dep:harmos-macros"]
 # Optional Payload Codec Only; No Host Networking Or gRPC Carrier
 grpc = ["harmos-sdk/grpc"]
 streaming = ["harmos-sdk/streaming"]
+arrow = ["kit", "dep:arrow-array", "dep:arrow-ipc"]
 
 # === Dependencies === #
 
@@ -61,6 +62,8 @@ getrandom = { workspace = true, features = ["std"], optional = true }
 sha2 = { workspace = true, default-features = true, optional = true }
 
 # Serialization
+arrow-array = { workspace = true, optional = true }
+arrow-ipc = { workspace = true, optional = true }
 postcard = { workspace = true, optional = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true }

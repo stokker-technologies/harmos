@@ -41,6 +41,12 @@ struct PendingCalls {
     capacity: Semaphore,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct StreamIdentity<'a> {
+    pub id: &'a str,
+    pub window: usize,
+}
+
 struct PendingState {
     closed: bool,
     next_id: u64,
@@ -57,7 +63,7 @@ struct PendingCall<'a> {
 #[derive(Clone)]
 pub struct Supervisor {
     outgoing: mpsc::Sender<Outgoing>,
-    sequences: Arc<Mutex<BTreeMap<&'static str, u64>>>,
+    sequences: Arc<Mutex<BTreeMap<String, u64>>>,
     pending: Arc<PendingCalls>,
     operation_context: Option<[u8; 32]>,
     generation_context: Option<[u8; 32]>,
@@ -107,10 +113,10 @@ pub enum CallError {
     Publication(#[from] PublicationError),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum PublicationError {
     #[error("publication sequence exhausted for stream `{stream}`")]
-    SequenceExhausted { stream: &'static str },
+    SequenceExhausted { stream: String },
 
     #[error("the observer did not declare stream `{stream}` in streams(...)")]
     Undeclared { stream: &'static str },
@@ -335,6 +341,40 @@ impl Supervisor {
         .await
     }
 
+    #[cfg(feature = "arrow")]
+    pub(super) async fn encoded_call(
+        &self, contract: &harmos_domain::operations::Contract, payload: Vec<u8>,
+    ) -> Result<crate::FramePayload, CallError> {
+        if self.operation_context.is_none() && self.generation_context.is_none() {
+            return Err(CallError::Unavailable);
+        }
+        let target = self.assignments.resolve_contract(contract).map_err(|error| CallError::Malformed {
+            method: CHILD_METHOD,
+            message: error.to_string(),
+        })?;
+        let command = harmos_sdk::operations::WireChildCall {
+            context: self.operation_context.unwrap_or([0; 32]),
+            generation_context: self.generation_context,
+            values: self.call.portable(),
+            operation: target.operation.clone(),
+            fingerprint: target.fingerprint,
+            generation: target.generation,
+            payload,
+            submit: false,
+            retry: None,
+        };
+        let params = command.encode().map_err(|error| CallError::Malformed {
+            method: CHILD_METHOD,
+            message: error.to_string(),
+        })?;
+        self.exchange_with(|id, call| {
+            let frame = Self::request_frame(id, CHILD_METHOD, params)?;
+            call.send(Outgoing::Frame(frame));
+            Ok::<(), CallError>(())
+        })
+        .await
+    }
+
     // Drive a child this attempt submitted; the host resolves it only within
     // the same attempt context.
     pub(super) async fn child_control(&self, instance: Id, action: WireChildAction) -> Result<crate::FramePayload, CallError> {
@@ -507,6 +547,12 @@ impl Supervisor {
     pub(super) async fn publication<S: crate::StreamSpec>(
         &self, rows: &[Vec<u8>], stamps: &[Option<i64>], context: Option<&str>,
     ) -> Result<(), super::PublishError> {
+        self.publication_with(StreamIdentity { id: S::ID, window: S::WINDOW }, rows, stamps, context).await
+    }
+
+    pub(super) async fn publication_with(
+        &self, stream: StreamIdentity<'_>, rows: &[Vec<u8>], stamps: &[Option<i64>], context: Option<&str>,
+    ) -> Result<(), super::PublishError> {
         debug_assert_eq!(rows.len(), stamps.len());
         if rows.is_empty() {
             return Ok(());
@@ -535,7 +581,7 @@ impl Supervisor {
                         method: harmos_operations::streams::Publish::ID,
                         message: error.to_string(),
                     })?;
-                    sent = self.with_publication::<S, super::PublishError>(rest.0, rest.1, context, envelope, |request| {
+                    sent = self.with_publication_for::<super::PublishError>(stream, rest.0, rest.1, context, envelope, |request| {
                         let params = self.child_with_values::<harmos_operations::streams::Publish>(&request, false, values, None)?;
                         let frame = Self::request_frame(id, CHILD_METHOD, params)?;
                         call.send(Outgoing::Frame(frame));
@@ -560,17 +606,25 @@ impl Supervisor {
     // its stamp; each following row carries its delta from its predecessor,
     // and a stamp no delta can express starts the next call. A call carries
     // at most one window of rows, so the host never evicts its own rows.
+    #[cfg(test)]
     pub(super) fn with_publication<S: crate::StreamSpec, E: From<PublicationError>>(
         &self, rows: &[Vec<u8>], stamps: &[Option<i64>], context: Option<&str>, empty_envelope: usize,
         send: impl FnOnce(harmos_operations::streams::Publish) -> Result<(), E>,
     ) -> Result<usize, E> {
+        self.with_publication_for(StreamIdentity { id: S::ID, window: S::WINDOW }, rows, stamps, context, empty_envelope, send)
+    }
+
+    fn with_publication_for<E: From<PublicationError>>(
+        &self, stream: StreamIdentity<'_>, rows: &[Vec<u8>], stamps: &[Option<i64>], context: Option<&str>, empty_envelope: usize,
+        send: impl FnOnce(harmos_operations::streams::Publish) -> Result<(), E>,
+    ) -> Result<usize, E> {
         let fits = |body: usize| Frame::child_encoded_from_empty(empty_envelope, body) <= Frame::LIMIT;
         let mut sequences = self.sequences.lock().expect("the publication sequence lock is healthy");
-        let next = sequences.entry(S::ID).or_insert(0);
-        let first = next.checked_add(1).ok_or(PublicationError::SequenceExhausted { stream: S::ID })?;
+        let next = sequences.entry(stream.id.to_owned()).or_insert(0);
+        let first = next.checked_add(1).ok_or(PublicationError::SequenceExhausted { stream: stream.id.to_owned() })?;
         *next = first;
         let published_unix_micros = stamps[0];
-        let head = crate::wire::publication_encoded_len(S::ID, first, rows[0].len(), published_unix_micros, context);
+        let head = crate::wire::publication_encoded_len(stream.id, first, rows[0].len(), published_unix_micros, context);
         let encoded = |count: usize, following: usize| head.saturating_add(crate::wire::varint_len(count as u64)).saturating_add(following);
         if !fits(encoded(0, 0)) {
             return Err(PublicationError::Oversized {
@@ -582,7 +636,7 @@ impl Supervisor {
         let mut following = 0_usize;
         let mut deltas = Vec::with_capacity(rows.len() - 1);
         for (row, pair) in rows[1..].iter().zip(stamps.windows(2)) {
-            if deltas.len() + 1 >= S::WINDOW {
+            if deltas.len() + 1 >= stream.window {
                 break;
             }
             let delta = match (pair[0], pair[1]) {
@@ -604,7 +658,7 @@ impl Supervisor {
         }
         let taken = deltas.len() + 1;
         send(harmos_operations::streams::Publish {
-            stream: S::ID.to_owned(),
+            stream: stream.id.to_owned(),
             sequence: Some(first),
             published_unix_micros,
             context: context.map(str::to_owned),

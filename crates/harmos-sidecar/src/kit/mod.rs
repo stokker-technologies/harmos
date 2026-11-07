@@ -12,6 +12,8 @@
 mod carrier;
 mod catalog;
 mod connection;
+#[cfg(feature = "arrow")]
+pub mod dynamic;
 mod host;
 mod identity;
 mod instance;
