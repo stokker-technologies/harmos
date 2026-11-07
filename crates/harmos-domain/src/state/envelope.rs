@@ -117,6 +117,15 @@ impl SystemFact {
     }
 
     pub(crate) fn validate_admission(&self) -> bool {
+        let plugin = matches!(self.source, FactSource::Guest(_) | FactSource::Sidecar(_));
+        if plugin != self.schema.is_some() {
+            return false;
+        }
+        if let Some(schema) = &self.schema
+            && !crate::schema::identity::revision(schema).is_ok_and(|revision| revision == self.version)
+        {
+            return false;
+        }
         if !matches!(self.source, FactSource::Sidecar(_)) {
             return true;
         }
@@ -189,15 +198,22 @@ mod tests {
     #[test]
     fn plugin_fact_definitions_survive_without_current_decoders() {
         for source in [FactSource::Guest("probe".into()), FactSource::Sidecar("probe".into())] {
-            let old = SystemFact::encode(source.clone(), "reading".into(), &vec![41u64]).unwrap();
-            let current = SystemFact::encode(source, "reading".into(), &"changed").unwrap();
+            let old = SystemFact::encode(source.clone(), "reading".into(), &41u64).unwrap();
+            let current = SystemFact::encode(source, "reading".into(), &String::from("changed")).unwrap();
             assert_ne!(old.identify().1, current.identify().1);
             let prepared = crate::state::Prepared::system(&old).unwrap();
             let restored = SystemFact::restore(&prepared.id, prepared.version, &prepared.payload).unwrap().unwrap();
             assert_eq!(restored.schema(), old.schema());
-            assert_eq!(serde_json::from_slice::<Vec<u64>>(&restored.payload).unwrap(), [41]);
+            assert_eq!(serde_json::from_slice::<u64>(&restored.payload).unwrap(), 41);
             assert!(SystemFact::restore(&prepared.id, current.identify().1, &prepared.payload).is_err());
             assert!(SystemFact::restore(&prepared.id, prepared.version, &serde_json::json!(old.payload)).is_err());
+            let mut malformed = serde_json::to_value(&old).unwrap();
+            malformed["version"] = serde_json::json!(current.identify().1);
+            let malformed = serde_json::from_value(malformed).unwrap();
+            assert!(crate::state::Prepared::system(&malformed).is_err());
+            let mut changed_source = old.clone();
+            changed_source.source = FactSource::Work("host".into());
+            assert!(crate::state::Prepared::system(&changed_source).is_err());
         }
     }
 
