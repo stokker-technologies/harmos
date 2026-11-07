@@ -157,6 +157,10 @@ records the registrations its executable prints for `CATALOG_EXPORT_FLAG`. Reloc
 explicit `--relocate-from` and `--relocate-to` path mapping while preserving hashes.
 Library consumers can stamp existing outputs with `Artifact::read` and
 `Schema::read`, then construct a `Build` without another compiler invocation.
+`package_with` lets an application shape each bundle before it is written: add
+files (such as app metadata, assets or the PDB recorded in `Artifact::symbols`),
+replace the identity with Cargo package metadata, choose the destination, and
+inspect declarations with its own schema settings.
 
 Create a plugin from the maintained starter with an explicit source selection:
 

@@ -89,6 +89,7 @@ impl BuildArguments {
             timings: self.timings,
             features: self.features,
             default_features: !self.no_default_features,
+            locked: true,
         }
     }
 }

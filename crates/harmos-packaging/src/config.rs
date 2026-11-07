@@ -41,6 +41,7 @@ pub struct BuildSettings {
     pub timings: bool,
     pub features: Vec<String>,
     pub default_features: bool,
+    pub locked: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -106,6 +107,7 @@ impl Default for BuildSettings {
             timings: false,
             features: Vec::new(),
             default_features: true,
+            locked: true,
         }
     }
 }

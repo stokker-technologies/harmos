@@ -84,7 +84,10 @@ impl Metadata {
         let directory = manifest.parent().ok_or_else(|| Error::Settings("manifest has no project directory".into()))?;
         let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
         let mut command = Command::new(cargo);
-        command.current_dir(directory).args(["metadata", "--locked", "--format-version=1", "--manifest-path"]).arg(&manifest);
+        command.current_dir(directory).args(["metadata", "--format-version=1", "--manifest-path"]).arg(&manifest);
+        if settings.locked {
+            command.arg("--locked");
+        }
         if !settings.default_features {
             command.arg("--no-default-features");
         }
