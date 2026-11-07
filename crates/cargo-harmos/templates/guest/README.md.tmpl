@@ -15,6 +15,11 @@ mise run build:rust:tests
 mise run test:rust:unit
 ```
 
+`lint:rust` runs Clippy with warnings denied, included by `check:rust` and
+gated by CI Check / Rust. Build, test, bench and fixture tasks do not run Clippy.
+A focused `clippy` operation is an explicit choice. Use `mise run lint:rust --extended`
+for optional compatibility lint coverage.
+
 The scaffold uses the explicitly selected Harmos source revision or local checkout.
 Install `cargo-harmos` to run `mise run dev`; it is the development tool used to create this project.
 Keep generated tooling current with `stkr project update` when adopting company tooling changes.

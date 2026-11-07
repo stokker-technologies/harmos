@@ -24,7 +24,7 @@ from pathlib import Path
 
 # Local Imports
 from .. import temporary
-from . import cargo, fixtures, paths
+from . import cargo, fixtures, paths, storage
 from .fixtures import ROOT, TARGET, SCHEMATIC
 
 # Type Checking Imports
@@ -55,7 +55,7 @@ def product(profile: str, scratch: Path) -> None:
     messages = export / "product/compiler.json"
     messages.parent.mkdir(parents=True, exist_ok=True)
     arguments = ["--locked", "--workspace", "--profile", profile]
-    cargo.clippy(ROOT, arguments)
+    storage.preflight(ROOT)
     with messages.open("w", encoding="utf-8") as output:
         subprocess.run(
             ["cargo", "build", *arguments, "--message-format=json-render-diagnostics"],
