@@ -22,7 +22,7 @@
 // Local Imports
 use harmos_storage::state::file::Journal;
 use harmos_storage::state::{RecoveryEntry, StorageStateSettings};
-use harmos_storage::{Error, Identifier, StorageCursor, StoreHistory};
+use harmos_storage::{Error, Identifier, RecoveryPosition, StorageCursor, StoreHistory};
 use std::{fs::OpenOptions, num::NonZeroUsize, path::Path, sync::Arc};
 
 /* === Constants === */
