@@ -1,30 +1,60 @@
 name: Save Caches
-description: Save Caches
+description: Save The Named Caches That Setup Restored Without An Exact Hit
 inputs:
-  key:
-    description: Key
-    required: false
-    default: ""
-  path:
-    description: Path
-    required: false
-    default: ""
-  summary-module:
-    description: Summary-module
-    required: false
-    default: ""
-outputs: {}
+  setup:
+    description: The setup step's outputs, as JSON
+    required: true
+  caches:
+    description: JSON list of the cache names to save
+    required: true
 runs:
   using: composite
   steps:
-  - if: inputs.path != ''
+  - name: Save / Bench Baselines
+    if: >-
+      contains(fromJSON(inputs.caches), 'bench_baselines') && fromJSON(inputs.setup)['bench_baselines-path'] != '' &&
+      fromJSON(inputs.setup)['bench_baselines-cache-hit'] != 'true'
     uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
     with:
-      key: ${{ inputs.key }}
-      path: ${{ inputs.path }}
-  - shell: python
-    run: |-
-      import os, runpy
-      runpy.run_path(os.path.join(os.environ['GITHUB_ACTION_PATH'], 'run.py'), run_name='__main__')
-    env:
-      SUMMARY_MODULE: ${{ inputs.summary-module }}
+      key: ${{ fromJSON(inputs.setup)['bench_baselines-cache-primary-key'] }}
+      path: ${{ fromJSON(inputs.setup)['bench_baselines-path'] }}
+  - name: Save / Cargo
+    if: >-
+      contains(fromJSON(inputs.caches), 'cargo_downloads') && fromJSON(inputs.setup)['cargo_downloads-path'] != '' &&
+      fromJSON(inputs.setup)['cargo_downloads-cache-hit'] != 'true'
+    uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+    with:
+      key: ${{ fromJSON(inputs.setup)['cargo_downloads-cache-primary-key'] }}
+      path: ${{ fromJSON(inputs.setup)['cargo_downloads-path'] }}
+  - name: Save / Mise
+    if: >-
+      contains(fromJSON(inputs.caches), 'mise') && fromJSON(inputs.setup)['mise-path'] != '' &&
+      fromJSON(inputs.setup)['mise-cache-hit'] != 'true'
+    uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+    with:
+      key: ${{ fromJSON(inputs.setup)['mise-cache-primary-key'] }}
+      path: ${{ fromJSON(inputs.setup)['mise-path'] }}
+  - name: Save / PNPM
+    if: >-
+      contains(fromJSON(inputs.caches), 'pnpm') && fromJSON(inputs.setup)['pnpm-path'] != '' &&
+      fromJSON(inputs.setup)['pnpm-cache-hit'] != 'true'
+    uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+    with:
+      key: ${{ fromJSON(inputs.setup)['pnpm-cache-primary-key'] }}
+      path: ${{ fromJSON(inputs.setup)['pnpm-path'] }}
+  - name: Save / Compiler
+    if: >-
+      contains(fromJSON(inputs.caches), 'sccache') && fromJSON(inputs.setup)['sccache-path'] != '' &&
+      fromJSON(inputs.setup)['sccache-cache-hit'] != 'true'
+    uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+    with:
+      key: ${{ fromJSON(inputs.setup)['sccache-cache-primary-key'] }}
+      path: ${{ fromJSON(inputs.setup)['sccache-path'] }}
+  - name: Save / UV
+    if: >-
+      contains(fromJSON(inputs.caches), 'uv') && fromJSON(inputs.setup)['uv-path'] != '' &&
+      fromJSON(inputs.setup)['uv-cache-hit'] != 'true'
+    uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+    with:
+      key: ${{ fromJSON(inputs.setup)['uv-cache-primary-key'] }}
+      path: ${{ fromJSON(inputs.setup)['uv-path'] }}
