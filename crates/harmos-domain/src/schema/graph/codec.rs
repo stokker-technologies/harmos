@@ -46,6 +46,15 @@ shape!(
     &[
         described("root", 1, declaration::Kind::U64, Cardinality::Required),
         described("definitions", 2, declaration::Kind::Message { definition: DefinitionShape::DEFINITION }, Cardinality::Repeated),
+        described("representations", 3, declaration::Kind::Message { definition: RepresentationShape::DEFINITION }, Cardinality::Repeated),
+    ]
+);
+shape!(
+    RepresentationShape,
+    "harmos::schema::Representation",
+    &[
+        described("definition", 1, declaration::Kind::U64, Cardinality::Required),
+        described("representation", 2, declaration::Kind::String, Cardinality::Required),
     ]
 );
 shape!(
@@ -73,6 +82,7 @@ type Result<T> = std::result::Result<T, MessageError>;
 
 struct DefinitionShape;
 struct FieldShape;
+struct RepresentationShape;
 
 struct Node<'a> {
     name: &'a str,
@@ -226,6 +236,11 @@ impl PostcardValue for Schema {
                 }
             }
         }
+        self.representations.len().write(bytes);
+        for (index, representation) in &self.representations {
+            index.write(bytes);
+            serde_json::to_string(representation).expect("wire representation serializes").write(bytes);
+        }
     }
 
     fn size(&self) -> usize {
@@ -246,6 +261,11 @@ impl PostcardValue for Schema {
                     .saturating_add(node.cardinality.size())
                     .saturating_add(reference);
             }
+        }
+        size = size.saturating_add(self.representations.len().size());
+        for (index, representation) in &self.representations {
+            let encoded = serde_json::to_string(representation).expect("wire representation serializes");
+            size = size.saturating_add(index.size()).saturating_add(encoded.size());
         }
         size
     }
@@ -271,6 +291,16 @@ impl PostcardValue for Schema {
                     budget.field(&node)?;
                 }
             }
+            let representations = input.value::<usize>()?;
+            input.claim(representations)?;
+            for _ in 0..representations {
+                let index = input.value::<usize>()?;
+                if index >= count { return Err(invalid()); }
+                let length = input.value::<usize>()?;
+                if length > crate::FRAGMENT_LIMIT { return Err(invalid()); }
+                budget.charge(length.checked_mul(8).ok_or_else(invalid)?, length + 1)?;
+                input.take(length)?;
+            }
             Ok(budget.bytes)
         })
     }
@@ -291,7 +321,16 @@ impl PostcardValue for Schema {
                 }
                 definitions.push(fields);
             }
-            let schema = Self { root, definitions };
+            let count = input.value::<usize>()?;
+            input.claim(count)?;
+            let mut representations = std::collections::BTreeMap::new();
+            for _ in 0..count {
+                let index = input.value::<usize>()?;
+                let encoded = input.value::<String>()?;
+                let representation = serde_json::from_str(&encoded).map_err(|_| invalid())?;
+                if representations.insert(index, representation).is_some() { return Err(invalid()); }
+            }
+            let schema = Self { root, definitions, representations };
             schema.prepare(&SchemaSettings::default()).map_err(|_| invalid())?;
             Ok(schema)
         })

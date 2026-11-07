@@ -19,7 +19,7 @@ mod codec;
 
 // Standard Library Imports
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::mem::size_of;
 // Third Party Imports
@@ -41,6 +41,9 @@ use crate::config::SchemaSettings;
 pub struct Schema {
     pub root: usize,
     pub definitions: Vec<Vec<Field>>,
+
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty", serialize_with = "super::wire::serialize")]
+    pub representations: BTreeMap<usize, super::wire::Representation>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -219,6 +222,9 @@ impl Schema {
             }
             preparation.add_bytes(4, size_of::<(usize, usize)>(), settings)?;
             visited.insert((left, right));
+            if self.representations.get(&left) != other.representations.get(&right) {
+                return Ok(false);
+            }
             let left = &self.definitions[left];
             let right = &other.definitions[right];
             if left.len() != right.len() {
@@ -255,6 +261,11 @@ impl Schema {
         // Charge Retained Storage And Traversal Scratch Before Allocating Scratch.
         preparation.add_bytes(self.definitions.capacity(), size_of::<Vec<Field>>(), settings)?;
         preparation.add_bytes(self.definitions.len(), size_of::<bool>() + size_of::<usize>(), settings)?;
+        for representation in self.representations.values() {
+            let encoded = serde_json::to_string(representation).map_err(|_| Error::Budget)?;
+            preparation.add_bytes(encoded.len(), 8, settings)?;
+            preparation.add_work(encoded.len() + 1, settings)?;
+        }
         for fields in &self.definitions {
             preparation.fields = preparation.fields.checked_add(fields.len()).ok_or(Error::Budget)?;
             preparation.add_bytes(fields.capacity(), size_of::<Field>(), settings)?;
@@ -280,6 +291,10 @@ impl Schema {
 
     pub fn prepare(&self, settings: &SchemaSettings) -> Result<Preparation, Error> {
         let preparation = self.preparation(settings)?;
+        for (&index, representation) in &self.representations {
+            let fields = self.definitions.get(index).ok_or(Error::Reference { definition: index })?;
+            super::wire::check(representation, fields)?;
+        }
         for fields in &self.definitions {
             // Sorting Is Bounded By Direct Fields, Independent Of Repeated References.
             let mut names = Vec::with_capacity(fields.len());
@@ -407,6 +422,7 @@ impl<'de> DeserializeSeed<'de> for Seed<'_> {
             fn visit_map<A: MapAccess<'de>>(self, mut input: A) -> Result<Schema, A::Error> {
                 let mut root = None;
                 let mut definitions = None;
+                let mut representations = None;
                 let mut budget = Budget {
                     remaining: self.0.preparation_bytes.get(),
                 };
@@ -424,10 +440,17 @@ impl<'de> DeserializeSeed<'de> for Seed<'_> {
                             }
                             definitions = Some(input.next_value_seed(DefinitionsSeed(&mut budget))?);
                         }
-                        _ => return Err(A::Error::unknown_field(&key, &["root", "definitions"])),
+                        "representations" => {
+                            if representations.is_some() {
+                                return Err(A::Error::duplicate_field("representations"));
+                            }
+                            representations = Some(input.next_value_seed(super::wire::Seed { remaining: &mut budget.remaining })?);
+                        }
+                        _ => return Err(A::Error::unknown_field(&key, &["root", "definitions", "representations"])),
                     }
                 }
                 let schema = Schema {
+                    representations: representations.unwrap_or_default(),
                     root: root.ok_or_else(|| A::Error::missing_field("root"))?,
                     definitions: definitions.ok_or_else(|| A::Error::missing_field("definitions"))?,
                 };

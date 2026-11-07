@@ -150,7 +150,13 @@ enum Fragment {
     Observers(Box<observers::Manifest>),
     Restart { facility: String, owner: String, policy: RestartPolicy },
     Publications(publications::NamedManifest),
-    Schema { name: String, fields: Vec<crate::schema::declaration::Field<String>> },
+    Schema {
+        name: String,
+        fields: Vec<crate::schema::declaration::Field<String>>,
+
+        #[serde(default)]
+        representation: Option<crate::schema::wire::Representation>,
+    },
 }
 
 /* === Traits === */
@@ -205,7 +211,7 @@ impl Declaration {
                 Fragment::Observers(manifest) => observer_manifests.push(*manifest),
                 Fragment::Restart { facility, owner, policy } => restart_policies.push((facility, owner, policy)),
                 Fragment::Publications(manifest) => publications.push(manifest),
-                Fragment::Schema { name, fields } => schemas.push(crate::schema::declaration::Named { name, fields }),
+                Fragment::Schema { name, fields, representation } => schemas.push(crate::schema::declaration::Named { name, fields, representation }),
             }
         }
         let Some((id, version, description, config)) = identity else {

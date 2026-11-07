@@ -14,6 +14,7 @@ pub mod graph;
 pub mod identity;
 pub mod json;
 mod payload;
+pub mod wire;
 
 /* === Re-Exports === */
 
@@ -39,6 +40,7 @@ pub const MAX_NAME_BYTES: usize = 256;
 macro_rules! wrapper {
     ($($ty:ty => $kind:ident),* $(,)?) => {$(
         impl Described for $ty {
+            const SERDE_OBJECT: bool = false;
             const FIELD_KIND: graph::Kind<declaration::Definition> = graph::Kind::$kind;
             const NAME: &'static str = concat!("harmos::", stringify!($ty));
             const FIELDS: &'static [graph::Field<declaration::Definition>] = &[graph::Field {
@@ -104,6 +106,9 @@ pub trait Described: 'static {
     const FIELDS: &'static [graph::Field<declaration::Definition>];
     const MARKER: &'static [u8];
 
+    const SERDE: &'static str = "";
+    const SERDE_OBJECT: bool = true;
+
     const DEFAULT_VARIANT: Option<usize> = Some(0);
 
     const DEFINITION: declaration::Definition = declaration::Definition::of::<Self>();
@@ -118,6 +123,7 @@ impl Described for () {
 }
 
 impl<T: Described> Described for Option<T> {
+    const SERDE_OBJECT: bool = false;
     const NAME: &'static str = declaration::Name::new("harmos::Optional", &[T::NAME]).as_str();
     const FIELDS: &'static [graph::Field<declaration::Definition>] = &[graph::Field {
         name: Cow::Borrowed("value"),

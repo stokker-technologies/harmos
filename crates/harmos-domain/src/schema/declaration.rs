@@ -17,7 +17,7 @@
 
 // Standard Library Imports
 use std::any::TypeId;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::mem::size_of;
 // Third Party Imports
@@ -56,6 +56,7 @@ pub struct Definition {
     pub identity: fn() -> TypeId,
     pub fields: fn() -> &'static [Field<Definition>],
     pub marker: fn() -> &'static [u8],
+    pub representation: &'static str,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,6 +64,7 @@ pub struct Definition {
 pub struct Named {
     pub name: String,
     pub fields: Vec<Field<String>>,
+    pub representation: Option<super::wire::Representation>,
 }
 
 // Bounded Static Storage For Names Of Generic Message Shapes.
@@ -84,7 +86,13 @@ struct Plan {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Fragment {
-    Schema { name: String, fields: Vec<Field<String>> },
+    Schema {
+        name: String,
+        fields: Vec<Field<String>>,
+
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        representation: Option<super::wire::Representation>,
+    },
 }
 
 /* === Traits === */
@@ -143,6 +151,7 @@ impl Definition {
             identity: TypeId::of::<T>,
             fields: fields::<T>,
             marker: marker::<T>,
+            representation: T::SERDE,
         }
     }
 }
@@ -169,13 +178,13 @@ impl Named {
 
 impl From<Fragment> for Named {
     fn from(fragment: Fragment) -> Self {
-        let Fragment::Schema { name, fields } = fragment;
-        Self { name, fields }
+        let Fragment::Schema { name, fields, representation } = fragment;
+        Self { name, fields, representation }
     }
 }
 impl From<Named> for Fragment {
     fn from(named: Named) -> Self {
-        Self::Schema { name: named.name, fields: named.fields }
+        Self::Schema { name: named.name, fields: named.fields, representation: named.representation }
     }
 }
 
@@ -199,7 +208,8 @@ impl Schema {
     pub fn from_declaration(root: Definition, settings: &SchemaSettings) -> Result<Self, Error> {
         let mut plan = Plan::new(settings);
         plan.insert(root)?;
-        let schema = Self { root: 0, definitions: plan.compile()? };
+        let (definitions, representations) = plan.compile()?;
+        let schema = Self { root: 0, definitions, representations };
         schema.prepare(settings)?;
         Ok(schema)
     }
@@ -219,21 +229,26 @@ impl Schema {
                 cardinality: Cardinality::Required,
             });
         }
-        let mut definitions = plan.compile()?;
+        let (mut definitions, representations) = plan.compile()?;
         let root = definitions.len();
         definitions.push(fields);
-        let schema = Self { root, definitions };
+        let schema = Self { root, definitions, representations };
         schema.prepare(settings)?;
         Ok(schema)
     }
 }
 
 impl Plan {
-    fn compile(mut self) -> Result<Vec<Vec<Field<usize>>>, Error> {
+    fn compile(mut self) -> Result<(Vec<Vec<Field<usize>>>, BTreeMap<usize, super::wire::Representation>), Error> {
         let mut definitions = Vec::new();
+        let mut representations = BTreeMap::new();
         let mut index = 0;
         while index < self.declarations.len() {
             let declaration = self.declarations[index];
+            self.charge(declaration.representation.len().saturating_mul(8), declaration.representation.len() + 1)?;
+            if let Some(representation) = super::wire::Representation::parse(declaration.representation)? {
+                representations.insert(index, representation);
+            }
             let mut fields = Vec::new();
             for field in (declaration.fields)() {
                 self.charge(4 * size_of::<Field<usize>>() + field.name.len(), field.name.len() + 1)?;
@@ -248,7 +263,7 @@ impl Plan {
             definitions.push(fields);
             index += 1;
         }
-        Ok(definitions)
+        Ok((definitions, representations))
     }
     fn new(settings: &SchemaSettings) -> Self {
         Self {
@@ -392,6 +407,24 @@ pub const fn encode_buffer<const N: usize>(name: &str, fields: &[Field<Definitio
     output
 }
 
+pub const fn encoded_serde_len(name: &str, fields: &[Field<Definition>], representation: &str) -> usize {
+    let extra = if representation.is_empty() { 0 } else { b",\"representation\":".len() + representation.len() };
+    encoded_len(name, fields) + extra
+}
+
+pub const fn encode_serde<const N: usize>(name: &str, fields: &[Field<Definition>], representation: &str) -> [u8; N] {
+    assert!(N == encoded_serde_len(name, fields, representation));
+    assert!(N - crate::PREFIX.len() - 1 <= crate::FRAGMENT_LIMIT);
+    let mut output = encode_buffer::<N>(name, fields);
+    if !representation.is_empty() {
+        let mut cursor = encoded_len(name, fields) - 2;
+        write(&mut output, &mut cursor, b",\"representation\":");
+        write(&mut output, &mut cursor, representation.as_bytes());
+        write(&mut output, &mut cursor, b"}\0");
+    }
+    output
+}
+
 /* === Private Functions === */
 
 fn fields<T: super::Described + ?Sized>() -> &'static [Field<Definition>] {
@@ -463,9 +496,13 @@ fn resolve_named(roots: &[(&str, &str)], declarations: &[Named], settings: &Sche
         }
     }
     let mut definitions = Vec::new();
+    let mut representations = BTreeMap::new();
     let mut index = 0;
     while index < names.len() {
         let declaration = dictionary[names[index]];
+        if let Some(representation) = &declaration.representation {
+            representations.insert(index, representation.clone());
+        }
         let mut fields = Vec::new();
         budget.charge(4 * (size_of::<&str>() + size_of::<(&str, usize)>() + size_of::<Vec<Field>>()), 1)?;
         for field in &declaration.fields {
@@ -499,7 +536,7 @@ fn resolve_named(roots: &[(&str, &str)], declarations: &[Named], settings: &Sche
     } else {
         0
     };
-    let schema = Schema { root, definitions };
+    let schema = Schema {  root, definitions, representations };
     schema.prepare(settings)?;
     Ok(schema)
 }
