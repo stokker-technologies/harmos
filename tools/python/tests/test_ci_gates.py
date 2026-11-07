@@ -303,7 +303,11 @@ class PinTests(unittest.TestCase):
     def test_nightly_skips(self):
         with (
             patch.object(pins, "check", return_value=False) as check,
-            patch.dict(os.environ, {"GITHUB_WORKFLOW_REF": "owner/repo/.github/workflows/nightly.yml@refs/heads/dev"}, clear=True),
+            patch.dict(
+                os.environ,
+                {"GITHUB_WORKFLOW_REF": "owner/repo/.github/workflows/ci.yml@refs/heads/dev", "GITHUB_EVENT_NAME": "schedule"},
+                clear=True,
+            ),
             patch.object(registry.storage, "preflight") as preflight,
         ):
             registry.rehearse_crates(ROOT)
