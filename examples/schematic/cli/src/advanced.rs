@@ -47,15 +47,16 @@ pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result
         items: NonZeroUsize::MIN,
         bytes: NonZeroUsize::new(4096).unwrap(),
     };
-    let request = AnalyzeSchematic { schematic };
-    let mut analysis = runtime.operations.download::<AnalyzeSchematic>(request.clone(), settings)?;
+    let request = AnalyzeSchematic { schematic: schematic.clone() };
+    let mut analysis = runtime.operations.download::<AnalyzeSchematic>(request, settings)?;
     while let Some(finding) = analysis.next().await? {
         println!("Analysis: {}", finding.text);
     }
     let response = analysis.join().await?;
     println!("Analysis settled: {} findings", response.checked);
 
-    // Cancellation Includes Physical Settlement
+    // Cancel and Settle Analysis
+    let request = AnalyzeSchematic { schematic };
     let analysis = runtime.operations.download::<AnalyzeSchematic>(request, settings)?;
     analysis.cancel_and_settle().await?;
     println!("Cancelled analysis and waited for settlement");

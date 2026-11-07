@@ -59,7 +59,12 @@ impl harmos_domain::model::storage::catalog::StoredObject for ValidatedSchematic
         &self.id
     }
     fn validate(&self) -> harmos_domain::Result<()> {
-        if self.id.trim().is_empty() || self.schematic.validate().is_err() {
+        // Check / Snapshot Identity
+        let id_present = !self.id.trim().is_empty();
+
+        // Check / Schematic
+        let schematic_valid = self.schematic.validate().is_ok();
+        if !(id_present && schematic_valid) {
             return Err(harmos_domain::Error::InvalidInput {
                 field: "schematic",
                 reason: "a stored schematic needs an identity and valid connections",

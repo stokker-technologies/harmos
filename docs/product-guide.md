@@ -791,8 +791,8 @@ and `storage.append_file`. `codec = manual` preserves an explicitly authored mes
 
 Started operations return the same typed `Response<T>` from `join()` and
 `cancel().await`. `request_cancel()` sends only the signal. An implementation
-can await `ctx.cancelled()` and return its normal response; cancellation errors
-or a missing response become `Refusal::Cancelled`. Set
+can await `ctx.cancelled()` and return its normal response or a defined failure;
+both retain their result. A missing response becomes `Refusal::Cancelled`. Set
 `OperationPolicy::cancellation_timeout` to the grace duration. Zero preserves
 immediate abort. Grace never extends the remaining attempt or overall timeout,
 and cancellation never retries. Final responses still wait for owned children

@@ -7,7 +7,7 @@
  * ***
  */
 
-// Operations Over The Host Filesystem, Served Only By Native Deliveries.
+// Operations Over the Host Filesystem, Served Only by Native Deliveries.
 
 /* === Modules === */
 

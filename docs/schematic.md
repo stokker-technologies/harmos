@@ -118,7 +118,7 @@ settlement and publishes the document through an atomic file replacement.
 ## Transfer Benchmarks
 
 The `benchmark` feature on the sidecar and guest enables shared record, sample
-and file-byte transfer endpoints. Their [declarations and implementations](../examples/schematic/operations/src/transfer.rs) are reused by both example executables.
+and file-byte transfer endpoints. Their [declarations and implementations](../examples/schematic/operations/src/transfer/) are reused by both example executables.
 `Put`/`Take` transfer one owned batch per unary call; `Upload`/`Download` carry
 bounded batches through streams. Transfer IDs isolate concurrent datasets.
 The feature also exposes a `Hash` bridge to the host `HashFile` operation. Each

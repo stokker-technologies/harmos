@@ -7,8 +7,8 @@
  * ***
  */
 
-// The Closed Catalogs Of Schematic Operations: The Portable Catalog Every
-// Delivery Serves, And The Native Catalog That Adds Host Filesystem Access.
+// The Closed Catalogs of Schematic Operations: the Portable Catalog Every
+// Delivery Serves, and the Native Catalog That Adds Host Filesystem Access.
 
 /* === Modules === */
 
@@ -19,9 +19,6 @@ pub mod transfer;
 #[cfg(feature = "runtime")]
 mod error;
 
-#[cfg(feature = "runtime")]
-pub mod resources;
-
 /* === Re-Exports === */
 
 #[cfg(feature = "runtime")]
@@ -29,8 +26,9 @@ pub use error::Error;
 
 pub use directories::list_directories::ListDirectories;
 pub use schematic::analyze::AnalyzeSchematic;
+pub use schematic::exchange::AnalyzeExchange;
 pub use schematic::propose::ProposeRoute;
-pub use schematic::streaming::{AnalyzeExchange, AnalyzeUpload};
+pub use schematic::upload::AnalyzeUpload;
 pub use schematic::validate::ValidateSchematic;
 
 /* === Imports === */
@@ -43,13 +41,6 @@ pub use schematic::validate::ValidateSchematic;
 
 /* === Constants === */
 
-pub const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
-    timeout: std::time::Duration::from_secs(10),
-    attempt_timeout: std::time::Duration::from_secs(10),
-    cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos::operations::RetryPolicy::Never,
-};
-
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -60,9 +51,9 @@ pub const POLICY: harmos::operations::OperationPolicy = harmos::operations::Oper
 
 #[harmos::catalog]
 pub enum Operations {
-    Validate(ValidateSchematic),
-    Route(ProposeRoute),
-    Analyze(AnalyzeSchematic),
+    ValidateSchematic(ValidateSchematic),
+    ProposeRoute(ProposeRoute),
+    AnalyzeSchematic(AnalyzeSchematic),
 }
 
 #[harmos::catalog]
