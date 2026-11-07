@@ -282,6 +282,11 @@ async fn cancel_final_response_sidecar() {
         let result = (&mut invocation).await;
         if mode == 0 {
             assert_eq!(u64::decode(&result.unwrap()).unwrap(), 42);
+        } else if mode == 3 {
+            let harmos_runtime::Error::OperationFailed { source, .. } = result.unwrap_err() else {
+                panic!("expected the operation's failure")
+            };
+            assert!(source.to_string().contains("cancelled without response"));
         } else {
             assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
         }
