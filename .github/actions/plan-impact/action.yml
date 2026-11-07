@@ -10,7 +10,7 @@ inputs:
     required: false
     default: ""
   scope:
-    description: Limit Selection To Package Dependencies And Tests Compilation
+    description: "Narrow The Selection: build On Dev Pushes, release On Release Reviews"
     required: false
     default: ""
 outputs:

@@ -27,6 +27,13 @@ from ..process import spawn_flags
 
 # === Constants === #
 
+# Release reviews only bump version carriers and their lockfiles; anything else gets the full selection.
+RELEASE_PATHS = re.compile(
+    r"tools/project\.toml|(?:.*/)?(?:Cargo\.toml|Cargo\.lock|pyproject\.toml|uv\.lock|package\.json"
+    r"|package-lock\.json|pnpm-lock\.yaml|tauri\.conf\.json)"
+)
+RELEASE_JOBS = {"build", "build:python", "release:publish:dry", "release:rehearse"}
+
 # === Types === #
 
 # === Classes === #
@@ -98,11 +105,17 @@ def close(graph: dict, selected: set[str]) -> set[str]:
     return selected
 
 
-def scope(plan: dict, selected: set[str], value: str = "") -> set[str]:
+def scope(plan: dict, selected: set[str], value: str = "", paths: set[str] | None = None) -> set[str]:
     """Keep Only The Quick Checks And Builds On Dev Pushes; Nightly Owns Packaging."""
     if value == "build":
         quick = {job for job in selected if job.startswith("check:") or job in {"build", "build:rust:tests"}}
         return close(plan["dependencies"], quick)
+    if value == "release":
+        full = set(plan["dependencies"])
+        if not paths or not all(RELEASE_PATHS.fullmatch(path) for path in paths):
+            return full
+        # Tests already ran on dev and in the nightly; the review only rebuilds, packages and rehearses.
+        return {job for job in full if job.startswith(("check:", "package:")) or job in RELEASE_JOBS}
     if value:
         raise ValueError(f"unknown impact scope: {value}")
     return selected
@@ -118,7 +131,7 @@ def main(plan: dict) -> None:
     target = os.environ.get("IMPACT_TARGET")
     paths = changed_paths(target) if target else None
     selected = select(plan, paths)
-    selected = scope(plan, selected, os.environ.get("IMPACT_SCOPE", ""))
+    selected = scope(plan, selected, os.environ.get("IMPACT_SCOPE", ""), paths)
     if "document" in plan:
         document = plan["document"]
         original = [job for job in document.values() if isinstance(job, dict) and "stage" in job]
