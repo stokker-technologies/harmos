@@ -16,7 +16,7 @@ mod codec;
 
 /* === Re-Exports === */
 
-pub use client::{Error, Host, Running};
+pub use client::{Arrow, Error, Host, Running};
 pub use codec::Packet;
 pub use tonic;
 
@@ -33,7 +33,7 @@ use std::task::{Context, Poll};
 // Third Party Imports
 use futures_util::{Stream, stream};
 use tokio::net::TcpListener;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{Semaphore, mpsc, watch};
 use tonic::{Request, Response, Status, body::Body, codegen::http};
 // Local Imports
 use super::{PluginNative, Supervisor};
@@ -216,7 +216,7 @@ impl State {
         Ok(Response::new(response))
     }
 
-    fn data(&self, request: Request<Packet>) -> Result<Response<ArrowStream>, Status> {
+    fn data(&self, request: Request<Packet>, mut receipts: tonic::Streaming<Packet>) -> Result<Response<ArrowStream>, Status> {
         self.admit(&request)?;
         let packet = request.into_inner();
         if packet.payload.is_empty() || packet.count == 0 {
@@ -228,6 +228,36 @@ impl State {
         }
         let (cancellation, mut cancelled) = watch::channel(false);
         let (progress, _) = watch::channel(Progress::default());
+        let credits = Arc::new(Semaphore::new(self.settings.queued_batches.get() + 2));
+        let received_credits = credits.clone();
+        let receipt_cancellation = cancellation.clone();
+        let mut receipt_cancelled = cancelled.clone();
+        let receipt_progress = progress.clone();
+        let invocation = packet.invocation;
+        let generation = self.generation;
+        tokio::spawn(async move {
+            let mut consumed = 0;
+            loop {
+                let receipt = tokio::select! {
+                    biased;
+                    _ = receipt_cancelled.wait_for(|value| *value) => break,
+                    receipt = receipts.message() => receipt,
+                };
+                let Ok(Some(receipt)) = receipt else { break };
+                let valid = receipt.version == VERSION
+                    && receipt.generation == generation
+                    && receipt.invocation == invocation
+                    && receipt.phase == 13
+                    && receipt.count > consumed
+                    && receipt.count <= receipt_progress.borrow().produced;
+                if !valid {
+                    break;
+                }
+                received_credits.add_permits((receipt.count - consumed) as usize);
+                consumed = receipt.count;
+            }
+            receipt_cancellation.send_replace(true);
+        });
         *flight = Some(Flight {
             id: packet.invocation,
             cancellation,
@@ -240,6 +270,19 @@ impl State {
             let mut wait_ns = 0u128;
             let mut copy_ns = 0u128;
             for sequence in 0..packet.count {
+                // Application Credits Bound Produced Minus Consumed Independently Of H2 Buffers.
+                if credits.available_permits() == 0 {
+                    progress.send_modify(|value| value.blocked = true);
+                }
+                let waiting = profiling.then(std::time::Instant::now);
+                let credit = tokio::select! {
+                    biased;
+                    _ = cancelled.wait_for(|value| *value) => break,
+                    credit = credits.acquire() => match credit { Ok(credit) => credit, Err(_) => break },
+                };
+                if let Some(waiting) = waiting {
+                    wait_ns += waiting.elapsed().as_nanos();
+                }
                 // Reserve Before Sharing; Cancellation Never Waits For Data Capacity.
                 let slot = match output.try_reserve() {
                     Ok(slot) => slot,
@@ -266,16 +309,17 @@ impl State {
                 if let Some(copying) = copying {
                     copy_ns += copying.elapsed().as_nanos();
                 }
+                progress.send_modify(|value| {
+                    value.produced += 1;
+                    value.blocked = false;
+                });
+                credit.forget();
                 slot.send(Ok(Packet {
                     invocation: packet.invocation,
                     count: sequence,
                     payload,
                     ..Packet::default()
                 }));
-                progress.send_modify(|value| {
-                    value.produced += 1;
-                    value.blocked = false;
-                });
             }
             if profiling {
                 eprintln!(
@@ -303,13 +347,17 @@ impl tonic::server::UnaryService<Packet> for Endpoint {
     }
 }
 
-impl tonic::server::ServerStreamingService<Packet> for Endpoint {
+impl tonic::server::StreamingService<Packet> for Endpoint {
     type Response = Packet;
     type ResponseStream = ArrowStream;
     type Future = Pin<Box<dyn Future<Output = Result<Response<ArrowStream>, Status>> + Send>>;
-    fn call(&mut self, request: Request<Packet>) -> Self::Future {
-        let result = self.state.data(request);
-        Box::pin(async move { result })
+    fn call(&mut self, request: Request<tonic::Streaming<Packet>>) -> Self::Future {
+        let state = self.state.clone();
+        Box::pin(async move {
+            let (metadata, extensions, mut receipts) = request.into_parts();
+            let packet = receipts.message().await?.ok_or_else(|| Status::invalid_argument("Arrow request missing"))?;
+            state.data(Request::from_parts(metadata, extensions, packet), receipts)
+        })
     }
 }
 
@@ -335,7 +383,7 @@ where
             let mut grpc = tonic::server::Grpc::new(codec::Codec).max_decoding_message_size(limit).max_encoding_message_size(limit);
             let response = match request.uri().path() {
                 CONTROL => grpc.unary(endpoint, request).await,
-                DATA => grpc.server_streaming(endpoint, request).await,
+                DATA => grpc.streaming(endpoint, request).await,
                 _ => Status::unimplemented("prototype method").into_http(),
             };
             Ok(response)

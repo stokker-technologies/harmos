@@ -116,7 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let settings = Settings {
         message_bytes: NonZeroUsize::new(2 * 1024 * 1024).unwrap(),
         queued_batches: NonZeroUsize::new(2).unwrap(),
-        window_bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+        window_bytes: NonZeroUsize::new(2 * 1024 * 1024).unwrap(),
         connection_window_bytes: NonZeroUsize::new(2 * 1024 * 1024).unwrap(),
         calls: NonZeroUsize::new(16).unwrap(),
     };

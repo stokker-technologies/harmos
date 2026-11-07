@@ -30,7 +30,18 @@
 - [x] 4.4 Run focused mise proofs, check:rust and the required diff scan; commit, normal-push and verify remote SHA without PR or merge.
 - [x] 4.5 Preserve results, cargo clean owned worktree targets and retain the worktree. Stop without a second tuning pass or migration.
 
+## 5. Owner-Authorized Ordered Tuning
+
+- [x] 5.1 Raise the stream window with application consumption credits; retain Gate 4's four-batch and memory assertions. Owners: prototype.rs, prototype/client.rs and the Schematic fixture settings and process stories. Measure this change alone with seven paired alternating repetitions and CPU samples.
+- [x] 5.2 If no stop condition has fired, remove the contiguous output copy through codec.rs and the prototype HTTP body, then measure alone. Keep ordinary control on Tonic. Not started: Gate 5 passed both payloads after 5.1.
+- [x] 5.3 If no stop condition has fired, measure Windows named pipes separately from TCP using Tonic's supported incoming/connector path; change opt-in manifests only if required. Not started: the owner-required stop fired after 5.1.
+- [x] 5.4 If the gap persists without an earlier stop, subdivide residual cost with CPU/ETW profiling. Stop at both-payload Gate 5 success, two consecutive changes each below 10% gain on both payloads, or a profiled gRPC/h2 cost with no available setting or codec remedy. Record measurements, stop decision, SDK costs, updated Gate 6 and README impact in design.md. Gate 5 success stopped tuning; no residual profile was started.
+- [ ] 5.5 Run focused Gates 2–4 and check:rust; commit, require CLEAN from the owner's scan, normal-push and verify remote SHA. No PR, merge, migration or Dokime edits.
+- [ ] 5.6 Preserve evidence, run native Cargo cleanup for owned worktree targets and retain the worktree.
+
 ## Workflow Follow-Up
+
+- On 2026-11-07 the owner authorized the ordered continuation in section 5. This supersedes every earlier no-second-round statement and the earlier Gate 5 stop within this prototype; the new explicit stop conditions control the order. No CI simulation is requested for this Windows-only prototype slice.
 
 - The owner authorizes one bounded tuning pass after profiling, plus Gate 6 despite Gate 5 failure. This supersedes the original ordered stop only for this continuation. No migration, PR, integration merge or second round; fresh origin/dev merges into this branch first.
 
