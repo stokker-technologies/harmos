@@ -22,8 +22,10 @@ use super::IO_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::files::{FileCompletion, FileEvent, FileSource, FollowStart};
+
 #[cfg(feature = "runtime")]
 use harmos_sdk::operations::access::GrantAccess;
+
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
@@ -78,21 +80,42 @@ impl MemorySize for FollowFile {
     }
 }
 
+/* === Public Functions === */
+
+/* === Private Functions === */
+
 #[cfg(feature = "runtime")]
 mod execution {
-    use super::*;
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
 
     // Standard Library Imports
 
     // Third Party Imports
 
     // Local Imports
-
+    use super::*;
+    use crate::storage::IO_TIMEOUT;
+    use crate::{Error, Result};
     use harmos_domain::model::storage::files::FileCompletion;
     use harmos_sdk::operations::{Operation, OperationDeclaration};
 
-    use crate::storage::IO_TIMEOUT;
-    use crate::{Error, Result};
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
 
     impl Operation for super::FollowFile {
         type Error = Error;
@@ -129,10 +152,12 @@ mod execution {
             crate::storage::classify(error)
         }
     }
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */

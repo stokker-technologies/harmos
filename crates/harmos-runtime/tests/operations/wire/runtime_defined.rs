@@ -61,8 +61,6 @@ impl harmos_runtime::observers::ObserverBackend for Observer {
 
 /* === Public Functions === */
 
-/* === Private Functions === */
-
 pub(super) fn safe_contract() -> harmos_runtime::operations::Contract {
     let original = WireDeclaration::of::<ControlDeclaration>().contract().unwrap();
     let mut definition = original.operation().clone();
@@ -73,28 +71,13 @@ pub(super) fn safe_contract() -> harmos_runtime::operations::Contract {
     harmos_runtime::operations::Contract::from_schema(definition, original.codec(), original.schema().clone(), &Default::default()).unwrap()
 }
 
+/* === Private Functions === */
+
 fn owned_definitions(revision: &str) -> PluginDefinitions {
     let mut definitions: Vec<_> = definitions(revision).definitions().cloned().collect();
     let provider = definitions.iter_mut().find(|definition| definition.id == "provider").unwrap();
     provider.contributions.operations.push(safe_contract().operation().clone());
     PluginDefinitions::new(definitions, []).unwrap()
-}
-
-/* === Tests === */
-
-#[test]
-fn owned_contract_derives_identity_and_validates_shape() {
-    let original = WireDeclaration::of::<ControlDeclaration>().contract().unwrap();
-    let owned = safe_contract();
-    assert_ne!(original.fingerprint(), owned.fingerprint());
-    assert!(harmos_runtime::operations::Contract::new(
-        owned.operation().clone(), original.fingerprint(), owned.codec(), owned.schema().clone(),
-    ).is_err());
-    let mut schema = owned.schema().clone();
-    schema.root = schema.definitions.len();
-    assert!(
-        harmos_runtime::operations::Contract::from_schema(owned.operation().clone(), owned.codec(), schema, &Default::default(),).is_err()
-    );
 }
 
 #[tokio::test]
@@ -253,4 +236,21 @@ async fn owned_observer_uses_plugin_resources_and_retires_with_generation() {
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
     assert!(runtime.operations.stage_plugin_observers(&resources, &scope, [Observer(owner.clone())]).is_err());
     runtime.shutdown().await.unwrap();
+}
+
+/* === Tests === */
+
+#[test]
+fn owned_contract_derives_identity_and_validates_shape() {
+    let original = WireDeclaration::of::<ControlDeclaration>().contract().unwrap();
+    let owned = safe_contract();
+    assert_ne!(original.fingerprint(), owned.fingerprint());
+    assert!(harmos_runtime::operations::Contract::new(
+        owned.operation().clone(), original.fingerprint(), owned.codec(), owned.schema().clone(),
+    ).is_err());
+    let mut schema = owned.schema().clone();
+    schema.root = schema.definitions.len();
+    assert!(
+        harmos_runtime::operations::Contract::from_schema(owned.operation().clone(), owned.codec(), schema, &Default::default(),).is_err()
+    );
 }

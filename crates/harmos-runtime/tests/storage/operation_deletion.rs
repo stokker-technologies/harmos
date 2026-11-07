@@ -51,6 +51,7 @@ fn metadata(id: &str) -> FileMetadata {
         expected_sha256: None,
     }
 }
+
 fn request(f: &Fixture, id: &str) -> harmos_operations::storage::DeleteFile {
     harmos_operations::storage::DeleteFile {
         mutation: MutationId {
@@ -63,8 +64,6 @@ fn request(f: &Fixture, id: &str) -> harmos_operations::storage::DeleteFile {
         },
     }
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn delete_removes_file() {
@@ -213,3 +212,5 @@ async fn close_settles_deletion() {
     assert!(f.data.blobs.lock().unwrap().is_empty());
     f.runtime.shutdown().await.unwrap();
 }
+
+/* === Tests === */

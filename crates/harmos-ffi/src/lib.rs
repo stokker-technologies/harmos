@@ -113,9 +113,9 @@ impl Drop for Output {
 
 /* === Public Functions === */
 
-/// Returns The Rust Authoring Field Tag, Or Zero For Invalid UTF-8, Empty Input Or Panic.
-/// # Safety
-/// The Name Slice Is Borrowed And Valid For The Duration Of This Call.
+// Returns The Rust Authoring Field Tag, Or Zero For Invalid UTF-8, Empty Input Or Panic.
+// # Safety
+// The Name Slice Is Borrowed And Valid For The Duration Of This Call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn hrm_schema_field_tag(name: HrmSlice) -> u32 {
     catch_unwind(AssertUnwindSafe(|| {
@@ -130,8 +130,8 @@ pub unsafe extern "C" fn hrm_schema_field_tag(name: HrmSlice) -> u32 {
     .unwrap_or(0)
 }
 
-/// # Safety
-/// `id` Is NUL-Terminated; `error`, If Present, Points To An Empty Writable Error.
+// # Safety
+// `id` Is NUL-Terminated; `error`, If Present, Points To An Empty Writable Error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn hrm_plugin_new(id: *const c_char, capacity: usize, error: *mut HrmError) -> *mut HrmPlugin {
     let mut result = std::ptr::null_mut();
@@ -144,9 +144,9 @@ pub unsafe extern "C" fn hrm_plugin_new(id: *const c_char, capacity: usize, erro
     if status == 0 { result } else { std::ptr::null_mut() }
 }
 
-/// # Safety
-/// Handles Must Be Live And Exclusive; Strings And Slices Are Borrowed For This Call.
-/// Callback And User State Remain Valid Until Serve Settles; Callback Must Never Unwind.
+// # Safety
+// Handles Must Be Live And Exclusive; Strings And Slices Are Borrowed For This Call.
+// Callback And User State Remain Valid Until Serve Settles; Callback Must Never Unwind.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn hrm_plugin_operation(
     plugin: *mut HrmPlugin, id: *const c_char, schema: HrmSlice, policy: HrmPolicy, run: HrmRun, user: *mut c_void, error: *mut HrmError,
@@ -204,8 +204,8 @@ pub unsafe extern "C" fn hrm_plugin_operation(
     })
 }
 
-/// # Safety
-/// `plugin` Is Live And Exclusive; `name` Is NUL-Terminated; `error` Is Empty.
+// # Safety
+// `plugin` Is Live And Exclusive; `name` Is NUL-Terminated; `error` Is Empty.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn hrm_plugin_stream(plugin: *mut HrmPlugin, name: *const c_char, window: usize, error: *mut HrmError) -> i32 {
     boundary(error, || {
@@ -216,8 +216,8 @@ pub unsafe extern "C" fn hrm_plugin_stream(plugin: *mut HrmPlugin, name: *const 
     })
 }
 
-/// # Safety
-/// `plugin` Is Live And Exclusive Until Return; `error` Is Empty. Serve Runs Once.
+// # Safety
+// `plugin` Is Live And Exclusive Until Return; `error` Is Empty. Serve Runs Once.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn hrm_plugin_serve(plugin: *mut HrmPlugin, error: *mut HrmError) -> i32 {
     boundary(error, || {
@@ -229,8 +229,8 @@ pub unsafe extern "C" fn hrm_plugin_serve(plugin: *mut HrmPlugin, error: *mut Hr
     })
 }
 
-/// # Safety
-/// `plugin` Is Null Or A Unique Handle Returned By New. Serve And All Callbacks Ended.
+// # Safety
+// `plugin` Is Null Or A Unique Handle Returned By New. Serve And All Callbacks Ended.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn hrm_plugin_free(plugin: *mut HrmPlugin) {
     let _ = catch_unwind(AssertUnwindSafe(|| {
@@ -242,17 +242,17 @@ pub unsafe extern "C" fn hrm_plugin_free(plugin: *mut HrmPlugin) {
     }));
 }
 
-/// Returns 1 For Cancellation, 0 Otherwise, Or -1 For An Invalid Context Or Panic.
-/// # Safety
-/// `context` Is Borrowed From The Currently Running Callback.
+// Returns 1 For Cancellation, 0 Otherwise, Or -1 For An Invalid Context Or Panic.
+// # Safety
+// `context` Is Borrowed From The Currently Running Callback.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn hrm_context_cancelled(context: *const HrmContext) -> i32 {
     catch_unwind(AssertUnwindSafe(|| unsafe { context.as_ref() }.map_or(-1, |context| i32::from(context.0.cancelled())))).unwrap_or(-1)
 }
 
-/// Blocks Until This Callback's Cancellation Is Requested.
-/// # Safety
-/// Context Is Borrowed From This Callback On Its Rust-Owned Thread; Error Is Empty.
+// Blocks Until This Callback's Cancellation Is Requested.
+// # Safety
+// Context Is Borrowed From This Callback On Its Rust-Owned Thread; Error Is Empty.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn hrm_context_wait_cancelled(context: *const HrmContext, error: *mut HrmError) -> i32 {
     boundary(error, || {
@@ -262,9 +262,9 @@ pub unsafe extern "C" fn hrm_context_wait_cancelled(context: *const HrmContext, 
     })
 }
 
-/// # Safety
-/// Context Is Borrowed From This Callback; Id Is NUL-Terminated; Input Is Borrowed.
-/// Response And Error Are Empty Writable Values And Must Be Freed With This ABI.
+// # Safety
+// Context Is Borrowed From This Callback; Id Is NUL-Terminated; Input Is Borrowed.
+// Response And Error Are Empty Writable Values And Must Be Freed With This ABI.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn hrm_context_operation(
     context: *const HrmContext, id: *const c_char, request: HrmSlice, response: *mut HrmBuffer, error: *mut HrmError,
@@ -279,11 +279,11 @@ pub unsafe extern "C" fn hrm_context_operation(
     })
 }
 
-/// Takes Ownership Of Both C Data Structures After Non-Null Argument Validation,
-/// Including On Import Or Publication Failure. Their Release Pointers Become Null.
-/// # Safety
-/// Context Is Borrowed From This Callback. Array And Schema Are Valid, Exclusive
-/// Arrow C Data Interface Structures With Live Buffers And Non-Unwinding Releases.
+// Takes Ownership Of Both C Data Structures After Non-Null Argument Validation,
+// Including On Import Or Publication Failure. Their Release Pointers Become Null.
+// # Safety
+// Context Is Borrowed From This Callback. Array And Schema Are Valid, Exclusive
+// Arrow C Data Interface Structures With Live Buffers And Non-Unwinding Releases.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn hrm_context_publish_arrow(
     context: *const HrmContext, stream: *const c_char, array: *mut ArrowArray, schema: *mut ArrowSchema, error: *mut HrmError,
@@ -308,8 +308,8 @@ pub unsafe extern "C" fn hrm_context_publish_arrow(
     })
 }
 
-/// # Safety
-/// Input Is Borrowed; Output And Error Are Empty Writable Values.
+// # Safety
+// Input Is Borrowed; Output And Error Are Empty Writable Values.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn hrm_buffer_copy(input: HrmSlice, output: *mut HrmBuffer, error: *mut HrmError) -> i32 {
     boundary(error, || {
@@ -319,8 +319,8 @@ pub unsafe extern "C" fn hrm_buffer_copy(input: HrmSlice, output: *mut HrmBuffer
     })
 }
 
-/// # Safety
-/// Buffer Is Null, Empty Or Uniquely Owns An Allocation Returned By This ABI.
+// # Safety
+// Buffer Is Null, Empty Or Uniquely Owns An Allocation Returned By This ABI.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn hrm_buffer_free(buffer: *mut HrmBuffer) {
     let _ = catch_unwind(AssertUnwindSafe(|| {
@@ -335,8 +335,8 @@ pub unsafe extern "C" fn hrm_buffer_free(buffer: *mut HrmBuffer) {
     }));
 }
 
-/// # Safety
-/// Error Is Null, Empty Or Uniquely Owns A Message Returned By This ABI.
+// # Safety
+// Error Is Null, Empty Or Uniquely Owns A Message Returned By This ABI.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn hrm_error_free(error: *mut HrmError) {
     let _ = catch_unwind(AssertUnwindSafe(|| {

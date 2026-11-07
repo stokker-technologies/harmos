@@ -110,8 +110,6 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     (runtime, trace)
 }
 
-/* === Tests === */
-
 #[tokio::test]
 async fn registration_does_not_execute_requests() {
     let (runtime, trace) = runtime().await;
@@ -146,12 +144,23 @@ async fn panic_drops_attempt_state() {
 }
 
 mod listed {
+    /* === Modules === */
 
-    use super::App;
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
     use std::sync::Arc;
     use std::time::Duration;
 
+    // Third Party Imports
+
+    // Local Imports
+    use super::App;
     use harmos_runtime::operations::{Contracts, Declarations, OperationPolicy, RetryPolicy};
+
+    /* === Constants === */
 
     const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(1),
@@ -159,6 +168,12 @@ mod listed {
         cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     };
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
 
     #[harmos_runtime::operation(id = "authored.doubling",  response = u32, policy = POLICY)]
     pub struct DoublingDeclaration {
@@ -187,6 +202,24 @@ mod listed {
         value: u32,
     }
 
+    struct BorrowOwner {
+        value: u32,
+        borrowed: std::sync::atomic::AtomicUsize,
+        ran: std::sync::atomic::AtomicUsize,
+        operations: std::sync::OnceLock<std::sync::Weak<harmos_runtime::operations::OperationManager<crate::operations::fixture::Lanes>>>,
+    }
+
+    /* === Enums === */
+
+    #[harmos_runtime::catalog]
+    pub enum Declared {
+        Doubling(DoublingDeclaration),
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
     impl harmos_runtime::Operation for DoublingDeclaration {
         type Error = harmos_runtime::Error;
 
@@ -211,23 +244,12 @@ mod listed {
         }
     }
 
-    struct BorrowOwner {
-        value: u32,
-        borrowed: std::sync::atomic::AtomicUsize,
-        ran: std::sync::atomic::AtomicUsize,
-        operations: std::sync::OnceLock<std::sync::Weak<harmos_runtime::operations::OperationManager<crate::operations::fixture::Lanes>>>,
-    }
-
     impl std::borrow::Borrow<u32> for BorrowOwner {
         fn borrow(&self) -> &u32 {
             self.borrowed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             self.operations.get().unwrap().upgrade().unwrap().definition("authored.cached_owner").unwrap();
             &self.value
         }
-    }
-
-    fn owner_key(request: &CachedOwnerDeclaration) -> Option<harmos_runtime::operations::CacheKey> {
-        Some(harmos_runtime::operations::CacheKey::new(request.value.to_le_bytes().to_vec()).unwrap())
     }
 
     impl harmos_runtime::Operation for CachedOwnerDeclaration {
@@ -240,9 +262,12 @@ mod listed {
         }
     }
 
-    #[harmos_runtime::catalog]
-    pub enum Declared {
-        Doubling(DoublingDeclaration),
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    fn owner_key(request: &CachedOwnerDeclaration) -> Option<harmos_runtime::operations::CacheKey> {
+        Some(harmos_runtime::operations::CacheKey::new(request.value.to_le_bytes().to_vec()).unwrap())
     }
 
     #[tokio::test]
@@ -301,6 +326,8 @@ mod listed {
         assert_eq!(recovered, 7);
     }
 
+    /* === Tests === */
+
     #[test]
     fn catalogs_project_declarations() {
         let projected = Declared::catalog();
@@ -310,3 +337,5 @@ mod listed {
         assert_eq!(contracts[0].fingerprint(), projected[0].fingerprint);
     }
 }
+
+/* === Tests === */

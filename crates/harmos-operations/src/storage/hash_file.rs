@@ -23,6 +23,7 @@ use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::files::{ByteRange, FileHash, FileSource};
 use harmos_domain::operations::ReplaySafety;
+
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
@@ -73,8 +74,17 @@ impl MemorySize for HashFile {
     }
 }
 
+/* === Public Functions === */
+
+/* === Private Functions === */
+
 #[cfg(feature = "runtime")]
 mod execution {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
 
     // Standard Library Imports
 
@@ -84,6 +94,20 @@ mod execution {
     use crate::{Error, Result};
     use harmos_domain::model::storage::files::FileHash;
     use harmos_sdk::operations::Operation;
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
 
     impl Operation for super::HashFile {
         type Error = Error;
@@ -105,10 +129,12 @@ mod execution {
             crate::storage::classify(error)
         }
     }
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */

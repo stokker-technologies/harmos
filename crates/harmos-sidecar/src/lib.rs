@@ -31,9 +31,7 @@ pub use harmos_operations as builtins;
 #[cfg(feature = "transport")]
 pub use attach::{Attach, Attached, Executable, ExecutableError};
 pub use error::{Error, Result};
-pub mod catalog {
-    pub use harmos_domain::catalog::*;
-}
+pub use harmos_domain::StreamDeclaration;
 pub use harmos_domain::inventory;
 pub use harmos_domain::{
     ConfigError, Failure, RESERVED, Refusal, Registrar, Registration, RegistrationError, StreamSpec, UNKNOWN, UNREADABLE, encode_config,
@@ -45,7 +43,6 @@ pub use harmos_sdk::operations::OperationHost;
 pub use harmos_sdk::operations::{Backoff, CacheKey, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 pub use harmos_sdk::{Context, Dependent, ExecutionContext, Lifecycle, Operation, Plugin, Resource, Service, Setup};
 
-pub use harmos_domain::StreamDeclaration;
 #[cfg(feature = "kit")]
 pub use kit::{
     Activation, ActivationId, Activity, CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT, CallError, DemandKey, Instance, Observer,
@@ -66,8 +63,10 @@ pub use harmos_domain::{
     Digest, Fingerprint, MemorySize, Message, MessageError, OperationDefinition, Portable, QualifiedId, RowMetadata, ServicePolicy,
     Storable,
 };
+
 #[cfg(feature = "derive")]
 pub use harmos_domain::{listener, message, stream};
+
 #[cfg(feature = "derive")]
 pub use harmos_macros::{sidecar_catalog as catalog, sidecar_operation as operation};
 pub use harmos_sdk::plugin;
@@ -105,5 +104,41 @@ impl harmos_domain::__private::CarrierContext for Supervisor {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+pub mod catalog {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    pub use harmos_domain::catalog::*;
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
 
 /* === Tests === */

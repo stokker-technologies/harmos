@@ -10,11 +10,6 @@
 /* === Modules === */
 
 pub(crate) mod capture;
-mod entry {
-    pub use harmos_domain::state::{
-        At, CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt, RequestKey, Timestamp,
-    };
-}
 mod envelope;
 mod history;
 mod managed;
@@ -42,10 +37,12 @@ pub use snapshot::SnapshotPolicy;
 pub use transaction::{DecodeError, Invertible, Never, Transaction, TransactionCatalog};
 
 // The proof traits generated authoring code reaches through `__private`: they
-// are how a declared pair is checked mutual and how a declared inverse is
-// checked to be a member of the catalog that will commit it. Public because an
-// application's generated code names them, hidden because nothing else may.
 
+// are how a declared pair is checked mutual and how a declared inverse is
+
+// checked to be a member of the catalog that will commit it. Public because an
+
+// application's generated code names them, hidden because nothing else may.
 pub use transaction::{Catalogued, Mutual, Paired};
 
 // What boot needs of the journal's insides and nothing more: the fold replay
@@ -79,5 +76,43 @@ pub(crate) use transaction::{Inverting, dispatch};
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+mod entry {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    pub use harmos_domain::state::{
+        At, CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt, RequestKey, Timestamp,
+    };
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
 
 /* === Tests === */

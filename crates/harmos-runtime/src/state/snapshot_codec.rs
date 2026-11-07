@@ -17,12 +17,14 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::{self, Write};
 use std::sync::Arc;
+
 // Third Party Imports
 use serde::{
     Deserialize, Serialize, Serializer,
     de::DeserializeOwned,
     ser::{SerializeSeq, SerializeStruct},
 };
+
 // Local Imports
 use super::snapshot::{Restored, SnapshotPolicy};
 use crate::state::{Metadata, Tail, UndoEntry, Undos, dispatch::Dispatch};
@@ -46,6 +48,7 @@ use crate::{
 struct Snapshot<S> {
     #[serde(rename = "version")]
     _version: u32,
+
     schema: SchemaKey,
     position: Position,
     state: S,

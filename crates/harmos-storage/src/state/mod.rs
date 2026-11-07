@@ -26,6 +26,7 @@ pub use reader::RecoveryReader;
 
 // Third Party Imports
 use serde::{Deserialize, Serialize};
+
 // Local Imports
 use super::{ReadLimits, RecoveryPosition, StorageBatch, StorageFuture, StoreHistory};
 use crate::{Error, MemorySize, Result};
@@ -182,9 +183,36 @@ impl RecoveryPage {
 
 // Opaque Payloads Encode As Unpadded Base64, So Every Byte Changes The Encoded Size.
 mod payload {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD_NO_PAD;
     use serde::{Deserialize, Deserializer, Serializer, de::Error};
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
 
     pub(super) fn serialize<S: Serializer>(payload: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&STANDARD_NO_PAD.encode(payload))
@@ -194,6 +222,10 @@ mod payload {
         let encoded = String::deserialize(deserializer)?;
         STANDARD_NO_PAD.decode(encoded.as_bytes()).map_err(D::Error::custom)
     }
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

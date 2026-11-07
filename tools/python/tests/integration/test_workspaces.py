@@ -6,7 +6,6 @@
 #
 # ***
 
-
 """Prove Simulation Scratch Recovery"""
 
 # === Imports === #
@@ -30,7 +29,6 @@ from unittest.mock import patch
 from harmos_tools.ci import containers, workspaces
 
 # Type Checking Imports
-
 
 # === Public Exports === #
 

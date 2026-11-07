@@ -9,13 +9,72 @@
 
 /* === Modules === */
 
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
 mod tests {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
     use std::time::Duration;
 
+    // Third Party Imports
+
+    // Local Imports
     use super::super::capacity::*;
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
     fn settings(values: &[(&str, &str)]) -> Result<Settings, String> {
         Settings::parse(|name| Ok(values.iter().find(|(key, _)| *key == name).map(|(_, value)| (*value).to_owned())))
     }
+
+    /* === Tests === */
 
     #[test]
     fn sorted_default_rates() {
@@ -81,12 +140,41 @@ mod tests {
 }
 
 mod sdk {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+    use std::num::NonZeroUsize;
+
+    // Third Party Imports
+
+    // Local Imports
     use super::super::protocol::{EchoOperation, TransportPlugin};
     use harmos_operations::lifecycle::{Initialize, Shutdown};
     use harmos_sidecar::operations::{OperationDeclaration, WIRE_METHOD, WireAnswer, WireCommand};
     use harmos_sidecar::transport::{Connection, Receiver, Sender};
     use harmos_sidecar::{Attach, Frame, Message, PluginCatalog, PluginNative};
-    use std::num::NonZeroUsize;
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
 
     async fn phase(outgoing: &Sender, incoming: &mut Receiver, id: u64, command: WireCommand) -> WireAnswer {
         outgoing
@@ -226,34 +314,8 @@ mod sdk {
         ending.settle().await.unwrap();
         assert!(driving.await.unwrap().is_err());
     }
+
+    /* === Tests === */
 }
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */

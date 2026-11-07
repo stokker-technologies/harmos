@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # ***
+
 """Prove Development Selection And Release Publication Boundaries."""
 
 # === Imports === #
@@ -39,7 +40,10 @@ from harmos_tools.test import preflight
 
 # === Constants === #
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
+OLD = "b" * 40
+NEW = "a" * 40
+LATER = "c" * 40
 
 # === Types === #
 
@@ -640,10 +644,6 @@ class CatalogTests(unittest.TestCase):
 # === Public Functions === #
 
 # === Private Functions === #
-
-OLD = "b" * 40
-NEW = "a" * 40
-LATER = "c" * 40
 
 
 def _staged_files(directory: Path) -> tuple[Path, list[dict]]:

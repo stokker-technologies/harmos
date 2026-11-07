@@ -31,10 +31,12 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::task::Poll;
 use std::time::Duration;
+
 // Third Party Imports
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tracing::Instrument;
+
 // Local Imports
 use crate::services::{Once as DeclaredService, ServiceDefinition};
 use crate::state::dispatch::Dispatch;
@@ -51,7 +53,6 @@ use crate::{
 /* === Constants === */
 
 const REQUESTS: usize = 64;
-
 const STOP_GRACE: Duration = Duration::from_millis(100);
 
 /* === Macros === */
@@ -482,7 +483,7 @@ impl<A: Application> Builder<A> {
         self.with_registration(C::batch().lane(lane))
     }
 
-    /// Configures Schema Preparation For Runtime-Owned Record And Stream Registrations.
+    // Configures Schema Preparation For Runtime-Owned Record And Stream Registrations.
     pub fn schema_settings(&mut self, settings: crate::config::SchemaSettings) -> &mut Self {
         self.schema_settings = Arc::new(settings);
         self

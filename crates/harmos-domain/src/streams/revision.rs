@@ -38,9 +38,9 @@ use sha2::{Digest as _, Sha256};
 
 /* === Public Functions === */
 
-/// Derives an opaque, nonzero storage revision from a row schema and window.
-/// The encoding is the domain separator, a little-endian u64 window, and
-/// `schema::identity::canonical`; the first four SHA-256 bytes are little-endian.
+// Derives an opaque, nonzero storage revision from a row schema and window.
+// The encoding is the domain separator, a little-endian u64 window, and
+// `schema::identity::canonical`; the first four SHA-256 bytes are little-endian.
 pub fn revision(schema: &crate::schema::graph::Schema, window: usize) -> Result<u32, crate::schema::graph::Error> {
     let canonical = crate::schema::identity::canonical(schema.root()?)?;
     let mut hash = Sha256::new();

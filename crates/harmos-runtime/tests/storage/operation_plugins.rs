@@ -17,10 +17,13 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
+
 // Third Party Imports
 
 // Local Imports
 use super::{Fixture, Lanes, config};
+use harmos_domain::inventory::contracts::Required;
+use harmos_domain::plugin::Grant;
 use harmos_operations::storage::{Query, WriteRecords};
 use harmos_runtime::Aggregate;
 use harmos_runtime::Message;
@@ -29,15 +32,12 @@ use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
+use harmos_runtime::storage::SchemaKey;
 use harmos_runtime::storage::query::transform::{
     Transform,
     aggregate::{Aggregate as AggregateTransform, Measure},
 };
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
-
-use harmos_domain::inventory::contracts::Required;
-use harmos_domain::plugin::Grant;
-use harmos_runtime::storage::SchemaKey;
 use harmos_runtime::storage::writes::WriteReceipt;
 use harmos_runtime::{Error, Identifier, Result};
 
@@ -169,8 +169,6 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
     fixture.storage.flush().await.unwrap();
 }
 
-/* === Tests === */
-
 #[tokio::test]
 async fn write_grants_enforced() {
     let fixture = Fixture::new(config()).await;
@@ -292,3 +290,5 @@ async fn query_grants_enforced() {
     manager.shutdown(&mut host).await.unwrap();
     fixture.finish().await;
 }
+
+/* === Tests === */

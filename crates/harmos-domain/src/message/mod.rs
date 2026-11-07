@@ -12,12 +12,12 @@
 pub(crate) mod allocation;
 mod identity;
 mod maps;
-pub use maps::Entry as MapEntry;
 pub mod postcard;
 
-pub use identity::{Digest, Fingerprint};
-
 /* === Re-Exports === */
+
+pub use identity::{Digest, Fingerprint};
+pub use maps::Entry as MapEntry;
 
 // Codec Internals For This Crate; Generated Code Reaches Them Through `__private`.
 pub(crate) use allocation::{add as decoding_add, multiply as decoding_multiply, vector as decoding_vector};
@@ -28,6 +28,7 @@ pub(crate) use postcard::{Reader as PostcardReader, Value as PostcardValue};
 // Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+
 // Third Party Imports
 
 // Local Imports
@@ -79,6 +80,7 @@ macro_rules! postcard_product {
         }
     };
 }
+
 pub(crate) use postcard_product;
 
 /* === Type Aliases === */
@@ -105,8 +107,8 @@ pub trait Message: Sized + Send + Sync {
 }
 
 pub trait MemorySize: Sized {
-    /// True only when every value occupies exactly `size_of::<Self>()` bytes,
-    /// with no separately owned allocations or additional accounting charge.
+    // True only when every value occupies exactly `size_of::<Self>()` bytes,
+    // with no separately owned allocations or additional accounting charge.
     const INLINE_ONLY: bool = false;
 
     fn memory_size(&self) -> usize;

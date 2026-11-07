@@ -18,12 +18,12 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 // Third Party Imports
+use arrow_array::{StringArray, StructArray};
+use arrow_schema::{DataType, Field, Fields};
 
 // Local Imports
 use super::super::{Bank, Data, Ledger, Recovery, catalog, config, history};
 use super::Lanes;
-use arrow_array::{StringArray, StructArray};
-use arrow_schema::{DataType, Field, Fields};
 use harmos_operations::storage::WriteObjects;
 use harmos_runtime::storage::writes::{DataBatch, WriteReceipt};
 use harmos_runtime::storage::{
@@ -62,6 +62,7 @@ impl Identified for Document {
         (DefinitionId::new("test.document"), 1)
     }
 }
+
 impl StoredObject for Document {
     type Key = String;
     const RETENTION: ObjectRetention = ObjectRetention::Versions(NonZeroUsize::new(8).unwrap());
@@ -77,8 +78,6 @@ impl StoredObject for Document {
 fn value(key: &str, text: &str) -> ObjectValue {
     Objects::encode(&Document { id: key.into(), text: text.into() }, NonZeroUsize::new(4096).unwrap()).unwrap()
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn object_exchange_saves() {
@@ -289,3 +288,5 @@ async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Ob
     runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     (runtime, storage, data)
 }
+
+/* === Tests === */

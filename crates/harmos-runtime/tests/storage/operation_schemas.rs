@@ -18,15 +18,15 @@ use std::borrow::Cow;
 use std::num::{NonZeroU32, NonZeroUsize};
 
 // Third Party Imports
+
+// Local Imports
+use super::{Fixture, Lanes, config};
 use harmos_operations::storage::Query;
 use harmos_runtime::Identifier;
 use harmos_runtime::schema::Cardinality;
 use harmos_runtime::schema::graph::{Field, Kind, Schema};
 use harmos_runtime::storage::query::{QueryArrow, RowSlice, SchemaSelection, Source};
 use harmos_runtime::storage::{MutationId, SchemaInput, SchemaKey};
-
-// Local Imports
-use super::{Fixture, Lanes, config};
 
 /* === Constants === */
 
@@ -81,6 +81,7 @@ fn schema(name: &str) -> SchemaInput {
     )
     .unwrap()
 }
+
 fn request(f: &Fixture, name: &str) -> harmos_operations::storage::WriteSchema {
     harmos_operations::storage::WriteSchema {
         mutation: MutationId {
@@ -90,13 +91,12 @@ fn request(f: &Fixture, name: &str) -> harmos_operations::storage::WriteSchema {
         schema: schema(name),
     }
 }
+
 async fn setup() -> Fixture {
     let f = Fixture::new(config()).await;
     f.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     f
 }
-
-/* === Tests === */
 
 #[tokio::test]
 async fn schema_registry_roundtrip() {
@@ -152,3 +152,5 @@ async fn schema_registry_roundtrip() {
     assert_eq!(decoded, persisted);
     f.finish().await;
 }
+
+/* === Tests === */

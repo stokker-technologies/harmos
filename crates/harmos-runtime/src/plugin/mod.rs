@@ -9,12 +9,11 @@
 
 /* === Modules === */
 
-mod host;
-
 mod backend;
 mod definition;
 mod definitions;
 mod events;
+mod host;
 mod manager;
 mod reload;
 mod router;
@@ -27,12 +26,14 @@ pub use backend::PluginBackend;
 pub use definition::{PluginArtifact, PluginContributions, PluginDefinition, PluginDefinitionError, PluginKind};
 pub use definitions::PluginDefinitions;
 pub use events::{PluginEvent, PluginEventKind, PluginEvents};
+
 // Explicit Items Shadow The Contract's Same-Named Ones: `Error` Is The Host's,
 // `Requirement` The Plugin Dependency; Grant Requirements Are
 // `catalog::RequirementEntry`.
 pub use harmos_domain::{Refusal, Registrar, Registration, RegistrationError, Requirement, StreamDeclaration, inventory};
 pub use harmos_sdk::plugin::*;
 pub use host::PluginHost;
+
 #[cfg(feature = "plugin-sidecar")]
 pub(crate) use host::{Driving, Lease};
 pub use manager::{
@@ -47,8 +48,10 @@ pub use status::{PluginFailureClass, PluginGeneration, PluginState, PluginStatus
 
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
+
 // Third Party Imports
 use semver::{Version, VersionReq};
+
 // Local Imports
 use reload::ReloadImpact;
 
@@ -297,7 +300,7 @@ impl PluginGraph {
 }
 
 impl Error {
-    /// The one plugin this error refuses, or `None` when several (a cycle) or none are at fault.
+    // The one plugin this error refuses, or `None` when several (a cycle) or none are at fault.
     pub fn artifact(&self) -> Option<&str> {
         match self {
             Self::Definition { artifact, .. }
