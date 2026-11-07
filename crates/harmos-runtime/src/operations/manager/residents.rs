@@ -114,8 +114,8 @@ impl Manager {
         )
     }
 
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn stage_plugin_observers<B: ObserverBackend>(
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub fn stage_plugin_observers<B: ObserverBackend>(
         &self, resources: &Arc<harmos_sdk::ExecutionContext>, plugin: &crate::plugin::PluginScope, backends: impl IntoIterator<Item = B>,
     ) -> Result<ObserverRegistration> {
         self.stage_scoped(resources, backends, Some(plugin.clone()))
@@ -225,8 +225,8 @@ impl Manager {
 
     // Activate the resident `id` over `resources`. Activations sharing the same
     // resources share its instance; each handle holds one lease.
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) async fn submit_resident_in(&self, id: &str, resources: Arc<harmos_sdk::ExecutionContext>) -> Result<Running<Activation>> {
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub async fn submit_resident_in(&self, id: &str, resources: Arc<harmos_sdk::ExecutionContext>) -> Result<Running<Activation>> {
         // Retirement Must Not Recreate A Scope For An Old Connection.
         let scope = self.resident.scope_of(&resources).ok_or(crate::Error::Closing { domain: "observer scope" })?;
         let lease =

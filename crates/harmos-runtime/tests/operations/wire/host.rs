@@ -9,6 +9,8 @@
 
 /* === Modules === */
 
+mod runtime_defined;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -62,6 +64,7 @@ struct CoreOwner {
 #[derive(Default)]
 struct Owner {
     prepared: AtomicUsize,
+    started: tokio::sync::Notify,
 }
 
 #[derive(Default)]
@@ -75,6 +78,7 @@ struct Host {
     owner: Arc<Owner>,
     scope: Option<PluginScope>,
     callers: BTreeMap<String, PluginCaller>,
+    runtime_owned: bool,
 }
 
 /* === Enums === */
@@ -157,9 +161,26 @@ impl harmos_runtime::Operation for ControlDeclaration {
         self, ctx: harmos_runtime::Context<'_, Self>,
     ) -> std::result::Result<harmos_runtime::operations::Response<String>, Self::Error> {
         let resources = ctx.resource::<Owner>();
-        resources.prepared.fetch_add(1, Ordering::SeqCst);
-        let result: ::core::result::Result<String, Self::Error> = async move { Ok(self.value) }.await;
+        let attempt = resources.prepared.fetch_add(1, Ordering::SeqCst);
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            if self.value == "block" {
+                resources.started.notify_one();
+                std::future::pending::<()>().await;
+            }
+            if self.value == "retry" && attempt == 0 {
+                return Err(super::Failed::Scripted(harmos_runtime::operations::FailureKind::Transient));
+            }
+            Ok(self.value)
+        }
+        .await;
         result.map(::core::convert::Into::into)
+    }
+
+    fn classify(error: &Self::Error) -> harmos_runtime::operations::FailureKind {
+        match error {
+            super::Failed::Scripted(kind) => *kind,
+            _ => harmos_runtime::operations::FailureKind::Permanent,
+        }
     }
 }
 
@@ -191,10 +212,27 @@ impl PluginLifecycle for Host {
         if definition.id == "provider" {
             let scope = endpoint.scope().unwrap();
             self.scope = Some(scope.clone());
-            resources.registration = Some(
-                self.operations
-                    .stage_plugin(scope, |bindings| bindings.operations::<crate::operations::Single<ControlDeclaration>>(Lanes::Open))?,
-            );
+            resources.registration = Some(self.operations.stage_plugin(scope, |bindings| {
+                if !self.runtime_owned {
+                    return bindings.operations::<crate::operations::Single<ControlDeclaration>>(Lanes::Open);
+                }
+                let mut batch = harmos_sdk::__private::RegistrationBatch::new().operation::<ControlDeclaration>();
+                let factory = batch.operations.pop().unwrap();
+                let binding = harmos_runtime::operations::EncodedBinding::new(
+                    WireDeclaration::of::<ControlDeclaration>().contract().unwrap(),
+                    Text::decoding_memory,
+                    move |resources, payload| factory.prepare_encoded(resources, payload).map(|prepared| prepared.instance),
+                );
+                bindings.encoded(binding, Lanes::Open)?;
+                let mut batch = harmos_sdk::__private::RegistrationBatch::new().operation::<ControlDeclaration>();
+                let factory = batch.operations.pop().unwrap();
+                let binding = harmos_runtime::operations::EncodedBinding::new(
+                    runtime_defined::safe_contract(),
+                    Text::decoding_memory,
+                    move |resources, payload| factory.prepare_encoded(resources, payload).map(|prepared| prepared.instance),
+                );
+                bindings.encoded(binding, Lanes::Open)
+            })?);
             assert!(matches!(
                 self.operations.submit::<ControlDeclaration>(ControlDeclaration::from("staged")),
                 Err(Error::NotReady { .. })
@@ -291,6 +329,7 @@ async fn host_requirements_route() {
         owner: host_owner,
         scope: None,
         callers: BTreeMap::new(),
+        runtime_owned: false,
     };
 
     // A Requirement the Host Does Not Provide Exactly Is Refused Before Preparation
@@ -337,6 +376,7 @@ async fn host_visibility_enforced() {
         owner: host_owner,
         scope: None,
         callers: BTreeMap::new(),
+        runtime_owned: false,
     };
     let mut manager = PluginManager::new(definitions("first")).unwrap();
     manager.initialize(&mut host).await.unwrap();
