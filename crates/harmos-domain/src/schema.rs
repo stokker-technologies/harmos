@@ -12,6 +12,7 @@
 pub mod declaration;
 pub mod graph;
 pub mod identity;
+pub mod json;
 mod payload;
 
 /* === Re-Exports === */
@@ -112,6 +113,19 @@ impl<T: Described> Described for Option<T> {
 }
 
 /* === Public Functions === */
+
+// One Name-Derived Tag Rule For Rust Authoring And Runtime Language Bindings.
+pub const fn field_tag(name: &str) -> u32 {
+    let bytes = name.as_bytes();
+    let mut hash = 2_166_136_261_u32;
+    let mut index = 0;
+    while index < bytes.len() {
+        hash = (hash ^ bytes[index] as u32).wrapping_mul(16_777_619);
+        index += 1;
+    }
+    let tag = 1 + hash % (536_870_911 - 1_000);
+    if tag >= 19_000 { tag + 1_000 } else { tag }
+}
 
 /* === Private Functions === */
 

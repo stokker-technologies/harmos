@@ -145,6 +145,9 @@ and `Builtins::catalog()` are available without runtime dependencies.
 Focused fixes, API feedback and useful examples are welcome. Read
 [Contributing](CONTRIBUTING.md) for setup, validation and pull requests.
 
+This branch also carries an unpublished [C++ sidecar prototype](docs/sidecar-cpp-prototype.md)
+for owner assessment, with a simulated instrument and a focused native host story.
+
 ## About
 
 Harmos is developed by [Stokker Technologies](https://stokkertechnologies.ch)

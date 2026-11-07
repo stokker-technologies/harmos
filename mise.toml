@@ -13,6 +13,9 @@ node = "26.12.1"
 python = "3.15.2"
 rust = { version = "1.99.1", components = "clippy,rustfmt,llvm-tools", profile = "minimal", targets = "wasm32-unknown-unknown,wasm32-wasip2" }
 
+# Native SDK Prototype
+cmake = "4.1.2"
+
 # Package Managers
 uv = "0.13.6"
 
@@ -177,6 +180,16 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.cargo -- --locked --profile test --workspace --examples --benches --all-features",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.cargo -- --locked --profile test --manifest-path examples/schematic/Cargo.toml --workspace --all-targets",
 ]
+
+[tasks."build:cpp"]
+description = "Build the C++ Sidecar Prototype"
+depends = ["prepare:tools"]
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.cpp"
+
+[tasks."test:rust:cpp"]
+description = "Build and Prove the C++ Sidecar Prototype"
+depends = ["prepare:tools"]
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.cpp --test"
 
 [tasks."build:rust:focused"]
 description = "Compile and Run a Focused Rust Selection"
