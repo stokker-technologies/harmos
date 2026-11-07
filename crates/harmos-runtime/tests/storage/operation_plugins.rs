@@ -38,8 +38,8 @@ use harmos_runtime::storage::query::transform::{
     aggregate::{Aggregate as AggregateTransform, Measure},
 };
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
-use harmos_runtime::storage::writes::WriteReceipt;
 use harmos_runtime::{Error, Identifier, Result};
+use harmos_storage::writes::WriteReceipt;
 
 /* === Constants === */
 

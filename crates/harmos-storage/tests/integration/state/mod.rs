@@ -10,6 +10,8 @@
 /* === Modules === */
 
 mod file;
+mod index_open_cancellation_preserves_the_durable_journal;
+mod seven_day_recovery_seeks_and_compacts_without_rescanning_prefixes;
 
 /* === Re-Exports === */
 
