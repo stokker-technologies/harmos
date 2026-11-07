@@ -48,7 +48,7 @@ pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result
         bytes: NonZeroUsize::new(4096).unwrap(),
     };
     let request = AnalyzeSchematic { schematic: schematic.clone() };
-    let mut analysis = runtime.operations.download::<AnalyzeSchematic>(request.clone(), settings)?;
+    let mut analysis = runtime.operations.download::<AnalyzeSchematic>(request, settings)?;
     while let Some(finding) = analysis.next().await? {
         println!("Analysis: {}", finding.text);
     }
