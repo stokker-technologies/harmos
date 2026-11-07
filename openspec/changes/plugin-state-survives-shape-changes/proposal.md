@@ -15,6 +15,7 @@ Plugin changes and removal must never invalidate a storage root. Historical plug
 - `plugin-state-history`: Definition-bound plugin history independent of installed plugins.
 
 ### Modified Capabilities
+- `data-shape-identity`: Scope incompatible-definition root refusal to host built-in state types.
 
 ## Impact
 

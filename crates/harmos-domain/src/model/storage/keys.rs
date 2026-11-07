@@ -68,11 +68,11 @@ pub enum PayloadEncoding {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ObjectRetention {
-    All,
     UntilReleased,
 
     Latest,
     Versions(NonZeroUsize),
+    All,
 }
 
 /* === Traits === */

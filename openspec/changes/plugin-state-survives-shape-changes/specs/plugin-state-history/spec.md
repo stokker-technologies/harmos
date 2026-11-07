@@ -1,3 +1,7 @@
+## Purpose
+
+Keep plugin-owned persistent history readable with its written definitions across plugin shape changes and absence, while preserving host state compatibility checks.
+
 ## ADDED Requirements
 
 ### Requirement: Plugin History Retains Its Written Definition
