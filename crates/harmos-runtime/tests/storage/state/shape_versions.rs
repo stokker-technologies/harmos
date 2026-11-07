@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex};
 
 // Local Imports
 use harmos_runtime::state::{CatalogCodec, DecodeError, Position, SnapshotPolicy, Transaction};
-use harmos_runtime::storage::{JsonStorage, JsonStorageSettings, StorageManager};
+use harmos_runtime::storage::{JsonStorage, JsonStorageSettings, ObjectCatalog, ObjectRetention, StorageManager, StoredObject};
 use harmos_runtime::{Application, Identified, Lifecycle, Runtime, Setup, Startup};
 use serde::{Deserialize, Serialize};
 
@@ -67,6 +67,20 @@ struct Sample {
     value: u64,
 }
 
+#[harmos_runtime::message]
+#[derive(Serialize, Deserialize)]
+struct PluginObject {
+    id: String,
+    value: u64,
+}
+
+#[harmos_runtime::message]
+#[derive(Serialize, Deserialize)]
+struct NewPluginObject {
+    id: String,
+    value: String,
+}
+
 /* === Enums === */
 
 #[harmos_runtime::transactions(state = i64, error = std::convert::Infallible)]
@@ -98,9 +112,45 @@ enum Lanes {
     Open,
 }
 
+#[harmos_domain::catalog]
+enum PluginObjects {
+    Object(PluginObject),
+}
+
+#[harmos_domain::catalog]
+enum NewPluginObjects {
+    Object(NewPluginObject),
+}
+
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Identified for PluginObject {
+    const ID: &'static str = "plugin.document";
+}
+
+impl StoredObject for PluginObject {
+    type Key = String;
+    const RETENTION: ObjectRetention = ObjectRetention::Latest;
+
+    fn key(&self) -> &String {
+        &self.id
+    }
+}
+
+impl Identified for NewPluginObject {
+    const ID: &'static str = "plugin.document";
+}
+
+impl StoredObject for NewPluginObject {
+    type Key = String;
+    const RETENTION: ObjectRetention = ObjectRetention::Latest;
+
+    fn key(&self) -> &String {
+        &self.id
+    }
+}
 
 impl harmos_runtime::storage::StreamConsumer<Model<false>> for Recording {
     fn resume(&self) -> harmos_runtime::storage::Cursor {
@@ -198,7 +248,7 @@ fn managed(snapshot: bool) -> harmos_runtime::config::ManagedStorageSettings {
     }
 }
 
-async fn original(storage: &StorageManager, snapshot: bool) -> Runtime<Model<false>> {
+async fn original<C>(storage: &StorageManager<C>, snapshot: bool) -> Runtime<Model<false>> {
     Runtime::<Model<false>>::launch_with(0, (), |setup| {
         setup
             .settings()
@@ -212,7 +262,159 @@ async fn original(storage: &StorageManager, snapshot: bool) -> Runtime<Model<fal
     .unwrap()
 }
 
+fn plugin_storage<C: ObjectCatalog>(root: &Path) -> StorageManager<C> {
+    let primary = JsonStorage::new(
+        JsonStorageSettings {
+            root: root.to_owned(),
+            max_entry_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
+        },
+        crate::storage::history(),
+    );
+    StorageManager::new(primary.into_backends(crate::storage::state_settings()), crate::storage::config()).unwrap()
+}
+
+async fn plugin_runtime<C>(storage: &StorageManager<C>, snapshot: bool) -> Runtime<Model<false>> {
+    let mut settings = managed(snapshot);
+    settings.journal_tail = 16;
+    Runtime::<Model<false>>::launch_with(0, (), |setup| {
+        setup.settings().storage(storage).register(Changes::catalog()).register(Facts::catalog()).managed_storage(settings);
+    })
+    .await
+    .unwrap()
+}
+
+async fn historical_plugin_values<C>(storage: &StorageManager<C>, schema: &harmos_runtime::storage::SchemaKey) {
+    use arrow_array::{StructArray, UInt64Array};
+    use harmos_runtime::storage::query::{ObjectSelection, ObjectVersions, QueryArrow, RecordSelection, RowSlice, Source};
+
+    for source in [
+        Source::Records(RecordSelection {
+            schema: schema.clone(),
+            scope: None,
+            item: None,
+            source_start: None,
+            source_end: None,
+        }),
+        Source::Objects(ObjectSelection {
+            schema: Some(schema.clone()),
+            key: None,
+            versions: ObjectVersions::Revisions,
+        }),
+    ] {
+        let mut reader = storage
+            .query(harmos_runtime::storage::Query {
+                at: storage.cursor_saved(),
+                source,
+                transforms: vec![],
+                slice: RowSlice::default(),
+            })
+            .await
+            .unwrap();
+        let mut values = Vec::new();
+        while let Some(output) = reader.next().await.unwrap() {
+            if let QueryArrow::Batch(batch) = output {
+                let payload = batch.as_record_batch().column_by_name("payload").unwrap().as_any().downcast_ref::<StructArray>().unwrap();
+                let column = payload.column_by_name("value").unwrap().as_any().downcast_ref::<UInt64Array>().unwrap();
+                values.extend(column.values().iter().copied());
+            }
+        }
+        assert_eq!(values, [41]);
+    }
+}
+
 /* === Tests === */
+
+#[tokio::test]
+async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
+    use harmos_runtime::schema::Described;
+    use harmos_runtime::state::{FactSource, SystemFact};
+    use harmos_runtime::storage::{ObjectVersion, RecordInput};
+    use harmos_runtime::{Identifier, Message};
+
+    for snapshot in [false, true] {
+        // Write Plugin History And Host State.
+        let root = tempfile::tempdir().unwrap();
+        let disk = plugin_storage::<PluginObjects>(root.path());
+        let runtime = plugin_runtime(&disk, snapshot).await;
+        let value = PluginObject { id: "document".into(), value: 41 };
+        let receipt = disk.write_object(&value).await.unwrap();
+        let encoded = PluginObjects::encode(&value, NonZeroUsize::new(4096).unwrap()).unwrap();
+        let schema = encoded.schema;
+        disk.write_records(vec![RecordInput {
+            schema: schema.clone(),
+            scope: None,
+            item: Identifier::new("plugin-row").unwrap(),
+            source: None,
+            source_time: None,
+            payload: Message::encode(&value),
+        }])
+        .await
+        .unwrap();
+        disk.flush().await.unwrap();
+        let old = SystemFact::encode(FactSource::Sidecar("probe".into()), "reading".into(), &value).unwrap();
+        runtime.records.publish_system(old.clone()).await.unwrap();
+        runtime.state.commit(Add { amount: 7 }).await.unwrap();
+        runtime.shutdown().await.unwrap();
+
+        // Reopen With The Changed Plugin Definition And Write Current State.
+        let disk = plugin_storage::<NewPluginObjects>(root.path());
+        let runtime = plugin_runtime(&disk, snapshot).await;
+        let history = runtime.state.query::<SystemFact>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(history[0].value, old);
+        let written = history[0].value.schema().unwrap();
+        let graph = harmos_runtime::schema::graph::Schema::from_declaration(PluginObject::DEFINITION, &Default::default()).unwrap();
+        assert_eq!(written, &graph);
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&history[0].value.payload).unwrap()["value"], 41);
+        let current = NewPluginObject {
+            id: value.id.clone(),
+            value: "current".into(),
+        };
+        assert_ne!(PluginObject::definition().1, NewPluginObject::definition().1);
+        // A Typed Read Must Never Interpret Old Bytes As The New Definition.
+        assert!(disk.read_object::<NewPluginObject>(&value.id, ObjectVersion::Exact(receipt.version)).await.is_err());
+        disk.write_object(&current).await.unwrap();
+        disk.write_object(&NewPluginObject {
+            id: value.id.clone(),
+            value: "latest".into(),
+        })
+        .await
+        .unwrap();
+        disk.flush().await.unwrap();
+        assert_eq!(disk.read_object::<NewPluginObject>(&value.id, ObjectVersion::Latest).await.unwrap().unwrap().value.value, "latest");
+        let next = SystemFact::encode(FactSource::Sidecar("probe".into()), "reading".into(), &current).unwrap();
+        assert_ne!(old.identify().1, next.identify().1);
+        runtime.records.publish_system(next.clone()).await.unwrap();
+        historical_plugin_values(&disk, &schema).await;
+        runtime.shutdown().await.unwrap();
+
+        // Reopen Without Any Plugin Object Catalog Or Installed Plugin.
+        let disk = plugin_storage::<()>(root.path());
+        let runtime = plugin_runtime(&disk, snapshot).await;
+        historical_plugin_values(&disk, &schema).await;
+        assert_eq!(disk.lookup_schema(&schema).await.unwrap().schema.as_ref(), &graph);
+        let history = runtime.state.query::<SystemFact>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(history.into_iter().map(|entry| entry.value).collect::<Vec<_>>(), [old, next]);
+        assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 7);
+        runtime.shutdown().await.unwrap();
+
+        // The Same Root Still Refuses A Changed Host Record Definition.
+        let disk = plugin_storage::<()>(root.path());
+        let result = Runtime::<Model<true>>::launch_with(0, (), |setup| {
+            setup.settings().storage(&disk).register(Changes::catalog()).register(NewFacts::catalog()).managed_storage(managed(snapshot));
+        })
+        .await;
+        let error = match result {
+            Ok(_) => panic!("changed host record was accepted"),
+            Err(error) => crate::storage::state::incompatible(error),
+        };
+        assert!(error.to_string().contains(Observed::ID), "{error}");
+        assert!(error.to_string().contains("fresh"), "{error}");
+        let disk = plugin_storage::<()>(root.path());
+        let runtime = plugin_runtime(&disk, snapshot).await;
+        historical_plugin_values(&disk, &schema).await;
+        runtime.shutdown().await.unwrap();
+    }
+}
 
 #[tokio::test]
 async fn unchanged_shapes_restart_on_one_root() {

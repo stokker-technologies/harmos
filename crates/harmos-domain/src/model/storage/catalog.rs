@@ -244,6 +244,17 @@ pub fn definition<C: ObjectCatalog>(key: &SchemaKey) -> Result<ObjectDefinition>
     found.ok_or_else(|| invalid("object schema is absent from the catalog"))
 }
 
+pub fn retention<C: ObjectCatalog>(key: &SchemaKey) -> Result<ObjectRetention> {
+    let mut retention = ObjectRetention::All;
+    C::definitions().try_for_each(|entry| {
+        if entry.schema()? == *key {
+            retention = entry.retention();
+        }
+        Ok::<(), Error>(())
+    })?;
+    Ok(retention)
+}
+
 pub fn object_schema<T: StoredObject>() -> Result<SchemaKey> {
     let (id, version) = T::definition();
     if id.as_str().len() > MAX_IDENTITY_BYTES {

@@ -99,12 +99,21 @@ impl Log {
 
     pub fn objects(&self, snapshot: &BackendSnapshot, selection: &ObjectSelection, page: ScanPage) -> Result<Vec<ObjectEntry>> {
         let generation = self.pin(snapshot)?;
-        let reclaimed = self.pruned.iter().any(|(position, pruned)| *pruned <= generation && *position > page.after);
-        if selection.versions == ObjectVersions::Revisions && reclaimed {
-            return Err(crate::Error::Gap {
-                requested: page.after + 1,
-                available: self.pruned_through + 1,
-            });
+        if selection.versions == ObjectVersions::Revisions && page.after < snapshot.at.sequence {
+            for (position, pruned) in
+                self.pruned.range((std::ops::Bound::Excluded(page.after), std::ops::Bound::Included(snapshot.at.sequence)))
+            {
+                if *pruned > generation {
+                    continue;
+                }
+                let row = self.one::<ObjectEntry>(*position)?.ok_or_else(|| format::invalid("pruned object is missing"))?;
+                if crate::selection::Entry::matches(&row, selection) {
+                    return Err(crate::Error::Gap {
+                        requested: page.after + 1,
+                        available: self.pruned_through + 1,
+                    });
+                }
+            }
         }
         self.scan_read(snapshot.at.sequence, generation, page, |row: &ObjectEntry| {
             if !crate::selection::Entry::matches(row, selection) {
@@ -181,6 +190,9 @@ impl Log {
                 return Ok(true);
             }
             let retention = retention(&row.value.schema)?;
+            if retention == ObjectRetention::All {
+                return Ok(true);
+            }
             if retention == ObjectRetention::UntilReleased {
                 let bytes = serde_json::to_vec(&(&row.value.schema, &row.value.item)).map_err(format::json)?;
                 let key = format::hex(&Sha256::digest(bytes));
