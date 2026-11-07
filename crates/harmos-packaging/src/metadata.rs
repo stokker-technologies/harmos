@@ -183,6 +183,18 @@ impl Inputs {
         })
     }
 
+    pub(super) fn with(mut self, policy: &crate::config::DevSettings) -> Self {
+        for path in &policy.watch {
+            if path.is_file() {
+                self.files.insert(path.clone());
+            } else {
+                self.roots.insert(path.clone());
+            }
+        }
+        self.excluded.extend(policy.ignore.iter().cloned());
+        self
+    }
+
     pub(super) fn relevant(&self, path: &Path) -> bool {
         if self.excluded.iter().any(|root| path.starts_with(root) || staging_sibling(root, path)) {
             return false;
@@ -243,6 +255,25 @@ mod tests {
         assert!(inputs.relevant(&root.join("Cargo.toml")));
         assert!(inputs.relevant(&PathBuf::from("dependency/src/lib.rs")));
         assert!(!inputs.relevant(&PathBuf::from("unrelated/src/lib.rs")));
+    }
+
+    #[test]
+    fn extra_paths_watched() {
+        let root = PathBuf::from("project");
+        let inputs = Inputs {
+            roots: BTreeSet::from([root.clone()]),
+            files: BTreeSet::new(),
+            excluded: BTreeSet::new(),
+        };
+        let policy = crate::config::DevSettings {
+            watch: vec![PathBuf::from("shared")],
+            ignore: vec![root.join("fixtures")],
+            ..Default::default()
+        };
+        let inputs = inputs.with(&policy);
+        assert!(inputs.relevant(&PathBuf::from("shared/model.rs")));
+        assert!(!inputs.relevant(&root.join("fixtures/large.bin")));
+        assert!(inputs.relevant(&root.join("src/lib.rs")));
     }
 
     #[test]

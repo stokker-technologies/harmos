@@ -51,6 +51,7 @@ pub fn run(arguments: Arguments, cancellation: &harmos_packaging::BuildCancellat
     let settings = arguments.build.settings(harmos_packaging::config::BuildBackend::Guest);
     let policy = harmos_packaging::config::DevSettings {
         debounce: std::time::Duration::from_millis(arguments.debounce_ms),
+        ..Default::default()
     };
     harmos_packaging::dev(&settings, policy, cancellation, |event| crate::output::dev(event, json))
 }

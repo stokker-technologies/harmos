@@ -60,7 +60,7 @@ pub fn dev(
     if policy.debounce.is_zero() || Instant::now().checked_add(policy.debounce).is_none() {
         return Err(Error::Settings("development debounce must be positive and representable".into()));
     }
-    let inputs = Arc::new(Mutex::new(Inputs::fallback(settings)?));
+    let inputs = Arc::new(Mutex::new(Inputs::fallback(settings)?.with(&policy)));
     let failure = Arc::new(Mutex::new(None));
     let monitored = inputs.clone();
     let fault = failure.clone();
@@ -94,8 +94,8 @@ pub fn dev(
         }
         attempt = attempt.checked_add(1).ok_or_else(|| Error::Settings("development attempt counter exhausted".into()))?;
         report(DevEvent::Started { attempt })?;
-        let resolved =
-            Metadata::read(settings, cancellation).and_then(|metadata| metadata.inputs(settings).map(|inputs| (metadata, inputs)));
+        let resolved = Metadata::read(settings, cancellation)
+            .and_then(|metadata| metadata.inputs(settings).map(|inputs| (metadata, inputs.with(&policy))));
         let result = match resolved {
             Ok((metadata, resolved)) => {
                 configure(&mut watcher, &mut watched, &resolved)?;
