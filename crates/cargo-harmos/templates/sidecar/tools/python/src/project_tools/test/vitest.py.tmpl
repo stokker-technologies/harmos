@@ -10,7 +10,7 @@
 
 The lane passes its whole command after `--`. Two placeholders are expanded in every
 argument: `{junit}` becomes the JUnit report path the runner reads, `{timeout_ms}` the lane
-deadline per story in milliseconds, for example:
+per-story hang guard in milliseconds, for example:
 
     -- pnpm exec vitest run --reporter=junit --outputFile={junit} --testTimeout={timeout_ms}
 """

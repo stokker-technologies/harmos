@@ -53,18 +53,6 @@ class Case:
     outcome: str
     seconds: float
 
-    @property
-    def file(self) -> str:
-        if self.language != "rust":
-            return self.suite
-        module = self.name.rpartition("::")[0]
-        binary = self.suite.partition("::")[2] or "lib"
-        return f"{binary}::{module}" if module else binary
-
-    @property
-    def story(self) -> str:
-        return self.name.rpartition("::")[2] if self.language == "rust" else self.name
-
 
 # === Public Functions === #
 

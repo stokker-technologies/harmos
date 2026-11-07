@@ -33,7 +33,8 @@ the override with `Remove-Item Env:RUSTC_WRAPPER`.
 ## Focused Integration Tests
 
 The integration task accepts a nextest filter and repeat count while retaining
-the configured per-test deadlines. It consumes the existing test archive and fixtures:
+the configured per-test hang guards from `[conventions.testing.deadlines]` in
+`tools/project.toml`. Completed story durations remain measurements. It consumes the existing test archive and fixtures:
 
 ```sh
 mise run test:rust:integration --filter 'package(=harmos-runtime) & test(=sidecar::observer_demand::demand_survives_reload)' --stress-count 50

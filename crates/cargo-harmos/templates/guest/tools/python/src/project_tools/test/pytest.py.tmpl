@@ -57,7 +57,7 @@ def run(
     junit: Path,
     arguments: Sequence[str],
 ) -> list[str]:
-    """One pytest lane whose per-story deadline is the lane maximum."""
+    """One pytest lane with a terminating per-story hang guard."""
     if not (project / suite).is_dir():
         raise policy.TestError(f"missing Python suite {project / suite}")
     return [
