@@ -570,7 +570,7 @@ impl Supervisor {
         let first = next.checked_add(1).ok_or(PublicationError::SequenceExhausted { stream: S::ID })?;
         *next = first;
         let published_unix_micros = stamps[0];
-        let head = crate::wire::publication_encoded_len(S::ID, S::VERSION, first, rows[0].len(), published_unix_micros, context);
+        let head = crate::wire::publication_encoded_len(S::ID, first, rows[0].len(), published_unix_micros, context);
         let encoded = |count: usize, following: usize| head.saturating_add(crate::wire::varint_len(count as u64)).saturating_add(following);
         if !fits(encoded(0, 0)) {
             return Err(PublicationError::Oversized {
@@ -605,7 +605,6 @@ impl Supervisor {
         let taken = deltas.len() + 1;
         send(harmos_operations::streams::Publish {
             stream: S::ID.to_owned(),
-            schema: S::VERSION,
             sequence: Some(first),
             published_unix_micros,
             context: context.map(str::to_owned),
@@ -676,7 +675,6 @@ mod tests {
     impl crate::StreamSpec for Samples {
         type Row = FileBatch;
         const ID: &'static str = "context.samples";
-        const VERSION: u32 = 1;
         const WINDOW: usize = 8;
     }
 
@@ -729,7 +727,7 @@ mod tests {
         let empty = WireChildCall::payload_encoded_len(&format!("host.{}", Publish::ID), u64::MAX, 0, false, &values, None).unwrap();
         let fits = |bytes: usize| {
             let row = FileBatch { offset: 0, bytes: vec![0; bytes] };
-            let body = crate::wire::publication_encoded_len("context.samples", 1, 1, row.encoded_size(), None, None) + 1;
+            let body = crate::wire::publication_encoded_len("context.samples", 1, row.encoded_size(), None, None) + 1;
             Frame::child_encoded_from_empty(empty, body) <= Frame::LIMIT
         };
         let mut low = 0;

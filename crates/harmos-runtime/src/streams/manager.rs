@@ -216,6 +216,10 @@ impl<A: Application> StreamManager<A> {
         self.windows.ingest.wake();
     }
 
+    pub(crate) fn drained(&self, cursor: u64) {
+        self.windows.drained(cursor);
+    }
+
     pub(crate) fn delivery(&self) -> watch::Receiver<()> {
         self.windows.delivery()
     }

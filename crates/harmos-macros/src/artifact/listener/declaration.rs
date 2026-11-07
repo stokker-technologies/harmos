@@ -121,7 +121,6 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
             let row = quote!(<#stream as #harmos::StreamSpec>::Row);
             let source = quote!(#harmos::listeners::SourceDeclaration::Stream {
                 id: <#stream as #harmos::StreamSpec>::ID,
-                schema_ordinal: <#stream as #harmos::StreamSpec>::VERSION,
                 row: <#row as #harmos::schema::Described>::DEFINITION,
             });
             (source, row)

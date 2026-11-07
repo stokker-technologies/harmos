@@ -98,7 +98,6 @@ impl harmos::Operation for AnalyzeExchange {
             // Publish Analysis Progress
             let request = harmos::builtins::streams::Publish {
                 stream: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::ID.to_owned(),
-                schema: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::VERSION,
                 sequence: Some(sequence),
                 published_unix_micros: None,
                 context: None,

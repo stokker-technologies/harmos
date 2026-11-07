@@ -132,7 +132,6 @@ pub enum Operations {
 impl StreamSpec for Echoed {
     type Row = Self;
     const ID: &'static str = "progress";
-    const VERSION: u32 = 1;
     const WINDOW: usize = 4;
 }
 

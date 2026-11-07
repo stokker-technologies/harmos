@@ -267,7 +267,7 @@ impl<H> ObserverContext<'_, H> {
         H: ObserverPublisher<V>,
     {
         if let Some(stream) = H::STREAM {
-            self.check_stream(stream.id, stream.schema)?;
+            self.check_stream(stream.id)?;
         }
         self.host.publish(self, value).await
     }
@@ -277,7 +277,7 @@ impl<H> ObserverContext<'_, H> {
         S::Row: Sync,
         H: ObserverStreamPublisher<S>,
     {
-        self.check_stream(S::ID, S::VERSION)?;
+        self.check_stream(S::ID)?;
         self.host.publish_on(self, row).await
     }
 
@@ -289,12 +289,8 @@ impl<H> ObserverContext<'_, H> {
         harmos_sdk::operations::Invocation::new(self.host.clone(), request)
     }
 
-    fn check_stream(&self, id: &'static str, version: u32) -> Result<(), PublicationError> {
-        if self.streams.iter().any(|entry| entry.id == id && entry.schema == version) {
-            Ok(())
-        } else {
-            Err(PublicationError::Undeclared { stream: id })
-        }
+    fn check_stream(&self, id: &'static str) -> Result<(), PublicationError> {
+        if self.streams.iter().any(|entry| entry.id == id) { Ok(()) } else { Err(PublicationError::Undeclared { stream: id }) }
     }
 }
 
@@ -567,9 +563,7 @@ fn observed_result<E: std::error::Error + 'static>(
 }
 
 fn matches_output(output: &publications::Entry, grants: &[publications::Entry]) -> bool {
-    grants
-        .iter()
-        .any(|grant| grant.id == output.id && grant.schema == output.schema && grant.window == output.window && grant.row == output.row)
+    grants.iter().any(|grant| grant.id == output.id && grant.window == output.window && grant.row == output.row)
 }
 
 fn advance_tick(tick: &mut Tick, elapsed: Duration, identity: Identity) -> Result<(), ObserverError> {

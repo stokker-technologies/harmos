@@ -56,7 +56,6 @@ where
     let published = host.resolve::<Publish, ()>(
         Publish {
             stream: S::ID.to_owned(),
-            schema: S::VERSION,
             sequence: None,
             published_unix_micros: None,
             context: None,

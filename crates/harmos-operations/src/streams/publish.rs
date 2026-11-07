@@ -32,7 +32,6 @@ harmos_domain::builtin_payload! {
         codec = manual, visibility = Public, resources = [PublicationAccess])]
     Publish,
     stream: String => (1, Kind::String, Required),
-    schema: u32 => (2, Kind::U32, Required),
     sequence: Option<u64> => (3, Kind::U64, Optional),
     published_unix_micros: Option<i64> => (4, Kind::I64, Optional),
     context: Option<String> => (5, Kind::String, Optional),
@@ -59,7 +58,6 @@ impl crate::Operation for Publish {
 
         let publication = harmos_sdk::operations::publication::Publication {
             stream: &self.stream,
-            schema: self.schema,
             sequence: self.sequence,
             published_unix_micros: self.published_unix_micros,
             context: &mut self.context,

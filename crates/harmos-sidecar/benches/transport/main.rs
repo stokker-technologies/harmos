@@ -105,7 +105,6 @@ impl Receiver {
 impl Reception {
     fn accept(&mut self, publication: &Publication, payload_bytes: u32) {
         assert_eq!(publication.stream, Sample::ID);
-        assert_eq!(publication.schema, Sample::VERSION);
         assert!(publication.sequence > self.sequence, "publication sequence repeated or moved backward");
         self.sequence = publication.sequence;
         if self.decode {
@@ -352,7 +351,6 @@ async fn throughput_case(
                     for (sequence, (payload, published_unix_micros)) in (first..).zip(rows) {
                         let publication = harmos_sidecar::Publication {
                             stream: row.stream.clone(),
-                            schema: row.schema,
                             sequence,
                             published_unix_micros,
                             context: row.context.clone(),

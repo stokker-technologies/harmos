@@ -80,7 +80,7 @@ async fn capture_survives_reload() {
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
     fixture.call::<PublishPulseDeclaration>(PublishPulseDeclaration { sample: 41 }).await.unwrap();
-    let stream = fixture.runtime.streams.publication("meter.pulse", 1).unwrap();
+    let stream = fixture.runtime.streams.current_publication("meter.pulse").unwrap();
     assert_eq!(stream.definition().owner(), Some("meter"));
     assert!(!stream.definition().schema().unwrap().root().unwrap().fields().is_empty());
 
@@ -135,12 +135,12 @@ async fn demand_survives_reload() {
             result = &mut initializing => panic!("initialization completed before gate release: {result:?}"),
             _ = gate.started.notified() => {}
         }
-        assert!(streams.publication("ticking.pulse", 1).is_none(), "blocked initialization cannot expose staged streams");
+        assert!(streams.current_publication("ticking.pulse").is_none(), "blocked initialization cannot expose staged streams");
         gate.release.notify_one();
         initializing.await.unwrap();
     }
     ready(fixture.ready().clone()).await;
-    let stream = streams.publication("ticking.pulse", 1).unwrap();
+    let stream = streams.current_publication("ticking.pulse").unwrap();
     let mut samples = stream.watch();
     row(&mut samples).await;
     let original = observers(&fixture.runtime);
@@ -182,7 +182,7 @@ async fn demand_survives_reload() {
     let replacement = observers(&fixture.runtime);
     assert_eq!(replacement.len(), 1);
     assert!(replacement.keys().all(|key| !original.contains_key(key)), "replacement keeps demand but gets a fresh generation");
-    let mut after_restart = streams.publication("ticking.pulse", 1).unwrap().watch();
+    let mut after_restart = streams.current_publication("ticking.pulse").unwrap().watch();
     row(&mut after_restart).await;
     drop(held);
     fixture.shutdown().await.unwrap();
@@ -214,7 +214,7 @@ async fn batches_keep_order() {
     fixture.shutdown().await.unwrap();
 
     let rows = |id: &str| {
-        let stream = fixture.runtime.streams.publication(id, 1).unwrap();
+        let stream = fixture.runtime.streams.current_publication(id).unwrap();
         async move {
             stream
                 .query(..)
@@ -229,7 +229,7 @@ async fn batches_keep_order() {
     assert_eq!(rows("batches.rows").await, vec![(1, a()), (2, a()), (3, a()), (4, None), (5, b()), (6, b())]);
     assert_eq!(rows("batches.raw").await, vec![(1, None), (2, None), (3, None)]);
     let stamps = |id: &str| {
-        let stream = fixture.runtime.streams.publication(id, 1).unwrap();
+        let stream = fixture.runtime.streams.current_publication(id).unwrap();
         async move {
             stream
                 .query(..)
@@ -337,7 +337,7 @@ async fn projection_preserves_evidence() {
     let projected: Vec<_> = fixture.runtime.streams.query::<support::Pulse>(..).await.unwrap().map(|row| row.value.sample).collect();
     assert_eq!(projected, [10, 20, 11]);
     for (id, expected) in [("twins.left", vec![10, 11]), ("twins.right", vec![20])] {
-        let source = fixture.runtime.streams.publication(id, 1).unwrap();
+        let source = fixture.runtime.streams.current_publication(id).unwrap();
         assert_eq!(source.definition().owner(), Some("twins"));
         let retained: Vec<_> =
             source.query(..).await.unwrap().map(|row| support::Pulse::decode(row.value.payload.as_slice()).unwrap().sample).collect();
@@ -365,8 +365,8 @@ async fn shared_row_independence() {
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
     let runtime = &fixture.runtime;
-    let left = runtime.streams.publication("twins.left", 1).unwrap();
-    let right = runtime.streams.publication("twins.right", 1).unwrap();
+    let left = runtime.streams.current_publication("twins.left").unwrap();
+    let right = runtime.streams.current_publication("twins.right").unwrap();
     assert_eq!(left.definition().schema(), right.definition().schema());
     assert_eq!(counts.started[0].load(SeqCst), 0);
     assert_eq!(counts.started[1].load(SeqCst), 0);
@@ -529,8 +529,8 @@ async fn shutdown_signals_siblings() {
     ready(fixture.ready().clone()).await;
     let runtime = &fixture.runtime;
     assert_eq!(observer_definitions(runtime).len(), 2);
-    let mut left = runtime.streams.publication("twins.left", 1).unwrap().watch();
-    let mut right = runtime.streams.publication("twins.right", 1).unwrap().watch();
+    let mut left = runtime.streams.current_publication("twins.left").unwrap().watch();
+    let mut right = runtime.streams.current_publication("twins.right").unwrap().watch();
     row(&mut left).await;
     row(&mut right).await;
     let mut statuses = runtime.operations.watch_residents();
@@ -572,7 +572,7 @@ async fn stop_preserves_failure() {
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
     let runtime = &fixture.runtime;
-    let mut left = runtime.streams.publication("twins.left", 1).unwrap().watch();
+    let mut left = runtime.streams.current_publication("twins.left").unwrap().watch();
     row(&mut left).await;
     let error = fixture.runtime.operations.stop_observers().await.expect_err("native cleanup failure reaches the manager");
     assert_eq!(counts.stop_attempts.load(SeqCst), 1);
@@ -626,7 +626,7 @@ async fn dropped_manager_recovery() {
         fixture.publication().await.unwrap();
         fixture.initialize().await.unwrap();
         ready(fixture.ready().clone()).await;
-        let mut left = fixture.runtime.streams.publication("twins.left", 1).unwrap().watch();
+        let mut left = fixture.runtime.streams.current_publication("twins.left").unwrap().watch();
         row(&mut left).await;
         let (runtime, cleanup) = fixture.drop_manager();
         cleanup.join().await.expect_err("failed original observer cleanup is diagnosable after manager destruction");

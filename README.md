@@ -42,7 +42,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **Operations and Services** [`runtime`]: Define requests and streams with explicit timeout, retry and cancellation policies, including typed final responses from cooperative cancellation; keep resources with the work that owns them.
 - **Streams and Storage** [`runtime`]: Capture bounded live measurements and supply adapters for history, snapshots and streams.
 - **Crash Recovery** [`runtime`]: Reconstruct state and undo history according to your storage adapter's durability policy.
-- **Plugin Lifecycle** [`plugin`]: Register typed plugin contracts and manage activation, routing and reload.
+- **Plugin Lifecycle** [`plugin`]: Register typed plugin contracts and manage activation, routing and reload, with automatic stream schema revisions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **Native Sidecars** [`plugin-sidecar`]: Integrate supervised executables through typed contracts; native processes do not provide a Wasm sandbox.
 - **gRPC Interfaces** [`grpc`, `generate-proto`]: Expose typed operations and generate client contracts.

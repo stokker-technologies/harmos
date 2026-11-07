@@ -230,7 +230,7 @@ async fn exercise(panic_first: bool) {
     fixture.initialize().await.unwrap();
     assert!(!SEEDS.lock().unwrap().contains_key(&seed.id));
     fixture.ready().wait_for(|ready| *ready).await.unwrap();
-    let stream = fixture.runtime.streams.publication("custom_host.pulse", 1).unwrap();
+    let stream = fixture.runtime.streams.current_publication("custom_host.pulse").unwrap();
     let mut rows = stream.watch();
     let values = async {
         let mut values = BTreeSet::new();

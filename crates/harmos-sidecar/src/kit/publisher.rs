@@ -135,11 +135,7 @@ impl<P: Declared> Publisher<P> {
     }
 
     fn declared<S: StreamSpec>() -> Result<(), PublicationError> {
-        if P::STREAMS.iter().any(|entry| entry.id == S::ID && entry.schema == S::VERSION) {
-            Ok(())
-        } else {
-            Err(PublicationError::Undeclared { stream: S::ID })
-        }
+        if P::STREAMS.iter().any(|entry| entry.id == S::ID) { Ok(()) } else { Err(PublicationError::Undeclared { stream: S::ID }) }
     }
 }
 
@@ -273,7 +269,6 @@ mod tests {
     impl StreamSpec for Samples {
         type Row = u8;
         const ID: &'static str = "batch.clock";
-        const VERSION: u32 = 1;
         const WINDOW: usize = 8;
     }
 
@@ -351,7 +346,6 @@ mod tests {
         impl StreamSpec for Stream {
             type Row = Counted;
             const ID: &'static str = "batch.once";
-            const VERSION: u32 = 1;
             const WINDOW: usize = 8;
         }
 
