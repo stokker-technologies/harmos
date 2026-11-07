@@ -854,7 +854,7 @@ mod tests {
             window: 4,
             row: crate::schema::graph::Schema { root: 0, definitions: vec![vec![]] },
         };
-        let scope = PluginScope::new("worker", PluginGeneration::fresh().unwrap()).with_streams(&[stream.clone()]);
+        let scope = PluginScope::new("worker", PluginGeneration::fresh().unwrap()).with_streams(std::slice::from_ref(&stream));
         let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
         let registration = runtime.streams.stage_plugin(&scope, [stream.clone()]).await.unwrap();
         assert!(scope.commit());
