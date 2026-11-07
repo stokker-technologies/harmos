@@ -94,7 +94,7 @@ macro_rules! scripted {
 
 /* === Structs === */
 
-// Each Request Carries Its Scripted Behavior, Which Can Hold A Shared Gate,
+// Each Request Carries Its Scripted Behavior, Which Can Hold a Shared Gate,
 // So Every Policy Request Stays In Process.
 #[harmos_runtime::operation(resources = [BlockerOwner], codec = manual, id = "policy.blocker",
     response = u64,
@@ -359,7 +359,7 @@ async fn attempt_limits_backoff() {
     scripted!(Attempt, 100, 2000, 0, 1, false);
     let (runtime, probe) = bound::<Attempt>().await;
     let submitted = tokio::time::Instant::now();
-    let result = runtime.operation(Attempt { behavior: Behavior::Pending }).run().await;
+    let result = runtime.operation(Attempt { behavior: Behavior::Pending }).await;
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(submitted.elapsed(), Duration::from_millis(100));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
@@ -368,7 +368,7 @@ async fn attempt_limits_backoff() {
     scripted!(Retrying, 100, 1000, 10, 1000, false);
     let (runtime, probe) = bound::<Retrying>().await;
     let submitted = tokio::time::Instant::now();
-    let result = runtime.operation(failing::<Retrying>(100)).run().await;
+    let result = runtime.operation(failing::<Retrying>(100)).await;
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(submitted.elapsed(), Duration::from_millis(100));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
@@ -379,7 +379,7 @@ async fn attempt_limits_backoff() {
 async fn retry_reuses_state() {
     scripted!(Retrying, 1000, 100, 2, 20, false);
     let (runtime, probe) = bound::<Retrying>().await;
-    assert_eq!(*runtime.operation(failing::<Retrying>(2)).run().await.unwrap(), 3);
+    assert_eq!(*runtime.operation(failing::<Retrying>(2)).await.unwrap(), 3);
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 3);
     assert_eq!(waits(&probe), [20, 20]);
     runtime.shutdown().await.unwrap();
@@ -388,7 +388,7 @@ async fn retry_reuses_state() {
 #[tokio::test(start_paused = true)]
 async fn reaches_wait_ceiling() {
     let (runtime, probe) = bound::<ExponentialDeclaration>().await;
-    let result = runtime.operation(failing::<ExponentialDeclaration>(100)).run().await;
+    let result = runtime.operation(failing::<ExponentialDeclaration>(100)).await;
     let Err(Error::OperationFailed { source, .. }) = result else { panic!("the last typed attempt failure is retained") };
     assert_eq!(source.downcast_ref::<std::io::Error>().unwrap().kind(), std::io::ErrorKind::Interrupted);
     assert_eq!(waits(&probe), [200, 400, 800, 1000]);
@@ -414,14 +414,14 @@ async fn cancellation_skips_backoff() {
 async fn timeouts_require_replay() {
     scripted!(Unknown, 1000, 5, 1, 1, false);
     let (runtime, probe) = bound::<Unknown>().await;
-    let result = runtime.operation(Unknown { behavior: Behavior::Pending }).run().await;
+    let result = runtime.operation(Unknown { behavior: Behavior::Pending }).await;
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
 
     scripted!(Replayable, 1000, 5, 1, 1, true);
     let (runtime, probe) = bound::<Replayable>().await;
-    let result = runtime.operation(Replayable { behavior: Behavior::Pending }).run().await;
+    let result = runtime.operation(Replayable { behavior: Behavior::Pending }).await;
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 2);
     assert_eq!(waits(&probe), [6]);
@@ -461,7 +461,7 @@ async fn calls_settle_retry() {
 #[tokio::test(start_paused = true)]
 async fn jitter_respects_ceiling() {
     let (runtime, probe) = bound::<JitteredDeclaration>().await;
-    let result = runtime.operation(failing::<JitteredDeclaration>(100)).run().await;
+    let result = runtime.operation(failing::<JitteredDeclaration>(100)).await;
     assert!(matches!(result, Err(Error::OperationFailed { .. })));
     let waits = waits(&probe);
     assert_eq!(waits.len(), 4);

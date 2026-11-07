@@ -7,8 +7,8 @@
  * ***
  */
 
-// One Guest For Every Sandbox Behaviour The Host Stories Drive: The Configuration
-// String Selects A Lifecycle Mode And Request Fields Select Handler Behaviour
+// One Guest For Every Sandbox Behaviour The OperationHost Stories Drive: The Configuration
+// String Selects a Lifecycle Mode and Request Fields Select Handler Behaviour
 
 /* === Modules === */
 
@@ -31,7 +31,7 @@ use contract::{Echoed, ProviderEchoOperation};
 use harmos::guest::kit::Context;
 use harmos::operations::{OperationPolicy, RetryPolicy};
 
-use harmos::guest::{Host, PublishError};
+use harmos::guest::{OperationHost, PublishError};
 
 /* === Constants === */
 
@@ -117,7 +117,7 @@ impl harmos::Lifecycle for Sandbox {
 
         if self.config == "dependencies" {
             context
-                .call::<contract::ProviderEchoOperation>(ProviderEchoOperation { say: "initialize".into() })
+                .operation::<contract::ProviderEchoOperation>(ProviderEchoOperation { say: "initialize".into() })
                 .await
                 .map_err(std::io::Error::other)?;
             self.check_dependency_revocation = true;
@@ -143,7 +143,7 @@ impl harmos::Lifecycle for Sandbox {
             }
         }
         if self.check_dependency_revocation {
-            let result = context.call::<contract::ProviderEchoOperation>(ProviderEchoOperation { say: "cleanup".into() }).await;
+            let result = context.operation::<contract::ProviderEchoOperation>(ProviderEchoOperation { say: "cleanup".into() }).await;
             if result.is_ok() {
                 return Err(std::io::Error::other("retirement must refuse a new dependency call"));
             }

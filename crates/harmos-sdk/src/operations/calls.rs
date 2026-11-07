@@ -32,6 +32,10 @@ use crate::{Message, MessageError};
 
 /* === Type Aliases === */
 
+pub type StartFuture<'a> = Pin<Box<dyn Future<Output = Result<Box<dyn ChildInstance>, InvocationError>> + Send + 'a>>;
+
+pub type ControlFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, InvocationError>> + Send + 'a>>;
+
 pub type CallFuture<'a> = Pin<Box<dyn Future<Output = Result<ErasedResponse, InvocationError>> + Send + 'a>>;
 
 /* === Structs === */
@@ -61,6 +65,9 @@ pub enum InvocationError {
     #[error("operation `{operation}` cannot be invoked from this carrier")]
     Unavailable { operation: &'static str },
 
+    #[error("operation `{operation}` does not support these invocation options")]
+    Options { operation: &'static str },
+
     #[error("operation `{operation}` answered a response of another type")]
     Response { operation: &'static str },
 
@@ -70,9 +77,20 @@ pub enum InvocationError {
 
 /* === Traits === */
 
+pub trait ChildInstance: Send {
+    fn id(&self) -> super::instance::Id;
+    fn status(&self) -> ControlFuture<'_, super::instance::Status>;
+    fn request_cancel(&self) -> ControlFuture<'_, ()>;
+    fn join(self: Box<Self>) -> CallFuture<'static>;
+    fn detach(self: Box<Self>) -> super::instance::Id;
+}
+
 // Carriers Route A Declared Child Operation With The Calling Attempt's Metadata.
 pub trait Caller: Send + Sync + 'static {
-    fn call(&self, target: Target, request: Box<dyn Any + Send>) -> CallFuture<'_>;
+    fn start(
+        &self, target: Target, request: Box<dyn Any + Send>, retry: Option<super::RetryPolicy>, endpoints: Box<dyn Any + Send>,
+        context: super::CallContext,
+    ) -> StartFuture<'_>;
 }
 
 /* === Implementations === */
@@ -93,6 +111,20 @@ impl Target {
     }
 }
 
+impl From<InvocationError> for crate::Refusal {
+    fn from(error: InvocationError) -> Self {
+        let operation = match &error {
+            InvocationError::Unavailable { operation }
+            | InvocationError::Response { operation }
+            | InvocationError::Options { operation }
+            | InvocationError::Failed { operation, .. } => *operation,
+        };
+        let failure =
+            crate::Failure::originate(super::FailureKind::Permanent, &error, crate::failure::Origin::Plugin).in_operation(operation);
+        Self::failed(failure.refusal_code().unwrap_or(crate::FAILED), failure)
+    }
+}
+
 impl InvocationError {
     pub fn failed(operation: &'static str, source: impl std::error::Error + Send + Sync + 'static) -> Self {
         Self::Failed { operation, source: Arc::new(source) }
@@ -109,3 +141,20 @@ fn decode<T: OperationDeclaration>(bytes: &[u8]) -> Result<ErasedResponse, Messa
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refusal_conversion_preserves_child_failure_and_code() {
+        let original = crate::Failure::new(super::super::FailureKind::Transient, "transport failed").in_operation("child");
+        let child = crate::Refusal::failed(-32_100, original.clone());
+        let forwarded = crate::Refusal::from(InvocationError::failed("child", child));
+        assert_eq!(forwarded.code(), -32_100);
+        let failure = forwarded.failure();
+        assert_eq!(failure.code(), original.code());
+        assert_eq!(failure.cause(), original.cause());
+        assert_eq!(failure.context().operation(), Some("child"));
+    }
+}

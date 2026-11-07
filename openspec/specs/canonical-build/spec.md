@@ -7,7 +7,7 @@ Defines the one canonical native build configuration, default Cargo profiles and
 
 ### Requirement: Canonical Native Configuration
 
-All provider CI Product and Tests SHALL use existing canonical shipping feature configurations per platform in independent parallel producer jobs. Independent feature sets are permitted. Clippy SHALL precede compilation with matching configuration. Simulation and other noncanonical test features SHALL NOT enter CI or shipping binaries. Local installers SHALL NOT build tests by default.
+All provider CI Product and Tests SHALL use existing canonical shipping feature configurations per platform in independent parallel producer jobs. Independent feature sets are permitted. Build, test, bench, fixture and focused compilation tasks SHALL NOT run Clippy implicitly. Clippy SHALL run with warnings denied only through `lint:rust`, included by `check:rust` and gated by CI Check / Rust; an explicit focused `clippy` operation MAY invoke it deliberately. Simulation and other noncanonical test features SHALL NOT enter CI or shipping binaries. Local installers SHALL NOT build tests by default.
 
 #### Scenario: Ordinary Review
 
@@ -41,7 +41,7 @@ The explicit optional local `test:rust:extended` suite SHALL preserve noncanonic
 - **WHEN** a developer requests `mise run test:rust:extended`
 - **THEN** the optional task builds its required artifacts and runs all preserved feature-dependent stories and compatibility checks
 
-### Requirement: Correctness And Performance Budgets
+### Requirement: Correctness and Performance Budgets
 
 Every correctness test SHALL have at least a 120-second deadline, preserving larger bounds. Historical runtime measurements SHALL NOT tighten correctness deadlines. Performance SHALL be assessed through benchmarks, with the application objective remaining under 10 seconds. Cargo defaults and product runtime limits SHALL remain unchanged.
 

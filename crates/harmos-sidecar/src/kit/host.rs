@@ -84,8 +84,8 @@ pub enum CallError {
     #[error("caller may not invoke operation `{operation}` without a matching host assignment")]
     Unassigned { operation: &'static str },
 
-    // The host's refusal carries the failure unchanged; this layer names only
-    // the operation the host attributed it to.
+    // Keep Administrative Causes Visible Even In Callers That Only Retain Display.
+    // Application Failures Still Carry Their Cause Through The Original Source.
     #[error("{}", refused_line(*.code, .failure))]
     Refused {
         code: i64,
@@ -151,23 +151,29 @@ impl harmos_sdk::plugin::Context for Supervisor {
 }
 
 impl harmos_sdk::operations::Caller for Supervisor {
-    fn call(
+    fn start(
         &self, target: harmos_sdk::operations::Target, request: Box<dyn std::any::Any + Send>,
-    ) -> harmos_sdk::operations::CallFuture<'_> {
+        retry: Option<harmos_sdk::operations::RetryPolicy>, endpoints: Box<dyn std::any::Any + Send>,
+        call: harmos_sdk::operations::CallContext,
+    ) -> harmos_sdk::operations::StartFuture<'_> {
         Box::pin(async move {
             let result = async move {
+                if !endpoints.is::<()>() {
+                    return Err(CallError::Unavailable);
+                }
                 if self.operation_context.is_none() && self.generation_context.is_none() {
                     return Err(CallError::Unavailable);
                 }
                 let assigned = self.assignments.resolve_target(&target).map_err(|_| CallError::Unassigned { operation: target.id })?;
                 let payload = (target.encode)(request.as_ref()).ok_or(CallError::Unavailable)?;
-                let values = self.call.portable();
+                let values = call.portable();
                 let encoded = Frame::child_payload_encoded_len(
                     &assigned.operation,
                     assigned.generation,
                     payload.len(),
                     self.generation_context.is_some(),
                     &values,
+                    retry,
                 );
                 if encoded > Frame::LIMIT {
                     return Err(CallError::Oversized {
@@ -184,7 +190,8 @@ impl harmos_sdk::operations::Caller for Supervisor {
                     fingerprint: assigned.fingerprint,
                     generation: assigned.generation,
                     payload,
-                    submit: false,
+                    submit: true,
+                    retry,
                 };
                 let params = command.encode().map_err(|error| CallError::Malformed {
                     method: target.id,
@@ -197,10 +204,16 @@ impl harmos_sdk::operations::Caller for Supervisor {
                         Ok::<(), CallError>(())
                     })
                     .await?;
-                (target.decode)(bytes.as_slice()).map_err(|error| CallError::Malformed {
+                let id = u64::decode(bytes.as_slice()).map_err(|error| CallError::Malformed {
                     method: target.id,
                     message: error.to_string(),
-                })
+                })?;
+                Ok(Box::new(super::instance::Child {
+                    host: self.clone(),
+                    id: Id::new(id),
+                    target,
+                    released: false,
+                }) as Box<dyn harmos_sdk::operations::ChildInstance>)
             }
             .await;
             result.map_err(|error| harmos_sdk::operations::InvocationError::failed(target.id, error))
@@ -304,7 +317,9 @@ impl Supervisor {
 
     // One child call on this attempt or generation; a submitted child answers
     // its instance id and stays owned by the attempt.
-    pub(super) async fn child_call<O>(&self, request: &O::Request, submit: bool) -> Result<crate::FramePayload, CallError>
+    pub(super) async fn child_call<O>(
+        &self, request: &O::Request, submit: bool, retry: Option<harmos_sdk::operations::RetryPolicy>,
+    ) -> Result<crate::FramePayload, CallError>
     where
         O: OperationDeclaration,
     {
@@ -312,7 +327,7 @@ impl Supervisor {
             return Err(CallError::Unavailable);
         }
         self.exchange_with(|id, call| {
-            let params = self.child::<O>(request, submit)?;
+            let params = self.child::<O>(request, submit, retry)?;
             let frame = Self::request_frame(id, CHILD_METHOD, params)?;
             call.send(Outgoing::Frame(frame));
             Ok::<(), CallError>(())
@@ -349,7 +364,7 @@ impl Supervisor {
             Err(mpsc::error::TrySendError::Closed(_)) => return,
             Err(mpsc::error::TrySendError::Full(frame)) => frame,
         };
-        // A Full Queue Still Delivers The Release Once Capacity Returns
+        // A Full Queue Still Delivers the Release Once Capacity Returns
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
             let outgoing = self.outgoing.clone();
             runtime.spawn(async move {
@@ -371,16 +386,19 @@ impl Supervisor {
         })
     }
 
-    fn child<O: OperationDeclaration>(&self, request: &O::Request, submit: bool) -> Result<Vec<u8>, CallError> {
+    fn child<O: OperationDeclaration>(
+        &self, request: &O::Request, submit: bool, retry: Option<harmos_sdk::operations::RetryPolicy>,
+    ) -> Result<Vec<u8>, CallError> {
         if self.operation_context.is_none() && self.generation_context.is_none() {
             return Err(CallError::Unavailable);
         }
         let values = self.call.portable();
-        self.child_with_values::<O>(request, submit, values)
+        self.child_with_values::<O>(request, submit, values, retry)
     }
 
     fn child_with_values<O: OperationDeclaration>(
         &self, request: &O::Request, submit: bool, values: Vec<harmos_domain::operations::CallValue>,
+        retry: Option<harmos_sdk::operations::RetryPolicy>,
     ) -> Result<Vec<u8>, CallError> {
         let context = self.operation_context.unwrap_or([0; 32]);
         let target = self.assignments.resolve::<O>().map_err(|_| CallError::Unassigned { operation: O::ID })?;
@@ -391,6 +409,7 @@ impl Supervisor {
             payload_bytes,
             self.generation_context.is_some(),
             &values,
+            retry,
         );
         if encoded > Frame::LIMIT {
             return Err(CallError::Oversized {
@@ -409,6 +428,7 @@ impl Supervisor {
             generation: target.generation,
             payload,
             submit,
+            retry,
         };
         command.encode().map_err(|error| CallError::Malformed {
             method: O::ID,
@@ -509,13 +529,14 @@ impl Supervisor {
                         0,
                         self.generation_context.is_some(),
                         &values,
+                        None,
                     )
                     .map_err(|error| CallError::Malformed {
                         method: harmos_operations::streams::Publish::ID,
                         message: error.to_string(),
                     })?;
                     sent = self.with_publication::<S, super::PublishError>(rest.0, rest.1, context, envelope, |request| {
-                        let params = self.child_with_values::<harmos_operations::streams::Publish>(&request, false, values)?;
+                        let params = self.child_with_values::<harmos_operations::streams::Publish>(&request, false, values, None)?;
                         let frame = Self::request_frame(id, CHILD_METHOD, params)?;
                         call.send(Outgoing::Frame(frame));
                         Ok(())
@@ -616,8 +637,11 @@ impl Supervisor {
 
 fn refused_line(code: i64, failure: &harmos_domain::Failure) -> String {
     match failure.context().operation() {
+        Some(operation) if matches!(code, -32_606 | -32_607) => {
+            format!("operation `{operation}` refused ({code}): {}", failure.cause())
+        }
         Some(operation) => format!("operation `{operation}` failed"),
-        None => format!("the host refused the call ({code})"),
+        None => format!("host call refused ({code}): {}", failure.cause()),
     }
 }
 
@@ -637,6 +661,15 @@ mod tests {
     use harmos_domain::operations::CallValue;
     use harmos_operations::{storage::ReadFile, streams::Publish};
     use harmos_sdk::operations::WireChildCall;
+
+    #[test]
+    fn deadline_cause_survives() {
+        let failure =
+            harmos_domain::Failure::new(harmos_domain::operations::FailureKind::Permanent, "deadline elapsed").in_operation("device.read");
+        let error = CallError::Refused { code: -32_607, failure };
+        let displayed = error.to_string();
+        assert!(displayed.contains("device.read") && displayed.contains("deadline elapsed") && displayed.contains("-32607"));
+    }
 
     struct Samples;
 
@@ -673,7 +706,7 @@ mod tests {
             source: FileSource::Local("data.bin".into()),
             range: ByteRange { offset: 0, limit: None },
         };
-        let encoded = host.child::<ReadFile>(&request, false).unwrap();
+        let encoded = host.child::<ReadFile>(&request, false, None).unwrap();
         let decoded = WireChildCall::decode(&encoded).unwrap();
         assert_eq!(decoded.values, values);
         assert_eq!(decoded.payload, request.encode());
@@ -683,7 +716,7 @@ mod tests {
             range: request.range,
         };
         assert!(Frame::request_fits::<ReadFile>(&request));
-        assert!(matches!(host.child::<ReadFile>(&request, false), Err(CallError::Oversized { .. })));
+        assert!(matches!(host.child::<ReadFile>(&request, false, None), Err(CallError::Oversized { .. })));
     }
 
     #[test]
@@ -693,7 +726,7 @@ mod tests {
             payload: vec![3; 65536 - 7],
         }];
         let host = host(values.clone());
-        let empty = WireChildCall::payload_encoded_len(&format!("host.{}", Publish::ID), u64::MAX, 0, false, &values).unwrap();
+        let empty = WireChildCall::payload_encoded_len(&format!("host.{}", Publish::ID), u64::MAX, 0, false, &values, None).unwrap();
         let fits = |bytes: usize| {
             let row = FileBatch { offset: 0, bytes: vec![0; bytes] };
             let body = crate::wire::publication_encoded_len("context.samples", 1, 1, row.encoded_size(), None, None) + 1;
@@ -712,7 +745,7 @@ mod tests {
         let rows = [FileBatch { offset: 0, bytes: vec![0; low] }.encode()];
         let taken = host
             .with_publication::<Samples, CallError>(&rows, &[None], None, empty, |request| {
-                let envelope = host.child_with_values::<Publish>(&request, true, values.clone())?;
+                let envelope = host.child_with_values::<Publish>(&request, true, values.clone(), None)?;
                 let frame = Frame::Call {
                     id: u64::MAX,
                     method: CHILD_METHOD.into(),

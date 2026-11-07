@@ -36,7 +36,7 @@ use futures_util::FutureExt;
 use tokio::time::{Instant, MissedTickBehavior, interval};
 // Local Imports
 use super::identity::{ActivationId, Identity};
-use super::{ObserverCaller, ObserverHost, ObserverPublisher, ObserverStreamPublisher, PublicationError, Supervisor};
+use super::{ObserverHost, ObserverPublisher, ObserverStreamPublisher, PublicationError, Supervisor};
 use harmos_domain::inventory::publications;
 
 /* === Constants === */
@@ -118,6 +118,9 @@ pub enum ObserverError {
 
     #[error("the observer callback panicked")]
     CallbackPanicked,
+
+    #[error("the observer host connection ended")]
+    HostUnavailable(#[source] super::CallError),
 
     #[error("the observer tick ordinal is exhausted")]
     TickExhausted,
@@ -278,11 +281,12 @@ impl<H> ObserverContext<'_, H> {
         self.host.publish_on(self, row).await
     }
 
-    pub async fn call<C>(&self, request: H::Request) -> Result<H::Response, H::Error>
+    pub fn operation<C>(&self, request: C) -> harmos_sdk::operations::Invocation<H, C>
     where
-        H: ObserverCaller<C>,
+        H: harmos_sdk::operations::OperationHost + Clone,
+        C: harmos_sdk::operations::OperationDeclaration<Request = C>,
     {
-        self.host.call(self, request).await
+        harmos_sdk::operations::Invocation::new(self.host.clone(), request)
     }
 
     fn check_stream(&self, id: &'static str, version: u32) -> Result<(), PublicationError> {
@@ -449,6 +453,7 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
             clock.reset();
             let mut tick = Tick { ordinal: 0, elapsed: Duration::ZERO };
             let observer = self.observer.as_mut().expect("initialized observer");
+            let mut refused = None;
             loop {
                 clock.tick().await;
                 advance_tick(&mut tick, opened.elapsed(), self.identity)?;
@@ -461,7 +466,7 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
                     streams: S::STREAMS,
                 };
                 let observed = AssertUnwindSafe(async { observer.observe(&context).await }).catch_unwind().await;
-                observed_result(observed, self.identity, tick.ordinal())?;
+                observed_result(observed, self.identity, tick.ordinal(), &mut refused)?;
             }
         })
     }
@@ -523,13 +528,34 @@ fn resolve_interval<S: Observer<H>, H: Send + Sync + 'static>(resources: &harmos
 }
 
 fn observed_result<E: std::error::Error + 'static>(
-    observed: Result<Result<(), E>, Box<dyn Any + Send>>, identity: Identity, tick: u64,
+    observed: Result<Result<(), E>, Box<dyn Any + Send>>, identity: Identity, tick: u64, refused: &mut Option<String>,
 ) -> Result<(), ObserverError> {
     match observed {
-        Ok(Ok(())) => Ok(()),
+        Ok(Ok(())) => {
+            if refused.take().is_some() {
+                tracing::info!(observer = identity.observer, activation_id = %identity.activation, tick, "observer callback recovered");
+            }
+            Ok(())
+        }
         Ok(Err(error)) => {
-            tracing::warn!(observer = identity.observer, activation_id = %identity.activation,
-                tick, error = %harmos_domain::failure::Report(&error), "observer callback refused");
+            let terminal = std::iter::successors(Some(&error as &(dyn std::error::Error + 'static)), |error| {
+                error
+                    .downcast_ref::<std::io::Error>()
+                    .and_then(std::io::Error::get_ref)
+                    .map(|inner| inner as &(dyn std::error::Error + 'static))
+                    .or_else(|| error.source())
+            })
+            .find_map(|error| error.downcast_ref::<super::CallError>())
+            .filter(|error| matches!(error, super::CallError::Unavailable));
+            if let Some(error) = terminal {
+                return Err(ObserverError::HostUnavailable(error.clone()));
+            }
+            let report = harmos_domain::failure::Report(&error).to_string();
+            if refused.as_ref() != Some(&report) {
+                tracing::warn!(observer = identity.observer, activation_id = %identity.activation,
+                    tick, error = %report, "observer callback refused");
+                *refused = Some(report);
+            }
             Ok(())
         }
         Err(_) => {
@@ -577,6 +603,14 @@ mod tests {
     use super::{Identity, ObserverContext, Tick};
     use std::sync::Arc;
     use std::time::Duration;
+
+    #[test]
+    fn disconnected_host_stops() {
+        let identity = Identity::new("connection.watch").unwrap();
+        let error = std::io::Error::other(crate::CallError::Unavailable);
+        let result = super::observed_result(Ok(Err(error)), identity, 1, &mut None);
+        assert!(matches!(result, Err(super::ObserverError::HostUnavailable(_))));
+    }
 
     #[test]
     fn context_resource_resolution() {

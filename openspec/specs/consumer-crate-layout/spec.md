@@ -52,7 +52,7 @@ product
 
 Cargo feature unification remains an acknowledged limitation; this is not hard isolation between contract and execution builds in a unified graph.
 
-### Requirement: Pure Domain And Runtime Ownership
+### Requirement: Pure Domain and Runtime Ownership
 
 <product>-domain SHALL retain shared models, transaction declarations, pure rules and required portable service policies/declarations. Resource-owning services, service lifecycle implementations and transaction application requiring live resources SHALL reside in <product>-runtime. Separate transactions or services crates SHALL NOT be mandated solely for symmetry or file count.
 
@@ -66,7 +66,7 @@ Cargo feature unification remains an acknowledged limitation; this is not hard i
 - **WHEN** a service or transaction subsystem becomes large
 - **THEN** maintainers assess cohesive ownership, independent reuse and dependency/build isolation before introducing another crate; size alone does not require extraction.
 
-### Requirement: Consistent Skills And Scaffolding
+### Requirement: Consistent Skills and Scaffolding
 
 Delivery SHALL update repository-owned Harmos architecture, authoring/testing skills, references, generated copies, scaffolding and documentation. External canonical company architecture/Rust architecture skills and their generated copies are deferred beyond this worktree-only delivery. Superseded unconditional mirrored domain/runtime operation rules SHALL be replaced or explicitly scoped. Installed skill-cache edits SHALL NOT substitute for canonical owner changes.
 

@@ -7,7 +7,7 @@
  * ***
  */
 
-// Shared Message Schema Definitions And References
+// Shared Message Schema Definitions and References
 
 /* === Modules === */
 

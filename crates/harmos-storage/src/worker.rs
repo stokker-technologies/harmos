@@ -101,6 +101,8 @@ impl Worker {
         let mut active = FuturesUnordered::<Attempt>::new();
         let mut files_running = 0usize;
         let mut ordered_running = false;
+        let mut snapshot_running = false;
+        let mut snapshot_blocked = false;
         let file_limit = inner.settings.request.max_active_file_operations.get();
         let mut prefer_control = true;
         let mut prefer_files = true;
@@ -131,7 +133,12 @@ impl Worker {
                 }
                 let retry = failures.iter().find_map(|(&id, failure)| {
                     let action = failure.action.as_ref()?;
-                    let available = if action.independent() { files_running < file_limit } else { !ordered_running };
+                    let available = match action {
+                        Action::Snapshot(_) => !snapshot_running && !snapshot_blocked,
+                        Action::Prune(_) | Action::Delete(_) => !ordered_running && !snapshot_running,
+                        _ if action.independent() => files_running < file_limit,
+                        _ => !ordered_running,
+                    };
                     (available && failure.retry_at.is_some_and(|deadline| deadline <= now)).then_some(id)
                 });
                 let mut failure_id = None;
@@ -155,6 +162,7 @@ impl Worker {
                     // Already registered snapshots acquire their pins before maintenance.
                     let prune_through = if state.snapshot_opening() { 0 } else { state.status.saved.sequence };
                     let mut prune = (!ordered_running
+                        && !snapshot_running
                         && inner.has_objects
                         && state.ready
                         && !state.status.closing
@@ -165,7 +173,7 @@ impl Worker {
                         prune.take()
                     } else if ordered_running || !state.ready || state.status.failure.is_some() {
                         None
-                    } else if let Some(deletion) = state.deletion_action() {
+                    } else if !snapshot_running && let Some(deletion) = state.deletion_action() {
                         Some(Action::Delete(deletion))
                     } else if let Some(target) = state.recovery_request.filter(|target| target.index <= state.recovery_written.index) {
                         Some(Action::Recovery(target))
@@ -182,7 +190,7 @@ impl Worker {
                                 first
                             };
                         // Journal Order Is Independent Of Unrelated Measurements.
-                        // Only The Earliest Unwritten State Entry May Bypass Data,
+                        // Only the Earliest Unwritten State Entry May Bypass Data,
                         // And Its Declared Evidence Dependency Must Already Be Durable.
                         let ready_state = state
                             .recovery_request
@@ -215,7 +223,13 @@ impl Worker {
                             None
                         };
                         let control = file
-                            .or_else(|| if !ordered_running { state.snapshot_action(healthy).map(Action::Snapshot) } else { None })
+                            .or_else(|| {
+                                if !snapshot_running && !snapshot_blocked {
+                                    state.snapshot_action(healthy).map(Action::Snapshot)
+                                } else {
+                                    None
+                                }
+                            })
                             .or_else(|| {
                                 if healthy && files_running < file_limit {
                                     state.file_action(!ordered_running, None).map(Action::File)
@@ -260,10 +274,13 @@ impl Worker {
                 }
                 prefer_pruning = !matches!(action, Action::Prune(_));
                 prefer_control = !matches!(action, Action::Snapshot(_) | Action::File(_));
-                if action.independent() {
+                if matches!(action, Action::Snapshot(_)) {
+                    snapshot_running = true;
+                } else if action.independent() {
                     files_running += 1;
                 } else {
                     ordered_running = true;
+                    snapshot_blocked = matches!(action, Action::Prune(_) | Action::Delete(_));
                 }
                 let (context, queued) = {
                     let mut state = inner.state.lock().unwrap();
@@ -326,10 +343,13 @@ impl Worker {
             let Some((action, attempts, failure_id, generation, context, result)) = outcome else {
                 continue;
             };
-            if action.independent() {
+            if matches!(action, Action::Snapshot(_)) {
+                snapshot_running = false;
+            } else if action.independent() {
                 files_running -= 1;
             } else {
                 ordered_running = false;
+                snapshot_blocked = false;
             }
             if matches!(action, Action::Prune(_)) {
                 inner.state.lock().unwrap().pruning_objects = false;

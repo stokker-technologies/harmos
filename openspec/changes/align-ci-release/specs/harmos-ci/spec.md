@@ -15,7 +15,7 @@ Release reviews and publication SHALL reject resolved git dependencies.
 Nightly SHALL warn and skip incompatible crate dry publication.
 Release tagging and publication SHALL require green exact-commit required CI.
 
-#### Scenario: Missing Or Failed Evidence
+#### Scenario: Missing or Failed Evidence
 - WHEN the target SHA lacks successful dev CI or a main ruleset required context
 - THEN tagging and publication wait for pending evidence and refuse failed evidence
 - AND repository settings remain owner-managed

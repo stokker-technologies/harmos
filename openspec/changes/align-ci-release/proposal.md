@@ -1,4 +1,4 @@
-# Align CI And Release Structure
+# Align CI and Release Structure
 
 ## Why
 

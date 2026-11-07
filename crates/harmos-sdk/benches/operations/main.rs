@@ -7,7 +7,7 @@
  * ***
  */
 
-// Message And SDK Envelope Codec Workloads
+// Message and SDK Envelope Codec Workloads
 
 /* === Modules === */
 

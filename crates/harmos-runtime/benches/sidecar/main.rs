@@ -55,7 +55,7 @@ criterion::criterion_main!(benches);
 fn benchmarks(c: &mut Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
     let fixture = runtime.block_on(native::Fixture::new());
-    // Warm The Pools And Caches Before Any Measurement
+    // Warm the Pools and Caches Before Any Measurement
     runtime.block_on(fixture.publish(PROFILE_CALLS, 1));
     profile(&runtime, &fixture);
 

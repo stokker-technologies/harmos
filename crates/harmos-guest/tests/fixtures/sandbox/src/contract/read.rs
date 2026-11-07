@@ -116,7 +116,7 @@ mod runtime {
             let carrier = ctx.resource::<harmos::guest::kit::Context>();
             owner.ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-            // Call Metadata And Explicit Child Overlays
+            // Call Metadata and Explicit Child Overlays
             if self.value == "context-leaf" {
                 let stage = ctx.call().value::<Stage>().map_err(std::io::Error::other)?.expect("the caller set a stage");
                 return Ok(Value { value: stage.id }.into());
@@ -124,9 +124,10 @@ mod runtime {
             if self.value == "context-parent" {
                 let parent = ctx.call().value::<Stage>().map_err(std::io::Error::other)?.expect("the caller set a stage");
                 let caller = carrier.with_value(Stage { id: "child".into() }).map_err(std::io::Error::other)?;
-                let child = harmos::guest::Host::call::<ReadOperation>(&caller, ReadOperation { value: "context-leaf".into() })
-                    .await
-                    .map_err(std::io::Error::other)?;
+                let child =
+                    harmos::guest::OperationHost::operation::<ReadOperation>(&caller, ReadOperation { value: "context-leaf".into() })
+                        .await
+                        .map_err(std::io::Error::other)?;
                 return Ok(Value {
                     value: format!("{}:{}", parent.id, child.value),
                 }
@@ -136,7 +137,7 @@ mod runtime {
                 return Ok(Value { value: "leaf:1".into() }.into());
             }
 
-            // Retry State Belongs To The Declared Resource, Never The Request
+            // Retry State Belongs to the Declared Resource, Never the Request
             let attempt = {
                 let mut attempts = owner.attempts.lock().map_err(|error| std::io::Error::other(error.to_string()))?;
                 let attempt = attempts.entry(self.value.clone()).or_default();
@@ -146,7 +147,9 @@ mod runtime {
             if self.value == "parent" {
                 let saved = owner.saved_attempts.lock().map_err(|error| std::io::Error::other(error.to_string()))?.remove(&self.value);
                 if let Some(saved) = saved
-                    && harmos::guest::Host::call::<ReadOperation>(&saved, ReadOperation { value: "leaf".into() }).await.is_ok()
+                    && harmos::guest::OperationHost::operation::<ReadOperation>(&saved, ReadOperation { value: "leaf".into() })
+                        .await
+                        .is_ok()
                 {
                     return Err(std::io::Error::other("stale context was accepted"));
                 }
@@ -164,7 +167,7 @@ mod runtime {
                     .insert(self.value.clone(), carrier.as_ref().clone());
             }
             if attempt == 1 {
-                // The Next Attempt Must Receive The Original Request Clone
+                // The Next Attempt Must Receive the Original Request Clone
                 self.value.push_str(":mutated");
                 return Err(std::io::Error::other("first transient attempt"));
             }

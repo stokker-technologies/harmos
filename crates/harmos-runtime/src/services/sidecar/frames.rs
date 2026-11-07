@@ -110,7 +110,7 @@ where
                                 })
                                     as Pin<Box<dyn Future<Output = Result<Vec<u8>, harmos_domain::Refusal>> + Send>>,
                                 None => {
-                                    // Submitted Children Belong To An Attempt Scope
+                                    // Submitted Children Belong to an Attempt Scope
                                     let call = match child {
                                         crate::operations::WireChild::Call(call) if !call.submit => call,
                                         _ => {
@@ -124,6 +124,7 @@ where
                                                 .map_or_else(|error| Absorbed::Malformed(error.to_string()), |()| Absorbed::Carried);
                                         }
                                     };
+                                    let operation = call.operation.clone();
                                     match if call.generation_context.as_ref().is_some_and(|token| {
                                         self.plugin.as_ref().is_some_and(|scope| scope.accepts_generation_context(token))
                                     }) {
@@ -131,11 +132,11 @@ where
                                             |caller| {
                                                 caller.submit_encoded_at(
                                                     &call.operation,
-                                                    call.fingerprint,
-                                                    call.generation,
+                                                    (call.fingerprint, call.generation),
                                                     call.payload,
                                                     submitted,
                                                     call.values,
+                                                    call.retry,
                                                 )
                                             },
                                         )
@@ -145,12 +146,20 @@ where
                                         })
                                     } {
                                         Ok(invocation) => Box::pin(async move {
-                                            crate::operations::children::lifecycle(invocation, cancelled)
-                                                .await
-                                                .map_err(crate::operations::children::refused)
+                                            crate::operations::children::lifecycle(invocation, cancelled).await.map_err(|error| {
+                                                let refusal = crate::operations::children::refused(error);
+                                                harmos_domain::Refusal::failed(
+                                                    refusal.code(),
+                                                    refusal.into_failure().in_operation(operation),
+                                                )
+                                            })
                                         }),
                                         Err(error) => {
                                             let refusal = crate::operations::children::refused(error);
+                                            let refusal = harmos_domain::Refusal::failed(
+                                                refusal.code(),
+                                                refusal.into_failure().in_operation(operation),
+                                            );
                                             return self
                                                 .send(Frame::Refusal { id, refusal })
                                                 .await
@@ -232,7 +241,7 @@ where
                 {
                     let _ = cancel.send(());
                 }
-                // Keep The Slot Until Its Original Running Physically Settles
+                // Keep the Slot Until Its Original Running Physically Settles
                 Absorbed::Carried
             }
             Arrival::Reply(frame, token) => {

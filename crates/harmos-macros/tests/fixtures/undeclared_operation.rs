@@ -49,7 +49,7 @@ struct Other;
 /* === Private Functions === */
 
 fn undeclared(ctx: harmos::Context<'_, Read>) {
-    std::mem::drop(ctx.operation(Other));
+    std::mem::drop(ctx.operation::<Other>(Other));
 }
 
 fn main() {}

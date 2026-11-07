@@ -410,7 +410,7 @@ fn ungranted<'a>(source: &'a (dyn std::error::Error + Send + Sync + 'static)) ->
     None
 }
 
-// A Sidecar That Rejects The Request During Preparation (An Unreadable Or
+// A Sidecar That Rejects the Request During Preparation (an Unreadable Or
 // Wrong-Shape Payload) Names The Caller's Fault In Its Own Words.
 #[cfg(feature = "plugin-sidecar")]
 fn refused_request(source: &(dyn std::error::Error + Send + Sync + 'static)) -> Option<Status> {

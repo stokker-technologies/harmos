@@ -49,6 +49,7 @@ pub(super) struct Remote {
     arrivals: mpsc::Sender<Arrival>,
     control: OnceLock<ControlContext>,
     fenced: watch::Sender<bool>,
+    expected_end: std::sync::atomic::AtomicBool,
     retirement: OnceLock<Weak<Retirement>>,
     context: OnceLock<Weak<harmos_sdk::ExecutionContext>>,
     outcome: Arc<Mutex<Option<Arc<crate::Error>>>>,
@@ -91,6 +92,7 @@ impl Remote {
             arrivals,
             control: OnceLock::new(),
             fenced: watch::channel(false).0,
+            expected_end: std::sync::atomic::AtomicBool::new(false),
             retirement: OnceLock::new(),
             context: OnceLock::new(),
             outcome: Arc::new(Mutex::new(None)),
@@ -99,6 +101,10 @@ impl Remote {
 
     pub(super) fn outcome(&self) -> Arc<Mutex<Option<Arc<crate::Error>>>> {
         Arc::clone(&self.outcome)
+    }
+
+    pub(super) fn expect_end(&self, expected: bool) {
+        self.expected_end.store(expected, std::sync::atomic::Ordering::Release);
     }
 
     pub(super) async fn settle(&self) -> crate::Result<()> {
@@ -194,7 +200,7 @@ impl ObserverBackend for Backend {
             Err(error) => return Err(remote.failed(error).await),
         };
 
-        // Follow The Remote Observer Until Stopped Or Ended
+        // Follow the Remote Observer Until Stopped or Ended
         let control = Arc::clone(&invocation.control);
         let mut status = control.settlement();
         let ended = loop {
@@ -203,7 +209,7 @@ impl ObserverBackend for Backend {
             }
             tokio::select! {
                 () = activation.stopping() => break None,
-                () = remote.fence() => return Err(failure(SidecarError::Unavailable)),
+                () = remote.fence() => break Some(Err(failure(SidecarError::Unavailable))),
                 result = &mut invocation => break Some(result),
                 changed = status.changed() => {
                     if changed.is_err() {
@@ -215,20 +221,20 @@ impl ObserverBackend for Backend {
 
         // Join The Observing Thread Before Its Invocation Loses The Host Call Context.
         activation.begin_stopping();
-        let stopped = ended.is_none();
+        let stopped = ended.is_none() || activation.is_stopping() || remote.expected_end.load(std::sync::atomic::Ordering::Acquire);
         let result = match ended {
             Some(result) => result,
             None => {
                 invocation.observer_stop.as_ref().expect("native observer owns its stop signal").request();
                 tokio::select! {
                     result = &mut invocation => result,
-                    () = remote.fence() => return Err(failure(SidecarError::Unavailable)),
+                    () = remote.fence() => Err(failure(SidecarError::Unavailable)),
                 }
             }
         };
         activation.cleaning_up();
 
-        // A Failed Remote Cleanup Stays Retained For A Later Stop To Retry
+        // A Failed Remote Cleanup Stays Retained for a Later Stop to Retry
         if let Some(failure) = control.status().cleanup_failure().cloned() {
             children.forget(&control);
             activation.retain(RetainedControl(control), Arc::clone(&failure));

@@ -21,7 +21,7 @@ use std::sync::Arc;
 use super::contract;
 use crate::sidecar::witness::Witness;
 use contract::{POLICY, ProbeDeclaration, ReadDeclaration, Readings, Step};
-use harmos_runtime::operations::Host as _;
+use harmos_runtime::operations::OperationHost as _;
 use harmos_runtime::operations::OperationPolicy;
 use harmos_runtime::sidecar::{Refusal, Supervisor};
 
@@ -103,7 +103,7 @@ impl harmos_runtime::Lifecycle for Client {
 
     async fn initialize(&mut self, context: &Supervisor) -> std::result::Result<(), Refusal> {
         self.resources.mark("initializing");
-        let response = context.call::<contract::ReadDeclaration>(ReadDeclaration { phase: 1 }).await.map_err(Refusal::from)?;
+        let response = context.operation::<contract::ReadDeclaration>(ReadDeclaration { phase: 1 }).await.map_err(Refusal::from)?;
         if response.phase != 1 {
             return Err(Refusal::of("initialization used another provider response"));
         }
@@ -116,7 +116,7 @@ impl harmos_runtime::Lifecycle for Client {
     }
 
     async fn stop(&mut self, context: &Supervisor) -> std::result::Result<(), Refusal> {
-        let response = context.call::<contract::ReadDeclaration>(ReadDeclaration { phase: 2 }).await.map_err(Refusal::from)?;
+        let response = context.operation::<contract::ReadDeclaration>(ReadDeclaration { phase: 2 }).await.map_err(Refusal::from)?;
         if response.phase != 2 {
             return Err(Refusal::of("shutdown used another provider response"));
         }

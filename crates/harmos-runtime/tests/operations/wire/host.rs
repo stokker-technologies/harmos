@@ -9,6 +9,8 @@
 
 /* === Modules === */
 
+mod runtime_defined;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -62,6 +64,7 @@ struct CoreOwner {
 #[derive(Default)]
 struct Owner {
     prepared: AtomicUsize,
+    started: tokio::sync::Notify,
 }
 
 #[derive(Default)]
@@ -75,6 +78,7 @@ struct Host {
     owner: Arc<Owner>,
     scope: Option<PluginScope>,
     callers: BTreeMap<String, PluginCaller>,
+    runtime_owned: bool,
 }
 
 /* === Enums === */
@@ -157,9 +161,26 @@ impl harmos_runtime::Operation for ControlDeclaration {
         self, ctx: harmos_runtime::Context<'_, Self>,
     ) -> std::result::Result<harmos_runtime::operations::Response<String>, Self::Error> {
         let resources = ctx.resource::<Owner>();
-        resources.prepared.fetch_add(1, Ordering::SeqCst);
-        let result: ::core::result::Result<String, Self::Error> = async move { Ok(self.value) }.await;
+        let attempt = resources.prepared.fetch_add(1, Ordering::SeqCst);
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            if self.value == "block" {
+                resources.started.notify_one();
+                std::future::pending::<()>().await;
+            }
+            if self.value == "retry" && attempt == 0 {
+                return Err(super::Failed::Scripted(harmos_runtime::operations::FailureKind::Transient));
+            }
+            Ok(self.value)
+        }
+        .await;
         result.map(::core::convert::Into::into)
+    }
+
+    fn classify(error: &Self::Error) -> harmos_runtime::operations::FailureKind {
+        match error {
+            super::Failed::Scripted(kind) => *kind,
+            _ => harmos_runtime::operations::FailureKind::Permanent,
+        }
     }
 }
 
@@ -191,10 +212,27 @@ impl PluginLifecycle for Host {
         if definition.id == "provider" {
             let scope = endpoint.scope().unwrap();
             self.scope = Some(scope.clone());
-            resources.registration = Some(
-                self.operations
-                    .stage_plugin(scope, |bindings| bindings.operations::<crate::operations::Single<ControlDeclaration>>(Lanes::Open))?,
-            );
+            resources.registration = Some(self.operations.stage_plugin(scope, |bindings| {
+                if !self.runtime_owned {
+                    return bindings.operations::<crate::operations::Single<ControlDeclaration>>(Lanes::Open);
+                }
+                let mut batch = harmos_sdk::__private::RegistrationBatch::new().operation::<ControlDeclaration>();
+                let factory = batch.operations.pop().unwrap();
+                let binding = harmos_runtime::operations::EncodedBinding::new(
+                    WireDeclaration::of::<ControlDeclaration>().contract().unwrap(),
+                    Text::decoding_memory,
+                    move |resources, payload| factory.prepare_encoded(resources, payload).map(|prepared| prepared.instance),
+                );
+                bindings.encoded(binding, Lanes::Open)?;
+                let mut batch = harmos_sdk::__private::RegistrationBatch::new().operation::<ControlDeclaration>();
+                let factory = batch.operations.pop().unwrap();
+                let binding = harmos_runtime::operations::EncodedBinding::new(
+                    runtime_defined::safe_contract(),
+                    Text::decoding_memory,
+                    move |resources, payload| factory.prepare_encoded(resources, payload).map(|prepared| prepared.instance),
+                );
+                bindings.encoded(binding, Lanes::Open)
+            })?);
             assert!(matches!(
                 self.operations.submit::<ControlDeclaration>(ControlDeclaration::from("staged")),
                 Err(Error::NotReady { .. })
@@ -291,9 +329,10 @@ async fn host_requirements_route() {
         owner: host_owner,
         scope: None,
         callers: BTreeMap::new(),
+        runtime_owned: false,
     };
 
-    // A Requirement The Host Does Not Provide Exactly Is Refused Before Preparation
+    // A Requirement the Host Does Not Provide Exactly Is Refused Before Preparation
     let selected = WireDeclaration::of::<Publish>().contract().unwrap();
     let mut drift = selected.operation().clone();
     drift.policy.timeout = std::time::Duration::from_secs(10);
@@ -303,7 +342,7 @@ async fn host_requirements_route() {
     assert!(matches!(refused.initialize(&mut host).await, Err(Error::NotRegistered { domain: "host provider", .. })));
     assert!(host.callers.is_empty());
 
-    // The Exact Requirement Routes To The Host Provider For The Original Caller
+    // The Exact Requirement Routes to the Host Provider for the Original Caller
     let chosen = requiring(vec![required(selected.clone(), vec![])]);
     let mut manager = PluginManager::new(chosen.clone()).unwrap();
     manager.initialize(&mut host).await.unwrap();
@@ -337,6 +376,7 @@ async fn host_visibility_enforced() {
         owner: host_owner,
         scope: None,
         callers: BTreeMap::new(),
+        runtime_owned: false,
     };
     let mut manager = PluginManager::new(definitions("first")).unwrap();
     manager.initialize(&mut host).await.unwrap();
@@ -365,7 +405,7 @@ async fn host_visibility_enforced() {
     ));
     assert!(!encoded.load(Ordering::SeqCst));
     assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 0);
-    assert_eq!(*runtime.operation(ControlDeclaration::from("host")).run().await.unwrap(), "host");
+    assert_eq!(*runtime.operation(ControlDeclaration::from("host")).await.unwrap(), "host");
 
     let response = runtime
         .operations
@@ -374,7 +414,7 @@ async fn host_visibility_enforced() {
         .unwrap();
     assert_eq!(String::decode(&response).unwrap(), "encoded host");
 
-    // Revoke The Exact Managed Generation Before Its Replacement Becomes Ready
+    // Revoke the Exact Managed Generation Before Its Replacement Becomes Ready
     host.owner.prepared.store(0, Ordering::SeqCst);
     manager.reload(definitions("second"), &mut host).await.unwrap();
     assert_ne!(scope.generation(), host.scope.as_ref().unwrap().generation());
@@ -388,7 +428,7 @@ async fn host_visibility_enforced() {
             .is_err()
     );
     assert!(!encoded.load(Ordering::SeqCst));
-    assert_eq!(*runtime.operation(ControlDeclaration::from("replacement")).run().await.unwrap(), "replacement");
+    assert_eq!(*runtime.operation(ControlDeclaration::from("replacement")).await.unwrap(), "replacement");
     manager.shutdown(&mut host).await.unwrap();
     assert!(runtime.operation(ControlDeclaration::from("closed")).start().await.is_err());
     runtime.shutdown().await.unwrap();

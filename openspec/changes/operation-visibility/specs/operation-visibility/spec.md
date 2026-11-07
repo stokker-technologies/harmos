@@ -11,16 +11,16 @@ Operations SHALL declare one of `Private` (default; callable by the declaring pl
 - **WHEN** a plugin's template or operation calls a Public operation the same plugin declares
 - **THEN** the call is admitted on submission, gRPC and discovery without a self-requirement
 
-#### Scenario: Plugin Calls A Host Operation
+#### Scenario: Plugin Calls a Host Operation
 
 - **WHEN** a plugin calls a Host operation
 - **THEN** the call is refused as unauthorized
 
-### Requirement: No gRPC On Private Operations
+### Requirement: No gRPC on Private Operations
 
 A Private operation SHALL NOT declare a gRPC binding.
 
-#### Scenario: Private Operation With gRPC
+#### Scenario: Private Operation with gRPC
 
 - **WHEN** an operation without `Public` or `Host` visibility declares `grpc(...)`
 - **THEN** compilation fails, and runtime registration of such a contract is refused

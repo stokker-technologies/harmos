@@ -11,7 +11,7 @@
 
 /* === Modules === */
 
-#[allow(dead_code, reason = "The Shared Protocol Also Defines The Separate Server Implementation")]
+#[allow(dead_code, reason = "The Shared Protocol Also Defines the Separate Server Implementation")]
 #[path = "../../tests/fixtures/benchmark_protocol.rs"]
 mod protocol;
 

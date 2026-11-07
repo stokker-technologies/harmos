@@ -8,7 +8,7 @@
 - [x] 1.6 Focused tests for response, deadline and non-cooperative behavior per carrier.
 - [x] 1.7 README/product guides and supported portable integer documentation; review generated Python/TypeScript impact.
 
-## Validation And Delivery
+## Validation and Delivery
 
 - [x] 2.1 Focused carrier tests pass through explicit project tasks.
 - [x] 2.2 Workspace check and formatting pass through project tasks.

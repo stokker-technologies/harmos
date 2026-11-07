@@ -49,7 +49,16 @@ impl Transaction<Schematic> for ApplyRoute {
 
     fn check(&self, schematic: &Schematic) -> Result<(), Self::Error> {
         schematic.require_net(self.net)?;
-        if self.points.len() == 1 || self.points.windows(2).any(|pair| pair[0].x != pair[1].x && pair[0].y != pair[1].y) {
+        // Check / Number of Points
+        let number_ok = self.points.len() != 1;
+
+        // Check / Orthogonal Segments
+        let segments_ok = self.points.windows(2).all(|pair| {
+            let horizontal = pair[0].y == pair[1].y;
+            let vertical = pair[0].x == pair[1].x;
+            horizontal || vertical
+        });
+        if !(number_ok && segments_ok) {
             return Err(SchematicError::InvalidRoute);
         }
         Ok(())

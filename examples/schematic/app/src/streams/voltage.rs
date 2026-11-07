@@ -38,7 +38,7 @@ use crate::state::NetId;
 pub struct NetVoltage {
     pub net: NetId,
     pub sampled_at_us: u64,
-    pub millivolts: i32,
+    pub voltage_mv: i32,
 }
 
 /* === Enums === */
@@ -48,8 +48,8 @@ pub struct NetVoltage {
 /* === Implementations === */
 
 impl NetVoltage {
-    pub const fn teaching(sampled_at_us: u64, millivolts: i32) -> Self {
-        Self { net: NetId(1), sampled_at_us, millivolts }
+    pub const fn teaching(sampled_at_us: u64, voltage_mv: i32) -> Self {
+        Self { net: NetId(1), sampled_at_us, voltage_mv }
     }
 }
 

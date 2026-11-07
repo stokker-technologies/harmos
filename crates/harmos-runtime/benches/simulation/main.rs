@@ -7,7 +7,7 @@
  * ***
  */
 
-// Measure The Deterministic Double Run Oracle
+// Measure the Deterministic Double Run Oracle
 
 /* === Modules === */
 

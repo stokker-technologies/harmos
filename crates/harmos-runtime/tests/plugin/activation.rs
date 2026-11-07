@@ -52,7 +52,7 @@ impl harmos_runtime::operations::Operation for WireCallDeclaration {
         let host = context.resource::<harmos_runtime::operations::HostContext>();
         let context = host.borrow();
         let result: ::core::result::Result<String, Self::Error> = async move {
-            let response = context.call::<ProviderRun>(ProviderRun { value: self.value.clone() }).await?;
+            let response = context.operation::<ProviderRun>(ProviderRun { value: self.value.clone() }).await?;
             Ok(response.as_ref().clone())
         }
         .await;
@@ -233,7 +233,7 @@ async fn owned_embedded_plugins() {
     assert_eq!(registered.state, PluginState::Registered);
     assert_eq!(registered.attempts, 0);
     assert!(matches!(
-        runtime.operations.call::<ProviderRun>(ProviderRun { value: "before".into() }).await,
+        runtime.operations.operation::<ProviderRun>(ProviderRun { value: "before".into() }).await,
         Err(Error::NotRegistered { .. })
     ));
     runtime.plugin.initialize().await.unwrap();
@@ -242,7 +242,7 @@ async fn owned_embedded_plugins() {
     assert_eq!(ready.state, PluginState::Ready);
     assert_eq!(ready.attempts, 1);
     assert_eq!(
-        runtime.operations.call::<ProviderRun>(ProviderRun { value: "shared runtime owner".into() }).await.unwrap().as_str(),
+        runtime.operations.operation::<ProviderRun>(ProviderRun { value: "shared runtime owner".into() }).await.unwrap().as_str(),
         "shared runtime owner"
     );
     let generation = runtime.plugin.status("provider").unwrap().generation.unwrap();
@@ -251,7 +251,7 @@ async fn owned_embedded_plugins() {
     assert_ne!(reloaded.generation, Some(generation));
     assert_eq!(reloaded.attempts, 2);
     assert_eq!(
-        runtime.operations.call::<ProviderRun>(ProviderRun { value: "after reload".into() }).await.unwrap().as_str(),
+        runtime.operations.operation::<ProviderRun>(ProviderRun { value: "after reload".into() }).await.unwrap().as_str(),
         "after reload"
     );
     let mut replacement = reloaded.definition.clone().unwrap();
@@ -264,13 +264,13 @@ async fn owned_embedded_plugins() {
     assert!(runtime.plugin.reload_embedded::<Operations<ChangedRun>, _>(replacement, Default::default(), Lanes::Open).await.is_err());
     assert_eq!(runtime.plugin.status("provider").unwrap(), updated);
     assert_eq!(
-        runtime.operations.call::<ProviderRun>(ProviderRun { value: "after replacement".into() }).await.unwrap().as_str(),
+        runtime.operations.operation::<ProviderRun>(ProviderRun { value: "after replacement".into() }).await.unwrap().as_str(),
         "after replacement"
     );
     runtime.plugin.remove("provider").await.unwrap();
     assert!(runtime.plugin.status("provider").is_none());
     assert!(matches!(
-        runtime.operations.call::<ProviderRun>(ProviderRun { value: "removed".into() }).await,
+        runtime.operations.operation::<ProviderRun>(ProviderRun { value: "removed".into() }).await,
         Err(Error::NotRegistered { .. })
     ));
     runtime.shutdown().await.unwrap();

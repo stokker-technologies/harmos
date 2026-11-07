@@ -5,7 +5,7 @@ Defines how operation and storage execution is instrumented, how causal context 
 
 ## Requirements
 
-### Requirement: Operation And Storage Coverage
+### Requirement: Operation and Storage Coverage
 
 Harmos SHALL emit structured, runtime-filterable spans at all operation execution and storage interface boundaries without a new public profiling API or feature. Instrumentation SHALL preserve existing results, cancellation, resource accounting and durability semantics and exclude payloads and secrets.
 
@@ -47,7 +47,7 @@ Harmos SHALL preserve caller context through asynchronous handoffs and represent
 
 System tests SHALL retain Perfetto-readable span lifetimes, fields, parent relationships and causal flows with explicitly flushed normal completion. Benchmarks SHALL retain Criterion-native reports and baseline comparison without duplicate custom CSV/Markdown summary generation. Native test verdicts SHALL remain available.
 
-#### Scenario: Agent Reads A Completed Trace
+#### Scenario: Agent Reads a Completed Trace
 
 - **WHEN** a system story completes with queued and shared storage work
 - **THEN** the retained trace exposes the original relationships for structured analysis and distinguishes elapsed waits from backend execution

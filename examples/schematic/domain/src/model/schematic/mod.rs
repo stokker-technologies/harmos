@@ -65,8 +65,10 @@ impl Snapshot {
             diagnostics.push("Duplicate Symbol IDs".to_owned());
         }
         for connection in &self.connections {
-            if !symbols.contains(&connection.from) || !symbols.contains(&connection.to) {
-                diagnostics.push(format!("Connection {} To {} References A Missing Symbol", connection.from, connection.to));
+            let from_present = symbols.contains(&connection.from);
+            let to_present = symbols.contains(&connection.to);
+            if !(from_present && to_present) {
+                diagnostics.push(format!("Connection {} to {} References a Missing Symbol", connection.from, connection.to));
             }
         }
         diagnostics

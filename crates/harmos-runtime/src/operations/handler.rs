@@ -337,7 +337,7 @@ impl Context<'_> {
         self.origin.identity == super::caller::Identity::Host
     }
 
-    // Revalidate The Caller Before Every Streamed Destination
+    // Revalidate the Caller Before Every Streamed Destination
     pub(crate) fn admit_stream_grant(&self, grant: &harmos_domain::plugin::Grant) -> Result<()> {
         self.source.check()?;
         match &self.origin.grants {
@@ -411,8 +411,8 @@ impl Context<'_> {
         self.operations.submit_scoped::<O, ()>((request.into(), ()), &self.scope, &self.admission, &self.source, Some(cause))
     }
 
-    pub async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<crate::operations::Response<O::Response>> {
-        self.submit::<O>(request)?.await
+    pub fn operation<O: OperationDeclaration>(&self, request: O::Request) -> harmos_sdk::operations::Invocation<HostContext, O> {
+        harmos_sdk::operations::Invocation::new(self.owned(), request)
     }
 }
 
@@ -439,7 +439,13 @@ impl HostContext {
     }
 }
 
-impl harmos_sdk::operations::Host for HostContext {
+impl harmos_sdk::operations::OperationHost for HostContext {
+    async fn invoke<O: OperationDeclaration, E: super::EndpointSet>(
+        &self, request: O::Request, retry: Option<super::RetryPolicy>, endpoints: E,
+    ) -> Result<Running<O>> {
+        harmos_sdk::operations::OperationHost::invoke::<O, E>(&self.borrow(), request, retry, endpoints).await
+    }
+
     fn publish_on<S: harmos_domain::StreamSpec>(
         &self, row: &S::Row,
     ) -> impl std::future::Future<Output = std::result::Result<(), Self::Error>> + Send

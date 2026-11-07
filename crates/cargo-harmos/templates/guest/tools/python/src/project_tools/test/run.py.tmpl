@@ -17,6 +17,7 @@ import math
 import os
 import platform
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -240,7 +241,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
         split = values.index("--")
         values, extra = values[:split], values[split + 1 :]
 
-    parser = argparse.ArgumentParser(description="Test Lanes And Evidence")
+    parser = argparse.ArgumentParser(description="Test Lanes and Evidence")
     commands = parser.add_subparsers(dest="command", required=True)
     lane = commands.add_parser("test", help="run one test lane")
     lane.add_argument("--category", choices=policy.CATEGORIES, required=True)
@@ -346,7 +347,10 @@ def _lane(
 ) -> dict:
     """Execute a lane command and turn its JUnit report into a lane record."""
     started = time.time()
-    status = _execute(command, cwd, environment)
+    if language in SCRIPTS:
+        status = _execute(command, cwd, environment, timeout_s=rules.deadline(category))
+    else:
+        status = _execute(command, cwd, environment)
     seconds = time.time() - started
     destination = report.location(directory, profile, key)
     if (
@@ -369,20 +373,12 @@ def _lane(
     if not junit.is_file():
         raise policy.TestError(f"{key}: the runner exited {status} without a JUnit report")
 
-    # Stories, Deadlines And Liveness Overruns
+    # Stories And Measurements
     text = junit.read_text(encoding="utf-8")
     package = Path(project).name if project != "." else directory.name
     found = report.cases(text, category, language, package)
-    deadlines = {(case.suite, case.name): _deadline(rules, language, case) for case in found}
-    overruns = [
-        f"{case.file}::{case.story}"
-        for case in found
-        if language != "rust" and case.outcome == "passed" and case.seconds > deadlines[(case.suite, case.name)]
-    ]
-    failed = sum(case.outcome == "failed" for case in found) + len(overruns)
-    passed = sum(case.outcome == "passed" for case in found) - len(overruns)
-    for story in overruns:
-        print(f"{key}: {story} exceeded its liveness deadline", file=sys.stderr)
+    failed = sum(case.outcome == "failed" for case in found)
+    passed = sum(case.outcome == "passed" for case in found)
 
     report.write(destination / "junit.xml", text)
     durations = {}
@@ -403,27 +399,12 @@ def _lane(
         "passed": passed,
         "failed": failed,
         "skipped": sum(case.outcome == "skipped" for case in found),
-        "overruns": overruns,
         "seconds": round(seconds, 3),
         "started_at": int(started),
         "junit": (destination / "junit.xml").relative_to(directory).as_posix(),
         "coverage": None,
-        "durations": [
-            (case.suite, case.name, case.package, case.seconds)
-            for case in found
-            if case.outcome == "passed" and f"{case.file}::{case.story}" not in overruns
-        ],
+        "durations": [(case.suite, case.name, case.package, case.seconds) for case in found if case.outcome == "passed"],
     }
-
-
-def _deadline(rules: policy.Policy, language: str, case: report.Case) -> int:
-    if language != "rust":
-        entry = rules.matched(case.category, language, f"{case.file}::{case.story}")
-        if entry is not None:
-            return entry.timeout_seconds
-    if case.category not in policy.CATEGORIES:
-        return 0
-    return rules.deadline(case.category)
 
 
 def _console() -> dict:
@@ -442,9 +423,31 @@ def _console() -> dict:
     }
 
 
-def _execute(command: Sequence[str], cwd: Path, environment: dict[str, str] | None) -> int:
+def _execute(command: Sequence[str], cwd: Path, environment: dict[str, str] | None, *, timeout_s: float | None = None) -> int:
     try:
-        return subprocess.run(list(command), cwd=cwd, env=environment, check=False, **_console()).returncode
+        with subprocess.Popen(
+            list(command), cwd=cwd, env=environment, start_new_session=os.name != "nt" and timeout_s is not None, **_console()
+        ) as process:
+            try:
+                return process.wait(timeout=timeout_s)
+            except subprocess.TimeoutExpired:
+                print(f"{command[0]}: script lane exceeded its {timeout_s}-second hang guard", file=sys.stderr)
+                if os.name == "nt":
+                    subprocess.run(
+                        ["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+                        check=False,
+                        capture_output=True,
+                        creationflags=spawn_flags(),
+                    )
+                else:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                if process.poll() is None:
+                    process.kill()
+                process.wait()
+                return 1
     except OSError as error:
         raise policy.TestError(f"{command[0]} is unavailable: {error}") from error
 

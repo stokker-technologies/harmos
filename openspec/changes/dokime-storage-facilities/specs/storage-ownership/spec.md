@@ -4,13 +4,13 @@
 
 Native file and production following SHALL compose with retained metadata and projections through StorageManager and ordinary shared batch ownership. Serialized queue/page bounds and query concurrency SHALL remain explicit consumer settings; consumer retained-result and scratch budgets SHALL remain consumer-owned.
 
-#### Scenario: Retained Metadata And Data
+#### Scenario: Retained Metadata and Data
 
 - **WHEN** a consumer retains metadata and follows the related file through the same storage manager
 - **THEN** following SHALL preserve ordinary source and target ownership without introducing a read-memory pool
 - **AND** source allocations SHALL survive through final consumption
 
-### Requirement: Preserve Opened Source And Producer Identity
+### Requirement: Preserve Opened Source and Producer Identity
 
 Native capture SHALL support the original opened source and a retained producer when the consumer requires those identities.
 
@@ -20,7 +20,7 @@ Native capture SHALL support the original opened source and a retained producer 
 - **THEN** the same source/target identities and acknowledged prefix SHALL remain authoritative
 - **AND** differing overlap SHALL be rejected without appending a conflicting suffix
 
-### Requirement: Retain Backend And Request Owners
+### Requirement: Retain Backend and Request Owners
 
 Backend work and accepted request payloads SHALL retain their actual data owners through blocking work and caller cancellation. Storage SHALL NOT expose the superseded read-session or backend scratch-admission carriers.
 

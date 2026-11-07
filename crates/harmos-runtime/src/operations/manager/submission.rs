@@ -57,8 +57,8 @@ impl Manager {
         self.admit_at::<O, ()>(id, (request.into(), ()), None, &[], &Source::Host, None)
     }
 
-    pub async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<crate::operations::Response<O::Response>> {
-        self.submit::<O>(request)?.await
+    pub fn operation<O: OperationDeclaration>(&self, request: O::Request) -> harmos_sdk::operations::Invocation<Self, O> {
+        harmos_sdk::operations::Invocation::new(self.clone(), request)
     }
 
     pub fn submit_caused<O: OperationDeclaration>(&self, request: O::Request, cause: Position) -> Result<Running<O>> {
@@ -172,6 +172,12 @@ impl Manager {
         })?;
         let mut policy = entry.definition.policy;
         if let Some(retry) = request.retry {
+            if retry != crate::operations::RetryPolicy::Never && entry.declared().replay == crate::operations::ReplaySafety::Unknown {
+                return Err(Error::InvalidInput {
+                    field: "operation retry",
+                    reason: "call-site retries require declared replay safety",
+                });
+            }
             policy.retries = retry;
         }
         policy.validate().map_err(|source| Error::OperationDeclaration { source: source.into() })?;

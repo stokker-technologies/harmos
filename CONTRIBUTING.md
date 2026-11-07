@@ -70,7 +70,7 @@ manual preparation, `v*` tag pushes and merged PRs into dev that change
 `tools/project.toml`, which every release review does; its jobs still require
 a `release/v*` head, so ordinary merges start no Release run.
 
-## Tests And Checks
+## Tests and Checks
 
 Run targeted checks while implementing. After all agreed source work is
 complete and targeted proof passes, push the authorized candidate and immediately
@@ -87,14 +87,20 @@ checks, while mixed source or policy changes retain full selection.
 Required hosted CI controls integration. Keep auto-merge enabled; it may merge
 independently of local completion. Report and investigate local failures.
 
-Product and Tests compile independently with matching Clippy invocations.
+Product and Tests compile independently. Build, test, bench and fixture tasks never
+run Clippy. `lint:rust` runs Clippy with warnings denied; `check:rust` includes it
+and CI Check / Rust gates it. A focused `clippy` operation remains an explicit choice.
+Use `mise run lint:rust --extended` for local compatibility lint coverage.
 Tests use the default unoptimized test profile; optional extended tests remain
 explicit local work. Nightly runs ordinary verification with release Product
 builds and downloadable unsigned packages, plus coverage, benchmarks and
 `test:rust:starter` for generated guest/sidecar compilation and development lifecycles.
 Ordinary acceptance retains the other product stories without compiling starters.
-Correctness tests have a minimum 120-second deadline, preserving larger bounds.
-Use benchmarks for performance measurements rather than tightening test deadlines.
+Lane deadlines are hang guards read from `[conventions.testing.deadlines]` in
+`tools/project.toml`. Native runners terminate hung stories; script lanes also
+terminate their process tree at the lane deadline. Completed story durations are
+measurements and never change the runner's pass/fail result. Use benchmarks for
+performance measurements.
 
 For a focused Rust compiler check or selected test, use `mise run build:rust:focused`
 with the Cargo operation and selection arguments. This task applies the standard

@@ -83,7 +83,7 @@ mod runtime {
     // Local Imports
     use super::super::ProviderEchoOperation;
     use super::{EchoOperation, Echoed};
-    use harmos::guest::{Host, OperationRefusal};
+    use harmos::guest::{OperationHost, OperationRefusal};
 
     /* === Constants === */
 
@@ -107,7 +107,7 @@ mod runtime {
             let carrier = sdk.resource::<harmos::guest::kit::Context>();
             let context = carrier.as_ref();
             let result: Result<Echoed, OperationRefusal> = async move {
-                // Calls Through The Saved Initialization Context
+                // Calls Through the Saved Initialization Context
                 if let Some(value) = self.say.strip_prefix("saved-publish:") {
                     let saved = owner
                         .initialized_context
@@ -126,19 +126,20 @@ mod runtime {
                         .clone()
                         .ok_or_else(|| OperationRefusal::of("plugin context is absent"))?;
                     return saved
-                        .call::<super::super::ProviderEchoOperation>(ProviderEchoOperation { say: value.into() })
+                        .operation::<super::super::ProviderEchoOperation>(ProviderEchoOperation { say: value.into() })
                         .await
                         .map(harmos::guest::operations::Response::into_owned)
                         .map_err(OperationRefusal::of);
                 }
 
-                // Calls Through The Current Context
+                // Calls Through the Current Context
                 if let Some(say) = self.say.strip_prefix("dependency:") {
-                    return sdk
-                        .operation(ProviderEchoOperation { say: say.to_owned() })
-                        .await
-                        .map(harmos::guest::operations::Response::into_owned)
-                        .map_err(OperationRefusal::of);
+                    let invocation = sdk.operation(ProviderEchoOperation { say: say.to_owned() });
+                    let response = match sdk.call().value::<super::super::RetryChoice>().map_err(OperationRefusal::of)? {
+                        Some(settings) => invocation.retry(settings.policy()).await,
+                        None => invocation.await,
+                    };
+                    return response.map(harmos::guest::operations::Response::into_owned).map_err(OperationRefusal::from);
                 }
                 if let Some(value) = self.say.strip_prefix("publish:") {
                     crate::progress(context, value).await.map_err(OperationRefusal::from)?;
@@ -149,7 +150,7 @@ mod runtime {
                     }
                 }
 
-                // Memory The Sandbox Must Refuse
+                // Memory the Sandbox Must Refuse
                 if self.say == "grow" {
                     std::hint::black_box(vec![1u8; 128 * 1024 * 1024]);
                 }

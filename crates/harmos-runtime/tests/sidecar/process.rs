@@ -7,7 +7,7 @@
  * ***
  */
 
-// Nested Calls Between Host And Sidecar Over The In-Memory Transport
+// Nested Calls Between Host and Sidecar over the In-Memory Transport
 
 /* === Modules === */
 
@@ -279,7 +279,7 @@ impl harmos_runtime::Operation for CallbackPublication {
         owner.calls.fetch_add(1, Ordering::SeqCst);
         let host = ctx.resource::<harmos_runtime::operations::HostContext>();
         let id = owner.echo.forced().unwrap_or_else(|| self.0.sequence.unwrap());
-        let echoed = host.borrow().call::<Echo>(Echo::from(Blob { id, data: self.0.payload.clone() })).await?;
+        let echoed = host.borrow().operation::<Echo>(Echo::from(Blob { id, data: self.0.payload.clone() })).await?;
         assert_eq!(echoed.data, self.0.payload);
         let access = ctx.resource::<harmos_sdk::operations::publication::PublicationAccess>();
         let publication = harmos_sdk::operations::publication::Publication {
@@ -388,7 +388,7 @@ async fn nested_calls_reenter() {
     let fixture = Fixture::new().await;
     let request = blob(41, 256 * 1024);
 
-    let result = fixture.runtime.operation(Nested::from(request.clone())).run().await.unwrap();
+    let result = fixture.runtime.operation(Nested::from(request.clone())).await.unwrap();
 
     assert_eq!(*result, request);
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
@@ -406,7 +406,7 @@ async fn cancellation_settles_slots() {
     fixture.echo.store(Some(PENDING));
     let pending = fixture.runtime.operation(Nested::from(blob(42, 512))).start().await.unwrap();
 
-    // Cancelling The Outer Call Settles The Nested Slot It Holds
+    // Cancelling the Outer Call Settles the Nested Slot It Holds
     fixture.marks.marked("echo-started-0").await;
     pending.request_cancel();
     assert!(pending.await.is_err());
@@ -416,9 +416,9 @@ async fn cancellation_settles_slots() {
     assert_eq!(fixture.marks.count("echo-finalized-0"), 1);
     assert_eq!(fixture.marks.count("nested-finalized-42"), 1);
 
-    // The Settled Slots Serve The Next Call
+    // The Settled Slots Serve the Next Call
     fixture.echo.store(None);
-    assert_eq!(*fixture.runtime.operation(Nested::from(blob(43, 512))).run().await.unwrap(), blob(43, 512));
+    assert_eq!(*fixture.runtime.operation(Nested::from(blob(43, 512))).await.unwrap(), blob(43, 512));
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 2);
     fixture.finish().await;
 }
@@ -430,7 +430,7 @@ async fn deadline_settles_nested() {
     let pending = fixture.runtime.operation(Nested::from(blob(48, 512))).start().await.unwrap();
     fixture.marks.marked("echo-started-0").await;
 
-    // The Original Handler Deadline Settles The Pending Nested Call
+    // The Original Handler Deadline Settles the Pending Nested Call
     let result = pending.await;
     assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
     fixture.marks.marked("echo-finalized-0").await;
@@ -442,7 +442,7 @@ async fn deadline_settles_nested() {
 
     // The Deadline Refuses One Caller; The ServiceContext Serves The Next
     fixture.echo.store(None);
-    assert_eq!(*fixture.runtime.operation(Nested::from(blob(49, 512))).run().await.unwrap(), blob(49, 512));
+    assert_eq!(*fixture.runtime.operation(Nested::from(blob(49, 512))).await.unwrap(), blob(49, 512));
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 2);
     fixture.finish().await;
 }
@@ -452,13 +452,13 @@ async fn disconnect_no_replay() {
     let fixture = Fixture::new().await;
     fixture.echo.store(Some(ABANDON));
 
-    // The Abandoned Generation Fails The Call In Flight
-    let outcome = fixture.runtime.operation(Nested::from(blob(46, 512))).run().await;
+    // The Abandoned Generation Fails the Call in Flight
+    let outcome = fixture.runtime.operation(Nested::from(blob(46, 512))).await;
     assert!(outcome.is_err());
     service_status(fixture.runtime.operations.watch_residents(), "process", |status| matches!(status, ServiceStatus::Inactive { .. }))
         .await;
 
-    // Nothing Replays The Call On Another Generation
+    // Nothing Replays the Call on Another Generation
     assert_eq!(fixture.marks.count("started"), 1);
     assert_eq!(fixture.marks.count(&format!("echo-started-{ABANDON}")), 1);
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
@@ -528,7 +528,7 @@ async fn shutdown_sdk_publication() {
     let background = scope.publication("process.receipt", 1).unwrap();
     assert_eq!(delivered.load(Ordering::SeqCst), 0);
 
-    // Shutdown Publishes Through The Live Generation Before It Retires
+    // Shutdown Publishes Through the Live Generation Before It Retires
     runtime.shutdown().await.unwrap();
     assert_eq!(delivered.load(Ordering::SeqCst), 1);
     for mark in ["shutdown-publication-acknowledged", "shutdown", "cleaned"] {

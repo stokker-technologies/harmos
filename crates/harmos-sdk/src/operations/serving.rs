@@ -81,6 +81,9 @@ pub struct WireChildCall {
     // owned by the calling attempt until joined, released or detached.
     #[serde(default)]
     pub submit: bool,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry: Option<super::RetryPolicy>,
 }
 
 // Drives one child the same attempt submitted; the host resolves the instance
@@ -769,7 +772,7 @@ impl WireTable {
         if !self.ordinary_closed || self.prepared.values().any(|slot| !slot.lifecycle && !slot.is_finished()) {
             return Err(ServingError::Unsettled);
         }
-        // Hand Off Retired Owners So The Caller Can Drop Them Outside Its Lock
+        // Hand Off Retired Owners So the Caller Can Drop Them Outside Its Lock
         let retired_slots = self.prepared.extract_if(.., |_, slot| !slot.lifecycle).collect::<Vec<_>>();
         let retired_handlers = self.handlers.extract_if(.., |_, handler| !handler.lifecycle).collect::<Vec<_>>();
         let retired_services = std::mem::take(&mut self.services);

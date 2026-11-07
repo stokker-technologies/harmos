@@ -24,8 +24,7 @@ use tokio::sync::{mpsc, oneshot};
 use super::support::Pulse;
 use harmos_runtime::sidecar::inventory::publications;
 use harmos_runtime::sidecar::{
-    ActivationId, Activity, Instance, ObserverCaller, ObserverContext, ObserverPublisher, ObserverStreamPublisher, PublicationError,
-    StreamSpec,
+    ActivationId, Activity, Instance, ObserverContext, ObserverPublisher, ObserverStreamPublisher, PublicationError, StreamSpec,
 };
 
 /* === Constants === */
@@ -44,8 +43,6 @@ struct Host {
     hang: bool,
     dropped: Arc<AtomicBool>,
 }
-
-struct Measure;
 
 struct Recorded(u64);
 
@@ -72,7 +69,7 @@ struct Observing {
 
 #[derive(Debug, PartialEq, Eq)]
 enum Event {
-    Call(Identity, u64),
+    Publishing(Identity, u64),
     Record(Identity, u64),
     Stream(Identity, u64),
     GrantsChecked,
@@ -98,28 +95,18 @@ impl StreamSpec for WrongVersion {
     const WINDOW: usize = Pulse::WINDOW;
 }
 
-impl ObserverCaller<Measure> for Host {
-    type Request = u64;
-    type Response = u64;
+impl ObserverPublisher<Recorded> for Host {
     type Error = Failure;
 
-    async fn call(&self, ctx: &Context<'_>, request: u64) -> Result<u64, Failure> {
+    async fn publish(&self, ctx: &Context<'_>, value: Recorded) -> Result<(), Failure> {
         let _guard = Dropped(self.dropped.clone());
-        self.events.send(Event::Call(identity(ctx), request)).await.unwrap();
+        self.events.send(Event::Publishing(identity(ctx), value.0)).await.unwrap();
         if self.hang {
             return std::future::pending().await;
         }
         if ctx.tick().ordinal() == 1 {
             return Err(Failure::Refused);
         }
-        Ok(request + *ctx.resource::<u64>().unwrap())
-    }
-}
-
-impl ObserverPublisher<Recorded> for Host {
-    type Error = Failure;
-
-    async fn publish(&self, ctx: &Context<'_>, value: Recorded) -> Result<(), Failure> {
         self.events.send(Event::Record(identity(ctx), value.0)).await.unwrap();
         Ok(())
     }
@@ -156,7 +143,7 @@ impl<S: StreamSpec<Row = Pulse>> ObserverStreamPublisher<S> for Host {
 #[harmos_runtime::observer(interval_ms = 5, id = "host.watch", streams(Pulse))]
 impl Watch {
     async fn observe(&mut self, ctx: &ObserverContext<'_, Host>) -> Result<(), Failure> {
-        let value = ctx.call(7).await?;
+        let value = 7 + *ctx.resource::<u64>().unwrap();
         ctx.publish(Recorded(value)).await?;
         ctx.publish(Pulse { sample: value }).await?;
         ctx.publish_on::<Pulse>(&Pulse { sample: value + 1 }).await
@@ -227,8 +214,8 @@ async fn typed_context_dispatch() {
     let (host, mut events, _) = host(false);
     let task = Observing::start(Instance::<Host>::of::<Watch>().activate(super::observer_context(Arc::new(35_u64)), host).unwrap());
     let activation = task.activation;
-    assert_eq!(next(&mut events).await, Event::Call(("host.watch", activation, 1), 7));
-    assert_eq!(next(&mut events).await, Event::Call(("host.watch", activation, 2), 7));
+    assert_eq!(next(&mut events).await, Event::Publishing(("host.watch", activation, 1), 42));
+    assert_eq!(next(&mut events).await, Event::Publishing(("host.watch", activation, 2), 42));
     assert_eq!(next(&mut events).await, Event::Record(("host.watch", activation, 2), 42));
     assert_eq!(next(&mut events).await, Event::Stream(("host.watch", activation, 2), 42));
     assert_eq!(next(&mut events).await, Event::Stream(("host.watch", activation, 2), 43));
@@ -244,10 +231,10 @@ async fn version_grants_checked() {
 }
 
 #[tokio::test]
-async fn stop_drops_call() {
+async fn stop_drops_publication() {
     let (host, mut events, dropped) = host(true);
     let task = Observing::start(Instance::<Host>::of::<Watch>().activate(super::observer_context(Arc::new(0_u64)), host).unwrap());
-    assert!(matches!(next(&mut events).await, Event::Call(..)));
+    assert!(matches!(next(&mut events).await, Event::Publishing(..)));
     assert!(!dropped.load(Ordering::SeqCst));
     task.stop().await;
     assert!(dropped.load(Ordering::SeqCst));

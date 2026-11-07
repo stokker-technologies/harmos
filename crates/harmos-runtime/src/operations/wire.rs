@@ -43,8 +43,15 @@ pub(super) type Dispatch = fn(&Manager, Submission, Source, Option<Parent<'_>>, 
 
 struct Encoded;
 
+#[derive(Default)]
+struct EncodedOptions {
+    expected: Option<([u8; 32], u64)>,
+    retry: Option<super::RetryPolicy>,
+}
+
 pub(super) struct EncodedInput {
     pub(super) payload: Vec<u8>,
+    pub(super) retry: Option<super::RetryPolicy>,
     pub(super) preparation: Option<OwnedSemaphorePermit>,
 
     #[cfg(feature = "plugin-sidecar")]
@@ -144,6 +151,10 @@ impl Manager {
         self.submit_encoded_as(operation, payload, Source::Host, None)
     }
 
+    pub fn submit_encoded_with(&self, operation: &str, payload: Vec<u8>, retry: Option<super::RetryPolicy>) -> Result<EncodedInvocation> {
+        self.submit_encoded_at_as(operation, payload, Source::Host, None, executor::now(), EncodedOptions { expected: None, retry })
+    }
+
     pub async fn call_encoded(&self, operation: &str, payload: Vec<u8>) -> Result<Vec<u8>> {
         self.submit_encoded(operation, payload)?.await
     }
@@ -151,13 +162,20 @@ impl Manager {
     pub(super) fn submit_encoded_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>,
     ) -> Result<EncodedInvocation> {
-        self.submit_encoded_at_as(operation, payload, source, parent, executor::now(), None)
+        self.submit_encoded_at_as(operation, payload, source, parent, executor::now(), EncodedOptions::default())
+    }
+
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub(super) fn submit_encoded_retry_as(
+        &self, operation: &str, payload: Vec<u8>, source: Source, retry: Option<super::RetryPolicy>,
+    ) -> Result<EncodedInvocation> {
+        self.submit_encoded_at_as(operation, payload, source, None, executor::now(), EncodedOptions { expected: None, retry })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.submit_encoded_at_as", level = "debug", skip_all)]
     fn submit_encoded_at_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>, submitted: tokio::time::Instant,
-        expected: Option<([u8; 32], u64)>,
+        options: EncodedOptions,
     ) -> Result<EncodedInvocation> {
         let origin = source.check()?;
         let qualified = crate::QualifiedId::parse(operation).map_err(|_| Error::InvalidInput {
@@ -172,6 +190,15 @@ impl Manager {
             },
             error => error,
         })?;
+        self.dispatch_encoded(entry, payload, source, parent, submitted, options)
+    }
+
+    fn dispatch_encoded(
+        &self, entry: Arc<Entry>, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>, submitted: tokio::time::Instant,
+        options: EncodedOptions,
+    ) -> Result<EncodedInvocation> {
+        let EncodedOptions { expected, retry } = options;
+        let origin = source.check()?;
         entry.available_to(&origin)?;
         entry.authorize(&origin)?;
         if expected.is_some_and(|(fingerprint, generation)| {
@@ -198,6 +225,7 @@ impl Manager {
             source,
             parent,
             EncodedInput {
+                retry,
                 payload,
                 preparation: None,
                 #[cfg(feature = "plugin-sidecar")]
@@ -270,12 +298,20 @@ impl PluginCallback {
     pub fn submit_with(
         &self, encoding_memory_bytes: std::num::NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>,
     ) -> Result<EncodedInvocation> {
-        self.submit_with_as(Source::for_callback(&self.entry), encoding_memory_bytes, encode, false)
+        self.submit_with_retry(encoding_memory_bytes, encode, None)
+    }
+
+    pub fn submit_with_retry(
+        &self, encoding_memory_bytes: std::num::NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>,
+        retry: Option<super::RetryPolicy>,
+    ) -> Result<EncodedInvocation> {
+        self.submit_with_as(Source::for_callback(&self.entry), encoding_memory_bytes, encode, false, retry)
     }
 
     // A resident control runs until cancelled; it holds no native call slot.
     fn submit_with_as(
-        &self, source: Source, encoding_memory_bytes: std::num::NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>, resident: bool,
+        &self, source: Source, encoding_memory_bytes: std::num::NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>,
+        resident: bool, retry: Option<super::RetryPolicy>,
     ) -> Result<EncodedInvocation> {
         #[cfg(not(feature = "plugin-sidecar"))]
         let _ = resident;
@@ -324,6 +360,7 @@ impl PluginCallback {
             source,
             None,
             EncodedInput {
+                retry,
                 payload,
                 preparation: Some(preparation),
                 #[cfg(feature = "plugin-sidecar")]
@@ -338,15 +375,15 @@ impl PluginControl {
     pub(crate) fn submit_with(
         &self, bytes: std::num::NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>,
     ) -> Result<EncodedInvocation> {
-        self.0.submit_with_as(Source::Host, bytes, encode, true)
+        self.0.submit_with_as(Source::Host, bytes, encode, true, None)
     }
 }
 
 #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
 impl super::Caller {
     pub(crate) fn submit_encoded_at(
-        &self, operation: &str, fingerprint: [u8; 32], generation: u64, payload: Vec<u8>, submitted: tokio::time::Instant,
-        values: Vec<super::CallValue>,
+        &self, operation: &str, identity: ([u8; 32], u64), payload: Vec<u8>, submitted: tokio::time::Instant,
+        values: Vec<super::CallValue>, retry: Option<super::RetryPolicy>,
     ) -> Result<EncodedInvocation> {
         let context = self.operations.call_context().with_values(values)?;
         self.operations.with_context(context).submit_encoded_at_as(
@@ -355,12 +392,26 @@ impl super::Caller {
             Source::Plugin(self.source.clone()),
             None,
             submitted,
-            Some((fingerprint, generation)),
+            EncodedOptions { expected: Some(identity), retry },
         )
     }
 }
 
 impl super::Context<'_> {
+    pub fn submit_encoded_with(&self, operation: &str, payload: Vec<u8>, retry: Option<super::RetryPolicy>) -> Result<EncodedInvocation> {
+        self.operations.submit_encoded_at_as(
+            operation,
+            payload,
+            self.source.clone(),
+            Some(Parent {
+                scope: &self.scope,
+                ancestors: self.admission.held(),
+            }),
+            executor::now(),
+            EncodedOptions { expected: None, retry },
+        )
+    }
+
     pub fn submit_encoded(&self, operation: &str, payload: Vec<u8>) -> Result<EncodedInvocation> {
         self.operations.submit_encoded_as(
             operation,
@@ -375,8 +426,8 @@ impl super::Context<'_> {
 
     #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(crate) fn submit_encoded_at(
-        &self, operation: &str, fingerprint: [u8; 32], generation: u64, payload: Vec<u8>, submitted: tokio::time::Instant,
-        values: Vec<super::CallValue>,
+        &self, operation: &str, identity: ([u8; 32], u64), payload: Vec<u8>, submitted: tokio::time::Instant,
+        values: Vec<super::CallValue>, retry: Option<super::RetryPolicy>,
     ) -> Result<EncodedInvocation> {
         let context = self.operations.call_context().with_values(values)?;
         self.operations.with_context(context).submit_encoded_at_as(
@@ -388,12 +439,28 @@ impl super::Context<'_> {
                 ancestors: self.admission.held(),
             }),
             submitted,
-            Some((fingerprint, generation)),
+            EncodedOptions { expected: Some(identity), retry },
         )
     }
 
     pub async fn call_encoded(&self, operation: &str, payload: Vec<u8>) -> Result<Vec<u8>> {
         self.submit_encoded(operation, payload)?.await
+    }
+
+    pub(super) fn submit_encoded_target(
+        &self, entry: Arc<Entry>, payload: Vec<u8>, retry: Option<super::RetryPolicy>,
+    ) -> Result<EncodedInvocation> {
+        self.operations.dispatch_encoded(
+            entry,
+            payload,
+            self.source.clone(),
+            Some(Parent {
+                scope: &self.scope,
+                ancestors: self.admission.held(),
+            }),
+            executor::now(),
+            EncodedOptions { expected: None, retry },
+        )
     }
 }
 
@@ -405,18 +472,24 @@ pub(super) fn dispatch_native(
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
     budget(timeout, submitted)?;
-    let factory = submission.entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>().ok_or(Error::InvalidInput {
-        field: "native operation",
-        reason: "entry does not own a native factory",
-    })?;
+    let factory = submission.entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>();
     let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
         Some(original) => Some(original),
         None => Some(operations.claim_preparation(std::num::NonZeroUsize::new(input.payload.capacity().max(1)).unwrap())?),
     };
-    let decoding_bytes = catch_unwind(AssertUnwindSafe(|| factory.decoding_memory(&input.payload)))
-        .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
-        .map_err(|source| Error::OperationPayload { operation: name.clone(), source })?;
+    let decoding_bytes = catch_unwind(AssertUnwindSafe(|| {
+        if let Some(factory) = factory {
+            return factory.decoding_memory(&input.payload);
+        }
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {
+            return binding.decoding_memory(&input.payload);
+        }
+        Err(crate::MessageError::borrowed("entry does not own a native codec"))
+    }))
+    .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
+    .map_err(|source| Error::OperationPayload { operation: name.clone(), source })?;
     if let Some(bytes) = std::num::NonZeroUsize::new(decoding_bytes) {
         let decoded = operations.claim_preparation(bytes)?;
         if let Some(original) = &mut submission.preparation {
@@ -426,14 +499,25 @@ pub(super) fn dispatch_native(
         }
     }
     let resources = operations.resources_for(&submission.entry);
-    let prepared = catch_unwind(AssertUnwindSafe(|| factory.prepare_encoded(resources, &input.payload)))
-        .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
-        .map_err(|source| Error::OperationFailed {
-            operation: name,
-            source: Arc::new(source),
-        })?;
+    let prepared = catch_unwind(AssertUnwindSafe(|| {
+        if let Some(factory) = factory {
+            return factory.prepare_encoded(resources, &input.payload);
+        }
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {
+            return binding.prepare(resources, &input.payload);
+        }
+        Err(harmos_sdk::ServingError::Catalog)
+    }))
+    .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
+    .map_err(|source| Error::OperationFailed {
+        operation: name,
+        source: Arc::new(source),
+    })?;
     drop(input.payload);
-    dispatch_prepared(operations, submission, source, parent, prepared, super::binding::Request::from(Vec::new()))
+    let mut request = super::binding::Request::from(Vec::new());
+    request.retry = input.retry;
+    dispatch_prepared(operations, submission, source, parent, prepared, request)
 }
 
 pub(super) fn dispatch_prepared(
@@ -561,7 +645,10 @@ mod tests {
                 Source::Host,
                 None,
                 executor::now(),
-                Some((fingerprint, generation)),
+                EncodedOptions {
+                    expected: Some((fingerprint, generation)),
+                    retry: None,
+                },
             )
         };
         assert!(matches!(submit(wrong, generation), Err(Error::InvalidInput { field: "encoded operation identity", .. })));

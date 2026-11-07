@@ -7,7 +7,7 @@
  * ***
  */
 
-// Shared Application And Plugin Lifecycle
+// Shared Application and Plugin Lifecycle
 
 /* === Modules === */
 

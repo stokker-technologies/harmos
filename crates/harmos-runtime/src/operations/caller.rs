@@ -165,6 +165,12 @@ impl Caller {
         self.operations.submit_encoded_as(operation, payload, Source::Plugin(self.source.clone()), None)
     }
 
+    pub fn submit_encoded_with(
+        &self, operation: &str, payload: Vec<u8>, retry: Option<super::RetryPolicy>,
+    ) -> Result<super::EncodedInvocation> {
+        self.operations.submit_encoded_retry_as(operation, payload, Source::Plugin(self.source.clone()), retry)
+    }
+
     pub async fn call_encoded(&self, operation: &str, payload: Vec<u8>) -> Result<Vec<u8>> {
         self.submit_encoded(operation, payload)?.await
     }
@@ -183,8 +189,43 @@ impl Caller {
         self.operations.submit_by::<O, P>((super::binding::Request::charged(request)?, endpoints), &Source::Plugin(self.source.clone()))
     }
 
-    pub async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<crate::operations::Response<O::Response>> {
-        self.submit::<O>(request)?.await
+    pub fn operation<O: OperationDeclaration>(&self, request: O::Request) -> harmos_sdk::operations::Invocation<Self, O> {
+        harmos_sdk::operations::Invocation::new(self.clone(), request)
+    }
+}
+
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+impl harmos_sdk::operations::OperationHost for Caller {
+    type Error = Error;
+    type Instance<O: OperationDeclaration> = Running<O>;
+    fn context(&self) -> &super::CallContext {
+        self.operations.call_context()
+    }
+    fn with_value<T: super::ContextValue>(&self, value: T) -> std::result::Result<Self, super::ContextError> {
+        Ok(Self {
+            operations: self.operations.with_context(self.operations.call_context().with_value(value)?),
+            source: self.source.clone(),
+        })
+    }
+    async fn invoke<O: OperationDeclaration, E: super::EndpointSet>(
+        &self, request: O::Request, retry: Option<super::RetryPolicy>, endpoints: E,
+    ) -> Result<Running<O>> {
+        super::surface::validate_endpoints::<O, E>()?;
+        let mut request = super::binding::Request::from(request);
+        request.retry = retry;
+        self.operations.submit_by::<O, E>((request, endpoints), &Source::Plugin(self.source.clone()))
+    }
+    async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>> {
+        Caller::submit::<O>(self, request)
+    }
+    async fn submit_owned<O: OperationDeclaration>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
+        self.operations.submit_by::<O, ()>((super::binding::Request::owned(request, claims), ()), &Source::Plugin(self.source.clone()))
+    }
+    async fn publish_on<S: harmos_domain::StreamSpec>(&self, row: &S::Row) -> Result<()>
+    where
+        S::Row: harmos_domain::Message,
+    {
+        harmos_operations::streams::publish_on::<_, S>(self, row).await
     }
 }
 
@@ -265,7 +306,7 @@ impl Source {
                 id: *id,
             };
         }
-        // A Host Provider Serving A Plugin Requirement Acts For That Caller
+        // A Host Provider Serving a Plugin Requirement Acts for That Caller
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         if entry.plugin().is_none() && _origin.scope.is_some() {
             return self.clone();

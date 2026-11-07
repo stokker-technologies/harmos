@@ -44,6 +44,13 @@ pub struct Invocation {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub struct AttemptObservation {
+    /// Zero-Based Attempt Number, Shared With The Handler Context And Trace.
+    pub attempt: usize,
+    pub outcome: OperationOutcome,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct Observation {
     pub outcome: OperationOutcome,
     pub settled: bool,
@@ -76,6 +83,10 @@ pub(super) struct Session {
 
 pub trait Middleware: Send + Sync + 'static {
     fn enter<'a>(&'a self, call: &'a mut Invocation) -> Enter<'a>;
+
+    fn attempt<'a>(&'a self, _call: &'a Invocation, _attempt: AttemptObservation) -> Enter<'a> {
+        Box::pin(async { Ok(()) })
+    }
 
     fn observe(&self, _call: &Invocation, _observation: Observation) {}
 }
@@ -186,6 +197,13 @@ impl Session {
             }
         }
         self.freeze();
+        Ok(())
+    }
+
+    pub(super) async fn attempt(&self, observation: AttemptObservation) -> Result<()> {
+        for entry in self.entries[..self.entered].iter().rev() {
+            guarded(entry.attempt(&self.call, observation)).await?;
+        }
         Ok(())
     }
 

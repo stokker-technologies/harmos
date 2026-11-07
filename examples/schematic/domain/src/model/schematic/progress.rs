@@ -7,7 +7,7 @@
  * ***
  */
 
-// Progress Published By The Native Analysis Sidecar.
+// Progress Published by the Native Analysis Sidecar.
 
 /* === Modules === */
 

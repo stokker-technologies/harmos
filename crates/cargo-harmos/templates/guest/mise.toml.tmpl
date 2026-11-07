@@ -6,7 +6,7 @@ lockfile = true
 # === Tools === #
 
 [tools]
-# Languages And Runtimes
+# Languages and Runtimes
 go = "1.27.3"
 python = "3.15.2"
 rust = { version = "1.99.1", components = "clippy,rustfmt,llvm-tools", profile = "minimal" }
@@ -20,12 +20,12 @@ uv = "0.13.5"
 "github:bnjbvr/cargo-machete" = "0.9.2"
 sccache = "0.19.0"
 
-# Formatting And Linting
+# Formatting and Linting
 "aqua:koalaman/shellcheck" = "0.11.0"
 "go:github.com/rhysd/actionlint/cmd/actionlint" = "v1.7.13-0.20260417151945-fd33e9f582a0"
 taplo = "0.10.0"
 
-# Release And Signing
+# Release and Signing
 git-cliff = "2.14.2"
 
 # Project Statistics
@@ -42,7 +42,7 @@ git-cliff = "2.14.2"
 # === Prepare === #
 
 [tasks.prepare]
-description = "Prepare Tools And Inputs"
+description = "Prepare Tools and Inputs"
 run = "uv sync --locked --project tools/python --all-groups"
 
 # === Format === #
@@ -88,15 +88,18 @@ run = [
 
 [tasks."lint:rust"]
 description = "Lint Rust"
+usage = 'flag "--extended"'
 run = [
   "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --profile dev",
   "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --tests --profile test",
+  "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --bins --benches --profile bench{% if usage.extended %} --all-features{% endif %}",
+  "{% if usage.extended %}uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --no-default-features --profile dev{% endif %}",
 ]
 
 # === Check === #
 
 [tasks.check]
-description = "Check Every Language And Conventions"
+description = "Check Every Language and Conventions"
 run = [{ task = "check:repository" }, { task = "check:rust" }, { task = "check:python" }]
 
 [tasks."check:python"]
@@ -104,7 +107,7 @@ description = "Check Python"
 run = [{ task = "format:python --check" }, { task = "lint:python" }]
 
 [tasks."check:repository"]
-description = "Check Repository Configuration And Conventions"
+description = "Check Repository Configuration and Conventions"
 run = [{ task = "format:toml --check" }, "uv run --locked --project tools/python python -m project_tools.ci.mise"]
 
 [tasks."check:rust"]
@@ -123,16 +126,16 @@ run = "uv run --locked --project tools/python python -m project_tools.build.rust
 description = "Validate Rust Compatibility"
 usage = 'flag "--profile <profile>" default="dev"'
 run = [
-  "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --profile {{usage.profile}} --all-features",
-  "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --profile {{usage.profile}} --no-default-features",
+  "uv run --locked --project tools/python python -m project_tools.build.cargo focused check --locked --workspace --profile {{usage.profile}} --all-features",
+  "uv run --locked --project tools/python python -m project_tools.build.cargo focused check --locked --workspace --profile {{usage.profile}} --no-default-features",
 ]
 
 [tasks."build:rust:focused"]
-description = "Compile An Explicit Local Rust Selection"
+description = "Compile an Explicit Local Rust Selection"
 run = "uv run --locked --project tools/python python -m project_tools.build.cargo focused"
 
 [tasks."build:rust:tests"]
-description = "Build Test Binaries And Fixtures"
+description = "Build Test Binaries and Fixtures"
 usage = 'flag "--profile <profile>" default="dev"'
 run = "uv run --locked --project tools/python python -m project_tools.build.cargo archive --profile {{usage.profile}}"
 
@@ -148,7 +151,7 @@ run = "uv run --locked --project tools/python python -m project_tools.build.carg
 
 
 [tasks.dev]
-description = "Watch And Rebuild The Plugin"
+description = "Watch and Rebuild the Plugin"
 run = "cargo harmos guest dev"
 
 # === Test === #
@@ -166,7 +169,7 @@ usage = 'flag "--profile <profile>" default="dev"'
 run = [{ tasks = ["test:rust:unit --profile {{usage.profile}}"] }]
 
 [tasks."test:rust:coverage"]
-description = "Measure Coverage Over Instrumented Lanes"
+description = "Measure Coverage over Instrumented Lanes"
 env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
 run = "uv run --locked --project tools/python python -m project_tools.test.run coverage --language rust --profile {{usage.profile}}"
@@ -198,7 +201,7 @@ run = "uv run --locked --project tools/python python -m project_tools.package.ru
 # === CI === #
 
 [tasks."ci:simulate"]
-description = "Simulate The Declared CI Graph Locally"
+description = "Simulate the Declared CI Graph Locally"
 usage = """
 flag "--pipeline <kind>" default=pr
 flag "--platform <platform>"
@@ -216,11 +219,11 @@ run = "uv run --locked --project tools/python python -m project_tools.release.ru
 # === Housekeeping === #
 
 [tasks.housekeeping]
-description = "Clean Owned Build Outputs And State"
+description = "Clean Owned Build Outputs and State"
 run = "stkr project housekeeping"
 
 [tasks."housekeeping:outdated"]
-description = "Report Available Dependency And Tool Updates Without Changing Anything"
+description = "Report Available Dependency and Tool Updates Without Changing Anything"
 run = "mise outdated"
 
 [tasks."housekeeping:stats"]

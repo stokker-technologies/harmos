@@ -7,7 +7,7 @@
  * ***
  */
 
-// Retain Native System Story Traces Through Settlement And Unwinding
+// Retain Native System Story Traces Through Settlement and Unwinding
 
 /* === Modules === */
 

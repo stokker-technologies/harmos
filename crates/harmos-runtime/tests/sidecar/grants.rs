@@ -7,7 +7,7 @@
  * ***
  */
 
-// Enforce Request Grants For External Callers Across Sidecar And In-Process Bindings
+// Enforce Request Grants for External Callers Across Sidecar and In-Process Bindings
 
 /* === Modules === */
 

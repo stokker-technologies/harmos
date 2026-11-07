@@ -24,10 +24,12 @@ Keys, all optional:
 Limits are story counts per layer, enforced by the source inventory. TypeScript and
 JavaScript workspace packages each have their own scope; other tests share the project scope.
 Exceeding one is a curation finding in the
-index, never a failure. Deadlines are the per-story maximum of a lane in seconds. An override
-replaces the deadline of the stories it selects: for Rust `select` is a nextest filterset, for
-the other languages a glob over `<file>::<story>`. Acceptance and system lanes receive the whole
-Product and Tests builds of their profile and target, so lanes declare no inputs.
+index, never a failure. Deadlines are hang guards in seconds, read from
+`tools/project.toml`. Native runners terminate hung stories; script lanes also have a
+whole-lane process-tree guard. Completed story durations are measurements, never pass/fail
+criteria. Rust overrides use nextest filtersets to replace selected story hang guards.
+Acceptance and system lanes receive the whole Product and Tests builds of their profile
+and target, so lanes declare no inputs.
 
 The expected lanes are the `test:<language>:<category>` leaf tasks of `mise.toml`.
 """
@@ -35,7 +37,6 @@ The expected lanes are the `test:<language>:<category>` leaf tasks of `mise.toml
 # === Imports === #
 
 # Standard Library Imports
-import fnmatch
 import math
 import tomllib
 from dataclasses import dataclass
@@ -90,18 +91,11 @@ class Policy:
     bench_regression_percent: float = 20
 
     def deadline(self, category: str, coverage: bool = False) -> int:
-        """The lane maximum per story, multiplied for instrumented runs."""
+        """The lane hang guard, multiplied for instrumented runs."""
         return self.deadlines[category] * (COVERAGE_FACTOR if coverage else 1)
 
     def selected(self, category: str, language: str) -> list[Override]:
         return [entry for entry in self.overrides if entry.category == category and entry.language == language]
-
-    def matched(self, category: str, language: str, story: str) -> Override | None:
-        """The first glob override of a script or Python story."""
-        for entry in self.selected(category, language):
-            if fnmatch.fnmatchcase(story, entry.select):
-                return entry
-        return None
 
 
 # === Public Functions === #

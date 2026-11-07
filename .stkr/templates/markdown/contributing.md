@@ -8,7 +8,7 @@
 
 <!-- Describe task branches, source closure and the impact-selected ci:simulate review gate. -->
 
-## Tests And Checks
+## Tests and Checks
 
 <!-- Link to maintained task documentation; keep required validation policy in its canonical owner. -->
 

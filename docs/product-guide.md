@@ -2,6 +2,23 @@
 
 Detailed composition, feature selection and runnable examples. Start with the [Quick Start](../README.md#quick-start).
 
+Embedded language bindings can stage runtime-owned unary operations with
+`operations::EncodedBinding::new(contract, decoding_memory, prepare)` and
+`Bindings::encoded(binding, lane)`. `Contract::from_schema` derives the canonical
+fingerprint from an owned graph. The codec validates payloads and estimates decoded
+allocation; its prepared `NativeInstance` runs through normal admission, retries,
+cancellation and settlement. Plugin staging validates the frozen contribution
+catalog and retains its original generation. Runtime bindings currently use the
+canonical encoded carrier without a gRPC projection or stream endpoints.
+
+`submit_encoded_with(operation, payload, retry)` and
+`PluginCallback::submit_with_retry(bytes, encode, retry)` apply policy overrides to
+one call. Unknown replay safety still refuses enabled retries. Existing deadlines,
+authorization and attempt records remain authoritative. Embedded observer owners
+use `stage_plugin_observers(resources, scope, backends)` and
+`submit_resident_in(id, resources)` to retain plugin scope and resource identity;
+generation retirement stops these observers with the plugin.
+
 Operation failures retain their classification, application refusal code and source
 diagnostics across carriers. Applications can attach named, non-secret context
 with `Failure::with_detail` and read it with `Failure::detail`; a plugin admission
@@ -481,7 +498,7 @@ sorting and reductions, retaining their query slot through output. Cancellation
 stops detached reduction work and releases temporary files.
 
 Native callers can attach their own allocation owner with
-`operations::RequestClaims::retain(owner)` and submit using `Host::call_owned` or
+`operations::RequestClaims::retain(owner)` and submit using `OperationHost::call_owned` or
 `submit_owned`. Accepted work retains that owner after caller cancellation.
 Guest and sidecar bindings refuse process-local claims.
 
@@ -516,6 +533,11 @@ A zero budget selects immediate spilling. Both paths poll the cancellation closu
 passed to `finish` and preserve the same exact rank and interpolation semantics.
 Snapshot reads run concurrently; closing storage waits for those in
 flight.
+
+Snapshot pin acquisition and release use one separate worker slot alongside
+ordered data and recovery writes and immutable file publication. Pruning and
+deletion remain exclusive with pin registration and release. Typed writes and
+durable frontier advancement retain their ordering.
 
 `storage::query::quantiles::Quantiles` stores finite f64 projections for exact
 linear percentiles without decoding source evidence again. Its constructor
@@ -601,7 +623,7 @@ const POLICY: harmos::OperationPolicy = crate::POLICY;
 pub struct Reading { pub value: f64 }
 
 #[harmos::operation(id = "temperature.read", response = Reading, policy = POLICY,
-    visibility = Public, resources = [Device])]
+    visibility = Public, resources = [Device], replay = harmos::operations::ReplaySafety::Idempotent)]
 pub struct Read { pub channel: u32 }
 
 /* === Enums === */
@@ -697,6 +719,8 @@ pub enum Operations {
     Desktop(desktop::Inspect),
 }
 
+use harmos::operations::InvocationExt;
+
 impl harmos::Lifecycle for Product {
     type Config = ProductSettings;
     type Error = DeviceError;
@@ -718,8 +742,9 @@ impl harmos::Lifecycle for Product {
     async fn cleanup(&mut self) -> Result<(), Self::Error> { self.device.close().await }
 }
 
+let retry = settings.retry;
 let runtime = harmos::Runtime::<Product>::launch(origin, settings).await?;
-let reading = runtime.operation(Read { channel: 3 }).retry(retry).lane(Lane::Interactive).run().await?;
+let reading = runtime.operation(Read { channel: 3 }).retry(retry).lane(Lane::Interactive).await?;
 runtime.shutdown().await?;
 ```
 
@@ -751,7 +776,17 @@ plugin requirements. Explicit grants still belong to the plugin. There are three
 
 `input = Item` and `output = Item` derive `StreamEndpoints`: `()` for unary calls, `StreamInput<Item>`, `StreamOutput<Item>`,
 or their pair. Borrow endpoints with `ctx.streams() -> &Self::StreamEndpoints`; input receives serialize through an asynchronous mutex.
-Invocation builders accept `.endpoints(...)` and remain inert until `.start()` or `.run()`.
+Every authoring surface returns the SDK `Invocation<H: OperationHost, O, E = ()>` from `ctx.operation(request)`.
+Await it to receive `Response<T>`, which dereferences to the value; `into_owned()` moves the payload out, cloning only when shared.
+`.start().await?` returns an owned instance, and `.endpoints(...)` supplies its declared endpoints. Builders are inert until awaited or started.
+Runtime `.lane(...)` is supplied by `operations::InvocationExt`; templates have no lane option. Use `operations.submit_at` for dynamic registrations.
+
+The operation macro owns the default policy. An option overrides only that call; a later call without options uses the declaration unchanged.
+Pass `.retry(settings.retry)` from settings, parameters or configuration. Retry overrides never change operation or attempt deadlines.
+Enabling call-site retry requires declared `Idempotent` or `Deduplicated` replay safety; unknown safety is refused before execution.
+Declaration defaults retain their existing semantics: transient failures may retry with unknown safety, while ambiguous failures require replay safety.
+Sidecar and guest child envelopes carry the optional retry policy to host admission. The host execution loop owns every attempt;
+`operations::middleware::Middleware::attempt` observes each completed attempt with its number and outcome for durable application evidence.
 
 Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
 Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.
@@ -761,8 +796,8 @@ and `storage.append_file`. `codec = manual` preserves an explicitly authored mes
 
 Started operations return the same typed `Response<T>` from `join()` and
 `cancel().await`. `request_cancel()` sends only the signal. An implementation
-can await `ctx.cancelled()` and return its normal response; cancellation errors
-or a missing response become `Refusal::Cancelled`. Set
+can await `ctx.cancelled()` and return its normal response or a defined failure;
+both retain their result. A missing response becomes `Refusal::Cancelled`. Set
 `OperationPolicy::cancellation_timeout` to the grace duration. Zero preserves
 immediate abort. Grace never extends the remaining attempt or overall timeout,
 and cancellation never retries. Final responses still wait for owned children
@@ -909,7 +944,9 @@ explicit activation cycle, including crashes after readiness; successful startup
 does not replenish it. Status retains the lifetime startup count, last failure
 class, retry deadline and cleanup state, including stopping while the original
 retirement owner is still settling. Invalid configuration/contracts are terminal. Explicit stop cancels restarts for the plugin and its dependents;
-failed cleanup prevents a fresh physical attempt. Plugin restart never replays
+failed cleanup prevents a fresh physical attempt of that generation and its dependents.
+An unrelated reload does not retry retained failed cleanup; explicit initialization
+or a reload selecting the failed owner retries it. Plugin restart never replays
 uncertain operation calls or streaming transfers. Guest `shutdown_timeout` bounds
 the complete stop wait, including SDK settlement, authored shutdown and physical
 finalization. A timeout retains the same invocation and cleanup owners; retrying
@@ -920,6 +957,12 @@ retirement owner. Caller abandonment, explicit stop and runtime shutdown interru
 reload initialization and fence each new generation; cleanup retains ownership
 until settlement. A committed replacement remains the source for later explicit
 activation. `remove(id)` requires registered dependents to be removed first.
+
+Native retirement joins observers before SDK shutdown. An observer retains access
+to its own generation's operations while its stop is joining; ordinary callers
+remain fenced. A carrier already physically joined satisfies native shutdown,
+while authored cleanup failures remain failures. Unexpected exits while serving
+remain visible faults.
 
 Embedded operation contributions and host contributions register resource-free
 catalogs through `register::<Operations>(lane)`. Plugin scopes retain their
@@ -1029,7 +1072,7 @@ in its output. HTML rendering uses Plotters and does not require Gnuplot.
 
 ## Documentation
 
-- [Repository Tooling](tooling.md) — workstation build locking and shared compiler cache.
+- [Repository Tooling](tooling.md) — workstation builds and shared compiler cache.
 - [Runnable Examples](examples.md) — application composition and plugin integration.
 - [Schematic Walkthrough](schematic.md) — the example application, its crates and backends.
 - [Public Rust API](../crates/harmos/src/lib.rs) — the SDK facade and module documentation.
@@ -1070,9 +1113,10 @@ The existing convenience methods retain Harmos defaults. Memory and work
 refusals report attempted usage and the allowed amount; bundle errors also name
 the package and executable. Aggregate provides/requires fragments are unsupported.
 
-Protocol, artifact, envelope, journal and schema formats are v1. Only current
-shapes are supported; there are no old-peer checks, historical shape converters,
-legacy decoders or journal upgrades.
+Operation envelopes are v2 and carry optional call-site retry policy. Protocol,
+artifact, journal and schema formats remain v1. Only current shapes are supported;
+incompatible envelope versions are refused, with no historical converters or
+journal upgrades. Rebuild sidecars and guests against the same SDK.
 
 ## Transaction Reversibility
 

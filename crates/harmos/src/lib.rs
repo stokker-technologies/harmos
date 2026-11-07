@@ -69,7 +69,7 @@ pub mod prelude {
         ServicePolicy, message,
     };
     #[cfg(feature = "runtime")]
-    pub use harmos_sdk::{Context, ExecutionContext, Operation, Response, Service};
+    pub use harmos_sdk::{Context, ExecutionContext, Invocation, Operation, OperationHost, Response, Service};
 }
 
 /* === Imports === */

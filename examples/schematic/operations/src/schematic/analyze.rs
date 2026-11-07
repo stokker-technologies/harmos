@@ -23,6 +23,13 @@ use harmos::MemorySize;
 
 /* === Constants === */
 
+const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+    timeout: std::time::Duration::from_secs(10),
+    attempt_timeout: std::time::Duration::from_secs(10),
+    cancellation_timeout: std::time::Duration::ZERO,
+    retries: harmos::operations::RetryPolicy::Never,
+};
+
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -39,7 +46,7 @@ pub struct Finding {
     id = "schematic.analyze",
     response = Analysis,
     output = Finding,
-    policy = crate::POLICY,
+    policy = POLICY,
     visibility = Public,
     replay = harmos::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "Analyze"),

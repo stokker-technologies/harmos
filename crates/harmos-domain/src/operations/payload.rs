@@ -7,7 +7,7 @@
  * ***
  */
 
-// Hand-Declared Payloads For Built-In Operations, Whose Fixed Tags Stay
+// Hand-Declared Payloads for Built-In Operations, Whose Fixed Tags Stay
 // Independent Of The Authored Field-Name Tags.
 
 /* === Modules === */

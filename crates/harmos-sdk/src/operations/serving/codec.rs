@@ -34,7 +34,7 @@ use super::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildCont
 
 /* === Constants === */
 
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
 pub(super) const LIMIT: usize = 16 * 1024 * 1024;
 
 /* === Macros === */
@@ -55,6 +55,9 @@ struct Value<'a> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum WireCodecError {
+    #[error("unsupported operation envelope version {0}")]
+    Version(u8),
+
     #[error("operation envelope exceeds the 16 MiB limit")]
     Oversized,
 
@@ -68,7 +71,7 @@ pub enum WireCodecError {
     Encoding(#[from] postcard::Error),
 }
 
-// Variant Order Is Part Of Version 1. Borrowed Fields Validate Before Allocation.
+// Variant Order Is Part Of Version 2. Borrowed Fields Validate Before Allocation.
 // As In The Transport Experiment, Payloads Use Postcard Byte Strings, Not Sequences.
 #[derive(Serialize, Deserialize)]
 enum Envelope<'a> {
@@ -117,6 +120,7 @@ enum Envelope<'a> {
         payload: &'a [u8],
 
         submit: bool,
+        retry: Option<super::super::RetryPolicy>,
     },
     PrepareGrpc {
         invocation: u64,
@@ -344,6 +348,7 @@ impl WireChildCall {
     /// Context identifiers and the submit flag have fixed encoded widths.
     pub fn payload_encoded_len(
         operation: &str, generation: u64, payload: usize, generation_context: bool, values: &[super::super::CallValue],
+        retry: Option<super::super::RetryPolicy>,
     ) -> Result<usize, WireCodecError> {
         check_values(values)?;
         let envelope = Envelope::Child {
@@ -355,6 +360,7 @@ impl WireChildCall {
             generation,
             payload: &[],
             submit: false,
+            retry,
         };
         let count = postcard::experimental::serialized_size(&values.len())?;
         let mut size = add_size(payload_size(envelope, payload)?, count - 1)?;
@@ -376,6 +382,7 @@ impl WireChildCall {
             generation: self.generation,
             payload: &self.payload,
             submit: self.submit,
+            retry: self.retry,
         })
     }
 
@@ -409,6 +416,7 @@ impl WireChild {
                 generation,
                 payload,
                 submit,
+                retry,
             } => Self::Call(WireChildCall {
                 context,
                 generation_context,
@@ -418,6 +426,7 @@ impl WireChild {
                 generation,
                 payload: payload.to_vec(),
                 submit,
+                retry,
             }),
             Envelope::ChildControl { context, instance, action } => Self::Control(WireChildControl { context, instance, action }),
             _ => return Err(WireCodecError::Kind),
@@ -491,7 +500,10 @@ fn decode(bytes: &[u8]) -> Result<Envelope<'_>, WireCodecError> {
     if bytes.len() > LIMIT {
         return Err(WireCodecError::Oversized);
     }
-    let (_version, rest) = postcard::take_from_bytes::<u8>(bytes)?;
+    let (version, rest) = postcard::take_from_bytes::<u8>(bytes)?;
+    if version != VERSION {
+        return Err(WireCodecError::Version(version));
+    }
     let (envelope, rest) = postcard::take_from_bytes::<Envelope<'_>>(rest)?;
     if !rest.is_empty() {
         return Err(WireCodecError::Trailing);
@@ -505,6 +517,49 @@ fn decode(bytes: &[u8]) -> Result<Envelope<'_>, WireCodecError> {
 mod tests {
     use super::*;
     use crate::operations::{CallValue, PORTABLE_BYTES, PORTABLE_VALUES};
+
+    #[test]
+    fn rejects_previous_envelope_before_decoding_changed_child_shape() {
+        assert!(matches!(WireChildCall::decode(&[1, 255]), Err(WireCodecError::Version(1))));
+    }
+
+    #[test]
+    fn child_retry_roundtrip_and_exact_size() {
+        let retries = [
+            None,
+            Some(crate::RetryPolicy::Never),
+            Some(crate::RetryPolicy::OnTransient {
+                max_retries: usize::MAX,
+                backoff: crate::Backoff::Exponential {
+                    initial: std::time::Duration::from_millis(1),
+                    maximum: std::time::Duration::from_secs(5),
+                    jitter: crate::Jitter::Deterministic,
+                },
+            }),
+        ];
+        for retry in retries {
+            let call = WireChildCall {
+                context: [7; 32],
+                generation_context: Some([8; 32]),
+                values: vec![],
+                operation: "provider.read".into(),
+                fingerprint: [9; 32],
+                generation: 42,
+                payload: vec![1; 257],
+                submit: true,
+                retry,
+            };
+            let bytes = call.encode().unwrap();
+            let expected =
+                WireChildCall::payload_encoded_len(&call.operation, call.generation, call.payload.len(), true, &call.values, retry)
+                    .unwrap();
+            assert_eq!(bytes.len(), expected);
+            let restored = WireChildCall::decode(&bytes).unwrap();
+            assert_eq!(restored.retry, retry);
+            assert_eq!(restored.payload, call.payload);
+            assert!(restored.submit);
+        }
+    }
 
     #[test]
     fn envelope_sizes_match() {
@@ -561,7 +616,7 @@ mod tests {
         ] {
             for generation in [false, true] {
                 for submit in [false, true] {
-                    let expected = WireChildCall::payload_encoded_len("op.λ", u64::MAX, 16384, generation, &values).unwrap();
+                    let expected = WireChildCall::payload_encoded_len("op.λ", u64::MAX, 16384, generation, &values, None).unwrap();
                     let call = WireChildCall {
                         context: [255; 32],
                         generation_context: generation.then_some([255; 32]),
@@ -571,6 +626,7 @@ mod tests {
                         generation: u64::MAX,
                         payload: vec![255; 16384],
                         submit,
+                        retry: None,
                     };
                     assert_eq!(call.encode().unwrap().len(), expected);
                 }
@@ -594,7 +650,7 @@ mod tests {
                 .collect(),
         ];
         for values in invalid {
-            assert!(WireChildCall::payload_encoded_len("op", u64::MAX, 0, false, &values).is_err());
+            assert!(WireChildCall::payload_encoded_len("op", u64::MAX, 0, false, &values, None).is_err());
             let call = WireChildCall {
                 context: [0; 32],
                 generation_context: None,
@@ -604,9 +660,10 @@ mod tests {
                 generation: u64::MAX,
                 payload: Vec::new(),
                 submit: false,
+                retry: None,
             };
             assert!(call.encode().is_err());
         }
-        assert!(WireChildCall::payload_encoded_len("op", u64::MAX, usize::MAX, false, &[]).is_err());
+        assert!(WireChildCall::payload_encoded_len("op", u64::MAX, usize::MAX, false, &[], None).is_err());
     }
 }

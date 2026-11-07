@@ -122,7 +122,7 @@ fn resources(interval: Resolution) -> Arc<Settings> {
 
 #[tokio::test(start_paused = true)]
 async fn resource_cadence() {
-    // Declared Cadence Without An Override
+    // Declared Cadence Without an Override
     use harmos_runtime::sidecar::Observer;
 
     let cadence = <DeclaredCadence as Observer<Publisher>>::INTERVAL;
@@ -145,7 +145,7 @@ async fn resource_cadence() {
     activity.stop().await.unwrap();
     activity.cleanup().await.unwrap();
 
-    // Resource Override And Reactivation
+    // Resource Override and Reactivation
     let cadence = Duration::from_millis(37);
     let settings = resources(Resolution::Interval(cadence));
     let (published, mut samples) = mpsc::unbounded_channel();

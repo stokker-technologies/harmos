@@ -376,6 +376,7 @@ where
     };
 
     let mut stopped = false;
+    let mut stopping = false;
     let settled = exchange.open(settling.handshake).await;
     if settled.is_ok() {
         cleanup.endpoint = Some(
@@ -401,7 +402,7 @@ where
                 cleanup.readers.push(Reader(executor::task(observers::demand(
                     operations,
                     observing,
-                    plugin,
+                    plugin.clone(),
                     settling.observers.to_vec(),
                     changes,
                     arrivals,
@@ -413,6 +414,8 @@ where
                 Ok(())
             })
             .await;
+        stopping = exchange.context.is_stopping() || plugin.as_ref().is_some_and(crate::plugin::PluginScope::is_closed);
+        exchange.remote_observers.expect_end(stopping);
         if let Some(instance) = cleanup.instance.as_mut() {
             instance.quiesce();
         }
@@ -428,6 +431,7 @@ where
         (true, _, _, _) => Ok(()),
         (false, Err(fault), _, _) => Err(fault),
         (false, Ok(()), Some(failure), _) => Err(failure),
+        (false, Ok(()), None, _) if stopping => Ok(()),
         (false, Ok(()), None, Some(reason)) => {
             calls.announced_exit.store(true, std::sync::atomic::Ordering::Release);
             Err(reason)
@@ -493,11 +497,68 @@ async fn protocol(mut incoming: CarrierReceiver, arrivals: mpsc::Sender<Arrival>
 
 async fn diagnostic(read: Box<dyn AsyncRead + Send + Unpin>, arrivals: mpsc::Sender<Arrival>) {
     let mut input = BufReader::new(read);
-    while let Ok(Some(line)) = Frame::diagnostic(&mut input).await {
-        if arrivals.send(Arrival::Diagnostic(line)).await.is_err() {
+    let mut record = String::new();
+    loop {
+        // Keep A Partially Read Line Alive When Flushing An Idle Record.
+        let reading = Frame::diagnostic(&mut input);
+        tokio::pin!(reading);
+        let next = loop {
+            tokio::select! {
+                biased;
+                line = &mut reading => break line,
+                () = executor::sleep(std::time::Duration::from_millis(20)), if !record.is_empty() => {
+                    let line = std::mem::take(&mut record);
+                    if arrivals.send(Arrival::Diagnostic(line)).await.is_err() {
+                        return;
+                    }
+                }
+            }
+        };
+        let Ok(Some(line)) = next else { break };
+        if let Some(complete) = diagnostic_line(&mut record, &line)
+            && arrivals.send(Arrival::Diagnostic(complete)).await.is_err()
+        {
             return;
         }
     }
+    if !record.is_empty() {
+        let _ = arrivals.send(Arrival::Diagnostic(record)).await;
+    }
+}
+
+fn diagnostic_line(record: &mut String, line: &str) -> Option<String> {
+    if line.starts_with("error:") && record.lines().next() == Some(line) {
+        return None;
+    }
+    let continuation = line.starts_with(char::is_whitespace)
+        || line.is_empty()
+        || ["Caused by:", "Backtrace:", "Stack backtrace:", "Location:"].iter().any(|heading| line.starts_with(heading));
+    let complete = if !record.is_empty() && (!continuation || record.len().saturating_add(line.len() + 1) > Frame::LIMIT) {
+        Some(std::mem::take(record))
+    } else {
+        None
+    };
+    if !record.is_empty() {
+        record.push('\n');
+    }
+    record.push_str(line);
+    complete
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::diagnostic_line;
+
+    #[test]
+    fn diagnostics_group_causes() {
+        let mut record = String::new();
+        assert!(diagnostic_line(&mut record, "error: probe failed").is_none());
+        assert!(diagnostic_line(&mut record, "error: probe failed").is_none());
+        assert!(diagnostic_line(&mut record, "Caused by:").is_none());
+        assert!(diagnostic_line(&mut record, "  connection closed").is_none());
+        assert_eq!(diagnostic_line(&mut record, "INFO connected"), Some("error: probe failed\nCaused by:\n  connection closed".into()));
+        assert_eq!(record, "INFO connected");
+    }
+}

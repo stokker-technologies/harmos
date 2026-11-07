@@ -298,7 +298,7 @@ fn boxed_decode_peak() {
 fn boxed_refusal_bounded() {
     use harmos_domain::schema::Described;
     let tag = |fields: &[harmos_domain::schema::graph::Field<_>], name: &str| fields.iter().find(|field| field.name == name).unwrap().tag;
-    // A Varint Where The Boxed Leaf Declares Bytes
+    // A Varint Where the Boxed Leaf Declares Bytes
     let mut row = Vec::new();
     prost::encoding::uint64::encode(tag(Leaf::FIELDS, "payload"), &1, &mut row);
     let mut bytes = Vec::new();
@@ -366,7 +366,7 @@ fn listener_decode_borrows() {
 
 #[test]
 fn context_refuses_allocations() {
-    // Record Context With An Invalid Zero Journal Position
+    // Record Context with an Invalid Zero Journal Position
     let bytes = [0, 0, 0];
     let (refused, inspected) = measure(|| <Delivery<Leaves> as harmos_domain::Message>::decoding_memory(&bytes));
     assert!(refused.is_err());

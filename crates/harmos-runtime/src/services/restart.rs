@@ -190,7 +190,7 @@ async fn next_event<F: Future + ?Sized>(
     .await
 }
 
-// Ready With Spent Credit Starts The Sustained Health Wait
+// Ready with Spent Credit Starts the Sustained Health Wait
 fn running(health: &Health, restart: RestartPolicy, report: &Report, stopping: &watch::Sender<bool>) -> Option<HealthWait> {
     if *stopping.borrow() {
         return None;
@@ -275,7 +275,7 @@ async fn settle<A: Application>(
         return Ok(Settled::Stopped);
     }
 
-    // Spend Credit Or Deactivate
+    // Spend Credit or Deactivate
     if matches!(restart, RestartPolicy::Never) {
         let cause = ServiceExit::Application(error.message);
         let history = std::mem::take(&mut health.history);

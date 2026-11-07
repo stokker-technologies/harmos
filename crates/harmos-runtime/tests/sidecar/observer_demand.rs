@@ -24,7 +24,7 @@ use std::time::Duration;
 
 // Local Imports
 use super::operations::{Lanes, Managed};
-use harmos_runtime::operations::Host as _;
+use harmos_runtime::operations::OperationHost as _;
 use harmos_runtime::operations::OperationPhase;
 use harmos_runtime::operations::resident::{Key, Kind, Snapshot};
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
@@ -56,6 +56,7 @@ struct Counts {
     cleaned: [AtomicUsize; 2],
     block_observe: AtomicBool,
     collect_callback: AtomicBool,
+    immediate_collect: AtomicBool,
     collecting: AtomicUsize,
     collected: AtomicUsize,
     rejected: AtomicUsize,
@@ -164,6 +165,9 @@ impl harmos_runtime::Operation for Collect {
         let _collecting = Collecting(Arc::clone(&counts));
         counts.collecting.fetch_add(1, SeqCst);
         counts.progress.send_replace(());
+        if counts.immediate_collect.load(SeqCst) {
+            return Ok(().into());
+        }
         std::future::pending().await
     }
 }
@@ -273,7 +277,7 @@ impl Mixed {
     }
     async fn observe(&mut self, ctx: &ObserverContext<'_, Publisher<Producer>>) -> Result<(), Infallible> {
         if self.0.collect_callback.load(SeqCst) {
-            ctx.host().supervisor().call::<Collect>(Collect {}).await.unwrap();
+            ctx.host().supervisor().operation::<Collect>(Collect {}).await.unwrap();
         }
         if self.0.block_observe.load(SeqCst) {
             let _observation = Observation(Arc::clone(&self.0));
@@ -568,6 +572,8 @@ async fn cooperative_stop_joins_callback_before_attempt_returns() {
 #[tokio::test]
 async fn demand_during_retirement_survives_reload() {
     let counts = Arc::new(Counts::default());
+    counts.collect_callback.store(true, SeqCst);
+    counts.immediate_collect.store(true, SeqCst);
     let seed = Seed::new(&counts);
     let capacity = std::num::NonZeroUsize::new(2).unwrap();
     let source = harmos_sidecar::PluginNative::<Producer>::new(capacity).unwrap();
@@ -625,6 +631,48 @@ async fn demand_during_retirement_survives_reload() {
 #[tokio::test]
 async fn released_demand_interrupts_blocked_callback() {
     release_suspended_observer(AUXILIARY, true).await;
+}
+
+#[tokio::test]
+async fn exit_during_shutdown() {
+    let counts = Arc::new(Counts::default());
+    counts.capture_supervisor.store(true, SeqCst);
+    let seed = Seed::new(&counts);
+    let capacity = std::num::NonZeroUsize::new(2).unwrap();
+    let source = harmos_sidecar::PluginNative::<Producer>::new(capacity).unwrap();
+    let mut fixture = Managed::attach(
+        source,
+        serde_json::to_vec(&seed.id).unwrap(),
+        Lanes::Open,
+        capacity,
+        vec![AUXILIARY.name()],
+        std::convert::identity,
+    )
+    .await;
+    let demands = fixture.demands();
+    let _lease = demands.hold(&AUXILIARY.name()).unwrap();
+    fixture.publication().await.unwrap();
+    fixture.initialize().await.unwrap();
+    until(&counts, || counts.observed[1].load(SeqCst) > 0).await;
+    let supervisor = counts.supervisor.lock().unwrap().take().unwrap();
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    fixture.pause_retirement(entered.clone(), release.clone());
+    {
+        let shutdown = fixture.shutdown();
+        tokio::pin!(shutdown);
+        tokio::select! {
+            result = &mut shutdown => panic!("shutdown passed the retained gate: {result:?}"),
+            () = entered.notified() => {}
+        }
+        assert!(supervisor.abandon());
+        release.notify_one();
+        shutdown.await.unwrap();
+    }
+    fixture.runtime.shutdown().await.unwrap();
+    // Abrupt Carrier Exit Cannot Run Authored Hooks; Host Retirement Still Settles.
+    assert_eq!(counts.started[1].load(SeqCst), 1);
+    assert_eq!(counts.stopped[1].load(SeqCst), 0);
 }
 
 #[tokio::test]

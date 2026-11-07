@@ -133,7 +133,7 @@ async fn builtin_grpc_roundtrip() {
     let parked = runtime.operation(ParkedContract {}).start().await.unwrap();
     let id = parked.id();
 
-    // An External Caller Neither Sees Nor Cancels A Host Instance
+    // An External Caller Neither Sees nor Cancels a Host Instance
     let status = builtin_call::<Status, InstanceState>(channel.clone(), "/harmos.host.v1.Operations/Status", Status::of(id)).await;
     assert!(status.is_err());
     let unknown = harmos_runtime::operations::OperationInstanceId::new(u64::MAX);
@@ -143,10 +143,10 @@ async fn builtin_grpc_roundtrip() {
     assert_eq!(foreign.unwrap_err().code(), cancel.unwrap_err().code());
     assert!(!parked.status().cancellation_requested());
 
-    // The Submitting Host Reads And Cancels Its Own Instance
-    let owned = runtime.operation(Status::of(id)).run().await.unwrap();
+    // The Submitting Host Reads and Cancels Its Own Instance
+    let owned = runtime.operation(Status::of(id)).await.unwrap();
     assert_eq!(owned.phase, "running");
-    let cancelled = runtime.operation(Cancel::of(id)).run().await.unwrap();
+    let cancelled = runtime.operation(Cancel::of(id)).await.unwrap();
     assert!(cancelled.cancellation_requested);
     assert!(parked.await.is_err());
     drop(attached);
@@ -167,7 +167,7 @@ async fn external_authority_parity() {
     runtime.operations.register::<crate::operations::Single<DescendantDeclaration>>(Lanes::Open).await.unwrap();
     runtime.operations.register::<harmos_operations::Host>(Lanes::Open).await.unwrap();
     // Internal Boot Work Does Not Freeze The Later Listener Policy.
-    assert_eq!(runtime.operation(GuardedDeclaration {}).run().await.unwrap().actor, "host:anonymous");
+    assert_eq!(runtime.operation(GuardedDeclaration {}).await.unwrap().actor, "host:anonymous");
     let mode = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let operations = Arc::new(runtime.operations.clone());
     let policy = Arc::new(ExternalAccess {
@@ -211,7 +211,7 @@ async fn external_authority_parity() {
     let mut context = harmos_runtime::operations::CallContext::default();
     context.insert(Principal("bob".into())).unwrap();
     assert_eq!(
-        runtime.operations.with_context(context).call::<DescendantDeclaration>(DescendantDeclaration {}).await.unwrap().actor,
+        runtime.operations.with_context(context).operation::<DescendantDeclaration>(DescendantDeclaration {}).await.unwrap().actor,
         "host:bob"
     );
     assert_eq!(external_call(channel.clone(), Some("Bearer carol"), "/fixture.Identity/Guarded").await.unwrap(), "external:carol");
@@ -302,7 +302,7 @@ async fn empty_manager_attaches() {
         assert!(runtime.grpc().local_addr().is_none());
         assert!(call(channel, None).await.is_err(), "round {round} released");
     }
-    // A Dropped Listener Settles Before The Next One Binds The Same Address
+    // A Dropped Listener Settles Before the Next One Binds the Same Address
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let address = attached.local_addr();
     drop(attached);

@@ -94,7 +94,7 @@ pub(super) fn replace(source: &Path, destination: &Path) -> io::Result<()> {
 
 pub(super) fn remove(path: &Path) -> io::Result<()> {
     // Keep A Writable File Handle Across The Namespace Removal.
-    // A Missing File Is Recreated Without Truncating Existing Bytes So A Retry
+    // A Missing File Is Recreated Without Truncating Existing Bytes So a Retry
     // Can Confirm A Prior Unlink Whose Flush Failed, Without Opening A Directory.
     let pinned = match OpenOptions::new()
         .read(true)
@@ -139,7 +139,7 @@ pub(super) fn remove(path: &Path) -> io::Result<()> {
     {
         return Err(io::Error::last_os_error());
     }
-    // Closing The POSIX Delete Handle Removes The Name While Other Handles
+    // Closing the POSIX Delete Handle Removes the Name While Other Handles
     // Retain The Bytes. Flush The Remaining Writable Handle After That Removal.
     drop(deletion);
     pinned.sync_all()

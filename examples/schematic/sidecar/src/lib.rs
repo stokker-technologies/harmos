@@ -34,6 +34,13 @@ use harmos::sidecar::Supervisor;
 
 /* === Constants === */
 
+const POLICY: OperationPolicy = OperationPolicy {
+    timeout: std::time::Duration::from_secs(10),
+    attempt_timeout: std::time::Duration::from_secs(10),
+    cancellation_timeout: std::time::Duration::ZERO,
+    retries: harmos::operations::RetryPolicy::Never,
+};
+
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -41,7 +48,7 @@ use harmos::sidecar::Supervisor;
 /* === Structs === */
 
 pub struct Plugin {
-    analysis: Arc<schematic_operations::resources::AnalysisResources>,
+    analysis: Arc<schematic_operations::schematic::upload::AnalysisResources>,
 }
 
 /* === Enums === */
@@ -51,7 +58,7 @@ pub struct Plugin {
 /* === Implementations === */
 
 impl harmos::builtins::lifecycle::Policy for Plugin {
-    const INITIALIZATION_POLICY: OperationPolicy = schematic_operations::POLICY;
+    const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
@@ -61,9 +68,9 @@ impl harmos::Lifecycle for Plugin {
     type Context = Supervisor;
 
     async fn prepare(_: (), setup: &mut harmos::Setup<Self>) -> Result<Self, Error> {
-        let analysis = Arc::new(schematic_operations::resources::AnalysisResources::default());
+        let analysis = Arc::new(schematic_operations::schematic::upload::AnalysisResources::default());
         let plugin = Self { analysis };
-        setup.resource::<schematic_operations::resources::AnalysisResources>(Arc::clone(&plugin.analysis));
+        setup.resource::<schematic_operations::schematic::upload::AnalysisResources>(Arc::clone(&plugin.analysis));
         registration::prepare(setup);
         let direction = StreamSettings {
             items: NonZeroUsize::new(4).unwrap(),

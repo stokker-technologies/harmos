@@ -7,7 +7,7 @@
  * ***
  */
 
-// Budgeted Exact Order Statistics With Independent Clone Prefixes
+// Budgeted Exact Order Statistics with Independent Clone Prefixes
 
 /* === Modules === */
 

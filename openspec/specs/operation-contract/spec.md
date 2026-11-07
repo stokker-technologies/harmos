@@ -10,7 +10,7 @@ The operation attribute SHALL define the request from the annotated named-field 
 and visibility to `Private`, accept short `Shared` and `Host`, and reject removed request-selection metadata. The authored `Operation`
 trait SHALL consume the request in `run(self, Context<Self>)`, require only the error associated type, and derive `StreamEndpoints`.
 
-#### Scenario: Unit Operation And Default Response
+#### Scenario: Unit Operation and Default Response
 - **WHEN** a unit struct declares an operation with a policy
 - **THEN** its request is that struct, its response is `()`, and its visibility is private
 
@@ -22,7 +22,7 @@ ID by prepending its plugin owner. The thirty built-ins SHALL use dotted IDs.
 - **WHEN** an operation literal contains an uppercase, empty, or numeric-leading segment
 - **THEN** declaration compilation fails
 
-### Requirement: Declared Resources And Operations
+### Requirement: Declared Resources and Operations
 The attribute SHALL generate `Requires<T>` and `Invokes<T>` bounds for declared resources and operations. Context resource access SHALL
 return `Arc<T>` infallibly after activation verifies availability. Context operation calls SHALL propagate the caller's metadata and
 use the callee policy. Catalogs SHALL aggregate callees into plugin requirements, excluding operations provided by the same plugin.
@@ -67,7 +67,7 @@ type-owned registration as described in the scenarios below.
 - **WHEN** a Wasm guest executes an authored operation
 - **THEN** it consumes a request clone with declared resources and callees, without authored initialization; Operation, Context and Response re-export host-free SDK types, while plugin lifecycle context remains kit::Context
 
-#### Scenario: Operation Source And Registration
+#### Scenario: Operation Source and Registration
 - **WHEN** a consumer authors and registers an executable operation
 - **THEN** one file contains complete Definition and runtime-gated Runtime Modules, each with Tests; runtime follows definition tests; individual operations use RegistrationBatch::operation and catalogs retain generated registration
 

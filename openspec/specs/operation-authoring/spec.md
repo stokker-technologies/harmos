@@ -64,7 +64,7 @@ Operation contracts SHALL use deterministic fingerprints instead of manually mai
 
 The execution surface SHALL provide operation(request).retry(policy).run() and start(). Preparation SHALL be inert; terminal methods SHALL consume the builder and validate and snapshot per-invocation policy at admission. Authored behavior SHALL use a consuming Operation implementation for its declared request.
 
-#### Scenario: Run And Start
+#### Scenario: Run and Start
 
 - **WHEN** a caller awaits run
 - **THEN** it receives the completed response through the same execution path used by start and joining its returned handle.

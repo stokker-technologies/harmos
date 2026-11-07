@@ -202,7 +202,7 @@ async fn publish(outgoing: &Sender, incoming: &mut Receiver, id: u64, samples: u
         for payload in rows {
             assert_eq!(Sample::decode(payload).unwrap().payload.len(), payload_bytes as usize);
         }
-        // Every Row Carries Its Own Production Stamp As A Forward Delta
+        // Every Row Carries Its Own Production Stamp as a Forward Delta
         assert!(publication.published_unix_micros.is_some());
         assert!(publication.following.iter().all(|row| row.published_delta_micros.is_some_and(|delta| delta >= 0)));
         calls.push(Call {
@@ -248,13 +248,13 @@ async fn batches_split_contiguously() {
     };
     invoke::<Initialize>(&outgoing, &mut incoming, 2, initialization.encode()).await;
 
-    // Row By Row, Then Ordered Batches With A Short Tail
+    // Row by Row, Then Ordered Batches with a Short Tail
     let single = publish(&outgoing, &mut incoming, 3, 3, 64, 1).await;
     assert_eq!(single, (1..=3).map(|first| Call { first, rows: 1 }).collect::<Vec<_>>());
     let batched = publish(&outgoing, &mut incoming, 4, 250, 64, 100).await;
     assert_eq!(batched, vec![Call { first: 4, rows: 100 }, Call { first: 104, rows: 100 }, Call { first: 204, rows: 50 },]);
 
-    // Rows That Fit One Frame But Not One Batch Budget Split
+    // Rows That Fit One Frame but Not One Batch Budget Split
     let large = publish(&outgoing, &mut incoming, 5, 4, 600 * 1024, 4).await;
     assert_eq!(large, (254..=257).map(|first| Call { first, rows: 1 }).collect::<Vec<_>>());
     let medium = publish(&outgoing, &mut incoming, 6, 5, 300 * 1024, 5).await;

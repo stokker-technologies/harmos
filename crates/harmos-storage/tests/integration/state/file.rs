@@ -7,7 +7,7 @@
  * ***
  */
 
-// State Journal Failure And Reopen Integration Story
+// State Journal Failure and Reopen Integration Story
 
 /* === Modules === */
 

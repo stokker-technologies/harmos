@@ -31,7 +31,7 @@ use harmos_runtime::Message;
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::sidecar::inventory::publications;
 use harmos_runtime::sidecar::{
-    Observer, ObserverAttachment, ObserverCaller, ObserverContext, ObserverHost, ObserverPublisher, PublishError, Publisher, Supervisor,
+    Observer, ObserverAttachment, ObserverContext, ObserverHost, ObserverPublisher, PublishError, Publisher, Supervisor,
 };
 
 /* === Constants === */
@@ -76,8 +76,6 @@ struct Host(Publisher<Bridge>);
 
 #[harmos_runtime::stream(id = "custom_host.pulse", window = 8, row = Pulse)]
 struct Published;
-
-struct ReadValue;
 
 struct Watch<const N: u64>(Arc<State>);
 
@@ -179,17 +177,6 @@ impl ObserverHost for Host {
     }
 }
 
-impl ObserverCaller<ReadValue> for Host {
-    type Request = u64;
-    type Response = u64;
-    type Error = PublishError;
-
-    async fn call(&self, ctx: &ObserverContext<'_, Self>, value: u64) -> Result<u64, PublishError> {
-        assert_eq!(ctx.resource::<Settings>().unwrap().state.opened.load(Ordering::SeqCst), 1);
-        Ok(41 + value)
-    }
-}
-
 impl ObserverPublisher<Pulse> for Host {
     type Error = PublishError;
     const STREAM: Option<publications::Entry> = Some(publications::Entry::of::<Published>());
@@ -213,7 +200,8 @@ impl<const N: u64> Observer<Host> for Watch<N> {
     }
 
     async fn observe(&mut self, ctx: &ObserverContext<'_, Host>) -> Result<(), PublishError> {
-        let value = ctx.call(N).await?;
+        assert_eq!(ctx.resource::<Settings>().unwrap().state.opened.load(Ordering::SeqCst), 1);
+        let value = 41 + N;
         ctx.publish(Pulse { sample: value }).await
     }
 

@@ -27,7 +27,7 @@ Startup emits `schematic.plugin.initializing` and `schematic.plugin.ready` on
 stderr for both backends. Guest component compilation finishes before
 initialization starts; the readiness interval covers plugin initialization.
 
-## Follow The Ownership
+## Follow the Ownership
 
 | Directory | Owns |
 | --- | --- |
@@ -53,7 +53,7 @@ Both plugins depend on the `harmos` facade, with its `sidecar` or `guest`
 feature. Their constant `CATALOGS` selects the same descriptors for inert
 inspection and executable binding; prepare supplies resources through setup.
 
-## Streaming And Native Access
+## Streaming and Native Access
 
 After running the build tasks above, add `--advanced` to the CLI:
 
@@ -86,7 +86,7 @@ back to a sibling executable for Cargo development. `--guest` without a path
 selects `plugins/schematic-guest.wasm` relative to the CLI. Explicit paths remain
 relative to the caller's working directory.
 
-## Downloaded Examples And Schemas
+## Downloaded Examples and Schemas
 
 Native CI provides an example ZIP with `examples/schematic/`, containing the CLI,
 both ready-to-load plugins, and `grpc/<producer>/operations/`. Run the extracted
@@ -104,7 +104,7 @@ by a running host, including dynamic plugins.
 CI packages retain `cargo-harmos`, the schematic CLI and its native and guest plugins.
 Examples and test reports remain GitHub Actions artifacts; Rust crates publish to crates.io.
 
-## Tests And Persistence
+## Tests and Persistence
 
 Product Build exports the CLI and plugins under `target/build/dev/<target>/bin/`.
 Fixture preparation joins the Product and Tests manifests and stamps those exact bytes in
@@ -118,7 +118,7 @@ settlement and publishes the document through an atomic file replacement.
 ## Transfer Benchmarks
 
 The `benchmark` feature on the sidecar and guest enables shared record, sample
-and file-byte transfer endpoints. Their [declarations and implementations](../examples/schematic/operations/src/transfer.rs) are reused by both example executables.
+and file-byte transfer endpoints. Their [declarations and implementations](../examples/schematic/operations/src/transfer/) are reused by both example executables.
 `Put`/`Take` transfer one owned batch per unary call; `Upload`/`Download` carry
 bounded batches through streams. Transfer IDs isolate concurrent datasets.
 The feature also exposes a `Hash` bridge to the host `HashFile` operation. Each

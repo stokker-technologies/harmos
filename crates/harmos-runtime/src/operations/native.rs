@@ -645,7 +645,7 @@ impl Native {
                 }
                 Some(request) = incoming.recv() => {
                     if request.answer.is_closed() { continue; }
-                    let child = context.submit_encoded_at(&request.operation, request.fingerprint, request.generation, request.payload, request.submitted, request.values);
+                    let child = context.submit_encoded_at(&request.operation, (request.fingerprint, request.generation), request.payload, request.submitted, request.values, request.retry);
                     // A Cancelled Admission Reply Still Cancels Its Admitted Child
                     if let Err(Ok(child)) = request.answer.send(child) { child.request_cancel(); }
                 }
@@ -834,6 +834,17 @@ impl<E: super::StreamEndpoints + Shape> Carrier for EncodedOperation<E> {
             Ok(Opaque(payload))
         }
         .await;
+        let result = match result {
+            Err(NativeError::Unavailable | NativeError::Transport(SidecarError::Unavailable))
+                if matches!(&self.binding.selection, Selection::Sdk(definition) if self.binding.native.scope()
+                    .and_then(|scope| scope.lifecycle()).is_some_and(|pair| pair[1].contract().operation() == definition)) =>
+            {
+                // Only Shutdown Treats A Physically Joined Carrier As Its Goal State.
+                self.binding.native.endpoint.settle().await?;
+                Ok(Opaque(Vec::new()))
+            }
+            result => result,
+        };
         result.map(::core::convert::Into::into).map_err(|error| match &self.state {
             Some(state) => error.in_operation(state.operation.as_str()),
             None => error,
@@ -1080,7 +1091,9 @@ pub(super) fn dispatch(
     let target = Arc::downgrade(&submission.entry);
     super::wire::budget(timeout, submitted)?;
     let (scope, ancestors) = parent.map_or((None, &[][..]), |parent| (Some(parent.scope), parent.ancestors));
-    let invocation = operations.admit_entry::<Encoded, ()>((request.into(), ()), scope, ancestors, &source, submission)?;
+    let mut request = super::binding::Request::from(request);
+    request.retry = input.retry;
+    let invocation = operations.admit_entry::<Encoded, ()>((request, ()), scope, ancestors, &source, submission)?;
     let id = invocation.id();
     let generation = invocation.generation();
     let control = Arc::clone(&invocation.control);

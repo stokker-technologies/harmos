@@ -7,7 +7,7 @@
  * ***
  */
 
-// Declarative Storage Queries Over Arrow
+// Declarative Storage Queries over Arrow
 
 /* === Modules === */
 

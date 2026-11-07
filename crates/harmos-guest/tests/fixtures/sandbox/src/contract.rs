@@ -7,7 +7,7 @@
  * ***
  */
 
-// The Sandbox Guest's Declarations, Included By The Host Stories That Drive It
+// The Sandbox Guest's Declarations, Included by the Host Stories That Drive It
 #![allow(dead_code)]
 
 /* === Modules === */
@@ -88,6 +88,26 @@ pub struct Value {
 #[guest::message(harmos_path = guest)]
 pub struct Stage {
     pub id: String,
+}
+
+#[guest::message(harmos_path = guest)]
+pub struct RetryChoice {
+    pub retries: u32,
+    pub delay_millis: u64,
+}
+impl guest::operations::ContextValue for RetryChoice {
+    const KEY: &'static str = "fixture.retry_choice";
+}
+impl RetryChoice {
+    pub fn policy(&self) -> RetryPolicy {
+        RetryPolicy::OnTransient {
+            max_retries: usize::try_from(self.retries).expect("retry count fits this target"),
+            backoff: Backoff::Fixed {
+                delay: Duration::from_millis(self.delay_millis),
+                jitter: Jitter::None,
+            },
+        }
+    }
 }
 
 /* === Enums === */

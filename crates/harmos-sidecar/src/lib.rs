@@ -41,7 +41,7 @@ pub use harmos_domain::{
 };
 pub use harmos_domain::{failure, listeners};
 pub use harmos_sdk::operations;
-pub use harmos_sdk::operations::Host;
+pub use harmos_sdk::operations::OperationHost;
 pub use harmos_sdk::operations::{Backoff, CacheKey, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 pub use harmos_sdk::{Context, Dependent, ExecutionContext, Lifecycle, Operation, Plugin, Resource, Service, Setup};
 
@@ -49,9 +49,9 @@ pub use harmos_domain::StreamDeclaration;
 #[cfg(feature = "kit")]
 pub use kit::{
     Activation, ActivationId, Activity, CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT, CallError, DemandKey, Instance, Observer,
-    ObserverAttachment, ObserverCaller, ObserverContext, ObserverError, ObserverHost, ObserverPublisher, ObserverStreamPublisher,
-    OperationInstance, PluginNative, PublicationError, PublishError, Publisher, Supervisor, Tick, run_plugin, run_plugin_with_settings,
-    serve_plugin_channels, serve_plugin_channels_with_settings,
+    ObserverAttachment, ObserverContext, ObserverError, ObserverHost, ObserverPublisher, ObserverStreamPublisher, OperationInstance,
+    PluginNative, PublicationError, PublishError, Publisher, Supervisor, Tick, run_plugin, run_plugin_with_settings, serve_plugin_channels,
+    serve_plugin_channels_with_settings,
 };
 
 #[cfg(feature = "transport")]

@@ -150,7 +150,7 @@ impl harmos_runtime::operations::Operation for PublishDeclaration {
             let mut calls = Vec::with_capacity(rows.len().div_ceil(size) * 8);
             let mut batch = publisher.batch::<Sample>();
             for chunk in rows.chunks(size) {
-                // Rows Are Produced And Stamped Before The Measured Call
+                // Rows Are Produced and Stamped Before the Measured Call
                 batch.clear();
                 for row in chunk {
                     batch.push(*row);

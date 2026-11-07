@@ -102,6 +102,9 @@ pub enum Error<E = Infallible> {
         source: harmos_domain::Error,
     },
 
+    #[error(transparent)]
+    OperationInvocation(#[from] harmos_sdk::operations::InvocationError),
+
     // Prints its own line; the cause is the source, read through `failure()`.
     #[error("operation `{operation}` failed")]
     OperationFailed {
@@ -293,6 +296,7 @@ impl<E> Error<E> {
             // The Attempt's Outcome Names The Failure; Cleanup Is Secondary
             Self::OperationFinalization { outcome, source, .. } => outcome.as_deref().and_then(Error::failure).or_else(|| source.failure()),
             Self::OperationSettlement { source } => source.failure(),
+            Self::OperationInvocation(source) => carried(source),
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             Self::PluginLifecycle { source } => carried(source.as_ref()),
             _ => None,

@@ -7,7 +7,7 @@
 - [x] 1.5 Add meaningful focused tooling tests and a reusable mise test task; evaluate dev and PR impact plans.
 - [x] 1.6 Update CONTRIBUTING and existing CI ownership contracts; review README impact and baseline failures.
 
-## Validation And Delivery
+## Validation and Delivery
 
 - [x] 2.1 Run mise run check with the foreign Python environment removed.
 - [ ] 2.2 Push the combined candidate, verify the remote SHA and attempt all-platform local simulation.

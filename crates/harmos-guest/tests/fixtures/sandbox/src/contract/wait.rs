@@ -100,7 +100,7 @@ mod runtime {
         async fn run(self, sdk: harmos::guest::Context<'_, Self>) -> Result<harmos::guest::operations::Response<Echoed>, OperationRefusal> {
             let result: Result<Echoed, OperationRefusal> = async move {
                 let _ = sdk.operation(ProviderEchoOperation { say: "slow".into() }).await;
-                // Resuming Reaches The Epoch Check A Suspended Guest Could Not
+                // Resuming Reaches the Epoch Check a Suspended Guest Could Not
                 for step in 0..4096u32 {
                     std::hint::black_box(step);
                 }

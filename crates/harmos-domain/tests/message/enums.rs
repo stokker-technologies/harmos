@@ -7,7 +7,7 @@
  * ***
  */
 
-// Enum Variant Selection Against A Newer Twin Schema
+// Enum Variant Selection Against a Newer Twin Schema
 
 /* === Modules === */
 
@@ -52,7 +52,7 @@ mod known {
     }
 }
 
-// A Newer Client Adds A Third Mode Under The Same Names
+// A Newer Client Adds a Third Mode Under the Same Names
 mod newer {
     use harmos_domain::message;
 
@@ -77,7 +77,7 @@ mod newer {
         Hold(Box<Mode>),
     }
 
-    // Omits The Mode Field Entirely
+    // Omits the Mode Field Entirely
     #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub struct Bare {

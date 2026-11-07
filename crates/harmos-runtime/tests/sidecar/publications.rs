@@ -36,7 +36,7 @@ use harmos_sidecar::{Attach, ObserverContext};
 const TIMED_BASE: i64 = 1_760_000_000_000_000;
 const TICKING_DEMAND: harmos_sidecar::DemandKey = harmos_sidecar::DemandKey::new("ticking", "pulse");
 
-// Each Tick Publishes A Batch Wider Than The Flood Window
+// Each Tick Publishes a Batch Wider Than the Flood Window
 const FLOOD_BATCH: u64 = 12;
 const FLOOD_ROWS: u64 = 240;
 static NEXT_GATE_SEED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
@@ -424,7 +424,7 @@ impl harmos_runtime::Lifecycle for Batches {
             timed.push_at(support::pulse(sample), TIMED_BASE + 1_000 * sample as i64);
         }
         publisher.publish_batch_on::<TimedRows>(&timed).await.map_err(harmos_sidecar::Refusal::from)?;
-        // Source Stamps Survive The Native Wire And Retained Window
+        // Source Stamps Survive the Native Wire and Retained Window
         let mut clocked = publisher.batch::<ClockedRows>();
         for sample in 0..100 {
             clocked.push_at(support::pulse(sample), TIMED_BASE + 1_000 * sample as i64);
@@ -446,7 +446,8 @@ impl harmos_runtime::Lifecycle for Batches {
             }
         };
         let pulse = |sample: u64| harmos_runtime::Message::encode(&support::pulse(sample));
-        let publish = |request| harmos_runtime::operations::Host::call::<harmos_operations::streams::Publish>(context, request);
+        let publish =
+            |request| harmos_runtime::operations::OperationHost::operation::<harmos_operations::streams::Publish>(context, request);
         let raw_id = <RawRows as harmos_runtime::StreamSpec>::ID;
         let refused = publish(raw(raw_id, 1, None, vec![(pulse(2), None), (vec![0xff; 3], None), (pulse(4), None)])).await;
         if refused.is_ok() {
@@ -454,12 +455,12 @@ impl harmos_runtime::Lifecycle for Batches {
         }
         // Only The Staged Prefix Advanced The Producer Sequence.
         publish(raw(raw_id, 3, None, Vec::new())).await.map_err(harmos_sidecar::Refusal::from)?;
-        // A Delta Without A Stamped Predecessor Refuses The Whole Call
+        // A Delta Without a Stamped Predecessor Refuses the Whole Call
         let stamped_id = <StampedRows as harmos_runtime::StreamSpec>::ID;
         if publish(raw(stamped_id, 1, None, vec![(pulse(2), Some(1_000))])).await.is_ok() {
             return Err(harmos_sidecar::Refusal::of("a delta without a base was admitted"));
         }
-        // A Row Stamped Before Its Predecessor Is Refused At That Row
+        // A Row Stamped Before Its Predecessor Is Refused at That Row
         let backwards = raw(
             stamped_id,
             1,

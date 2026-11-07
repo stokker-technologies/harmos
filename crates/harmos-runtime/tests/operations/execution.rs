@@ -101,10 +101,7 @@ async fn errors_never_retry() {
     .await;
     runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await.unwrap();
     for failure in [FailureKind::Permanent, FailureKind::Unauthorized, FailureKind::Invalid, FailureKind::Cancelled] {
-        assert!(matches!(
-            runtime.operation(Request { failures: 10, failure, ..request() }).run().await,
-            Err(Error::OperationFailed { .. })
-        ));
+        assert!(matches!(runtime.operation(Request { failures: 10, failure, ..request() }).await, Err(Error::OperationFailed { .. })));
     }
     assert_eq!(owner.runs.load(Ordering::SeqCst), 4);
     runtime.shutdown().await.unwrap();
@@ -118,7 +115,7 @@ async fn ambiguous_timeout_replay() {
     })
     .await;
     runtime.operations.register::<super::Single<Slow>>(Lanes::Open).await.unwrap();
-    assert!(matches!(runtime.operation(Slow(request())).run().await, Err(Error::OperationRefused(Refusal::TimedOut))));
+    assert!(matches!(runtime.operation(Slow(request())).await, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
 }
@@ -133,8 +130,8 @@ async fn cache_serves_hits() {
     runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await.unwrap();
     let keyed = || Request { keyed: true, ..request() };
 
-    let first = runtime.operation(keyed()).run().await.unwrap();
-    let second = runtime.operation(keyed()).run().await.unwrap();
+    let first = runtime.operation(keyed()).await.unwrap();
+    let second = runtime.operation(keyed()).await.unwrap();
 
     // A hit reuses the cached response without constructing the operation.
     assert!(first.ptr_eq(&second));
@@ -152,16 +149,16 @@ async fn uncacheable_calls_rerun() {
     .await;
     runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await.unwrap();
 
-    // Invalid Requests Bypass The Cache
+    // Invalid Requests Bypass the Cache
     let invalid = || Request { keyed: true, valid: false, ..request() };
     for _ in 0..2 {
-        assert!(matches!(runtime.operation(invalid()).run().await, Err(Error::OperationFailed { .. })));
+        assert!(matches!(runtime.operation(invalid()).await, Err(Error::OperationFailed { .. })));
     }
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 2);
 
     // Unkeyed Requests Always Run
     for _ in 0..2 {
-        runtime.operation(request()).run().await.unwrap();
+        runtime.operation(request()).await.unwrap();
     }
     assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
 
@@ -169,7 +166,7 @@ async fn uncacheable_calls_rerun() {
     runtime.operations.set_cache_capacity(0);
     let keyed = || Request { keyed: true, ..request() };
     for _ in 0..2 {
-        runtime.operation(keyed()).run().await.unwrap();
+        runtime.operation(keyed()).await.unwrap();
     }
     assert_eq!(owner.runs.load(Ordering::SeqCst), 4);
     runtime.shutdown().await.unwrap();
@@ -205,7 +202,7 @@ async fn unregister_reserves_owner() {
     assert!(matches!(runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await, Err(Error::AlreadyRegistered { .. })));
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Compute::ID).unwrap()).await.unwrap();
     runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await.unwrap();
-    assert_eq!(runtime.operation(Request { keyed: true, ..request() }).run().await.unwrap().value, 7);
+    assert_eq!(runtime.operation(Request { keyed: true, ..request() }).await.unwrap().value, 7);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
     runtime.shutdown().await.unwrap();
 }
@@ -215,11 +212,11 @@ async fn operations_use_structured() {
     let runtime = runtime().await;
     runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await.unwrap();
     runtime.operations.register::<super::Single<Parent>>(Lanes::Serial).await.unwrap();
-    assert_eq!(runtime.operation(Parent(request())).run().await.unwrap().value, 7);
+    assert_eq!(runtime.operation(Parent(request())).await.unwrap().value, 7);
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Compute::ID).unwrap()).await.unwrap();
     runtime.operations.register::<super::Single<Compute>>(Lanes::Serial).await.unwrap();
     assert!(
-        matches!(runtime.operation(Parent(request())).run().await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Invocation(harmos_runtime::operations::InvocationError::Failed { source, .. })) if matches!(source.downcast_ref::<Error>(), Some(Error::OperationLaneCycle { .. }))))
+        matches!(runtime.operation(Parent(request())).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Invocation(harmos_runtime::operations::InvocationError::Failed { source, .. })) if matches!(source.downcast_ref::<Error>(), Some(Error::OperationLaneCycle { .. }))))
     );
     runtime.shutdown().await.unwrap();
 }
@@ -235,13 +232,13 @@ async fn concurrent_ancestor_reentry() {
     runtime.operations.register::<super::Single<Parent>>(Lanes::Concurrent).await.unwrap();
 
     assert!(
-        matches!(runtime.operation(Parent(request())).run().await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Invocation(harmos_runtime::operations::InvocationError::Failed { source, .. })) if matches!(source.downcast_ref::<Error>(), Some(Error::OperationLaneCycle { .. }))))
+        matches!(runtime.operation(Parent(request())).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Invocation(harmos_runtime::operations::InvocationError::Failed { source, .. })) if matches!(source.downcast_ref::<Error>(), Some(Error::OperationLaneCycle { .. }))))
     );
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
 
     // An independent root still uses this bounded lane normally.
-    assert_eq!(runtime.operation(request()).run().await.unwrap().value, 7);
+    assert_eq!(runtime.operation(request()).await.unwrap().value, 7);
     runtime.shutdown().await.unwrap();
 }
 
@@ -254,7 +251,7 @@ async fn shutdown_releases_bindings() {
     .await;
     let weak = Arc::downgrade(&owner);
     runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await.unwrap();
-    runtime.operation(Request { keyed: true, ..request() }).run().await.unwrap();
+    runtime.operation(Request { keyed: true, ..request() }).await.unwrap();
     runtime.shutdown().await.unwrap();
     assert!(matches!(runtime.operation(request()).start().await, Err(Error::Closing { .. })));
     drop(owner);
@@ -266,7 +263,7 @@ async fn shutdown_releases_bindings() {
 async fn handler_panic_settles() {
     let runtime = runtime().await;
     runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await.unwrap();
-    assert!(matches!(runtime.operation(Request { value: usize::MAX, ..request() }).run().await, Err(Error::OperationPanicked { .. })));
+    assert!(matches!(runtime.operation(Request { value: usize::MAX, ..request() }).await, Err(Error::OperationPanicked { .. })));
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Compute::ID).unwrap()).await.unwrap();
     runtime.shutdown().await.unwrap();
 }
@@ -284,7 +281,7 @@ async fn operation_catalog_binding() {
     runtime.operations.register::<Operations>(Lanes::Open).await.unwrap();
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
-    assert_eq!(runtime.operation(request()).run().await.unwrap().value, 7);
+    assert_eq!(runtime.operation(request()).await.unwrap().value, 7);
 
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Compute::ID).unwrap()).await.unwrap();
     assert!(matches!(runtime.operations.register::<Operations>(Lanes::Open).await, Err(Error::AlreadyRegistered { .. })));
@@ -318,7 +315,7 @@ async fn catalog_boot_atomic() {
     .unwrap();
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
-    assert_eq!(runtime.operation(request()).run().await.unwrap().value, 27);
+    assert_eq!(runtime.operation(request()).await.unwrap().value, 27);
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
 }
@@ -380,7 +377,7 @@ async fn providers_route_explicitly() {
     assert_eq!(owner.runs.load(Ordering::SeqCst), 3);
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("first", Compute::ID).unwrap()).await.unwrap();
     assert!(matches!(runtime.operations.submit_from::<Compute>("first", request()), Err(Error::NotRegistered { .. })));
-    let surviving = runtime.operation(keyed()).run().await.unwrap();
+    let surviving = runtime.operation(keyed()).await.unwrap();
     assert!(second_result.ptr_eq(&surviving));
     assert_eq!(owner.runs.load(Ordering::SeqCst), 3);
     runtime.shutdown().await.unwrap();

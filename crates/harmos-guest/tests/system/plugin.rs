@@ -164,7 +164,7 @@ async fn sdk_lifecycle_retained() {
         ),
         "ordinary handlers are absent before SDK initialization"
     );
-    // The Guest Takes No Configuration, So A JSON String Fails Its First Run
+    // The Guest Takes No Configuration, So a JSON String Fails Its First Run
     assert!(
         matches!(
             session

@@ -15,14 +15,34 @@ mise run build:rust:tests
 mise run test:rust:unit
 ```
 
+`lint:rust` runs Clippy with warnings denied, included by `check:rust` and
+gated by CI Check / Rust. Build, test, bench and fixture tasks do not run Clippy.
+A focused `clippy` operation is an explicit choice. Use `mise run lint:rust --extended`
+for optional compatibility lint coverage.
+
 The scaffold uses the explicitly selected Harmos source revision or local checkout.
 Install `cargo-harmos` to run `mise run dev`; it is the development tool used to create this project.
 Keep generated tooling current with `stkr project update` when adopting company tooling changes.
 
 ## Operation Context
 
+Each operation file owns its request, response, policy and execution. Shared data
+lives in `domain`; plugin lifecycle preparation owns resources. Calls descend
+from higher-level operations to lower-level operations without cycles. Driver
+results cross the operation boundary as plugin-owned messages.
+
+Orchestration reads top to bottom under Title Case action comments: construct
+`let request = ...;`, then invoke `ctx.operation(request).await?;`. Repeat actions
+in the flow; keep reusable library logic with its owner. Compute named checks
+before combining them, and suffix physical quantities with their units. Callees
+own timeouts, delays and retries; callers override policy only for one call.
+
+
 Operations consume their request in `run(self, ctx: harmos::Context<'_, Self>)`. Declare `resources` and `operations` on the operation; use
-`ctx.resource::<T>()`, `ctx.operation(request)` and `ctx.streams()`. Plugin lifecycle hooks use `harmos::guest::kit::Context`.
+`ctx.resource::<T>()`, `ctx.operation(request).await?` and `ctx.streams()`. The shared SDK `Invocation` also accepts `.retry(policy)`,
+`.endpoints(...)` and `.start()`. Policy defaults belong to the operation macro; take retry overrides from settings or configuration.
+Await returns `Response<T>`: borrow it like the value, or use `into_owned()` to take the payload. Declared `operations` still authorize child calls.
+Plugin lifecycle hooks use `harmos::guest::kit::Context`; import `harmos::guest::OperationHost` to invoke operations on that carrier host.
 
 ## Plugin Lifecycle
 

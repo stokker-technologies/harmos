@@ -11,7 +11,7 @@
 
 /* === Modules === */
 
-// Plain Nested Messages Own The Reference Wire Shape
+// Plain Nested Messages Own the Reference Wire Shape
 mod plain {
     use super::Leaf;
     use harmos_domain::message;
@@ -32,7 +32,7 @@ mod plain {
     }
 }
 
-// Boxed Twins Keep Every Authored Name And Shape
+// Boxed Twins Keep Every Authored Name and Shape
 mod heap {
     use super::Leaf;
     use harmos_domain::message;
@@ -239,7 +239,7 @@ fn choices() -> Vec<(plain::Choice, heap::Choice)> {
     ]
 }
 
-// Compare Descriptor Graphs, Their JSON Bytes And Authored Field Identity
+// Compare Descriptor Graphs, Their JSON Bytes and Authored Field Identity
 fn descriptors<P: Described, B: Described>() {
     let settings = SchemaSettings::default();
     let plain = Schema::from_declaration(P::DEFINITION, &settings).unwrap();
@@ -269,7 +269,7 @@ where
         return None;
     };
 
-    // Bound And Resident Size Differ Only By The Box Pointee
+    // Bound and Resident Size Differ Only by the Box Pointee
     let boxed_bound = boxed_bound.unwrap();
     assert!(plain_bound.is_ok());
     assert!(boxed.memory_size() <= boxed_bound);
@@ -301,7 +301,7 @@ fn segmented() -> Vec<u8> {
     bytes
 }
 
-// A Varint Where The Nested Message Declares Bytes
+// A Varint Where the Nested Message Declares Bytes
 fn wrong_wire() -> Vec<u8> {
     let mut row = Vec::new();
     prost::encoding::uint64::encode(tag::<Leaf>("payload"), &1, &mut row);
@@ -310,7 +310,7 @@ fn wrong_wire() -> Vec<u8> {
     bytes
 }
 
-// Unknown Groups Nested Beyond The Shared Decode Depth
+// Unknown Groups Nested Beyond the Shared Decode Depth
 fn deep_group() -> Vec<u8> {
     let mut row = Vec::new();
     for _ in 0..40 {
