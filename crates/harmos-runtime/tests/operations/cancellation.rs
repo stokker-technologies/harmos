@@ -131,6 +131,9 @@ async fn cancel_final_response_in_process() {
         let result = handle.cancel().await;
         if mode == 0 {
             assert_eq!(*result.unwrap(), 42);
+        } else if mode == 3 {
+            let Error::OperationFailed { source, .. } = result.unwrap_err() else { panic!("expected the operation's failure") };
+            assert_eq!(source.downcast_ref::<std::io::Error>().unwrap().kind(), std::io::ErrorKind::Other);
         } else {
             assert!(matches!(result, Err(Error::OperationRefused(Refusal::Cancelled))));
         }
@@ -162,6 +165,8 @@ pub(crate) async fn remote<A: harmos_runtime::Application>(runtime: &Runtime<A>,
         let result = handle.cancel().await;
         if mode == 0 {
             assert_eq!(*result.unwrap(), 42);
+        } else if mode == 3 {
+            assert_eq!(result.unwrap_err().code(), tonic::Code::Internal);
         } else {
             assert_eq!(result.unwrap_err().code(), tonic::Code::Cancelled);
         }

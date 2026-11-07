@@ -165,7 +165,7 @@ async fn external_authority_parity() {
     .unwrap();
     runtime.operations.register::<crate::operations::Single<GuardedDeclaration>>(Lanes::Open).await.unwrap();
     runtime.operations.register::<crate::operations::Single<DescendantDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<harmos_operations::OperationHost>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<harmos_operations::Host>(Lanes::Open).await.unwrap();
     // Internal Boot Work Does Not Freeze The Later Listener Policy.
     assert_eq!(runtime.operation(GuardedDeclaration {}).await.unwrap().actor, "host:anonymous");
     let mode = Arc::new(std::sync::atomic::AtomicUsize::new(0));
