@@ -13,6 +13,8 @@
 
 /* === Re-Exports === */
 
+pub use prost::Message;
+
 /* === Imports === */
 
 // Standard Library Imports

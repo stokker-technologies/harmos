@@ -2016,7 +2016,6 @@ dependencies = [
  "harmos-domain",
  "harmos-packaging",
  "harmos-sidecar",
- "prost",
  "schematic-domain",
  "schematic-operations",
  "serde_json",

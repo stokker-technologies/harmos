@@ -22,12 +22,12 @@ use std::process::Stdio;
 use std::time::Duration;
 
 // Third Party Imports
-use prost::Message;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 // Local Imports
 use harmos::OperationHost;
 use harmos::builtins::lifecycle::{Initialize, Shutdown};
+use harmos_sidecar::kit::prototype::protocol::Message;
 use harmos_sidecar::kit::prototype::{Host, Packet, SCHEMA_FINGERPRINT, Settings, protocol};
 
 /* === Constants === */

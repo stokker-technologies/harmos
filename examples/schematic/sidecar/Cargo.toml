@@ -129,7 +129,6 @@ schematic-operations = { path = "../operations" }
 arrow-array = { workspace = true }
 arrow-ipc = { workspace = true }
 arrow-schema = { workspace = true }
-prost = { workspace = true, features = ["derive"] }
 
 # Configuration
 
