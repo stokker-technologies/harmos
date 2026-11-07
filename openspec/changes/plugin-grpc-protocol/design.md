@@ -237,6 +237,8 @@ mise run check:rust passed on the completed source: Rust formatting for all thre
 
 The bounded source and evidence are complete. Delivery is limited to normal pushes of feat/plugin-grpc-prototype, with no PR or merge into dev. The retained worktree lock remains Owner requested retained gRPC prototype. No migration or second tuning round is started, and the deferred migration tasks remain open.
 
+The source/evidence checkpoint a4c36cc27654e9570d9480f85701dc0ff7e6f074 was pushed normally and verified against the remote SHA. After preserving the distributions, focused proof, check results and executable digests here, native cargo clean completed through mise's tool environment for all three Cargo-metadata-resolved targets, each checked to be non-linked and inside this owned worktree: root 751.3 MiB, Schematic 5.7 GiB and sandbox 630.7 MiB. No peer target or shared compiler cache was cleaned. All prototype children had settled. Only this cleanup record and task completion bookkeeping changed after the validated source checkpoint; the worktree remains present and locked.
+
 ## Historical Integration Diagnostic
 
 The first execution on the previous checkpoint stopped during Schematic initialization after 3.05 seconds with:

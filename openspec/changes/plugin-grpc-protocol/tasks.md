@@ -27,8 +27,8 @@
 - [x] 4.1 Profile the unchanged gRPC stream: codec/copies, producer queue, HTTP/2 capacity, TCP and TLS before tuning.
 - [x] 4.2 Tune prototype settings and stream ownership once; retain payloads, framed baseline and gate criterion. Owners: prototype.rs, prototype/{client,codec}.rs, Schematic src/{prototype,measurement}.rs and its process gates; manifests only if profiling requires it.
 - [x] 4.3 Repeat matched seven-trial Gate 5, retain Gates 1–4, estimate Gate 6 and record evidence, busy-machine observations, remaining bottleneck and hybrid SDK costs in design.md. Review shipping README impact.
-- [ ] 4.4 Run focused mise proofs, check:rust and the required diff scan; commit, normal-push and verify remote SHA without PR or merge.
-- [ ] 4.5 Preserve results, cargo clean owned worktree targets and retain the worktree. Stop without a second tuning pass or migration.
+- [x] 4.4 Run focused mise proofs, check:rust and the required diff scan; commit, normal-push and verify remote SHA without PR or merge.
+- [x] 4.5 Preserve results, cargo clean owned worktree targets and retain the worktree. Stop without a second tuning pass or migration.
 
 ## Workflow Follow-Up
 
