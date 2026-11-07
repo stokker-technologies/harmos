@@ -534,6 +534,11 @@ passed to `finish` and preserve the same exact rank and interpolation semantics.
 Snapshot reads run concurrently; closing storage waits for those in
 flight.
 
+Snapshot pin acquisition and release use one separate worker slot alongside
+ordered data and recovery writes and immutable file publication. Pruning and
+deletion remain exclusive with pin registration and release. Typed writes and
+durable frontier advancement retain their ordering.
+
 `storage::query::quantiles::Quantiles` stores finite f64 projections for exact
 linear percentiles without decoding source evidence again. Its constructor
 bounds numeric payload memory, including spill buffering; `values` consumes the
