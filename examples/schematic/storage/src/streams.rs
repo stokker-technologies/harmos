@@ -36,7 +36,7 @@ const POSITION: &str = "position";
 
 const SUFFIX: &str = ".jsonl";
 
-const WINDOW: usize = 64 * 1024;
+const WINDOW_BYTES: usize = 64 * 1024;
 
 /* === Macros === */
 
@@ -245,10 +245,10 @@ fn truncate_partial(path: &Path) -> io::Result<()> {
     if length == 0 {
         return Ok(());
     }
-    let mut window = vec![0; WINDOW];
+    let mut window = vec![0; WINDOW_BYTES];
     let mut end = length;
     while end > 0 {
-        let start = end.saturating_sub(WINDOW as u64);
+        let start = end.saturating_sub(WINDOW_BYTES as u64);
         let read = (end - start) as usize;
         file.seek(SeekFrom::Start(start))?;
         file.read_exact(&mut window[..read])?;

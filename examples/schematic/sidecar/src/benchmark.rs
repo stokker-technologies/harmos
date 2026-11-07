@@ -7,7 +7,7 @@
  * ***
  */
 
-// Select The Sidecar Catalog And Its Resources.
+// Select the Sidecar Catalog and Its Resources.
 
 /* === Modules === */
 

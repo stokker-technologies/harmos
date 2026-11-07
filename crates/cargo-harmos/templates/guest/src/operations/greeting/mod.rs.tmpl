@@ -7,7 +7,7 @@
  * ***
  */
 
-// Greeting Contracts And Their Optional Execution.
+// Greeting Contracts and Their Optional Execution.
 
 /* === --- === Definition Module === --- === */
 
@@ -25,12 +25,19 @@
 
 /* === Constants === */
 
+const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+    timeout: std::time::Duration::from_secs(10),
+    attempt_timeout: std::time::Duration::from_secs(10),
+    cancellation_timeout: std::time::Duration::ZERO,
+    retries: harmos::operations::RetryPolicy::Never,
+};
+
 /* === Macros === */
 
 /* === Type Aliases === */
 
 /* === Structs === */
-#[harmos::operation(resources = [], id = "greeting.greet", response = crate::domain::model::greeting::Greeting, policy = super::POLICY)]
+#[harmos::operation(resources = [], id = "greeting.greet", response = crate::domain::model::greeting::Greeting, policy = POLICY)]
 pub struct Greet {
     pub name: String,
 }

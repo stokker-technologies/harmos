@@ -7,7 +7,7 @@
  * ***
  */
 
-// Plugin Composition And Explicit Lifecycle Ownership.
+// Plugin Composition and Explicit Lifecycle Ownership.
 
 /* === Modules === */
 pub mod domain;
@@ -42,8 +42,13 @@ pub struct Plugin;
 /* === Implementations === */
 #[cfg(feature = "runtime")]
 impl harmos::builtins::lifecycle::Policy for Plugin {
-    const INITIALIZATION_POLICY: harmos::OperationPolicy = operations::POLICY;
-    const SHUTDOWN_POLICY: harmos::OperationPolicy = operations::POLICY;
+    const INITIALIZATION_POLICY: harmos::OperationPolicy = harmos::operations::OperationPolicy {
+        timeout: std::time::Duration::from_secs(10),
+        attempt_timeout: std::time::Duration::from_secs(10),
+        cancellation_timeout: std::time::Duration::ZERO,
+        retries: harmos::operations::RetryPolicy::Never,
+    };
+    const SHUTDOWN_POLICY: harmos::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
 #[cfg(feature = "runtime")]

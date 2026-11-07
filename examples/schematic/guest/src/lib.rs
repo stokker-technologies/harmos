@@ -32,6 +32,13 @@ use schematic_operations::transfer::Guest as Operations;
 
 /* === Constants === */
 
+const POLICY: OperationPolicy = OperationPolicy {
+    timeout: std::time::Duration::from_secs(10),
+    attempt_timeout: std::time::Duration::from_secs(10),
+    cancellation_timeout: std::time::Duration::ZERO,
+    retries: harmos::operations::RetryPolicy::Never,
+};
+
 /* === Macros === */
 
 harmos::guest::export_plugin!(Plugin, capacity = 8);
@@ -52,7 +59,7 @@ pub struct Plugin {
 /* === Implementations === */
 
 impl harmos::builtins::lifecycle::Policy for Plugin {
-    const INITIALIZATION_POLICY: OperationPolicy = schematic_operations::POLICY;
+    const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 

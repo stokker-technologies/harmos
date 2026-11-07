@@ -85,7 +85,7 @@ impl<A: Application> JournalConsumer<A> for Snapshot<A> {
                         return self.durable;
                     }
                 } else {
-                    // Replay Requires The Original Accepted Bytes.
+                    // Replay Requires the Original Accepted Bytes.
                     self.halted = true;
                     return self.durable;
                 }

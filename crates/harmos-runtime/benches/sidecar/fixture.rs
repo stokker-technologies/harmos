@@ -169,7 +169,7 @@ impl Fixture {
             },
         };
         let answer = self.runtime.operation(request).await.unwrap();
-        assert_eq!(answer.bytes_read, 10);
+        assert_eq!(answer.read_bytes, 10);
         assert_eq!(answer.sha256, <[u8; 32]>::from(Sha256::digest(&bytes[5..15])));
     }
 
