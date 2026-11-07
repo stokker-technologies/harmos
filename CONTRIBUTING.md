@@ -93,8 +93,11 @@ explicit local work. Nightly runs ordinary verification with release Product
 builds and downloadable unsigned packages, plus coverage, benchmarks and
 `test:rust:starter` for generated guest/sidecar compilation and development lifecycles.
 Ordinary acceptance retains the other product stories without compiling starters.
-Correctness tests have a minimum 120-second deadline, preserving larger bounds.
-Use benchmarks for performance measurements rather than tightening test deadlines.
+Lane deadlines are hang guards read from `[conventions.testing.deadlines]` in
+`tools/project.toml`. Native runners terminate hung stories; script lanes also
+terminate their process tree at the lane deadline. Completed story durations are
+measurements and never change the runner's pass/fail result. Use benchmarks for
+performance measurements.
 
 For a focused Rust compiler check or selected test, use `mise run build:rust:focused`
 with the Cargo operation and selection arguments. This task applies the standard
