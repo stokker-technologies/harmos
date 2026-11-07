@@ -14,13 +14,12 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::collections::BTreeMap;
 // Third Party Imports
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
 use syn::{Error, Fields, ItemEnum, spanned::Spanned};
 // Local Imports
-use super::{encoding, tag};
+use super::encoding;
 use crate::path::HarmosPath;
 
 /* === Constants === */
@@ -49,7 +48,6 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool, s
     let postcard = super::postcard::declare(&syn::Item::Enum(item.clone()), &harmos);
     let gates = crate::operation::configuration(&item.attrs)?;
     let name = &item.ident;
-    let mut tags = BTreeMap::new();
     let mut payloads = Vec::new();
     let mut memories = Vec::new();
     let mut schemas = Vec::new();
@@ -62,15 +60,7 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool, s
         let variant_name = &variant.ident;
         let authored = variant_name.to_string();
         let authored = authored.strip_prefix("r#").unwrap_or(&authored);
-        let number = tag(authored);
-        if let Some(previous) = tags.insert(number, authored.to_owned()) {
-            return Err(Error::new(
-                variant.span(),
-                format!("message variants `{previous}` and `{authored}` collide at protobuf tag {number}; rename a variant explicitly"),
-            ));
-        }
         let payload = format_ident!("{name}Payload{index}");
-        let mut field_tags = BTreeMap::new();
         let mut fields = Vec::new();
         let mut bindings = Vec::new();
         let mut members = Vec::new();
@@ -90,18 +80,9 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool, s
             }
             let field_name = ident.to_string();
             let field_name = field_name.strip_prefix("r#").unwrap_or(&field_name);
-            let field_tag = tag(field_name);
-            if let Some(previous) = field_tags.insert(field_tag, field_name.to_owned()) {
-                return Err(Error::new(
-                    field.span(),
-                    format!(
-                        "message fields `{previous}` and `{field_name}` collide at protobuf tag {field_tag}; rename a field explicitly"
-                    ),
-                ));
-            }
             fields.push(quote! {
                 #harmos::schema::graph::Field {
-                    name: ::std::borrow::Cow::Borrowed(#field_name), tag: #field_tag,
+                    name: ::std::borrow::Cow::Borrowed(#field_name), tag: #harmos::schema::field_tag(#field_name),
                     kind: #kind, cardinality: #cardinality,
                 }
             });
@@ -134,7 +115,7 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool, s
         });
         memories.push(quote! { #pattern => { let bytes = ::std::mem::size_of::<Self>(); #(#owned)* bytes } });
         schemas.push(quote! { #harmos::schema::graph::Field {
-            name: ::std::borrow::Cow::Borrowed(#authored), tag: #number,
+            name: ::std::borrow::Cow::Borrowed(#authored), tag: #harmos::schema::field_tag(#authored),
             kind: #harmos::schema::graph::Kind::Message { definition: <#payload as #harmos::schema::Described>::DEFINITION },
             cardinality: #harmos::schema::Cardinality::Variant,
         }});

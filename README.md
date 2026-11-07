@@ -104,6 +104,23 @@ feature for the [performance suites](docs/product-guide.md#performance).
 Harmos also ships a filesystem `JsonStorage` backend for records, streams, objects
 and files; see the [storage configuration guide](docs/product-guide.md).
 
+### C++
+
+Rust remains the nominal SDK. The C++20 sidecar prototype is a thin layer over
+the shared Rust core through `harmos-ffi`; it has no stable ABI promise.
+See the [C++ guide](docs/sidecar-cpp-prototype.md) for toolchain setup and ownership.
+
+#### Examples
+
+Build the SDK and run the simulated instrument through its native Rust host:
+
+```sh
+mise run build:cpp
+mise run test:rust:cpp
+```
+
+These opt-in tasks require a C++20 compiler and CMake; ordinary Rust builds do not.
+
 ## Quick Start
 
 Try the Schematic application with the repository's pinned tools:

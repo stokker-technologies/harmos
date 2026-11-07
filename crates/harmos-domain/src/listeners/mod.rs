@@ -129,13 +129,10 @@ impl Source {
                 reason: "source identities must be nonempty and contain no control characters",
             });
         }
-        match self {
-            Self::Record { version: 0, .. } => {
-                return Err(Error::Source {
-                    reason: "record semantic version must be positive",
-                });
-            }
-            _ => {}
+        if let Self::Record { version: 0, .. } = self {
+            return Err(Error::Source {
+                reason: "record semantic version must be positive",
+            });
         }
         self.schema().prepare(&SchemaSettings::default()).map_err(schema::Error::from)?;
         Ok(())

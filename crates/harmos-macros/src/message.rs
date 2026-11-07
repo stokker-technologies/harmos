@@ -18,7 +18,6 @@ mod postcard;
 /* === Imports === */
 
 // Standard Library Imports
-use std::collections::BTreeMap;
 // Third Party Imports
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
@@ -77,7 +76,6 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     }
     let harmos = HarmosPath::resolve(explicit);
     let row_metadata = crate::presentation::fields(&mut item.fields)?;
-    let mut tags = BTreeMap::new();
     let mut fields = Vec::new();
     for field in &mut item.fields {
         // Macro-Forwarded Types Carry Invisible Delimiter Groups
@@ -86,18 +84,11 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
         }
         let name = field.ident.as_ref().expect("named field").to_string();
         let name = name.strip_prefix("r#").unwrap_or(&name);
-        let number = tag(name);
-        if let Some(previous) = tags.insert(number, name.to_owned()) {
-            return Err(Error::new(
-                field.span(),
-                format!("message fields `{previous}` and `{name}` collide at protobuf tag {number}; rename a field explicitly"),
-            ));
-        }
         let (_, kind, cardinality) = encoding(&field.ty, &harmos)
             .map_err(|error| Error::new(field.span(), format!("field `{name}` of type `{}`: {error}", field.ty.to_token_stream())))?;
         fields.push(quote! {
             #harmos::schema::graph::Field {
-                name: ::std::borrow::Cow::Borrowed(#name), tag: #number,
+                name: ::std::borrow::Cow::Borrowed(#name), tag: #harmos::schema::field_tag(#name),
                 kind: #kind, cardinality: #cardinality,
             }
         });
@@ -158,19 +149,25 @@ fn described(name: &syn::Ident, fields: TokenStream, extra: TokenStream, harmos:
     quote! {
         impl #harmos::schema::Described for #name {
             const NAME: &'static str = concat!(module_path!(), "::", stringify!(#name));
-            const FIELDS: &'static [#harmos::schema::graph::Field<#harmos::schema::declaration::Definition>] = #fields;
+            const FIELDS: &'static [#harmos::schema::graph::Field<#harmos::schema::declaration::Definition>] = {
+                let fields: &[#harmos::schema::graph::Field<#harmos::schema::declaration::Definition>] = #fields;
+                let mut left = 0;
+                while left < fields.len() {
+                    let mut right = left + 1;
+                    while right < fields.len() {
+                        assert!(fields[left].tag != fields[right].tag, "message fields collide at a name-derived tag; rename a field");
+                        right += 1;
+                    }
+                    left += 1;
+                }
+                fields
+            };
             const MARKER: &'static [u8] = &#harmos::schema::declaration::encode::<{
                 #harmos::schema::declaration::encoded_len(Self::NAME, Self::FIELDS)
             }>(Self::NAME, Self::FIELDS);
             #extra
         }
     }
-}
-
-fn tag(name: &str) -> u32 {
-    let hash = name.bytes().fold(2_166_136_261_u32, |hash, byte| (hash ^ u32::from(byte)).wrapping_mul(16_777_619));
-    let tag = 1 + hash % (536_870_911 - 1_000);
-    if tag >= 19_000 { tag + 1_000 } else { tag }
 }
 
 fn encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream, TokenStream), Error> {
