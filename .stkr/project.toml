@@ -1,4 +1,4 @@
-# Project Policy Owned By The Hub
+# Project Policy Owned by the Hub
 # Native manifests own package metadata; mise owns executable recipes.
 # Defaults stay implicit. Commented sections do not declare configuration.
 

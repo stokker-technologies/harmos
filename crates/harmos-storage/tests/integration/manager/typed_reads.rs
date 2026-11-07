@@ -7,7 +7,7 @@
  * ***
  */
 
-// Typed Historical Reads, Public Scalar Folds And Concurrent Snapshot Reads
+// Typed Historical Reads, Public Scalar Folds and Concurrent Snapshot Reads
 
 /* === Modules === */
 

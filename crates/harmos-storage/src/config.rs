@@ -47,7 +47,7 @@ pub(super) const MAX_MUTATIONS: NonZeroUsize = NonZeroUsize::new(1024).unwrap();
 pub(super) const MUTATION_RETENTION: Duration = Duration::from_secs(300);
 // Internal Scan Pages Amortize Backend Calls On Desktop Storage: 16,384 Rows / 8 MiB.
 // Response Sizing And Concurrent Query Counts Remain Explicit Consumer Settings.
-// Query Reductions Cache At Most 32 MiB Of Arrow Pages And 32 MiB Of Coordinates,
+// Query Reductions Cache at Most 32 MiB of Arrow Pages and 32 MiB of Coordinates,
 // Then Spill To Disk Within The Existing 128 MiB Algorithm Workspace Target.
 pub(super) const SCAN_ROWS: NonZeroUsize = NonZeroUsize::new(16_384).unwrap();
 pub(super) const SCAN_BYTES: usize = 8 * 1024 * 1024;

@@ -98,7 +98,7 @@ async fn declared_operation_roundtrip() {
     let answered = runtime.operation(route(3)).await.unwrap();
     assert_eq!(answered.points, corner(3));
 
-    // A Straight Route Collapses Its Corner Onto The Start
+    // A Straight Route Collapses Its Corner Onto the Start
     let operation = ["schematic_tools", "schematic", "route"].join(".");
     let encoded = runtime
         .operations
@@ -127,7 +127,7 @@ async fn declared_operation_roundtrip() {
         })
         .await
         .unwrap();
-    assert_eq!(validated.diagnostics, ["Duplicate Symbol IDs", "Connection 1 To 2 References A Missing Symbol"]);
+    assert_eq!(validated.diagnostics, ["Duplicate Symbol IDs", "Connection 1 to 2 References a Missing Symbol"]);
 
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
@@ -173,7 +173,7 @@ async fn shutdown_retains_cleanup() {
     assert!(failed.cleanup_pending);
     assert!(runtime.operation(ReadOperation { value: "fenced".into() }).await.is_err());
 
-    // Each Later Stop Resumes The Retained Cleanup Until The Guest's Own Shutdown Deadline Settles It, Without Another Attempt
+    // Each Later Stop Resumes the Retained Cleanup Until the Guest's Own Shutdown Deadline Settles It, Without Another Attempt
     let mut settled = false;
     while let Err(pending) = runtime.plugin.stop("sandbox_guest").await {
         let pending = format!("{pending:?}");

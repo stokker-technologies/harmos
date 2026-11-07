@@ -16,6 +16,6 @@ The SDK owns a host-independent cancellation signal, carried in ExecutionContext
 
 Managed gRPC calls use a separate generated Run method per operation: a stream containing the typed request, optional input items, and cancellation, with typed output items and final response. Cancellation keeps the HTTP/2 response stream open; HTTP/2 abort retains abandonment semantics. Existing ordinary RPC shapes remain available. Generated Python and externally generated TypeScript clients use the same protobuf contract.
 
-## Ownership And Inventory
+## Ownership and Inventory
 
 One writer owns the clean feat/cancel-final-response tree. Implement policy and SDK first, then runtime, carriers, gRPC projection/dispatch, consumer migration and docs, followed by focused proof. No coupled repository changes or unresolved owner decisions. No push, PR, release or full CI simulation is authorized. The requested workspace check and focused carrier tests are the final validation boundary.

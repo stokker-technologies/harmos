@@ -240,7 +240,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
         split = values.index("--")
         values, extra = values[:split], values[split + 1 :]
 
-    parser = argparse.ArgumentParser(description="Test Lanes And Evidence")
+    parser = argparse.ArgumentParser(description="Test Lanes and Evidence")
     commands = parser.add_subparsers(dest="command", required=True)
     lane = commands.add_parser("test", help="run one test lane")
     lane.add_argument("--category", choices=policy.CATEGORIES, required=True)
@@ -369,7 +369,7 @@ def _lane(
     if not junit.is_file():
         raise policy.TestError(f"{key}: the runner exited {status} without a JUnit report")
 
-    # Stories, Deadlines And Liveness Overruns
+    # Stories, Deadlines and Liveness Overruns
     text = junit.read_text(encoding="utf-8")
     package = Path(project).name if project != "." else directory.name
     found = report.cases(text, category, language, package)

@@ -8,5 +8,5 @@
 
 
 [tasks.dev]
-description = "Watch And Rebuild The Plugin"
+description = "Watch and Rebuild the Plugin"
 run = "cargo harmos guest dev"

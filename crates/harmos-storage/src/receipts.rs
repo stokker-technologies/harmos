@@ -307,7 +307,7 @@ impl Receipts {
         Ok(())
     }
 
-    // Pending Work And Attached Callers Retain Their Outcome Independently
+    // Pending Work and Attached Callers Retain Their Outcome Independently
     // Of Retry Eligibility. A Pinned Front Must Not Hold Later Expired Receipts.
     pub(super) fn purge(&mut self, now: Instant) {
         // Admission And Recovery Order Deadlines; No Later Entry Can Expire First.

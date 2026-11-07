@@ -110,7 +110,7 @@ where
                                 })
                                     as Pin<Box<dyn Future<Output = Result<Vec<u8>, harmos_domain::Refusal>> + Send>>,
                                 None => {
-                                    // Submitted Children Belong To An Attempt Scope
+                                    // Submitted Children Belong to an Attempt Scope
                                     let call = match child {
                                         crate::operations::WireChild::Call(call) if !call.submit => call,
                                         _ => {
@@ -241,7 +241,7 @@ where
                 {
                     let _ = cancel.send(());
                 }
-                // Keep The Slot Until Its Original Running Physically Settles
+                // Keep the Slot Until Its Original Running Physically Settles
                 Absorbed::Carried
             }
             Arrival::Reply(frame, token) => {

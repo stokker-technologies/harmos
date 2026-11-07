@@ -7,7 +7,7 @@
  * ***
  */
 
-// Exact Paged Reductions Over Private Spill Files
+// Exact Paged Reductions over Private Spill Files
 
 /* === Modules === */
 

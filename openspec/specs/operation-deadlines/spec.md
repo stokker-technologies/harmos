@@ -7,7 +7,7 @@ preserving total deadlines for unary operations and bounded response draining.
 
 ## Requirements
 
-### Requirement: Stream Progress Rearms The Deadline
+### Requirement: Stream Progress Rearms the Deadline
 Streaming operations SHALL interpret policy timeout as maximum silence and unary operations SHALL retain total deadlines.
 
 #### Scenario: Continuous Progress

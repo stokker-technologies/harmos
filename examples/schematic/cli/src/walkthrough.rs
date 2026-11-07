@@ -49,7 +49,7 @@ use schematic_app::{app, config::Settings, document::Document, services::Plugin}
 
 #[tracing::instrument(level = "debug", skip_all)]
 pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advanced: bool) -> Result<()> {
-    // Create A Document And Its Recovery Journal
+    // Create a Document and Its Recovery Journal
     let scratch = tempfile::tempdir()?;
     let path = scratch.path().join("schematic.json");
     let document = Document::new(&path);
@@ -58,7 +58,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     let runtime = app::launch(document, &config).await?;
     let checkpoint = runtime.operations.context().resource::<schematic_app::storage::Sidecar>().map_err(std::io::Error::other)?;
 
-    // Choose A Backend For The Same Operations
+    // Choose a Backend for the Same Operations
     let plugin = async {
         // Component Compilation Precedes The Bounded Plugin Initialization.
         let loaded = match guest {
@@ -93,7 +93,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     stopped?;
     settled?;
 
-    // Save And Reopen The Settled Document
+    // Save and Reopen the Settled Document
     let snapshot = snapshot?;
     Document::save(&path, snapshot, &checkpoint)?;
     let document = Document::open(&path)?;
@@ -116,7 +116,7 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
     let principal = PrincipalId::new("designer");
     let state = runtime.state.as_principal(principal.clone());
 
-    // Place And Connect Two Symbols
+    // Place and Connect Two Symbols
     let resistor = PlaceSymbol {
         symbol: SymbolId(1),
         reference: "R1".to_owned(),
@@ -172,7 +172,7 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
     state.commit(change).await?;
     println!("Applied route: {:?}", proposed.points);
 
-    // Undo And Redo The Host Transaction
+    // Undo and Redo the Host Transaction
     state.undo(principal.clone(), Focus::all()).await?;
     state.redo(principal, Focus::all()).await?;
     println!("Undid and redid the route");

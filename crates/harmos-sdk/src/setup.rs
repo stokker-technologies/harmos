@@ -7,7 +7,7 @@
  * ***
  */
 
-// Lifecycle Preparation And Role-Specific Configuration
+// Lifecycle Preparation and Role-Specific Configuration
 
 /* === Modules === */
 

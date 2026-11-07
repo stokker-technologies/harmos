@@ -7,7 +7,7 @@
  * ***
  */
 
-// Prepared Carrier Configuration And Publication
+// Prepared Carrier Configuration and Publication
 
 /* === Modules === */
 

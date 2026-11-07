@@ -6,7 +6,7 @@
 #
 # ***
 
-"""Build Benchmark Executables And Matching Native Hosts"""
+"""Build Benchmark Executables and Matching Native Hosts"""
 
 # === Imports === #
 
@@ -113,7 +113,7 @@ def build(directory: Path, extra: Sequence[str] = ()) -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build Benchmarks And Matching Hosts In The Bench Profile")
+    parser = argparse.ArgumentParser(description="Build Benchmarks and Matching Hosts in the Bench Profile")
     parser.add_argument("extra", nargs=argparse.REMAINDER)
     options = parser.parse_args()
     extra = options.extra[1:] if options.extra[:1] == ["--"] else options.extra

@@ -7,7 +7,7 @@
  * ***
  */
 
-// Export Generated Python Packages And Consume Them From The Repository
+// Export Generated Python Packages and Consume Them from the Repository
 // Interpreter. Prerequisite: `uv sync --locked --project tools/python --group test`
 // provisions the root `.venv` with protobuf, build and ty.
 
@@ -51,10 +51,10 @@ const POLICY: OperationPolicy = OperationPolicy {
     retries: RetryPolicy::Never,
 };
 
-// The Generated Python Surface Of A Request Carrying Aggregates
+// The Generated Python Surface of a Request Carrying Aggregates
 const AGGREGATE_SNAPSHOT: &str = include_str!("fixtures/aggregate-bindings.pyi.snapshot");
 
-// A Wide Schema Shared With The Domain's Graph Stories
+// A Wide Schema Shared with the Domain's Graph Stories
 const CHECKPOINT: &str = include_str!("../../../harmos-domain/tests/fixtures/checkpoint-schema.json");
 
 /* === Macros === */
@@ -129,7 +129,7 @@ struct Summary {
     aggregates: Vec<Aggregate>,
 }
 
-// Two Producers Exported From One Catalog, Each In Its Own Directory
+// Two Producers Exported from One Catalog, Each in Its Own Directory
 struct Exported {
     target: tempfile::TempDir,
     alpha: PathBuf,
@@ -154,7 +154,7 @@ enum Routes {
 
 /* === Private Functions === */
 
-// Four Streaming Shapes Plus A Wide, A Recursive And A Reserved-Name Schema
+// Four Streaming Shapes Plus a Wide, a Recursive and a Reserved-Name Schema
 fn contracts() -> Vec<Contract> {
     let mut contracts = Contracts::of::<Routes>().unwrap();
     let template = contracts[0].clone();
@@ -229,7 +229,7 @@ fn settings(module: &str) -> Settings {
     }
 }
 
-// Wrap A Direction Schema In The Request And Response Root Of A New Contract
+// Wrap a Direction Schema in the Request and Response Root of a New Contract
 fn contract(template: &Contract, id: &str, method: &'static str, mut schema: Schema) -> Contract {
     let mut operation = template.operation().clone();
     operation.id = Identifier::new(id).unwrap();
@@ -335,7 +335,7 @@ fn export_refuses_invalid() {
         )
     };
 
-    // Selections, Module Names And Versions Python Cannot Carry
+    // Selections, Module Names and Versions Python Cannot Carry
     let mut settings = settings("bindings_alpha");
     settings.operations = vec!["missing.operation".into()];
     assert!(matches!(refused(&settings), Err(python::Error::Selection(_))));
@@ -411,7 +411,7 @@ fn export_is_deterministic() {
 
 #[test]
 fn python_reads_rust() {
-    // Rust Encodes, Python Decodes And Re-Encodes, Rust Decodes The Same Value
+    // Rust Encodes, Python Decodes and Re-Encodes, Rust Decodes the Same Value
     let exported = export();
     let value = Payload {
         text: "line\n∞".into(),
@@ -541,7 +541,7 @@ fn dynamic_refuses_graphs() {
 
 #[test]
 fn aggregate_members_typed() {
-    // The Generated Surface Of A Request Carrying Aggregates Is Stable
+    // The Generated Surface of a Request Carrying Aggregates Is Stable
     let template = Contracts::of::<Routes>().unwrap()[0].clone();
     let schema = Schema::from_declaration(Summary::DEFINITION, &SchemaSettings::default()).unwrap();
     let summary = contract(&template, "fixture_aggregate", "Aggregate", schema);
@@ -562,7 +562,7 @@ fn aggregate_members_typed() {
     let generated = format!("{}\n{}", fs::read_to_string(module.join("__init__.pyi")).unwrap(), fs::read_to_string(messages).unwrap());
     assert_eq!(generated, AGGREGATE_SNAPSHOT, "{generated}");
 
-    // Python Selects The Percentile Member And Its Rank As Typed Fields
+    // Python Selects the Percentile Member and Its Rank as Typed Fields
     let value = Summary {
         aggregate: Aggregate::Percentile(95),
         aggregates: vec![Aggregate::Count, Aggregate::Percentile(99)],

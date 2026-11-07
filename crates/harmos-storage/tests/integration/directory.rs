@@ -7,7 +7,7 @@
  * ***
  */
 
-// Directory Selection, Retained Read Ownership And Native Subscription Stories
+// Directory Selection, Retained Read Ownership and Native Subscription Stories
 
 /* === Modules === */
 

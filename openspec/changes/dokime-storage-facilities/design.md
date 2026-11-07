@@ -26,7 +26,7 @@ The native opened-capture constructor synchronously retains the original file an
 
 Batch writes use shared StorageBatch ownership without a scratch-admission carrier. Accepted workers settle during shutdown while new admission stays closed. RequestClaims carries process-local ownership through Host::call_owned and accepted runtime requests. Cross-process adapters refuse such owners rather than dropping or serializing them.
 
-## Integration And Validation
+## Integration and Validation
 
 The Dokime manifest keeps its published dependency while an untracked local Cargo patch selects all required Harmos packages from this worktree. Verify the resolved graph before consumer checks. Do not commit the override or local-path lockfile resolution. Publish/pin/remove-override remains a separate future authorized delivery step.
 

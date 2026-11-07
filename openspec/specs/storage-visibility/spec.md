@@ -14,7 +14,7 @@ Storage SHALL expose a passive wait for a saved cursor strictly newer than a sup
 - **WHEN** durable data advances between an observer reading its cursor and starting the wait
 - **THEN** the wait returns the newer saved cursor without requiring another change
 
-#### Scenario: Accepted Data And Cancellation
+#### Scenario: Accepted Data and Cancellation
 
 - **WHEN** only accepted pending data changes or a passive wait is cancelled
 - **THEN** accepted data SHALL NOT be reported as saved, cancellation SHALL leave persistence state unchanged, and no additional sample retention queue SHALL be created

@@ -41,7 +41,7 @@ The explicit optional local `test:rust:extended` suite SHALL preserve noncanonic
 - **WHEN** a developer requests `mise run test:rust:extended`
 - **THEN** the optional task builds its required artifacts and runs all preserved feature-dependent stories and compatibility checks
 
-### Requirement: Correctness And Performance Budgets
+### Requirement: Correctness and Performance Budgets
 
 Every correctness test SHALL have at least a 120-second deadline, preserving larger bounds. Historical runtime measurements SHALL NOT tighten correctness deadlines. Performance SHALL be assessed through benchmarks, with the application objective remaining under 10 seconds. Cargo defaults and product runtime limits SHALL remain unchanged.
 

@@ -7,7 +7,7 @@
  * ***
  */
 
-// Storage Query Plan Execution Over Arrow Batches
+// Storage Query Plan Execution over Arrow Batches
 
 /* === Modules === */
 

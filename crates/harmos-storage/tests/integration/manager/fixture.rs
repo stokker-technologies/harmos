@@ -7,7 +7,7 @@
  * ***
  */
 
-// Own The Storage Engine Worker In Tests
+// Own the Storage Engine Worker in Tests
 
 /* === Modules === */
 

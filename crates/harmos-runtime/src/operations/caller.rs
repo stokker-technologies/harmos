@@ -165,6 +165,12 @@ impl Caller {
         self.operations.submit_encoded_as(operation, payload, Source::Plugin(self.source.clone()), None)
     }
 
+    pub fn submit_encoded_with(
+        &self, operation: &str, payload: Vec<u8>, retry: Option<super::RetryPolicy>,
+    ) -> Result<super::EncodedInvocation> {
+        self.operations.submit_encoded_retry_as(operation, payload, Source::Plugin(self.source.clone()), retry)
+    }
+
     pub async fn call_encoded(&self, operation: &str, payload: Vec<u8>) -> Result<Vec<u8>> {
         self.submit_encoded(operation, payload)?.await
     }
@@ -300,7 +306,7 @@ impl Source {
                 id: *id,
             };
         }
-        // A Host Provider Serving A Plugin Requirement Acts For That Caller
+        // A Host Provider Serving a Plugin Requirement Acts for That Caller
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         if entry.plugin().is_none() && _origin.scope.is_some() {
             return self.clone();

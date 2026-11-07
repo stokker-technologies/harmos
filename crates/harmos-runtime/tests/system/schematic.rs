@@ -7,7 +7,7 @@
  * ***
  */
 
-// Walk The CLI Across Both Built Plugin Backends
+// Walk the CLI Across Both Built Plugin Backends
 
 /* === Modules === */
 

@@ -106,7 +106,7 @@ pub(super) enum Operations {
     ExchangeDeclaration(ExchangeDeclaration),
 }
 
-// Runtime-Error Endpoints Use The Plugin's Constant Catalog
+// Runtime-Error Endpoints Use the Plugin's Constant Catalog
 
 /* === Traits === */
 
@@ -302,7 +302,7 @@ async fn grpc_shape_refusal() {
         Err(status) => status,
     };
     assert_eq!(status.code(), tonic::Code::InvalidArgument, "{status:?}");
-    // The Status Details Carry The Structured Failure Unchanged
+    // The Status Details Carry the Structured Failure Unchanged
     let failure = harmos_runtime::Failure::decode(status.details()).unwrap();
     assert_eq!(status.message(), failure.cause(), "{status:?}");
     assert!(failure.cause().contains("wire type mismatch"), "{status:?}");

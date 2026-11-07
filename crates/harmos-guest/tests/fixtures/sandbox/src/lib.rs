@@ -8,7 +8,7 @@
  */
 
 // One Guest For Every Sandbox Behaviour The OperationHost Stories Drive: The Configuration
-// String Selects A Lifecycle Mode And Request Fields Select Handler Behaviour
+// String Selects a Lifecycle Mode and Request Fields Select Handler Behaviour
 
 /* === Modules === */
 

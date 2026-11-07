@@ -24,6 +24,8 @@ pub(crate) mod children;
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod component;
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+mod encoded;
 mod execution;
 mod finalization;
 #[cfg(feature = "grpc")]
@@ -62,7 +64,9 @@ pub use context::ContextMut;
 pub use grpc::GrpcBinding;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcMethod;
+pub use harmos_sdk::__private::{ErasedResponse, PreparedNative, ResourceSet, ServiceFuture};
 pub use harmos_sdk::operations::Invocation;
+pub use harmos_sdk::operations::NativeInstance;
 pub use harmos_sdk::operations::{
     Backoff, CHILD_METHOD, CacheKey, CacheKeyError, CallValue, Callees, Catalog, Codec, ContextError, ContextValue, Contract,
     ContractError, Contracts, Declarations, Dependent, Direction, Entry, Executable, FailureKind, Grpc, InvocationError, Invokes, Jitter,
@@ -81,6 +85,8 @@ pub use surface::{InvocationExt, RuntimeOperationHost};
 pub use crate::config::OperationSettings as Settings;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 pub use component::{Component, ComponentBindings, ComponentError, ComponentOperation};
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+pub use encoded::EncodedBinding;
 pub use handler::{Context, HostContext, OperationGeneration, OperationInstanceId, Running};
 pub use harmos_domain::observers;
 pub use harmos_sdk::operations::StreamError;

@@ -322,7 +322,7 @@ impl Drop for Retired {
 
 impl<A: Application> Drop for Owned<A> {
     fn drop(&mut self) {
-        // Destroy The Original Store Before Publishing Physical Settlement
+        // Destroy the Original Store Before Publishing Physical Settlement
         let guest = self.guest.take();
         drop(guest);
         let loans = std::mem::take(&mut *self.loans.lock().expect("guest invocation loan lock"));
@@ -456,7 +456,7 @@ impl<A: Application> Owned<A> {
                                 _ = request.answer.closed() => None,
                                 result = called => Some(result),
                             };
-                            // Retain The Original Loan Until SDK State Physically Finalizes
+                            // Retain the Original Loan Until SDK State Physically Finalizes
                             if matches!(&result, Some(Ok(Reply::Operation(WireAnswer::Ready { payload }))) if payload.is_empty())
                                 && let Some(invocation) = finalizing
                             {
@@ -477,7 +477,7 @@ impl<A: Application> Owned<A> {
                     }
                 }
             };
-            // Cancel Calls And Drive Their Guest Tasks Through Physical Exit
+            // Cancel Calls and Drive Their Guest Tasks Through Physical Exit
             drop(pending);
             if matches!(ending, Ending::Stopped) { return ending; }
             tokio::select! {
@@ -486,7 +486,7 @@ impl<A: Application> Owned<A> {
                 _ = std::future::poll_fn(|context| accessor.poll_no_interesting_tasks(context)) => ending,
             }
         }).await;
-        // Retain The Original Trap Before Closed Reply Waiters Resume
+        // Retain the Original Trap Before Closed Reply Waiters Resume
         let ending = match ending {
             Ok(ending) => ending,
             Err(source) => {

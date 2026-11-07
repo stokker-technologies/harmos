@@ -90,7 +90,7 @@ impl Context {
 /* === Public Functions === */
 
 pub(super) fn retain() {
-    // Keep The Fixed Async Import Even For An Empty Selected Catalog
+    // Keep the Fixed Async Import Even for an Empty Selected Catalog
     #[cfg(target_arch = "wasm32")]
     std::hint::black_box(&CHILD);
 }

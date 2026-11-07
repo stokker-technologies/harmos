@@ -7,7 +7,7 @@
  * ***
  */
 
-// Pinned Historical Images For Admitted Reads
+// Pinned Historical Images for Admitted Reads
 
 /* === Modules === */
 

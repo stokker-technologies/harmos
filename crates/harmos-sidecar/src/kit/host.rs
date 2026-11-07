@@ -364,7 +364,7 @@ impl Supervisor {
             Err(mpsc::error::TrySendError::Closed(_)) => return,
             Err(mpsc::error::TrySendError::Full(frame)) => frame,
         };
-        // A Full Queue Still Delivers The Release Once Capacity Returns
+        // A Full Queue Still Delivers the Release Once Capacity Returns
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
             let outgoing = self.outgoing.clone();
             runtime.spawn(async move {

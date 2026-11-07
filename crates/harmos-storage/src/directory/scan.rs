@@ -7,7 +7,7 @@
  * ***
  */
 
-// Bounded Depth-First Enumeration With Retained Entry Ownership
+// Bounded Depth-First Enumeration with Retained Entry Ownership
 
 /* === Modules === */
 

@@ -149,7 +149,7 @@ async fn uncacheable_calls_rerun() {
     .await;
     runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await.unwrap();
 
-    // Invalid Requests Bypass The Cache
+    // Invalid Requests Bypass the Cache
     let invalid = || Request { keyed: true, valid: false, ..request() };
     for _ in 0..2 {
         assert!(matches!(runtime.operation(invalid()).await, Err(Error::OperationFailed { .. })));

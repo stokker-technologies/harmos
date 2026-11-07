@@ -184,7 +184,7 @@ pub(crate) fn refused(error: Error) -> Refusal {
                 let failure = refusal.failure().clone().in_operation(operation.as_str());
                 return Refusal::failed(refusal.code(), failure);
             }
-            // A Carried Failure Keeps Its Cause And Any Frame Closer To The Origin
+            // A Carried Failure Keeps Its Cause and Any Frame Closer to the Origin
             let failure = error.failure().cloned().unwrap_or_else(|| {
                 harmos_domain::Failure::originate(crate::operations::FailureKind::Permanent, &error, harmos_domain::failure::Origin::Host)
             });

@@ -89,7 +89,7 @@ pub fn encode_borrowed<R: Message>(context: Context, row: &R, total_budget: usiz
     Ok(encoded)
 }
 
-// Same Envelope Arithmetic For Owned Length Queries And Borrowed Preflight
+// Same Envelope Arithmetic for Owned Length Queries and Borrowed Preflight
 pub(super) fn envelope_len(context: Context, row_len: usize) -> Option<usize> {
     context.size().checked_add(row_len)
 }

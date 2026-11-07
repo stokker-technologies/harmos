@@ -11,7 +11,7 @@
 
 - [x] 1.8 Correct observer defaults: required validated interval_ms, optional activation override, migrate all consumers, add fallback/override validation coverage and update maintained docs/specification; host defaults remain settings-owned.
 
-## Validation And Delivery
+## Validation and Delivery
 
 - [x] 2.1 Validate specification and run targeted observer/SDK tests through focused mise task.
 - [x] 2.2 After source closure, run requested workspace check and format.

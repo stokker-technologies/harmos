@@ -14,7 +14,7 @@ A storage call admitted under a valid mutation identity SHALL retain access to i
 - **WHEN** a valid file creation is admitted and its backend completes after the retry ledger deadline
 - **THEN** the original waiting call receives the result of that one creation without reissuing the mutation
 
-#### Scenario: Attached Duplicate And Cancelled Caller
+#### Scenario: Attached Duplicate and Cancelled Caller
 
 - **WHEN** a duplicate attaches before expiry and one waiting caller is cancelled
 - **THEN** the remaining admitted caller receives the same operation outcome and completion ownership is reclaimed without an unbounded retained entry

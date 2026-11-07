@@ -107,7 +107,7 @@ pub(crate) async fn exchange<C>(
                 previous = Some(sequence);
                 batches = batches.checked_add(1).ok_or(Error::ResourceExhausted { resource: "write batch count" })?;
                 pending.push_back(receipt.clone());
-                // Storage Owns The Accepted Batch Even If Delivery Fails
+                // Storage Owns the Accepted Batch Even If Delivery Fails
                 let accepted = WriteReceipt::Accepted(receipt);
                 output.send_with(accepted.memory_size(), || Ok(accepted)).await?;
             }

@@ -272,7 +272,7 @@ fn skip(tag: u32, wire: WireType, bytes: &mut &[u8], depth: usize) -> Result<(),
     Ok(())
 }
 
-// Called Only After The Shared Structural Budget Has Passed
+// Called Only After the Shared Structural Budget Has Passed
 
 fn malformed(message: &'static str) -> PayloadError {
     PayloadError::Malformed(message)

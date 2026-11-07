@@ -200,7 +200,7 @@ impl ObserverBackend for Backend {
             Err(error) => return Err(remote.failed(error).await),
         };
 
-        // Follow The Remote Observer Until Stopped Or Ended
+        // Follow the Remote Observer Until Stopped or Ended
         let control = Arc::clone(&invocation.control);
         let mut status = control.settlement();
         let ended = loop {
@@ -234,7 +234,7 @@ impl ObserverBackend for Backend {
         };
         activation.cleaning_up();
 
-        // A Failed Remote Cleanup Stays Retained For A Later Stop To Retry
+        // A Failed Remote Cleanup Stays Retained for a Later Stop to Retry
         if let Some(failure) = control.status().cleanup_failure().cloned() {
             children.forget(&control);
             activation.retain(RetainedControl(control), Arc::clone(&failure));

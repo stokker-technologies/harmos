@@ -182,7 +182,7 @@ impl Worker {
                                 first
                             };
                         // Journal Order Is Independent Of Unrelated Measurements.
-                        // Only The Earliest Unwritten State Entry May Bypass Data,
+                        // Only the Earliest Unwritten State Entry May Bypass Data,
                         // And Its Declared Evidence Dependency Must Already Be Durable.
                         let ready_state = state
                             .recovery_request

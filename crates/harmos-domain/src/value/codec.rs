@@ -29,7 +29,7 @@ use crate::{MessageError, btree_map_memory};
 
 pub const VALUE_DEPTH: usize = 4;
 
-// Postcard Variant Ordinals Are Part Of The Value Contract
+// Postcard Variant Ordinals Are Part of the Value Contract
 const NULL: u32 = 0;
 const BOOL: u32 = 1;
 const INTEGER: u32 = 2;

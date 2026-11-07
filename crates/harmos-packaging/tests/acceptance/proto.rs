@@ -125,7 +125,7 @@ fn boxed_messages_cross() {
         .unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
 
-    // The Reflected Request Keeps The Plain Nested Message As A Singular Field
+    // The Reflected Request Keeps the Plain Nested Message as a Singular Field
     use harmos_domain::schema::Described;
     use harmos_packaging::proto::reflection;
     let settings = harmos_domain::config::SchemaSettings::default();
