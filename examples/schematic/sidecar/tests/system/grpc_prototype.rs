@@ -96,7 +96,7 @@ fn settings() -> Settings {
     Settings {
         message_bytes: NonZeroUsize::new(2 * 1024 * 1024).unwrap(),
         queued_batches: NonZeroUsize::new(2).unwrap(),
-        window_bytes: NonZeroUsize::new(2 * 1024 * 1024).unwrap(),
+        window_bytes: NonZeroUsize::new(64 * 1024).unwrap(),
         connection_window_bytes: NonZeroUsize::new(2 * 1024 * 1024).unwrap(),
         calls: NonZeroUsize::new(16).unwrap(),
     }
@@ -311,7 +311,7 @@ async fn gate_3_restart_and_retirement() {
 #[tokio::test]
 async fn gate_4_slow_consumer_memory() {
     tokio::time::timeout(std::time::Duration::from_secs(120), async {
-        // Keep The Existing Queue, Message Ceiling And Four-Batch Credit Bound.
+        // Keep The Existing Queue, Message Ceiling And Fixed Stream Window.
         let sidecar = Sidecar::start(40).await;
         let child = sidecar.child.id().unwrap();
         let policy = settings();

@@ -2,9 +2,9 @@
 
 ## Scope and Order
 
-The owner's 2026-11-07 decision to keep tuning gRPC supersedes all historical one-pass/no-second-round restrictions below. This continuation measures, separately and in order: stream windows with application credits, output-copy removal, Windows named pipes, then residual CPU/ETW profiling if needed. It stops at Gate 5 passing both unchanged payloads, two consecutive changes each gaining under 10% on both payloads, or a profiled remaining gRPC/h2 cost with no available setting or codec remedy. Gates 2–4 and Gate 5's no-regression criterion remain unchanged. This remains an opt-in prototype: normal branch push only, no migration, PR, dev merge or Dokime changes.
+The owner's latest 2026-11-07 decision is: "i am satisfied with the grpc results, i would try to minimize the machinery needed in the sdks. Above 200 MiB/s is good for now." It supersedes the earlier ordered tuning authorization and Gate 5's no-regression median rule. The current shape removes application consumption credits and the bidirectional Data RPC, restores the 64 KiB stream window and retains every other b12c8716 setting. Gate 5 requires the gRPC median to exceed 200 MiB/s on both unchanged payloads. Framed remains measured in the same seven alternating paired repetitions and reported without deciding the gate. A sub-floor median with mean timed CPU above 80% is inconclusive pending the orchestrator's quiet-machine rerun. Gates 2–4 retain every assertion. No further tuning, copy removal, named pipes, migration, PR, dev merge or Dokime change is authorized.
 
-This branch prototypes sidecars only on native Windows, based on the landed unified Invocation over OperationHost. Guests remain Wasm; Postcard remains storage encoding. The existing framed carrier stays unchanged. Migration, harmos-protocol and SDK relocation remain deferred. Gates run in the owner's numbered order, and a gate's own measured failure stops subsequent gates.
+This branch prototypes sidecars on native Windows, based on the landed unified Invocation over OperationHost. Existing Linux infrastructure may be assessed without provisioning. Guests remain Wasm; Postcard remains storage encoding. The existing framed carrier stays unchanged. Migration, harmos-protocol and SDK relocation remain deferred. Earlier gate rules and outcomes below are historical checkpoints; the latest owner decision controls this continuation.
 
 The owner corrected the original initialization stop: the missing host.publish assignment was a prototype integration defect, not a failed gate. That refusal is retained below as historical diagnostic evidence. The original corrected run passes Gates 1–4 and fails Gate 5 on measured Arrow throughput. The owner subsequently authorized the single bounded tuning continuation below, including Gate 6 despite the original Gate 5 stop. Migration and any merge remain unauthorized.
 
@@ -243,6 +243,8 @@ The source/evidence checkpoint a4c36cc27654e9570d9480f85701dc0ff7e6f074 was push
 
 ## Ordered Tuning Continuation
 
+This section retains the credits experiment as history. Its no-regression criterion, wider window, application receipts, SDK costs and stop decision describe that checkpoint only; the owner-directed SDK simplification below supersedes them.
+
 ### Current-Load Baseline and Method
 
 This continuation starts from the clean pushed b12c87164416527eae8517db186a85c48ba5ff5d checkpoint in the same owned worktree and tracking branch. Fetch does not change the candidate; no dev merge or history rewrite is performed. The owner-provided prior medians remain 249.141/410.025 MiB/s for 65,928 bytes and 352.312/856.414 MiB/s for 1,048,968 bytes. A fresh unchanged-source baseline measures current machine contention before the first separately attributed change. Only owned implementation edits were temporarily saved and restored around that run.
@@ -307,7 +309,7 @@ The existing focused process target ran with filter grpc_prototype:: and --test-
 
 Gate 4 again exercised requested counts 64, 4,096 and 65,536 for both unchanged payloads, eight slow checkpoints each. Produced minus consumed never exceeded four. The wider window did not change either memory assertion or the allowance formula. These remain process-fixture observations rather than a universal allocator guarantee.
 
-### Updated Gate 6 and SDK Cost
+### Historical Credits Gate 6 and SDK Cost
 
 Recounting the three current prototype owner files gives 545 lines in crates/harmos-sidecar/src/kit/prototype.rs, 364 in prototype/client.rs and 165 in prototype/codec.rs: 1,074 physical Rust lines. The pushed pre-continuation source actually had 982, so consumption credits and the bidirectional wrapper add 92 net lines. This corrects the earlier 908-line statement, which did not include all later instrumentation. The 2,192-line optimistic removal inventory above is unchanged and has been recounted against current files.
 
@@ -346,3 +348,76 @@ mise run check:rust passed: Rust formatting; workspace Clippy; Schematic native 
 The source and measurement checkpoint 7eb470c6fc5a228da95b5111ddcacadaaa7ba2c1 was pushed to feat/plugin-grpc-prototype and verified against the remote SHA. Delivery uses normal branch pushes only; no PR or integration merge was created.
 
 After preserving these results and the executable digest, native cargo clean completed through mise's tool environment against all three Cargo-metadata-resolved, non-linked targets inside the owned worktree: root (751.4 MiB), Schematic (5.9 GiB) and sandbox (630.7 MiB). No other worktree or shared compiler cache was cleaned. All prototype child processes had settled. The existing grpc-proto worktree remains retained and locked at the owner's request.
+
+## Owner-Directed SDK Simplification
+
+### Decision and Current Shape
+
+On 2026-11-07 the owner accepted the gRPC results and prioritized smaller SDKs: "i am satisfied with the grpc results, i would try to minimize the machinery needed in the sdks. Above 200 MiB/s is good for now." This new commit restores the b12c8716 transport source instead of rewriting the credits checkpoint. Data is a unary request with a server-streaming response. Both peers use the 64 KiB stream window, 2 MiB connection window, fixed windows with adaptive expansion disabled, 64 KiB maximum HTTP/2 frames and NODELAY. The existing 64 KiB codec allocation, one-message yield threshold, Bytes payload sharing, two-message producer queue, 2 MiB message ceiling and 16-call admission remain. The custom consumption semaphore, receipt reader, phase-13 messages and receiving wrapper are removed. Gate 4's source is restored exactly to b12c8716, including every assertion.
+
+Gate 5 now requires each gRPC median to be strictly above 200 MiB/s. Framed remains in each alternating pair and is reported without deciding acceptance. Payloads are still 65,928 and 1,048,968 Arrow IPC bytes; timed counts are 4,072 and 256, eight warmup batches precede each size, and seven repetitions alternate carrier order. CPU samples include only GATE_5_STARTUP through GATE_5_RESULT; builds are excluded. BELOW_FLOOR and exit 1 report an unmet numerical floor; when timed mean CPU exceeds 80%, the owner classifies it as inconclusive pending the orchestrator's quiet-machine repeat. No processes belonging to other workers are stopped.
+
+### Current Gate 6 and SDK Cost
+
+The restored three prototype files contain 497 lines in kit/prototype.rs, 320 in prototype/client.rs and 165 in prototype/codec.rs: 982 physical Rust lines, down 92 from the credits shape's 1,074. With the approximately 100-line credit allowance removed, Gate 6 returns to the 1,900–2,900 replacement-Rust-line planning range against 2,192 optimistic removable lines: 292 net lines removed at best, through 708 net lines added. Generated code, tests, manifests, docs and new language SDKs are excluded on both sides. This remains an estimate; it does not establish net removal or complete a migration.
+
+C++ and Go can consume Data with an ordinary generated server-streaming gRPC client and its normal HTTP/2 flow control. No application acknowledgments, receipt queue, credit semaphore, bidirectional request stream, custom HTTP body, pipe adapter or output-copy bypass is required. Each SDK must configure its own gRPC implementation's stream/connection windows, message/frame limits, adaptive-window behavior, NODELAY and admission as available, then remeasure its buffering; Rust's Gate 4 does not prove another runtime's bound. Bytes is Rust's storage representation; the wire payload is an ordinary Protobuf bytes field.
+
+Beyond generated stubs and those transport settings, reproducing this prototype requires each language to implement:
+
+- Private child-process bootstrap: endpoint discovery, random bearer credentials, generation identity, authenticated metadata, lifecycle initialization/shutdown and process/connection teardown.
+- Protocol admission and dispatch: version and generation validation, operation identity and fingerprint matching, structured initialization assignments, request/response projection and structured failure JSON/status translation.
+- Invocation ownership: IDs and context, prepare/initialize/attempt/finalize/cancel sequencing, completion status, cancellation on abandonment, retirement fences and settlement. Separate control and data connections preserve control progress under unread data.
+- Arrow IPC production/decoding and ordered batch/invocation/count accounting; the server needs a bounded producer queue with cancellation while waiting for capacity and EOF/error cleanup. Consumers own retained batches after delivery. Completion/cancellation/progress remain control RPCs; per-batch consumption sends nothing.
+- Equivalent lifecycle, cancellation, stale-generation and slow-consumer conformance cases. The prototype's blocked/produced counters are measurement instrumentation, not additional client flow control.
+
+A complete production SDK would additionally need the still-unimplemented host callbacks/publications, typed upload/download/exchange streams, observers, retry/context/claims behavior and automatic supervision integration already included in the replacement estimate. Only Rust/Tonic is implemented and tested. Checked-in language-neutral protocol definitions and shared conformance remain deferred under task 3.2; no C++ or Go port is claimed here. README.md and docs/product-guide.md continue to describe the unchanged shipping carrier accurately, so neither needs an edit.
+
+### Linux Availability
+
+Docker reports a Linux daemon and already cached managed Ubuntu images. Inspection of the existing repository harness found that examples/schematic/sidecar/tests/system/grpc_prototype.rs::memory unconditionally executes powershell.exe and reads Get-Process PrivateMemorySize64/WorkingSet64. The cached repository executor ci-ubuntu24:d30423dd1fad09c13c0d655edf07dbeff9c89415ebbc1ba10047523d78f2d9de has Python and mise but neither powershell.exe nor pwsh. There is no Linux memory sampler for the unchanged Gate 4 assertions. A native Linux process-memory implementation preserving those assertions is missing; without it the full Gates 1–5 sequence cannot run. No Linux source adaptation, image build, tool installation or compilation was attempted. Linux has no measured gate or throughput result; task 3.1 remains open for that proof and owner migration direction. Tasks 3.2 and 3.3 were not started.
+
+### Restored Windows Correctness Proof
+
+The exact focused mise test selection (schematic-sidecar, prototype-grpc, system-prototype, grpc_prototype::, --test-threads=1 --nocapture) ran matching Clippy and all four stories: four passed, zero failed, 61.30 seconds. Gate 1 retains real plugin initialization, ListDirectories, Arrow decoding and shutdown. Gate 2 settled eight unread-response cancellations at exactly four produced batches in 0.787–1.176 ms, without later progress, then completed a new transfer. Gate 3 retained structured startup refusal, physical restart, prepared-call fencing, retired credentials, stale-generation refusal and shutdown settlement.
+
+| Arrow Bytes | Child Baseline / Peak / Growth (bytes) | Parent Baseline / Peak / Growth (bytes) | Unchanged Allowance (bytes) |
+| --- | ---: | ---: | ---: |
+| 65,928 | 3,604,480 / 4,104,192 / 499,712 | 1,748,992 / 2,031,616 / 282,624 | 8,388,608 |
+| 1,048,968 | 3,637,248 / 7,016,448 / 3,379,200 | 2,699,264 / 3,944,448 / 1,245,184 | 8,388,608 |
+
+Gate 4 used the unchanged 64/4,096/65,536 requested counts and eight slow checkpoints per transfer. Produced minus consumed never exceeded four. Restoring HTTP/2 flow control passed the original assertions without application credits or any changed test bound. These process-fixture observations do not establish a universal allocator bound.
+
+### Restored Windows Gate 5: Inconclusive Under Load
+
+The unchanged optimized focused mise run completed seven alternating paired repetitions for each payload, with profiling disabled and no concurrent validation from this task. Timings, Arrow verification boundaries, eight-batch warmups and 4,072/256 timed counts are unchanged. All values below are useful Arrow MiB/s.
+
+| Arrow Bytes | Repetition | gRPC (MiB/s) | Framed Stdio (MiB/s) |
+| --- | ---: | ---: | ---: |
+| 65,928 | 1 | 123.095 | 167.851 |
+| 65,928 | 2 | 134.850 | 155.554 |
+| 65,928 | 3 | 178.204 | 195.409 |
+| 65,928 | 4 | 139.901 | 194.558 |
+| 65,928 | 5 | 165.136 | 219.428 |
+| 65,928 | 6 | 156.898 | 222.110 |
+| 65,928 | 7 | 163.934 | 230.305 |
+| 1,048,968 | 1 | 178.708 | 446.267 |
+| 1,048,968 | 2 | 226.324 | 439.771 |
+| 1,048,968 | 3 | 254.131 | 418.750 |
+| 1,048,968 | 4 | 254.414 | 464.452 |
+| 1,048,968 | 5 | 230.532 | 420.215 |
+| 1,048,968 | 6 | 251.113 | 461.531 |
+| 1,048,968 | 7 | 232.246 | 452.829 |
+
+| Arrow Bytes | gRPC Median [Min, Max] (MiB/s) | Framed Median [Min, Max] (MiB/s) | gRPC / Framed | Floor Result |
+| --- | ---: | ---: | ---: | --- |
+| 65,928 | 156.898 [123.095, 178.204] | 195.409 [155.554, 230.305] | 0.8029 | Inconclusive: CPU Above 80% |
+| 1,048,968 | 232.246 [178.708, 254.414] | 446.267 [418.750, 464.452] | 0.5204 | Pass: Median Above 200 |
+
+The 61 timed Windows GetSystemTimes samples span 2026-11-07T08:08:28.869+01:00 through 2026-11-07T08:09:01.870+01:00, with mean 99.78%, minimum 97.75% and maximum 100.00%. Compilation is excluded. The smaller median is below the floor while mean CPU exceeds 80%, so the owner-directed result is inconclusive, not a failed performance gate; the orchestrator must repeat this shape on a quiet machine. The larger median passes. The harness reported BELOW_FLOOR and returned exit 1 to preserve the unmet numerical predicate; this is not a compiler or correctness-test failure. Framed is reported only as the paired comparison. No outlier was removed, other worker stopped or additional tuning attempted.
+
+The measured executable SHA-256 is 6a07f985a765462c564c67f3ffb36edfd7503ea99e29230da80a90a45cecfe05. Optimized compilation used two Cargo jobs because shared commit headroom was approximately 2 GiB near completion; no allocation failure occurred. All owned measurement children settled before the result.
+
+### Simplification Validation and Delivery
+
+mise run check:rust passed: formatting for all three workspaces, workspace Clippy including tests, Schematic native CLI/sidecar Clippy, Schematic Wasm guest Clippy, sandbox Wasm guest Clippy and Cargo Machete without unused dependencies. The opt-in process and optimized measurement selections passed their own matching focused Clippy. The four focused stories passed; the only nonzero measurement exit was the load-inconclusive Gate 5 numerical floor result described above. No compiler allocation failure or correctness/check failure occurred. Strict OpenSpec validation passed and git diff --check was empty. No full lane, CI simulation, PR, merge, migration or Dokime change was started. Linux is unmeasured for the explicit sampler limitation above.

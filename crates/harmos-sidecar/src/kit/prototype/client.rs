@@ -20,8 +20,6 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 // Third Party Imports
-use futures_util::stream;
-use tokio::sync::mpsc;
 use tonic::{Request, Status, Streaming, transport::Channel};
 // Local Imports
 use super::{CONTROL, DATA, Packet, Settings, VERSION, codec};
@@ -50,14 +48,6 @@ pub struct Host {
     context: CallContext,
     limit: usize,
     lifecycle: [Vec<u8>; 2],
-}
-
-pub struct Arrow {
-    incoming: Streaming<Packet>,
-    receipts: mpsc::Sender<Packet>,
-    invocation: u64,
-    generation: u64,
-    consumed: u64,
 }
 
 pub struct Running<O: OperationDeclaration> {
@@ -94,27 +84,6 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
-
-impl Arrow {
-    pub async fn message(&mut self) -> Result<Option<Packet>, Status> {
-        let packet = self.incoming.message().await?;
-        if packet.is_some() {
-            self.consumed += 1;
-            self.receipts
-                .send(Packet {
-                    version: VERSION,
-                    generation: self.generation,
-                    invocation: self.invocation,
-                    phase: 13,
-                    count: self.consumed,
-                    ..Packet::default()
-                })
-                .await
-                .map_err(|_| Status::cancelled("Arrow receipts closed"))?;
-        }
-        Ok(packet)
-    }
-}
 
 impl Host {
     pub async fn connect(address: &str, token: String, owner: String, generation: u64, settings: Settings) -> Result<Self, Error> {
@@ -157,7 +126,7 @@ impl Host {
         Ok(response.into_inner())
     }
 
-    pub async fn arrow(&self, invocation: u64, payload: Vec<u8>, count: u64) -> Result<Arrow, Error> {
+    pub async fn arrow(&self, invocation: u64, payload: Vec<u8>, count: u64) -> Result<Streaming<Packet>, Error> {
         let packet = Packet {
             version: VERSION,
             generation: self.generation,
@@ -169,22 +138,9 @@ impl Host {
         let mut grpc =
             tonic::client::Grpc::new(self.data.clone()).max_decoding_message_size(self.limit).max_encoding_message_size(self.limit);
         grpc.ready().await.map_err(|error| Error::Response(error.to_string()))?;
-        let (receipts, input) = mpsc::channel(4);
-        receipts.send(packet).await.map_err(|_| Error::Response("Arrow request closed".into()))?;
-        let input = stream::unfold(input, |mut input| async move { input.recv().await.map(|packet| (packet, input)) });
-        let mut request = Request::new(input);
-        request.metadata_mut().insert(
-            "authorization",
-            self.token.parse().map_err(|error: tonic::metadata::errors::InvalidMetadataValue| Error::Response(error.to_string()))?,
-        );
-        let response = grpc.streaming(request, tonic::codegen::http::uri::PathAndQuery::from_static(DATA), codec::Codec).await?;
-        Ok(Arrow {
-            incoming: response.into_inner(),
-            receipts,
-            invocation,
-            generation: self.generation,
-            consumed: 0,
-        })
+        let response =
+            grpc.server_streaming(self.request(packet)?, tonic::codegen::http::uri::PathAndQuery::from_static(DATA), codec::Codec).await?;
+        Ok(response.into_inner())
     }
 
     pub async fn retire(&self) -> Result<(), Error> {

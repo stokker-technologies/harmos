@@ -39,7 +39,16 @@
 - [x] 5.5 Run focused Gates 2–4 and check:rust; commit, require CLEAN from the owner's scan, normal-push and verify remote SHA. No PR, merge, migration or Dokime edits.
 - [x] 5.6 Preserve evidence, run native Cargo cleanup for owned worktree targets and retain the worktree.
 
+## 6. Owner-Directed SDK Simplification
+
+- [x] 6.1 Restore the pre-credit server-streaming Data RPC, ordinary client stream and 64 KiB stream window in kit/prototype.rs, prototype/client.rs and Schematic's prototype, measurement and process fixture settings. Retain every other tuned setting and every Gate 4 assertion.
+- [x] 6.2 Apply the owner's 2026-11-07 decision: "i am satisfied with the grpc results, i would try to minimize the machinery needed in the sdks. Above 200 MiB/s is good for now." Gate 5 requires a gRPC median strictly above 200 MiB/s on both unchanged payloads; paired framed measurements remain reported. A sub-floor median above 80% CPU is inconclusive pending a quiet rerun.
+- [x] 6.3 Run focused Windows Gates 1–4 and seven alternating paired Gate 5 repetitions with timed CPU samples; attempt Linux Gates 1–5 only using an already available repository container, without provisioning. Record distributions, Linux availability, complete C++/Go costs, the reduced Gate 6 estimate and README impact in design.md. Preserve credits evidence as history.
+- [ ] 6.4 Run check:rust, strict specification validation and the owner's exact CLEAN scan; commit and normal-push this branch, verify remote SHA, run native cargo clean on owned worktree targets and retain the worktree.
+
 ## Workflow Follow-Up
+
+- Section 6 supersedes the historical no-regression criterion and ordered tuning authorization. No further tuning, copy removal, named pipes, migration, PR, merge or Dokime edits; tasks 3.2 and 3.3 remain deferred. Task 3.1 may measure existing Linux infrastructure only. No full simulation is authorized for this bounded prototype continuation.
 
 - On 2026-11-07 the owner authorized the ordered continuation in section 5. This supersedes every earlier no-second-round statement and the earlier Gate 5 stop within this prototype; the new explicit stop conditions control the order. No CI simulation is requested for this Windows-only prototype slice.
 
