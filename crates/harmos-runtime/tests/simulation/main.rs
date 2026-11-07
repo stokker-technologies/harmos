@@ -98,7 +98,7 @@ struct DrawingDeclaration {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct DivergentState(usize);
 
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, serde::Serialize)]
 struct DivergentChange;
 
 #[derive(Clone, Debug)]
@@ -214,9 +214,7 @@ impl Transaction<DivergentState> for DivergentChange {
 }
 
 impl Identified for DivergentChange {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new("sim.divergent"), 1)
-    }
+    const ID: &'static str = "sim.divergent";
 }
 
 impl harmos_runtime::Lifecycle for Divergent {

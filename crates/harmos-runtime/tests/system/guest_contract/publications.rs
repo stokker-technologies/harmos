@@ -53,7 +53,7 @@ async fn publications_survive_unload() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let stream = runtime.streams.current_publication("progress").unwrap();
     assert_eq!(stream.definition().owner(), Some("sandbox_guest"));
-    assert_eq!(stream.definition().schema().unwrap().root().unwrap().fields()[0].name, "said");
+    assert_eq!(stream.definition().schema().root().unwrap().fields()[0].name, "said");
     runtime.operations.operation::<wire::EchoOperation>(wire::EchoOperation { say: "publish:route".into() }).await.unwrap();
     manager.shutdown(&mut lifecycle).await.unwrap();
     assert_eq!(values(&stream).await, ["initialize", "route"], "shutdown cannot admit another publication after the fence");

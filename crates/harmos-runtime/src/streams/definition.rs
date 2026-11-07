@@ -51,7 +51,7 @@ pub(super) struct Revisions {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Contract {
     pub(super) owner: Option<Arc<str>>,
-    row: Option<harmos_domain::Fingerprint>,
+    row: harmos_domain::Fingerprint,
     window: usize,
 }
 
@@ -153,10 +153,11 @@ impl Contract {
     pub(super) fn of(definition: &Definition) -> Self {
         Self {
             owner: definition.owner().map(Arc::from),
-            row: definition.schema().map(|schema| {
-                harmos_domain::schema::identity::fingerprint(schema.root().expect("validated row schema"), "harmos.postcard.v1")
-                    .expect("validated canonical row schema")
-            }),
+            row: harmos_domain::schema::identity::fingerprint(
+                definition.schema().root().expect("validated row schema"),
+                "harmos.postcard.v1",
+            )
+            .expect("validated canonical row schema"),
             window: definition.window(),
         }
     }

@@ -47,9 +47,7 @@ pub enum Objects {
 /* === Implementations === */
 
 impl harmos_domain::Identified for ValidatedSchematic {
-    fn definition() -> (harmos_domain::DefinitionId, u32) {
-        (harmos_domain::DefinitionId::new("schematic.validated"), 1)
-    }
+    const ID: &'static str = "schematic.validated";
 }
 
 impl harmos_domain::model::storage::catalog::StoredObject for ValidatedSchematic {

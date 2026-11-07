@@ -74,7 +74,7 @@ async fn payload_own_shape() {
 
     // What names the payload is the pair beside it, and only that pair.
     assert_eq!(lines[0].get("id").and_then(serde_json::Value::as_str), Some("ledger.deposit"));
-    assert_eq!(lines[0].get("version"), Some(&serde_json::json!(1)));
+    assert_eq!(lines[0].get("version"), Some(&serde_json::json!(<super::support::Deposit as harmos_runtime::Identified>::definition().1)));
     assert_eq!(lines[0].get("kind"), Some(&serde_json::json!("Transaction")));
     assert_eq!(lines[0].get("position"), Some(&serde_json::json!(deposited.position.0)));
 }
@@ -125,10 +125,18 @@ async fn decode_matches_recovery() {
     let value = serde_json::json!({ "amount": 7 });
     let bytes = serde_json::to_vec(&value).expect("the envelope payload is JSON");
 
-    let live = runtime.state.decode_transaction(&id, 1, &bytes).expect("the registered restore decodes live bytes");
-    let recovered = <other::Branch as Wire>::decode(Kind::Transaction, &id, 1, &value)
-        .expect("the recovery decoder accepts the same payload")
-        .expect("the recovery catalog declares the pair");
+    let live = runtime
+        .state
+        .decode_transaction(&id, <super::support::Deposit as harmos_runtime::Identified>::definition().1, &bytes)
+        .expect("the registered restore decodes live bytes");
+    let recovered = <other::Branch as Wire>::decode(
+        Kind::Transaction,
+        &id,
+        <super::support::Deposit as harmos_runtime::Identified>::definition().1,
+        &value,
+    )
+    .expect("the recovery decoder accepts the same payload")
+    .expect("the recovery catalog declares the pair");
     let Recorded::Transaction(recovered) = recovered.value else {
         panic!("a transaction envelope decodes as a transaction");
     };

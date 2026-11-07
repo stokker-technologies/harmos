@@ -185,7 +185,7 @@ async fn capture(storage: &StorageManager, feed: &mut harmos_runtime::streams::S
         version: NonZeroU32::new(definition.version()).unwrap(),
         payload_encoding: PayloadEncoding::PostcardV1,
     };
-    storage.write_schema(key.clone(), definition.schema().unwrap().clone()).await.unwrap();
+    storage.write_schema(key.clone(), definition.schema().clone()).await.unwrap();
     storage
         .write_stream(vec![StreamInput {
             record: RecordInput {

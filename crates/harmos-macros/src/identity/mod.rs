@@ -178,6 +178,7 @@ fn expand(attribute: TokenStream, item: &TokenStream, sort: Sort) -> Result<Toke
 
         #[automatically_derived]
         impl #harmos::Identified for #name {
+            const ID: &'static str = #id;
             fn definition() -> (#harmos::DefinitionId, u32) {
                 static VERSION: ::std::sync::OnceLock<u32> = ::std::sync::OnceLock::new();
                 let version = *VERSION.get_or_init(|| {

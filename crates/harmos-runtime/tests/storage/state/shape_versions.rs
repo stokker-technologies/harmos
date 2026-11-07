@@ -18,6 +18,16 @@ mod relabelled {
     }
 }
 
+mod labelled_record {
+    #[harmos_runtime::record(id = "shape.observed")]
+    #[harmos_runtime::message]
+    #[derive(serde::Serialize, serde::Deserialize)]
+    pub struct Row {
+        #[row(label = "Previous Value")]
+        pub before: i64,
+    }
+}
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -316,7 +326,7 @@ async fn native_stream_round_trip_uses_shared_revision() {
     let mut rows = runtime.streams.query::<Sample>(..).await.unwrap();
     assert_eq!(rows.next_back().unwrap().value.value, 41);
     let definition = Sample::definition();
-    let revision = harmos_domain::streams::revision(definition.schema().unwrap(), definition.window()).unwrap();
+    let revision = harmos_domain::streams::revision(definition.schema(), definition.window()).unwrap();
     assert_eq!(definition.version(), revision);
     let stored = runtime.streams.definitions().into_iter().find(|item| item.id() == Sample::ID).unwrap();
     assert_eq!(stored.version(), revision);
@@ -327,6 +337,7 @@ async fn native_stream_round_trip_uses_shared_revision() {
 
 #[test]
 fn label_only_change_keeps_revision() {
+    assert_eq!(Observed::definition().1, labelled_record::Row::definition().1);
     assert_ne!(Sample::definition().metadata(), relabelled::Row::definition().metadata());
     assert_eq!(Sample::definition().version(), relabelled::Row::definition().version());
     let value = Observed { before: 9 };

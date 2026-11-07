@@ -50,7 +50,7 @@ struct Model {
     gain: i64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 struct SetGain(i64);
 
 impl Transaction<Model> for SetGain {
@@ -67,9 +67,7 @@ impl Transaction<Model> for SetGain {
 
 impl harmos_runtime::state::TransactionCatalog<Model> for SetGain {}
 impl Identified for SetGain {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new("sim.gain"), 1)
-    }
+    const ID: &'static str = "sim.gain";
 }
 
 struct Amplifier;

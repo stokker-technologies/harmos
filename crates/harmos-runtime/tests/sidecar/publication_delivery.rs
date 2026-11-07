@@ -82,7 +82,7 @@ async fn capture_survives_reload() {
     fixture.call::<PublishPulseDeclaration>(PublishPulseDeclaration { sample: 41 }).await.unwrap();
     let stream = fixture.runtime.streams.current_publication("meter.pulse").unwrap();
     assert_eq!(stream.definition().owner(), Some("meter"));
-    assert!(!stream.definition().schema().unwrap().root().unwrap().fields().is_empty());
+    assert!(!stream.definition().schema().root().unwrap().fields().is_empty());
 
     fixture.shutdown().await.unwrap();
     assert_eq!(stream.query(..).await.unwrap().count(), 1);
@@ -310,7 +310,7 @@ async fn named_streams_isolated() {
         assert_eq!(contexts, if id == "left" { vec![Some("execution-a".into()), Some("execution-b".into())] } else { vec![None] });
         assert_eq!(stream.definition().id(), format!("twins.{id}"));
         assert_eq!(
-            stream.definition().schema().unwrap(),
+            stream.definition().schema(),
             &harmos_runtime::schema::graph::Schema::from_declaration(
                 <support::Pulse as harmos_runtime::schema::Described>::DEFINITION,
                 &harmos_runtime::config::SchemaSettings::default()

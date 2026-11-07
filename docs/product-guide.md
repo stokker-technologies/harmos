@@ -62,6 +62,7 @@ Streams expose `ID`, `WINDOW` and `definition()`; `StreamSpec`, `StreamRow` and
 native `Stream<A>` have no authored `VERSION`. Typed native readers select the
 current definition by identity and compiled row type. Low-level declarations use
 `Definition::declared::<Row>(id, schema, window)` and return a derived definition.
+Every stream definition owns a schema; `Definition::schema()` returns it directly.
 Publication inventories,
 listener sources and `host.publish` do not accept schema ordinals. Listener
 publication binding uses `(id, after)` and `frontier(id)`.
@@ -72,6 +73,9 @@ publication binding uses `(id, after)` and `frontier(id)`.
 first four bytes become a little-endian nonzero `u32`. Presentation labels,
 Rust module paths and graph indices do not participate. Generated `DEFINITION`
 identity tuples are removed: use `T::ID` and `T::definition()` through `Identified`.
+Manual `Identified` implementations declare only `const ID: &'static str` and
+provide `Described`; the default derives the revision. Typed stored objects use
+the same rule, including `ValidatedSchematic`.
 `restore(revision, payload)` now accepts only the derived revision.
 
 Records, transactions and their nested Serde domain types declare their schema

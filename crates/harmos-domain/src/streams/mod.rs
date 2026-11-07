@@ -83,7 +83,7 @@ pub struct Definition {
     row: TypeId,
     batch: Option<BatchDefinition>,
     owner: Option<Arc<str>>,
-    schema: Option<Arc<crate::schema::graph::Schema>>,
+    schema: Arc<crate::schema::graph::Schema>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -181,7 +181,7 @@ impl Definition {
             row: TypeId::of::<S>(),
             batch: None,
             owner: None,
-            schema: Some(Arc::new(schema)),
+            schema: Arc::new(schema),
         })
     }
 
@@ -212,8 +212,8 @@ impl Definition {
         self.owner.as_deref()
     }
 
-    pub fn schema(&self) -> Option<&crate::schema::graph::Schema> {
-        self.schema.as_deref()
+    pub fn schema(&self) -> &crate::schema::graph::Schema {
+        &self.schema
     }
 
     pub fn version(&self) -> u32 {

@@ -500,15 +500,14 @@ fn decoded<A: Wire>(member: Member) -> Result<Option<Envelope<Payload<A>>>, Inco
         }
     }
 
-    // Unknown Records Are Skipped; Unknown Changes End The Boot
+    // Every Stored Member Must Match Its Current Definition
     let read = A::decode(member.kind, &member.id, member.version, &member.payload);
     let mut payload = match (member.kind, read) {
         (_, Ok(Some(payload))) => payload,
-        (Kind::Record, _) => return Ok(None),
-        (Kind::Transaction, Ok(None)) => {
-            return Err(unreadable(&"this build declares no implementation for it"));
+        (_, Ok(None)) => {
+            return Err(unreadable(&"this build declares no matching shape; choose a fresh storage root"));
         }
-        (Kind::Transaction, Err(refusal)) => return Err(unreadable(&refusal)),
+        (_, Err(refusal)) => return Err(unreadable(&refusal)),
     };
     payload.prepared = Some(Prepared {
         id: member.id.clone(),

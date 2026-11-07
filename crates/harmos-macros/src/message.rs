@@ -230,11 +230,29 @@ pub(crate) fn shape(item: &syn::Item, harmos: &HarmosPath) -> Result<TokenStream
             let mut payloads = Vec::new();
             let mut variants = Vec::new();
             for (index, variant) in item.variants.iter().enumerate() {
+                let mut variant_name = variant.ident.to_string();
+                let mut skipped = false;
+                for attribute in variant.attrs.iter().filter(|attribute| attribute.path().is_ident("serde")) {
+                    attribute.parse_nested_meta(|meta| {
+                        if meta.path.is_ident("skip") {
+                            skipped = true;
+                            return Ok(());
+                        }
+                        if meta.path.is_ident("rename") {
+                            variant_name = meta.value()?.parse::<syn::LitStr>()?.value();
+                            return Ok(());
+                        }
+                        Err(meta.error("this Serde variant representation requires an explicit Described implementation"))
+                    })?;
+                }
+                if skipped {
+                    continue;
+                }
                 let payload = quote::format_ident!("__HarmosPayload{index}");
                 let fields = fields(&variant.fields)?;
                 let declaration = described(&payload, quote!(&[#(#fields),*]), quote!(), harmos);
                 payloads.push(quote!(struct #payload; #declaration));
-                let variant = variant.ident.to_string();
+                let variant = variant_name;
                 variants.push(quote!(#harmos::schema::graph::Field {
                     name: ::std::borrow::Cow::Borrowed(#variant), tag: #harmos::schema::field_tag(#variant),
                     kind: #harmos::schema::graph::Kind::Message { definition: <#payload as #harmos::schema::Described>::DEFINITION },

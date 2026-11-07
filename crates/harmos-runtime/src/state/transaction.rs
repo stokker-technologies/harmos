@@ -84,7 +84,6 @@ pub(crate) mod dispatch {
     pub(crate) enum Restored<A: Application> {
         Applied,
         Recorded(A::Record),
-        Skipped,
     }
 
     /* === Traits === */
@@ -125,11 +124,10 @@ pub(crate) mod dispatch {
                     restore(payload, state)?;
                     Ok(Restored::Applied)
                 }
-                Kind::Record => match declared(&self.records, &id, version) {
-                    Ok(upgrade) => Ok(Restored::Recorded(upgrade(payload)?)),
-                    Err(DecodeError::UnknownDefinition { .. }) => Ok(Restored::Skipped),
-                    Err(loud) => Err(loud),
-                },
+                Kind::Record => {
+                    let upgrade = declared(&self.records, &id, version)?;
+                    Ok(Restored::Recorded(upgrade(payload)?))
+                }
             }
         }
 

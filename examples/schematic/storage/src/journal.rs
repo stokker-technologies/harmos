@@ -741,7 +741,7 @@ fn decoded<A: Wire>(envelope: Envelope<serde_json::Value>) -> Result<Option<Enve
             Ok(None) => {}
             Err(refusal) => {
                 return Err(Incompatible::unreadable(format!(
-                    "{} version {} at {}: {refusal}",
+                    "{} version {} at {}: {refusal}; choose a fresh storage root",
                     envelope.id, envelope.version, envelope.position
                 )));
             }
@@ -756,16 +756,15 @@ fn decoded<A: Wire>(envelope: Envelope<serde_json::Value>) -> Result<Option<Enve
     let read = A::decode(envelope.kind, &envelope.id, envelope.version, &envelope.payload);
     let mut payload = match (envelope.kind, read) {
         (_, Ok(Some(payload))) => payload,
-        (Kind::Record, _) => return Ok(None),
-        (Kind::Transaction, Ok(None)) => {
+        (_, Ok(None)) => {
             return Err(Incompatible::unreadable(format!(
-                "{} version {} at {}: this build declares no implementation for it",
+                "{} version {} at {}: this build declares no matching shape; choose a fresh storage root",
                 envelope.id, envelope.version, envelope.position
             )));
         }
-        (Kind::Transaction, Err(refusal)) => {
+        (_, Err(refusal)) => {
             return Err(Incompatible::unreadable(format!(
-                "{} version {} at {}: {refusal}",
+                "{} version {} at {}: {refusal}; choose a fresh storage root",
                 envelope.id, envelope.version, envelope.position
             )));
         }

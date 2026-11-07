@@ -231,10 +231,7 @@ impl<A: Application> PluginListenerBindings<'_, A> {
                 reason: "source has no original validated generation owner",
             });
         }
-        let graph = wired.definition.schema().ok_or(Error::InvalidInput {
-            field: "managed listener stream",
-            reason: "source has no admitted row schema",
-        })?;
+        let graph = wired.definition.schema();
         self.bind(Arc::clone(&wired), graph, after, submit_publication, publication_bytes)
     }
 
