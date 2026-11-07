@@ -33,7 +33,9 @@ pub mod python;
 /* === Re-Exports === */
 
 #[cfg(feature = "build-tools")]
-pub use build::{Artifact, Build, PackageOutput, Schema, build, build_with_cancellation, package, package_with_cancellation};
+pub use build::{
+    Artifact, Build, Contents, PackageOutput, Schema, build, build_with_cancellation, package, package_with, package_with_cancellation,
+};
 #[cfg(feature = "guest")]
 pub use component::componentize;
 #[cfg(feature = "build-tools")]

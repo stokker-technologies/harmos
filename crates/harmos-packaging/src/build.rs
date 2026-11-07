@@ -46,6 +46,9 @@ pub struct Artifact {
     pub name: String,
     pub path: PathBuf,
     pub sha256: String,
+    // Debug symbols Cargo emitted beside the executable, such as a Windows PDB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbols: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -65,6 +68,13 @@ pub struct Build {
     pub target: String,
     pub artifacts: Vec<Artifact>,
     pub schemas: Vec<Schema>,
+}
+
+// One bundle before it is written; `package_with` callers may add files or replace identity and destination.
+pub struct Contents {
+    pub identity: crate::bundle::Identity,
+    pub files: BTreeMap<String, Vec<u8>>,
+    pub destination: PathBuf,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -157,7 +167,13 @@ impl Artifact {
             file.consume(length);
         }
         let sha256 = hash.finalize().iter().map(|byte| format!("{byte:02x}")).collect();
-        Ok(Self { producer, name, path, sha256 })
+        Ok(Self {
+            producer,
+            name,
+            path,
+            sha256,
+            symbols: None,
+        })
     }
 }
 
@@ -234,6 +250,11 @@ impl Build {
         )
     }
 
+    // Ship Artifacts A Caller Already Stamped From Its Own Cargo Build, As `build` Does After Compiling.
+    pub fn ship(backend: BuildBackend, profile: BuildProfile, target: String, artifacts: Vec<Artifact>) -> Result<Self, Error> {
+        finish_build(backend, profile, target, artifacts, BTreeSet::new(), &BuildCancellation::default(), None)
+    }
+
     // Relocation Changes Locations Only; It Never Replaces The Original Byte Stamps.
     pub fn relocate(&mut self, from: &Path, to: &Path) -> Result<(), Error> {
         let relocate = |path: &Path| {
@@ -241,10 +262,15 @@ impl Build {
                 .map(|relative| to.join(relative))
                 .map_err(|_| Error::Settings("build receipt paths do not share the selected source root".into()))
         };
-        let artifacts = self.artifacts.iter().map(|artifact| relocate(&artifact.path)).collect::<Result<Vec<_>, _>>()?;
+        let artifacts = self
+            .artifacts
+            .iter()
+            .map(|artifact| Ok((relocate(&artifact.path)?, artifact.symbols.as_deref().map(relocate).transpose()?)))
+            .collect::<Result<Vec<_>, Error>>()?;
         let schemas = self.schemas.iter().map(|schema| relocate(&schema.directory)).collect::<Result<Vec<_>, _>>()?;
-        for (artifact, path) in self.artifacts.iter_mut().zip(artifacts) {
+        for (artifact, (path, symbols)) in self.artifacts.iter_mut().zip(artifacts) {
             artifact.path = path;
+            artifact.symbols = symbols;
         }
         for (schema, directory) in self.schemas.iter_mut().zip(schemas) {
             schema.directory = directory;
@@ -293,7 +319,10 @@ pub(super) fn build_resolved(settings: &BuildSettings, cancellation: &BuildCance
     }
     let mut command = Command::new(cargo);
     command.current_dir(directory);
-    command.args(["build", "--locked", "--message-format=json-render-diagnostics", "--manifest-path"]).arg(&manifest);
+    command.args(["build", "--message-format=json-render-diagnostics", "--manifest-path"]).arg(&manifest);
+    if settings.locked {
+        command.arg("--locked");
+    }
     for package in selected.values() {
         command.args(["--package", package]);
     }
@@ -497,6 +526,13 @@ pub fn package(build: &Build, output: &Path) -> Result<Vec<PackageOutput>, Error
 }
 
 pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &BuildCancellation) -> Result<Vec<PackageOutput>, Error> {
+    package_with(build, output, &Default::default(), cancellation, |_, _| Ok(()))
+}
+
+pub fn package_with(
+    build: &Build, output: &Path, settings: &harmos_domain::config::SchemaSettings, cancellation: &BuildCancellation,
+    mut shape: impl FnMut(&Artifact, &mut Contents) -> Result<(), Error>,
+) -> Result<Vec<PackageOutput>, Error> {
     if build.artifacts.is_empty() || build.target.is_empty() {
         return Err(Error::Settings("a stamped build with artifacts and a target is required".into()));
     }
@@ -522,7 +558,7 @@ pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &Bu
         if digest(&content) != artifact.sha256 {
             return Err(Error::ArtifactChanged(artifact.path.clone()));
         }
-        let declaration = super::Declaration::inspect(&content, inspected)?;
+        let declaration = super::Declaration::inspect_with_settings(&content, inspected, settings)?;
         let executable = artifact
             .path
             .file_name()
@@ -548,7 +584,19 @@ pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &Bu
                 }
             }
         }
-        let sources: Vec<_> = files
+        let mut contents = Contents {
+            identity: Identity {
+                name: declaration.id,
+                version: declaration.version,
+                description: declaration.description,
+                package: Default::default(),
+            },
+            files,
+            destination: output.join(&artifact.producer).join(format!("{}.harmos", artifact.name)),
+        };
+        shape(artifact, &mut contents)?;
+        let sources: Vec<_> = contents
+            .files
             .iter()
             .map(|(path, bytes)| Source {
                 path,
@@ -560,14 +608,8 @@ pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &Bu
                 }),
             })
             .collect();
-        let identity = Identity {
-            name: declaration.id,
-            version: declaration.version,
-            description: declaration.description,
-            package: Default::default(),
-        };
-        let bundle = Bundle::build(identity, &sources, Limits::default())?;
-        let destination = output.join(&artifact.producer).join(format!("{}.harmos", artifact.name));
+        let bundle = Bundle::build_with_settings(contents.identity, &sources, Limits::default(), settings)?;
+        let destination = contents.destination;
         if prepared.insert(destination.clone(), (artifact.producer.clone(), bundle)).is_some() {
             return Err(Error::Collision(destination.display().to_string()));
         }
@@ -694,12 +736,15 @@ fn read_messages(reader: impl BufRead, selected: &BTreeMap<String, String>) -> R
         if target.kind.iter().any(|kind| kind == "custom-build" || kind == "example" || kind == "test" || kind == "bench") {
             continue;
         }
-        let files = message
-            .executable
-            .into_iter()
-            .chain(message.filenames.into_iter().filter(|path| path.extension().is_some_and(|extension| extension == "wasm")));
-        for path in files {
-            artifacts.push(Artifact::read(producer.clone(), target.name.clone(), path)?);
+        let symbols = message.filenames.iter().find(|path| path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("pdb")));
+        if let Some(path) = message.executable {
+            artifacts.push(Artifact {
+                symbols: symbols.cloned(),
+                ..Artifact::read(producer.clone(), target.name.clone(), path)?
+            });
+        }
+        for path in message.filenames.iter().filter(|path| path.extension().is_some_and(|extension| extension == "wasm")) {
+            artifacts.push(Artifact::read(producer.clone(), target.name.clone(), path.clone())?);
         }
     }
     if !finished {
@@ -711,3 +756,28 @@ fn read_messages(reader: impl BufRead, selected: &BTreeMap<String, String>) -> R
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relocation_moves_symbols() {
+        let mut build = Build {
+            backend: BuildBackend::Sidecar,
+            profile: BuildProfile::Dev,
+            target: "x86_64-pc-windows-msvc".into(),
+            artifacts: vec![Artifact {
+                producer: "plugin".into(),
+                name: "plugin".into(),
+                path: PathBuf::from("old/debug/harmos/plugin/plugin.exe"),
+                sha256: String::new(),
+                symbols: Some(PathBuf::from("old/debug/deps/plugin.pdb")),
+            }],
+            schemas: Vec::new(),
+        };
+        build.relocate(Path::new("old"), Path::new("new")).unwrap();
+        assert_eq!(build.artifacts[0].path, PathBuf::from("new/debug/harmos/plugin/plugin.exe"));
+        assert_eq!(build.artifacts[0].symbols, Some(PathBuf::from("new/debug/deps/plugin.pdb")));
+    }
+}
