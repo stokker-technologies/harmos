@@ -48,7 +48,6 @@ pub struct PluginCatalog {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Publication {
     pub stream: String,
-    pub schema: u32,
     pub sequence: u64,
     pub published_unix_micros: Option<i64>,
     pub context: Option<String>,
@@ -239,10 +238,9 @@ impl Frame {
 // Postcard Length Of A Publication Without Its Following Rows Field.
 #[cfg(feature = "kit")]
 pub(crate) fn publication_encoded_len(
-    stream: &str, schema: u32, sequence: u64, payload: usize, published_unix_micros: Option<i64>, context: Option<&str>,
+    stream: &str, sequence: u64, payload: usize, published_unix_micros: Option<i64>, context: Option<&str>,
 ) -> usize {
     binary_bytes_len(stream.len())
-        .saturating_add(varint_len(u64::from(schema)))
         .saturating_add(1 + varint_len(sequence))
         .saturating_add(1 + published_unix_micros.map_or(0, zigzag_len))
         .saturating_add(1 + context.map_or(0, |value| binary_bytes_len(value.len())))

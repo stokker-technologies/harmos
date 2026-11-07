@@ -129,20 +129,24 @@ impl<A: Application, S: Attach, H> Supervised<A, S, H> {
     pub fn ingest<Source>(mut self) -> Self
     where
         Source: harmos_sidecar::StreamSpec,
-        Source::Row: Stream<A> + Message + Default,
+        Source::Row: Stream<A> + Message + Default + harmos_domain::schema::Described,
     {
         let ingress = Arc::make_mut(&mut self.ingress);
         ingress.demands.insert(Source::ID, |streams: &StreamManager<A>| streams.demand::<Source::Row>());
         let streams = &mut ingress.streams;
+        let schema = harmos_domain::schema::graph::Schema::from_declaration(
+            <Source::Row as harmos_domain::schema::Described>::DEFINITION,
+            &harmos_domain::config::SchemaSettings::default(),
+        )
+        .expect("compiled ingress row schema");
+        let revision = harmos_domain::streams::revision(&schema, Source::WINDOW).expect("compiled ingress revision");
         let previous = streams.insert(
             Source::ID,
-            Arc::new(|context, publication| {
-                if publication.schema() != Source::VERSION {
+            Arc::new(move |context, publication| {
+                if publication.schema() != revision {
                     return Err(format!(
-                        "sidecar stream `{}` sent schema {}, expected {}",
-                        Source::ID,
-                        publication.schema(),
-                        Source::VERSION
+                        "sidecar stream `{}` changed its row or window; update its native ingress declaration",
+                        Source::ID
                     ));
                 }
                 let row = Source::Row::decode(publication.payload())

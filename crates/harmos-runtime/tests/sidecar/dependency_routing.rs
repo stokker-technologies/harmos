@@ -124,7 +124,7 @@ async fn initialization_rows_commit() {
         let row = (next).await.unwrap();
         assert!(matches!(row, harmos_runtime::streams::Item::Row(row) if row.value.sample == sample));
     }
-    let source = runtime.streams.publication("meter.pulse", 1).unwrap();
+    let source = runtime.streams.current_publication("meter.pulse").unwrap();
     let rows: Vec<_> = source.query(..).await.unwrap().collect();
     assert_eq!(rows.len(), 2);
     for (row, sample) in rows.iter().zip([41, 42]) {
@@ -161,7 +161,7 @@ async fn notice_wire_order() {
     let retained = notices.values.lock().unwrap().clone();
     assert_eq!(retained.len(), 3);
     let expected_generation = lifecycle.previous_native.as_ref().unwrap().scope().unwrap().generation().get();
-    let source = runtime.streams.publication("meter.pulse", 1).unwrap();
+    let source = runtime.streams.current_publication("meter.pulse").unwrap();
     let rows: Vec<_> = source.query(..).await.unwrap().collect();
     assert_eq!(rows.len(), 3);
     for (index, (notice, sample)) in retained.iter().zip([41, 42, 43]).enumerate() {
@@ -243,7 +243,7 @@ async fn failed_activation_discards() {
     lifecycle.prepare_publication().await.unwrap();
     let mut manager = PluginManager::new(candidate(&lifecycle, true, false, true, false)).unwrap();
     assert!(manager.initialize(&mut lifecycle).await.is_err());
-    assert!(runtime.streams.publication("meter.pulse", 1).is_none());
+    assert!(runtime.streams.current_publication("meter.pulse").is_none());
     assert!(runtime.streams.query::<support::Pulse>(..).await.unwrap().next().is_none());
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
@@ -273,7 +273,7 @@ async fn cancelled_activation_discards() {
     })
     .await;
     drop(initialization);
-    assert!(runtime.streams.publication("meter.pulse", 1).is_none());
+    assert!(runtime.streams.current_publication("meter.pulse").is_none());
     assert!(runtime.streams.query::<support::Pulse>(..).await.unwrap().next().is_none());
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));

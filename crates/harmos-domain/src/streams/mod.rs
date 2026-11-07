@@ -9,7 +9,11 @@
 
 /* === Modules === */
 
+mod revision;
+
 /* === Re-Exports === */
+
+pub use revision::revision;
 
 /* === Imports === */
 
@@ -96,7 +100,6 @@ pub struct BatchDefinition {
 
 pub trait StreamRow: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {
     const ID: &'static str;
-    const VERSION: u32;
     const WINDOW: usize;
     fn metadata() -> crate::Metadata {
         crate::Metadata::new(crate::Identifier::declared(Self::ID, "stream"), Self::ID, None)

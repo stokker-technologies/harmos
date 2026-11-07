@@ -75,7 +75,6 @@ where
                         id: entry.id.to_owned(),
                         metadata: entry.metadata(),
                         row_metadata: entry.row_metadata(),
-                        schema: entry.schema,
                         window: entry.window,
                         row: crate::schema::graph::Schema::from_declaration(entry.row, &self.schema_settings)
                             .map_err(|source| Error::RecordSchema { source: source.into() })?,

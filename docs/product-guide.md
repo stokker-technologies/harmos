@@ -32,13 +32,43 @@ report as the `harmos.startup` structured detail on the existing failure;
 Original refusal codes, detail maps and diagnostics remain in the report. Display
 renders readable root prose rather than Rust Debug output.
 
-A plugin stream whose row schema or window differs from the definition already
-admitted by this backend is refused with
-`harmos::streams::STREAM_CONTRACT_CHANGED` (`-32608`). Restart the backend to load
-the new definition; the refusal leaves the running generation in place. Hosts
-can compare `Failure::refusal_code()` with this constant, including the failures
-in `StartupReport::roots` when handling a startup aggregate. The sidecar, guest
-and pre-stop validation paths preserve the code without parsing message text.
+Plugin stream revisions are derived automatically in the Rust core when a declaration
+becomes a runtime definition. The input is `harmos.stream.v1\0`, the window as a
+little-endian `u64`, and the canonical row-schema encoding in
+`crates/harmos-domain/src/schema/identity.rs`. SHA-256's first four bytes are read
+as a little-endian `u32`, with zero mapped to one. Field order, names, wire tags,
+kinds, cardinalities and graph edges participate; graph indices and presentation
+metadata do not. Field order remains significant for the Postcard row encoding.
+
+A changed row or window receives a new revision on reload, without an author
+version or backend restart. Atomic activation commits select the current revision;
+failed staging preserves the previous selection. Revisions are opaque hashes:
+never choose current by comparing their numbers. `StreamManager::definitions()`
+returns current definitions, `current_publication(id)` selects the committed
+publication, and `publication(id, revision)` pins a retained revision. Existing
+queries and watchers retain their descriptors; live `StreamFeed` batches carry
+each row's definition, including newly committed revisions. Retired live windows
+are released after storage consumers and live feeds have taken their rows;
+readers retain only the windows they still own.
+
+Persist plugin rows with `Definition::version()` as the storage `SchemaKey.version`
+and `Definition::schema()` as that revision's definition. Keep each revision's
+rows under its own key, including across process restarts. Native catalog streams
+retain their native version contract. A different plugin owner, native collision
+or equal hash with a different canonical row remains an admission error. Rename
+the stream and report a hash collision. A transport restart inside one committed
+activation may only renew its frozen inventory; reload the plugin to change it.
+
+Plugin authors remove `StreamSpec::VERSION`, `StreamRow::VERSION`, and generated
+stream `VERSION` and `DEFINITION` constants. Use `ID`, `WINDOW` and `definition()`
+for native catalog rows; deserialize their stored payloads with Serde instead of
+the removed version-ignoring `restore` helper. Publication inventories, listener stream sources and
+`host.publish` no longer accept an authored schema ordinal; plugin publication
+leases bind by id within their original activation. Listener publication binding
+uses `(id, after)`, and its registration frontier lookup uses `frontier(id)`. The host assigns storage
+revisions. Remove handling of `STREAM_CONTRACT_CHANGED`; that refusal code and
+its backend-restart advice have been removed. Rebuild all plugin artifacts with
+the matching SDK. Wire, artifact, schema and storage format versions remain v1.
 
 Classification is scoped to one startup/prepare pass. If the pass contains a
 runtime preparation/construction failure, every `MissingResource` in that pass

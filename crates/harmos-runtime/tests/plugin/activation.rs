@@ -487,7 +487,6 @@ async fn inventory_refuses_commit() {
     let client = definitions.iter_mut().find(|definition| definition.id == "client").unwrap();
     client.contributions.streams.push(harmos_domain::StreamDeclaration {
         id: "client.discovery".into(),
-        schema: 1,
         window: 4,
         metadata: harmos_runtime::Metadata::new(harmos_runtime::Identifier::new("client.discovery").unwrap(), "Discovery", None),
         row_metadata: Vec::new(),

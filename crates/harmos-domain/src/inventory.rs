@@ -47,7 +47,6 @@ pub struct StreamDeclaration {
     pub row_metadata: Vec<crate::StreamField>,
 
     pub id: String,
-    pub schema: u32,
     pub window: usize,
     pub row: crate::schema::graph::Schema,
 }

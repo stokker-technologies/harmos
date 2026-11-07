@@ -43,8 +43,8 @@ pub mod __private {
     pub extern crate serde_json;
     pub use crate::streams::{BatchDefinition, StreamCatalog, StreamRow};
 
-    pub fn stream_definition<S: StreamRow>(id: &'static str, version: u32, window: usize) -> crate::streams::Definition {
-        crate::streams::Definition::declared::<S>(id, version, window)
+    pub fn stream_definition<S: StreamRow>(id: &'static str, window: usize) -> crate::streams::Definition {
+        crate::streams::Definition::declared::<S>(id, 1, window)
             .batching(S::batch_definition())
             .presentation(S::metadata(), S::row_metadata())
     }

@@ -224,7 +224,7 @@ fn generated_catalog_registers() {
     assert_eq!(catalog[0].window(), 4);
     assert_eq!(streams::Studio::definition("reading").expect("the id is in the catalog").window(), 2);
     assert!(streams::Studio::definition("outside").is_none());
-    assert_eq!(streams::Pulse::DEFINITION, ("pulse", 1, 4));
+    assert_eq!(streams::Pulse::definition().id(), "pulse");
     assert_eq!(<streams::Pulse as Stream<Studio>>::ID, "pulse");
 }
 
@@ -296,9 +296,3 @@ fn stream_attribute_carries() {
 }
 
 /* === Tests === */
-
-#[test]
-fn current_row_restores() {
-    use serde::de::value::{Error as ValueError, U64Deserializer};
-    assert_eq!(streams::Pulse::restore(1, U64Deserializer::<ValueError>::new(9)).unwrap(), Some(streams::Pulse(9)));
-}

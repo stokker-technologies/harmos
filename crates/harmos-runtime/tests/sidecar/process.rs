@@ -284,7 +284,6 @@ impl harmos_runtime::Operation for CallbackPublication {
         let access = ctx.resource::<harmos_sdk::operations::publication::PublicationAccess>();
         let publication = harmos_sdk::operations::publication::Publication {
             stream: &self.0.stream,
-            schema: self.0.schema,
             sequence: self.0.sequence,
             published_unix_micros: self.0.published_unix_micros,
             context: &mut self.0.context,
@@ -395,7 +394,7 @@ async fn nested_calls_reenter() {
     for mark in ["echo-prepared-1", "echo-dropped-1", "echo-finalized-1", "nested-finalized-41"] {
         assert_eq!(fixture.marks.count(mark), 1, "{mark}");
     }
-    let rows = fixture.runtime.streams.publication("process.receipt", 1).unwrap();
+    let rows = fixture.runtime.streams.current_publication("process.receipt").unwrap();
     assert_eq!(rows.query(..).await.unwrap().count(), 1);
     fixture.finish().await;
 }
@@ -525,7 +524,7 @@ async fn shutdown_sdk_publication() {
     let native = calls.operations().unwrap();
     let scope = native.scope().unwrap();
     *expected.lock().unwrap() = Some(scope.generation().get());
-    let background = scope.publication("process.receipt", 1).unwrap();
+    let background = scope.publication("process.receipt").unwrap();
     assert_eq!(delivered.load(Ordering::SeqCst), 0);
 
     // Shutdown Publishes Through the Live Generation Before It Retires
@@ -536,7 +535,7 @@ async fn shutdown_sdk_publication() {
     }
 
     // The Retired Generation Refuses Later Publication
-    assert!(scope.publication("process.receipt", 1).is_err());
+    assert!(scope.publication("process.receipt").is_err());
     let late = Blob { id: 48, data: b"late".to_vec() };
     assert!(background.publish(harmos_runtime::Message::encode(&late), 0).is_err());
     assert_eq!(delivered.load(Ordering::SeqCst), 1);

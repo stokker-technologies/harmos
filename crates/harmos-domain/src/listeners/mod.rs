@@ -71,12 +71,12 @@ pub struct Declarations;
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Source {
     Record { id: Cow<'static, str>, version: u32, row: Schema },
-    Stream { id: Cow<'static, str>, schema_ordinal: u32, row: Schema },
+    Stream { id: Cow<'static, str>, row: Schema },
 }
 
 pub enum SourceDeclaration {
     Record { id: &'static str, version: u32, row: SchemaDefinition },
-    Stream { id: &'static str, schema_ordinal: u32, row: SchemaDefinition },
+    Stream { id: &'static str, row: SchemaDefinition },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -135,11 +135,6 @@ impl Source {
                     reason: "record semantic version must be positive",
                 });
             }
-            Self::Stream { schema_ordinal: 0, .. } => {
-                return Err(Error::Source {
-                    reason: "stream schema ordinal must be positive",
-                });
-            }
             _ => {}
         }
         self.schema().prepare(&SchemaSettings::default()).map_err(schema::Error::from)?;
@@ -162,11 +157,7 @@ impl SourceDeclaration {
                 version: *version,
                 row,
             },
-            Self::Stream { id, schema_ordinal, .. } => Source::Stream {
-                id: Cow::Borrowed(id),
-                schema_ordinal: *schema_ordinal,
-                row,
-            },
+            Self::Stream { id, .. } => Source::Stream { id: Cow::Borrowed(id), row },
         })
     }
 }

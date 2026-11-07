@@ -81,8 +81,8 @@ pub mod __private {
     pub use crate::state::{Catalogued, Mutual, Paired};
     pub use harmos_domain::__private::Answer;
 
-    pub fn stream_definition<S: StreamRow>(id: &'static str, version: u32, window: usize) -> crate::streams::Definition {
-        crate::streams::Definition::declared::<S>(id, version, window)
+    pub fn stream_definition<S: StreamRow>(id: &'static str, window: usize) -> crate::streams::Definition {
+        crate::streams::Definition::declared::<S>(id, 1, window)
             .batching(S::batch_definition())
             .presentation(S::metadata(), S::row_metadata())
     }

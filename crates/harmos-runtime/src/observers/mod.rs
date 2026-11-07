@@ -86,7 +86,7 @@ pub(crate) fn validate(definition: &ObserverDefinition) -> Result<()> {
     }
     let mut names = BTreeSet::new();
     for stream in &definition.streams {
-        if stream.id.is_empty() || stream.schema == 0 || stream.window == 0 || !names.insert(stream.id.as_str()) {
+        if stream.id.is_empty() || stream.window == 0 || !names.insert(stream.id.as_str()) {
             return Err(Error::InvalidInput {
                 field: "observer streams",
                 reason: "stream identities must be unique and schema/window must be positive",

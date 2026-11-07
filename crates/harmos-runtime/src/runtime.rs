@@ -1143,6 +1143,7 @@ async fn supervise<A: Application>(supervision: Supervision<A>) -> Position {
 }
 
 async fn deliver<A: Application>(consumers: &mut Consumers<A>, streams: &StreamManager<A>) {
+    let mut drained = u64::MAX;
     for recording in consumers.recordings() {
         let resume = recording.resume();
         let batch = streams.batch(resume);
@@ -1150,7 +1151,9 @@ async fn deliver<A: Application>(consumers: &mut Consumers<A>, streams: &StreamM
         if batch.reaches() > resume {
             recording.drain(batch).await;
         }
+        drained = drained.min(recording.resume().0);
     }
+    streams.drained(drained);
 }
 
 async fn stand_windows<A: Application>(streams: &StreamManager<A>, consumers: &mut Consumers<A>, booted: Position) {
