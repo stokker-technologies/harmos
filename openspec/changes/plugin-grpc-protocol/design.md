@@ -2,9 +2,11 @@
 
 ## Scope and Order
 
-The owner's latest 2026-11-07 decision is: "i am satisfied with the grpc results, i would try to minimize the machinery needed in the sdks. Above 200 MiB/s is good for now." It supersedes the earlier ordered tuning authorization and Gate 5's no-regression median rule. The current shape removes application consumption credits and the bidirectional Data RPC, restores the 64 KiB stream window and retains every other b12c8716 setting. Gate 5 requires the gRPC median to exceed 200 MiB/s on both unchanged payloads. Framed remains measured in the same seven alternating paired repetitions and reported without deciding the gate. A sub-floor median with mean timed CPU above 80% is inconclusive pending the orchestrator's quiet-machine rerun. Gates 2–4 retain every assertion. No further tuning, copy removal, named pipes, migration, PR, dev merge or Dokime change is authorized.
+The owner's latest 2026-11-07 decision requires deterministic pass/fail: tests never assert OS resource readings; those belong to bench measurements, and the owner accepts leaks surfacing in Nightly benches. Remove the Windows memory helper and all resource assertions, including Gate 4's 8 MiB allowance, without adding a resource-monitoring harness or portable sampler. Preserve every deterministic assertion, payload, requested count and slow-consumer checkpoint. Run Gates 1–5 in the repository's Linux container after normally merging fresh origin/dev into this prototype branch. No PR, dev merge, migration, further tuning or Dokime change is authorized; tasks 3.2 and 3.3 stay deferred.
 
-This branch prototypes sidecars on native Windows, based on the landed unified Invocation over OperationHost. Existing Linux infrastructure may be assessed without provisioning. Guests remain Wasm; Postcard remains storage encoding. The existing framed carrier stays unchanged. Migration, harmos-protocol and SDK relocation remain deferred. Earlier gate rules and outcomes below are historical checkpoints; the latest owner decision controls this continuation.
+The preceding 2026-11-07 SDK simplification and throughput decision remains in force: "i am satisfied with the grpc results, i would try to minimize the machinery needed in the sdks. Above 200 MiB/s is good for now." The current shape removes application consumption credits and the bidirectional Data RPC, restores the 64 KiB stream window and retains every other b12c8716 setting. Gate 5 requires the gRPC median to exceed 200 MiB/s on both unchanged payloads. Framed remains measured in the same seven alternating paired repetitions and reported without deciding the gate. A sub-floor median with mean timed CPU above 80% is inconclusive pending a quiet-machine rerun. Historical memory assertions and earlier no-regression thresholds below describe their checkpoints only.
+
+This branch prototypes sidecars on native Windows and the repository's Linux container, based on the landed unified Invocation over OperationHost. Guests remain Wasm; Postcard remains storage encoding. The existing framed carrier stays unchanged. Migration, harmos-protocol and SDK relocation remain deferred. Earlier gate rules and outcomes below are historical checkpoints; the latest owner decision controls this continuation.
 
 The owner corrected the original initialization stop: the missing host.publish assignment was a prototype integration defect, not a failed gate. That refusal is retained below as historical diagnostic evidence. The original corrected run passes Gates 1–4 and fails Gate 5 on measured Arrow throughput. The owner subsequently authorized the single bounded tuning continuation below, including Gate 6 despite the original Gate 5 stop. Migration and any merge remain unauthorized.
 
@@ -38,7 +40,7 @@ All compilation and execution use the existing focused mise task, retaining comp
 
     mise run build:rust:focused -- test --locked --manifest-path examples/schematic/Cargo.toml -p schematic-sidecar --features prototype-grpc --test system-prototype -- grpc_prototype::gate_1_real_sidecar --exact --nocapture
 
-The other exact filters are grpc_prototype::gate_2_cancellation_under_backpressure, grpc_prototype::gate_3_restart_and_retirement and grpc_prototype::gate_4_slow_consumer_memory. Local Cargo execution sets the runtime CARGO_BIN_EXE_schematic-grpc-prototype variable to the worktree's examples/schematic/target/debug/schematic-grpc-prototype.exe. The native runner can supply NEXTEST_BIN_EXE_schematic-grpc-prototype.
+The other exact filters are grpc_prototype::gate_2_cancellation_under_backpressure, grpc_prototype::gate_3_restart_and_retirement and grpc_prototype::gate_4_slow_consumer_backpressure. Local Cargo execution sets the runtime CARGO_BIN_EXE_schematic-grpc-prototype variable to the worktree's examples/schematic/target/debug/schematic-grpc-prototype.exe on Windows or schematic-grpc-prototype on Linux. The native runner can supply NEXTEST_BIN_EXE_schematic-grpc-prototype.
 
 The optimized transport experiment uses Cargo's unchanged bench profile:
 
@@ -373,7 +375,7 @@ Beyond generated stubs and those transport settings, reproducing this prototype 
 
 A complete production SDK would additionally need the still-unimplemented host callbacks/publications, typed upload/download/exchange streams, observers, retry/context/claims behavior and automatic supervision integration already included in the replacement estimate. Only Rust/Tonic is implemented and tested. Checked-in language-neutral protocol definitions and shared conformance remain deferred under task 3.2; no C++ or Go port is claimed here. README.md and docs/product-guide.md continue to describe the unchanged shipping carrier accurately, so neither needs an edit.
 
-### Linux Availability
+### Historical Linux Availability Before the Deterministic-Test Decision
 
 Docker reports a Linux daemon and already cached managed Ubuntu images. Inspection of the existing repository harness found that examples/schematic/sidecar/tests/system/grpc_prototype.rs::memory unconditionally executes powershell.exe and reads Get-Process PrivateMemorySize64/WorkingSet64. The cached repository executor ci-ubuntu24:d30423dd1fad09c13c0d655edf07dbeff9c89415ebbc1ba10047523d78f2d9de has Python and mise but neither powershell.exe nor pwsh. There is no Linux memory sampler for the unchanged Gate 4 assertions. A native Linux process-memory implementation preserving those assertions is missing; without it the full Gates 1–5 sequence cannot run. No Linux source adaptation, image build, tool installation or compilation was attempted. Linux has no measured gate or throughput result; task 3.1 remains open for that proof and owner migration direction. Tasks 3.2 and 3.3 were not started.
 
@@ -423,3 +425,64 @@ The measured executable SHA-256 is 6a07f985a765462c564c67f3ffb36edfd7503ea99e292
 mise run check:rust passed: formatting for all three workspaces, workspace Clippy including tests, Schematic native CLI/sidecar Clippy, Schematic Wasm guest Clippy, sandbox Wasm guest Clippy and Cargo Machete without unused dependencies. The opt-in process and optimized measurement selections passed their own matching focused Clippy. The four focused stories passed; the only nonzero measurement exit was the load-inconclusive Gate 5 numerical floor result described above. No compiler allocation failure or correctness/check failure occurred. Strict OpenSpec validation passed and git diff --check was empty. No full lane, CI simulation, PR, merge, migration or Dokime change was started. Linux is unmeasured for the explicit sampler limitation above.
 
 The implementation/evidence commit 6e07fcfc8400807089b4acac829b908e7795f789 passed the owner's exact bash scan (CLEAN), was pushed normally to feat/plugin-grpc-prototype and matched the remote SHA. No PR or merge was created. After preservation of distributions, CPU samples and proof here, native cargo clean completed through the mise tool environment for all three Cargo-metadata-resolved targets: root 751.3 MiB, Schematic 5.6 GiB and sandbox 630.7 MiB. Every resolved path and parent was checked to be inside this owned worktree without links; no retained CI/test/trace/benchmark evidence directory was present in those disposable targets. Raw logs and CPU samples remain in the task's system-temp scratch directory. All owned gate and measurement children settled, and no other target or shared cache was cleaned. The worktree remains present and locked at the owner's request. This documentation-only completion record is scanned before its own normal push and remote-SHA verification.
+
+## Deterministic Tests and Linux Continuation
+
+### Owner Decision and Source Boundary
+
+On 2026-11-07 the owner required deterministic correctness pass/fail: tests never assert OS resource readings. Resource measurements belong to benches; the owner accepts leaks surfacing in Nightly benches. The Windows-only `memory()` helper, its PowerShell process and every child/parent memory reading, peak, growth assertion and 8 MiB allowance are removed. No memory sampler or resource-monitoring harness replaces them. Gate 4 is named `gate_4_slow_consumer_backpressure`; its existing blocked-producer event supplies each slow-consumer checkpoint without a shell-out. Every deterministic assertion remains unchanged: ordered byte-identical payloads, counts of 64/4,096/65,536, eight checkpoints per transfer and produced minus consumed at most four. Other gates contain no Windows shell-out.
+
+The clean owned worktree started at pushed 936a280c on feat/plugin-grpc-prototype. Fresh origin/dev at dc7f2b09112820f6698caa93cbb54e6da89cd667 was fetched and merged normally as ba6e4c7c before edits; no published history was rewritten. The source inventory is limited to Schematic's process-gate file and this change's design.md/tasks.md. Shipping README.md and docs/product-guide.md claims and examples remain accurate; neither needs a change. No transport settings, framed behavior, migration, PR, dev merge, tuning, Dokime source or deferred task 3.2/3.3 implementation changes belong to this continuation.
+
+### Windows Proof After Resource Assertion Removal
+
+The final formatted source ran through `mise run build:rust:focused -- test --locked --manifest-path examples/schematic/Cargo.toml -p schematic-sidecar --features prototype-grpc --test system-prototype -- grpc_prototype:: --skip grpc_prototype::gate_1_real_sidecar --test-threads=1 --nocapture`, with matching Clippy and CARGO_BUILD_JOBS=2. Three tests passed, zero failed, in 1.22 seconds. Gate 2 passed eight unread-response cancellation repetitions, each settling at four produced batches, with observed settlement 0.559–2.328 ms; no timing threshold is asserted. Gate 3 retained startup refusal diagnostics, physical restart, prepared-call and generation/credential fencing and shutdown settlement. Gate 4 passed all 48 checkpoints across both unchanged payloads and all three requested counts; produced minus consumed was exactly four at every checkpoint. Windows Gate 5 was not rerun: its preceding 156.898/232.246 MiB/s medians and 99.78% timed CPU are historical Windows measurements, separate from Linux below.
+
+### Linux Environment and Gates 1–4
+
+Linux runs in the repository's cached `ci-ubuntu24:d30423dd1fad09c13c0d655edf07dbeff9c89415ebbc1ba10047523d78f2d9de` executor: Ubuntu 24.04.5 LTS, x86-64, WSL2 kernel 6.18.54.1-microsoft-standard-WSL2, Rust 1.99.1 and Tonic 0.14.9. Its workspace contains the normally merged branch snapshot plus the identical edited gate file, whose final formatted SHA-256 matches Windows at a8977462f480b0ee18b3b55a82f1012790aa828c9d5c29547bcdff65a6a29de3. CARGO_BUILD_JOBS=2 applies to every Linux build. Only one target builds at a time across this task's Windows and Linux commands; no peer worker is stopped and no image or OS package is provisioned.
+
+The focused mise test command selects `grpc_prototype:: --test-threads=1 --nocapture`, retaining matching Clippy and setting runtime `CARGO_BIN_EXE_schematic-grpc-prototype` to `/workspace/examples/schematic/target/debug/schematic-grpc-prototype`. All four Linux stories passed on the final formatted source, zero failed, in 0.44 seconds:
+
+| Gate | Linux Result | Evidence |
+| --- | --- | --- |
+| 1 | Pass | Actual Schematic initialization, immediate directory listing, three ordered decodable Arrow batches, lifecycle shutdown and retirement. |
+| 2 | Pass | Eight cancellations with unread responses; each settles at four produced batches without later progress, followed by a fresh completed transfer. Observed settlement 0.751–0.954 ms is reported without a timing assertion. |
+| 3 | Pass | Structured invalid-startup refusal, physical restart, prepared-call fencing, retired-token and stale-generation refusal, successful new generation and shutdown settlement. |
+| 4 | Pass | Both payloads, 64/4,096/65,536 requested batches and eight checkpoints each: 48 ordered byte-identical reads, with produced minus consumed between two and four. No OS resource reading or assertion. |
+
+### Linux Gate 5: Small-Payload Floor Failure
+
+The unchanged optimized focused mise command completed seven alternating paired repetitions for each payload, with profiling disabled, eight warmup batches per size and 4,072/256 timed batches. No validation or other build from this task ran concurrently. The same optimized executable carries both gRPC and the shipped framed reference; Arrow encoding and final content verification remain outside timing. These are Linux container measurements on the shared Windows host, separate from every historical Windows distribution above.
+
+| Arrow Bytes | Repetition | gRPC (MiB/s) | Framed Stdio (MiB/s) |
+| --- | ---: | ---: | ---: |
+| 65,928 | 1 | 193.899 | 151.407 |
+| 65,928 | 2 | 196.782 | 150.154 |
+| 65,928 | 3 | 200.904 | 155.200 |
+| 65,928 | 4 | 180.939 | 137.177 |
+| 65,928 | 5 | 201.618 | 152.535 |
+| 65,928 | 6 | 193.484 | 150.755 |
+| 65,928 | 7 | 180.141 | 131.373 |
+| 1,048,968 | 1 | 223.733 | 344.831 |
+| 1,048,968 | 2 | 206.782 | 339.490 |
+| 1,048,968 | 3 | 203.607 | 320.512 |
+| 1,048,968 | 4 | 219.630 | 333.606 |
+| 1,048,968 | 5 | 220.218 | 331.999 |
+| 1,048,968 | 6 | 251.415 | 416.361 |
+| 1,048,968 | 7 | 232.114 | 326.680 |
+
+| Arrow Bytes | gRPC Median [Min, Max] (MiB/s) | Framed Median [Min, Max] (MiB/s) | gRPC / Framed | Floor Result |
+| --- | ---: | ---: | ---: | --- |
+| 65,928 | 193.899 [180.141, 201.618] | 150.755 [131.373, 155.200] | 1.2862 | Fail: Median Does Not Exceed 200 |
+| 1,048,968 | 220.218 [203.607, 251.415] | 333.606 [320.512, 416.361] | 0.6601 | Pass: Median Above 200 |
+
+Temporary bench-only CPU capture sampled every 0.5 seconds from GATE_5_STARTUP through GATE_5_RESULT, excluding compilation. Linux `/proc/stat` aggregate CPU had 69 samples: mean 9.124%, minimum 7.620%, maximum 13.008%. Simultaneous Windows host GetSystemTimes had 69 samples: mean 35.822%, minimum 25.781%, maximum 77.756%. Guest CPU describes the VM, while host CPU includes the shared machine's other native workers. Neither mean exceeds 80%; the smaller payload's sub-floor median is a measured Gate 5 failure, not load-inconclusive. The larger payload passes. The harness correctly reports BELOW_FLOOR and exit 1 after settling its children; this is not a compiler or correctness-test failure. The paired framed result does not decide the floor.
+
+All five Linux gates ran. Task 3.1 now records the measurements and remains open for passing both-payload floor proof and owner migration direction. This run establishes neither a universal Linux throughput ceiling nor an inherent gRPC limit. No Linux correctness defect was observed; further performance work is outside the owner's no-tuning scope. No quiet-machine exception, outlier removal, replacement sampler, resource assertion, transport adjustment, task 3.2/3.3 work or migration follows this result.
+
+The optimized Linux executable's SHA-256 is 5c3b600e08bf52130bde4dab798364d5a6a7e02b64d0334b152d8815a3be55c0. Raw gate logs, the paired measurement log and both timed CPU sample files were preserved in this task's system-temp scratch directory before deleting Docker resources. Only the task-created container `harmos-grpc-linux-e02abb43c39a` (e51e301d5ee8bf6c979085138c304847ae0656b9622a2acdfbd682b0300d8e3a) and its task-created workspace volume `harmos-grpc-linux-e02abb43c39a-work` were removed, after confirming all gate, measurement and compiler processes had settled. Existing tool/compiler cache volumes were retained; no other container was stopped or removed.
+
+### Validation and Branch Retention
+
+The initial `check:rust` stopped at rustfmt's requested reflow of the shortened Gate 4 body. `mise run format:rust` changed only that test file; focused Windows Gates 2–4 and Linux Gates 1–4 were then rerun successfully on the final formatted source as recorded above. The final `mise run check:rust` passed all three workspace formatting selections, root workspace Clippy including tests, Schematic native CLI/sidecar Clippy, Schematic Wasm guest Clippy, sandbox Wasm guest Clippy and Cargo Machete without unused dependencies. CARGO_BUILD_JOBS=2 was retained throughout, with no allocation failure. Strict OpenSpec validation passed. The completed Linux benchmark's numerical floor failure remains reported; no full lane, CI simulation, additional performance pass, PR, dev merge, migration or Dokime work was started.

@@ -119,16 +119,6 @@ fn arrow(rows: usize) -> Vec<u8> {
     writer.into_inner().unwrap()
 }
 
-fn memory(process: u32) -> (u64, u64) {
-    let script = format!("$p = Get-Process -Id {process}; Write-Output $p.PrivateMemorySize64; Write-Output $p.WorkingSet64");
-    let output =
-        std::process::Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", &script]).output().unwrap();
-    assert!(output.status.success());
-    let output = String::from_utf8(output.stdout).unwrap();
-    let mut lines = output.lines();
-    (lines.next().unwrap().trim().parse().unwrap(), lines.next().unwrap().trim().parse().unwrap())
-}
-
 #[tokio::test]
 async fn gate_1_real_sidecar() {
     // One Whole-Story Hang Guard; No Timing Assertion.
@@ -309,13 +299,11 @@ async fn gate_3_restart_and_retirement() {
 }
 
 #[tokio::test]
-async fn gate_4_slow_consumer_memory() {
+async fn gate_4_slow_consumer_backpressure() {
     tokio::time::timeout(std::time::Duration::from_secs(120), async {
         // Keep The Existing Queue, Message Ceiling And Fixed Stream Window.
         let sidecar = Sidecar::start(40).await;
-        let child = sidecar.child.id().unwrap();
         let policy = settings();
-        let allowance = policy.message_bytes.get() as u64 * (policy.queued_batches.get() as u64 + 2);
         let mut invocation = 0;
         for rows in [4096, 65_536] {
             let payload = arrow(rows);
@@ -327,39 +315,44 @@ async fn gate_4_slow_consumer_memory() {
                 assert_eq!(packet.payload, payload);
             }
             drop(incoming);
-            let baseline = memory(child);
-            let parent_baseline = memory(std::process::id());
-            let mut private_peak = baseline.0;
-            let mut parent_private_peak = parent_baseline.0;
             for count in [64, 4096, 65_536] {
-                // Windows Process Sampling Makes This Consumer Deliberately Slow.
+                // Wait For Blocked Production Before Each Slow-Consumer Checkpoint.
                 invocation += 1;
                 let mut incoming = sidecar.host.arrow(invocation, payload.clone(), count).await.unwrap();
                 for consumed in 0..8 {
-                    let blocked = sidecar.host.phase(Packet { phase: 11, invocation, ..Packet::default() }).await.unwrap();
+                    let blocked = sidecar
+                        .host
+                        .phase(Packet {
+                            phase: 11,
+                            invocation,
+                            ..Packet::default()
+                        })
+                        .await
+                        .unwrap();
                     assert_eq!(blocked.phase, 0);
                     assert!(blocked.count <= consumed + policy.queued_batches.get() as u64 + 2);
-                    let sample = memory(child);
-                    let parent = memory(std::process::id());
-                    private_peak = private_peak.max(sample.0);
-                    parent_private_peak = parent_private_peak.max(parent.0);
-                    eprintln!("GATE_4 payload_bytes={} requested={count} consumed={consumed} produced={} child_private={} child_working_set={} parent_private={}", payload.len(), blocked.count, sample.0, sample.1, parent.0);
+                    eprintln!("GATE_4 payload_bytes={} requested={count} consumed={consumed} produced={}", payload.len(), blocked.count);
                     let packet = incoming.message().await.unwrap().unwrap();
                     assert_eq!(packet.count, consumed);
                     assert_eq!(packet.payload, payload);
                 }
-                sidecar.host.phase(Packet { phase: 10, invocation, ..Packet::default() }).await.unwrap();
+                sidecar
+                    .host
+                    .phase(Packet {
+                        phase: 10,
+                        invocation,
+                        ..Packet::default()
+                    })
+                    .await
+                    .unwrap();
                 drop(incoming);
             }
-            let growth = private_peak.saturating_sub(baseline.0);
-            let parent_growth = parent_private_peak.saturating_sub(parent_baseline.0);
-            eprintln!("GATE_4_SUMMARY payload_bytes={} child_baseline={} child_peak={private_peak} child_growth={growth} parent_baseline={} parent_peak={parent_private_peak} parent_growth={parent_growth} pipeline_allowance={allowance}", payload.len(), baseline.0, parent_baseline.0);
-            assert!(growth <= allowance, "child memory must stay within the fixed pipeline envelope");
-            assert!(parent_growth <= allowance, "consumer memory must stay within the fixed pipeline envelope");
         }
         sidecar.host.retire().await.unwrap();
         sidecar.end().await;
-    }).await.expect("prototype story hang guard");
+    })
+    .await
+    .expect("prototype story hang guard");
 }
 
 /* === Tests === */

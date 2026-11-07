@@ -18,7 +18,7 @@
 
 ## 3. Deferred Migration
 
-- [ ] 3.1 Measure Linux gates and obtain owner direction before any migration.
+- [ ] 3.1 Linux Gates 1–5 ran: Gates 1–4 passed; Gate 5's 65,928-byte gRPC median was 193.899 MiB/s at 35.822% mean host CPU (floor failure), while 1,048,968 bytes passed at 220.218 MiB/s. The >80% load exception does not apply. Passing both-payload floor proof and owner direction before any migration remain outstanding; see design.md's Linux continuation. No further tuning is authorized.
 - [ ] 3.2 Add harmos-protocol, checked-in protocol definitions, behaviour specification and conformance suite only after approval of all gates.
 - [ ] 3.3 Migrate Rust SDK and runtime, remove the old wire, and adopt in Dokime only in an authorized follow-up.
 
@@ -47,6 +47,12 @@
 - [x] 6.4 Run check:rust, strict specification validation and the owner's exact CLEAN scan; commit and normal-push this branch, verify remote SHA, run native cargo clean on owned worktree targets and retain the worktree.
 
 ## Workflow Follow-Up
+
+### Current Continuation
+
+- The latest 2026-11-07 owner decision supersedes historical memory assertions and the sampler limitation: correctness pass/fail must be deterministic. OS resource readings are bench measurements; leaks may surface in Nightly benches. Yank `memory()`, its Windows shell-out and every resource assertion, including the 8 MiB allowance; add no resource-monitoring harness or sampler. Preserve Gate 4's four-batch bound, payloads, requested counts and eight slow-consumer checkpoints. Locked inventory: Schematic tests/system/grpc_prototype.rs and this change's design.md/tasks.md. Merge fresh origin/dev normally, run Windows Gates 2–4, Linux Gates 1–5 and check:rust, require CLEAN from the exact owner scan, normal-push only this branch, verify its SHA, remove only owned Docker resources and run native Cargo cleanup while retaining the worktree. Update task 3.1 only after every Linux gate has run; owner migration direction remains required. No PR, dev merge, migration, tuning or Dokime changes; tasks 3.2 and 3.3 remain untouched.
+
+### Historical Authorization
 
 - Section 6 supersedes the historical no-regression criterion and ordered tuning authorization. No further tuning, copy removal, named pipes, migration, PR, merge or Dokime edits; tasks 3.2 and 3.3 remain deferred. Task 3.1 may measure existing Linux infrastructure only. No full simulation is authorized for this bounded prototype continuation.
 
