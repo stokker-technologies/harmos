@@ -37,7 +37,7 @@ transport = ["dep:sha2", "dep:getrandom", "dep:libc", "dep:postcard", "dep:futur
 derive = ["harmos-domain/derive", "harmos-sdk/derive", "dep:harmos-macros"]
 # Optional Payload Codec Only; No Host Networking Or gRPC Carrier
 grpc = ["harmos-sdk/grpc"]
-prototype-grpc = ["kit", "grpc", "dep:bytes", "dep:http-body", "dep:prost", "dep:tonic"]
+prototype-grpc = ["kit", "grpc", "dep:bytes", "dep:harmos-protocol", "dep:http-body", "dep:prost", "dep:tonic"]
 streaming = ["harmos-sdk/streaming"]
 
 # === Dependencies === #
@@ -47,6 +47,7 @@ streaming = ["harmos-sdk/streaming"]
 harmos-domain = { workspace = true }
 harmos-macros = { workspace = true, optional = true }
 harmos-operations = { workspace = true }
+harmos-protocol = { workspace = true, optional = true }
 harmos-sdk = { workspace = true }
 
 # Git

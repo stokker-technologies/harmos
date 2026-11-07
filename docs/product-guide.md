@@ -1068,6 +1068,7 @@ in its output. HTML rendering uses Plotters and does not require Gnuplot.
 ## Documentation
 
 - [Repository Tooling](tooling.md) — workstation builds and shared compiler cache.
+- [Go Sidecar Review Slice](sidecar-go-prototype.md) — the opt-in language-neutral gRPC contract and minimal Go example.
 - [Runnable Examples](examples.md) — application composition and plugin integration.
 - [Schematic Walkthrough](schematic.md) — the example application, its crates and backends.
 - [Public Rust API](../crates/harmos/src/lib.rs) — the SDK facade and module documentation.

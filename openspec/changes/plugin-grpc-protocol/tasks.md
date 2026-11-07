@@ -66,3 +66,13 @@
 - Locked continuation inventory: prototype.rs and prototype/{client,codec}.rs own the initialization boundary and bounded stream instrumentation; Schematic src/prototype.rs and tests/system/grpc_prototype.rs own process fixtures and ordered measurements; manifests change only for those opt-in fixtures. No production migration. design.md owns evidence and README impact review.
 - Gate 5 adds Schematic src/measurement.rs for matched optimized process measurements and exposes the already implemented focused `run` operation in the project Cargo task's CLI choices, documented in docs/tooling.md. This retains its standard preflight and exact-selector Clippy; no one-off task or standalone compilation.
 - The original run passed Gates 1–4 and failed Gate 5, leaving Gate 6 unmeasured at that checkpoint. The bounded continuation above supersedes the unmeasured estimate and original stop only within its authorized scope; all migration work remains deferred.
+
+## 7. Owner-Authorized Go Review Slice
+
+- [x] 7.1 Lock the branch-only slice: crates/harmos-protocol owns the shared proto, generated Rust messages/service paths and schema identity; prototype/codec.rs consumes them. Existing framed code and production registration remain unchanged.
+- [x] 7.2 sdk/go owns generated Go stubs, a minimal authenticated sidecar, one Greet example, lifecycle/invocation ownership and cancellation under unread HTTP/2 output; no credits, receipts, Dokime or other operations.
+- [x] 7.3 Schematic's focused system-prototype target owns the Rust-to-Go process story using the existing prototype Host; mise tasks own generation, Go checks, the demo and focused Gates 1–4. Manifests and locks change only for those dependencies and generation tools.
+- [x] 7.4 docs/ owns the short behaviour specification and reading/running guide; update the product guide's documentation link and review README impact. Record simplifications, SDK author responsibilities and remaining proof in design.md.
+- [ ] 7.5 Prove the focused Windows Go story, Go tests and vet, focused Gates 1–4 and check:rust with CARGO_BUILD_JOBS=2, one Rust target at a time. No full lane, simulation or Linux run in this timebox.
+- [ ] 7.6 Commit and normal-push owned working checkpoints to feat/grpc-go-slice only after the exact required scan prints CLEAN; verify remote SHA. Stop by 14:00 local with truthful remaining work; no PR or merge.
+- [ ] 7.7 Preserve proof in design.md, run native cargo clean on owned target directories and keep the worktree.

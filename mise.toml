@@ -27,6 +27,11 @@ sccache = "0.19.0"
 "go:github.com/rhysd/actionlint/cmd/actionlint" = "v1.7.13-0.20260417151945-fd33e9f582a0"
 taplo = "0.10.0"
 
+# Protocols and Code Generation
+"go:google.golang.org/grpc/cmd/protoc-gen-go-grpc" = "1.6.2"
+"go:google.golang.org/protobuf/cmd/protoc-gen-go" = "1.36.12"
+protoc = "36.2"
+
 # Release and Signing
 git-cliff = "2.14.2"
 
@@ -46,6 +51,11 @@ CARGO_INCREMENTAL = "{{ get_env(name='CARGO_INCREMENTAL', default='') if get_env
 [vars]
 
 # === Prepare === #
+
+[tasks."prepare:protocol"]
+description = "Generate Go Sidecar Protocol Stubs"
+usage = 'flag "--check"'
+run = "uv run --locked --project tools/python python -m harmos_tools.prepare.protocol{% if usage.check %} --check{% endif %}"
 
 [tasks."prepare:tests:fixtures"]
 description = "Join Independently Built Product and Test Fixtures"
@@ -123,6 +133,11 @@ run = [
 description = "Check Every Language and Workflows"
 run = [{ task = "check:repository" }, { task = "check:rust" }, { task = "check:python" }]
 
+[tasks."check:go"]
+description = "Vet the Go Sidecar SDK"
+dir = "sdk/go"
+run = "go vet ./..."
+
 [tasks."check:python"]
 description = "Check Python"
 run = [{ task = "format:python --check" }, { task = "lint:python" }, { task = "test:tooling" }]
@@ -158,6 +173,11 @@ depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build --profile {{usage.profile}}",
 ]
+
+[tasks."build:go"]
+description = "Build the Go Sidecar Review Example"
+dir = "sdk/go"
+run = "go build -o ../../target/go-sidecar{{ '.exe' if os() == 'windows' else '' }} ./examples/greet"
 
 [tasks."build:rust:bench"]
 description = "Build Benchmark Executables"
@@ -195,15 +215,16 @@ run = [
 
 # === Test === #
 
-[tasks."test:tooling"]
-description = "Test CI and Release Tooling"
-run = "uv run --locked --project tools/python python -m unittest discover -s tools/python/tests -v"
-
 [tasks.test]
 description = "Test Every Layer"
 usage = 'flag "--profile <profile>" default="dev"'
 
 run = [{ tasks = ["test:rust --profile {{usage.profile}}"] }]
+
+[tasks."test:go"]
+description = "Test the Go Sidecar SDK"
+dir = "sdk/go"
+run = "go test ./..."
 
 [tasks."test:rust"]
 description = "Test Rust"
@@ -215,17 +236,6 @@ run = [
     "test:rust:acceptance --profile {{usage.profile}}",
     "test:rust:system --profile {{usage.profile}}",
   ] },
-]
-
-[tasks."test:rust:extended"]
-description = "Build and Test Optional Local Feature and Target Configurations"
-usage = 'flag "--profile <profile>" default="dev"'
-run = [
-  { task = "build --profile {{usage.profile}}" },
-  { task = "build:rust:compatibility --profile {{usage.profile}}" },
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.rust.tests --extended --profile {{usage.profile}}",
-  { task = "prepare:tests:fixtures --profile {{usage.profile}}" },
-  { task = "test --profile {{usage.profile}}" },
 ]
 
 [tasks."test:rust:unit"]
@@ -258,6 +268,15 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} -- -E \"!test(/^authoring::/)\"",
 ]
 
+[tasks."test:rust:system"]
+description = "Test System Rust"
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["prepare:tools"]
+run = [
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category system --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}} -- --test-threads 1",
+]
+
 [tasks."test:rust:coverage"]
 description = "Measure Coverage over Instrumented Lanes"
 usage = 'flag "--profile <profile>" default="dev"'
@@ -265,6 +284,61 @@ depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category acceptance --starter --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.test.run coverage --language rust --profile {{usage.profile}}",
+]
+
+[tasks."test:rust:extended"]
+description = "Build and Test Optional Local Feature and Target Configurations"
+usage = 'flag "--profile <profile>" default="dev"'
+run = [
+  { task = "build --profile {{usage.profile}}" },
+  { task = "build:rust:compatibility --profile {{usage.profile}}" },
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.rust.tests --extended --profile {{usage.profile}}",
+  { task = "prepare:tests:fixtures --profile {{usage.profile}}" },
+  { task = "test --profile {{usage.profile}}" },
+]
+
+[tasks."test:rust:go"]
+description = "Run the Rust Host and Go Sidecar Story"
+run = [
+  { task = "build:go" },
+  { task = "build:rust:focused", args = [
+    "test",
+    "--locked",
+    "--manifest-path",
+    "examples/schematic/Cargo.toml",
+    "-p",
+    "schematic-sidecar",
+    "--features",
+    "prototype-grpc",
+    "--test",
+    "system-prototype",
+    "--",
+    "go_prototype::rust_host_go_sidecar",
+    "--exact",
+    "--nocapture",
+  ] },
+]
+
+[tasks."test:rust:grpc"]
+description = "Run Prototype Gates 1–4"
+env.CARGO_BIN_EXE_schematic-grpc-prototype = "{{config_root}}/examples/schematic/target/debug/schematic-grpc-prototype{{ '.exe' if os() == 'windows' else '' }}"
+run = [
+  { task = "build:rust:focused", args = [
+    "test",
+    "--locked",
+    "--manifest-path",
+    "examples/schematic/Cargo.toml",
+    "-p",
+    "schematic-sidecar",
+    "--features",
+    "prototype-grpc",
+    "--test",
+    "system-prototype",
+    "--",
+    "grpc_prototype::",
+    "--test-threads=1",
+    "--nocapture",
+  ] },
 ]
 
 [tasks."test:rust:starter"]
@@ -279,14 +353,9 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} -- -E \"test(/^authoring::/)\"{% if usage.filter %} -E \"{{usage.filter}}\"{% endif %}",
 ]
 
-[tasks."test:rust:system"]
-description = "Test System Rust"
-usage = 'flag "--profile <profile>" default="dev"'
-depends = ["prepare:tools"]
-run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category system --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}} -- --test-threads 1",
-]
+[tasks."test:tooling"]
+description = "Test CI and Release Tooling"
+run = "uv run --locked --project tools/python python -m unittest discover -s tools/python/tests -v"
 
 # === Bench === #
 
@@ -303,11 +372,6 @@ run = [
     "bench:rust:system{% if usage.extended %} --extended{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
   ] },
 ]
-
-[tasks."bench:rust:extended"]
-description = "Build and Run Optional Local Feature Benchmarks"
-usage = 'flag "--refresh-baseline"'
-run = [{ task = "build:rust:bench --extended" }, { task = "bench --extended{% if usage.refresh_baseline %} --refresh-baseline{% endif %}" }]
 
 [tasks."bench:rust:unit"]
 description = "Bench Unit Rust"
@@ -335,6 +399,11 @@ flag "--extended"
 '''
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category system --language rust --archive-argument=--features --archive-argument=harmos-runtime/plugin-sidecar,harmos-runtime/plugin-guest,harmos-runtime/grpc{% if usage.extended %} --archive-argument=--all-features{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
+
+[tasks."bench:rust:extended"]
+description = "Build and Run Optional Local Feature Benchmarks"
+usage = 'flag "--refresh-baseline"'
+run = [{ task = "build:rust:bench --extended" }, { task = "bench --extended{% if usage.refresh_baseline %} --refresh-baseline{% endif %}" }]
 
 # === Docs === #
 

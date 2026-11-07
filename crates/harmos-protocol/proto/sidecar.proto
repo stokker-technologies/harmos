@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.prototype;
+option go_package = "github.com/stokker-technologies/harmos/sdk/go/wire";
+
+// Opt-In Review Contract; See docs/sidecar-go-prototype.md.
+service Sidecar {
+  rpc Control(Packet) returns (Packet);
+  rpc Data(Packet) returns (stream Packet);
+}
+
+enum Protocol {
+  PROTOCOL_UNSPECIFIED = 0;
+  PROTOCOL_VERSION = 1;
+}
+
+enum Phase {
+  PHASE_WELCOME = 0;
+  PHASE_PREPARE = 1;
+  PHASE_INITIALIZE = 2;
+  PHASE_ATTEMPT = 3;
+  PHASE_FINALIZE = 4;
+  PHASE_CANCEL = 5;
+  PHASE_CANCEL_DATA = 10;
+  PHASE_WAIT_BLOCKED = 11;
+  PHASE_PROGRESS = 12;
+  PHASE_RETIRE = 20;
+}
+
+// Requests Carry Version, Generation And Authorization Metadata On Every RPC.
+// Control Responses Use Phase 0 For Success, 1 For Operation Failure Or Settled Data.
+// Data Responses Carry Invocation, Zero-Based Sequence In Count And Arrow IPC In Payload.
+message Packet {
+  uint32 version = 1;
+  uint64 generation = 2;
+  uint32 phase = 3;
+  uint64 invocation = 4;
+  string operation = 5;
+  bytes fingerprint = 6;
+  bytes context = 7;
+  bytes payload = 8;
+  uint64 count = 9;
+  repeated Declaration declarations = 10;
+}
+
+message Initialization {
+  bytes config_json = 1;
+  bytes generation_context = 2;
+  repeated Assignment assignments = 3;
+}
+
+message Assignment {
+  string operation = 1;
+  bytes fingerprint = 2;
+  uint64 generation = 3;
+}
+
+message Declaration {
+  string operation = 1;
+  bytes fingerprint = 2;
+}
+
+// The Go Example Declares go_tools.greet. Its Fingerprint Is The Schema Digest.
+message GreetRequest { string name = 1; }
+message GreetResponse { string greeting = 1; }
+
+message Empty {}

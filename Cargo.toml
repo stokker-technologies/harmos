@@ -23,6 +23,7 @@ harmos-guest = { path = "crates/harmos-guest", version = "=0.1.13", default-feat
 harmos-macros = { path = "crates/harmos-macros", version = "=0.1.13" }
 harmos-operations = { path = "crates/harmos-operations", version = "=0.1.13", default-features = false }
 harmos-packaging = { path = "crates/harmos-packaging", version = "=0.1.13", default-features = false }
+harmos-protocol = { path = "crates/harmos-protocol", version = "=0.1.13", default-features = false }
 harmos-runtime = { path = "crates/harmos-runtime", version = "=0.1.13", default-features = false }
 harmos-sdk = { path = "crates/harmos-sdk", version = "=0.1.13", default-features = false }
 harmos-sidecar = { path = "crates/harmos-sidecar", version = "=0.1.13", default-features = false }
@@ -74,6 +75,7 @@ base64 = { version = "0.23.1", default-features = false, features = ["alloc"] }
 flatbuffers = { version = "=25.12.19", default-features = false }
 postcard = { version = "1.1.3", default-features = false, features = ["alloc"] }
 prost = { version = "0.14.4", default-features = false }
+prost-build = { version = "0.14.4", default-features = false }
 prost-reflect = { version = "0.16.5", default-features = false }
 protoc-bin-vendored = { version = "3.3.0", default-features = false }
 serde = { version = "1.0.229", default-features = false, features = ["derive"] }

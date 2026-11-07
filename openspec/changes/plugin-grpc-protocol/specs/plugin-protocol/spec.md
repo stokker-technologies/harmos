@@ -1,5 +1,20 @@
 ## ADDED Requirements
 
+### Requirement: Go Review Slice
+The opt-in review branch SHALL demonstrate one generated Go operation and repeated Arrow IPC data through the existing Rust prototype host, without changing the framed path or production registration.
+
+#### Scenario: Shared Definitions
+- **WHEN** the focused review story builds Rust and the Go example
+- **THEN** both use messages generated from the checked-in protocol schema and agree on its review fingerprint
+
+#### Scenario: Go Cancellation Settlement
+- **WHEN** the host requests cancellation while a Go data response is unread
+- **THEN** the sender settles without draining that response, its progress stops, and a new transfer completes
+
+#### Scenario: Normal Teardown
+- **WHEN** the host shuts down and retires the Go generation
+- **THEN** new admission is fenced and the child exits successfully after its sender settles
+
 ### Requirement: Measured Migration Gate
 Migration SHALL proceed only after a prototype on a real plugin passes the recorded gates.
 

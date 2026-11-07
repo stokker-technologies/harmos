@@ -102,7 +102,7 @@ fn settings() -> Settings {
     }
 }
 
-fn arrow(rows: usize) -> Vec<u8> {
+pub(super) fn arrow(rows: usize) -> Vec<u8> {
     let schema =
         Arc::new(Schema::new(vec![Field::new("sequence", DataType::UInt64, false), Field::new("value", DataType::Float64, false)]));
     let batch = RecordBatch::try_new(

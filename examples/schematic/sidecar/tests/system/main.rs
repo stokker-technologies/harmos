@@ -9,6 +9,7 @@
 
 /* === Modules === */
 
+mod go_prototype;
 mod grpc_prototype;
 
 /* === Re-Exports === */

@@ -13,17 +13,21 @@
 
 /* === Re-Exports === */
 
+pub use harmos_protocol::prototype::Packet;
+pub(super) use harmos_protocol::prototype::{Assignment, Initialization};
+
 /* === Imports === */
 
 // Standard Library Imports
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
+
 // Third Party Imports
-use bytes::Bytes;
 use prost::Message;
 use tonic::Status;
 use tonic::codec::{BufferSettings, DecodeBuf, EncodeBuf};
+
 // Local Imports
 
 /* === Constants === */
@@ -38,64 +42,11 @@ static DECODE_NS: AtomicU64 = AtomicU64::new(0);
 
 /* === Structs === */
 
-#[derive(Clone, PartialEq, Message)]
-pub struct Packet {
-    #[prost(uint32, tag = "1")]
-    pub version: u32,
-
-    #[prost(uint64, tag = "2")]
-    pub generation: u64,
-
-    #[prost(uint32, tag = "3")]
-    pub phase: u32,
-
-    #[prost(uint64, tag = "4")]
-    pub invocation: u64,
-
-    #[prost(string, tag = "5")]
-    pub operation: String,
-
-    #[prost(bytes = "vec", tag = "6")]
-    pub fingerprint: Vec<u8>,
-
-    #[prost(bytes = "vec", tag = "7")]
-    pub context: Vec<u8>,
-
-    #[prost(bytes = "bytes", tag = "8")]
-    pub payload: Bytes,
-
-    #[prost(uint64, tag = "9")]
-    pub count: u64,
-}
-
-#[derive(Clone, PartialEq, Message)]
-pub(super) struct Initialization {
-    #[prost(bytes = "vec", tag = "1")]
-    pub config_json: Vec<u8>,
-
-    #[prost(bytes = "vec", tag = "2")]
-    pub generation_context: Vec<u8>,
-
-    #[prost(message, repeated, tag = "3")]
-    pub assignments: Vec<Assignment>,
-}
-
-#[derive(Clone, PartialEq, Message)]
-pub(super) struct Assignment {
-    #[prost(string, tag = "1")]
-    pub operation: String,
-
-    #[prost(bytes = "vec", tag = "2")]
-    pub fingerprint: Vec<u8>,
-
-    #[prost(uint64, tag = "3")]
-    pub generation: u64,
-}
-
 #[derive(Clone, Default)]
 pub(super) struct Codec;
 
 pub(super) struct Encoder;
+
 pub(super) struct Decoder;
 
 /* === Enums === */

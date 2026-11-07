@@ -18,6 +18,7 @@ mod codec;
 
 pub use client::{Error, Host, Running};
 pub use codec::Packet;
+pub use harmos_protocol::{SCHEMA_FINGERPRINT, prototype as protocol};
 pub use tonic;
 
 /* === Imports === */
@@ -44,9 +45,9 @@ use harmos_sdk::plugin::{Declared, Plugin};
 
 /* === Constants === */
 
-pub const VERSION: u32 = 1;
-pub const CONTROL: &str = "/harmos.prototype.Sidecar/Control";
-pub const DATA: &str = "/harmos.prototype.Sidecar/Data";
+pub const VERSION: u32 = protocol::Protocol::Version as u32;
+pub const CONTROL: &str = protocol::SIDECAR_CONTROL;
+pub const DATA: &str = protocol::SIDECAR_DATA;
 
 /* === Macros === */
 
@@ -314,7 +315,7 @@ impl tonic::server::ServerStreamingService<Packet> for Endpoint {
 }
 
 impl tonic::server::NamedService for Endpoint {
-    const NAME: &'static str = "harmos.prototype.Sidecar";
+    const NAME: &'static str = protocol::SIDECAR_NAME;
 }
 
 impl<B> tonic::codegen::Service<http::Request<B>> for Endpoint

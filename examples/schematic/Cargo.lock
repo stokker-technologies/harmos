@@ -1035,6 +1035,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "harmos-protocol"
+version = "0.1.13"
+dependencies = [
+ "prost",
+ "prost-build",
+ "sha2 0.11.1",
+]
+
+[[package]]
 name = "harmos-runtime"
 version = "0.1.13"
 dependencies = [
@@ -1087,6 +1096,7 @@ dependencies = [
  "harmos-domain",
  "harmos-macros",
  "harmos-operations",
+ "harmos-protocol",
  "harmos-sdk",
  "http-body",
  "libc",
@@ -1489,6 +1499,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "multimap"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
+
+[[package]]
 name = "multiversion_no_op"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1706,6 +1722,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "prost-build"
+version = "0.14.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03da047801ff44bb6a4d407d4860c05fd70bb81714e6b2f3812603d5b145b042"
+dependencies = [
+ "heck",
+ "itertools",
+ "log",
+ "multimap",
+ "petgraph",
+ "prost",
+ "prost-types",
+ "regex",
+ "tempfile",
+]
+
+[[package]]
 name = "prost-derive"
 version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1823,6 +1856,18 @@ dependencies = [
  "rustc-hash",
  "serde",
  "smallvec",
+]
+
+[[package]]
+name = "regex"
+version = "1.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-automata",
+ "regex-syntax",
 ]
 
 [[package]]
@@ -1971,6 +2016,7 @@ dependencies = [
  "harmos-domain",
  "harmos-packaging",
  "harmos-sidecar",
+ "prost",
  "schematic-domain",
  "schematic-operations",
  "serde_json",
