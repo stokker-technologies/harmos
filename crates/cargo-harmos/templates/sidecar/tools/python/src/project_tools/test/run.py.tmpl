@@ -403,11 +403,7 @@ def _lane(
         "started_at": int(started),
         "junit": (destination / "junit.xml").relative_to(directory).as_posix(),
         "coverage": None,
-        "durations": [
-            (case.suite, case.name, case.package, case.seconds)
-            for case in found
-            if case.outcome == "passed"
-        ],
+        "durations": [(case.suite, case.name, case.package, case.seconds) for case in found if case.outcome == "passed"],
     }
 
 
