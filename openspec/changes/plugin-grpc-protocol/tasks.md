@@ -18,7 +18,7 @@
 
 ## 3. Deferred Migration
 
-- [ ] 3.1 Linux Gates 1–5 ran: Gates 1–4 passed; Gate 5's 65,928-byte gRPC median was 193.899 MiB/s at 35.822% mean host CPU (floor failure), while 1,048,968 bytes passed at 220.218 MiB/s. The >80% load exception does not apply. Passing both-payload floor proof and owner direction before any migration remain outstanding; see design.md's Linux continuation. No further tuning is authorized.
+- [x] 3.1 Linux Gates 1–5 ran: Gates 1–4 passed; Gate 5's 65,928-byte gRPC median was 193.899 MiB/s at 35.822% mean host CPU (below the floor), while 1,048,968 bytes passed at 220.218 MiB/s. On 2026-11-07 the owner accepted the 65,928-byte result and directed migration to begin once Dokime's validation freeze lifts. See design.md's Linux continuation. No further tuning is authorized.
 - [ ] 3.2 Add harmos-protocol, checked-in protocol definitions, behaviour specification and conformance suite only after approval of all gates.
 - [ ] 3.3 Migrate Rust SDK and runtime, remove the old wire, and adopt in Dokime only in an authorized follow-up.
 
