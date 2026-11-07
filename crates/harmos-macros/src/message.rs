@@ -187,19 +187,17 @@ pub(crate) fn shape(item: &syn::Item, harmos: &HarmosPath) -> Result<TokenStream
             let (_, kind, cardinality) =
                 if matches!(type_name(ty).as_deref(), Some("u8" | "u16" | "i8" | "i16" | "usize" | "isize" | "u128" | "i128" | "char")) {
                     (false, quote!(<#ty as #harmos::schema::Described>::FIELD_KIND), quote!(#harmos::schema::Cardinality::Required))
+                } else if matches!(type_name(ty).as_deref(), Some("BTreeSet" | "HashSet")) {
+                    let Type::Path(path) = ty else { unreachable!() };
+                    let syn::PathArguments::AngleBracketed(arguments) = &path.path.segments.last().unwrap().arguments else {
+                        return Err(unsupported(ty));
+                    };
+                    let Some(syn::GenericArgument::Type(inner)) = arguments.args.first() else {
+                        return Err(unsupported(ty));
+                    };
+                    encoding(&syn::parse_quote!(Vec<#inner>), harmos)?
                 } else {
-                    if matches!(type_name(ty).as_deref(), Some("BTreeSet" | "HashSet")) {
-                        let Type::Path(path) = ty else { unreachable!() };
-                        let syn::PathArguments::AngleBracketed(arguments) = &path.path.segments.last().unwrap().arguments else {
-                            return Err(unsupported(ty));
-                        };
-                        let Some(syn::GenericArgument::Type(inner)) = arguments.args.first() else {
-                            return Err(unsupported(ty));
-                        };
-                        encoding(&syn::parse_quote!(Vec<#inner>), harmos)?
-                    } else {
-                        encoding(ty, harmos)?
-                    }
+                    encoding(ty, harmos)?
                 };
             output.push(quote! { #harmos::schema::graph::Field {
                 name: ::std::borrow::Cow::Borrowed(#name), tag: #harmos::schema::field_tag(#name),

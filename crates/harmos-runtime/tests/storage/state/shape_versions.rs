@@ -11,23 +11,6 @@
 
 /* === Modules === */
 
-mod relabelled {
-    #[harmos_runtime::stream(id = "shape.samples", window = 4, label = "Renamed Samples")]
-    pub struct Row {
-        value: u64,
-    }
-}
-
-mod labelled_record {
-    #[harmos_runtime::record(id = "shape.observed")]
-    #[harmos_runtime::message]
-    #[derive(serde::Serialize, serde::Deserialize)]
-    pub struct Row {
-        #[row(label = "Previous Value")]
-        pub before: i64,
-    }
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -337,9 +320,22 @@ async fn native_stream_round_trip_uses_shared_revision() {
 
 #[test]
 fn label_only_change_keeps_revision() {
-    assert_eq!(Observed::definition().1, labelled_record::Row::definition().1);
-    assert_ne!(Sample::definition().metadata(), relabelled::Row::definition().metadata());
-    assert_eq!(Sample::definition().version(), relabelled::Row::definition().version());
+    #[harmos_runtime::stream(id = "shape.samples", window = 4, label = "Renamed Samples")]
+    struct Relabelled {
+        value: u64,
+    }
+
+    #[harmos_runtime::record(id = "shape.observed")]
+    #[harmos_runtime::message]
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct LabelledRecord {
+        #[row(label = "Previous Value")]
+        before: i64,
+    }
+
+    assert_eq!(Observed::definition().1, LabelledRecord::definition().1);
+    assert_ne!(Sample::definition().metadata(), Relabelled::definition().metadata());
+    assert_eq!(Sample::definition().version(), Relabelled::definition().version());
     let value = Observed { before: 9 };
     let (id, revision) = value.identify();
     let encoded = serde_json::to_value(&value).unwrap();
