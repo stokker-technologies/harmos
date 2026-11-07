@@ -44,7 +44,7 @@
 - [x] 6.1 Restore the pre-credit server-streaming Data RPC, ordinary client stream and 64 KiB stream window in kit/prototype.rs, prototype/client.rs and Schematic's prototype, measurement and process fixture settings. Retain every other tuned setting and every Gate 4 assertion.
 - [x] 6.2 Apply the owner's 2026-11-07 decision: "i am satisfied with the grpc results, i would try to minimize the machinery needed in the sdks. Above 200 MiB/s is good for now." Gate 5 requires a gRPC median strictly above 200 MiB/s on both unchanged payloads; paired framed measurements remain reported. A sub-floor median above 80% CPU is inconclusive pending a quiet rerun.
 - [x] 6.3 Run focused Windows Gates 1–4 and seven alternating paired Gate 5 repetitions with timed CPU samples; attempt Linux Gates 1–5 only using an already available repository container, without provisioning. Record distributions, Linux availability, complete C++/Go costs, the reduced Gate 6 estimate and README impact in design.md. Preserve credits evidence as history.
-- [ ] 6.4 Run check:rust, strict specification validation and the owner's exact CLEAN scan; commit and normal-push this branch, verify remote SHA, run native cargo clean on owned worktree targets and retain the worktree.
+- [x] 6.4 Run check:rust, strict specification validation and the owner's exact CLEAN scan; commit and normal-push this branch, verify remote SHA, run native cargo clean on owned worktree targets and retain the worktree.
 
 ## Workflow Follow-Up
 
