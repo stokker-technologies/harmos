@@ -32,7 +32,6 @@ exclude = ["main", "master", "dev", "develop", "release/**"]
 unix = "ubuntu-24.04"
 windows = "windows-2022"
 
-# --- Impact --- #
 
 [ci.impact]
 default = "full"
@@ -75,13 +74,11 @@ exclude = [
 ]
 jobs = ["check:repository"]
 
-# --- Stage / Check --- #
 
 [[ci.jobs]]
 id = "check:python:generated"
 inputs = ["build#product"]
 
-# --- Stage / Build --- #
 
 [[ci.jobs]]
 id = "build"
@@ -102,14 +99,12 @@ outputs.fixtures = ["target/build/{profile}/{target}/fixtures"]
 id = "build:rust:bench"
 outputs.bench = ["target/build/bench/{target}/bench", "target/build/bench/{target}/bin", "target/build/bench/{target}/fixtures"]
 
-# --- Stage / Prepare --- #
 
 [[ci.jobs]]
 id = "prepare:tests:fixtures"
 inputs = ["build#product", "build:rust:tests#fixtures"]
 outputs.fixtures = ["target/build/{profile}/{target}/fixtures"]
 
-# --- Stage / Test --- #
 
 [[ci.jobs]]
 id = "test:rust:unit"
@@ -136,7 +131,6 @@ inputs = ["build:rust:tests#tests", "prepare:tests:fixtures#fixtures", "build#pr
 id = "test:rust:coverage"
 inputs = ["build:rust:tests#tests", "prepare:tests:fixtures#fixtures", "build#product"]
 
-# --- Stage / Bench --- #
 
 [[ci.jobs]]
 id = "bench:rust:unit"
@@ -150,14 +144,12 @@ inputs = ["build:rust:bench#bench"]
 id = "bench:rust:system"
 inputs = ["build:rust:bench#bench"]
 
-# --- Stage / Package --- #
 
 [[ci.jobs]]
 id = "package:rust"
 inputs = ["build#product"]
 outputs.package = ["target/package/{profile}/{target}"]
 
-# --- Stage / Release --- #
 
 [[ci.jobs]]
 id = "release:publish:dry"
@@ -186,12 +178,6 @@ step_timeout_seconds = 600
 [conventions.rust]
 exclude = ["schematic-domain"]
 
-[conventions.testing.limits]
-unit = 512
-# The Runtime Crate Alone Owns About 660 Curated Stories.
-integration = 1024
-acceptance = 128
-system = 64
 
 [conventions.testing.deadlines]
 unit = 120

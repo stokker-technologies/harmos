@@ -8,73 +8,11 @@
  */
 
 #![allow(dead_code)]
+
 /* === Modules === */
 
 mod app;
 pub mod fixtures;
-mod feeds {
-    use serde::{Deserialize, Serialize};
-
-    #[harmos_runtime::stream(
-        description = "A waveform-shaped sample row: the bank's high-rate feed.\nThe window is deliberately small so eviction is cheap to provoke.",
-        id = "pulse",
-        window = 8
-    )]
-    #[harmos_runtime::message]
-    #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub struct Pulse {
-        pub sample: u64,
-    }
-
-    #[harmos_runtime::stream(
-        description = "A second, slower feed, so per-stream claims have a counterexample.",
-        id = "reading",
-        window = 4
-    )]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-    pub struct Reading {
-        pub value: i64,
-    }
-
-    #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-    pub struct Run(pub u64);
-
-    impl harmos_runtime::streams::Track for Run {
-        fn label(&self) -> String {
-            format!("run_{}", self.0)
-        }
-    }
-
-    #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-    pub struct Probe(pub u64);
-
-    impl harmos_runtime::streams::Track for Probe {
-        fn label(&self) -> String {
-            format!("probe_{}", self.0)
-        }
-    }
-
-    #[harmos_runtime::stream(description = "A tracked capture row carrying both declared coordinates.\nThe track is two components deep, which is what a run of many probes is: one probe of one run, or everything one run published, and both are selections of the same declaration.",
-        id = "capture",
-        window = 4,
-        track = (run, probe),
-        axis = ordinal
-    )]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-    pub struct Capture {
-        pub run: Run,
-        pub probe: Probe,
-        pub ordinal: u64,
-        pub value: i64,
-    }
-
-    #[harmos_runtime::streams]
-    pub enum Bank {
-        Pulse(Pulse),
-        Reading(Reading),
-        Capture(Capture),
-    }
-}
 
 /* === Re-Exports === */
 
@@ -92,6 +30,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+
 // Third Party Imports
 
 // Local Imports
@@ -104,17 +43,11 @@ use harmos_runtime::{
 /* === Constants === */
 
 pub const HOUSE: Account = Account(0);
-
 pub const VAULT: Account = Account(1);
-
 pub const DEPOSIT: (Kind, &str, u32) = (Kind::Transaction, "ledger.deposit", 1);
-
 pub const WITHDRAW: (Kind, &str, u32) = (Kind::Transaction, "ledger.withdraw", 1);
-
 pub const FREEZE: (Kind, &str, u32) = (Kind::Transaction, "ledger.freeze", 1);
-
 pub const EXPLODE: (Kind, &str, u32) = (Kind::Transaction, "ledger.explode", 1);
-
 pub const NOTED: (Kind, &str, u32) = (Kind::Record, "ledger.noted", 1);
 
 /* === Macros === */
@@ -247,6 +180,7 @@ impl From<String> for Failed {
         Self::Attempt(message)
     }
 }
+
 impl harmos_runtime::Lifecycle for Bank {
     type Config = ();
     type Error = std::convert::Infallible;
@@ -627,6 +561,101 @@ fn stored(entry: &Entry<Recorded<Bank>>) -> Envelope<Payload<Bank>> {
             // writes, so the catalog's own apply is the one that wrote it.
         },
     }
+}
+
+mod feeds {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+    use serde::{Deserialize, Serialize};
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    #[harmos_runtime::stream(
+        description = "A waveform-shaped sample row: the bank's high-rate feed.\nThe window is deliberately small so eviction is cheap to provoke.",
+        id = "pulse",
+        window = 8
+    )]
+    #[harmos_runtime::message]
+    #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Pulse {
+        pub sample: u64,
+    }
+
+    #[harmos_runtime::stream(
+        description = "A second, slower feed, so per-stream claims have a counterexample.",
+        id = "reading",
+        window = 4
+    )]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Reading {
+        pub value: i64,
+    }
+
+    #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+    pub struct Run(pub u64);
+
+    #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+    pub struct Probe(pub u64);
+
+    #[harmos_runtime::stream(description = "A tracked capture row carrying both declared coordinates.\nThe track is two components deep, which is what a run of many probes is: one probe of one run, or everything one run published, and both are selections of the same declaration.",
+        id = "capture",
+        window = 4,
+        track = (run, probe),
+        axis = ordinal
+    )]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Capture {
+        pub run: Run,
+        pub probe: Probe,
+        pub ordinal: u64,
+        pub value: i64,
+    }
+
+    /* === Enums === */
+
+    #[harmos_runtime::streams]
+    pub enum Bank {
+        Pulse(Pulse),
+        Reading(Reading),
+        Capture(Capture),
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    impl harmos_runtime::streams::Track for Run {
+        fn label(&self) -> String {
+            format!("run_{}", self.0)
+        }
+    }
+
+    impl harmos_runtime::streams::Track for Probe {
+        fn label(&self) -> String {
+            format!("probe_{}", self.0)
+        }
+    }
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

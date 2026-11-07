@@ -11,10 +11,6 @@
 
 /* === Modules === */
 
-mod sealed {
-    pub trait Sealed {}
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -72,10 +68,15 @@ impl<'a> Queued<'a> {
 }
 
 impl sealed::Sealed for ObjectEntry {}
+
 impl sealed::Sealed for StoredRecord {}
+
 impl sealed::Sealed for StoredRow {}
+
 impl sealed::Sealed for StorageSchema {}
+
 impl sealed::Sealed for FileReference {}
+
 impl sealed::Sealed for StoredIdentity {}
 
 impl Entry for ObjectEntry {
@@ -269,6 +270,42 @@ fn within(start: Option<SystemTime>, end: Option<SystemTime>, time: Option<Syste
         (Some(start), Some(end)) => time.is_some_and(|time| time >= start && time < end),
         _ => true,
     }
+}
+
+mod sealed {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    pub trait Sealed {}
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

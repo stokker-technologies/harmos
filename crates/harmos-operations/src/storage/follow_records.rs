@@ -15,13 +15,16 @@
 
 // Standard Library Imports
 use std::borrow::Cow;
+
 // Third Party Imports
+
 // Local Imports
 use harmos_domain::model::storage::codec::{Nested, Optional, product};
 use harmos_domain::model::storage::{RecordSelection, StorageCursor, StoredRecord};
 use harmos_domain::schema::declaration::{Field, Kind};
 use harmos_domain::schema::{Cardinality, Described};
 use harmos_domain::{MemorySize, MessageError};
+
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
@@ -32,6 +35,11 @@ use harmos_storage::{ErasedCatalog, StorageManager};
 product!(FollowBoundaries {
     saved: Nested<StorageCursor> => 1,
     accepted: Nested<StorageCursor> => 2,
+});
+
+product!(FollowRecords {
+    after: Optional<Nested<StorageCursor>> => 1,
+    selection: Nested<RecordSelection> => 2,
 });
 
 /* === Type Aliases === */
@@ -69,11 +77,6 @@ pub enum Followed {
 /* === Traits === */
 
 /* === Implementations === */
-
-product!(FollowRecords {
-    after: Optional<Nested<StorageCursor>> => 1,
-    selection: Nested<RecordSelection> => 2,
-});
 
 impl FollowRecords {
     fn grant_for(request: &FollowRecords) -> Option<harmos_domain::plugin::Grant> {
@@ -181,22 +184,42 @@ impl Followed {
     }
 }
 
+/* === Public Functions === */
+
+/* === Private Functions === */
+
 #[cfg(feature = "runtime")]
 mod execution {
-    use super::*;
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
 
     // Standard Library Imports
 
     // Third Party Imports
 
     // Local Imports
-
-    use harmos_sdk::operations::Operation;
-
-    use harmos_storage::{StorageCursor, StoredRecord};
-
+    use super::*;
     use crate::MemorySize;
     use crate::{Error, Result};
+    use harmos_sdk::operations::Operation;
+    use harmos_storage::{StorageCursor, StoredRecord};
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
 
     impl Operation for super::FollowRecords {
         type Error = Error;
@@ -221,10 +244,12 @@ mod execution {
             }
         }
     }
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */

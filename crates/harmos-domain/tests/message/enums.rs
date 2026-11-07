@@ -11,86 +11,13 @@
 
 /* === Modules === */
 
-// The Deployed Schema Knows Two Modes
-mod known {
-    use harmos_domain::message;
-
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
-    pub enum Mode {
-        Automatic,
-        Manual,
-    }
-
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, Default, PartialEq)]
-    pub enum Preferred {
-        Automatic,
-
-        #[default]
-        Manual,
-    }
-
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Run {
-        pub id: u32,
-        pub mode: Mode,
-    }
-
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Boxed {
-        pub id: u32,
-        pub mode: Box<Mode>,
-    }
-
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
-    pub enum Wrapped {
-        Hold(Box<Mode>),
-    }
-}
-
-// A Newer Client Adds a Third Mode Under the Same Names
-mod newer {
-    use harmos_domain::message;
-
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
-    pub enum Mode {
-        Automatic,
-        Manual,
-        Remote,
-    }
-
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Run {
-        pub id: u32,
-        pub mode: Mode,
-    }
-
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
-    pub enum Wrapped {
-        Hold(Box<Mode>),
-    }
-
-    // Omits the Mode Field Entirely
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Bare {
-        pub id: u32,
-    }
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
 
 // Standard Library Imports
 use std::fmt::Debug;
+
 // Third Party Imports
 
 // Local Imports
@@ -112,6 +39,160 @@ use harmos_sdk::grpc::{self, DecodeInput};
 /* === Implementations === */
 
 /* === Public Functions === */
+
+/* === Private Functions === */
+
+fn wire<T: harmos_domain::Message + harmos_domain::schema::Described>(value: &T) -> Vec<u8> {
+    crate::encode(value)
+}
+
+fn read<T: harmos_domain::Message + harmos_domain::schema::Described>(bytes: &[u8]) -> T {
+    grpc::decode::<T>(DecodeInput::new(bytes)).unwrap()
+}
+
+fn refused<T: harmos_domain::Message + harmos_domain::schema::Described + Debug>(bytes: &[u8]) {
+    let error = grpc::decode::<T>(DecodeInput::new(bytes)).unwrap_err();
+    assert!(error.to_string().contains("unknown protobuf enum variant"), "{error}");
+    assert!(grpc::prepare::<T>(DecodeInput::new(bytes)).map(|prepared| prepared.memory()).is_err());
+}
+
+// The Deployed Schema Knows Two Modes
+mod known {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+    use harmos_domain::message;
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct Run {
+        pub id: u32,
+        pub mode: Mode,
+    }
+
+    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct Boxed {
+        pub id: u32,
+        pub mode: Box<Mode>,
+    }
+
+    /* === Enums === */
+
+    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Clone, Debug, PartialEq)]
+    pub enum Mode {
+        Automatic,
+        Manual,
+    }
+
+    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Clone, Debug, Default, PartialEq)]
+    pub enum Preferred {
+        Automatic,
+
+        #[default]
+        Manual,
+    }
+
+    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Clone, Debug, PartialEq)]
+    pub enum Wrapped {
+        Hold(Box<Mode>),
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
+
+// A Newer Client Adds a Third Mode Under the Same Names
+mod newer {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+    use harmos_domain::message;
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct Run {
+        pub id: u32,
+        pub mode: Mode,
+    }
+
+    // Omits the Mode Field Entirely
+    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct Bare {
+        pub id: u32,
+    }
+
+    /* === Enums === */
+
+    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Clone, Debug, PartialEq)]
+    pub enum Mode {
+        Automatic,
+        Manual,
+        Remote,
+    }
+
+    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Clone, Debug, PartialEq)]
+    pub enum Wrapped {
+        Hold(Box<Mode>),
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
+
+/* === Tests === */
 
 #[test]
 fn unknown_mode_refused() {
@@ -163,21 +244,3 @@ fn known_mode_defaults() {
     let manual = Message::encode(&newer::Mode::Manual);
     assert_eq!(<known::Mode as Message>::decode(&manual).unwrap(), known::Mode::Manual);
 }
-
-/* === Private Functions === */
-
-fn wire<T: harmos_domain::Message + harmos_domain::schema::Described>(value: &T) -> Vec<u8> {
-    crate::encode(value)
-}
-
-fn read<T: harmos_domain::Message + harmos_domain::schema::Described>(bytes: &[u8]) -> T {
-    grpc::decode::<T>(DecodeInput::new(bytes)).unwrap()
-}
-
-fn refused<T: harmos_domain::Message + harmos_domain::schema::Described + Debug>(bytes: &[u8]) {
-    let error = grpc::decode::<T>(DecodeInput::new(bytes)).unwrap_err();
-    assert!(error.to_string().contains("unknown protobuf enum variant"), "{error}");
-    assert!(grpc::prepare::<T>(DecodeInput::new(bytes)).map(|prepared| prepared.memory()).is_err());
-}
-
-/* === Tests === */

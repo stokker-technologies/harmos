@@ -9,92 +9,6 @@
 
 /* === Modules === */
 
-mod other {
-    use harmos_runtime::{Application, DefinitionId, state::Kind, state::Recorded, storage::Payload};
-    use serde::{Deserializer, Serializer};
-
-    use super::super::support::journal::Wire;
-    use super::super::support::{Deposit, Explode, Ledger, Noted, Pay, Refusal, Withdraw};
-
-    #[harmos_runtime::transactions(state = Ledger, error = Refusal)]
-    #[derive(Clone, Debug)]
-    pub enum Movement {
-        Paid(Pay),
-        Blew(Explode),
-        Took(Withdraw),
-        Put(Deposit),
-    }
-
-    #[harmos_runtime::records]
-    #[derive(Clone, Debug)]
-    pub enum Observed {
-        Remark(Noted),
-    }
-
-    #[derive(Clone, Copy, Debug)]
-    pub struct Branch;
-
-    #[harmos_runtime::lanes]
-    pub enum BranchLanes {
-        #[default]
-        Open,
-    }
-    impl harmos_runtime::Lifecycle for Branch {
-        type Config = ();
-        type Error = std::convert::Infallible;
-        type Context = harmos_runtime::Startup<Self>;
-
-        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
-            Ok(Self)
-        }
-    }
-
-    impl Application for Branch {
-        type Lanes = BranchLanes;
-        type State = Ledger;
-        type Transaction = Movement;
-        type Record = Observed;
-        type Streams = ();
-    }
-
-    impl Wire for Branch {
-        fn identify(value: &Recorded<Self>) -> (DefinitionId, u32) {
-            match value {
-                Recorded::Transaction(change) => change.identify(),
-                Recorded::Record(fact) => fact.identify(),
-                Recorded::System(_) => unreachable!("system facts are encoded by the journal"),
-            }
-        }
-
-        fn encode<S: Serializer>(value: &Recorded<Self>, serializer: S) -> Result<S::Ok, S::Error> {
-            match value {
-                Recorded::Transaction(change) => change.encode_with(serializer),
-                Recorded::Record(fact) => fact.encode_with(serializer),
-                Recorded::System(_) => unreachable!("system facts are encoded by the journal"),
-            }
-        }
-
-        fn decode<'de, D: Deserializer<'de> + Copy>(
-            kind: Kind, id: &DefinitionId, version: u32, payload: D,
-        ) -> Result<Option<Payload<Self>>, D::Error> {
-            Ok(match kind {
-                Kind::Transaction => Movement::restore(id, version, payload)?.map(|change| Payload {
-                    prepared: None,
-                    id: id.clone(),
-                    version,
-                    value: Recorded::Transaction(harmos_runtime::operations::Response::new(change)),
-                }),
-                Kind::Record => Observed::restore(id, version, payload)?.map(|fact| Payload {
-                    prepared: None,
-                    id: id.clone(),
-                    version,
-                    value: Recorded::Record(fact),
-                }),
-            })
-        }
-    }
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -102,11 +16,12 @@ mod other {
 // Standard Library Imports
 
 // Third Party Imports
+use support::journal::{Journal, Store, Wire};
 use support::{Bank, Ledger, Noted, booted, deposit, ledger, withdraw};
+
 // Local Imports
 use super::support;
 use harmos_runtime::{DefinitionId, Runtime, state::Kind, state::Position, state::Recorded, state::Transaction};
-use support::journal::{Journal, Store, Wire};
 
 /* === Constants === */
 
@@ -224,6 +139,123 @@ async fn decode_matches_recovery() {
     recovered.apply(&mut recovery_state);
 
     assert_eq!(live_state, recovery_state, "the same envelope payload reaches the same generated restore path");
+}
+
+mod other {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+    use serde::{Deserializer, Serializer};
+
+    // Local Imports
+    use super::super::support::journal::Wire;
+    use super::super::support::{Deposit, Explode, Ledger, Noted, Pay, Refusal, Withdraw};
+    use harmos_runtime::{Application, DefinitionId, state::Kind, state::Recorded, storage::Payload};
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct Branch;
+
+    /* === Enums === */
+
+    #[harmos_runtime::transactions(state = Ledger, error = Refusal)]
+    #[derive(Clone, Debug)]
+    pub enum Movement {
+        Paid(Pay),
+        Blew(Explode),
+        Took(Withdraw),
+        Put(Deposit),
+    }
+
+    #[harmos_runtime::records]
+    #[derive(Clone, Debug)]
+    pub enum Observed {
+        Remark(Noted),
+    }
+
+    #[harmos_runtime::lanes]
+    pub enum BranchLanes {
+        #[default]
+        Open,
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    impl harmos_runtime::Lifecycle for Branch {
+        type Config = ();
+        type Error = std::convert::Infallible;
+        type Context = harmos_runtime::Startup<Self>;
+
+        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+            Ok(Self)
+        }
+    }
+
+    impl Application for Branch {
+        type Lanes = BranchLanes;
+        type State = Ledger;
+        type Transaction = Movement;
+        type Record = Observed;
+        type Streams = ();
+    }
+
+    impl Wire for Branch {
+        fn identify(value: &Recorded<Self>) -> (DefinitionId, u32) {
+            match value {
+                Recorded::Transaction(change) => change.identify(),
+                Recorded::Record(fact) => fact.identify(),
+                Recorded::System(_) => unreachable!("system facts are encoded by the journal"),
+            }
+        }
+
+        fn encode<S: Serializer>(value: &Recorded<Self>, serializer: S) -> Result<S::Ok, S::Error> {
+            match value {
+                Recorded::Transaction(change) => change.encode_with(serializer),
+                Recorded::Record(fact) => fact.encode_with(serializer),
+                Recorded::System(_) => unreachable!("system facts are encoded by the journal"),
+            }
+        }
+
+        fn decode<'de, D: Deserializer<'de> + Copy>(
+            kind: Kind, id: &DefinitionId, version: u32, payload: D,
+        ) -> Result<Option<Payload<Self>>, D::Error> {
+            Ok(match kind {
+                Kind::Transaction => Movement::restore(id, version, payload)?.map(|change| Payload {
+                    prepared: None,
+                    id: id.clone(),
+                    version,
+                    value: Recorded::Transaction(harmos_runtime::operations::Response::new(change)),
+                }),
+                Kind::Record => Observed::restore(id, version, payload)?.map(|fact| Payload {
+                    prepared: None,
+                    id: id.clone(),
+                    version,
+                    value: Recorded::Record(fact),
+                }),
+            })
+        }
+    }
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

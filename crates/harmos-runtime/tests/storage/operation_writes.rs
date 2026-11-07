@@ -6,6 +6,7 @@
  *
  * ***
  */
+
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -19,14 +20,14 @@ use std::sync::Arc;
 // Third Party Imports
 use arrow_array::{Array, ArrayRef, RecordBatch, StringArray, StructArray, UInt64Array};
 use arrow_schema::{DataType, Field, Fields, Schema};
+
+// Local Imports
+use super::{Fixture, Lanes, config};
 use harmos_operations::storage::{WriteRecords, WriteStreams};
 use harmos_runtime::operations::StreamSettings;
 use harmos_runtime::storage::arrow::ArrowBatch;
 use harmos_runtime::storage::writes::{DataBatch, WriteReceipt};
 use harmos_runtime::{Identifier, MemorySize, Message};
-
-// Local Imports
-use super::{Fixture, Lanes, config};
 
 /* === Constants === */
 
@@ -91,6 +92,8 @@ pub(super) async fn seed(f: &Fixture) {
     f.storage.flush().await.unwrap();
 }
 
+/* === Private Functions === */
+
 #[tokio::test]
 async fn record_exchange_receipts() {
     let f = Fixture::new(config()).await;
@@ -152,6 +155,8 @@ async fn cancelled_exchange_retains() {
     f.finish().await;
 }
 
+/* === Tests === */
+
 #[test]
 fn batch_descriptor_roundtrips() {
     // Portable Batch Descriptors Preserve Identity And Native Arrow Values.
@@ -163,7 +168,3 @@ fn batch_descriptor_roundtrips() {
     assert_eq!(decoded.destination, original.destination);
     assert_eq!(decoded.data, original.data);
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

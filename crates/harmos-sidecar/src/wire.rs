@@ -19,6 +19,7 @@ use std::sync::Arc;
 
 // Third Party Imports
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
+
 // Local Imports
 use harmos_domain::Message;
 use harmos_sdk::operations::{CHILD_METHOD, CallValue, OperationDeclaration, WIRE_METHOD, WireChildCall, WireCommand};
@@ -74,8 +75,8 @@ impl FramePayload {
         &self.bytes[self.range.clone()]
     }
 
-    /// Compacts a unique backing allocation into its visible bytes.
-    /// Shared payloads copy their visible bytes into an independent allocation.
+    // Compacts a unique backing allocation into its visible bytes.
+    // Shared payloads copy their visible bytes into an independent allocation.
     pub fn into_vec(self) -> Vec<u8> {
         let Self { bytes, range } = self;
         let mut bytes = match Arc::try_unwrap(bytes) {
@@ -145,15 +146,15 @@ impl Frame {
     pub const LIMIT: usize = 16 * 1024 * 1024;
     pub const OVERSIZED: i64 = -32_603;
 
-    /// Bounds a routed Prepare or child call with no portable context values.
-    /// Uses maximal identifiers and includes a generation context for the child.
-    /// Frame lengths exclude the four-byte physical packet prefix.
+    // Bounds a routed Prepare or child call with no portable context values.
+    // Uses maximal identifiers and includes a generation context for the child.
+    // Frame lengths exclude the four-byte physical packet prefix.
     pub fn request_encoded_len<O: OperationDeclaration>(request: &O::Request) -> usize {
         Self::request_payload_encoded_len(O::ID, harmos_domain::Message::encoded_size(request))
     }
 
-    /// Bounds a routed Prepare or empty-values child carrying this encoded payload.
-    /// Use child_payload_encoded_len when the child carries portable values.
+    // Bounds a routed Prepare or empty-values child carrying this encoded payload.
+    // Use child_payload_encoded_len when the child carries portable values.
     pub fn request_payload_encoded_len(operation: &str, payload: usize) -> usize {
         if operation.len() > Self::LIMIT {
             return usize::MAX;
@@ -162,8 +163,8 @@ impl Frame {
         call_encoded_len(u64::MAX, WIRE_METHOD, prepare).max(Self::child_payload_encoded_len(operation, u64::MAX, payload, true, &[], None))
     }
 
-    /// Bounds a child call using its actual portable values and generation presence.
-    /// Only the unknown outer identifier is bounded by its maximal encoded width.
+    // Bounds a child call using its actual portable values and generation presence.
+    // Only the unknown outer identifier is bounded by its maximal encoded width.
     pub fn child_payload_encoded_len(
         operation: &str, generation: u64, payload: usize, generation_context: bool, values: &[CallValue],
         retry: Option<harmos_sdk::operations::RetryPolicy>,
@@ -178,7 +179,7 @@ impl Frame {
         call_encoded_len(u64::MAX, CHILD_METHOD, empty_envelope.saturating_add(growth))
     }
 
-    /// Tests the routed Prepare or empty-values child bound; not an arbitrary child context.
+    // Tests the routed Prepare or empty-values child bound; not an arbitrary child context.
     pub fn request_fits<O: OperationDeclaration>(request: &O::Request) -> bool {
         Self::request_encoded_len::<O>(request) <= Self::LIMIT
     }

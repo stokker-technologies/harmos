@@ -76,8 +76,6 @@ fn limits() -> harmos_runtime::operations::StreamSettings {
     }
 }
 
-/* === Tests === */
-
 #[tokio::test]
 async fn read_file_streams() {
     let (fixture, mut producer, _) = setup().await;
@@ -152,3 +150,5 @@ async fn future_offset_refused() {
     producer.abort().await.unwrap();
     fixture.finish().await;
 }
+
+/* === Tests === */

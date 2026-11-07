@@ -15,8 +15,10 @@
 
 // Standard Library Imports
 use std::borrow::Cow;
+
 // Third Party Imports
 use serde::{Deserialize, Serialize};
+
 // Local Imports
 use crate::message::{PostcardReader, PostcardValue};
 use crate::schema::declaration::{Field, Kind};
@@ -247,8 +249,45 @@ impl RowMetadata for Aggregate {}
 
 /* === Private Functions === */
 
+const fn variant(name: &'static str, tag: u32, payload: declaration::Definition) -> Field {
+    Field {
+        name: Cow::Borrowed(name),
+        tag,
+        kind: Kind::Message { definition: payload },
+        cardinality: Cardinality::Variant,
+    }
+}
+
 // Serde carries the rank as the declared u32, so its Postcard matches the schema.
 mod rank {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
     pub(super) fn serialize<S: serde::Serializer>(rank: &u8, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_u32(u32::from(*rank))
     }
@@ -257,15 +296,10 @@ mod rank {
         let rank = <u32 as serde::Deserialize>::deserialize(deserializer)?;
         u8::try_from(rank).map_err(|_| serde::de::Error::custom("percentile rank exceeds 255"))
     }
-}
 
-const fn variant(name: &'static str, tag: u32, payload: declaration::Definition) -> Field {
-    Field {
-        name: Cow::Borrowed(name),
-        tag,
-        kind: Kind::Message { definition: payload },
-        cardinality: Cardinality::Variant,
-    }
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

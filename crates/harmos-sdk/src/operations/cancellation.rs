@@ -31,7 +31,7 @@ use std::task::{Poll, Waker};
 
 /* === Structs === */
 
-/// A Sticky, Executor-Independent Signal Shared By One Operation Attempt.
+// A Sticky, Executor-Independent Signal Shared By One Operation Attempt.
 #[derive(Clone, Default)]
 pub struct Cancellation(Arc<Mutex<State>>);
 

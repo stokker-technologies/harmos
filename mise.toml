@@ -8,13 +8,11 @@ github_attestations = false
 
 [tools]
 # Languages and Runtimes
+cmake = "4.1.2"
 go = "1.27.3"
 node = "26.12.1"
 python = "3.15.2"
 rust = { version = "1.99.1", components = "clippy,rustfmt,llvm-tools", profile = "minimal", targets = "wasm32-unknown-unknown,wasm32-wasip2" }
-
-# Native SDK Prototype
-cmake = "4.1.2"
 
 # Package Managers
 uv = "0.13.6"
@@ -130,7 +128,6 @@ run = [
   "{% if usage.extended %}uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.cargo -- --locked --profile test --manifest-path examples/schematic/Cargo.toml --workspace --all-targets{% endif %}",
 ]
 
-
 # === Check === #
 
 [tasks.check]
@@ -139,7 +136,7 @@ run = [{ task = "check:repository" }, { task = "check:rust" }, { task = "check:p
 
 [tasks."check:python"]
 description = "Check Python"
-run = [{ task = "format:python --check" }, { task = "lint:python" }, { task = "test:tooling" }]
+run = [{ task = "format:python --check" }, { task = "lint:python" }, { task = "test:python:integration" }]
 
 [tasks."check:python:generated"]
 description = "Check Generated Python"
@@ -173,6 +170,11 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build --profile {{usage.profile}}",
 ]
 
+[tasks."build:cpp"]
+description = "Build the C++ Sidecar Prototype"
+depends = ["prepare:tools"]
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.cpp"
+
 [tasks."build:rust:bench"]
 description = "Build Benchmark Executables"
 usage = 'flag "--extended"'
@@ -192,16 +194,6 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.cargo focused check --locked --profile test --manifest-path examples/schematic/Cargo.toml --workspace --all-targets",
 ]
 
-[tasks."build:cpp"]
-description = "Build the C++ Sidecar Prototype"
-depends = ["prepare:tools"]
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.cpp"
-
-[tasks."test:rust:cpp"]
-description = "Build and Prove the C++ Sidecar Prototype"
-depends = ["prepare:tools"]
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.cpp --test"
-
 [tasks."build:rust:focused"]
 description = "Compile and Run a Focused Rust Selection"
 depends = ["prepare:tools"]
@@ -219,15 +211,19 @@ run = [
 
 # === Test === #
 
-[tasks."test:tooling"]
-description = "Test CI and Release Tooling"
-run = "uv run --locked --project tools/python python -m unittest discover -s tools/python/tests -v"
-
 [tasks.test]
 description = "Test Every Layer"
 usage = 'flag "--profile <profile>" default="dev"'
 
-run = [{ tasks = ["test:rust --profile {{usage.profile}}"] }]
+run = [{ tasks = ["test:rust --profile {{usage.profile}}", "test:python"] }]
+
+[tasks."test:python"]
+description = "Test Python"
+run = [{ tasks = ["test:python:integration"] }]
+
+[tasks."test:python:integration"]
+description = "Test CI and Release Tooling"
+run = "uv run --locked --project tools/python python -m unittest discover -s tools/python/tests/integration -v"
 
 [tasks."test:rust"]
 description = "Test Rust"
@@ -239,17 +235,6 @@ run = [
     "test:rust:acceptance --profile {{usage.profile}}",
     "test:rust:system --profile {{usage.profile}}",
   ] },
-]
-
-[tasks."test:rust:extended"]
-description = "Build and Test Optional Local Feature and Target Configurations"
-usage = 'flag "--profile <profile>" default="dev"'
-run = [
-  { task = "build --profile {{usage.profile}}" },
-  { task = "build:rust:compatibility --profile {{usage.profile}}" },
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.rust.tests --extended --profile {{usage.profile}}",
-  { task = "prepare:tests:fixtures --profile {{usage.profile}}" },
-  { task = "test --profile {{usage.profile}}" },
 ]
 
 [tasks."test:rust:unit"]
@@ -282,6 +267,15 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} -- -E \"!test(/^authoring::/)\"",
 ]
 
+[tasks."test:rust:system"]
+description = "Test System Rust"
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["prepare:tools"]
+run = [
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category system --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}} -- --test-threads 1",
+]
+
 [tasks."test:rust:coverage"]
 description = "Measure Coverage over Instrumented Lanes"
 usage = 'flag "--profile <profile>" default="dev"'
@@ -289,6 +283,22 @@ depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category acceptance --starter --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.test.run coverage --language rust --profile {{usage.profile}}",
+]
+
+[tasks."test:rust:cpp"]
+description = "Build and Prove the C++ Sidecar Prototype"
+depends = ["prepare:tools"]
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.cpp --test"
+
+[tasks."test:rust:extended"]
+description = "Build and Test Optional Local Feature and Target Configurations"
+usage = 'flag "--profile <profile>" default="dev"'
+run = [
+  { task = "build --profile {{usage.profile}}" },
+  { task = "build:rust:compatibility --profile {{usage.profile}}" },
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.build.rust.tests --extended --profile {{usage.profile}}",
+  { task = "prepare:tests:fixtures --profile {{usage.profile}}" },
+  { task = "test --profile {{usage.profile}}" },
 ]
 
 [tasks."test:rust:starter"]
@@ -301,15 +311,6 @@ depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category acceptance --starter --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.machine -- python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} -- -E \"test(/^authoring::/)\"{% if usage.filter %} -E \"{{usage.filter}}\"{% endif %}",
-]
-
-[tasks."test:rust:system"]
-description = "Test System Rust"
-usage = 'flag "--profile <profile>" default="dev"'
-depends = ["prepare:tools"]
-run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category system --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}} -- --test-threads 1",
 ]
 
 # === Bench === #
@@ -327,11 +328,6 @@ run = [
     "bench:rust:system{% if usage.extended %} --extended{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
   ] },
 ]
-
-[tasks."bench:rust:extended"]
-description = "Build and Run Optional Local Feature Benchmarks"
-usage = 'flag "--refresh-baseline"'
-run = [{ task = "build:rust:bench --extended" }, { task = "bench --extended{% if usage.refresh_baseline %} --refresh-baseline{% endif %}" }]
 
 [tasks."bench:rust:unit"]
 description = "Bench Unit Rust"
@@ -359,6 +355,11 @@ flag "--extended"
 '''
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category system --language rust --archive-argument=--features --archive-argument=harmos-runtime/plugin-sidecar,harmos-runtime/plugin-guest,harmos-runtime/grpc{% if usage.extended %} --archive-argument=--all-features{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
+
+[tasks."bench:rust:extended"]
+description = "Build and Run Optional Local Feature Benchmarks"
+usage = 'flag "--refresh-baseline"'
+run = [{ task = "build:rust:bench --extended" }, { task = "bench --extended{% if usage.refresh_baseline %} --refresh-baseline{% endif %}" }]
 
 # === Docs === #
 

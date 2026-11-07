@@ -9,16 +9,13 @@
 
 /* === Modules === */
 
-mod facade {
-    pub use harmos_runtime as __harmos;
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
 
 // Standard Library Imports
 use std::time::Duration;
+
 // Third Party Imports
 
 // Local Imports
@@ -164,6 +161,42 @@ impl harmos_runtime::Operation for SelectedDeclaration {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+mod facade {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    pub use harmos_runtime as __harmos;
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
 
 /* === Tests === */
 

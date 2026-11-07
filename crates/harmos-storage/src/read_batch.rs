@@ -17,7 +17,9 @@
 use std::borrow::Borrow;
 use std::ops::Deref;
 use std::sync::Arc;
+
 // Third Party Imports
+
 // Local Imports
 use crate::MemorySize;
 
@@ -27,7 +29,7 @@ use crate::MemorySize;
 
 /* === Type Aliases === */
 
-/// A retained collection of original typed row pages.
+// A retained collection of original typed row pages.
 pub type ReadPages<T> = ReadBatch<Vec<ReadBatch<Vec<T>>>>;
 
 /* === Structs === */
@@ -47,7 +49,7 @@ impl<T> ReadBatch<T> {
         Self { inner: Arc::new(value) }
     }
 
-    /// Moves A Unique Batch Through A Fallible Projection.
+    // Moves A Unique Batch Through A Fallible Projection.
     #[tracing::instrument(name = "storage.read_batch.try_map", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub fn try_map<U, E>(self, map: impl FnOnce(T) -> std::result::Result<U, E>) -> std::result::Result<ReadBatch<U>, E>
     where

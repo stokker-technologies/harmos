@@ -12,17 +12,6 @@
 mod connection;
 mod consumption;
 mod credit;
-mod payload {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_bytes(bytes)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<&'de [u8], D::Error> {
-        <&[u8]>::deserialize(deserializer)
-    }
-}
 
 /* === Re-Exports === */
 
@@ -36,9 +25,11 @@ pub use credit::{Credit, Reservation};
 use std::io::{self, IoSlice};
 use std::ops::Range;
 use std::sync::Arc;
+
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+
 // Local Imports
 use crate::{Frame, FramePayload};
 
@@ -325,6 +316,49 @@ async fn read_length<R: AsyncRead + Unpin>(reader: &mut R, channel: Role) -> io:
 
 fn invalid(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error)
+}
+
+mod payload {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bytes(bytes)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<&'de [u8], D::Error> {
+        <&[u8]>::deserialize(deserializer)
+    }
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

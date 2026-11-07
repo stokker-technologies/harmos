@@ -22,7 +22,6 @@ from types import ModuleType
 from unittest.mock import patch
 
 # Third Party Imports
-
 # Local Imports
 from harmos_tools.test import run
 
@@ -32,7 +31,7 @@ from harmos_tools.test import run
 
 # === Constants === #
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 
 # === Types === #
 

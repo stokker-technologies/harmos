@@ -146,11 +146,6 @@ integration = 120
 system = 900
 unit = 120
 
-[conventions.testing.limits]
-acceptance = 128
-integration = 1024
-system = 64
-unit = 512
 
 [[conventions.testing.overrides]]
 category = "system"

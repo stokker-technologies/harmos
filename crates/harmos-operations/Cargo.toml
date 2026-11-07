@@ -101,10 +101,6 @@ tokio = { workspace = true, features = ["sync", "macros", "time"], optional = tr
 
 # === Test Targets === #
 
-[[test]]
-name = "unit"
-path = "tests/unit/main.rs"
-
 # === Bench Targets === #
 
 # === Example Targets === #

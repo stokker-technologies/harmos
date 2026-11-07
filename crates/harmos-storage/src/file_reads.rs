@@ -53,11 +53,6 @@ pub struct FileReader {
     source: Source,
 }
 
-enum Source {
-    Stored(Box<StoredReader>),
-    Local(LocalReader),
-}
-
 struct StoredReader {
     inner: Arc<Inner>,
 
@@ -72,6 +67,11 @@ struct StoredReader {
 
 /* === Enums === */
 
+enum Source {
+    Stored(Box<StoredReader>),
+    Local(LocalReader),
+}
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -84,9 +84,9 @@ impl<C> StorageManager<C> {
         context.result(span, async { self.open_file(request).await }).await
     }
 
-    /// Reads the supplied file object using explicit offsets, even after its name is deleted.
-    /// On Windows, exclusive handles are refused. If an independent reopen is denied,
-    /// reads use the supplied handle and can move the OS cursor shared with its clones.
+    // Reads the supplied file object using explicit offsets, even after its name is deleted.
+    // On Windows, exclusive handles are refused. If an independent reopen is denied,
+    // reads use the supplied handle and can move the OS cursor shared with its clones.
     pub async fn read_opened_file(&self, file: std::fs::File, range: ByteRange) -> Result<FileReader> {
         self.open_file_handle(file, range, None, None).await
     }

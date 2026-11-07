@@ -45,8 +45,9 @@ pub struct Invocation {
 
 #[derive(Clone, Copy, Debug)]
 pub struct AttemptObservation {
-    /// Zero-Based Attempt Number, Shared With The Handler Context And Trace.
+    // Zero-Based Attempt Number, Shared With The Handler Context And Trace.
     pub attempt: usize,
+
     pub outcome: OperationOutcome,
 }
 

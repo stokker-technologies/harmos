@@ -274,6 +274,7 @@ mod tests {
     enum Lanes {
         #[default]
         Open,
+
         #[lane(serial)]
         Serial,
     }

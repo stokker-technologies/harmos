@@ -8,99 +8,14 @@
  */
 
 #![cfg(feature = "simulation")]
+
 /* === Modules === */
 
 #[path = "../simulation/inverses.rs"]
 mod inverses;
+
 #[path = "../support/simulation.rs"]
 mod oracle;
-use crate::support;
-mod atomic_records {
-    use super::*;
-    use serde::{Deserialize, Serialize};
-    #[derive(Clone, Debug, Default, PartialEq, Eq)]
-    struct State(i64);
-    #[harmos_runtime::record(id = "sim.observed")]
-    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-    struct Observed {
-        before: i64,
-        amount: i64,
-    }
-    #[harmos_runtime::transaction(id = "sim.add",  inverse = Self)]
-    #[derive(Clone, Debug, Serialize, Deserialize)]
-    struct Add(i64);
-    impl Transaction<State> for Add {
-        type Error = Infallible;
-        fn check(&self, _: &State) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        fn records(&self, state: &State, out: &mut harmos_runtime::state::Records) {
-            out.push(Observed { before: state.0, amount: self.0 }).unwrap();
-        }
-        fn apply(&self, state: &mut State) {
-            state.0 += self.0;
-        }
-    }
-    impl harmos_runtime::state::Invertible<State> for Add {
-        type Inverse = Self;
-
-        fn inverse(&self, _: &State) -> Self::Inverse {
-            Self(-self.0)
-        }
-    }
-    #[harmos_runtime::transactions(state = State, error = Infallible)]
-    #[derive(Clone, Debug)]
-    enum Changes {
-        Add(Add),
-    }
-    #[harmos_runtime::records]
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    enum Facts {
-        Observed(Observed),
-    }
-    struct Model;
-    impl harmos_runtime::Lifecycle for Model {
-        type Config = ();
-        type Error = std::convert::Infallible;
-        type Context = harmos_runtime::Startup<Self>;
-
-        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
-            Ok(Self)
-        }
-    }
-
-    impl Application for Model {
-        type Lanes = Lanes;
-        type State = State;
-        type Transaction = Changes;
-        type Record = Facts;
-        type Streams = ();
-    }
-
-    #[test]
-    fn records_survive_reboot() {
-        let make = || {
-            Runtime::<Model>::simulate_with(State::default(), (), 17, |setup| {
-                setup.settings().register(Changes::catalog()).register(Facts::catalog());
-            })
-            .unwrap()
-        };
-        let mut first = make();
-        let mut second = make();
-        for sim in [&mut first, &mut second] {
-            let receipt = sim.commit(alice(), Add(7)).unwrap();
-            assert_eq!((receipt.position, receipt.frontier), (harmos_runtime::state::Position(1), harmos_runtime::state::Position(2)));
-            sim.assert_replay_equivalent();
-            sim.reboot().unwrap();
-            assert_eq!(sim.state().unwrap().value, State(7));
-            sim.undo(alice(), Focus::all()).unwrap();
-            sim.assert_replay_equivalent();
-            assert_eq!(sim.state().unwrap().value, State(0));
-            assert_eq!(sim.stop().unwrap(), harmos_runtime::state::Position(4));
-        }
-        first.assert_same(&second);
-    }
-}
 
 /* === Re-Exports === */
 
@@ -112,9 +27,13 @@ use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
 // Third Party Imports
+use support::Lanes;
+use support::{Bank, Deposit, Ledger, Noted, alice, catalog, pulse, streams};
 
 // Local Imports
+use crate::support;
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::sidecar::{Notice, Supervised};
 use harmos_runtime::simulation::entropy;
@@ -123,7 +42,6 @@ use harmos_runtime::{
     state::Focus, state::Kind, state::Transaction,
 };
 use harmos_sidecar::{Attach, PluginNative, Supervisor};
-use support::{Bank, Deposit, Ledger, Noted, alice, catalog, pulse, streams};
 
 /* === Constants === */
 
@@ -212,7 +130,13 @@ struct IdleResident {
 
 /* === Enums === */
 
-use support::Lanes;
+#[harmos_runtime::catalog]
+enum SimOperations {
+    Pending(PendingDeclaration),
+    Answering(AnsweringDeclaration),
+    Drawing(DrawingDeclaration),
+    Timing(TimingItsOwnWaitDeclaration),
+}
 
 /* === Traits === */
 
@@ -294,6 +218,7 @@ impl Identified for DivergentChange {
         (DefinitionId::new("sim.divergent"), 1)
     }
 }
+
 impl harmos_runtime::Lifecycle for Divergent {
     type Config = ();
     type Error = std::convert::Infallible;
@@ -438,14 +363,6 @@ impl harmos_runtime::services::Resident<Bank> for IdleResident {
 
 /* === Private Functions === */
 
-#[harmos_runtime::catalog]
-enum SimOperations {
-    Pending(PendingDeclaration),
-    Answering(AnsweringDeclaration),
-    Drawing(DrawingDeclaration),
-    Timing(TimingItsOwnWaitDeclaration),
-}
-
 fn bank(seed: u64, configure: impl Fn(&mut Setup<Bank>) + Send + Sync + 'static) -> SimulatedRuntime<Bank> {
     Runtime::<Bank>::simulate_with(Ledger::default(), (), seed, move |setup| {
         setup.operations::<SimOperations>(Lanes::Serial);
@@ -493,6 +410,146 @@ fn entropy_run(seed: u64) -> (SimulatedRuntime<Bank>, Vec<u64>) {
     sim.settle(handle).expect("the entropy job settles");
     let values = draws.lock().expect("draw lock is healthy").clone();
     (sim, values)
+}
+
+// The Feature Only Adds: A Spawned Start Stays Send Under Simulation.
+#[tokio::test]
+async fn start_stays_send() {
+    let runtime = tokio::spawn(Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        setup.operations::<SimOperations>(Lanes::Serial);
+        setup.settings().register(catalog()).register(streams());
+    }))
+    .await
+    .expect("the spawned start completes")
+    .expect("the bank runtime starts");
+    runtime.shutdown().await.unwrap();
+}
+
+mod atomic_records {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+    use serde::{Deserialize, Serialize};
+
+    // Local Imports
+    use super::*;
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct State(i64);
+
+    #[harmos_runtime::record(id = "sim.observed")]
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    struct Observed {
+        before: i64,
+        amount: i64,
+    }
+
+    #[harmos_runtime::transaction(id = "sim.add",  inverse = Self)]
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct Add(i64);
+
+    struct Model;
+
+    /* === Enums === */
+
+    #[harmos_runtime::transactions(state = State, error = Infallible)]
+    #[derive(Clone, Debug)]
+    enum Changes {
+        Add(Add),
+    }
+
+    #[harmos_runtime::records]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    enum Facts {
+        Observed(Observed),
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    impl Transaction<State> for Add {
+        type Error = Infallible;
+        fn check(&self, _: &State) -> Result<(), Self::Error> {
+            Ok(())
+        }
+        fn records(&self, state: &State, out: &mut harmos_runtime::state::Records) {
+            out.push(Observed { before: state.0, amount: self.0 }).unwrap();
+        }
+        fn apply(&self, state: &mut State) {
+            state.0 += self.0;
+        }
+    }
+
+    impl harmos_runtime::state::Invertible<State> for Add {
+        type Inverse = Self;
+
+        fn inverse(&self, _: &State) -> Self::Inverse {
+            Self(-self.0)
+        }
+    }
+
+    impl harmos_runtime::Lifecycle for Model {
+        type Config = ();
+        type Error = std::convert::Infallible;
+        type Context = harmos_runtime::Startup<Self>;
+
+        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+            Ok(Self)
+        }
+    }
+
+    impl Application for Model {
+        type Lanes = Lanes;
+        type State = State;
+        type Transaction = Changes;
+        type Record = Facts;
+        type Streams = ();
+    }
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+
+    #[test]
+    fn records_survive_reboot() {
+        let make = || {
+            Runtime::<Model>::simulate_with(State::default(), (), 17, |setup| {
+                setup.settings().register(Changes::catalog()).register(Facts::catalog());
+            })
+            .unwrap()
+        };
+        let mut first = make();
+        let mut second = make();
+        for sim in [&mut first, &mut second] {
+            let receipt = sim.commit(alice(), Add(7)).unwrap();
+            assert_eq!((receipt.position, receipt.frontier), (harmos_runtime::state::Position(1), harmos_runtime::state::Position(2)));
+            sim.assert_replay_equivalent();
+            sim.reboot().unwrap();
+            assert_eq!(sim.state().unwrap().value, State(7));
+            sim.undo(alice(), Focus::all()).unwrap();
+            sim.assert_replay_equivalent();
+            assert_eq!(sim.state().unwrap().value, State(0));
+            assert_eq!(sim.stop().unwrap(), harmos_runtime::state::Position(4));
+        }
+        first.assert_same(&second);
+    }
 }
 
 /* === Tests === */
@@ -657,17 +714,4 @@ fn sidecar_fault_scripted() {
         "the scripted regime is the one the trace records"
     );
     first.assert_same(&second);
-}
-
-// The Feature Only Adds: A Spawned Start Stays Send Under Simulation.
-#[tokio::test]
-async fn start_stays_send() {
-    let runtime = tokio::spawn(Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
-        setup.operations::<SimOperations>(Lanes::Serial);
-        setup.settings().register(catalog()).register(streams());
-    }))
-    .await
-    .expect("the spawned start completes")
-    .expect("the bank runtime starts");
-    runtime.shutdown().await.unwrap();
 }

@@ -18,8 +18,10 @@
 // Standard Library Imports
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
+
 // Third Party Imports
 use arrow_array::{StringArray, StructArray, UInt64Array};
+
 // Local Imports
 use super::super::{Bank, Data, Ledger, Recovery, catalog, history};
 use super::{Fixture, Lanes, config};
@@ -38,15 +40,32 @@ use harmos_runtime::storage::{
 };
 use harmos_runtime::{DefinitionId, Identified, Identifier, Message, Runtime};
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
 /* === Constants === */
 
 /* === Macros === */
+
+macro_rules! object {
+    ($ty:ty, $name:literal) => {
+        impl Identified for $ty {
+            fn definition() -> (DefinitionId, u32) {
+                (DefinitionId::new($name), 1)
+            }
+        }
+        impl StoredObject for $ty {
+            type Key = String;
+            const RETENTION: ObjectRetention = ObjectRetention::UntilReleased;
+            fn key(&self) -> &String {
+                &self.id
+            }
+        }
+    };
+}
+
+object!(First, "test.query.first");
+
+object!(Second, "test.query.second");
+
+object!(Third, "test.query.third");
 
 /* === Type Aliases === */
 
@@ -62,12 +81,14 @@ struct First {
     id: String,
     value: u64,
 }
+
 #[harmos_runtime::message]
 struct Second {
     id: String,
     value: u64,
     annotation: String,
 }
+
 #[harmos_runtime::message]
 struct Third {
     id: String,
@@ -87,27 +108,9 @@ enum Objects {
 
 /* === Implementations === */
 
-macro_rules! object {
-    ($ty:ty, $name:literal) => {
-        impl Identified for $ty {
-            fn definition() -> (DefinitionId, u32) {
-                (DefinitionId::new($name), 1)
-            }
-        }
-        impl StoredObject for $ty {
-            type Key = String;
-            const RETENTION: ObjectRetention = ObjectRetention::UntilReleased;
-            fn key(&self) -> &String {
-                &self.id
-            }
-        }
-    };
-}
-object!(First, "test.query.first");
-object!(Second, "test.query.second");
-object!(Third, "test.query.third");
-
 /* === Public Functions === */
+
+/* === Private Functions === */
 
 #[tokio::test]
 async fn query_operation_batches() {
@@ -246,8 +249,6 @@ async fn query_operation_batches() {
     fixture.finish().await;
 }
 
-/* === Private Functions === */
-
 #[tokio::test]
 async fn query_heterogeneous_projection() {
     let storage = StorageManager::<Objects>::new(
@@ -358,8 +359,6 @@ async fn query_heterogeneous_projection() {
     runtime.shutdown().await.unwrap();
 }
 
-/* === Tests === */
-
 #[tokio::test]
 async fn ipc_admission_retains() {
     let fixture = Fixture::new(config()).await;
@@ -442,3 +441,5 @@ async fn ipc_admission_retains() {
     }
     fixture.finish().await;
 }
+
+/* === Tests === */

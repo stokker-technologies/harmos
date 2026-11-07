@@ -35,19 +35,19 @@ use crate::Result;
 
 /* === Structs === */
 
-/// Immutable Derived Rows, Retained As Bounded Arrow Pages Or Private Spill Files.
+// Immutable Derived Rows, Retained As Bounded Arrow Pages Or Private Spill Files.
 #[derive(Clone)]
 pub struct Table {
     spool: Spool,
 }
 
-/// Appends Producer Pages Without Retaining Earlier Pages.
+// Appends Producer Pages Without Retaining Earlier Pages.
 pub struct TableWriter {
     builder: Builder,
     schema: Arc<Schema>,
 }
 
-/// Retains Shared Arrow Pages Or The Spill File Until The Reader Is Dropped.
+// Retains Shared Arrow Pages Or The Spill File Until The Reader Is Dropped.
 pub struct TableReader {
     pages: Pages,
 }
@@ -91,7 +91,7 @@ impl Table {
         self.spool.schema.clone()
     }
 
-    /// Apply One Transform To The Complete Table With Bounded Spill Workspace.
+    // Apply One Transform To The Complete Table With Bounded Spill Workspace.
     pub fn transform(&self, transform: &Transform, check: &mut impl FnMut() -> Result<()>) -> Result<Self> {
         check()?;
         let schema = transform.output_schema(&self.spool.schema)?;

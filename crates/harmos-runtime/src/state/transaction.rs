@@ -9,16 +9,76 @@
 
 /* === Modules === */
 
+/* === Re-Exports === */
+
+pub use harmos_domain::state::{Catalogued, DecodeError, Invertible, Mutual, Never, Paired, Transaction, TransactionCatalog};
+
+/* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
+use crate::Application;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+pub(crate) type Inverting<A> = fn(&<A as Application>::Transaction, &<A as Application>::State) -> Option<<A as Application>::Transaction>;
+pub(crate) type TransactionError<A> = <<A as Application>::Transaction as Transaction<<A as Application>::State>>::Error;
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
 pub(crate) mod dispatch {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
     use std::collections::BTreeMap;
 
+    // Third Party Imports
+
+    // Local Imports
     use crate::Application;
     use crate::state::envelope::{DefinitionId, Envelope, Kind};
     use crate::state::record::Upgrade;
     use crate::state::transaction::DecodeError;
 
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
     pub(crate) type Restore<A, W> = fn(W, &mut <A as Application>::State) -> Result<(), DecodeError>;
     pub(crate) type Decode<A> = fn(&DefinitionId, u32, &[u8]) -> Result<Option<<A as Application>::Transaction>, DecodeError>;
+
+    /* === Structs === */
+
+    pub(crate) struct Dispatch<A: Application, W> {
+        transactions: BTreeMap<(DefinitionId, u32), Restore<A, W>>,
+        decoders: BTreeMap<(DefinitionId, u32), Decode<A>>,
+        records: BTreeMap<(DefinitionId, u32), Upgrade<A, W>>,
+    }
+
+    /* === Enums === */
 
     #[derive(Debug)]
     pub(crate) enum Restored<A: Application> {
@@ -27,11 +87,9 @@ pub(crate) mod dispatch {
         Skipped,
     }
 
-    pub(crate) struct Dispatch<A: Application, W> {
-        transactions: BTreeMap<(DefinitionId, u32), Restore<A, W>>,
-        decoders: BTreeMap<(DefinitionId, u32), Decode<A>>,
-        records: BTreeMap<(DefinitionId, u32), Upgrade<A, W>>,
-    }
+    /* === Traits === */
+
+    /* === Implementations === */
 
     impl<A: Application, W> Dispatch<A, W> {
         pub(crate) fn set_transaction(&mut self, id: DefinitionId, version: u32, restore: Restore<A, W>, decode: Decode<A>) {
@@ -85,6 +143,10 @@ pub(crate) mod dispatch {
         }
     }
 
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
     fn declared<F: Copy>(table: &BTreeMap<(DefinitionId, u32), F>, id: &DefinitionId, version: u32) -> Result<F, DecodeError> {
         if let Some(found) = table.get(&(id.clone(), version)) {
             return Ok(*found);
@@ -97,40 +159,8 @@ pub(crate) mod dispatch {
             DecodeError::UnknownDefinition { id: id.clone() }
         })
     }
+
+    /* === Tests === */
 }
-
-/* === Re-Exports === */
-
-pub use harmos_domain::state::{Catalogued, DecodeError, Invertible, Mutual, Never, Paired, Transaction, TransactionCatalog};
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-use crate::Application;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-pub(crate) type Inverting<A> = fn(&<A as Application>::Transaction, &<A as Application>::State) -> Option<<A as Application>::Transaction>;
-pub(crate) type TransactionError<A> = <<A as Application>::Transaction as Transaction<<A as Application>::State>>::Error;
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */

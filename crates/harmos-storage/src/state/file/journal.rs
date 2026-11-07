@@ -19,8 +19,10 @@
 use std::fs::File;
 use std::io::{BufReader, Read as _, Seek, SeekFrom, Write};
 use std::path::Path;
+
 // Third Party Imports
 use serde::{Deserialize, Serialize};
+
 // Local Imports
 use super::files::{Files, JournalOpener};
 use super::format::{self, Read, corrupt, invalid, io};
@@ -32,8 +34,10 @@ use crate::{BackendFailure, Error, Result};
 
 // The Development Format Has One Baseline.
 const VERSION: u32 = 1;
+
 // Headers Hold Only A Position, So Their Bound Is Harmos-Owned.
 const HEADER_BYTES: usize = 4096;
+
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -45,8 +49,10 @@ pub(super) struct StateLog {
     file: File,
     offsets: File,
     first: u64,
+
     #[cfg(test)]
     decoded: usize,
+
     poisoned: bool,
     history: StoreHistory,
     saved: u64,
