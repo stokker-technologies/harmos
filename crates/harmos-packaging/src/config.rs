@@ -44,9 +44,12 @@ pub struct BuildSettings {
     pub locked: bool,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct DevSettings {
     pub debounce: Duration,
+    // Absolute paths watched beyond the Cargo inputs, and paths never watched.
+    pub watch: Vec<std::path::PathBuf>,
+    pub ignore: Vec<std::path::PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -114,7 +117,11 @@ impl Default for BuildSettings {
 
 impl Default for DevSettings {
     fn default() -> Self {
-        Self { debounce: Duration::from_millis(100) }
+        Self {
+            debounce: Duration::from_millis(100),
+            watch: Vec::new(),
+            ignore: Vec::new(),
+        }
     }
 }
 
