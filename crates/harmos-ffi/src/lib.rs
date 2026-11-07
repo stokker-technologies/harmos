@@ -13,6 +13,8 @@
 
 /* === Modules === */
 
+mod error;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -25,6 +27,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 // Third Party Imports
 
 // Local Imports
+use error::Error;
 use harmos_domain::Failure;
 use harmos_domain::operations::{FailureKind, OperationPolicy, RetryPolicy};
 use harmos_sidecar::kit::dynamic::{Context, DynamicPlugin};
@@ -117,7 +120,7 @@ impl Drop for Output {
 // # Safety
 // The Name Slice Is Borrowed And Valid For The Duration Of This Call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn hrm_schema_field_tag(name: HrmSlice) -> u32 {
+pub(crate) unsafe extern "C" fn hrm_schema_field_tag(name: HrmSlice) -> u32 {
     catch_unwind(AssertUnwindSafe(|| {
         let name = std::str::from_utf8(unsafe { bytes(name) }.ok()?).ok()?;
         if name.is_empty() {
@@ -133,10 +136,10 @@ pub unsafe extern "C" fn hrm_schema_field_tag(name: HrmSlice) -> u32 {
 // # Safety
 // `id` Is NUL-Terminated; `error`, If Present, Points To An Empty Writable Error.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn hrm_plugin_new(id: *const c_char, capacity: usize, error: *mut HrmError) -> *mut HrmPlugin {
+pub(crate) unsafe extern "C" fn hrm_plugin_new(id: *const c_char, capacity: usize, error: *mut HrmError) -> *mut HrmPlugin {
     let mut result = std::ptr::null_mut();
     let status = boundary(error, || {
-        let capacity = NonZeroUsize::new(capacity).ok_or("capacity must be positive")?;
+        let capacity = NonZeroUsize::new(capacity).ok_or(Error::InvalidInput("capacity must be positive"))?;
         let plugin = DynamicPlugin::new(unsafe { text(id)? }, capacity)?;
         result = Box::into_raw(Box::new(HrmPlugin { plugin: Some(plugin), capacity }));
         Ok(())
@@ -148,11 +151,15 @@ pub unsafe extern "C" fn hrm_plugin_new(id: *const c_char, capacity: usize, erro
 // Handles Must Be Live And Exclusive; Strings And Slices Are Borrowed For This Call.
 // Callback And User State Remain Valid Until Serve Settles; Callback Must Never Unwind.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn hrm_plugin_operation(
+pub(crate) unsafe extern "C" fn hrm_plugin_operation(
     plugin: *mut HrmPlugin, id: *const c_char, schema: HrmSlice, policy: HrmPolicy, run: HrmRun, user: *mut c_void, error: *mut HrmError,
 ) -> i32 {
     boundary(error, || {
-        let plugin = unsafe { plugin.as_mut() }.ok_or("plugin is null")?.plugin.as_mut().ok_or("plugin already served")?;
+        let plugin = unsafe { plugin.as_mut() }
+            .ok_or(Error::InvalidInput("plugin is null"))?
+            .plugin
+            .as_mut()
+            .ok_or(Error::InvalidInput("plugin already served"))?;
         let schema = serde_json::from_slice(unsafe { bytes(schema)? })?;
         let policy = OperationPolicy {
             timeout: std::time::Duration::from_millis(policy.timeout_ms),
@@ -207,10 +214,14 @@ pub unsafe extern "C" fn hrm_plugin_operation(
 // # Safety
 // `plugin` Is Live And Exclusive; `name` Is NUL-Terminated; `error` Is Empty.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn hrm_plugin_stream(plugin: *mut HrmPlugin, name: *const c_char, window: usize, error: *mut HrmError) -> i32 {
+pub(crate) unsafe extern "C" fn hrm_plugin_stream(plugin: *mut HrmPlugin, name: *const c_char, window: usize, error: *mut HrmError) -> i32 {
     boundary(error, || {
-        let plugin = unsafe { plugin.as_mut() }.ok_or("plugin is null")?.plugin.as_mut().ok_or("plugin already served")?;
-        let window = NonZeroUsize::new(window).ok_or("stream window must be positive")?;
+        let plugin = unsafe { plugin.as_mut() }
+            .ok_or(Error::InvalidInput("plugin is null"))?
+            .plugin
+            .as_mut()
+            .ok_or(Error::InvalidInput("plugin already served"))?;
+        let window = NonZeroUsize::new(window).ok_or(Error::InvalidInput("stream window must be positive"))?;
         plugin.stream(unsafe { text(name)? }, window)?;
         Ok(())
     })
@@ -219,10 +230,10 @@ pub unsafe extern "C" fn hrm_plugin_stream(plugin: *mut HrmPlugin, name: *const 
 // # Safety
 // `plugin` Is Live And Exclusive Until Return; `error` Is Empty. Serve Runs Once.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn hrm_plugin_serve(plugin: *mut HrmPlugin, error: *mut HrmError) -> i32 {
+pub(crate) unsafe extern "C" fn hrm_plugin_serve(plugin: *mut HrmPlugin, error: *mut HrmError) -> i32 {
     boundary(error, || {
-        let plugin = unsafe { plugin.as_mut() }.ok_or("plugin is null")?;
-        let serving = plugin.plugin.take().ok_or("plugin already served")?;
+        let plugin = unsafe { plugin.as_mut() }.ok_or(Error::InvalidInput("plugin is null"))?;
+        let serving = plugin.plugin.take().ok_or(Error::InvalidInput("plugin already served"))?;
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().max_blocking_threads(plugin.capacity.get()).build()?;
         runtime.block_on(serving.serve())?;
         Ok(())
@@ -232,7 +243,7 @@ pub unsafe extern "C" fn hrm_plugin_serve(plugin: *mut HrmPlugin, error: *mut Hr
 // # Safety
 // `plugin` Is Null Or A Unique Handle Returned By New. Serve And All Callbacks Ended.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn hrm_plugin_free(plugin: *mut HrmPlugin) {
+pub(crate) unsafe extern "C" fn hrm_plugin_free(plugin: *mut HrmPlugin) {
     let _ = catch_unwind(AssertUnwindSafe(|| {
         if !plugin.is_null() {
             unsafe {
@@ -246,7 +257,7 @@ pub unsafe extern "C" fn hrm_plugin_free(plugin: *mut HrmPlugin) {
 // # Safety
 // `context` Is Borrowed From The Currently Running Callback.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn hrm_context_cancelled(context: *const HrmContext) -> i32 {
+pub(crate) unsafe extern "C" fn hrm_context_cancelled(context: *const HrmContext) -> i32 {
     catch_unwind(AssertUnwindSafe(|| unsafe { context.as_ref() }.map_or(-1, |context| i32::from(context.0.cancelled())))).unwrap_or(-1)
 }
 
@@ -254,9 +265,9 @@ pub unsafe extern "C" fn hrm_context_cancelled(context: *const HrmContext) -> i3
 // # Safety
 // Context Is Borrowed From This Callback On Its Rust-Owned Thread; Error Is Empty.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn hrm_context_wait_cancelled(context: *const HrmContext, error: *mut HrmError) -> i32 {
+pub(crate) unsafe extern "C" fn hrm_context_wait_cancelled(context: *const HrmContext, error: *mut HrmError) -> i32 {
     boundary(error, || {
-        let context = unsafe { context.as_ref() }.ok_or("context is null")?;
+        let context = unsafe { context.as_ref() }.ok_or(Error::InvalidInput("context is null"))?;
         context.0.wait_cancelled();
         Ok(())
     })
@@ -266,14 +277,14 @@ pub unsafe extern "C" fn hrm_context_wait_cancelled(context: *const HrmContext, 
 // Context Is Borrowed From This Callback; Id Is NUL-Terminated; Input Is Borrowed.
 // Response And Error Are Empty Writable Values And Must Be Freed With This ABI.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn hrm_context_operation(
+pub(crate) unsafe extern "C" fn hrm_context_operation(
     context: *const HrmContext, id: *const c_char, request: HrmSlice, response: *mut HrmBuffer, error: *mut HrmError,
 ) -> i32 {
     boundary(error, || {
-        let context = unsafe { context.as_ref() }.ok_or("context is null")?;
-        let response = unsafe { response.as_mut() }.ok_or("response is null")?;
+        let context = unsafe { context.as_ref() }.ok_or(Error::InvalidInput("context is null"))?;
+        let response = unsafe { response.as_mut() }.ok_or(Error::InvalidInput("response is null"))?;
         let request = serde_json::from_slice(unsafe { bytes(request)? })?;
-        let result = context.0.operation(unsafe { text(id)? }, &request).map_err(std::io::Error::other)?;
+        let result = context.0.operation(unsafe { text(id)? }, &request).map_err(Error::Operation)?;
         *response = HrmBuffer::new(serde_json::to_vec(&result)?);
         Ok(())
     })
@@ -285,14 +296,14 @@ pub unsafe extern "C" fn hrm_context_operation(
 // Context Is Borrowed From This Callback. Array And Schema Are Valid, Exclusive
 // Arrow C Data Interface Structures With Live Buffers And Non-Unwinding Releases.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn hrm_context_publish_arrow(
+pub(crate) unsafe extern "C" fn hrm_context_publish_arrow(
     context: *const HrmContext, stream: *const c_char, array: *mut ArrowArray, schema: *mut ArrowSchema, error: *mut HrmError,
 ) -> i32 {
     boundary(error, || {
-        let context = unsafe { context.as_ref() }.ok_or("context is null")?;
+        let context = unsafe { context.as_ref() }.ok_or(Error::InvalidInput("context is null"))?;
         let stream = unsafe { text(stream)? };
         if array.is_null() || schema.is_null() {
-            return Err("array or schema is null".into());
+            return Err(Error::InvalidInput("array or schema is null"));
         }
         // SAFETY: C Data Interface Move Replaces The Foreign Structs With Empty Ones.
         let array = unsafe { arrow_array::ffi::FFI_ArrowArray::from_raw(array.cast()) };
@@ -300,10 +311,10 @@ pub unsafe extern "C" fn hrm_context_publish_arrow(
         // SAFETY: The Caller Supplies A Valid C Data Array Whose Buffers Outlive Its Release.
         let data = unsafe { arrow_array::ffi::from_ffi(array, &schema) }?;
         if !matches!(data.data_type(), arrow_schema::DataType::Struct(_)) {
-            return Err("batch must be a struct array".into());
+            return Err(Error::InvalidInput("batch must be a struct array"));
         }
         let batch = arrow_array::RecordBatch::from(arrow_array::StructArray::from(data));
-        context.0.publish_arrow(stream, batch).map_err(std::io::Error::other)?;
+        context.0.publish_arrow(stream, batch).map_err(Error::Operation)?;
         Ok(())
     })
 }
@@ -311,9 +322,9 @@ pub unsafe extern "C" fn hrm_context_publish_arrow(
 // # Safety
 // Input Is Borrowed; Output And Error Are Empty Writable Values.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn hrm_buffer_copy(input: HrmSlice, output: *mut HrmBuffer, error: *mut HrmError) -> i32 {
+pub(crate) unsafe extern "C" fn hrm_buffer_copy(input: HrmSlice, output: *mut HrmBuffer, error: *mut HrmError) -> i32 {
     boundary(error, || {
-        let output = unsafe { output.as_mut() }.ok_or("output is null")?;
+        let output = unsafe { output.as_mut() }.ok_or(Error::InvalidInput("output is null"))?;
         *output = HrmBuffer::new(unsafe { bytes(input)? }.to_vec());
         Ok(())
     })
@@ -322,7 +333,7 @@ pub unsafe extern "C" fn hrm_buffer_copy(input: HrmSlice, output: *mut HrmBuffer
 // # Safety
 // Buffer Is Null, Empty Or Uniquely Owns An Allocation Returned By This ABI.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn hrm_buffer_free(buffer: *mut HrmBuffer) {
+pub(crate) unsafe extern "C" fn hrm_buffer_free(buffer: *mut HrmBuffer) {
     let _ = catch_unwind(AssertUnwindSafe(|| {
         if let Some(buffer) = unsafe { buffer.as_mut() } {
             let owned = std::mem::take(buffer);
@@ -338,7 +349,7 @@ pub unsafe extern "C" fn hrm_buffer_free(buffer: *mut HrmBuffer) {
 // # Safety
 // Error Is Null, Empty Or Uniquely Owns A Message Returned By This ABI.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn hrm_error_free(error: *mut HrmError) {
+pub(crate) unsafe extern "C" fn hrm_error_free(error: *mut HrmError) {
     let _ = catch_unwind(AssertUnwindSafe(|| {
         if let Some(error) = unsafe { error.as_mut() } {
             unsafe {
@@ -351,41 +362,41 @@ pub unsafe extern "C" fn hrm_error_free(error: *mut HrmError) {
 
 /* === Private Functions === */
 
-fn boundary(error: *mut HrmError, run: impl FnOnce() -> Result<(), Box<dyn std::error::Error>>) -> i32 {
-    let outcome = catch_unwind(AssertUnwindSafe(|| run().map_err(|error| error.to_string())));
-    let message = match outcome {
+fn boundary(error: *mut HrmError, run: impl FnOnce() -> Result<(), Error>) -> i32 {
+    let outcome = catch_unwind(AssertUnwindSafe(|| run().map_err(|error| (error.code(), error.to_string()))));
+    let (code, message) = match outcome {
         Ok(Ok(())) => return 0,
-        Ok(Err(message)) => message,
+        Ok(Err(error)) => error,
         Err(payload) => {
             // A Panic Payload May Itself Have A Panicking Destructor.
             if let Err(payload) = catch_unwind(AssertUnwindSafe(|| drop(payload))) {
                 std::mem::forget(payload);
             }
-            "Rust panic contained at the Harmos ABI".to_owned()
+            (Error::Panic.code(), Error::Panic.to_string())
         }
     };
     if let Some(error) = unsafe { error.as_mut() } {
         *error = HrmError {
-            code: 1,
+            code,
             message: HrmBuffer::new(message.into_bytes()),
         };
     }
-    1
+    code
 }
 
-unsafe fn text<'a>(text: *const c_char) -> Result<&'a str, Box<dyn std::error::Error>> {
+unsafe fn text<'a>(text: *const c_char) -> Result<&'a str, Error> {
     if text.is_null() {
-        return Err("string is null".into());
+        return Err(Error::InvalidInput("string is null"));
     }
     Ok(unsafe { CStr::from_ptr(text) }.to_str()?)
 }
 
-unsafe fn bytes<'a>(value: HrmSlice) -> Result<&'a [u8], Box<dyn std::error::Error>> {
+unsafe fn bytes<'a>(value: HrmSlice) -> Result<&'a [u8], Error> {
     if value.len == 0 {
         return Ok(&[]);
     }
     if value.data.is_null() || value.len > isize::MAX as usize {
-        return Err("invalid byte slice".into());
+        return Err(Error::InvalidInput("invalid byte slice"));
     }
     Ok(unsafe { std::slice::from_raw_parts(value.data, value.len) })
 }
@@ -399,6 +410,41 @@ fn failure(error: impl std::fmt::Display) -> Failure {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn invalid_slice_returns_an_owned_error_and_allows_the_next_call() {
+        let mut error = HrmError::default();
+        let mut output = HrmBuffer::default();
+        let invalid = HrmSlice { data: std::ptr::null(), len: 1 };
+        // SAFETY: The Slots Are Empty And Owned; Null Input Must Be Rejected Before Reading.
+        let status = unsafe { hrm_buffer_copy(invalid, &mut output, &mut error) };
+        assert_ne!(status, 0);
+        assert_eq!(status, error.code);
+        assert!(output.data.is_null());
+        // SAFETY: This ABI Allocated The Error Message And This Test Owns It.
+        let message = unsafe {
+            bytes(HrmSlice {
+                data: error.message.data,
+                len: error.message.len,
+            })
+        }
+        .unwrap();
+        assert!(!message.is_empty());
+        unsafe { hrm_error_free(&mut error) };
+        assert!(error.message.data.is_null());
+
+        let payload = b"copied after refusal";
+        let input = HrmSlice {
+            data: payload.as_ptr(),
+            len: payload.len(),
+        };
+        // SAFETY: The Payload Is Live And The Output And Error Slots Are Empty.
+        let status = unsafe { hrm_buffer_copy(input, &mut output, &mut error) };
+        assert_eq!(status, 0);
+        let actual = unsafe { bytes(HrmSlice { data: output.data, len: output.len }) }.unwrap();
+        assert_eq!(actual, payload);
+        unsafe { hrm_buffer_free(&mut output) };
+    }
 
     #[test]
     fn panic_is_contained_at_the_abi_boundary() {

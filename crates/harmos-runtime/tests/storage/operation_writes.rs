@@ -26,8 +26,8 @@ use super::{Fixture, Lanes, config};
 use harmos_operations::storage::{WriteRecords, WriteStreams};
 use harmos_runtime::operations::StreamSettings;
 use harmos_runtime::storage::arrow::ArrowBatch;
-use harmos_runtime::storage::writes::{DataBatch, WriteReceipt};
 use harmos_runtime::{Identifier, MemorySize, Message};
+use harmos_storage::writes::{DataBatch, WriteReceipt};
 
 /* === Constants === */
 

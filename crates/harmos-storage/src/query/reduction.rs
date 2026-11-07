@@ -11,6 +11,9 @@
 
 /* === Modules === */
 
+#[cfg(feature = "testing")]
+pub(super) mod testing;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -418,53 +421,6 @@ mod tests {
     use super::*;
     use arrow_array::{Int64Array, RecordBatch};
     use arrow_schema::{DataType, Field, Schema};
-
-    #[test]
-    fn cached_and_disk_coordinates_preserve_timestamps_and_bucket_selection() {
-        use arrow_array::TimestampNanosecondArray;
-        use arrow_schema::TimeUnit;
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("time", DataType::Timestamp(TimeUnit::Nanosecond, None), false),
-            Field::new("value", DataType::Int64, false),
-        ]));
-        let rows = 9001;
-        let timestamps = TimestampNanosecondArray::from((0..rows).map(|row| i64::MAX - 20_000 + row).collect::<Vec<_>>());
-        let values = Int64Array::from((0..rows).map(|row| row * 7919 % 97).collect::<Vec<_>>());
-        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(timestamps), Arc::new(values)]).unwrap();
-        let plan = Downsample {
-            algorithm: Algorithm::Lttb,
-            max_rows: 103,
-            value: Some(FieldPath::from("value")),
-            axis: Some(FieldPath::from("time")),
-        };
-        let mut builder = Builder::cached(schema).unwrap();
-        builder.push(&batch, &mut || Ok(())).unwrap();
-        let spool = builder.finish().unwrap();
-        let mut cached = coordinates(&spool, &plan, COORDINATE_CACHE_BYTES, &mut || Ok(())).unwrap();
-        let mut disk = coordinates(&spool, &plan, 0, &mut || Ok(())).unwrap();
-        assert!(cached.file.is_none());
-        assert!(disk.file.is_some());
-        for index in [0, 4095, 4096, 8192, 9000, 2, 5000] {
-            assert_eq!(cached.get(index).unwrap(), disk.get(index).unwrap());
-            assert_eq!(cached.get(index).unwrap().0, index as f64);
-        }
-        let x = (0..rows).map(|row| row as f64).collect::<Vec<_>>();
-        let y = (0..rows).map(|row| (row * 7919 % 97) as f64).collect::<Vec<_>>();
-        let expected = crate::signal::lttb(&x, &y, plan.max_rows);
-        for mut coordinates in [cached, disk] {
-            let mut selected = Selection {
-                file: tempfile::tempfile().unwrap(),
-                last: None,
-            };
-            triangles(&mut coordinates, &plan, &mut selected, &mut || Ok(())).unwrap();
-            selected.file.rewind().unwrap();
-            let mut actual = Vec::new();
-            while let Some(index) = read_index(&mut selected.file).unwrap() {
-                actual.push(index);
-            }
-            assert_eq!(actual, expected);
-        }
-    }
 
     #[test]
     fn spilled_grouped_statistics_match_stable_eager_reduction() {

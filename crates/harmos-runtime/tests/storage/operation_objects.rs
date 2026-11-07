@@ -25,11 +25,11 @@ use arrow_schema::{DataType, Field, Fields};
 use super::super::{Bank, Data, Ledger, Recovery, catalog, config, history};
 use super::Lanes;
 use harmos_operations::storage::WriteObjects;
-use harmos_runtime::storage::writes::{DataBatch, WriteReceipt};
 use harmos_runtime::storage::{
     MutationId, ObjectCatalog, ObjectRetention, ObjectValue, ObjectVersion, StorageBackends, StorageManager, StoredObject,
 };
 use harmos_runtime::{DefinitionId, Identified, Identifier, Runtime};
+use harmos_storage::writes::{DataBatch, WriteReceipt};
 
 /* === Constants === */
 

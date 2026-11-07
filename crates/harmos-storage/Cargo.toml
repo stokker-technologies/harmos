@@ -21,6 +21,7 @@ version = { workspace = true }
 [features]
 default = []
 fft = []
+testing = []
 
 # === Dependencies === #
 
@@ -85,6 +86,7 @@ tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 [dev-dependencies]
 # Local
 harmos-domain = { path = "../harmos-domain", default-features = false, features = ["derive"] }
+harmos-storage = { path = ".", features = ["testing"] }
 
 # Git
 

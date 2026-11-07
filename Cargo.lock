@@ -1289,6 +1289,7 @@ dependencies = [
  "harmos-domain",
  "harmos-sidecar",
  "serde_json",
+ "thiserror",
  "tokio",
 ]
 
@@ -1472,6 +1473,7 @@ dependencies = [
  "getrandom 0.4.3",
  "globset",
  "harmos-domain",
+ "harmos-storage",
  "notify",
  "postcard",
  "same-file",
