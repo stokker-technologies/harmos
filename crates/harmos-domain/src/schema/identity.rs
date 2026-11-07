@@ -40,6 +40,16 @@ use crate::Fingerprint;
 
 /* === Public Functions === */
 
+// Derives An Opaque Schema-Only Revision From The Canonical Encoding.
+pub fn revision(schema: &super::graph::Schema) -> Result<u32, Error> {
+    let canonical = canonical(schema.root()?)?;
+    let mut hash = Sha256::new();
+    hash.update(b"harmos.record.v1\0");
+    hash.update(canonical);
+    let digest = hash.finalize();
+    Ok(u32::from_le_bytes(digest[..4].try_into().expect("four digest bytes")).max(1))
+}
+
 pub fn fingerprint(root: View<'_>, codec: &str) -> Result<Fingerprint, Error> {
     let canonical = canonical(root)?;
     let mut hash = Sha256::new();
@@ -154,6 +164,26 @@ mod tests {
     use super::*;
     use crate::Portable;
     use crate::schema::graph::{Field, Schema};
+
+    #[test]
+    fn canonical_record_revision_golden() {
+        let schema = Schema {
+            root: 0,
+            definitions: vec![vec![Field {
+                name: "value".into(),
+                tag: 1,
+                kind: Kind::U64,
+                cardinality: Cardinality::Required,
+            }]],
+        };
+        // Independently Encoded: Definition Count, Field Count, Name, Tag, Kind, Cardinality.
+        let canonical = b"\x01\0\0\0\x01\0\0\0\x05\0\0\0value\x01\0\0\0\x02\0";
+        assert_eq!(super::canonical(schema.root().unwrap()).unwrap(), canonical);
+        assert_eq!(revision(&schema).unwrap(), 2935116089);
+        let mut changed = schema.clone();
+        changed.definitions[0][0].kind = Kind::String;
+        assert_ne!(revision(&changed).unwrap(), revision(&schema).unwrap());
+    }
 
     #[test]
     fn recursive_graph_vector() {

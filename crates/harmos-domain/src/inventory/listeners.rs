@@ -47,7 +47,7 @@ pub struct Manifest {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NamedSource {
-    Record { id: String, version: u32, row: String },
+    Record { id: String, row: String },
     Stream { id: String, row: String },
 }
 
@@ -107,9 +107,8 @@ impl NamedManifest {
             .into_iter()
             .map(|entry| {
                 let source = match entry.source {
-                    NamedSource::Record { id, version, row } => Source::Record {
+                    NamedSource::Record { id, row } => Source::Record {
                         id: id.into(),
-                        version,
                         row: super::retain_schema(Schema::from_named(&row, declarations, settings)?, settings)?,
                     },
                     NamedSource::Stream { id, row } => Source::Stream {
@@ -211,17 +210,13 @@ const fn tree<const N: usize>(out: &mut Encoder<N>, entries: &[Node<Entry>], fir
                 out.raw(b"{\"id\":");
                 out.quoted(entry.id);
                 out.raw(b",\"source\":{\"kind\":");
-                let (kind, id, version, row) = match &entry.source {
-                    SourceDeclaration::Record { id, version, row } => ("record", id, *version, row),
-                    SourceDeclaration::Stream { id, row } => ("stream", id, 0, row),
+                let (kind, id, row) = match &entry.source {
+                    SourceDeclaration::Record { id, row } => ("record", id, row),
+                    SourceDeclaration::Stream { id, row } => ("stream", id, row),
                 };
                 out.quoted(kind);
                 out.raw(b",\"id\":");
                 out.quoted(id);
-                if let SourceDeclaration::Record { .. } = &entry.source {
-                    out.raw(b",\"version\":");
-                    out.number(version as u64);
-                }
                 out.raw(b",\"row\":");
                 out.quoted(row.name);
                 out.raw(b"},\"callback\":");
