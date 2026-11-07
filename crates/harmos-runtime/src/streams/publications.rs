@@ -33,6 +33,9 @@ use harmos_domain::inventory::publications;
 const MAX_PUBLICATION_BYTES: usize = 1024 * 1024;
 const MAX_WINDOW_ROWS: usize = 65_536;
 
+/// Refusal code for a stream contract that requires a backend restart.
+pub const STREAM_CONTRACT_CHANGED: i64 = -32_608;
+
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -77,8 +80,8 @@ pub enum StreamAdmissionError {
     #[error("stream `{0}` is already owned by a live publication lease")]
     Occupied(String),
 
-    #[error("stream `{0}` changes an admitted schema or retention contract without a new version")]
-    Changed(String),
+    #[error("{0}")]
+    Changed(#[source] harmos_domain::Failure),
 
     #[error("stream `{0}` collides with a native catalog definition")]
     Native(String),
@@ -126,6 +129,15 @@ pub enum StreamPublicationError {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl StreamAdmissionError {
+    pub(crate) fn changed(id: &str) -> Self {
+        let message = format!(
+            "stream `{id}` changed its row schema or window since this backend admitted it; restart the backend to load the new definition"
+        );
+        Self::Changed(harmos_domain::Refusal::new(STREAM_CONTRACT_CHANGED, message).into_failure())
+    }
+}
 
 impl<A: Application> StreamManager<A> {
     pub fn validate_publications(
@@ -456,7 +468,7 @@ pub(super) fn validate_existing(
             return Err(StreamAdmissionError::Native(definition.id().into()));
         }
         if revisions.values().any(|wired| wired.definition.owner() != definition.owner()) {
-            return Err(StreamAdmissionError::Changed(definition.id().into()));
+            return Err(StreamAdmissionError::changed(definition.id()));
         }
         let Some(wired) = revisions.get(&definition.version()) else {
             continue;
@@ -465,7 +477,7 @@ pub(super) fn validate_existing(
             || wired.definition.schema() != definition.schema()
             || wired.definition.window() != definition.window()
         {
-            return Err(StreamAdmissionError::Changed(definition.id().into()));
+            return Err(StreamAdmissionError::changed(definition.id()));
         }
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         if require_unoccupied && wired.staged.as_ref().is_some_and(|staged| !staged.scope.has_committed()) {

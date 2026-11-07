@@ -45,7 +45,7 @@ static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
 
 /* === Type Aliases === */
 
-type Outcome = std::result::Result<(), String>;
+pub(super) type Outcome = std::result::Result<(), Arc<std::io::Error>>;
 type Running = Pin<Box<dyn Future<Output = Outcome> + Send>>;
 type Ending = Pin<Box<dyn Future<Output = std::result::Result<(), String>> + Send>>;
 type Owner<A, S, H> = std::marker::PhantomData<fn() -> (A, S, H)>;
@@ -155,7 +155,7 @@ where
             () = stopping.stopping() => None,
         };
         if let Some(outcome) = ended {
-            self.outcome.send_replace(Some(outcome.map_err(|error| error.to_string())));
+            self.outcome.send_replace(Some(outcome.map_err(Arc::new)));
             tokio::select! {
                 _ = end.wait_for(|ended| *ended) => {}
                 () = stopping.stopping() => {}
@@ -203,7 +203,7 @@ where
         let running: Running = Box::pin(async move {
             match finished.wait_for(Option::is_some).await {
                 Ok(outcome) => outcome.clone().expect("a finished connection has an outcome"),
-                Err(_) => Err("native physical attempt was interrupted".into()),
+                Err(_) => Err(Arc::new(std::io::Error::other("native physical attempt was interrupted"))),
             }
         });
         Ok(Self {
@@ -248,7 +248,7 @@ where
                 return Poll::Pending;
             }
             let Some(running) = original.running.take() else {
-                return Poll::Ready(Err("native physical attempt was interrupted".into()));
+                return Poll::Ready(Err(Arc::new(std::io::Error::other("native physical attempt was interrupted"))));
             };
             original.running_busy = true;
             running

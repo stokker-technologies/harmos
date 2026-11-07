@@ -11,6 +11,85 @@
 
 /* === Modules === */
 
+#[cfg(feature = "plugin-guest")]
+mod stream_contract {
+    use super::*;
+
+    #[tokio::test]
+    async fn changed_stream_refusal_survives_sidecar_and_guest() {
+        for change_window in [true, false] {
+            // Admit The Original Stream
+            let attachments = Arc::new(AtomicUsize::new(0));
+            let source = meter(attachments.clone());
+            let mut changed = source.publications();
+            if change_window {
+                changed[0].window += 1;
+            } else {
+                changed[0].row = harmos_runtime::schema::graph::Schema::from_declaration(
+                    <Amplified as harmos_runtime::schema::Described>::DEFINITION,
+                    &harmos_runtime::config::SchemaSettings::default(),
+                )
+                .unwrap();
+                changed[0].row_metadata.clear();
+            }
+            let mut fixture = operations::Managed::attach(
+                source.clone(),
+                serde_json::to_vec(&()).unwrap(),
+                operations::Lanes::Open,
+                NonZeroUsize::new(16).unwrap(),
+                vec![],
+                std::convert::identity,
+            )
+            .await;
+            fixture.publication().await.unwrap();
+            fixture.initialize().await.unwrap();
+
+            // Refuse Before Stopping The Running Generation
+            let admission = fixture.runtime.streams.validate_publications(source.owner(), changed.clone()).unwrap_err();
+            let failure = harmos_runtime::Failure::originate(
+                harmos_runtime::operations::FailureKind::Permanent,
+                &admission,
+                harmos_runtime::failure::Origin::Host,
+            );
+            assert_eq!(failure.refusal_code(), Some(harmos_runtime::streams::STREAM_CONTRACT_CHANGED));
+            assert_eq!(fixture.call::<AmplifyDeclaration>(AmplifyDeclaration { value: 5 }).await.unwrap().value, 10);
+
+            // Preserve The Guest Admission Refusal In A Startup Report
+            let guest = harmos_runtime::guest::Error::from(admission);
+            let startup = harmos_sdk::operations::StartupError::Runtime { source: Box::new(guest) };
+            let failure = startup.report().into_failure();
+            let received = harmos_runtime::Failure::decode(&failure.encode()).unwrap();
+            let report = harmos_runtime::operations::StartupReport::from_failure(&received).unwrap();
+            assert_eq!(report.roots[0].failure.refusal_code(), Some(harmos_runtime::streams::STREAM_CONTRACT_CHANGED));
+            fixture.shutdown().await.unwrap();
+
+            // Refuse Sidecar Staging Against The Process's Admitted Stream Table
+            let mut replacement = source;
+            replacement.publications = Some(changed);
+            let definitions = operations::inspected(&replacement, serde_json::to_vec(&()).unwrap());
+            let resident = Supervised::new(replacement, (|_: &ServiceContext<Bank>, _: Notice| {}) as fn(&ServiceContext<Bank>, Notice));
+            let mut replacement = operations::Managed::from_runtime(
+                fixture.runtime,
+                definitions,
+                resident,
+                operations::Lanes::Open,
+                NonZeroUsize::new(16).unwrap(),
+                harmos_runtime::services::POLICY,
+            );
+            let refused = replacement.initialize().await.unwrap_err();
+            assert_eq!(refused.failure().unwrap().refusal_code(), Some(harmos_runtime::streams::STREAM_CONTRACT_CHANGED));
+            let staged = replacement.resident().staged_operations().await.err().unwrap();
+            assert_eq!(
+                harmos_runtime::Failure::find(&staged).unwrap().refusal_code(),
+                Some(harmos_runtime::streams::STREAM_CONTRACT_CHANGED)
+            );
+            assert_eq!(attachments.load(Ordering::SeqCst), 1);
+            replacement.shutdown().await.unwrap();
+            replacement.runtime.shutdown().await.unwrap();
+        }
+    }
+}
+
 /* === Re-Exports === */
 
 /* === Imports === */

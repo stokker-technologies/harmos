@@ -88,11 +88,11 @@ impl<A: Application> StreamManager<A> {
                     let previous = windows
                         .get(definition.id())
                         .and_then(|revisions| revisions.get(&definition.version()))
-                        .ok_or_else(|| StreamAdmissionError::Changed(definition.id().into()))?;
+                        .ok_or(StreamAdmissionError::Inventory)?;
                     if previous.definition.metadata() != definition.metadata()
                         || previous.definition.row_metadata() != definition.row_metadata()
                     {
-                        return Err(StreamAdmissionError::Changed(definition.id().into()));
+                        return Err(StreamAdmissionError::Inventory);
                     }
                 }
             }

@@ -25,7 +25,7 @@ use sha2::{Digest, Sha256};
 // Local Imports
 use super::{
     Notice, Supervised,
-    physical::{Physical, Polling},
+    physical::{Outcome, Physical, Polling},
 };
 use crate::operations::{EncodedInvocation, PluginRegistration, PluginSdkRegistration};
 use crate::plugin::{
@@ -70,7 +70,7 @@ pub struct Managed<A: Application, S, H, L> {
 struct Backend<A: Application, S, H> {
     progress: Option<crate::plugin::Lease>,
     polling: Vec<(String, Polling<A, S, H>)>,
-    exit: Option<std::result::Result<(), String>>,
+    exit: Option<Outcome>,
     grace: std::time::Duration,
     dependencies: BTreeSet<String>,
     physical: Option<Physical<A, S, H>>,
@@ -96,7 +96,7 @@ struct Host<A: Application, S, H, L> {
     catalog: NativeCatalog<L>,
     stream_listeners: StreamListeners<A>,
     verify_artifact: fn(&S, &PluginDefinition) -> Result<()>,
-    exit: Option<std::result::Result<(), String>>,
+    exit: Option<Outcome>,
 }
 
 /* === Enums === */
@@ -109,7 +109,7 @@ enum Progress {
 #[derive(Debug, thiserror::Error)]
 pub enum ManagedError {
     #[error("{0}")]
-    Physical(String),
+    Physical(#[source] Arc<std::io::Error>),
 
     #[error(transparent)]
     Lifecycle(#[from] Error),
@@ -354,7 +354,7 @@ where
             }
             if !ready && let Poll::Ready(outcome) = readiness.as_mut().poll(task) {
                 if let Err(fault) = outcome {
-                    return Poll::Ready(Err(fault));
+                    return Poll::Ready(Err(Arc::new(std::io::Error::other(fault))));
                 }
                 context.ready();
                 ready = true;
@@ -392,6 +392,14 @@ where
     type Sidecar = Backend<A, S, H>;
     type Embedded = ();
     fn preflight(&mut self, candidate: &PluginDefinitions) -> Result<()> {
+        for definition in candidate.definitions() {
+            self.streams.validate_publications(&definition.id, definition.contributions.streams.clone()).map_err(|source| {
+                Error::OperationFailed {
+                    operation: definition.id.clone(),
+                    source: Arc::new(source),
+                }
+            })?;
+        }
         self.operations.validate_requirements(candidate)
     }
 
@@ -602,13 +610,13 @@ fn verify_executable_artifact(executable: &Executable, definition: &PluginDefini
 fn physical_cleanup(message: String) -> Error {
     Error::TaskFailed {
         domain: "native physical cleanup",
-        source: Arc::new(ManagedError::Physical(message)),
+        source: Arc::new(ManagedError::Physical(Arc::new(std::io::Error::other(message)))),
     }
 }
 
 async fn drive<A, S, H, T>(
-    physical: &mut Physical<A, S, H>, polling: &[(String, Polling<A, S, H>)], dependencies: &BTreeSet<String>,
-    exit: &mut Option<std::result::Result<(), String>>, future: impl Future<Output = Result<T>>, progress: Progress,
+    physical: &mut Physical<A, S, H>, polling: &[(String, Polling<A, S, H>)], dependencies: &BTreeSet<String>, exit: &mut Option<Outcome>,
+    future: impl Future<Output = Result<T>>, progress: Progress,
 ) -> Result<T>
 where
     A: Application,

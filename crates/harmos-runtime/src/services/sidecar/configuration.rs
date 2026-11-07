@@ -173,7 +173,7 @@ impl<A: Application, S: Attach, H> Supervised<A, S, H> {
         loop {
             match &*staged.borrow_and_update() {
                 Staging::Staged => return self.calls.current().map(crate::operations::Native::new),
-                Staging::Refused(reason) => return Err(SidecarError::Malformed(reason.clone())),
+                Staging::Refused(reason) => return Err(reason.clone()),
                 Staging::Pending => {}
             }
             staged.changed().await.map_err(|_| SidecarError::Unavailable)?;
