@@ -73,6 +73,6 @@
 - [x] 7.2 sdk/go owns generated Go stubs, a minimal authenticated sidecar, one Greet example, lifecycle/invocation ownership and cancellation under unread HTTP/2 output; no credits, receipts, Dokime or other operations.
 - [x] 7.3 Schematic's focused system-prototype target owns the Rust-to-Go process story using the existing prototype Host; mise tasks own generation, Go checks, the demo and focused Gates 1–4. Manifests and locks change only for those dependencies and generation tools.
 - [x] 7.4 docs/ owns the short behaviour specification and reading/running guide; update the product guide's documentation link and review README impact. Record simplifications, SDK author responsibilities and remaining proof in design.md.
-- [ ] 7.5 Prove the focused Windows Go story, Go tests and vet, focused Gates 1–4 and check:rust with CARGO_BUILD_JOBS=2, one Rust target at a time. No full lane, simulation or Linux run in this timebox.
-- [ ] 7.6 Commit and normal-push owned working checkpoints to feat/grpc-go-slice only after the exact required scan prints CLEAN; verify remote SHA. Stop by 14:00 local with truthful remaining work; no PR or merge.
-- [ ] 7.7 Preserve proof in design.md, run native cargo clean on owned target directories and keep the worktree.
+- [x] 7.5 Prove the focused Windows Go story, Go tests and vet, focused Gates 1–4 and check:rust with CARGO_BUILD_JOBS=2, one Rust target at a time. No full lane, simulation or Linux run in this timebox.
+- [x] 7.6 Commit and normal-push owned working checkpoints to feat/grpc-go-slice only after the exact required scan prints CLEAN; verify remote SHA. Stop by 14:00 local with truthful remaining work; no PR or merge.
+- [x] 7.7 Preserve proof in design.md, run native cargo clean on owned target directories and keep the worktree.
