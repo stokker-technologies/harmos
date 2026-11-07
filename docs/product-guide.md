@@ -90,15 +90,46 @@ System facts use `SystemFact::new(source, name, bytes)` for opaque bytes or
 stored revision carrier remains necessary; callers no longer supply its value.
 
 Managed journal entries and snapshot definition inventories store derived
-revisions. Open refuses a stored record or transaction whose definition differs,
+revisions. Open refuses a stored host record or transaction whose definition differs,
 naming its identity and directing the caller to choose a fresh storage root.
 Snapshots check the frozen definition inventory even when the record precedes
 the retained tail. Failed open preserves the stored history. Development storage
-has no migration; use a fresh root after a shape change. Unused group and snapshot
+has no migration; use a fresh root after a host state shape change. Unused group and snapshot
 wrapper ordinals are removed. ABI, failure details, transport framing, journal
 file framing, artifact manifests and `PayloadEncoding::PostcardV1` retain their
 existing compatibility versions. Schema encoding stays v1. Rebuild plugin artifacts
 with the matching SDK.
+
+
+Plugin scopes register streams and listeners, operations and services/observers,
+and inert registrations/sections. They do not register typed state records,
+transactions or object catalogs: those belong to the compiled host composition.
+Listeners and observer activations have no runtime state replayed from snapshots
+or the state journal. A plugin requests host transactions through operations;
+the host owns their persistent types.
+
+Plugin storage records, objects and streams reference the exact `SchemaKey` and
+persisted `StorageSchema` graph written with their bytes. Historical queries
+resolve those stored graphs, independently of the installed plugin. Select an
+exact schema for incompatible shapes, or explicitly project compatible fields.
+A typed object read of an old revision with a different current definition
+refuses; it never interprets old bytes as the new type. Current writes follow the
+current definition. No automatic conversion feeds old values into current state.
+Object revisions whose exact definition is absent from the current catalog are
+retained, including after new shapes are written. Backend adapters must honor
+`ObjectRetention::All` by leaving those revisions untouched.
+
+`SystemFact::new` and `SystemFact::encode` retain a schema graph for `Guest` and
+`Sidecar` sources inside the journal payload and snapshot tail. Recovery checks
+that graph against the stored revision and exposes it with `SystemFact::schema()`;
+the original payload remains available even without the plugin. Encoded facts
+contain their original Serde JSON bytes; opaque facts retain their original bytes
+and the byte-vector definition. These historical facts do not mutate host state.
+`Work` facts retain their host representation. Rebuild consumers and plugins with
+the matching SDK, and use `Prepared::system` and `SystemFact::restore` in custom
+journal adapters so definitions survive capture, snapshots and replay. Roots with
+older plugin facts lacking their definitions may need a fresh root once. Schema,
+storage and payload encoding versions stay v1; there is no migration or reset.
 
 Classification is scoped to one startup/prepare pass. If the pass contains a
 runtime preparation/construction failure, every `MissingResource` in that pass
