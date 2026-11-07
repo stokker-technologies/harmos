@@ -97,6 +97,7 @@ fn settings() -> Settings {
         message_bytes: NonZeroUsize::new(2 * 1024 * 1024).unwrap(),
         queued_batches: NonZeroUsize::new(2).unwrap(),
         window_bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+        connection_window_bytes: NonZeroUsize::new(2 * 1024 * 1024).unwrap(),
         calls: NonZeroUsize::new(16).unwrap(),
     }
 }
@@ -269,7 +270,7 @@ async fn gate_3_restart_and_retirement() {
         // Keep A Prepared Operation And An Unread Data Stream Live During Retirement.
         let prepared = sidecar.host.phase(Packet {
             phase: 1, invocation: 500, operation: format!("schematic_tools.{}", ListDirectories::definition().id),
-            fingerprint: ListDirectories::definition().fingerprint.0.to_vec(), context: vec![1; 32], payload: Vec::new(),
+            fingerprint: ListDirectories::definition().fingerprint.0.to_vec(), context: vec![1; 32], payload: Vec::new().into(),
             ..Packet::default()
         }).await.unwrap();
         assert_eq!(prepared.phase, 0);
@@ -310,7 +311,7 @@ async fn gate_3_restart_and_retirement() {
 #[tokio::test]
 async fn gate_4_slow_consumer_memory() {
     tokio::time::timeout(std::time::Duration::from_secs(120), async {
-        // Keep The Existing Queue, Message Ceiling And Fixed Windows Unchanged.
+        // Keep The Existing Queue, Message Ceiling And Fixed Stream Window.
         let sidecar = Sidecar::start(40).await;
         let child = sidecar.child.id().unwrap();
         let policy = settings();

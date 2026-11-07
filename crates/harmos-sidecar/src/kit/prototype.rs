@@ -62,6 +62,7 @@ pub struct Settings {
     pub message_bytes: NonZeroUsize,
     pub queued_batches: NonZeroUsize,
     pub window_bytes: NonZeroUsize,
+    pub connection_window_bytes: NonZeroUsize,
     pub calls: NonZeroUsize,
 }
 
@@ -103,7 +104,10 @@ struct Progress {
 
 impl Settings {
     fn validate(self) -> std::io::Result<Self> {
-        if self.message_bytes.get() > 16 * 1024 * 1024 || self.window_bytes.get() > i32::MAX as usize {
+        if self.message_bytes.get() > 16 * 1024 * 1024
+            || self.window_bytes.get() > i32::MAX as usize
+            || self.connection_window_bytes.get() > i32::MAX as usize
+        {
             return Err(std::io::Error::other("prototype limits exceed supported transport capacity"));
         }
         Ok(self)
@@ -151,6 +155,9 @@ impl State {
                 progress.wait_for(|value| value.blocked || value.finished).await.map_err(internal)?;
             }
             let progress = *progress.borrow();
+            if packet.phase == 12 && progress.finished {
+                codec::profile();
+            }
             response.count = progress.produced;
             response.phase = u32::from(progress.finished);
             return Ok(Response::new(response));
@@ -182,7 +189,7 @@ impl State {
                         operation: packet.operation,
                         fingerprint,
                         generation: packet.generation,
-                        payload: packet.payload,
+                        payload: packet.payload.to_vec(),
                     },
                 }
             }
@@ -199,10 +206,10 @@ impl State {
         let execution = Arc::new(harmos_sdk::ExecutionContext::new(resources, host.context().clone()));
         let phase = self.table.lock().map_err(internal)?.begin(command, execution);
         match phase.await {
-            WireAnswer::Ready { payload } => response.payload = payload,
+            WireAnswer::Ready { payload } => response.payload = payload.into(),
             WireAnswer::Failed { failure } => {
                 response.phase = 1;
-                response.payload = serde_json::to_vec(&failure).map_err(internal)?;
+                response.payload = serde_json::to_vec(&failure).map_err(internal)?.into();
             }
             WireAnswer::Stream { .. } => return Err(Status::unimplemented("operation stream phases are outside this experiment")),
         }
@@ -228,33 +235,57 @@ impl State {
         });
         let (output, input) = mpsc::channel(self.settings.queued_batches.get());
         tokio::spawn(async move {
+            let profiling = std::env::var_os("HARMOS_PROFILE_TRANSPORT").is_some();
+            let started = std::time::Instant::now();
+            let mut wait_ns = 0u128;
+            let mut copy_ns = 0u128;
             for sequence in 0..packet.count {
-                // Reserve Before Copying; Cancellation Never Waits For Data Capacity.
+                // Reserve Before Sharing; Cancellation Never Waits For Data Capacity.
                 let slot = match output.try_reserve() {
                     Ok(slot) => slot,
                     Err(mpsc::error::TrySendError::Full(_)) => {
                         progress.send_modify(|value| value.blocked = true);
-                        tokio::select! {
+                        let waiting = profiling.then(std::time::Instant::now);
+                        let slot = tokio::select! {
                             biased;
                             _ = cancelled.wait_for(|value| *value) => break,
                             slot = output.reserve() => match slot { Ok(slot) => slot, Err(_) => break },
+                        };
+                        if let Some(waiting) = waiting {
+                            wait_ns += waiting.elapsed().as_nanos();
                         }
+                        slot
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => break,
                 };
                 if *cancelled.borrow() {
                     break;
                 }
+                let copying = profiling.then(std::time::Instant::now);
+                let payload = packet.payload.clone();
+                if let Some(copying) = copying {
+                    copy_ns += copying.elapsed().as_nanos();
+                }
                 slot.send(Ok(Packet {
                     invocation: packet.invocation,
                     count: sequence,
-                    payload: packet.payload.clone(),
+                    payload,
                     ..Packet::default()
                 }));
                 progress.send_modify(|value| {
                     value.produced += 1;
                     value.blocked = false;
                 });
+            }
+            if profiling {
+                eprintln!(
+                    "PROFILE_PRODUCER bytes={} count={} elapsed_ms={:.3} queue_wait_ms={:.3} copy_ms={:.3}",
+                    packet.payload.len(),
+                    packet.count,
+                    started.elapsed().as_secs_f64() * 1000.0,
+                    wait_ns as f64 / 1e6,
+                    copy_ns as f64 / 1e6
+                );
             }
             progress.send_modify(|value| value.finished = true);
         });
@@ -396,11 +427,21 @@ where
             }
         }
     });
-    let incoming = stream::unfold(listener, |listener| async move { Some((listener.accept().await.map(|(socket, _)| socket), listener)) });
+    let incoming = stream::unfold(listener, |listener| async move {
+        let socket = listener.accept().await.and_then(|(socket, _)| {
+            socket.set_nodelay(true)?;
+            if std::env::var_os("HARMOS_PROFILE_TRANSPORT").is_some() {
+                eprintln!("PROFILE_TCP server_nodelay={:?} tls=false", socket.nodelay());
+            }
+            Ok(socket)
+        });
+        Some((socket, listener))
+    });
     let result = tonic::transport::Server::builder()
         .initial_stream_window_size(settings.window_bytes.get() as u32)
-        .initial_connection_window_size(settings.window_bytes.get() as u32)
+        .initial_connection_window_size(settings.connection_window_bytes.get() as u32)
         .http2_adaptive_window(Some(false))
+        .max_frame_size(64 * 1024)
         .max_concurrent_streams(settings.calls.get() as u32)
         .add_service(Endpoint { state: state.clone() })
         .serve_with_incoming(incoming)

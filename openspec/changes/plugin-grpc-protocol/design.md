@@ -4,7 +4,7 @@
 
 This branch prototypes sidecars only on native Windows, based on the landed unified Invocation over OperationHost. Guests remain Wasm; Postcard remains storage encoding. The existing framed carrier stays unchanged. Migration, harmos-protocol and SDK relocation remain deferred. Gates run in the owner's numbered order, and a gate's own measured failure stops subsequent gates.
 
-The owner corrected the original initialization stop: the missing host.publish assignment was a prototype integration defect, not a failed gate. That refusal is retained below as historical diagnostic evidence. The corrected run passes Gates 1–4 and fails Gate 5 on measured Arrow throughput. Gate 6 is unmeasured.
+The owner corrected the original initialization stop: the missing host.publish assignment was a prototype integration defect, not a failed gate. That refusal is retained below as historical diagnostic evidence. The original corrected run passes Gates 1–4 and fails Gate 5 on measured Arrow throughput. The owner subsequently authorized the single bounded tuning continuation below, including Gate 6 despite the original Gate 5 stop. Migration and any merge remain unauthorized.
 
 ## Baseline and Environment
 
@@ -28,7 +28,7 @@ The parent fixture supplies exactly Schematic's declared host.host.publish assig
 
 The client implements OperationHost and Instance. Its supported slice is unary operations without host callbacks, retry overrides, portable context values, process-local claims or typed operation endpoints. Unsupported options are refused.
 
-A separate streaming RPC repeats pre-encoded Arrow IPC batches, independently of control calls. Its producer reserves a bounded queue slot before copying a batch and selects cancellation while blocked. The fixture retains the original two queued batches, fixed 64 KiB HTTP/2 windows, 2 MiB message ceiling and 16 concurrent streams. No budget, window, deadline or threshold was tuned after measurement.
+A separate streaming RPC repeats pre-encoded Arrow IPC batches, independently of control calls. Its producer reserves a bounded queue slot and selects cancellation while blocked. The original checkpoint copied each batch and used two queued batches, fixed 64 KiB HTTP/2 windows, a 2 MiB message ceiling and 16 concurrent streams. No tuning followed that original measurement until the owner authorized the bounded continuation recorded below.
 
 ## Validation Commands
 
@@ -44,7 +44,7 @@ The optimized transport experiment uses Cargo's unchanged bench profile:
 
 Final proof reruns the four focused stories sequentially and runs mise run check:rust. No full test lane, simulation, PR or integration merge belongs to this slice.
 
-## Gate Results on Windows
+## Original Gate Results on Windows
 
 ### Gate 1: Pass — Real Sidecar Path
 
@@ -126,15 +126,116 @@ gRPC achieves about 7.3% and 6.5% of the framed medians. The best gRPC trial is 
 
 Fast Stream Support is not demonstrated by this prototype. The failure is specific to the retained implementation and settings; it does not establish an intrinsic ceiling of all possible gRPC implementations. No tuning or workaround followed this measurement.
 
-### Gate 6: Unmeasured — Net Code Removal
+### Gate 6: Original Stop — Net Code Removal
 
-The ordered stop occurred at Gate 5. No migration deletion/addition estimate was made, and no net-removal claim is made. Source retained by the prototype is not itself a migration estimate.
+The original ordered stop occurred at Gate 5. The newly authorized estimate appears in the bounded continuation below; no migration has landed.
 
 ## Decision and Documentation Impact
 
-Do not migrate on this evidence. Preserve the existing framed carrier, Wasm guests and Postcard storage. Any further prototype tuning or migration requires new owner direction; this slice stops at the measured throughput failure.
+Do not migrate on the original evidence. Preserve the existing framed carrier, Wasm guests and Postcard storage. The owner authorizes exactly one subsequent profiling/tuning pass and a branch push, with no PR, merge, migration or second tuning round. The original gate criterion remains unchanged.
 
 README.md and docs/product-guide.md shipping claims remain accurate and unchanged: this opt-in executable does not replace a shipped carrier. docs/tooling.md documents the focused Cargo selection and optimized measurement command. The SDK-layout proposal remains untouched.
+
+## Bounded Tuning Continuation
+
+### Authorization and Baseline
+
+On 2026-11-07 the owner authorized one short profiling/tuning pass, repeated matched Gate 5 measurements, retained Gates 2–4 and a Gate 6 estimate. No gate threshold, payload, framed setting, migration, PR or integration merge may change. The clean owned worktree started at b0f26cea on feat/plugin-grpc-prototype, tracking its same-named origin branch. Fresh origin/dev at 22c3b40587110e41a5c16c7849ebe28b5dc88322 merged normally before any edits. Nothing was pushed to dev; published history is not rewritten.
+
+### Profile Before Tuning
+
+Before changing transport behavior, instrumentation measured the existing optimized stream with the same 65,928-/1,048,968-byte payloads and 4,072/256 batches. HARMOS_PROFILE_TRANSPORT=1 selects one diagnostic repetition, not the seven-repetition Gate 5 proof. It times Protobuf encode/decode and producer payload cloning/reservation, observes actual accepted-socket NODELAY and counts H2 capacity events through a filtered tracing subscriber. These overlapping thread measurements must not be added as a wall-clock partition; enabled tracing also perturbs this diagnostic run.
+
+| Arrow Bytes | Producer Elapsed (ms) | Queue Reservation Wait (ms) | Payload Clone (ms) | Server Encode (ms) | Client Decode (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 65,928 | 9,053.472 | 9,015.808 | 30.922 | 63.947 | 68.115 |
+| 1,048,968 | 3,678.939 | 3,556.689 | 121.721 | 214.203 | 147.341 |
+
+The producer is blocked on its downstream consumer for 99.6% / 96.7% of its elapsed time, rather than starved for input or dominated by Arrow encoding. Arrow IPC is already encoded before timing in both carriers. The original Vec payload is cloned per batch, copied into Tonic's contiguous Protobuf encoding buffer, then copied into a decoded Vec. The first copy and codec work are measurable but much smaller than the wait. H2's prioritize trace observed buffered data with exhausted connection capacity, and later both stream and connection windows exhausted; its cumulative counter reached 4,096 such events. This counts observations, not distinct stalls or their duration.
+
+Both actual accepted server sockets reported NODELAY=false. The client Endpoint defaults to true; the custom server incoming stream bypassed that default. There is no TLS setup, certificate negotiation, encryption or compression in this experiment. These observations locate the dominant wait downstream in HTTP/2/TCP, without claiming a sampled CPU-stack or packet-capture separation of kernel TCP time from H2 credit turnaround. The diagnostic rates were gRPC/framed 28.259/332.331 and 68.763/1,142.470 MiB/s. CPU samples around execution were 31–85%, with six to seven Cargo and three to four rustc processes present; this was not quiet.
+
+### Single Selected Tuning
+
+- Set TCP_NODELAY on each accepted socket itself, and explicitly on the client. Tonic's Server setter alone is ignored by serve_with_incoming ([Tonic 0.14.9 Server](https://docs.rs/tonic/0.14.9/tonic/transport/struct.Server.html)).
+- Increase each endpoint's initial connection window from 64 KiB to 2 MiB; keep its stream window at 64 KiB. This removes the connection-level bottleneck without allowing the single data stream to run ahead past the original bound. Adaptive windows remain off: adaptive expansion or a larger stream window would change the amount of unread data admitted and could invalidate Gate 4. No application-credit protocol is added to work around that constraint.
+- Advertise 64 KiB maximum H2 frames on both endpoints, increase initial codec allocation from 8 to 64 KiB, retain its one-message yield threshold, and bound the client's request buffer to the existing 16-call admission limit. Message size stays 2 MiB, producer queue stays two, and concurrent streams stay 16. Socket send/receive buffers retain OS defaults; no unsupported socket tuning is introduced.
+- Change only the prototype Packet payload to prost bytes::Bytes. Taking ownership of the request Vec and cloning a queued batch now share immutable bytes; Protobuf decoding slices Tonic's BytesMut through DecodeBuf::copy_to_bytes. Arrow is never re-encoded. This is zero-copy payload ownership/decoding, not a claim of end-to-end zero-copy: the standard Tonic Encoder API still writes payload bytes into a contiguous EncodeBuf for each message. Removing that last copy would require a different body/codec integration, outside this pass.
+
+These settings are one selected bundle, not an isolated attribution experiment for every knob. Framed producer, framing, credits, control pipe, timing, count and payload bytes remain unchanged. Tonic's installed transport code has Connected implementations for TCP and Unix streams, but none for Windows named pipes. A named-pipe experiment would need an owned IO/Connected wrapper plus connector, listener and lifecycle handling; no clean built-in Windows named-pipe switch exists, so it was not attempted in this bounded pass.
+
+### Retained Gates 1–4
+
+The focused compiler check selected both the prototype executable and system-prototype test. Matching focused Clippy and unoptimized Cargo tests then ran all four grpc_prototype:: stories sequentially: four passed, zero failed, 45.21 seconds. Gate 1 retains real initialization, directory listing, Arrow verification and shutdown. Gate 2's eight unread-response cancellations settled with exactly four produced batches and no later progress, in 0.601–1.199 ms; a new transfer still completed. Gate 3 retains structured startup failure, physical restart, prepared-call retirement, credential/generation fences and shutdown.
+
+Gate 4 retains all original assertions, requested counts 64/4,096/65,536, eight slow-consumer checkpoints and both payloads. Produced minus consumed never exceeded four. The existing two-message queue and two in-flight positions still use the original 8,388,608-byte allowance; the larger connection window did not weaken this bound.
+
+| Arrow Bytes | Child Private Baseline / Peak / Growth (bytes) | Parent Private Baseline / Peak / Growth (bytes) |
+| --- | ---: | ---: |
+| 65,928 | 3,629,056 / 4,186,112 / 557,056 | 1,720,320 / 2,011,136 / 290,816 |
+| 1,048,968 | 3,694,592 / 6,934,528 / 3,239,936 | 2,797,568 / 4,087,808 / 1,290,240 |
+
+### Gate 5 After Tuning: Fail
+
+The same machine, Rust 1.99.1, Tonic 0.14.9 and unchanged Cargo bench profile ran the tuned diagnostic and then one seven-repetition paired proof, with profiling disabled for that proof. Both optimized child carriers ran in the same invocation, alternating order, with the unchanged eight-batch warmups, 4,072/256 timed batches, exact payload sizes and approximately 256 MiB per trial. No storage, Arrow re-encoding or timed content comparison was added. The framed function and producer have no changes. No project validation ran concurrently with measurement.
+
+| Arrow Bytes | Repetition | gRPC (MiB/s) | Framed Stdio (MiB/s) |
+| --- | ---: | ---: | ---: |
+| 65,928 | 1 | 244.343 | 410.787 |
+| 65,928 | 2 | 208.996 | 369.935 |
+| 65,928 | 3 | 249.141 | 350.488 |
+| 65,928 | 4 | 329.805 | 402.791 |
+| 65,928 | 5 | 320.530 | 460.183 |
+| 65,928 | 6 | 357.613 | 440.108 |
+| 65,928 | 7 | 241.084 | 410.025 |
+| 1,048,968 | 1 | 404.013 | 1,009.716 |
+| 1,048,968 | 2 | 342.488 | 856.414 |
+| 1,048,968 | 3 | 366.769 | 933.598 |
+| 1,048,968 | 4 | 322.092 | 776.497 |
+| 1,048,968 | 5 | 320.829 | 853.903 |
+| 1,048,968 | 6 | 352.312 | 726.742 |
+| 1,048,968 | 7 | 371.454 | 1,123.146 |
+
+| Run | Arrow Bytes | gRPC Median [Min, Max] (MiB/s) | Framed Median [Min, Max] (MiB/s) | gRPC / Framed Median |
+| --- | ---: | ---: | ---: | ---: |
+| Original | 65,928 | 28.796 [27.623, 31.548] | 393.845 [330.811, 662.580] | 0.0731 |
+| Tuned | 65,928 | 249.141 [208.996, 357.613] | 410.025 [350.488, 460.183] | 0.6076 |
+| Original | 1,048,968 | 88.060 [82.436, 98.310] | 1,345.456 [1,224.554, 1,436.724] | 0.0654 |
+| Tuned | 1,048,968 | 352.312 [320.829, 404.013] | 856.414 [726.742, 1,123.146] | 0.4114 |
+
+The tuned gRPC medians are 8.65 and 4.00 times the historical gRPC medians, but neither meets the original no-regression rule. The paired comparison is the valid current ratio; the historical comparison is not a controlled cross-day speedup claim. Framed also varies substantially with machine load. Gate 5 completed and returned exit code 1 for measured regression; this is not a compiler/test failure. No threshold or new target number was introduced.
+
+The paired task ran from 07:14:50.803 to 07:15:14.678 CET on 2026-11-07. Ten CPU snapshots during that task ranged from 41% to 70%, averaging 57%. Other compiler jobs remained present; no unrelated process was stopped. This was the available paired run after this task's own test compilation had settled, but it was still a busy machine, not a quiet or isolated benchmark. Startup observations outside timed throughput were 21.029 ms gRPC and 32.711 ms framed, not latency distributions. The profile-only pre-tuning executable SHA-256 was ba306259ddaad4ad6fefd1fbb57a0671adb71fb6e4265e8cc3e2fd77bdcbee17; the tuned executable used by both diagnostic and seven-repetition proof was 09ffb9a41bb36f02fcd627aac49afe17ba88c2393a578fe8350b2f5cdaeb4eb0.
+
+### Remaining Bottleneck and Recommendation
+
+The post-tuning diagnostic confirms NODELAY=true on both accepted sockets. Its first buffered-data capacity observation has stream window zero while connection capacity is 1,966,080 bytes: increasing the connection window removed that particular constraint, leaving the fixed stream window's credit turnaround. Producer elapsed/wait times are 1,068.372/1,065.185 ms for the smaller payload and 799.412/798.911 ms for the larger. Payload clone time falls to 0.148/0.011 ms, and client decoding to 4.869/0.604 ms; server encoding still takes 31.939/121.111 ms. The Bytes change removes the measured clone/decode copying costs, but the contiguous Tonic output copy and H2/TCP scheduling/credit overhead remain. The settings bundle was not decomposed into separate causal speedup measurements, so the gain cannot all be attributed to NODELAY, frames or Bytes individually.
+
+The remaining large gap is this bounded Tonic stream implementation's flow-control/transport path, with encoding cost especially visible for the larger batch. It is not evidence of an inherent gRPC throughput ceiling: gRPC does not mandate a 64 KiB stream window or Tonic's contiguous-buffer codec. Larger/adaptive stream windows would require revisiting how unread buffering is bounded or adding application credits; neither is attempted here, and Gate 4 is not weakened. A CPU-stack/ETW/packet trace would be needed to subdivide residual kernel TCP and H2 scheduler time precisely. No second round is started.
+
+Recommendation: retain the shipping framed carrier and do not migrate on this evidence. If language-neutral control justifies a future hybrid, use gRPC for lifecycle/operations/cancellation and retain the framed Arrow path for stream bytes, with explicit cross-channel invocation identity, credits, generation authentication, ordering, cancellation settlement and teardown. The dual contract and SDK/conformance costs are itemized in Gate 6; the owner decides whether the measured ratio and interoperability benefit justify them. This pass implements no hybrid and changes no agreed migration contract. README.md and docs/product-guide.md still describe shipping behavior accurately; the prototype remains opt-in and the bounded evidence belongs here.
+
+### Gate 6: Estimated Net Code Removal
+
+The estimate audits current owners, not a migration diff. Counts are physical Rust source lines including comments and blanks; generated code, tests, manifests and docs are excluded from both sides. The following are optimistic whole-file removal candidates for a complete gRPC replacement:
+
+| Owner | Files | Candidate Lines |
+| --- | --- | ---: |
+| Framing and Credit | crates/harmos-sidecar/src/transport.rs and transport/{connection,credit,consumption}.rs | 1,151 |
+| Frame Model and Wire Conversion | crates/harmos-sidecar/src/wire.rs | 454 |
+| Carrier Adapters | crates/harmos-sidecar/src/kit/{carrier,connection}.rs and crates/harmos-runtime/src/services/sidecar/carrier.rs | 303 |
+| Independent Control Bootstrap | crates/harmos-sidecar/src/attach/{control,windows}.rs | 284 |
+| Total Candidate Removal | | 2,192 |
+
+The original three-file prototype already occupies 908 lines, including its framed measurement helper and scaffolding. It is not a complete replacement: host callbacks/publications, actual typed upload/download/exchange streams, observers, retry/context/claims behavior, bidirectional cancellation/settlement and automatic supervision integration remain to implement. Lifecycle, admission, generation fencing, process management and common SDK WireTable/guest behavior must remain; counting those files as deletions would exaggerate savings. A planning estimate is 1,900–2,900 replacement Rust lines after excluding the measurement helper and adding the missing behavior. This is an engineering range, not measured implementation size: it yields about 292 net lines removed at the optimistic end through 708 net lines added. Net removal is not established. Authored .proto, conformance and new language SDK source would add further work outside this Rust-only estimate. Existing behavior would need a full inventory and conformance proof before narrowing this range.
+
+A hybrid retains the 1,605 framing/wire lines and most carrier adapters, while adding gRPC control/bootstrap and coordination, so it offers no credible net-removal advantage. C++ and Go would each implement generated gRPC control plus the framed stream codec, Arrow IPC batch handling, credit accounting, ordered invocation/stream correlation, cancellation/settlement and EOF/error handling. They would also need one authenticated generation identity across both channels, teardown/restart fencing and shared conformance cases for cross-channel races. Protobuf generation alone would not constitute either SDK. This is a cost assessment only; the existing proposed one-protocol migration contract is not silently changed to a hybrid.
+
+### Bounded Validation and Retention
+
+mise run check:rust passed on the completed source: Rust formatting for all three workspaces, workspace Clippy including tests, Schematic native CLI/sidecar Clippy, Schematic Wasm guest Clippy, sandbox Wasm guest Clippy and Cargo Machete with no unused dependencies. The prototype executable and process tests also passed their exact matching focused Clippy selections. The combined candidate diff against origin/dev and the continuation diff against b0f26cea both passed the required case-insensitive term scan with no matches; git diff --check was empty. Focused tests remain four passed, zero failed; no full lane, CI simulation or Linux proof is claimed. Gate 5 remains a completed measured failure. Gate 6 is an estimate rather than a migration result.
+
+The bounded source and evidence are complete. Delivery is limited to normal pushes of feat/plugin-grpc-prototype, with no PR or merge into dev. The retained worktree lock remains Owner requested retained gRPC prototype. No migration or second tuning round is started, and the deferred migration tasks remain open.
 
 ## Historical Integration Diagnostic
 
@@ -144,7 +245,7 @@ The first execution on the previous checkpoint stopped during Schematic initiali
 
 The structured Permanent failure preserved plugin origin and the lifecycle/table/binding diagnostic chain. Initialization used an empty assignment list, so later assertions were never reached. An earlier shortened exact filter selected zero tests and was not proof. The owner explicitly classified the missing assignment as an integration defect; it is not counted as a gate failure. The corrected structured assignment boundary and successful Gate 1 supersede that stop decision.
 
-## Final Validation and Retention
+## Original Validation and Retention
 
 The individual ordered proofs passed Gates 1–4. The optimized Gate 5 measurement completed and failed on its own numbers; Gate 6 remains unmeasured. The final focused rerun on the completed source passed all four stories sequentially: four passed, zero failed, 30.63 seconds of test execution. Its repeated cancellation settlement was 0.478–0.774 ms. Child private-memory growth was 471,040 / 5,730,304 bytes and parent growth was 344,064 / 2,138,112 bytes for the smaller/larger payloads; the original fixed envelope remained unchanged. No full simulation or full test lane ran.
 

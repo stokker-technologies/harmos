@@ -16,13 +16,21 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::sync::LazyLock;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 // Third Party Imports
+use bytes::Bytes;
 use prost::Message;
 use tonic::Status;
 use tonic::codec::{BufferSettings, DecodeBuf, EncodeBuf};
 // Local Imports
 
 /* === Constants === */
+
+static PROFILING: LazyLock<bool> = LazyLock::new(|| std::env::var_os("HARMOS_PROFILE_TRANSPORT").is_some());
+static ENCODE_NS: AtomicU64 = AtomicU64::new(0);
+static DECODE_NS: AtomicU64 = AtomicU64::new(0);
 
 /* === Macros === */
 
@@ -53,8 +61,8 @@ pub struct Packet {
     #[prost(bytes = "vec", tag = "7")]
     pub context: Vec<u8>,
 
-    #[prost(bytes = "vec", tag = "8")]
-    pub payload: Vec<u8>,
+    #[prost(bytes = "bytes", tag = "8")]
+    pub payload: Bytes,
 
     #[prost(uint64, tag = "9")]
     pub count: u64,
@@ -113,11 +121,16 @@ impl tonic::codec::Encoder for Encoder {
     type Item = Packet;
     type Error = Status;
     fn encode(&mut self, item: Packet, target: &mut EncodeBuf<'_>) -> Result<(), Status> {
+        let started = (*PROFILING).then(Instant::now);
         target.reserve(item.encoded_len());
-        item.encode(target).map_err(|error| Status::internal(error.to_string()))
+        let result = item.encode(target).map_err(|error| Status::internal(error.to_string()));
+        if let Some(started) = started {
+            ENCODE_NS.fetch_add(started.elapsed().as_nanos() as u64, Ordering::Relaxed);
+        }
+        result
     }
     fn buffer_settings(&self) -> BufferSettings {
-        BufferSettings::new(8192, 1)
+        BufferSettings::new(64 * 1024, 1)
     }
 }
 
@@ -125,11 +138,27 @@ impl tonic::codec::Decoder for Decoder {
     type Item = Packet;
     type Error = Status;
     fn decode(&mut self, source: &mut DecodeBuf<'_>) -> Result<Option<Packet>, Status> {
-        Packet::decode(source).map(Some).map_err(|error| Status::invalid_argument(error.to_string()))
+        let started = (*PROFILING).then(Instant::now);
+        let result = Packet::decode(source).map(Some).map_err(|error| Status::invalid_argument(error.to_string()));
+        if let Some(started) = started {
+            DECODE_NS.fetch_add(started.elapsed().as_nanos() as u64, Ordering::Relaxed);
+        }
+        result
     }
 }
 
 /* === Public Functions === */
+
+pub(super) fn profile() {
+    if *PROFILING {
+        eprintln!(
+            "PROFILE_CODEC pid={} encode_ms={:.3} decode_ms={:.3}",
+            std::process::id(),
+            ENCODE_NS.swap(0, Ordering::Relaxed) as f64 / 1e6,
+            DECODE_NS.swap(0, Ordering::Relaxed) as f64 / 1e6
+        );
+    }
+}
 
 /* === Private Functions === */
 

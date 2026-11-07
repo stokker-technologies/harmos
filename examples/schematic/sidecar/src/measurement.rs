@@ -58,6 +58,7 @@ pub async fn run() -> Result<()> {
             message_bytes: NonZeroUsize::new(2 * 1024 * 1024).unwrap(),
             queued_batches: NonZeroUsize::new(2).unwrap(),
             window_bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+            connection_window_bytes: NonZeroUsize::new(2 * 1024 * 1024).unwrap(),
             calls: NonZeroUsize::new(16).unwrap(),
         };
         let started = Instant::now();
@@ -102,7 +103,8 @@ pub async fn run() -> Result<()> {
             framed(&sender, &mut receiver, invocation, &payload, 8).await?;
             let mut grpc_rates = Vec::new();
             let mut framed_rates = Vec::new();
-            for repetition in 0..7 {
+            let repetitions = if std::env::var_os("HARMOS_PROFILE_TRANSPORT").is_some() { 1 } else { 7 };
+            for repetition in 0..repetitions {
                 invocation += 1;
                 // Alternate Carrier Order To Reduce Time-Order Bias On The Busy Machine.
                 let (grpc_rate, framed_rate) = if repetition % 2 == 0 {
@@ -120,9 +122,10 @@ pub async fn run() -> Result<()> {
             }
             grpc_rates.sort_by(f64::total_cmp);
             framed_rates.sort_by(f64::total_cmp);
-            let adequate = grpc_rates[3] >= framed_rates[3];
+            let median = grpc_rates.len() / 2;
+            let adequate = grpc_rates[median] >= framed_rates[median];
             passed &= adequate;
-            eprintln!("GATE_5_SUMMARY payload_bytes={} grpc_median={:.3} grpc_min={:.3} grpc_max={:.3} framed_median={:.3} framed_min={:.3} framed_max={:.3} ratio={:.4} no_regression={adequate}", payload.len(), grpc_rates[3], grpc_rates[0], grpc_rates[6], framed_rates[3], framed_rates[0], framed_rates[6], grpc_rates[3] / framed_rates[3]);
+            eprintln!("GATE_5_SUMMARY payload_bytes={} grpc_median={:.3} grpc_min={:.3} grpc_max={:.3} framed_median={:.3} framed_min={:.3} framed_max={:.3} ratio={:.4} no_regression={adequate}", payload.len(), grpc_rates[median], grpc_rates[0], grpc_rates[repetitions-1], framed_rates[median], framed_rates[0], framed_rates[repetitions-1], grpc_rates[median] / framed_rates[median]);
         }
 
         // Settle Both Owned Processes Before Reporting The Measured Gate.
@@ -163,12 +166,12 @@ async fn grpc(host: &Host, invocation: u64, payload: &[u8], count: u64) -> Resul
     let mut bytes = 0;
     let mut received = 0;
     let mut ordered = true;
-    let mut last = Vec::new();
+    let mut last = None;
     while let Some(packet) = incoming.message().await? {
         ordered &= packet.count == received;
         received += 1;
         bytes += packet.payload.len();
-        last = packet.payload;
+        last = Some(packet.payload);
     }
     let completed = host
         .phase(Packet {
@@ -181,7 +184,7 @@ async fn grpc(host: &Host, invocation: u64, payload: &[u8], count: u64) -> Resul
     assert!(ordered);
     assert_eq!(received, count);
     assert_eq!(bytes as u64, payload.len() as u64 * count);
-    assert_eq!(last, payload);
+    assert_eq!(last.unwrap().as_ref(), payload);
     assert_eq!((completed.phase, completed.count), (1, count));
     Ok(bytes as f64 / elapsed_s / (1024.0 * 1024.0))
 }

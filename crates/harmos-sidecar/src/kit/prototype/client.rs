@@ -91,8 +91,11 @@ impl Host {
         let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{address}"))
             .map_err(|error| Error::Response(error.to_string()))?
             .initial_stream_window_size(settings.window_bytes.get() as u32)
-            .initial_connection_window_size(settings.window_bytes.get() as u32)
-            .http2_adaptive_window(false);
+            .initial_connection_window_size(settings.connection_window_bytes.get() as u32)
+            .http2_adaptive_window(false)
+            .max_frame_size(64 * 1024)
+            .tcp_nodelay(true)
+            .buffer_size(settings.calls.get());
         let control = endpoint.clone().connect().await?;
         let data = endpoint.connect().await?;
         let mut host = Self {
@@ -119,6 +122,7 @@ impl Host {
             tonic::client::Grpc::new(self.control.clone()).max_decoding_message_size(self.limit).max_encoding_message_size(self.limit);
         grpc.ready().await.map_err(|error| Error::Response(error.to_string()))?;
         let response = grpc.unary(request, tonic::codegen::http::uri::PathAndQuery::from_static(CONTROL), codec::Codec).await?;
+        codec::profile();
         Ok(response.into_inner())
     }
 
@@ -127,7 +131,7 @@ impl Host {
             version: VERSION,
             generation: self.generation,
             invocation,
-            payload,
+            payload: payload.into(),
             count,
             ..Packet::default()
         };
@@ -220,7 +224,7 @@ impl OperationHost for Host {
                 _ => O::definition().fingerprint.0.to_vec(),
             },
             context: vec![1; 32],
-            payload,
+            payload: payload.into(),
             ..Packet::default()
         };
         answer(self.phase(packet).await?)?;
@@ -307,7 +311,7 @@ impl<O: OperationDeclaration> Drop for Running<O> {
 
 fn answer(packet: Packet) -> Result<Vec<u8>, Error> {
     if packet.phase == 0 {
-        return Ok(packet.payload);
+        return Ok(packet.payload.to_vec());
     }
     let failure = serde_json::from_slice::<harmos_domain::Failure>(&packet.payload).map_err(|error| Error::Response(error.to_string()))?;
     Err(Error::Failure(failure))
