@@ -1,9 +1,12 @@
-# Data Shape Identity
+# Data Shape Identity Specification
 
-## ADDED Requirements
+## Purpose
+Provide stable, canonical identities for data shapes and refuse incompatible stored definitions without data loss.
+
+## Requirements
 
 ### Requirement: Canonical Derived Revisions
-Native and plugin streams SHALL share schema/window derivation. Records and transactions SHALL derive schema-only opaque revisions using canonical encoding. Presentation metadata SHALL NOT participate. Revisions SHALL be compared only for equality.
+Native and plugin streams SHALL share schema/window derivation. Records, transactions, typed stored objects and described system facts SHALL derive schema-only opaque revisions using canonical encoding. Presentation metadata SHALL NOT participate. Revisions SHALL be compared only for equality.
 
 #### Scenario: Unchanged Shape
 - **WHEN** a shape is recompiled or its label changes
