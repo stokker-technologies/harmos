@@ -1,5 +1,15 @@
 # Repository Tooling
 
+`lint:rust` owns Clippy with warnings denied. `check:rust` includes it, and CI
+Check / Rust gates it. Build, test, bench, fixture and focused compilation tasks
+retain compiler preflight without running Clippy. Use an explicit
+`mise run build:rust:focused -- clippy <arguments>` for a selected Clippy run.
+
+Benchmark targets and their matching fixtures are covered by `lint:rust`.
+
+`mise run lint:rust --extended` lints the optional compatibility selections;
+`build:rust:compatibility` checks them without Clippy. Extended lint remains local-only.
+
 Mise is the public entry point. The project-owned Python task wrappers live in
 `tools/python/src/harmos_tools/`; the root uv workspace owns `.venv/` and
 `uv.lock`. Run `mise run prepare:tools` to synchronize the locked tools.

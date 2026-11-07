@@ -20,7 +20,7 @@ from pathlib import Path
 # Third Party Imports
 # Local Imports
 from ... import temporary
-from .. import cargo, paths
+from .. import cargo, paths, storage
 
 # Type Checking Imports
 
@@ -40,7 +40,7 @@ def build(directory: Path, profile: str, native: str | None = None) -> None:
     messages = destination / "product/compiler.json"
     messages.parent.mkdir(parents=True, exist_ok=True)
     arguments = ["--locked", "--workspace", "--profile", profile]
-    cargo.clippy(directory, arguments)
+    storage.preflight(directory)
     command = ["cargo", "build", *arguments, "--message-format=json-render-diagnostics"]
     with messages.open("w", encoding="utf-8") as output:
         subprocess.run(

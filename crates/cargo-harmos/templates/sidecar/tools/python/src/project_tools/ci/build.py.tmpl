@@ -48,18 +48,7 @@ def run(task: str, output: str, profile: str) -> int:
     command = ["mise", "run", task]
     if profile != "bench":
         command += ["--profile", profile]
-    if output == "bench":
-        return _run(command, OUTPUTS[output])
-    # Check / Rust Runs lint:rust Over The Product And Tests Selections; These Producers Only Compile.
-    previous = os.environ.get("CHECK_CLIPPY")
-    os.environ["CHECK_CLIPPY"] = "1"
-    try:
-        return _run(command, OUTPUTS[output])
-    finally:
-        if previous is None:
-            os.environ.pop("CHECK_CLIPPY", None)
-        else:
-            os.environ["CHECK_CLIPPY"] = previous
+    return _run(command, OUTPUTS[output])
 
 
 def main() -> int:

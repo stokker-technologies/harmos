@@ -88,9 +88,12 @@ run = [
 
 [tasks."lint:rust"]
 description = "Lint Rust"
+usage = 'flag "--extended"'
 run = [
   "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --profile dev",
   "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --tests --profile test",
+  "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --bins --benches --profile bench{% if usage.extended %} --all-features{% endif %}",
+  "{% if usage.extended %}uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --no-default-features --profile dev{% endif %}",
 ]
 
 # === Check === #
@@ -123,8 +126,8 @@ run = "uv run --locked --project tools/python python -m project_tools.build.rust
 description = "Validate Rust Compatibility"
 usage = 'flag "--profile <profile>" default="dev"'
 run = [
-  "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --profile {{usage.profile}} --all-features",
-  "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --profile {{usage.profile}} --no-default-features",
+  "uv run --locked --project tools/python python -m project_tools.build.cargo focused check --locked --workspace --profile {{usage.profile}} --all-features",
+  "uv run --locked --project tools/python python -m project_tools.build.cargo focused check --locked --workspace --profile {{usage.profile}} --no-default-features",
 ]
 
 [tasks."build:rust:focused"]

@@ -87,7 +87,10 @@ checks, while mixed source or policy changes retain full selection.
 Required hosted CI controls integration. Keep auto-merge enabled; it may merge
 independently of local completion. Report and investigate local failures.
 
-Product and Tests compile independently with matching Clippy invocations.
+Product and Tests compile independently. Build, test, bench and fixture tasks never
+run Clippy. `lint:rust` runs Clippy with warnings denied; `check:rust` includes it
+and CI Check / Rust gates it. A focused `clippy` operation remains an explicit choice.
+Use `mise run lint:rust --extended` for local compatibility lint coverage.
 Tests use the default unoptimized test profile; optional extended tests remain
 explicit local work. Nightly runs ordinary verification with release Product
 builds and downloadable unsigned packages, plus coverage, benchmarks and

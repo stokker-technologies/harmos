@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # ***
-"""Validate The Exact Cargo Configuration Before Its Compilation"""
+"""Run Explicit Cargo Lint And Compilation Selections"""
 
 # === Imports === #
 
@@ -40,9 +40,6 @@ from . import paths, storage
 
 def clippy(directory: Path, arguments: Sequence[str], *, environment: Mapping[str, str] | None = None) -> None:
     storage.preflight(directory)
-    # CI Product And Tests Producers Leave Clippy To Check / Rust, Whose lint:rust Covers Their Selections.
-    if os.environ.get("CHECK_CLIPPY") == "1":
-        return
     selected = dict(os.environ if environment is None else environment, CARGO_BUILD_WARNINGS="deny")
     with summary.phase("Clippy"):
         subprocess.run(
@@ -67,10 +64,7 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.unlink(missing_ok=True)
     compiler_profile = "test"
-    clippy(
-        directory,
-        ["--locked", "--workspace", "--tests", "--profile", compiler_profile, *extra],
-    )
+    storage.preflight(directory)
     command = [
         "cargo",
         "nextest",
@@ -125,10 +119,7 @@ def focused(directory: Path, operation: str, arguments: Sequence[str]) -> int:
         raise ValueError("focused compilation requires a canonical Cargo profile")
     if operation == "test" and ("--release" in compiler_arguments or profile not in (None, "test")):
         raise ValueError("focused tests use Cargo's default test profile")
-    if operation in ("build", "test", "run"):
-        clippy(directory, [argument for argument in compiler_arguments if argument not in ("--no-run", "--no-fail-fast")])
-    else:
-        storage.preflight(directory)
+    storage.preflight(directory)
     return subprocess.run(
         ["cargo", operation, *arguments],
         cwd=directory,

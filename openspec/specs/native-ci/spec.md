@@ -1,7 +1,7 @@
 # Native CI Specification
 
 ## Purpose
-Run parallel native Product and Tests jobs per platform and profile with matched Clippy, independent artifacts and unchanged native integration gates.
+Run parallel native Product and Tests jobs per platform and profile with Clippy owned by `lint:rust`, independent artifacts and unchanged native integration gates.
 
 ## Requirements
 
@@ -12,7 +12,7 @@ The pipeline SHALL have separate independent Product and Tests jobs per selected
 #### Scenario: Tests Selected
 
 - **WHEN** selected jobs consume native tests
-- **THEN** Product and Tests run matched Clippy and compilation independently in parallel and export separate artifacts; downstream consumers declare real artifact dependencies and may join fixture manifests without compilation.
+- **THEN** Product and Tests compile independently in parallel without Clippy and export separate artifacts; downstream consumers declare real artifact dependencies and may join fixture manifests without compilation.
 
 #### Scenario: Installer Only
 

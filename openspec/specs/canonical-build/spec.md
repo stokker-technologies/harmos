@@ -7,7 +7,7 @@ Defines the one canonical native build configuration, default Cargo profiles and
 
 ### Requirement: Canonical Native Configuration
 
-All provider CI Product and Tests SHALL use existing canonical shipping feature configurations per platform in independent parallel producer jobs. Independent feature sets are permitted. Clippy SHALL precede compilation with matching configuration. Simulation and other noncanonical test features SHALL NOT enter CI or shipping binaries. Local installers SHALL NOT build tests by default.
+All provider CI Product and Tests SHALL use existing canonical shipping feature configurations per platform in independent parallel producer jobs. Independent feature sets are permitted. Build, test, bench, fixture and focused compilation tasks SHALL NOT run Clippy implicitly. Clippy SHALL run with warnings denied only through `lint:rust`, included by `check:rust` and gated by CI Check / Rust; an explicit focused `clippy` operation MAY invoke it deliberately. Simulation and other noncanonical test features SHALL NOT enter CI or shipping binaries. Local installers SHALL NOT build tests by default.
 
 #### Scenario: Ordinary Review
 
