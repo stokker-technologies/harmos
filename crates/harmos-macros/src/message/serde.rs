@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Stored Serde Shapes
 
 /* === Modules === */
@@ -26,7 +25,6 @@ use syn::{Attribute, Error, Fields, LitStr, Type, spanned::Spanned};
 
 // Local Imports
 use crate::path::HarmosPath;
-
 
 /* === Constants === */
 
@@ -50,6 +48,7 @@ struct Attributes {
 }
 
 struct Shape {
+    helpers: Vec<TokenStream>,
     fields: Vec<TokenStream>,
     representation: Map<String, Value>,
 }
@@ -80,11 +79,16 @@ pub(super) fn shape(item: &syn::Item, harmos: &HarmosPath) -> Result<TokenStream
     }
     let owner = name.to_string();
     let attributes = attributes_for(attributes, Location::Container, &owner)?;
+    for (attribute, value) in [("tag", &attributes.tag), ("content", &attributes.content)] {
+        if value.as_ref().is_some_and(|value| value.len() > 256) {
+            return Err(refused(name.span(), attribute, &owner, "keys longer than 256 bytes are unsupported"));
+        }
+    }
     if let syn::Item::Struct(item) = item {
         if attributes.tag.is_some() || attributes.content.is_some() || attributes.untagged {
             return Err(refused(name.span(), "tag/content/untagged", &owner, "only enum tagging is supported"));
         }
-        let mut shape = fields(&item.fields, attributes.rename_all.as_deref(), &owner, harmos)?;
+        let mut shape = fields(&item.fields, attributes.rename_all.as_deref(), &owner, &item.ident, attributes.transparent, harmos)?;
         if attributes.transparent {
             if shape.fields.len() != 1 {
                 return Err(refused(name.span(), "transparent", &owner, "exactly one serialized field is required"));
@@ -99,20 +103,36 @@ pub(super) fn shape(item: &syn::Item, harmos: &HarmosPath) -> Result<TokenStream
     }
     if attributes.untagged && (attributes.tag.is_some() || attributes.content.is_some())
         || attributes.content.is_some() && attributes.tag.is_none()
-        || attributes.tag.is_some() && attributes.tag == attributes.content {
+        || attributes.tag.is_some() && attributes.tag == attributes.content
+    {
         return Err(refused(name.span(), "tag/content/untagged", &owner, "conflicting enum representation"));
     }
-    let form = if attributes.untagged { "untagged" } else if attributes.content.is_some() { "adjacent" } else if attributes.tag.is_some() { "internal" } else { "external" };
+    let form = if attributes.untagged {
+        "untagged"
+    } else if attributes.content.is_some() {
+        "adjacent"
+    } else if attributes.tag.is_some() {
+        "internal"
+    } else {
+        "external"
+    };
     let mut representation = Map::from_iter([("form".into(), json!(form))]);
-    if let Some(tag) = &attributes.tag { representation.insert("tag".into(), json!(tag)); }
-    if let Some(content) = &attributes.content { representation.insert("content".into(), json!(content)); }
+    if let Some(tag) = &attributes.tag {
+        representation.insert("tag".into(), json!(tag));
+    }
+    if let Some(content) = &attributes.content {
+        representation.insert("content".into(), json!(content));
+    }
     let mut payloads = Vec::new();
     let mut variants = Vec::new();
     for (index, variant) in item.variants.iter().enumerate() {
         let variant_attributes = attributes_for(&variant.attrs, Location::Variant, &owner)?;
-        if variant_attributes.skip { continue; }
+        if variant_attributes.skip {
+            continue;
+        }
         let field_rule = variant_attributes.rename_all.as_deref().or(attributes.rename_all_fields.as_deref());
-        let shape = fields(&variant.fields, field_rule, &owner, harmos)?;
+        let payload = quote::format_ident!("__Harmos{}Payload{index}", owner.trim_start_matches("r#"));
+        let shape = fields(&variant.fields, field_rule, &owner, &payload, false, harmos)?;
         if form == "internal" {
             if matches!(&variant.fields, Fields::Unnamed(fields) if fields.unnamed.len() != 1) {
                 return Err(refused(variant.span(), "tag", &owner, "internally tagged tuple variants are unsupported by Serde"));
@@ -128,25 +148,46 @@ pub(super) fn shape(item: &syn::Item, harmos: &HarmosPath) -> Result<TokenStream
             }
             if let Fields::Unnamed(fields) = &variant.fields {
                 let ty = &fields.unnamed[0].ty;
-                if !matches!(super::type_name(ty).as_deref(), Some("BTreeMap" | "HashMap")) {
+                if matches!(super::type_name(ty).as_deref(), Some("BTreeMap" | "HashMap")) {
+                    return Err(refused(variant.span(), "tag", &owner, "dynamic map keys can collide with the tag"));
+                } else {
                     let diagnostic = format!("Serde attribute `tag` on type `{owner}` requires an object-valued newtype variant");
-                    payloads.push(quote!(const _: () = assert!(<#ty as #harmos::schema::Described>::SERDE_OBJECT, #diagnostic);));
+                    payloads.push(quote!(
+                        const _: () = assert!(<#ty as #harmos::schema::Described>::SERDE_OBJECT, #diagnostic);
+                    ));
+                    let tag = attributes.tag.as_ref().unwrap();
+                    let diagnostic = format!("Serde attribute `tag` on type `{owner}` conflicts with a newtype payload field");
+                    payloads.push(quote!(
+                        const _: () = assert!(#harmos::schema::wire::tag_available(
+                        <#ty as #harmos::schema::Described>::FIELDS, <#ty as #harmos::schema::Described>::SERDE_TAG, #tag
+                    ), #diagnostic);
+                    ));
                 }
             }
         }
-        let payload = quote::format_ident!("__HarmosPayload{index}");
         let declaration = declare(&payload, shape, harmos);
         payloads.push(quote!(struct #payload; #declaration));
-        let variant_name = if attributes.untagged { format!("variant_{index}") } else {
+        let variant_name = if attributes.untagged {
+            format!("variant_{}", variants.len())
+        } else {
             serialized_name(&variant.ident, variant_attributes.rename, attributes.rename_all.as_deref(), true)
         };
+        validate_name(&variant_name, variant.span(), &owner)?;
         variants.push(quote!(#harmos::schema::graph::Field {
             name: ::std::borrow::Cow::Borrowed(#variant_name), tag: #harmos::schema::field_tag(#variant_name),
             kind: #harmos::schema::graph::Kind::Message { definition: <#payload as #harmos::schema::Described>::DEFINITION },
             cardinality: #harmos::schema::Cardinality::Variant,
         }));
     }
-    let declaration = declare(name, Shape { fields: variants, representation }, harmos);
+    let declaration = declare(
+        name,
+        Shape {
+            helpers: Vec::new(),
+            fields: variants,
+            representation,
+        },
+        harmos,
+    );
     Ok(quote!(const _: () = { #(#payloads)* #declaration };))
 }
 
@@ -180,12 +221,17 @@ fn attributes_for(attributes: &[Attribute], location: Location, owner: &str) -> 
                 "transparent" if container => output.transparent = true,
                 "skip" | "skip_serializing" if field || variant => output.skip = true,
                 "skip_serializing_if" if field => output.omission = Some(meta.value()?.parse::<LitStr>()?.value()),
-                "default" | "deny_unknown_fields" | "skip_deserializing" | "other" => {},
-                "alias" | "deserialize_with" | "from" | "try_from" | "crate" | "expecting" | "borrow" => {},
-                "bound" => { let _ = directional(&meta)?; return Ok(()); },
+                "default" | "deny_unknown_fields" | "skip_deserializing" | "other" => {}
+                "alias" | "deserialize_with" | "from" | "try_from" | "crate" | "expecting" | "borrow" => {}
+                "bound" => {
+                    let _ = directional(&meta)?;
+                    return Ok(());
+                }
                 _ => return Err(refused(meta.path.span(), &key, owner, "the serialized shape is not statically supported")),
             }
-            if meta.input.peek(syn::Token![=]) { let _: syn::Expr = meta.value()?.parse()?; }
+            if meta.input.peek(syn::Token![=]) {
+                let _: syn::Expr = meta.value()?.parse()?;
+            }
             Ok(())
         })?;
     }
@@ -193,34 +239,64 @@ fn attributes_for(attributes: &[Attribute], location: Location, owner: &str) -> 
 }
 
 fn directional(meta: &syn::meta::ParseNestedMeta<'_>) -> Result<Option<String>, Error> {
-    if meta.input.peek(syn::Token![=]) { return Ok(Some(meta.value()?.parse::<LitStr>()?.value())); }
+    if meta.input.peek(syn::Token![=]) {
+        return Ok(Some(meta.value()?.parse::<LitStr>()?.value()));
+    }
     let mut serialize = None;
     meta.parse_nested_meta(|direction| {
         let value = direction.value()?.parse::<LitStr>()?.value();
-        if direction.path.is_ident("serialize") { serialize = Some(value); }
-        else if !direction.path.is_ident("deserialize") { return Err(direction.error("expected serialize or deserialize")); }
+        if direction.path.is_ident("serialize") {
+            serialize = Some(value);
+        } else if !direction.path.is_ident("deserialize") {
+            return Err(direction.error("expected serialize or deserialize"));
+        }
         Ok(())
     })?;
     Ok(serialize)
 }
 
 fn validate_rule(rule: Option<&str>, meta: &syn::meta::ParseNestedMeta<'_>, owner: &str) -> Result<(), Error> {
-    if rule.is_some_and(|rule| !matches!(rule, "lowercase" | "UPPERCASE" | "PascalCase" | "camelCase" | "snake_case" | "SCREAMING_SNAKE_CASE" | "kebab-case" | "SCREAMING-KEBAB-CASE")) {
+    if rule.is_some_and(|rule| {
+        !matches!(
+            rule,
+            "lowercase"
+                | "UPPERCASE"
+                | "PascalCase"
+                | "camelCase"
+                | "snake_case"
+                | "SCREAMING_SNAKE_CASE"
+                | "kebab-case"
+                | "SCREAMING-KEBAB-CASE"
+        )
+    }) {
         return Err(refused(meta.path.span(), "rename_all", owner, "unknown Serde rename rule"));
     }
     Ok(())
 }
 
+fn validate_name(name: &str, span: proc_macro2::Span, owner: &str) -> Result<(), Error> {
+    if name.is_empty() || name.len() > 256 || name.chars().any(char::is_control) {
+        return Err(refused(span, "rename", owner, "schema names must contain 1 to 256 bytes without control characters"));
+    }
+    Ok(())
+}
+
 fn serialized_name(ident: &syn::Ident, explicit: Option<String>, rule: Option<&str>, variant: bool) -> String {
-    if let Some(name) = explicit { return name; }
+    if let Some(name) = explicit {
+        return name;
+    }
     let name = ident.to_string();
     let name = name.strip_prefix("r#").unwrap_or(&name);
-    let Some(rule) = rule else { return name.to_owned(); };
+    let Some(rule) = rule else {
+        return name.to_owned();
+    };
     if variant {
         let snake = || {
             let mut output = String::new();
             for (index, character) in name.char_indices() {
-                if index > 0 && character.is_uppercase() { output.push('_'); }
+                if index > 0 && character.is_uppercase() {
+                    output.push('_');
+                }
                 output.push(character.to_ascii_lowercase());
             }
             output
@@ -228,7 +304,11 @@ fn serialized_name(ident: &syn::Ident, explicit: Option<String>, rule: Option<&s
         match rule {
             "lowercase" => name.to_ascii_lowercase(),
             "UPPERCASE" => name.to_ascii_uppercase(),
-            "camelCase" => name.chars().enumerate().map(|(index, character)| if index == 0 { character.to_ascii_lowercase() } else { character }).collect(),
+            "camelCase" => name
+                .chars()
+                .enumerate()
+                .map(|(index, character)| if index == 0 { character.to_ascii_lowercase() } else { character })
+                .collect(),
             "snake_case" => snake(),
             "SCREAMING_SNAKE_CASE" => snake().to_ascii_uppercase(),
             "kebab-case" => snake().replace('_', "-"),
@@ -240,7 +320,10 @@ fn serialized_name(ident: &syn::Ident, explicit: Option<String>, rule: Option<&s
             let mut output = String::new();
             let mut capitalize = true;
             for character in name.chars() {
-                if character == '_' { capitalize = true; continue; }
+                if character == '_' {
+                    capitalize = true;
+                    continue;
+                }
                 output.push(if capitalize { character.to_ascii_uppercase() } else { character });
                 capitalize = false;
             }
@@ -249,7 +332,11 @@ fn serialized_name(ident: &syn::Ident, explicit: Option<String>, rule: Option<&s
         match rule {
             "UPPERCASE" | "SCREAMING_SNAKE_CASE" => name.to_ascii_uppercase(),
             "PascalCase" => pascal(),
-            "camelCase" => pascal().chars().enumerate().map(|(index, character)| if index == 0 { character.to_ascii_lowercase() } else { character }).collect(),
+            "camelCase" => pascal()
+                .chars()
+                .enumerate()
+                .map(|(index, character)| if index == 0 { character.to_ascii_lowercase() } else { character })
+                .collect(),
             "kebab-case" => name.replace('_', "-"),
             "SCREAMING-KEBAB-CASE" => name.to_ascii_uppercase().replace('_', "-"),
             _ => name.to_owned(),
@@ -257,10 +344,22 @@ fn serialized_name(ident: &syn::Ident, explicit: Option<String>, rule: Option<&s
     }
 }
 
-fn fields(fields: &Fields, rule: Option<&str>, owner: &str, harmos: &HarmosPath) -> Result<Shape, Error> {
-    let form = match fields { Fields::Unit => "unit", Fields::Unnamed(fields) if fields.unnamed.len() == 1 => "value", Fields::Unnamed(_) => "tuple", Fields::Named(_) => "object" };
+fn fields(
+    fields: &Fields, rule: Option<&str>, owner: &str, scope: &syn::Ident, transparent: bool, harmos: &HarmosPath,
+) -> Result<Shape, Error> {
+    let form = if transparent {
+        "value"
+    } else {
+        match fields {
+            Fields::Unit => "unit",
+            Fields::Unnamed(fields) if fields.unnamed.len() == 1 => "value",
+            Fields::Unnamed(_) => "tuple",
+            Fields::Named(_) => "object",
+        }
+    };
     let mut representation = Map::from_iter([("form".into(), json!(form))]);
     let mut output = Vec::new();
+    let mut helpers = Vec::new();
     let mut omissions = Map::new();
     let mut maps = Vec::new();
     for (position, field) in fields.iter().enumerate() {
@@ -271,36 +370,100 @@ fn fields(fields: &Fields, rule: Option<&str>, owner: &str, harmos: &HarmosPath)
             }
             continue;
         }
-        let name = field.ident.as_ref().map(|ident| serialized_name(ident, attributes.rename, rule, false)).unwrap_or_else(|| format!("field_{position}"));
+        let name = if form == "value" {
+            "value".to_owned()
+        } else {
+            field
+                .ident
+                .as_ref()
+                .map(|ident| serialized_name(ident, attributes.rename, rule, false))
+                .unwrap_or_else(|| format!("field_{position}"))
+        };
+        validate_name(&name, field.span(), owner)?;
         let ty = &field.ty;
         if let Some(predicate) = attributes.omission {
-            if !matches!(fields, Fields::Named(_)) { return Err(refused(field.span(), "skip_serializing_if", owner, "conditional positional fields are unsupported")); }
-            let path: syn::Path = syn::parse_str(&predicate).map_err(|_| refused(field.span(), "skip_serializing_if", owner, "invalid predicate path"))?;
+            if form != "object" {
+                return Err(refused(field.span(), "skip_serializing_if", owner, "conditional positional fields are unsupported"));
+            }
+            let path: syn::Path =
+                syn::parse_str(&predicate).map_err(|_| refused(field.span(), "skip_serializing_if", owner, "invalid predicate path"))?;
             let segments = path.segments.iter().map(|segment| segment.ident.to_string()).collect::<Vec<_>>();
             let rule = match segments.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
-                ["Option", "is_none"] | ["std" | "core", "option", "Option", "is_none"] if super::type_name(ty).as_deref() == Some("Option") => "none",
-                ["Vec", "is_empty"] | ["std" | "alloc", "vec", "Vec", "is_empty"] if super::type_name(ty).as_deref() == Some("Vec") => "empty",
-                _ => return Err(refused(field.span(), "skip_serializing_if", owner, "only Option::is_none and Vec::is_empty on their matching types are supported")),
+                ["Option", "is_none"] | ["std" | "core", "option", "Option", "is_none"]
+                    if super::type_name(ty).as_deref() == Some("Option") =>
+                {
+                    "none"
+                }
+                ["Vec", "is_empty"] | ["std" | "alloc", "vec", "Vec", "is_empty"] if super::type_name(ty).as_deref() == Some("Vec") => {
+                    "empty"
+                }
+                _ => {
+                    return Err(refused(
+                        field.span(),
+                        "skip_serializing_if",
+                        owner,
+                        "only Option::is_none and Vec::is_empty on their matching types are supported",
+                    ));
+                }
             };
             omissions.insert(name.clone(), json!(rule));
         }
-        if matches!(super::type_name(ty).as_deref(), Some("HashMap" | "BTreeMap")) { maps.push(json!(name)); }
-        let (_, kind, cardinality) = stored_encoding(ty, harmos).map_err(|error| Error::new(field.span(), format!("Described type `{owner}` field `{name}`: {error}")))?;
+        if matches!(super::type_name(ty).as_deref(), Some("HashMap" | "BTreeMap")) {
+            maps.push(json!(name));
+        }
+        let (_, mut kind, mut cardinality) = stored_encoding(ty, harmos)
+            .map_err(|error| Error::new(field.span(), format!("Described type `{owner}` field `{name}`: {error}")))?;
+        if omissions.get(&name).is_some_and(|rule| rule == "none") {
+            let Type::Path(path) = ty else { unreachable!() };
+            let syn::PathArguments::AngleBracketed(arguments) = &path.path.segments.last().unwrap().arguments else {
+                return Err(super::unsupported(ty));
+            };
+            let Some(syn::GenericArgument::Type(inner)) = arguments.args.first() else {
+                return Err(super::unsupported(ty));
+            };
+            let (_, inner_kind, inner_cardinality) = stored_encoding(inner, harmos)?;
+            let helper = quote::format_ident!("__Harmos{}Field{position}", scope.to_string().trim_start_matches("r#"));
+            let field = quote!(#harmos::schema::graph::Field {
+                name: ::std::borrow::Cow::Borrowed("value"), tag: 1, kind: #inner_kind, cardinality: #inner_cardinality,
+            });
+            let declaration = declare(
+                &helper,
+                Shape {
+                    helpers: Vec::new(),
+                    fields: vec![field],
+                    representation: Map::from_iter([("form".into(), json!("value"))]),
+                },
+                harmos,
+            );
+            helpers.push(quote!(struct #helper; #declaration));
+            kind = quote!(#harmos::schema::graph::Kind::Message { definition: <#helper as #harmos::schema::Described>::DEFINITION });
+            cardinality = quote!(#harmos::schema::Cardinality::Optional);
+        }
         output.push(quote!(#harmos::schema::graph::Field {
             name: ::std::borrow::Cow::Borrowed(#name), tag: #harmos::schema::field_tag(#name), kind: #kind, cardinality: #cardinality,
         }));
     }
-    if !omissions.is_empty() { representation.insert("omissions".into(), Value::Object(omissions)); }
-    if !maps.is_empty() { representation.insert("maps".into(), Value::Array(maps)); }
-    if form == "object" && representation.len() == 1 && !output.is_empty() { representation.clear(); }
-    Ok(Shape { fields: output, representation })
+    if !omissions.is_empty() {
+        representation.insert("omissions".into(), Value::Object(omissions));
+    }
+    if !maps.is_empty() {
+        representation.insert("maps".into(), Value::Array(maps));
+    }
+    if form == "object" && representation.len() == 1 && !output.is_empty() {
+        representation.clear();
+    }
+    Ok(Shape { helpers, fields: output, representation })
 }
 
 fn stored_encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream, TokenStream), Error> {
     if matches!(super::type_name(ty).as_deref(), Some("BTreeSet" | "HashSet")) {
         let Type::Path(path) = ty else { unreachable!() };
-        let syn::PathArguments::AngleBracketed(arguments) = &path.path.segments.last().unwrap().arguments else { return Err(super::unsupported(ty)); };
-        let Some(syn::GenericArgument::Type(inner)) = arguments.args.first() else { return Err(super::unsupported(ty)); };
+        let syn::PathArguments::AngleBracketed(arguments) = &path.path.segments.last().unwrap().arguments else {
+            return Err(super::unsupported(ty));
+        };
+        let Some(syn::GenericArgument::Type(inner)) = arguments.args.first() else {
+            return Err(super::unsupported(ty));
+        };
         return super::encoding(&syn::parse_quote!(Vec<#inner>), harmos);
     }
     if matches!(super::type_name(ty).as_deref(), Some("u8" | "u16" | "i8" | "i16" | "usize" | "isize" | "u128" | "i128" | "char")) {
@@ -311,18 +474,44 @@ fn stored_encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream,
 
 fn declare(name: &syn::Ident, shape: Shape, harmos: &HarmosPath) -> TokenStream {
     let fields = shape.fields;
-    let representation = if shape.representation.is_empty() { String::new() } else { Value::Object(shape.representation.clone()).to_string() };
-    let object = shape.representation.get("form").and_then(Value::as_str).is_none_or(|form| matches!(form, "object" | "internal" | "adjacent"));
+    let helpers = shape.helpers;
+    let representation =
+        if shape.representation.is_empty() { String::new() } else { Value::Object(shape.representation.clone()).to_string() };
+    let object =
+        shape.representation.get("form").and_then(Value::as_str).is_none_or(|form| matches!(form, "object" | "internal" | "adjacent"));
+    let tag = shape
+        .representation
+        .get("tag")
+        .and_then(Value::as_str)
+        .map(|tag| quote!(::std::option::Option::Some(#tag)))
+        .unwrap_or_else(|| quote!(::std::option::Option::None));
+    let collision = format!("Serde attribute rename/rename_all on type `{name}` produces colliding serialized fields");
     quote! {
+        const _: () = {
+        #(#helpers)*
         impl #harmos::schema::Described for #name {
             const NAME: &'static str = concat!(module_path!(), "::", stringify!(#name));
-            const FIELDS: &'static [#harmos::schema::graph::Field<#harmos::schema::declaration::Definition>] = &[#(#fields),*];
+            const FIELDS: &'static [#harmos::schema::graph::Field<#harmos::schema::declaration::Definition>] = {
+                let fields: &[#harmos::schema::graph::Field<#harmos::schema::declaration::Definition>] = &[#(#fields),*];
+                let mut left = 0;
+                while left < fields.len() {
+                    let mut right = left + 1;
+                    while right < fields.len() {
+                        assert!(fields[left].tag != fields[right].tag, #collision);
+                        right += 1;
+                    }
+                    left += 1;
+                }
+                fields
+            };
             const SERDE: &'static str = #representation;
             const SERDE_OBJECT: bool = #object;
+            const SERDE_TAG: ::std::option::Option<&'static str> = #tag;
             const MARKER: &'static [u8] = &#harmos::schema::declaration::encode_serde::<{
                 #harmos::schema::declaration::encoded_serde_len(Self::NAME, Self::FIELDS, Self::SERDE)
             }>(Self::NAME, Self::FIELDS, Self::SERDE);
         }
+        };
     }
 }
 

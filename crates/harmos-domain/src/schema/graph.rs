@@ -182,6 +182,9 @@ impl crate::MemorySize for Schema {
                 }
             }
         }
+        for representation in self.representations.values() {
+            bytes = bytes.saturating_add(representation.retained_bytes());
+        }
         bytes
     }
 }
@@ -262,9 +265,9 @@ impl Schema {
         preparation.add_bytes(self.definitions.capacity(), size_of::<Vec<Field>>(), settings)?;
         preparation.add_bytes(self.definitions.len(), size_of::<bool>() + size_of::<usize>(), settings)?;
         for representation in self.representations.values() {
-            let encoded = serde_json::to_string(representation).map_err(|_| Error::Budget)?;
-            preparation.add_bytes(encoded.len(), 8, settings)?;
-            preparation.add_work(encoded.len() + 1, settings)?;
+            let bytes = representation.retained_bytes();
+            preparation.add_bytes(bytes, 1, settings)?;
+            preparation.add_work(bytes, settings)?;
         }
         for fields in &self.definitions {
             preparation.fields = preparation.fields.checked_add(fields.len()).ok_or(Error::Budget)?;

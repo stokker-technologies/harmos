@@ -46,7 +46,14 @@ shape!(
     &[
         described("root", 1, declaration::Kind::U64, Cardinality::Required),
         described("definitions", 2, declaration::Kind::Message { definition: DefinitionShape::DEFINITION }, Cardinality::Repeated),
-        described("representations", 3, declaration::Kind::Message { definition: RepresentationShape::DEFINITION }, Cardinality::Repeated),
+        described(
+            "representations",
+            3,
+            declaration::Kind::Message {
+                definition: RepresentationShape::DEFINITION
+            },
+            Cardinality::Repeated
+        ),
     ]
 );
 shape!(
@@ -295,9 +302,13 @@ impl PostcardValue for Schema {
             input.claim(representations)?;
             for _ in 0..representations {
                 let index = input.value::<usize>()?;
-                if index >= count { return Err(invalid()); }
+                if index >= count {
+                    return Err(invalid());
+                }
                 let length = input.value::<usize>()?;
-                if length > crate::FRAGMENT_LIMIT { return Err(invalid()); }
+                if length > crate::FRAGMENT_LIMIT {
+                    return Err(invalid());
+                }
                 budget.charge(length.checked_mul(8).ok_or_else(invalid)?, length + 1)?;
                 input.take(length)?;
             }
@@ -328,7 +339,9 @@ impl PostcardValue for Schema {
                 let index = input.value::<usize>()?;
                 let encoded = input.value::<String>()?;
                 let representation = serde_json::from_str(&encoded).map_err(|_| invalid())?;
-                if representations.insert(index, representation).is_some() { return Err(invalid()); }
+                if representations.insert(index, representation).is_some() {
+                    return Err(invalid());
+                }
             }
             let schema = Self { root, definitions, representations };
             schema.prepare(&SchemaSettings::default()).map_err(|_| invalid())?;

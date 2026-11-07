@@ -517,7 +517,8 @@ mod tests {
 
     #[test]
     fn admission_rejects_native_other_owner_and_revision_collision() {
-        let schema = Schema { representations: ::std::collections::BTreeMap::new(), 
+        let schema = Schema {
+            representations: ::std::collections::BTreeMap::new(),
             root: 0,
             definitions: vec![vec![Field {
                 name: "value".into(),

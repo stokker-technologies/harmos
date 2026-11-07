@@ -148,7 +148,11 @@ enum Fragment {
     Contributions(Box<contributions::Manifest>),
     Listeners(Box<listeners::NamedManifest>),
     Observers(Box<observers::Manifest>),
-    Restart { facility: String, owner: String, policy: RestartPolicy },
+    Restart {
+        facility: String,
+        owner: String,
+        policy: RestartPolicy,
+    },
     Publications(publications::NamedManifest),
     Schema {
         name: String,
@@ -211,7 +215,9 @@ impl Declaration {
                 Fragment::Observers(manifest) => observer_manifests.push(*manifest),
                 Fragment::Restart { facility, owner, policy } => restart_policies.push((facility, owner, policy)),
                 Fragment::Publications(manifest) => publications.push(manifest),
-                Fragment::Schema { name, fields, representation } => schemas.push(crate::schema::declaration::Named { name, fields, representation }),
+                Fragment::Schema { name, fields, representation } => {
+                    schemas.push(crate::schema::declaration::Named { name, fields, representation })
+                }
             }
         }
         let Some((id, version, description, config)) = identity else {

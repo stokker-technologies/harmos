@@ -143,7 +143,8 @@ fn typed_recursive_declaration() {
     assert_eq!(resolved_directions.definitions, combined.definitions);
     assert_eq!(resolved_directions.root, combined.root);
     assert!(combined.equivalent(definition, &resolved, resolved.root, &SchemaSettings::default()).unwrap());
-    let mut mutual = Schema { representations: ::std::collections::BTreeMap::new(), 
+    let mut mutual = Schema {
+        representations: ::std::collections::BTreeMap::new(),
         root: 0,
         definitions: vec![schema.definitions[0].clone(), schema.definitions[0].clone()],
     };
@@ -196,7 +197,11 @@ fn shared_checkpoint_schema() {
                     },
                 })
                 .collect();
-            declaration::Named { name: format!("fixture.{index}"), fields, representation: None }
+            declaration::Named {
+                name: format!("fixture.{index}"),
+                fields,
+                representation: None,
+            }
         })
         .collect();
     let encoded: Vec<_> = named.iter().map(|declaration| serde_json::to_vec(declaration).unwrap()).collect();
@@ -260,7 +265,8 @@ fn shared_checkpoint_schema() {
 
 #[test]
 fn large_schema_preparation() {
-    let schema = Schema { representations: ::std::collections::BTreeMap::new(), 
+    let schema = Schema {
+        representations: ::std::collections::BTreeMap::new(),
         root: 0,
         definitions: vec![
             (0..6000)
@@ -284,7 +290,8 @@ fn large_schema_preparation() {
 fn recursive_schema_validation() {
     assert!(serde_json::from_str::<Kind>(r#"{"type":"bool","definition":0}"#).is_err());
     assert!(serde_json::from_str::<Kind>(r#"{"type":"message","definition":0,"fields":[]}"#).is_err());
-    let mut schema = Schema { representations: ::std::collections::BTreeMap::new(), 
+    let mut schema = Schema {
+        representations: ::std::collections::BTreeMap::new(),
         root: 0,
         definitions: vec![vec![Field {
             name: "children".into(),

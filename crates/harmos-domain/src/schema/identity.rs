@@ -156,7 +156,8 @@ pub fn canonical(root: View<'_>) -> Result<Vec<u8>, Error> {
     if order.iter().any(|index| schema.representations.contains_key(index)) {
         bytes.extend_from_slice(b"harmos.serde.v1\0");
         for index in order {
-            let encoded = schema.representations.get(&index).map(serde_json::to_vec).transpose().map_err(|_| Error::Budget)?.unwrap_or_default();
+            let encoded =
+                schema.representations.get(&index).map(serde_json::to_vec).transpose().map_err(|_| Error::Budget)?.unwrap_or_default();
             bytes.extend_from_slice(&u32::try_from(encoded.len()).map_err(|_| Error::Budget)?.to_le_bytes());
             bytes.extend_from_slice(&encoded);
         }
@@ -176,7 +177,8 @@ mod tests {
 
     #[test]
     fn canonical_record_revision_golden() {
-        let schema = Schema { representations: ::std::collections::BTreeMap::new(), 
+        let schema = Schema {
+            representations: ::std::collections::BTreeMap::new(),
             root: 0,
             definitions: vec![vec![Field {
                 name: "value".into(),
@@ -216,7 +218,8 @@ mod tests {
             kind: Kind::Message { definition: 0 },
             cardinality: Cardinality::Optional,
         }];
-        let schema = Schema { representations: ::std::collections::BTreeMap::new(), 
+        let schema = Schema {
+            representations: ::std::collections::BTreeMap::new(),
             root: 0,
             definitions: vec![first, second],
         };

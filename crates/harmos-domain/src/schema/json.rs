@@ -57,9 +57,14 @@ impl JsonCodec {
 
     pub fn encode(&self, value: &Value) -> Result<Vec<u8>, MessageError> {
         let mut bytes = Vec::new();
-        let stored = !self.schema.representations.is_empty();
-        let value = if stored { super::wire::encode(&self.schema, self.root, value)? } else { value.clone() };
-        encode(&self.schema, self.root, &value, &mut bytes, 0)?;
+        let transformed;
+        let value = if self.schema.representations.is_empty() {
+            value
+        } else {
+            transformed = super::wire::encode(&self.schema, self.root, value)?;
+            &transformed
+        };
+        encode(&self.schema, self.root, value, &mut bytes, 0)?;
         Ok(bytes)
     }
 

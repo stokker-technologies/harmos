@@ -65,7 +65,8 @@ mod tests {
 
     #[test]
     fn canonical_stream_revision_golden() {
-        let schema = Schema { representations: ::std::collections::BTreeMap::new(), 
+        let schema = Schema {
+            representations: ::std::collections::BTreeMap::new(),
             root: 0,
             definitions: vec![vec![Field {
                 name: "value".into(),
@@ -92,7 +93,8 @@ mod tests {
             kind: Kind::U64,
             cardinality: Cardinality::Required,
         }];
-        let schema = Schema { representations: ::std::collections::BTreeMap::new(), 
+        let schema = Schema {
+            representations: ::std::collections::BTreeMap::new(),
             root: 0,
             definitions: vec![
                 vec![

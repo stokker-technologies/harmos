@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Serde Wire Representations
 
 /* === Modules === */
@@ -20,16 +19,15 @@
 use std::collections::BTreeMap;
 
 // Third Party Imports
-use serde::{Deserialize, Serialize};
 use serde::de::{DeserializeSeed, Error as _, MapAccess, Visitor};
 use serde::ser::SerializeMap;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 // Local Imports
-use super::graph::{Field, Kind, Schema};
 use super::Cardinality;
+use super::graph::{Field, Kind, Schema};
 use crate::MessageError;
-
 
 /* === Constants === */
 
@@ -99,7 +97,9 @@ impl<'de> Deserialize<'de> for Encoded {
                 formatter.write_str("bounded Serde representation metadata")
             }
             fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Encoded, E> {
-                if value.len() > crate::FRAGMENT_LIMIT { return Err(E::custom("Serde metadata exceeds its bound")); }
+                if value.len() > crate::FRAGMENT_LIMIT {
+                    return Err(E::custom("Serde metadata exceeds its bound"));
+                }
                 Ok(Encoded(value.to_owned()))
             }
         }
@@ -122,10 +122,16 @@ impl<'de> Visitor<'de> for Seed<'_> {
     fn visit_map<A: MapAccess<'de>>(self, mut input: A) -> Result<Self::Value, A::Error> {
         let mut output = BTreeMap::new();
         while let Some((index, Encoded(encoded))) = input.next_entry::<usize, Encoded>()? {
-            let cost = encoded.len().checked_mul(8).and_then(|cost| cost.checked_add(4 * std::mem::size_of::<Representation>())).ok_or_else(|| A::Error::custom("Serde metadata budget"))?;
+            let cost = encoded
+                .len()
+                .checked_mul(8)
+                .and_then(|cost| cost.checked_add(4 * std::mem::size_of::<Representation>()))
+                .ok_or_else(|| A::Error::custom("Serde metadata budget"))?;
             *self.remaining = self.remaining.checked_sub(cost).ok_or_else(|| A::Error::custom("Serde metadata budget"))?;
             let representation = serde_json::from_str(&encoded).map_err(A::Error::custom)?;
-            if output.insert(index, representation).is_some() { return Err(A::Error::custom("duplicate Serde representation")); }
+            if output.insert(index, representation).is_some() {
+                return Err(A::Error::custom("duplicate Serde representation"));
+            }
         }
         Ok(output)
     }
@@ -136,15 +142,64 @@ impl Representation {
         if encoded.is_empty() {
             return Ok(None);
         }
+        if encoded.len() > crate::FRAGMENT_LIMIT {
+            return Err(super::graph::Error::Budget);
+        }
         serde_json::from_str(encoded).map(Some).map_err(|_| super::graph::Error::Field {
-            field: "serde".into(), reason: "invalid Serde wire representation",
+            field: "serde".into(),
+            reason: "invalid Serde wire representation",
         })
+    }
+
+    pub(crate) fn retained_bytes(&self) -> usize {
+        let names = self.omissions.keys().map(String::capacity).sum::<usize>();
+        let maps = self.maps.iter().map(String::capacity).sum::<usize>();
+        self.tag
+            .as_ref()
+            .map_or(0, String::capacity)
+            .saturating_add(self.content.as_ref().map_or(0, String::capacity))
+            .saturating_add(names)
+            .saturating_add(maps)
+            .saturating_add(self.maps.capacity().saturating_mul(std::mem::size_of::<String>()))
+            .saturating_add(self.omissions.len().saturating_mul(4 * std::mem::size_of::<(String, Omission)>()))
+            .saturating_add(4 * std::mem::size_of::<(usize, Self)>())
     }
 }
 
 /* === Public Functions === */
 
-pub(crate) fn serialize<S: serde::Serializer>(representations: &BTreeMap<usize, Representation>, serializer: S) -> Result<S::Ok, S::Error> {
+pub const fn tag_available(fields: &[Field<super::declaration::Definition>], own_tag: Option<&str>, tag: &str) -> bool {
+    const fn same(left: &str, right: &str) -> bool {
+        if left.len() != right.len() {
+            return false;
+        }
+        let mut index = 0;
+        while index < left.len() {
+            if left.as_bytes()[index] != right.as_bytes()[index] {
+                return false;
+            }
+            index += 1;
+        }
+        true
+    }
+    if let Some(own_tag) = own_tag
+        && same(own_tag, tag)
+    {
+        return false;
+    }
+    let mut index = 0;
+    while index < fields.len() {
+        if let std::borrow::Cow::Borrowed(name) = &fields[index].name
+            && same(name, tag)
+        {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+pub fn serialize<S: serde::Serializer>(representations: &BTreeMap<usize, Representation>, serializer: S) -> Result<S::Ok, S::Error> {
     let mut output = serializer.serialize_map(Some(representations.len()))?;
     for (index, representation) in representations {
         let encoded = serde_json::to_string(representation).map_err(serde::ser::Error::custom)?;
@@ -154,7 +209,10 @@ pub(crate) fn serialize<S: serde::Serializer>(representations: &BTreeMap<usize, 
 }
 
 pub(crate) fn check(representation: &Representation, fields: &[Field]) -> Result<(), super::graph::Error> {
-    let invalid = || super::graph::Error::Field { field: "serde".into(), reason: "wire representation conflicts with fields" };
+    let invalid = || super::graph::Error::Field {
+        field: "serde".into(),
+        reason: "wire representation conflicts with fields",
+    };
     let variants = fields.iter().all(|field| field.cardinality == Cardinality::Variant);
     match representation.form {
         Form::Unit if !fields.is_empty() => return Err(invalid()),
@@ -168,7 +226,8 @@ pub(crate) fn check(representation: &Representation, fields: &[Field]) -> Result
     }
     if representation.tag.as_ref().is_some_and(|tag| tag.len() > super::MAX_NAME_BYTES)
         || representation.content.as_ref().is_some_and(|content| content.len() > super::MAX_NAME_BYTES)
-        || representation.tag.is_some() && representation.tag == representation.content {
+        || representation.tag.is_some() && representation.tag == representation.content
+    {
         return Err(invalid());
     }
     for (name, omission) in &representation.omissions {
@@ -177,21 +236,25 @@ pub(crate) fn check(representation: &Representation, fields: &[Field]) -> Result
             Omission::None => field.cardinality == Cardinality::Optional,
             Omission::Empty => field.cardinality == Cardinality::Repeated || field.kind == Kind::Bytes,
         };
-        if !valid || representation.form != Form::Object { return Err(invalid()); }
+        if !valid || representation.form != Form::Object {
+            return Err(invalid());
+        }
     }
     for name in &representation.maps {
         let field = fields.iter().find(|field| field.name == name.as_str()).ok_or_else(invalid)?;
-        if field.cardinality != Cardinality::Repeated || !matches!(field.kind, Kind::Message { .. }) { return Err(invalid()); }
+        if field.cardinality != Cardinality::Repeated || !matches!(field.kind, Kind::Message { .. }) {
+            return Err(invalid());
+        }
     }
     Ok(())
 }
 
 // Translate The Stored Serde Form To The Schema's Positional Value Tree.
-pub fn encode(schema: &Schema, root: usize, value: &Value) -> Result<Value, MessageError> {
+pub(crate) fn encode(schema: &Schema, root: usize, value: &Value) -> Result<Value, MessageError> {
     transform(schema, root, value, true, 0)
 }
 
-pub fn decode(schema: &Schema, root: usize, value: &Value) -> Result<Value, MessageError> {
+pub(crate) fn decode(schema: &Schema, root: usize, value: &Value) -> Result<Value, MessageError> {
     transform(schema, root, value, false, 0)
 }
 
@@ -219,23 +282,31 @@ fn transform(schema: &Schema, root: usize, value: &Value, encoding: bool, depth:
         Form::Value => {
             let field = fields.first().ok_or_else(invalid)?;
             if encoding {
-                let inner = field_value(schema, field, value, encoding, depth)?;
+                let inner = member(schema, field, representation, value, encoding, depth)?;
                 Ok(Value::Object(Map::from_iter([(field.name.to_string(), inner)])))
             } else {
-                field_value(schema, field, value.get(field.name.as_ref()).ok_or_else(invalid)?, encoding, depth)
+                let value = value.get(field.name.as_ref()).ok_or_else(invalid)?;
+                member(schema, field, representation, value, encoding, depth)
             }
         }
         Form::Tuple => {
             if encoding {
                 let values = value.as_array().filter(|values| values.len() == fields.len()).ok_or_else(invalid)?;
-                let object = fields.iter().zip(values).map(|(field, value)| {
-                    field_value(schema, field, value, encoding, depth).map(|value| (field.name.to_string(), value))
-                }).collect::<Result<Map<_, _>, _>>()?;
+                let object = fields
+                    .iter()
+                    .zip(values)
+                    .map(|(field, value)| {
+                        member(schema, field, representation, value, encoding, depth).map(|value| (field.name.to_string(), value))
+                    })
+                    .collect::<Result<Map<_, _>, _>>()?;
                 Ok(Value::Object(object))
             } else {
-                let values = fields.iter().map(|field| {
-                    field_value(schema, field, value.get(field.name.as_ref()).ok_or_else(invalid)?, encoding, depth)
-                }).collect::<Result<Vec<_>, _>>()?;
+                let values = fields
+                    .iter()
+                    .map(|field| {
+                        member(schema, field, representation, value.get(field.name.as_ref()).ok_or_else(invalid)?, encoding, depth)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
                 Ok(Value::Array(values))
             }
         }
@@ -244,7 +315,9 @@ fn transform(schema: &Schema, root: usize, value: &Value, encoding: bool, depth:
     }
 }
 
-fn object(schema: &Schema, fields: &[Field], representation: &Representation, value: &Value, encoding: bool, depth: usize) -> Result<Value, MessageError> {
+fn object(
+    schema: &Schema, fields: &[Field], representation: &Representation, value: &Value, encoding: bool, depth: usize,
+) -> Result<Value, MessageError> {
     let input = value.as_object().ok_or_else(invalid)?;
     if input.keys().any(|name| !fields.iter().any(|field| field.name == name.as_str())) {
         return Err(invalid());
@@ -252,38 +325,66 @@ fn object(schema: &Schema, fields: &[Field], representation: &Representation, va
     let mut output = Map::new();
     for field in fields {
         let omission = representation.omissions.get(field.name.as_ref());
-        let fallback = match omission { Some(Omission::None) => Value::Null, Some(Omission::Empty) => Value::Array(Vec::new()), None => Value::Null };
+        let fallback = match omission {
+            Some(Omission::None) => Value::Null,
+            Some(Omission::Empty) => Value::Array(Vec::new()),
+            None => Value::Null,
+        };
         let value = input.get(field.name.as_ref());
         if encoding && value.is_none() && omission.is_none() {
             return Err(invalid());
         }
         let value = value.unwrap_or(&fallback);
-        let omitted = match omission { Some(Omission::None) => value.is_null(), Some(Omission::Empty) => value.as_array().is_some_and(Vec::is_empty), None => false };
-        if encoding && input.contains_key(field.name.as_ref()) && omitted {
+        let omitted = match omission {
+            Some(Omission::None) => value.is_null(),
+            Some(Omission::Empty) => value.as_array().is_some_and(Vec::is_empty),
+            None => false,
+        };
+        if encoding && input.contains_key(field.name.as_ref()) && omitted && omission == Some(&Omission::Empty) {
             return Err(invalid());
         }
-        if !encoding && omitted { continue; }
-        let mapped = if representation.maps.iter().any(|name| name == field.name.as_ref()) {
-            map(schema, field, value, encoding, depth)?
+        if !encoding && omitted {
+            continue;
+        }
+        let mapped = if encoding && omission == Some(&Omission::None) && input.contains_key(field.name.as_ref()) {
+            kind(schema, field.kind, value, true, depth)?
         } else {
-            field_value(schema, field, value, encoding, depth)?
+            member(schema, field, representation, value, encoding, depth)?
         };
         output.insert(field.name.to_string(), mapped);
     }
     Ok(Value::Object(output))
 }
 
+fn member(
+    schema: &Schema, field: &Field, representation: &Representation, value: &Value, encoding: bool, depth: usize,
+) -> Result<Value, MessageError> {
+    if representation.maps.iter().any(|name| name == field.name.as_ref()) {
+        map(schema, field, value, encoding, depth)
+    } else {
+        field_value(schema, field, value, encoding, depth)
+    }
+}
+
 fn field_value(schema: &Schema, field: &Field, value: &Value, encoding: bool, depth: usize) -> Result<Value, MessageError> {
-    if field.cardinality == Cardinality::Optional && value.is_null() { return Ok(Value::Null); }
+    if field.cardinality == Cardinality::Optional && value.is_null() {
+        return Ok(Value::Null);
+    }
     if field.cardinality == Cardinality::Repeated {
         let values = value.as_array().ok_or_else(invalid)?;
-        return values.iter().map(|value| kind(schema, field.kind, value, encoding, depth)).collect::<Result<Vec<_>, _>>().map(Value::Array);
+        return values
+            .iter()
+            .map(|value| kind(schema, field.kind, value, encoding, depth))
+            .collect::<Result<Vec<_>, _>>()
+            .map(Value::Array);
     }
     kind(schema, field.kind, value, encoding, depth)
 }
 
 fn kind(schema: &Schema, kind: Kind, value: &Value, encoding: bool, depth: usize) -> Result<Value, MessageError> {
-    if let Kind::Message { definition } = kind { return transform(schema, definition, value, encoding, depth + 1); }
+    if let Kind::Message { definition } = kind {
+        return transform(schema, definition, value, encoding, depth + 1);
+    }
     let valid = match kind {
         Kind::Bool => value.is_boolean(),
         Kind::U32 => value.as_u64().is_some_and(|value| u32::try_from(value).is_ok()),
@@ -299,9 +400,13 @@ fn kind(schema: &Schema, kind: Kind, value: &Value, encoding: bool, depth: usize
 }
 
 fn map(schema: &Schema, field: &Field, value: &Value, encoding: bool, depth: usize) -> Result<Value, MessageError> {
-    let Kind::Message { definition } = field.kind else { return Err(invalid()); };
+    let Kind::Message { definition } = field.kind else {
+        return Err(invalid());
+    };
     let fields = &schema.definitions[definition];
-    if fields.len() != 2 { return Err(invalid()); }
+    if fields.len() != 2 {
+        return Err(invalid());
+    }
     if encoding {
         let input = value.as_object().ok_or_else(invalid)?;
         let mut output = Vec::new();
@@ -327,7 +432,9 @@ fn map(schema: &Schema, field: &Field, value: &Value, encoding: bool, depth: usi
     }
 }
 
-fn enumeration(schema: &Schema, fields: &[Field], representation: &Representation, value: &Value, encoding: bool, depth: usize) -> Result<Value, MessageError> {
+fn enumeration(
+    schema: &Schema, fields: &[Field], representation: &Representation, value: &Value, encoding: bool, depth: usize,
+) -> Result<Value, MessageError> {
     if encoding && representation.form == Form::Untagged {
         for field in fields {
             if let Ok(payload) = kind(schema, field.kind, value, true, depth) {
@@ -341,12 +448,17 @@ fn enumeration(schema: &Schema, fields: &[Field], representation: &Representatio
     let name = if !encoding {
         value.as_object().filter(|object| object.len() == 1).and_then(|object| object.keys().next()).map(String::as_str)
     } else if representation.form == Form::External {
-        value.as_str().or_else(|| value.as_object().filter(|object| object.len() == 1).and_then(|object| object.keys().next()).map(String::as_str))
+        value
+            .as_str()
+            .or_else(|| value.as_object().filter(|object| object.len() == 1).and_then(|object| object.keys().next()).map(String::as_str))
     } else {
         value.get(tag).and_then(Value::as_str)
-    }.ok_or_else(invalid)?;
+    }
+    .ok_or_else(invalid)?;
     let field = fields.iter().find(|field| field.name == name).ok_or_else(invalid)?;
-    let Kind::Message { definition } = field.kind else { return Err(invalid()); };
+    let Kind::Message { definition } = field.kind else {
+        return Err(invalid());
+    };
     let unit = schema.representations.get(&definition).is_some_and(|representation| representation.form == Form::Unit);
     if encoding {
         let payload = match representation.form {
@@ -356,17 +468,27 @@ fn enumeration(schema: &Schema, fields: &[Field], representation: &Representatio
                 let mut payload = value.as_object().ok_or_else(invalid)?.clone();
                 payload.remove(tag);
                 if unit {
-                    if !payload.is_empty() { return Err(invalid()); }
+                    if !payload.is_empty() {
+                        return Err(invalid());
+                    }
                     Value::Null
-                } else { Value::Object(payload) }
+                } else {
+                    Value::Object(payload)
+                }
             }
             Form::Adjacent => {
                 let object = value.as_object().ok_or_else(invalid)?;
-                if object.keys().any(|key| key != tag && key != content) { return Err(invalid()); }
+                if object.keys().any(|key| key != tag && key != content) {
+                    return Err(invalid());
+                }
                 if unit {
-                    if object.contains_key(content) { return Err(invalid()); }
+                    if object.contains_key(content) {
+                        return Err(invalid());
+                    }
                     Value::Null
-                } else { object.get(content).ok_or_else(invalid)?.clone() }
+                } else {
+                    object.get(content).ok_or_else(invalid)?.clone()
+                }
             }
             _ => return Err(invalid()),
         };
@@ -380,12 +502,16 @@ fn enumeration(schema: &Schema, fields: &[Field], representation: &Representatio
         Form::Untagged => Ok(payload),
         Form::Internal => {
             let mut object = if unit { Map::new() } else { payload.as_object().ok_or_else(invalid)?.clone() };
-            if object.insert(tag.to_owned(), Value::String(name.to_owned())).is_some() { return Err(invalid()); }
+            if object.insert(tag.to_owned(), Value::String(name.to_owned())).is_some() {
+                return Err(invalid());
+            }
             Ok(Value::Object(object))
         }
         Form::Adjacent => {
             let mut object = Map::from_iter([(tag.to_owned(), Value::String(name.to_owned()))]);
-            if !unit { object.insert(content.to_owned(), payload); }
+            if !unit {
+                object.insert(content.to_owned(), payload);
+            }
             Ok(Value::Object(object))
         }
         _ => Err(invalid()),

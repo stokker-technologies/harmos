@@ -81,9 +81,19 @@ the same rule, including `ValidatedSchematic`.
 Records, transactions and their nested Serde domain types declare their schema
 with `#[derive(harmos::Described)]`; an existing `#[message]`
 already supplies the schema. This schema-only derive retains the existing
-Serde payload codec. It supports named, tuple and enum shapes, field `rename` and
-`skip`, and transparent newtypes. Custom Serde representations provide an explicit
-`Described` implementation. Record listeners declare `record = "identity", row = Type`
+Serde payload codec. It describes named and tuple structs, transparent newtypes,
+and externally, internally, adjacently tagged or untagged enums. Serialization
+names follow `rename`, `rename_all` and `rename_all_fields`, including directional
+names. `default` and deserialization-only attributes do not change the stored
+shape. `skip` and `skip_serializing` remove named fields or variants;
+`skip_serializing_if = "Option::is_none"` and `"Vec::is_empty"` describe omission
+separately from nullability and repeated values. Skipped positional fields,
+arbitrary omission predicates, `flatten`, custom serializers and conversions are
+refused at compile time with the attribute and enclosing type. Such forms require
+an explicit, accurate `Described` implementation. Serde wire metadata survives
+schema serialization and participates in the same canonical encoding used by
+revisions and fingerprints. Existing schemas without that metadata retain their
+canonical bytes. Record listeners declare `record = "identity", row = Type`
 without `version =`; binding checks identity and the declared row schema.
 System facts use `SystemFact::new(source, name, bytes)` for opaque bytes or
 `SystemFact::encode(source, name, &value)` for a described Serde payload. Their

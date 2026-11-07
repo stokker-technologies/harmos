@@ -61,14 +61,16 @@ wrapper!(bool => Bool, u32 => U32, u64 => U64, i32 => I32, i64 => I64, f32 => F3
 macro_rules! stored_scalar {
     ($($ty:ty => $kind:ident),* $(,)?) => {$(
         impl Described for $ty {
+            const SERDE_OBJECT: bool = false;
+            const SERDE: &'static str = "{\"form\":\"value\"}";
             const NAME: &'static str = concat!("harmos::", stringify!($ty));
             const FIELDS: &'static [graph::Field<declaration::Definition>] = &[graph::Field {
                 name: Cow::Borrowed(stringify!($ty)), tag: 1,
                 kind: graph::Kind::$kind, cardinality: Cardinality::Required,
             }];
-            const MARKER: &'static [u8] = &declaration::encode::<{
-                declaration::encoded_len(Self::NAME, Self::FIELDS)
-            }>(Self::NAME, Self::FIELDS);
+            const MARKER: &'static [u8] = &declaration::encode_serde::<{
+                declaration::encoded_serde_len(Self::NAME, Self::FIELDS, Self::SERDE)
+            }>(Self::NAME, Self::FIELDS, Self::SERDE);
         }
     )*};
 }
@@ -108,6 +110,7 @@ pub trait Described: 'static {
 
     const SERDE: &'static str = "";
     const SERDE_OBJECT: bool = true;
+    const SERDE_TAG: Option<&'static str> = None;
 
     const DEFAULT_VARIANT: Option<usize> = Some(0);
 
