@@ -86,7 +86,7 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
         str(path),
         *extra,
     ]
-    with summary.phase("Compilation and Archive"), path.with_name(reader.MESSAGES).open("w", encoding="utf-8") as output:
+    with summary.phase("Compilation And Archive"), path.with_name(reader.MESSAGES).open("w", encoding="utf-8") as output:
         result = subprocess.run(
             command,
             stdin=sys.stdin,
