@@ -25,7 +25,8 @@ use criterion::{BenchmarkId, Criterion, SamplingMode, Throughput};
 // Local Imports
 use super::fixture::Fixture;
 use harmos_runtime::operations::StreamSettings;
-use schematic_operations::transfer::{Batch, Download, Put, Receipt, Record, Sample, Take, Upload};
+use schematic_domain::model::transfer::{Batch, Receipt, Record, Sample};
+use schematic_operations::transfer::{Download, Put, Take, Upload};
 
 /* === Constants === */
 
@@ -172,7 +173,7 @@ fn dataset(kind: &str, count: usize) -> Vec<Batch> {
                     batch.samples = (start..end)
                         .map(|sequence| Sample {
                             sequence: sequence as u64,
-                            timestamp: sequence as u64,
+                            timestamp_us: sequence as u64,
                             value: sequence as f64 * 0.000001,
                         })
                         .collect()
@@ -215,7 +216,7 @@ fn verify(batches: Vec<Batch>, kind: &str, count: usize) {
                 assert!(batch.records.is_empty() && batch.bytes.is_empty());
                 for sample in batch.samples {
                     assert_eq!(sample.sequence, checked as u64);
-                    assert_eq!(sample.timestamp, checked as u64);
+                    assert_eq!(sample.timestamp_us, checked as u64);
                     assert_eq!(sample.value, checked as f64 * 0.000001);
                     checked += 1;
                 }

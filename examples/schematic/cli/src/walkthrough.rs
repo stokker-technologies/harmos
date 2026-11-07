@@ -7,7 +7,7 @@
  * ***
  */
 
-// Run The Same Editing And Persistence Story With Either Plugin Backend.
+// Run the Same Editing and Persistence Story with Either Plugin Backend.
 
 /* === Modules === */
 
@@ -60,7 +60,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
 
     // Choose a Backend for the Same Operations
     let plugin = async {
-        // Component Compilation Precedes The Bounded Plugin Initialization.
+        // Component Compilation Precedes the Bounded Plugin Initialization.
         let loaded = match guest {
             Some(path) => {
                 let bytes = std::fs::read(path)?;
@@ -85,7 +85,96 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
         }
     };
 
-    let result = edit(&runtime, advanced, guest.is_none()).await;
+    // === Edit the Document === //
+    let result = async {
+        // Select the Designer
+        let principal = PrincipalId::new("designer");
+        let state = runtime.state.as_principal(principal.clone());
+
+        // Place the Resistor
+        let request = PlaceSymbol {
+            symbol: SymbolId(1),
+            reference: "R1".to_owned(),
+            at: Point::new(10, 20),
+            rotation: Rotation::Zero,
+        };
+        state.commit(request).await?;
+
+        // Place the Controller
+        let request = PlaceSymbol {
+            symbol: SymbolId(2),
+            reference: "U1".to_owned(),
+            at: Point::new(60, 40),
+            rotation: Rotation::Zero,
+        };
+        state.commit(request).await?;
+
+        // Connect the Symbols
+        let request = ConnectPins {
+            net: NetId(1),
+            name: NetName::verbatim("POWER"),
+            pins: BTreeSet::from([PinRef::new(SymbolId(1), 1), PinRef::new(SymbolId(2), 1)]),
+        };
+        state.commit(request).await?;
+
+        // Move the Resistor
+        let request = MoveSymbol {
+            symbol: SymbolId(1),
+            to: Point::new(20, 20),
+        };
+        state.commit(request).await?;
+        println!("Placed R1 and U1, connected POWER, moved R1");
+
+        // Capture the Schematic
+        let snapshot = state.state().read(Clone::clone).await?.value;
+        let symbols = snapshot.symbols.keys().map(|id| id.0).collect();
+        let connections = snapshot
+            .nets
+            .values()
+            .flat_map(|net| {
+                let symbols: Vec<_> = net.pins.iter().map(|pin| pin.symbol.0).collect();
+                symbols.windows(2).map(|pair| model::Connection { from: pair[0], to: pair[1] }).collect::<Vec<_>>()
+            })
+            .collect();
+        let schematic = model::Snapshot { symbols, connections };
+
+        // Validate the Schematic
+        let request = ValidateSchematic { schematic: schematic.clone() };
+        let validation = runtime.operation(request).await?;
+        println!("Validation: {} diagnostics", validation.diagnostics.len());
+
+        // Propose a Route
+        let from = snapshot.symbol(SymbolId(1)).position;
+        let to = snapshot.symbol(SymbolId(2)).position;
+        let request = ProposeRoute {
+            from: model::Point { x: from.x, y: from.y },
+            to: model::Point { x: to.x, y: to.y },
+        };
+        let proposed = runtime.operation(request).await?;
+
+        // Apply the Route
+        let points = proposed.points.iter().map(|point| Point::new(point.x, point.y)).collect();
+        let request = ApplyRoute { net: NetId(1), points };
+        state.commit(request).await?;
+        println!("Applied route: {:?}", proposed.points);
+
+        // Undo the Route
+        let selection = Focus::all();
+        state.undo(principal.clone(), selection).await?;
+
+        // Redo the Route
+        let selection = Focus::all();
+        state.redo(principal, selection).await?;
+        println!("Undid and redid the route");
+
+        if advanced {
+            crate::advanced::run(&runtime, schematic, guest.is_none()).await?;
+        }
+        Ok::<_, crate::Error>(())
+    }
+    .await;
+
+    // Settle the Plugin and Runtime
     let stopped = plugin.stop().await;
     let snapshot = runtime.state.state().read(Clone::clone).await;
     let settled = runtime.shutdown().await;
@@ -111,76 +200,5 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
 }
 
 /* === Private Functions === */
-
-async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()> {
-    let principal = PrincipalId::new("designer");
-    let state = runtime.state.as_principal(principal.clone());
-
-    // Place and Connect Two Symbols
-    let resistor = PlaceSymbol {
-        symbol: SymbolId(1),
-        reference: "R1".to_owned(),
-        at: Point::new(10, 20),
-        rotation: Rotation::Zero,
-    };
-    let controller = PlaceSymbol {
-        symbol: SymbolId(2),
-        reference: "U1".to_owned(),
-        at: Point::new(60, 40),
-        rotation: Rotation::Zero,
-    };
-    state.commit(resistor).await?;
-    state.commit(controller).await?;
-    let connection = ConnectPins {
-        net: NetId(1),
-        name: NetName::verbatim("POWER"),
-        pins: BTreeSet::from([PinRef::new(SymbolId(1), 1), PinRef::new(SymbolId(2), 1)]),
-    };
-    state.commit(connection).await?;
-    let movement = MoveSymbol {
-        symbol: SymbolId(1),
-        to: Point::new(20, 20),
-    };
-    state.commit(movement).await?;
-    println!("Placed R1 and U1, connected POWER, moved R1");
-
-    // Ask The Plugin For Advice; The Host Owns Edits
-    let snapshot = state.state().read(Clone::clone).await?.value;
-    let symbols = snapshot.symbols.keys().map(|id| id.0).collect();
-    let connections = snapshot
-        .nets
-        .values()
-        .flat_map(|net| {
-            let symbols: Vec<_> = net.pins.iter().map(|pin| pin.symbol.0).collect();
-            symbols.windows(2).map(|pair| model::Connection { from: pair[0], to: pair[1] }).collect::<Vec<_>>()
-        })
-        .collect();
-    let schematic = model::Snapshot { symbols, connections };
-    let validation = ValidateSchematic { schematic: schematic.clone() };
-    let validation = runtime.operation(validation).await?;
-    println!("Validation: {} diagnostics", validation.diagnostics.len());
-
-    let from = snapshot.symbol(SymbolId(1)).position;
-    let to = snapshot.symbol(SymbolId(2)).position;
-    let request = ProposeRoute {
-        from: model::Point { x: from.x, y: from.y },
-        to: model::Point { x: to.x, y: to.y },
-    };
-    let proposed = runtime.operation(request).await?;
-    let points = proposed.points.iter().map(|point| Point::new(point.x, point.y)).collect();
-    let change = ApplyRoute { net: NetId(1), points };
-    state.commit(change).await?;
-    println!("Applied route: {:?}", proposed.points);
-
-    // Undo and Redo the Host Transaction
-    state.undo(principal.clone(), Focus::all()).await?;
-    state.redo(principal, Focus::all()).await?;
-    println!("Undid and redid the route");
-
-    if advanced {
-        crate::advanced::run(runtime, schematic, native).await?;
-    }
-    Ok(())
-}
 
 /* === Tests === */

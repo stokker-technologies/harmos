@@ -7,11 +7,12 @@
  * ***
  */
 
-// The Closed Catalog Of Model Domains.
+// The Closed Catalog of Model Domains.
 
 /* === Modules === */
 
 pub mod schematic;
+pub mod transfer;
 
 /* === Re-Exports === */
 

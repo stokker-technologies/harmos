@@ -7,7 +7,7 @@
  * ***
  */
 
-// Run The Native Plugin Over Its SDK Transport.
+// Run the Native Plugin Over Its SDK Transport.
 
 /* === Modules === */
 
@@ -40,7 +40,9 @@
 /* === Private Functions === */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    harmos::sidecar::run_plugin::<__RUST_MODULE__::Plugin>(std::num::NonZeroUsize::new(4).unwrap()).await?;
+    // Run the Plugin
+    let capacity = std::num::NonZeroUsize::new(4).unwrap();
+    harmos::sidecar::run_plugin::<__RUST_MODULE__::Plugin>(capacity).await?;
     Ok(())
 }
 

@@ -7,7 +7,7 @@
  * ***
  */
 
-// Export The Producer's Explicit Schematic Operation Catalog.
+// Export the Producer's Explicit Schematic Operation Catalog.
 
 /* === Modules === */
 

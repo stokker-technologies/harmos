@@ -7,13 +7,14 @@
  * ***
  */
 
-// Operations Over One Schematic Snapshot, Served By Every Delivery.
+// Operations Over One Schematic Snapshot, Served by Every Delivery.
 
 /* === Modules === */
 
 pub mod analyze;
+pub mod exchange;
 pub mod propose;
-pub mod streaming;
+pub mod upload;
 pub mod validate;
 
 /* === Re-Exports === */
