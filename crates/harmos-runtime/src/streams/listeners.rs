@@ -212,7 +212,7 @@ impl<A: Application> StreamManager<A> {
 impl<A: Application> PluginListenerBindings<'_, A> {
     pub fn stream<S: Stream<A> + Message + Described>(&mut self, after: u64) -> Result<()> {
         let wired = self.source(S::ID)?;
-        if wired.definition.row() != TypeId::of::<S>() || wired.definition.version() != S::VERSION || wired.definition.owner().is_some() {
+        if wired.definition.row() != TypeId::of::<S>() || wired.definition.owner().is_some() {
             return Err(Error::InvalidInput {
                 field: "native listener stream",
                 reason: "source differs from the compiled native catalog member",
@@ -231,10 +231,7 @@ impl<A: Application> PluginListenerBindings<'_, A> {
                 reason: "source has no original validated generation owner",
             });
         }
-        let graph = wired.definition.schema().ok_or(Error::InvalidInput {
-            field: "managed listener stream",
-            reason: "source has no admitted row schema",
-        })?;
+        let graph = wired.definition.schema();
         self.bind(Arc::clone(&wired), graph, after, submit_publication, publication_bytes)
     }
 

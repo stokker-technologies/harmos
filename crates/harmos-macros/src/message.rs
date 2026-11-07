@@ -134,6 +134,136 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     })
 }
 
+// Describes Stored Serde Values Without Adding A Payload Codec.
+pub(crate) fn shape(item: &syn::Item, harmos: &HarmosPath) -> Result<TokenStream, Error> {
+    let attributes = match item {
+        syn::Item::Struct(item) => &item.attrs,
+        syn::Item::Enum(item) => &item.attrs,
+        other => return Err(Error::new(other.span(), "a stored shape requires a struct or enum")),
+    };
+    let mut transparent = false;
+    for attribute in attributes.iter().filter(|attribute| attribute.path().is_ident("serde")) {
+        attribute.parse_nested_meta(|meta| {
+            if meta.path.is_ident("transparent") {
+                transparent = true;
+                return Ok(());
+            }
+            if meta.path.is_ident("deny_unknown_fields") || meta.path.is_ident("default") {
+                if meta.input.peek(syn::Token![=]) {
+                    let _: syn::Expr = meta.value()?.parse()?;
+                }
+                return Ok(());
+            }
+            Err(meta.error("this Serde representation requires an explicit Described implementation"))
+        })?;
+    }
+    let fields = |fields: &Fields| -> Result<Vec<TokenStream>, Error> {
+        let mut output = Vec::new();
+        for (position, field) in fields.iter().enumerate() {
+            let mut name = field.ident.as_ref().map(ToString::to_string).unwrap_or_else(|| format!("field_{position}"));
+            let mut skipped = false;
+            for attribute in field.attrs.iter().filter(|attribute| attribute.path().is_ident("serde")) {
+                attribute.parse_nested_meta(|meta| {
+                    if !(meta.path.is_ident("skip") || meta.path.is_ident("rename") || meta.path.is_ident("default")) {
+                        return Err(meta.error("this Serde field representation requires an explicit Described implementation"));
+                    }
+                    if meta.path.is_ident("skip") {
+                        skipped = true;
+                    }
+                    if meta.path.is_ident("rename") {
+                        name = meta.value()?.parse::<syn::LitStr>()?.value();
+                    }
+                    if meta.input.peek(syn::Token![=]) {
+                        let _: syn::Expr = meta.value()?.parse()?;
+                    }
+                    Ok(())
+                })?;
+            }
+            if skipped {
+                continue;
+            }
+            let name = name.strip_prefix("r#").unwrap_or(&name);
+            let ty = &field.ty;
+            let (_, kind, cardinality) =
+                if matches!(type_name(ty).as_deref(), Some("u8" | "u16" | "i8" | "i16" | "usize" | "isize" | "u128" | "i128" | "char")) {
+                    (false, quote!(<#ty as #harmos::schema::Described>::FIELD_KIND), quote!(#harmos::schema::Cardinality::Required))
+                } else if matches!(type_name(ty).as_deref(), Some("BTreeSet" | "HashSet")) {
+                    let Type::Path(path) = ty else { unreachable!() };
+                    let syn::PathArguments::AngleBracketed(arguments) = &path.path.segments.last().unwrap().arguments else {
+                        return Err(unsupported(ty));
+                    };
+                    let Some(syn::GenericArgument::Type(inner)) = arguments.args.first() else {
+                        return Err(unsupported(ty));
+                    };
+                    encoding(&syn::parse_quote!(Vec<#inner>), harmos)?
+                } else {
+                    encoding(ty, harmos)?
+                };
+            output.push(quote! { #harmos::schema::graph::Field {
+                name: ::std::borrow::Cow::Borrowed(#name), tag: #harmos::schema::field_tag(#name),
+                kind: #kind, cardinality: #cardinality,
+            }});
+        }
+        Ok(output)
+    };
+    match item {
+        syn::Item::Struct(item) => {
+            if !item.generics.params.is_empty() {
+                return Err(Error::new(item.span(), "stored shapes require non-generic declarations"));
+            }
+            if transparent || matches!(&item.fields, Fields::Unnamed(fields) if fields.unnamed.len() == 1) {
+                let field = item.fields.iter().next().ok_or_else(|| Error::new(item.span(), "a transparent shape requires a field"))?;
+                let ty = &field.ty;
+                let extra = quote!(const FIELD_KIND: #harmos::schema::graph::Kind<#harmos::schema::declaration::Definition> = <#ty as #harmos::schema::Described>::FIELD_KIND;);
+                return Ok(described(&item.ident, quote!(<#ty as #harmos::schema::Described>::FIELDS), extra, harmos));
+            }
+            let fields = fields(&item.fields)?;
+            Ok(described(&item.ident, quote!(&[#(#fields),*]), quote!(), harmos))
+        }
+        syn::Item::Enum(item) => {
+            if !item.generics.params.is_empty() {
+                return Err(Error::new(item.span(), "stored shapes require non-generic declarations"));
+            }
+            let name = &item.ident;
+            let mut payloads = Vec::new();
+            let mut variants = Vec::new();
+            for (index, variant) in item.variants.iter().enumerate() {
+                let mut variant_name = variant.ident.to_string();
+                let mut skipped = false;
+                for attribute in variant.attrs.iter().filter(|attribute| attribute.path().is_ident("serde")) {
+                    attribute.parse_nested_meta(|meta| {
+                        if meta.path.is_ident("skip") {
+                            skipped = true;
+                            return Ok(());
+                        }
+                        if meta.path.is_ident("rename") {
+                            variant_name = meta.value()?.parse::<syn::LitStr>()?.value();
+                            return Ok(());
+                        }
+                        Err(meta.error("this Serde variant representation requires an explicit Described implementation"))
+                    })?;
+                }
+                if skipped {
+                    continue;
+                }
+                let payload = quote::format_ident!("__HarmosPayload{index}");
+                let fields = fields(&variant.fields)?;
+                let declaration = described(&payload, quote!(&[#(#fields),*]), quote!(), harmos);
+                payloads.push(quote!(struct #payload; #declaration));
+                let variant = variant_name;
+                variants.push(quote!(#harmos::schema::graph::Field {
+                    name: ::std::borrow::Cow::Borrowed(#variant), tag: #harmos::schema::field_tag(#variant),
+                    kind: #harmos::schema::graph::Kind::Message { definition: <#payload as #harmos::schema::Described>::DEFINITION },
+                    cardinality: #harmos::schema::Cardinality::Variant,
+                }));
+            }
+            let declaration = described(name, quote!(&[#(#variants),*]), quote!(), harmos);
+            Ok(quote!(const _: () = { #(#payloads)* #declaration };))
+        }
+        other => Err(Error::new(other.span(), "a stored shape requires a struct or enum")),
+    }
+}
+
 pub(crate) fn portable(item: &syn::Item, harmos: &HarmosPath) -> bool {
     let syn::Item::Struct(item) = item else {
         return false;

@@ -46,9 +46,7 @@ use crate::{
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Snapshot<S> {
-    #[serde(rename = "version")]
-    _version: u32,
-
+    definitions: Vec<(Kind, DefinitionId, u32)>,
     schema: SchemaKey,
     position: Position,
     state: S,
@@ -186,7 +184,8 @@ impl Write for Bounded {
 /* === Public Functions === */
 
 pub(super) fn encode<A: Application>(
-    policy: &SnapshotPolicy, state: &At<A::State>, undos: &Undos<A>, tail: &Tail<A>, receipts: &HashMap<RequestKey, Receipt>,
+    policy: &SnapshotPolicy, catalog: &Dispatch<A, Payload<A>>, state: &At<A::State>, undos: &Undos<A>, tail: &Tail<A>,
+    receipts: &HashMap<RequestKey, Receipt>,
 ) -> Result<Vec<u8>>
 where
     A::State: Serialize,
@@ -198,7 +197,7 @@ where
     let mut serializer = serde_json::Serializer::new(&mut out);
     let result = (|| {
         let mut value = serializer.serialize_struct("Snapshot", 7)?;
-        value.serialize_field("version", &1_u32)?;
+        value.serialize_field("definitions", &catalog.definitions())?;
         value.serialize_field("schema", &policy.schema)?;
         value.serialize_field("position", &state.position)?;
         value.serialize_field("state", &state.value)?;
@@ -220,6 +219,9 @@ where
     let snapshot: Snapshot<A::State> = serde_json::from_slice(bytes).map_err(Incompatible::unreadable)?;
     if snapshot.schema != policy.schema || bytes.len() > policy.max_bytes.get() {
         return Err(invalid());
+    }
+    for (kind, id, version) in &snapshot.definitions {
+        catalog.validate(*kind, id, *version).map_err(Incompatible::of)?;
     }
     let mut entries = BTreeMap::new();
     let mut previous = Position::ORIGIN;
@@ -299,7 +301,7 @@ fn transaction<A: Application>(
     value: &Prepared, catalog: &Dispatch<A, Payload<A>>,
 ) -> std::result::Result<crate::operations::Response<A::Transaction>, Incompatible> {
     let bytes = serde_json::to_vec(&value.payload).map_err(Incompatible::unreadable)?;
-    catalog.decode_transaction(&value.id, value.version, &bytes).map(crate::operations::Response::new).map_err(Incompatible::unreadable)
+    catalog.decode_transaction(&value.id, value.version, &bytes).map(crate::operations::Response::new).map_err(Incompatible::of)
 }
 
 fn invalid() -> Incompatible {

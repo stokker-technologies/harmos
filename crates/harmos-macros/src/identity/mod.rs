@@ -24,7 +24,7 @@ use quote::{ToTokens, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Error, Ident, Item, LitInt, LitStr, Meta, Path, Token};
+use syn::{Error, Ident, Item, LitStr, Meta, Path, Token};
 // Local Imports
 use crate::path::{self, HarmosPath};
 use crate::set_once;
@@ -39,7 +39,6 @@ use crate::set_once;
 
 struct Declaration {
     id: Option<LitStr>,
-    version: LitInt,
     undo: Option<Path>,
     harmos: HarmosPath,
 }
@@ -124,7 +123,6 @@ fn expand(attribute: TokenStream, item: &TokenStream, sort: Sort) -> Result<Toke
     let mut declared = declaration(attribute, sort)?;
     let parsed: Item = syn::parse2(item.clone())?;
     let name = named(&parsed)?;
-    let version = &declared.version;
 
     // `inverse = Self` is the change that is its own pair, and every check
     // below reads one type name, so the shorthand is resolved once here.
@@ -135,8 +133,7 @@ fn expand(attribute: TokenStream, item: &TokenStream, sort: Sort) -> Result<Toke
     }
     let id = declared.id.as_ref().ok_or_else(|| Error::new(parsed.span(), "a definition requires id"))?;
     let harmos = &declared.harmos;
-    let kind = sort.kind(harmos);
-    let restore = restore();
+    let restore = restore(harmos);
     let undoing = match (&declared.undo, sort) {
         (Some(inverse), _) => undoing(name, inverse, harmos),
         (None, Sort::Transaction) => quote! {
@@ -154,7 +151,7 @@ fn expand(attribute: TokenStream, item: &TokenStream, sort: Sort) -> Result<Toke
             where Self: #harmos::state::Transaction<S>, S: 'static {
                 fn replay(&self, prepared: &#harmos::state::Prepared, state: &mut S) -> ::core::result::Result<(), #harmos::state::DecodeError> {
                     let refusal = || #harmos::state::DecodeError::Malformed { id: prepared.id.clone(), version: prepared.version };
-                    if prepared.id.as_str() != Self::DEFINITION.1 { return Err(refusal()); }
+                    if prepared.id.as_str() != Self::ID { return Err(refusal()); }
                     let value = Self::restore(prepared.version, &prepared.payload)
                         .map_err(|_| refusal())?.ok_or_else(refusal)?;
                     #harmos::state::Transaction::apply(&value, state);
@@ -172,7 +169,7 @@ fn expand(attribute: TokenStream, item: &TokenStream, sort: Sort) -> Result<Toke
 
         impl #name {
 
-            pub const DEFINITION: (#harmos::state::Kind, &'static str, u32) = (#kind, #id, #version);
+            pub const ID: &'static str = #id;
 
 
 
@@ -181,27 +178,34 @@ fn expand(attribute: TokenStream, item: &TokenStream, sort: Sort) -> Result<Toke
 
         #[automatically_derived]
         impl #harmos::Identified for #name {
+            const ID: &'static str = #id;
             fn definition() -> (#harmos::DefinitionId, u32) {
-                (#harmos::DefinitionId::new(#id), #version)
+                static VERSION: ::std::sync::OnceLock<u32> = ::std::sync::OnceLock::new();
+                let version = *VERSION.get_or_init(|| {
+                    let schema = #harmos::schema::graph::Schema::from_declaration(
+                        <Self as #harmos::schema::Described>::DEFINITION, &#harmos::config::SchemaSettings::default()
+                    ).expect("valid stored data schema");
+                    #harmos::schema::identity::revision(&schema).expect("valid stored data revision")
+                });
+                (#harmos::DefinitionId::new(#id), version)
             }
         }
     })
 }
 
-fn restore() -> TokenStream {
+fn restore(harmos: &HarmosPath) -> TokenStream {
     quote! {
-        pub fn restore<'de, D>(_version: u32, payload: D) -> ::core::result::Result<::core::option::Option<Self>, D::Error>
+        pub fn restore<'de, D>(version: u32, payload: D) -> ::core::result::Result<::core::option::Option<Self>, D::Error>
         where D: ::serde::Deserializer<'de> + ::core::marker::Copy {
+            if version != <Self as #harmos::Identified>::definition().1 { return Ok(None); }
             Ok(Some(::serde::Deserialize::deserialize(payload)?))
         }
     }
 }
 
 fn declaration(attribute: TokenStream, sort: Sort) -> Result<Declaration, Error> {
-    let span = attribute.span();
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute)?;
     let mut id = None;
-    let version = LitInt::new("1", span);
     let mut undo: Option<Path> = None;
     let mut harmos_path: Option<Path> = None;
 
@@ -221,7 +225,7 @@ fn declaration(attribute: TokenStream, sort: Sort) -> Result<Declaration, Error>
                 return Err(Error::new(
                     other.span(),
                     format!(
-                        "a {} declares `id = \"…\"`, the current v1 shape{}, and may \
+                        "a {} declares `id = \"…\"`, a derived schema revision{}, and may \
                          declare `harmos_path = …`",
                         sort.noun(),
                         match sort {
@@ -246,7 +250,6 @@ fn declaration(attribute: TokenStream, sort: Sort) -> Result<Declaration, Error>
 
     Ok(Declaration {
         id,
-        version,
         undo,
         harmos: HarmosPath::resolve(harmos_path),
     })

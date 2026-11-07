@@ -28,7 +28,7 @@ use harmos_operations::storage::WriteObjects;
 use harmos_runtime::storage::{
     MutationId, ObjectCatalog, ObjectRetention, ObjectValue, ObjectVersion, StorageBackends, StorageManager, StoredObject,
 };
-use harmos_runtime::{DefinitionId, Identified, Identifier, Runtime};
+use harmos_runtime::{Identified, Identifier, Runtime};
 use harmos_storage::writes::{DataBatch, WriteReceipt};
 
 /* === Constants === */
@@ -58,9 +58,7 @@ enum Objects {
 /* === Implementations === */
 
 impl Identified for Document {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new("test.document"), 1)
-    }
+    const ID: &'static str = "test.document";
 }
 
 impl StoredObject for Document {

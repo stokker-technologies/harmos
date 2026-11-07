@@ -84,7 +84,6 @@ pub(crate) mod dispatch {
     pub(crate) enum Restored<A: Application> {
         Applied,
         Recorded(A::Record),
-        Skipped,
     }
 
     /* === Traits === */
@@ -92,6 +91,21 @@ pub(crate) mod dispatch {
     /* === Implementations === */
 
     impl<A: Application, W> Dispatch<A, W> {
+        pub(crate) fn definitions(&self) -> Vec<(Kind, DefinitionId, u32)> {
+            self.transactions
+                .keys()
+                .map(|(id, version)| (Kind::Transaction, id.clone(), *version))
+                .chain(self.records.keys().map(|(id, version)| (Kind::Record, id.clone(), *version)))
+                .collect()
+        }
+
+        pub(crate) fn validate(&self, kind: Kind, id: &DefinitionId, version: u32) -> Result<(), DecodeError> {
+            match kind {
+                Kind::Transaction => declared(&self.transactions, id, version).map(|_| ()),
+                Kind::Record => declared(&self.records, id, version).map(|_| ()),
+            }
+        }
+
         pub(crate) fn set_transaction(&mut self, id: DefinitionId, version: u32, restore: Restore<A, W>, decode: Decode<A>) {
             self.transactions.insert((id.clone(), version), restore);
             self.decoders.insert((id, version), decode);
@@ -110,11 +124,10 @@ pub(crate) mod dispatch {
                     restore(payload, state)?;
                     Ok(Restored::Applied)
                 }
-                Kind::Record => match declared(&self.records, &id, version) {
-                    Ok(upgrade) => Ok(Restored::Recorded(upgrade(payload)?)),
-                    Err(DecodeError::UnknownDefinition { .. }) => Ok(Restored::Skipped),
-                    Err(loud) => Err(loud),
-                },
+                Kind::Record => {
+                    let upgrade = declared(&self.records, &id, version)?;
+                    Ok(Restored::Recorded(upgrade(payload)?))
+                }
             }
         }
 

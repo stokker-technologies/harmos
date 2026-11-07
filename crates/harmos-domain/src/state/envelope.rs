@@ -34,7 +34,7 @@ use super::entry::{Metadata, Position};
 pub struct SystemFact {
     pub source: FactSource,
     pub name: String,
-    pub version: u32,
+    version: u32,
     pub payload: Vec<u8>,
 }
 
@@ -68,6 +68,26 @@ pub enum FactSource {
 /* === Implementations === */
 
 impl SystemFact {
+    pub fn new(source: FactSource, name: String, payload: Vec<u8>) -> Self {
+        let schema = crate::schema::graph::Schema::from_declaration(
+            <Vec<u8> as crate::schema::Described>::DEFINITION,
+            &crate::config::SchemaSettings::default(),
+        )
+        .expect("opaque fact schema");
+        let version = crate::schema::identity::revision(&schema).expect("opaque fact revision");
+        Self { source, name, version, payload }
+    }
+
+    pub fn encode<T: crate::schema::Described + serde::Serialize>(
+        source: FactSource, name: String, value: &T,
+    ) -> Result<Self, serde_json::Error> {
+        let schema = crate::schema::graph::Schema::from_declaration(T::DEFINITION, &crate::config::SchemaSettings::default())
+            .expect("valid system fact schema");
+        let version = crate::schema::identity::revision(&schema).expect("valid system fact revision");
+        let payload = serde_json::to_vec(value)?;
+        Ok(Self { source, name, version, payload })
+    }
+
     pub fn identify(&self) -> (DefinitionId, u32) {
         let id = match &self.source {
             FactSource::Work(service) => format!("harmos:work/{service}/{}", self.name),
@@ -139,15 +159,10 @@ mod tests {
     fn sidecar_owner_parity() {
         let cases: Vec<(String, bool)> = serde_json::from_str(include_str!("../../tests/fixtures/owner-identities.json")).unwrap();
         for (owner, valid) in cases {
-            let fact = SystemFact {
-                source: FactSource::Sidecar(owner.clone()),
-                name: "result/sample".to_owned(),
-                version: 1,
-                payload: vec![0, 255, 17],
-            };
+            let fact = SystemFact::new(FactSource::Sidecar(owner.clone()), "result/sample".to_owned(), vec![0, 255, 17]);
             assert_eq!(crate::state::Prepared::system(&fact).is_ok(), valid, "admission {owner:?}");
             let payload = serde_json::json!(fact.payload);
-            let restored = SystemFact::restore(&fact.identify().0, 1, &payload);
+            let restored = SystemFact::restore(&fact.identify().0, fact.identify().1, &payload);
             // A Slash Separates The Owner From The Fact Name; Only Exact Round Trips Preserve The Source.
             assert_eq!(restored.is_ok_and(|value| value == Some(fact)), valid, "restore {owner:?}");
         }

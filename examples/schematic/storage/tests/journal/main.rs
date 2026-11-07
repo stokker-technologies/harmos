@@ -49,7 +49,7 @@ struct State {
 }
 
 #[harmos::record(id = "atomic.observed")]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(harmos::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Observed {
     before: i64,
     amount: i64,
@@ -57,19 +57,19 @@ struct Observed {
 }
 
 #[harmos::record(id = "atomic.foreign")]
-#[derive(Serialize, Deserialize)]
+#[derive(harmos::Described, Serialize, Deserialize)]
 struct Foreign;
 
 #[harmos::record(id = "harmos:sidecar/my_sidecar_2/result")]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(harmos::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Reserved;
 
 #[harmos::record(id = "atomic.broken")]
-#[derive(Deserialize)]
+#[derive(harmos::Described, Deserialize)]
 struct Broken;
 
 #[harmos::transaction(id = "atomic.add",  inverse = Self,)]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(harmos::Described, Clone, Debug, Deserialize)]
 struct Add {
     amount: i64,
     count: usize,
@@ -82,7 +82,7 @@ struct Add {
 struct Model;
 
 #[harmos::record(id = "atomic.large")]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(harmos::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Large(String);
 
 /* === Enums === */
@@ -151,12 +151,11 @@ impl Transaction<State> for Add {
                 13 => "",
                 _ => "my_sidecar_2",
             };
-            let _ = out.push_system(harmos::state::SystemFact {
-                source: harmos::state::FactSource::Sidecar(owner.to_owned()),
-                name: if self.mode == 14 { "" } else { "result/sample" }.to_owned(),
-                version: 1,
-                payload: if self.mode == 15 { vec![255; Records::MAX_BYTES] } else { vec![0, 255, 17] },
-            });
+            let _ = out.push_system(harmos::state::SystemFact::new(
+                harmos::state::FactSource::Sidecar(owner.to_owned()),
+                if self.mode == 14 { "" } else { "result/sample" }.to_owned(),
+                if self.mode == 15 { vec![255; Records::MAX_BYTES] } else { vec![0, 255, 17] },
+            ));
         }
         if self.mode == 6 {
             let _ = out.push(Large("x".repeat(Records::MAX_BYTES)));

@@ -21,7 +21,6 @@
 
 // Local Imports
 use super::*;
-use std::sync::Arc;
 
 /* === Constants === */
 
@@ -41,8 +40,7 @@ pub struct Journal(StateLog);
 
 impl Journal {
     pub fn open(
-        root: &Path, history: StoreHistory, settings: StorageStateSettings,
-        opener: Arc<dyn Fn(&Path) -> std::io::Result<File> + Send + Sync>, check: &mut impl FnMut() -> Result<()>,
+        root: &Path, history: StoreHistory, settings: StorageStateSettings, opener: JournalOpener, check: &mut impl FnMut() -> Result<()>,
     ) -> Result<Self> {
         StateLog::open(root, history, settings, opener, check).map(Self)
     }

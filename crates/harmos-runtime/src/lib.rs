@@ -78,8 +78,8 @@ pub use harmos_sdk::plugin::Plugin;
 // `message` Names Both The Contract Module And Its Same-Named Attribute.
 pub use harmos_domain::{artifacts, failure, listeners, message, schema};
 pub use harmos_macros::{
-    lanes, listener, observer, plugin, record, records, runtime_catalog as catalog, runtime_operation as operation, stream, streams,
-    transaction, transactions,
+    Described, lanes, listener, observer, plugin, record, records, runtime_catalog as catalog, runtime_operation as operation, stream,
+    streams, transaction, transactions,
 };
 
 /* === Imports === */
@@ -176,9 +176,7 @@ pub mod __private {
     /* === Public Functions === */
 
     pub fn stream_definition<S: StreamRow>(id: &'static str, window: usize) -> crate::streams::Definition {
-        crate::streams::Definition::declared::<S>(id, 1, window)
-            .batching(S::batch_definition())
-            .presentation(S::metadata(), S::row_metadata())
+        crate::streams::Definition::native::<S>(id, window).batching(S::batch_definition()).presentation(S::metadata(), S::row_metadata())
     }
 
     /* === Private Functions === */

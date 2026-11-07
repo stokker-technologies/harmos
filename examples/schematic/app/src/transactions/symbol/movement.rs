@@ -32,7 +32,7 @@ use harmos::{state::Invertible, state::Transaction};
 /* === Structs === */
 
 #[harmos::transaction(id = "symbol.move",  inverse = Self)]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct MoveSymbol {
     pub symbol: SymbolId,
     pub to: Point,

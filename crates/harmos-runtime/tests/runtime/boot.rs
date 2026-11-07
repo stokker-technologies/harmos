@@ -89,7 +89,7 @@ impl Source<Editor> for Replaying {
 /* === Public Functions === */
 
 pub(crate) fn catalog() -> impl Registration<Editor> {
-    Definitions([named(RENAME), named(EXPORTED)].into())
+    Definitions([named(*RENAME), named(*EXPORTED)].into())
 }
 
 /* === Private Functions === */
@@ -106,11 +106,16 @@ fn origin() -> Sheet {
 }
 
 fn stored(position: u64, id: &str, link: Option<Link>, value: Recorded<Editor>) -> Envelope<Payload<Editor>> {
+    let version = match &value {
+        Recorded::Transaction(value) => harmos_runtime::state::CatalogCodec::identify(&**value).1,
+        Recorded::Record(value) => harmos_runtime::state::CatalogCodec::identify(value).1,
+        Recorded::System(value) => value.identify().1,
+    };
     Envelope {
         position: Position(position),
         kind: value.kind(),
         id: DefinitionId::new(id),
-        version: 1,
+        version,
         metadata: serde_json::from_value(serde_json::json!({
             "commit": null,
             "principal": alice(),
@@ -124,7 +129,7 @@ fn stored(position: u64, id: &str, link: Option<Link>, value: Recorded<Editor>) 
         payload: Payload {
             prepared: None,
             id: DefinitionId::new(id),
-            version: 1,
+            version,
             value,
         },
     }

@@ -65,12 +65,9 @@ impl<A: Application> StreamManager<A> {
         let validations = definitions
             .iter()
             .map(|definition| {
-                crate::schema::Validator::from_schema(
-                    definition.schema().expect("plugin definitions own a row schema"),
-                    &self.schema_settings,
-                )
-                .map_err(crate::schema::Error::from)
-                .map(Arc::new)
+                crate::schema::Validator::from_schema(definition.schema(), &self.schema_settings)
+                    .map_err(crate::schema::Error::from)
+                    .map(Arc::new)
             })
             .collect::<Result<Vec<_>, _>>()?;
         if scope.is_closed() || self.closed.load(std::sync::atomic::Ordering::Acquire) {

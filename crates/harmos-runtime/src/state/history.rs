@@ -603,7 +603,7 @@ mod tests {
     use serde::{Deserialize, Serialize};
 
     #[crate::record(id = "listener.page")]
-    #[derive(Clone, Serialize, Deserialize)]
+    #[derive(crate::Described, Clone, Serialize, Deserialize)]
     struct PageRecord(u64);
 
     struct Model;

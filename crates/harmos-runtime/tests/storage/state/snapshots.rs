@@ -45,13 +45,13 @@ struct Store {
 struct Model;
 
 #[harmos_runtime::transaction(id = "snapshot.add")]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Add {
     amount: i64,
 }
 
 #[harmos_runtime::record(id = "snapshot.seen")]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Seen {
     before: i64,
 }
@@ -395,7 +395,7 @@ async fn snapshot_keeps_tail() {
     runtime.shutdown().await.unwrap();
     let snapshot: serde_json::Value = serde_json::from_slice(&store.snapshot().payload).unwrap();
     assert_eq!(snapshot["tail"].as_array().unwrap().len(), 2);
-    assert_eq!(snapshot["tail"][0]["version"], 1);
+    assert_eq!(snapshot["tail"][0]["version"], <Add as harmos_runtime::Identified>::definition().1);
     store.recovery.entries.lock().unwrap().clear();
     let storage = store.manager(config());
     let runtime = Runtime::<Model>::launch_with(0, (), |setup| {

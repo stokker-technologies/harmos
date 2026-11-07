@@ -35,10 +35,10 @@ pub enum Never {}
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum DecodeError {
-    #[error("no definition is declared for the id {id}")]
+    #[error("stored definition {id} is not declared; choose a fresh storage root")]
     UnknownDefinition { id: DefinitionId },
 
-    #[error("{id} declares no implementation for version {version}")]
+    #[error("stored definition {id} has incompatible shape revision {version}; choose a fresh storage root")]
     UndeclaredVersion { id: DefinitionId, version: u32 },
 
     #[error("the payload did not decode as {id} version {version}")]

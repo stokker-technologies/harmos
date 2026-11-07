@@ -22,7 +22,7 @@ use std::sync::atomic::Ordering;
 
 // Local Imports
 use super::backend::{Data, Recovery, history};
-use harmos_domain::{DefinitionId, Identified, Identifier, Message};
+use harmos_domain::{Identified, Identifier, Message};
 use harmos_storage::{ObjectCatalog, ObjectRetention, StorageBackends, StorageManager, StoredObject};
 
 /* === Constants === */
@@ -42,19 +42,16 @@ struct Document {
 
 #[harmos_domain::message]
 #[derive(Clone, PartialEq)]
-struct LegacyDocument {
+struct DifferentDocument {
     id: String,
     status: String,
+    annotation: u32,
 }
 
 #[harmos_domain::message]
 struct Duplicate {
     id: String,
-}
-
-#[harmos_domain::message]
-struct ZeroVersion {
-    id: String,
+    status: String,
 }
 
 #[harmos_domain::message]
@@ -74,13 +71,13 @@ enum NumericObjects {
 #[harmos_domain::catalog]
 enum Objects {
     Current(Document),
-    Historical(LegacyDocument),
+    Different(DifferentDocument),
 }
 
 #[harmos_domain::catalog]
 enum RenamedVariants {
     NothingToDoWithWireNames(Document),
-    Old(LegacyDocument),
+    Different(DifferentDocument),
 }
 
 #[harmos_domain::catalog]
@@ -89,19 +86,12 @@ enum Ambiguous {
     Second(Duplicate),
 }
 
-#[harmos_domain::catalog]
-enum Invalid {
-    Zero(ZeroVersion),
-}
-
 /* === Traits === */
 
 /* === Implementations === */
 
 impl Identified for Document {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new("app.document"), 2)
-    }
+    const ID: &'static str = "app.document";
 }
 
 impl StoredObject for Document {
@@ -113,13 +103,11 @@ impl StoredObject for Document {
     }
 }
 
-impl Identified for LegacyDocument {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new("app.document"), 1)
-    }
+impl Identified for DifferentDocument {
+    const ID: &'static str = "app.document";
 }
 
-impl StoredObject for LegacyDocument {
+impl StoredObject for DifferentDocument {
     type Key = String;
     const RETENTION: ObjectRetention = ObjectRetention::Versions(NonZeroUsize::new(64).unwrap());
 
@@ -129,9 +117,7 @@ impl StoredObject for LegacyDocument {
 }
 
 impl Identified for Duplicate {
-    fn definition() -> (DefinitionId, u32) {
-        Document::definition()
-    }
+    const ID: &'static str = "app.document";
 }
 
 impl StoredObject for Duplicate {
@@ -143,25 +129,8 @@ impl StoredObject for Duplicate {
     }
 }
 
-impl Identified for ZeroVersion {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new("app.zero"), 0)
-    }
-}
-
-impl StoredObject for ZeroVersion {
-    type Key = String;
-    const RETENTION: ObjectRetention = ObjectRetention::Versions(NonZeroUsize::new(64).unwrap());
-
-    fn key(&self) -> &Self::Key {
-        &self.id
-    }
-}
-
 impl Identified for Counter {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new("app.counter"), 1)
-    }
+    const ID: &'static str = "app.counter";
 }
 
 impl StoredObject for Counter {
@@ -216,10 +185,12 @@ fn catalog_projects_schema() {
     <() as ObjectCatalog>::validate().unwrap();
     assert!(<() as ObjectCatalog>::definitions().as_ref().is_empty());
     let definitions = Objects::definitions();
-    assert_eq!(definitions.as_ref().iter().map(|d| d.schema().unwrap().version.get()).collect::<Vec<_>>(), [2, 1]);
+    assert_eq!(
+        definitions.as_ref().iter().map(|d| d.schema().unwrap().version.get()).collect::<Vec<_>>(),
+        [Document::definition().1, DifferentDocument::definition().1]
+    );
     assert!((definitions.as_ref()[0].declaration().fields)().iter().any(|field| field.name == "status"));
     assert!(Ambiguous::validate().is_err());
-    assert!(Invalid::validate().is_err());
 }
 
 #[test]
@@ -235,17 +206,18 @@ fn updates_keep_identity() {
 }
 
 #[test]
-fn decode_requires_version() {
-    let old = LegacyDocument {
+fn decode_requires_matching_shape() {
+    let old = DifferentDocument {
         id: "document-1".into(),
         status: "archived".into(),
+        annotation: 7,
     };
     let value = Objects::encode(&old, limit()).unwrap();
     Objects::validate_value(&value, limit()).unwrap();
-    assert_eq!(Objects::decode::<LegacyDocument>(&value, limit()).unwrap(), old);
+    assert_eq!(Objects::decode::<DifferentDocument>(&value, limit()).unwrap(), old);
     assert!(Objects::decode::<Document>(&value, limit()).is_err());
     let mut unknown = value;
-    unknown.schema.version = std::num::NonZeroU32::new(3).unwrap();
+    unknown.schema.version = std::num::NonZeroU32::new(unknown.schema.version.get().wrapping_add(1).max(1)).unwrap();
     assert!(Objects::validate_value(&unknown, limit()).is_err());
 }
 

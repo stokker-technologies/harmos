@@ -38,7 +38,7 @@ use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Sour
 use harmos_runtime::storage::{
     ObjectKey, ObjectRetention, PayloadEncoding, RecordInput, SchemaKey, StorageBackends, StorageManager, StoredObject,
 };
-use harmos_runtime::{DefinitionId, Identified, Identifier, Message, Runtime};
+use harmos_runtime::{Identified, Identifier, Message, Runtime};
 
 /* === Constants === */
 
@@ -47,9 +47,7 @@ use harmos_runtime::{DefinitionId, Identified, Identifier, Message, Runtime};
 macro_rules! object {
     ($ty:ty, $name:literal) => {
         impl Identified for $ty {
-            fn definition() -> (DefinitionId, u32) {
-                (DefinitionId::new($name), 1)
-            }
+            const ID: &'static str = $name;
         }
         impl StoredObject for $ty {
             type Key = String;

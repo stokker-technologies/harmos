@@ -190,6 +190,10 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     } else {
         item = presentation_shape.to_token_stream();
     }
+    if !portable {
+        let schema = crate::message::shape(&parsed, &declared.harmos)?;
+        item = quote!(#item #schema);
+    }
     let row_metadata = if portable {
         let harmos = &declared.harmos;
         quote!(<Self as #harmos::RowMetadata>::ROW_METADATA_JSON)

@@ -51,7 +51,7 @@ pub(super) struct Revisions {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Contract {
     pub(super) owner: Option<Arc<str>>,
-    row: Option<harmos_domain::Fingerprint>,
+    row: harmos_domain::Fingerprint,
     window: usize,
 }
 
@@ -102,10 +102,8 @@ pub(crate) enum Refused {
 
 /* === Traits === */
 
-pub trait Stream<A: Application>: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {
+pub trait Stream<A: Application>: crate::schema::Described + Clone + Send + Sync + Serialize + DeserializeOwned + 'static {
     const ID: &'static str;
-
-    const VERSION: u32;
 
     const WINDOW: usize;
 
@@ -122,7 +120,7 @@ pub trait Stream<A: Application>: Clone + Send + Sync + Serialize + DeserializeO
     }
 
     fn definition() -> Definition {
-        Definition::declared::<Self>(Self::ID, Self::VERSION, Self::WINDOW)
+        Definition::native::<Self>(Self::ID, Self::WINDOW)
             .batching(Self::batch_definition())
             .presentation(Self::metadata(), Self::row_metadata())
     }
@@ -137,7 +135,6 @@ where
     A::Streams: StreamCatalog<S>,
 {
     const ID: &'static str = S::ID;
-    const VERSION: u32 = 1;
     const WINDOW: usize = S::WINDOW;
     fn metadata() -> crate::Metadata {
         S::metadata()
@@ -156,10 +153,11 @@ impl Contract {
     pub(super) fn of(definition: &Definition) -> Self {
         Self {
             owner: definition.owner().map(Arc::from),
-            row: definition.schema().map(|schema| {
-                harmos_domain::schema::identity::fingerprint(schema.root().expect("validated row schema"), "harmos.postcard.v1")
-                    .expect("validated canonical row schema")
-            }),
+            row: harmos_domain::schema::identity::fingerprint(
+                definition.schema().root().expect("validated row schema"),
+                "harmos.postcard.v1",
+            )
+            .expect("validated canonical row schema"),
             window: definition.window(),
         }
     }
@@ -379,14 +377,15 @@ mod tests {
         let feed = table.ingest.engage(0);
         let mut weak = Vec::new();
         let mut readers = Vec::new();
-        for revision in 1..=64 {
-            let definition = Definition::declared::<u64>("samples", revision, 4);
+        for index in 1..=64 {
+            let definition = Definition::native::<u64>("samples", index);
+            let revision = definition.version();
             let window = Arc::new(
                 Window::wired(4, Position::ORIGIN, table.sequence.clone(), table.pump.clone()).visible_with(table.visibility.clone()),
             );
-            window.publish(Position::ORIGIN, Arc::new(u64::from(revision)));
+            window.publish(Position::ORIGIN, Arc::new(index as u64));
             weak.push(Arc::downgrade(&window));
-            if revision == 1 {
+            if index == 1 {
                 readers.push(window.clone());
             }
             let wired = Arc::new(Wired {
@@ -411,6 +410,6 @@ mod tests {
         assert_eq!(weak.iter().filter(|window| window.strong_count() > 0).count(), 2);
         readers.clear();
         assert_eq!(weak.iter().filter(|window| window.strong_count() > 0).count(), 1);
-        assert_eq!(table.declared()[0].definition.version(), 64);
+        assert_eq!(table.declared()[0].definition.version(), Definition::native::<u64>("samples", 64).version());
     }
 }

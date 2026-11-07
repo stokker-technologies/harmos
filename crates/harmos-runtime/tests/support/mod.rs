@@ -28,8 +28,8 @@ pub use self::{
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{LazyLock, Mutex};
 
 // Third Party Imports
 
@@ -44,11 +44,11 @@ use harmos_runtime::{
 
 pub const HOUSE: Account = Account(0);
 pub const VAULT: Account = Account(1);
-pub const DEPOSIT: (Kind, &str, u32) = (Kind::Transaction, "ledger.deposit", 1);
-pub const WITHDRAW: (Kind, &str, u32) = (Kind::Transaction, "ledger.withdraw", 1);
-pub const FREEZE: (Kind, &str, u32) = (Kind::Transaction, "ledger.freeze", 1);
-pub const EXPLODE: (Kind, &str, u32) = (Kind::Transaction, "ledger.explode", 1);
-pub const NOTED: (Kind, &str, u32) = (Kind::Record, "ledger.noted", 1);
+pub static DEPOSIT: LazyLock<(Kind, &str, u32)> = LazyLock::new(|| (Kind::Transaction, "ledger.deposit", revision::<Deposit>()));
+pub static WITHDRAW: LazyLock<(Kind, &str, u32)> = LazyLock::new(|| (Kind::Transaction, "ledger.withdraw", revision::<Withdraw>()));
+pub static FREEZE: LazyLock<(Kind, &str, u32)> = LazyLock::new(|| (Kind::Transaction, "ledger.freeze", revision::<()>()));
+pub static EXPLODE: LazyLock<(Kind, &str, u32)> = LazyLock::new(|| (Kind::Transaction, "ledger.explode", revision::<()>()));
+pub static NOTED: LazyLock<(Kind, &str, u32)> = LazyLock::new(|| (Kind::Record, "ledger.noted", revision::<Noted>()));
 
 /* === Macros === */
 
@@ -58,7 +58,7 @@ pub type Stored = Arc<Mutex<Vec<Arc<Entry<Recorded<Bank>>>>>>;
 
 /* === Structs === */
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct Account(pub u8);
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -69,19 +69,19 @@ pub struct Ledger {
     pub bulk: Vec<u64>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Deposit {
     pub account: Account,
     pub amount: i64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Withdraw {
     pub account: Account,
     pub amount: i64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Noted(pub String);
 
 #[derive(Clone, Copy, Debug)]
@@ -204,10 +204,18 @@ impl Registration<Bank> for Definitions {
         fn decode(id: &DefinitionId, version: u32, bytes: &[u8]) -> Result<Option<Change>, DecodeError> {
             let malformed = |_| DecodeError::Malformed { id: id.clone(), version };
             match (id.as_str(), version) {
-                ("ledger.deposit", 1) => serde_json::from_slice(bytes).map(Change::Deposit).map(Some).map_err(malformed),
-                ("ledger.withdraw", 1) => serde_json::from_slice(bytes).map(Change::Withdraw).map(Some).map_err(malformed),
-                ("ledger.freeze", 1) => serde_json::from_slice::<()>(bytes).map(|()| Some(Change::Freeze)).map_err(malformed),
-                ("ledger.explode", 1) => serde_json::from_slice::<()>(bytes).map(|()| Some(Change::Explode)).map_err(malformed),
+                (id, version) if (id, version) == (DEPOSIT.1, DEPOSIT.2) => {
+                    serde_json::from_slice(bytes).map(Change::Deposit).map(Some).map_err(malformed)
+                }
+                (id, version) if (id, version) == (WITHDRAW.1, WITHDRAW.2) => {
+                    serde_json::from_slice(bytes).map(Change::Withdraw).map(Some).map_err(malformed)
+                }
+                (id, version) if (id, version) == (FREEZE.1, FREEZE.2) => {
+                    serde_json::from_slice::<()>(bytes).map(|()| Some(Change::Freeze)).map_err(malformed)
+                }
+                (id, version) if (id, version) == (EXPLODE.1, EXPLODE.2) => {
+                    serde_json::from_slice::<()>(bytes).map(|()| Some(Change::Explode)).map_err(malformed)
+                }
                 _ => Ok(None),
             }
         }
@@ -391,15 +399,13 @@ impl Source<Bank> for Copied {
 
 impl harmos_runtime::state::CatalogCodec for Change {
     fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
-        (
-            harmos_runtime::DefinitionId::new(match self {
-                Self::Deposit(_) => "ledger.deposit",
-                Self::Withdraw(_) => "ledger.withdraw",
-                Self::Freeze => "ledger.freeze",
-                Self::Explode => "ledger.explode",
-            }),
-            1,
-        )
+        let (_, id, version) = match self {
+            Self::Deposit(_) => *DEPOSIT,
+            Self::Withdraw(_) => *WITHDRAW,
+            Self::Freeze => *FREEZE,
+            Self::Explode => *EXPLODE,
+        };
+        (DefinitionId::new(id), version)
     }
     fn encode<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
@@ -412,7 +418,7 @@ impl harmos_runtime::state::CatalogCodec for Change {
 
 impl harmos_runtime::state::CatalogCodec for Fact {
     fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
-        (harmos_runtime::DefinitionId::new("ledger.noted"), 1)
+        (DefinitionId::new(NOTED.1), NOTED.2)
     }
     fn encode<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
@@ -423,7 +429,7 @@ impl harmos_runtime::state::CatalogCodec for Fact {
 
 impl harmos_runtime::state::RecordCatalog for Fact {
     fn restore(id: &harmos_runtime::DefinitionId, version: u32, payload: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
-        if id.as_str() != "ledger.noted" || version != 1 {
+        if id.as_str() != "ledger.noted" || version != NOTED.2 {
             return Ok(None);
         }
         serde::Deserialize::deserialize(payload).map(|v| Some(Self::Noted(v)))
@@ -434,8 +440,14 @@ impl harmos_runtime::state::TransactionCatalog<Ledger> for Change {}
 
 /* === Public Functions === */
 
+fn revision<T: harmos_runtime::schema::Described>() -> u32 {
+    let graph =
+        harmos_runtime::schema::graph::Schema::from_declaration(T::DEFINITION, &harmos_runtime::config::SchemaSettings::default()).unwrap();
+    harmos_runtime::schema::identity::revision(&graph).unwrap()
+}
+
 pub fn catalog() -> impl Registration<Bank> {
-    Definitions([DEPOSIT, WITHDRAW, FREEZE, EXPLODE, NOTED].map(|(kind, id, version)| (kind, DefinitionId::new(id), version)).into())
+    Definitions([*DEPOSIT, *WITHDRAW, *FREEZE, *EXPLODE, *NOTED].map(|(kind, id, version)| (kind, DefinitionId::new(id), version)).into())
 }
 
 pub fn deposit(amount: i64) -> Change {
@@ -517,12 +529,12 @@ fn inverses(change: &Change, ledger: &Ledger) -> Option<Change> {
 fn stored(entry: &Entry<Recorded<Bank>>) -> Envelope<Payload<Bank>> {
     let (kind, id, version) = match &entry.value {
         Recorded::Transaction(change) => match &**change {
-            Change::Deposit(_) => DEPOSIT,
-            Change::Withdraw(_) => WITHDRAW,
-            Change::Freeze => FREEZE,
-            Change::Explode => EXPLODE,
+            Change::Deposit(_) => *DEPOSIT,
+            Change::Withdraw(_) => *WITHDRAW,
+            Change::Freeze => *FREEZE,
+            Change::Explode => *EXPLODE,
         },
-        Recorded::Record(_) => NOTED,
+        Recorded::Record(_) => *NOTED,
         Recorded::System(fact) => {
             let (id, version) = fact.identify();
             return Envelope {
@@ -606,10 +618,10 @@ mod feeds {
         pub value: i64,
     }
 
-    #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
     pub struct Run(pub u64);
 
-    #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
     pub struct Probe(pub u64);
 
     #[harmos_runtime::stream(description = "A tracked capture row carrying both declared coordinates.\nThe track is two components deep, which is what a run of many probes is: one probe of one run, or everything one run published, and both are selections of the same declaration.",

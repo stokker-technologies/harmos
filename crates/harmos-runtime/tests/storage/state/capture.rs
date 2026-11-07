@@ -39,13 +39,13 @@ type Refusal = std::convert::Infallible;
 struct Model;
 
 #[harmos_runtime::transaction(id = "capture.advance")]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Advance {
     panic: bool,
 }
 
 #[harmos_runtime::record(id = "capture.observed")]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Observed {
     before: u64,
 }

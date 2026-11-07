@@ -37,11 +37,11 @@ type Group = (Vec<Arc<Entry<Recorded<Model>>>>, Position);
 /* === Structs === */
 
 #[harmos_runtime::record(id = "capture.observed")]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, Serialize, Deserialize)]
 struct Observed(String);
 
 #[harmos_runtime::transaction(id = "capture.add",  inverse = Self)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, Serialize, Deserialize)]
 struct Add(i64);
 
 struct Model;
@@ -221,12 +221,7 @@ async fn stop_awaits_groups() {
     assert_eq!((commit.position, commit.frontier), (Position(1), Position(2)));
     harmos_runtime::records::RecordManager::new(journal.clone()).publish(Observed("typed".into())).await.unwrap();
     harmos_runtime::records::RecordManager::new(journal.clone())
-        .publish_system(SystemFact {
-            source: FactSource::Sidecar("probe".into()),
-            name: "sample".into(),
-            version: 1,
-            payload: vec![1, 2, 3],
-        })
+        .publish_system(SystemFact::new(FactSource::Sidecar("probe".into()), "sample".into(), vec![1, 2, 3]))
         .await
         .unwrap();
     journal.undo(principal.clone(), Focus::all()).await.unwrap();

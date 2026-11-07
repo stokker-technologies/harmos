@@ -15,8 +15,8 @@
 
 /* === Imports === */
 
-use super::support::{Bank, DEPOSIT, Deposit, NOTED, Noted, alice, pulse};
-use harmos_runtime::{DefinitionId, Identified};
+use super::support::{Bank, Deposit, Noted, alice, pulse};
+use harmos_runtime::Identified;
 use harmos_runtime::{Setup, simulation::SimulatedRuntime};
 
 // Standard Library Imports
@@ -40,15 +40,11 @@ use harmos_runtime::{Setup, simulation::SimulatedRuntime};
 /* === Implementations === */
 
 impl Identified for Deposit {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new(DEPOSIT.1), DEPOSIT.2)
-    }
+    const ID: &'static str = "ledger.deposit";
 }
 
 impl Identified for Noted {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new(NOTED.1), NOTED.2)
-    }
+    const ID: &'static str = "ledger.noted";
 }
 
 /* === Public Functions === */

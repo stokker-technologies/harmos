@@ -21,7 +21,7 @@ use std::sync::{
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use super::support::journal::{Journal, Snapshot, Store, Wire};
+use super::support::journal::{Journal, Store, Wire};
 use harmos_runtime::{
     Application, Error, Runtime, state::Focus, state::Origin, state::Position, state::PrincipalId, state::Recorded, state::Records,
     state::RequestKey, state::Transaction,
@@ -44,7 +44,7 @@ struct State {
 }
 
 #[harmos_runtime::record(id = "atomic.observed")]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Observed {
     before: i64,
     amount: i64,
@@ -52,19 +52,19 @@ struct Observed {
 }
 
 #[harmos_runtime::record(id = "atomic.foreign")]
-#[derive(Serialize, Deserialize)]
+#[derive(harmos_runtime::Described, Serialize, Deserialize)]
 struct Foreign;
 
 #[harmos_runtime::record(id = "harmos:sidecar/my_sidecar_2/result")]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Reserved;
 
 #[harmos_runtime::record(id = "atomic.broken")]
-#[derive(Deserialize)]
+#[derive(harmos_runtime::Described, Deserialize)]
 struct Broken;
 
 #[harmos_runtime::transaction(id = "atomic.add",  inverse = Self,)]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, Deserialize)]
 struct Add {
     amount: i64,
     count: usize,
@@ -77,7 +77,7 @@ struct Add {
 struct Model;
 
 #[harmos_runtime::record(id = "atomic.large")]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Large(String);
 
 /* === Enums === */
@@ -140,12 +140,11 @@ impl Transaction<State> for Add {
                 13 => "",
                 _ => "my_sidecar_2",
             };
-            let _ = out.push_system(harmos_runtime::state::SystemFact {
-                source: harmos_runtime::state::FactSource::Sidecar(owner.to_owned()),
-                name: if self.mode == 14 { "" } else { "result/sample" }.to_owned(),
-                version: 1,
-                payload: if self.mode == 15 { vec![255; Records::MAX_BYTES] } else { vec![0, 255, 17] },
-            });
+            let _ = out.push_system(harmos_runtime::state::SystemFact::new(
+                harmos_runtime::state::FactSource::Sidecar(owner.to_owned()),
+                if self.mode == 14 { "" } else { "result/sample" }.to_owned(),
+                if self.mode == 15 { vec![255; Records::MAX_BYTES] } else { vec![0, 255, 17] },
+            ));
         }
         if self.mode == 6 {
             let _ = out.push(Large("x".repeat(Records::MAX_BYTES)));
@@ -333,39 +332,6 @@ async fn reversals_emit_records() {
 }
 
 #[tokio::test]
-async fn record_keeps_group() {
-    let copy = Store::default();
-    let mirror = Store::default();
-    let live = boot(&copy, 1).await;
-    live.state.commit(add(5, 1, 0)).await.unwrap();
-    live.shutdown().await.unwrap();
-    let original: Vec<String> = copy.lines().iter().map(|line| line.replace("atomic.observed", "atomic.future")).collect();
-    copy.replace(original.clone());
-    let snapshots = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let observed = Arc::clone(&snapshots);
-    let snapshot = Snapshot::<Model>::folding(State::default(), Position::ORIGIN, move |state, position| {
-        observed.lock().unwrap().push((state.balance, position));
-        Ok(())
-    });
-    let runtime = Runtime::<Model>::launch_with(State::default(), (), |setup| {
-        setup.settings().register(Changes::catalog());
-        setup.settings().register(Facts::catalog());
-        setup.settings().recover(Journal::<Model>::open(&copy));
-        setup.settings().attach(Journal::<Model>::open(&mirror));
-        setup.settings().snapshot(snapshot);
-        setup.settings().tail(1);
-    })
-    .await
-    .unwrap();
-    assert_eq!(runtime.state.applied(), Position(2));
-    assert!(matches!(runtime.state.state().at(Origin::initial(State::default()), Position(1)).await, Err(Error::IncompleteCommit)));
-    assert_eq!(runtime.state.query::<Facts>(Position::ORIGIN).await.count(), 0);
-    runtime.shutdown().await.unwrap();
-    assert_eq!(*snapshots.lock().unwrap(), vec![(5, Position(2))]);
-    assert_eq!(mirror.lines(), original);
-}
-
-#[tokio::test]
 async fn facts_share_group() {
     let copy = Store::default();
     let runtime = boot(&copy, 1).await;
@@ -379,12 +345,11 @@ async fn facts_share_group() {
     assert_eq!(facts[0].position, Position(2));
     assert_eq!(
         facts[0].value,
-        harmos_runtime::state::SystemFact {
-            source: harmos_runtime::state::FactSource::Sidecar("my_sidecar_2".to_owned()),
-            name: "result/sample".to_owned(),
-            version: 1,
-            payload: vec![0, 255, 17],
-        }
+        harmos_runtime::state::SystemFact::new(
+            harmos_runtime::state::FactSource::Sidecar("my_sidecar_2".to_owned()),
+            "result/sample".to_owned(),
+            vec![0, 255, 17]
+        )
     );
     assert_eq!(facts[0].value.identify().0.as_str(), "harmos:sidecar/my_sidecar_2/result/sample");
     let typed = runtime.state.query::<Facts>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap();
