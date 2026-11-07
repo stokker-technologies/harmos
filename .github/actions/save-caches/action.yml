@@ -45,7 +45,7 @@ runs:
   - name: Save / Compiler
     if: >-
       contains(fromJSON(inputs.caches), 'sccache') && fromJSON(inputs.setup)['sccache-path'] != '' &&
-      fromJSON(inputs.setup)['sccache-cache-hit'] != 'true'
+      fromJSON(inputs.setup)['sccache-cache-hit'] != 'true' && env.COMPILER_CACHE_MODE != 'READ_ONLY'
     uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
     with:
       key: ${{ fromJSON(inputs.setup)['sccache-cache-primary-key'] }}
