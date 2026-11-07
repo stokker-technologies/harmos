@@ -319,9 +319,12 @@ async fn attempts<O: Send + 'static>(
                 return Err(error);
             }
         }
-        if *cancelled.borrow() && !matches!(answer, Stage::Completed(Ok(_))) {
+        if *cancelled.borrow() {
             children.drain().await;
-            return Err(Refusal::Cancelled.into());
+            return match answer {
+                Stage::Completed(answer) => answer,
+                Stage::Cancelled | Stage::Expired => Err(Refusal::Cancelled.into()),
+            };
         }
         let (error, failure) = match answer {
             Stage::Completed(Ok(response)) => {
@@ -416,7 +419,7 @@ async fn cooperative<O>(
         return Stage::Cancelled;
     }
     match executor::timeout(grace, &mut running).await {
-        Ok(Ok(Ok(response))) => Stage::Completed(Ok(response)),
+        Ok(Ok(answer)) => Stage::Completed(answer),
         _ => Stage::Cancelled,
     }
 }
