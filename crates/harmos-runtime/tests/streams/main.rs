@@ -373,12 +373,11 @@ async fn definitions_refuse_invalid() {
         assert!(refused.to_string().contains("pulse"), "the refusal names the colliding id: {refused}");
     }
     {
-        #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+        #[derive(harmos_runtime::Described, Clone, Copy, Debug, Serialize, Deserialize)]
         struct Hollow;
 
         impl Stream<Bank> for Hollow {
             const ID: &'static str = "hollow";
-            const VERSION: u32 = 1;
             const WINDOW: usize = 0;
         }
 

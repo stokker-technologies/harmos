@@ -144,10 +144,7 @@ impl SourceDeclaration {
     pub fn source(&self) -> Result<Source, Error> {
         let row = Schema::from_declaration(self.row(), &SchemaSettings::default()).map_err(schema::Error::from)?;
         Ok(match self {
-            Self::Record { id, .. } => Source::Record {
-                id: Cow::Borrowed(id),
-                row,
-            },
+            Self::Record { id, .. } => Source::Record { id: Cow::Borrowed(id), row },
             Self::Stream { id, .. } => Source::Stream { id: Cow::Borrowed(id), row },
         })
     }

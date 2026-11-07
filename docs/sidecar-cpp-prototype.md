@@ -5,6 +5,11 @@ ABI promise. Rust remains the nominal SDK and owns schemas, contracts, Postcard,
 framed sidecar transport. C++20 translates author types and exceptions through
 the Rust static library. Go and the transport migration are outside this work.
 
+Stream declarations supply a name and window, with revisions derived in the
+shared Rust core from the row schema and window. C++ authors supply no data
+shape version. Keep the existing C ABI and transport framing versions aligned
+with the matching SDK build.
+
 ## Build and Run
 
 Use the repository's pinned tools. Windows needs Visual Studio Build Tools 2022

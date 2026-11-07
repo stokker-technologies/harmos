@@ -91,10 +91,7 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
                 set_once(&mut stream, value, named.span(), "stream")?;
             }
         } else {
-            return Err(Error::new(
-                named.span(),
-                "listener declarations use id, record/row or stream, callback, policy and harmos_path",
-            ));
+            return Err(Error::new(named.span(), "listener declarations use id, record/row or stream, callback, policy and harmos_path"));
         }
     }
     let span = declaration.span();

@@ -452,14 +452,14 @@ mod atomic_records {
     struct State(i64);
 
     #[harmos_runtime::record(id = "sim.observed")]
-    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     struct Observed {
         before: i64,
         amount: i64,
     }
 
     #[harmos_runtime::transaction(id = "sim.add",  inverse = Self)]
-    #[derive(Clone, Debug, Serialize, Deserialize)]
+    #[derive(harmos_runtime::Described, Clone, Debug, Serialize, Deserialize)]
     struct Add(i64);
 
     struct Model;

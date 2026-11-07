@@ -606,10 +606,10 @@ mod feeds {
         pub value: i64,
     }
 
-    #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
     pub struct Run(pub u64);
 
-    #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
     pub struct Probe(pub u64);
 
     #[harmos_runtime::stream(description = "A tracked capture row carrying both declared coordinates.\nThe track is two components deep, which is what a run of many probes is: one probe of one run, or everything one run published, and both are selections of the same declaration.",

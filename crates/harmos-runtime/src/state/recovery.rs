@@ -39,7 +39,6 @@ use crate::{
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Group<P> {
-    version: u32,
     pub(crate) entries: Vec<Envelope<P>>,
 }
 
@@ -87,7 +86,7 @@ impl RecoveryJson<'_> {
 
 impl<P> Group<P> {
     pub(crate) fn new(entries: Vec<Envelope<P>>) -> Self {
-        Self { version: 1, entries }
+        Self { entries }
     }
 }
 
@@ -270,20 +269,20 @@ fn decode_json<A: Application>(
             let transaction = payload
                 .transaction(|bytes| catalog.decode_transaction(&id, version, bytes))
                 .map_err(Incompatible::unreadable)?
-                .map_err(Incompatible::unreadable)?;
+                .map_err(Incompatible::of)?;
             (Recorded::Transaction(crate::operations::Response::new(transaction)), payload.value().map_err(Incompatible::unreadable)?)
         }
         Kind::Record => {
             if let Some(system) = payload.system(&id, version).map_err(Incompatible::unreadable)? {
                 (Recorded::System(system), payload.value().map_err(Incompatible::unreadable)?)
-            } else if catalog.has_record(&id, version).map_err(Incompatible::unreadable)? {
+            } else if catalog.has_record(&id, version).map_err(Incompatible::of)? {
                 let payload = payload.value().map_err(Incompatible::unreadable)?;
                 let record = A::Record::restore(&id, version, &payload)
                     .map_err(Incompatible::unreadable)?
                     .ok_or_else(|| Incompatible::unreadable("declared record could not be restored"))?;
                 (Recorded::Record(record), payload)
             } else {
-                return Ok(None);
+                return Err(Incompatible::of(crate::state::DecodeError::UnknownDefinition { id }));
             }
         }
     };
@@ -349,7 +348,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_payload_skipped() {
+    fn unknown_payload_refused() {
         let raw: &RawValue = serde_json::from_str(r#"{"unknown":[[],{"nested":null}]}"#).unwrap();
         let envelope = Envelope {
             position: Position(1),
@@ -371,6 +370,6 @@ mod tests {
         let group: Group<&RawValue> = serde_json::from_slice(&bytes).unwrap();
         group.check(Position::ORIGIN).unwrap();
         let catalog = Dispatch::<Model, Payload<Model>>::default();
-        assert!(decode_payload::<Model>(group.entries.into_iter().next().unwrap(), &catalog).unwrap().is_none());
+        assert!(decode_payload::<Model>(group.entries.into_iter().next().unwrap(), &catalog).is_err());
     }
 }

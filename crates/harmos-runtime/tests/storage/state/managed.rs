@@ -39,13 +39,13 @@ type Refusal = &'static str;
 struct Model;
 
 #[harmos_runtime::transaction(id = "managed.add")]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Add {
     amount: i64,
 }
 
 #[harmos_runtime::record(id = "managed.seen")]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Seen {
     before: i64,
 }
@@ -103,12 +103,11 @@ impl harmos_runtime::state::Transaction<i64> for Add {
     }
     fn records(&self, state: &i64, out: &mut harmos_runtime::state::Records) {
         out.push(Seen { before: *state }).unwrap();
-        out.push_system(harmos_runtime::state::SystemFact {
-            source: harmos_runtime::state::FactSource::Work("probe".into()),
-            name: "observed".into(),
-            version: 1,
-            payload: vec![1, 2],
-        })
+        out.push_system(harmos_runtime::state::SystemFact::new(
+            harmos_runtime::state::FactSource::Work("probe".into()),
+            "observed".into(),
+            vec![1, 2],
+        ))
         .unwrap();
     }
     fn apply(&self, state: &mut i64) {

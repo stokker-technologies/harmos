@@ -70,7 +70,6 @@ async fn product_commits_refuses() {
 async fn catalog_declares_records() {
     {
         // The stamped identity is the permanent wire name, not the Rust type name.
-        assert_eq!(Rename::DEFINITION, (Kind::Transaction, "sheet.rename", 1));
 
         // The generated conversions and dispatch are ordinary Rust the application
         // could have written itself.
@@ -90,7 +89,6 @@ async fn catalog_declares_records() {
         // The record catalog is the same shape minus behavior.
         let fact: Fact = Noted("exported".to_owned()).into();
         assert_eq!(fact, Fact::Noted(Noted("exported".to_owned())));
-        assert_eq!(Noted::DEFINITION, (Kind::Record, "sheet.noted", 1));
     }
     {
         let registered: BTreeMap<(String, u32), Kind> = definitions_of::<Studio>(Change::catalog())
@@ -102,9 +100,9 @@ async fn catalog_declares_records() {
         assert_eq!(
             registered,
             BTreeMap::from([
-                (("sheet.erase".to_owned(), 1), Kind::Transaction),
-                (("sheet.noted".to_owned(), 1), Kind::Record),
-                (("sheet.rename".to_owned(), 1), Kind::Transaction),
+                (("sheet.erase".to_owned(), <sheet::Erase as harmos_runtime::Identified>::definition().1), Kind::Transaction),
+                (("sheet.noted".to_owned(), <Noted as harmos_runtime::Identified>::definition().1), Kind::Record),
+                (("sheet.rename".to_owned(), <Rename as harmos_runtime::Identified>::definition().1), Kind::Transaction),
             ]),
             "one variant per current definition"
         );
@@ -222,17 +220,17 @@ mod sheet {
     pub struct Untitled;
 
     #[harmos_runtime::transaction(id = "sheet.rename")]
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+    #[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Rename {
         pub to: String,
     }
 
     #[harmos_runtime::transaction(id = "sheet.erase")]
-    #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Erase;
 
     #[harmos_runtime::record(id = "sheet.noted")]
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+    #[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Noted(pub String);
 
     #[derive(Clone, Copy, Debug)]
@@ -363,11 +361,11 @@ mod counter {
     pub struct Underflow;
 
     #[harmos_runtime::transaction(id = "tally.up",  inverse = Down)]
-    #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Up(pub i64);
 
     #[harmos_runtime::transaction(id = "tally.down",  inverse = Up)]
-    #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Down(pub i64);
 
     #[derive(Clone, Copy, Debug)]
@@ -1038,11 +1036,11 @@ mod unified_plugins {
 #[test]
 fn catalog_projects_borrowed() {
     #[harmos_runtime::record(id = "projection.first")]
-    #[derive(serde::Deserialize, serde::Serialize)]
+    #[derive(harmos_runtime::Described, serde::Deserialize, serde::Serialize)]
     struct First(String);
 
     #[harmos_runtime::record(id = "projection.second")]
-    #[derive(serde::Deserialize, serde::Serialize)]
+    #[derive(harmos_runtime::Described, serde::Deserialize, serde::Serialize)]
     struct Second(String);
 
     #[harmos_runtime::records]

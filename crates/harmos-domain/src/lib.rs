@@ -53,8 +53,8 @@ pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]
 pub use harmos_macros::{
-    domain_catalog as catalog, domain_operation as operation, listener, message, observer, plugin, record, records, stream, streams,
-    transaction, transactions,
+    Described, domain_catalog as catalog, domain_operation as operation, listener, message, observer, plugin, record, records, stream,
+    streams, transaction, transactions,
 };
 pub use message::{Digest, Fingerprint, MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};
 pub use model::operations::policy::{Backoff, Jitter, OperationPolicy, RetryPolicy};
@@ -142,9 +142,7 @@ pub mod __private {
     /* === Public Functions === */
 
     pub fn stream_definition<S: StreamRow>(id: &'static str, window: usize) -> crate::streams::Definition {
-        crate::streams::Definition::declared::<S>(id, 1, window)
-            .batching(S::batch_definition())
-            .presentation(S::metadata(), S::row_metadata())
+        crate::streams::Definition::native::<S>(id, window).batching(S::batch_definition()).presentation(S::metadata(), S::row_metadata())
     }
 
     /* === Private Functions === */

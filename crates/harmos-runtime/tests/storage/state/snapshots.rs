@@ -45,13 +45,13 @@ struct Store {
 struct Model;
 
 #[harmos_runtime::transaction(id = "snapshot.add")]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Add {
     amount: i64,
 }
 
 #[harmos_runtime::record(id = "snapshot.seen")]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Seen {
     before: i64,
 }

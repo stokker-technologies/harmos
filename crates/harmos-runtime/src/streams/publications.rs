@@ -453,9 +453,9 @@ pub(super) fn publication_definitions(
             if !ids.insert(declaration.id.clone()) {
                 return Err(publications::Error::DuplicateStream { id: declaration.id }.into());
             }
-            let revision = harmos_domain::streams::revision(&declaration.row, declaration.window).map_err(crate::schema::Error::from)?;
-            let definition = Definition::declared::<PublicationRow>(declaration.id, revision, declaration.window);
-            let definition = definition.presentation(declaration.metadata, declaration.row_metadata).publication(owner, declaration.row);
+            let definition = Definition::declared::<PublicationRow>(declaration.id, declaration.row, declaration.window)
+                .map_err(crate::schema::Error::from)?;
+            let definition = definition.presentation(declaration.metadata, declaration.row_metadata).publication(owner);
             Ok(definition)
         })
         .collect()
@@ -527,14 +527,14 @@ mod tests {
             }]],
         };
         let revision = harmos_domain::streams::revision(&schema, 4).unwrap();
-        let proposed = Definition::declared::<PublicationRow>("samples", revision, 4).publication("owner", schema.clone());
+        let proposed = Definition::declared::<PublicationRow>("samples", schema.clone(), 4).unwrap().publication("owner");
         let mut revisions = Revisions::default();
-        revisions.definitions.insert(revision, Contract::of(&Definition::declared::<u64>("samples", revision, 4)));
+        revisions.definitions.insert(revision, Contract::of(&Definition::declared::<u64>("samples", schema.clone(), 4).unwrap()));
         let mut windows = HashMap::from([(Arc::from("samples"), revisions)]);
         assert!(matches!(validate_existing(&windows, std::slice::from_ref(&proposed), false), Err(StreamAdmissionError::Native(_))));
         windows.get_mut("samples").unwrap().definitions.insert(
             revision,
-            Contract::of(&Definition::declared::<PublicationRow>("samples", revision, 4).publication("another", schema.clone())),
+            Contract::of(&Definition::declared::<PublicationRow>("samples", schema.clone(), 4).unwrap().publication("another")),
         );
         assert!(matches!(validate_existing(&windows, std::slice::from_ref(&proposed), false), Err(StreamAdmissionError::OwnerConflict(_))));
         let mut changed = schema;
@@ -543,7 +543,7 @@ mod tests {
             .get_mut("samples")
             .unwrap()
             .definitions
-            .insert(revision, Contract::of(&Definition::declared::<PublicationRow>("samples", revision, 4).publication("owner", changed)));
+            .insert(revision, Contract::of(&Definition::declared::<PublicationRow>("samples", changed, 4).unwrap().publication("owner")));
         assert!(matches!(validate_existing(&windows, &[proposed], false), Err(StreamAdmissionError::Collision(_))));
     }
 }

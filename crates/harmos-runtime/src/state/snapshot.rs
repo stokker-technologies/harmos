@@ -41,8 +41,14 @@ use crate::{
 
 /* === Type Aliases === */
 
-type Encoding<A> =
-    fn(&SnapshotPolicy, &At<<A as Application>::State>, &Undos<A>, &Tail<A>, &HashMap<RequestKey, Receipt>) -> Result<Vec<u8>>;
+type Encoding<A> = fn(
+    &SnapshotPolicy,
+    &Dispatch<A, Payload<A>>,
+    &At<<A as Application>::State>,
+    &Undos<A>,
+    &Tail<A>,
+    &HashMap<RequestKey, Receipt>,
+) -> Result<Vec<u8>>;
 type Decoding<A> = fn(&[u8], &SnapshotPolicy, &Dispatch<A, Payload<A>>, usize) -> std::result::Result<Restored<A>, Incompatible>;
 
 /* === Structs === */
@@ -135,12 +141,10 @@ impl<A: Application> Snapshots<A> {
             let state = tracked.state.read().await;
             let tail = tracked.tail.read().await;
             self.last.store(position.0, Ordering::Relaxed);
-            let payload =
-                catch_unwind(AssertUnwindSafe(|| (self.encode)(&self.policy, &state, undos, &tail, receipts))).map_err(|_| {
-                    Error::InvalidInput {
-                        field: "state snapshot",
-                        reason: "serializer panicked",
-                    }
+            let payload = catch_unwind(AssertUnwindSafe(|| (self.encode)(&self.policy, &tracked.catalog, &state, undos, &tail, receipts)))
+                .map_err(|_| Error::InvalidInput {
+                    field: "state snapshot",
+                    reason: "serializer panicked",
                 })??;
             permit.snapshot_payload(payload)?;
             permit.commit(position);

@@ -205,7 +205,7 @@ pub enum Catalog<A: Application> {
 #[derive(Debug, thiserror::Error)]
 enum Cause {
     #[error("the stored history cannot be replayed by this build: {0}")]
-    Undeclared(DecodeError),
+    Undeclared(#[source] DecodeError),
 
     #[error("the stored history cannot be replayed by this build: {0}")]
     Unreadable(String),
@@ -986,7 +986,7 @@ impl Incompatible {
         }
     }
 
-    fn of(cause: DecodeError) -> Self {
+    pub(crate) fn of(cause: DecodeError) -> Self {
         Self {
             cause: Cause::Undeclared(cause),
             cleanup: None,

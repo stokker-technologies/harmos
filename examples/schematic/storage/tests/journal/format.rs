@@ -268,24 +268,8 @@ fn contract_scenario() {
                     .await
                     .map(|entry| entry.expect("the golden is inside the tail").value)
                     .collect();
-                assert_eq!(
-                    facts[0],
-                    SystemFact {
-                        source: FactSource::Work("autoroute".to_owned()),
-                        name: "finding".to_owned(),
-                        version: 1,
-                        payload: vec![1, 2, 3],
-                    }
-                );
-                assert_eq!(
-                    facts[1],
-                    SystemFact {
-                        source: FactSource::Work("exporter".to_owned()),
-                        name: "deactivated".to_owned(),
-                        version: 1,
-                        payload: vec![9, 8],
-                    }
-                );
+                assert_eq!(facts[0], SystemFact::new(FactSource::Work("autoroute".to_owned()), "finding".to_owned(), vec![1, 2, 3]));
+                assert_eq!(facts[1], SystemFact::new(FactSource::Work("exporter".to_owned()), "deactivated".to_owned(), vec![9, 8]));
 
                 recovered.shutdown().await.unwrap();
                 assert_eq!(

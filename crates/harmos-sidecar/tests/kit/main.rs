@@ -80,12 +80,7 @@ fn owner_registration_records() {
         let table = harmos_sdk::__private::WireTable::new(&owner);
         assert_eq!(table.is_ok(), valid, "registration {owner:?}");
         let _registered = table.map(validate_table);
-        let fact = SystemFact {
-            source: FactSource::Sidecar(owner.clone()),
-            name: "result/sample".to_owned(),
-            version: 1,
-            payload: vec![0, 255, 17],
-        };
+        let fact = SystemFact::new(FactSource::Sidecar(owner.clone()), "result/sample".to_owned(), vec![0, 255, 17]);
         let mut records = Records::default();
         assert_eq!(records.push_system(fact).is_ok(), valid, "records {owner:?}");
     }

@@ -32,7 +32,7 @@ report as the `harmos.startup` structured detail on the existing failure;
 Original refusal codes, detail maps and diagnostics remain in the report. Display
 renders readable root prose rather than Rust Debug output.
 
-Plugin stream revisions are derived automatically in the Rust core when a declaration
+Native and plugin stream revisions are derived automatically in the Rust core when a declaration
 becomes a runtime definition. The input is `harmos.stream.v1\0`, the window as a
 little-endian `u64`, and the canonical row-schema encoding in
 `crates/harmos-domain/src/schema/identity.rs`. SHA-256's first four bytes are read
@@ -51,24 +51,50 @@ each row's definition, including newly committed revisions. Retired live windows
 are released after storage consumers and live feeds have taken their rows;
 readers retain only the windows they still own.
 
-Persist plugin rows with `Definition::version()` as the storage `SchemaKey.version`
+Persist stream rows with `Definition::version()` as the storage `SchemaKey.version`
 and `Definition::schema()` as that revision's definition. Keep each revision's
-rows under its own key, including across process restarts. Native catalog streams
-retain their native version contract. A different plugin owner, native collision
+rows under its own key, including across process restarts. A different plugin owner, native collision
 or equal hash with a different canonical row remains an admission error. Rename
 the stream and report a hash collision. A transport restart inside one committed
 activation may only renew its frozen inventory; reload the plugin to change it.
 
-Plugin authors remove `StreamSpec::VERSION`, `StreamRow::VERSION`, and generated
-stream `VERSION` and `DEFINITION` constants. Use `ID`, `WINDOW` and `definition()`
-for native catalog rows; deserialize their stored payloads with Serde instead of
-the removed version-ignoring `restore` helper. Publication inventories, listener stream sources and
-`host.publish` no longer accept an authored schema ordinal; plugin publication
-leases bind by id within their original activation. Listener publication binding
-uses `(id, after)`, and its registration frontier lookup uses `frontier(id)`. The host assigns storage
-revisions. Remove handling of `STREAM_CONTRACT_CHANGED`; that refusal code and
-its backend-restart advice have been removed. Rebuild all plugin artifacts with
-the matching SDK. Wire, artifact, schema and storage format versions remain v1.
+Streams expose `ID`, `WINDOW` and `definition()`; `StreamSpec`, `StreamRow` and
+native `Stream<A>` have no authored `VERSION`. Typed native readers select the
+current definition by identity and compiled row type. Low-level declarations use
+`Definition::declared::<Row>(id, schema, window)` and return a derived definition.
+Publication inventories,
+listener sources and `host.publish` do not accept schema ordinals. Listener
+publication binding uses `(id, after)` and `frontier(id)`.
+
+`#[record]` and `#[transaction]` derive schema-only revisions through
+`harmos_domain::schema::identity::revision(schema)`. Its input is
+`harmos.record.v1\0` followed by the same canonical graph encoding; SHA-256's
+first four bytes become a little-endian nonzero `u32`. Presentation labels,
+Rust module paths and graph indices do not participate. Generated `DEFINITION`
+identity tuples are removed: use `T::ID` and `T::definition()` through `Identified`.
+`restore(revision, payload)` now accepts only the derived revision.
+
+Records, transactions and their nested Serde domain types declare their schema
+with `#[derive(harmos::Described)]`; an existing `#[message]`
+already supplies the schema. This schema-only derive retains the existing
+Serde payload codec. It supports named, tuple and enum shapes, field `rename` and
+`skip`, and transparent newtypes. Custom Serde representations provide an explicit
+`Described` implementation. Record listeners declare `record = "identity", row = Type`
+without `version =`; binding checks identity and the declared row schema.
+System facts use `SystemFact::new(source, name, bytes)` for opaque bytes or
+`SystemFact::encode(source, name, &value)` for a described Serde payload. Their
+stored revision carrier remains necessary; callers no longer supply its value.
+
+Managed journal entries and snapshot definition inventories store derived
+revisions. Open refuses a stored record or transaction whose definition differs,
+naming its identity and directing the caller to choose a fresh storage root.
+Snapshots check the frozen definition inventory even when the record precedes
+the retained tail. Failed open preserves the stored history. Development storage
+has no migration; use a fresh root after a shape change. Unused group and snapshot
+wrapper ordinals are removed. ABI, failure details, transport framing, journal
+file framing, artifact manifests and `PayloadEncoding::PostcardV1` retain their
+existing compatibility versions. Schema encoding stays v1. Rebuild plugin artifacts
+with the matching SDK.
 
 Classification is scoped to one startup/prepare pass. If the pass contains a
 runtime preparation/construction failure, every `MissingResource` in that pass

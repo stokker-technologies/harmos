@@ -52,10 +52,10 @@ struct Health {
     history: Vec<String>,
 }
 
-#[derive(Serialize)]
-struct Deactivation<'a> {
+#[derive(crate::Described, Serialize)]
+struct Deactivation {
     cause: String,
-    history: &'a [String],
+    history: Vec<String>,
 }
 
 /* === Enums === */
@@ -312,17 +312,15 @@ async fn deactivate<A: Application>(
     name: &str, cause: ServiceExit, history: Vec<String>, source: Arc<dyn std::error::Error + Send + Sync>, report: &Report,
     handles: &super::Handles<A>,
 ) -> Error {
-    let payload = serde_json::to_vec(&Deactivation {
-        cause: describe(&cause),
-        history: &history,
-    })
+    let fact = SystemFact::encode(
+        FactSource::Work(name.to_owned()),
+        "deactivated".to_owned(),
+        &Deactivation {
+            cause: describe(&cause),
+            history: history.clone(),
+        },
+    )
     .expect("the fixed work fact shape serializes");
-    let fact = SystemFact {
-        source: FactSource::Work(name.to_owned()),
-        name: "deactivated".to_owned(),
-        version: 1,
-        payload,
-    };
     let _ = handles.records.publish_system(fact).await;
     report.health(ServiceStatus::Inactive { cause, history });
     Error::TaskFailed { domain: "service attempt", source }

@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 /* === Structs === */
 
 #[harmos::record(id = "export.completed")]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ExportCompleted {
     pub format: ExportFormat,
     pub symbols: u32,
@@ -38,7 +38,7 @@ pub struct ExportCompleted {
 
 /* === Enums === */
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum ExportFormat {
     Svg,
     Netlist,

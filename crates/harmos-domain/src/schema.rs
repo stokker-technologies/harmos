@@ -56,6 +56,23 @@ macro_rules! wrapper {
 
 wrapper!(bool => Bool, u32 => U32, u64 => U64, i32 => I32, i64 => I64, f32 => F32, f64 => F64, String => String, Vec<u8> => Bytes);
 
+macro_rules! stored_scalar {
+    ($($ty:ty => $kind:ident),* $(,)?) => {$(
+        impl Described for $ty {
+            const NAME: &'static str = concat!("harmos::", stringify!($ty));
+            const FIELDS: &'static [graph::Field<declaration::Definition>] = &[graph::Field {
+                name: Cow::Borrowed(stringify!($ty)), tag: 1,
+                kind: graph::Kind::$kind, cardinality: Cardinality::Required,
+            }];
+            const MARKER: &'static [u8] = &declaration::encode::<{
+                declaration::encoded_len(Self::NAME, Self::FIELDS)
+            }>(Self::NAME, Self::FIELDS);
+        }
+    )*};
+}
+
+stored_scalar!(u8 => U32, u16 => U32, i8 => I32, i16 => I32, usize => U64, isize => I64, u128 => Bytes, i128 => Bytes, char => String);
+
 /* === Type Aliases === */
 
 /* === Structs === */

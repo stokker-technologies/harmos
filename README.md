@@ -41,7 +41,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **Managed State** [`runtime`]: Apply typed transactions, inspect history and scope undo or redo to selected changes.
 - **Operations and Services** [`runtime`]: Define requests and streams with explicit timeout, retry and cancellation policies, including typed final responses from cooperative cancellation; keep resources with the work that owns them.
 - **Streams and Storage** [`runtime`]: Capture bounded live measurements and supply adapters for history, snapshots and streams.
-- **Crash Recovery** [`runtime`]: Reconstruct state and undo history according to your storage adapter's durability policy.
+- **Crash Recovery** [`runtime`]: Reconstruct state and undo history with derived data shape revisions and refusal of incompatible stored definitions.
 - **Plugin Lifecycle** [`plugin`]: Register typed plugin contracts and manage activation, routing and reload, with automatic stream schema revisions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **Native Sidecars** [`plugin-sidecar`]: Integrate supervised executables through typed contracts; native processes do not provide a Wasm sandbox.
@@ -151,7 +151,8 @@ nightly run, and its notes record whether that run's suite passed.
 
 Harmos is pre-1.0; public APIs and plugin contracts can change. Keep application
 and plugin revisions aligned and review release notes before updating. Stored data
-and wire formats support only the current v1 shape; no migration is provided.
+formats have no migrations. Managed recovery refuses changed stored data shapes;
+choose a fresh storage root. Wire compatibility versions remain explicit.
 
 Built-in operation contracts live in `harmos-operations`, re-exported as
 `harmos::builtins`. Its `host`, `lifecycle`, `storage` and `streams` catalogs

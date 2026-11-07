@@ -190,10 +190,10 @@ mod streams {
         pub value: i64,
     }
 
-    #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
     pub struct Take(pub u64);
 
-    #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
     pub struct Lens(pub u64);
 
     #[harmos_runtime::stream(description = "A row declaring both optional coordinates.",
@@ -256,7 +256,12 @@ fn generated_catalog_registers() {
 
     assert_eq!(catalog.len(), 3, "one enum variant yields one definition");
     assert_eq!(catalog[0].id(), "pulse");
-    assert_eq!(catalog[0].version(), 1);
+    let graph = harmos_runtime::schema::graph::Schema::from_declaration(
+        <streams::Pulse as harmos_runtime::schema::Described>::DEFINITION,
+        &harmos_runtime::config::SchemaSettings::default(),
+    )
+    .unwrap();
+    assert_eq!(catalog[0].version(), harmos_domain::streams::revision(&graph, catalog[0].window()).unwrap());
     assert_eq!(catalog[0].window(), 4);
     assert_eq!(streams::Studio::definition("reading").expect("the id is in the catalog").window(), 2);
     assert!(streams::Studio::definition("outside").is_none());
