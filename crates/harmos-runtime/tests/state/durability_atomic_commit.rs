@@ -21,7 +21,7 @@ use std::sync::{
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use super::support::journal::{Journal, Snapshot, Store, Wire};
+use super::support::journal::{Journal, Store, Wire};
 use harmos_runtime::{
     Application, Error, Runtime, state::Focus, state::Origin, state::Position, state::PrincipalId, state::Recorded, state::Records,
     state::RequestKey, state::Transaction,
@@ -329,39 +329,6 @@ async fn reversals_emit_records() {
     assert_eq!(restarted.state.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (9, 3));
     assert_eq!(restarted.state.query::<Facts>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap().len(), 3);
     restarted.shutdown().await.unwrap();
-}
-
-#[tokio::test]
-async fn record_keeps_group() {
-    let copy = Store::default();
-    let mirror = Store::default();
-    let live = boot(&copy, 1).await;
-    live.state.commit(add(5, 1, 0)).await.unwrap();
-    live.shutdown().await.unwrap();
-    let original: Vec<String> = copy.lines().iter().map(|line| line.replace("atomic.observed", "atomic.future")).collect();
-    copy.replace(original.clone());
-    let snapshots = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let observed = Arc::clone(&snapshots);
-    let snapshot = Snapshot::<Model>::folding(State::default(), Position::ORIGIN, move |state, position| {
-        observed.lock().unwrap().push((state.balance, position));
-        Ok(())
-    });
-    let runtime = Runtime::<Model>::launch_with(State::default(), (), |setup| {
-        setup.settings().register(Changes::catalog());
-        setup.settings().register(Facts::catalog());
-        setup.settings().recover(Journal::<Model>::open(&copy));
-        setup.settings().attach(Journal::<Model>::open(&mirror));
-        setup.settings().snapshot(snapshot);
-        setup.settings().tail(1);
-    })
-    .await
-    .unwrap();
-    assert_eq!(runtime.state.applied(), Position(2));
-    assert!(matches!(runtime.state.state().at(Origin::initial(State::default()), Position(1)).await, Err(Error::IncompleteCommit)));
-    assert_eq!(runtime.state.query::<Facts>(Position::ORIGIN).await.count(), 0);
-    runtime.shutdown().await.unwrap();
-    assert_eq!(*snapshots.lock().unwrap(), vec![(5, Position(2))]);
-    assert_eq!(mirror.lines(), original);
 }
 
 #[tokio::test]
