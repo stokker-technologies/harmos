@@ -2,6 +2,23 @@
 
 Detailed composition, feature selection and runnable examples. Start with the [Quick Start](../README.md#quick-start).
 
+Embedded language bindings can stage runtime-owned unary operations with
+`operations::EncodedBinding::new(contract, decoding_memory, prepare)` and
+`Bindings::encoded(binding, lane)`. `Contract::from_schema` derives the canonical
+fingerprint from an owned graph. The codec validates payloads and estimates decoded
+allocation; its prepared `NativeInstance` runs through normal admission, retries,
+cancellation and settlement. Plugin staging validates the frozen contribution
+catalog and retains its original generation. Runtime bindings currently use the
+canonical encoded carrier without a gRPC projection or stream endpoints.
+
+`submit_encoded_with(operation, payload, retry)` and
+`PluginCallback::submit_with_retry(bytes, encode, retry)` apply policy overrides to
+one call. Unknown replay safety still refuses enabled retries. Existing deadlines,
+authorization and attempt records remain authoritative. Embedded observer owners
+use `stage_plugin_observers(resources, scope, backends)` and
+`submit_resident_in(id, resources)` to retain plugin scope and resource identity;
+generation retirement stops these observers with the plugin.
+
 Operation failures retain their classification, application refusal code and source
 diagnostics across carriers. Applications can attach named, non-secret context
 with `Failure::with_detail` and read it with `Failure::detail`; a plugin admission

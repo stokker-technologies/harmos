@@ -151,6 +151,10 @@ impl Manager {
         self.submit_encoded_as(operation, payload, Source::Host, None)
     }
 
+    pub fn submit_encoded_with(&self, operation: &str, payload: Vec<u8>, retry: Option<super::RetryPolicy>) -> Result<EncodedInvocation> {
+        self.submit_encoded_at_as(operation, payload, Source::Host, None, executor::now(), EncodedOptions { expected: None, retry })
+    }
+
     pub async fn call_encoded(&self, operation: &str, payload: Vec<u8>) -> Result<Vec<u8>> {
         self.submit_encoded(operation, payload)?.await
     }
@@ -159,6 +163,13 @@ impl Manager {
         &self, operation: &str, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>,
     ) -> Result<EncodedInvocation> {
         self.submit_encoded_at_as(operation, payload, source, parent, executor::now(), EncodedOptions::default())
+    }
+
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub(super) fn submit_encoded_retry_as(
+        &self, operation: &str, payload: Vec<u8>, source: Source, retry: Option<super::RetryPolicy>,
+    ) -> Result<EncodedInvocation> {
+        self.submit_encoded_at_as(operation, payload, source, None, executor::now(), EncodedOptions { expected: None, retry })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.submit_encoded_at_as", level = "debug", skip_all)]
@@ -287,12 +298,20 @@ impl PluginCallback {
     pub fn submit_with(
         &self, encoding_memory_bytes: std::num::NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>,
     ) -> Result<EncodedInvocation> {
-        self.submit_with_as(Source::for_callback(&self.entry), encoding_memory_bytes, encode, false)
+        self.submit_with_retry(encoding_memory_bytes, encode, None)
+    }
+
+    pub fn submit_with_retry(
+        &self, encoding_memory_bytes: std::num::NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>,
+        retry: Option<super::RetryPolicy>,
+    ) -> Result<EncodedInvocation> {
+        self.submit_with_as(Source::for_callback(&self.entry), encoding_memory_bytes, encode, false, retry)
     }
 
     // A resident control runs until cancelled; it holds no native call slot.
     fn submit_with_as(
-        &self, source: Source, encoding_memory_bytes: std::num::NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>, resident: bool,
+        &self, source: Source, encoding_memory_bytes: std::num::NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>,
+        resident: bool, retry: Option<super::RetryPolicy>,
     ) -> Result<EncodedInvocation> {
         #[cfg(not(feature = "plugin-sidecar"))]
         let _ = resident;
@@ -341,7 +360,7 @@ impl PluginCallback {
             source,
             None,
             EncodedInput {
-                retry: None,
+                retry,
                 payload,
                 preparation: Some(preparation),
                 #[cfg(feature = "plugin-sidecar")]
@@ -356,7 +375,7 @@ impl PluginControl {
     pub(crate) fn submit_with(
         &self, bytes: std::num::NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>,
     ) -> Result<EncodedInvocation> {
-        self.0.submit_with_as(Source::Host, bytes, encode, true)
+        self.0.submit_with_as(Source::Host, bytes, encode, true, None)
     }
 }
 
@@ -379,6 +398,20 @@ impl super::Caller {
 }
 
 impl super::Context<'_> {
+    pub fn submit_encoded_with(&self, operation: &str, payload: Vec<u8>, retry: Option<super::RetryPolicy>) -> Result<EncodedInvocation> {
+        self.operations.submit_encoded_at_as(
+            operation,
+            payload,
+            self.source.clone(),
+            Some(Parent {
+                scope: &self.scope,
+                ancestors: self.admission.held(),
+            }),
+            executor::now(),
+            EncodedOptions { expected: None, retry },
+        )
+    }
+
     pub fn submit_encoded(&self, operation: &str, payload: Vec<u8>) -> Result<EncodedInvocation> {
         self.operations.submit_encoded_as(
             operation,
@@ -439,18 +472,24 @@ pub(super) fn dispatch_native(
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
     budget(timeout, submitted)?;
-    let factory = submission.entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>().ok_or(Error::InvalidInput {
-        field: "native operation",
-        reason: "entry does not own a native factory",
-    })?;
+    let factory = submission.entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>();
     let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
         Some(original) => Some(original),
         None => Some(operations.claim_preparation(std::num::NonZeroUsize::new(input.payload.capacity().max(1)).unwrap())?),
     };
-    let decoding_bytes = catch_unwind(AssertUnwindSafe(|| factory.decoding_memory(&input.payload)))
-        .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
-        .map_err(|source| Error::OperationPayload { operation: name.clone(), source })?;
+    let decoding_bytes = catch_unwind(AssertUnwindSafe(|| {
+        if let Some(factory) = factory {
+            return factory.decoding_memory(&input.payload);
+        }
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {
+            return binding.decoding_memory(&input.payload);
+        }
+        Err(crate::MessageError::borrowed("entry does not own a native codec"))
+    }))
+    .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
+    .map_err(|source| Error::OperationPayload { operation: name.clone(), source })?;
     if let Some(bytes) = std::num::NonZeroUsize::new(decoding_bytes) {
         let decoded = operations.claim_preparation(bytes)?;
         if let Some(original) = &mut submission.preparation {
@@ -460,12 +499,21 @@ pub(super) fn dispatch_native(
         }
     }
     let resources = operations.resources_for(&submission.entry);
-    let prepared = catch_unwind(AssertUnwindSafe(|| factory.prepare_encoded(resources, &input.payload)))
-        .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
-        .map_err(|source| Error::OperationFailed {
-            operation: name,
-            source: Arc::new(source),
-        })?;
+    let prepared = catch_unwind(AssertUnwindSafe(|| {
+        if let Some(factory) = factory {
+            return factory.prepare_encoded(resources, &input.payload);
+        }
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {
+            return binding.prepare(resources, &input.payload);
+        }
+        Err(harmos_sdk::ServingError::Catalog)
+    }))
+    .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
+    .map_err(|source| Error::OperationFailed {
+        operation: name,
+        source: Arc::new(source),
+    })?;
     drop(input.payload);
     let mut request = super::binding::Request::from(Vec::new());
     request.retry = input.retry;

@@ -165,6 +165,12 @@ impl Caller {
         self.operations.submit_encoded_as(operation, payload, Source::Plugin(self.source.clone()), None)
     }
 
+    pub fn submit_encoded_with(
+        &self, operation: &str, payload: Vec<u8>, retry: Option<super::RetryPolicy>,
+    ) -> Result<super::EncodedInvocation> {
+        self.operations.submit_encoded_retry_as(operation, payload, Source::Plugin(self.source.clone()), retry)
+    }
+
     pub async fn call_encoded(&self, operation: &str, payload: Vec<u8>) -> Result<Vec<u8>> {
         self.submit_encoded(operation, payload)?.await
     }

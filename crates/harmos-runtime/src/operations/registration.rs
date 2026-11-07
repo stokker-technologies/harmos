@@ -68,7 +68,7 @@ pub(crate) struct CatalogBinding {
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub struct Bindings<'a> {
     pub(super) operations: &'a Manager,
-    owner: &'a str,
+    pub(super) owner: &'a str,
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) scope: Option<&'a PluginScope>,

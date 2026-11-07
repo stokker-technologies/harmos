@@ -523,7 +523,7 @@ impl Registry {
         Ok(scope)
     }
 
-    #[cfg(feature = "plugin-sidecar")]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(crate) fn scope_of<R: Send + Sync + 'static>(&self, resources: &Arc<R>) -> Option<Arc<Scope>> {
         let address = Arc::as_ptr(resources) as *const () as usize;
         let state = self.state();

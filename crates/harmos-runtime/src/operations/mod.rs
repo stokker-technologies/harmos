@@ -24,6 +24,8 @@ pub(crate) mod children;
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod component;
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+mod encoded;
 mod execution;
 mod finalization;
 #[cfg(feature = "grpc")]
@@ -81,6 +83,8 @@ pub use surface::{InvocationExt, RuntimeOperationHost};
 pub use crate::config::OperationSettings as Settings;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 pub use component::{Component, ComponentBindings, ComponentError, ComponentOperation};
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+pub use encoded::EncodedBinding;
 pub use handler::{Context, HostContext, OperationGeneration, OperationInstanceId, Running};
 pub use harmos_domain::observers;
 pub use harmos_sdk::operations::StreamError;

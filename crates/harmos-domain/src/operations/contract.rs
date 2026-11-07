@@ -208,11 +208,19 @@ impl Contract {
         operation: OperationDefinition, fingerprint: crate::Fingerprint, codec: Codec, schema: Schema, settings: &SchemaSettings,
     ) -> Result<Self, ContractError> {
         operation.validate()?;
-        Self::canonical(operation, fingerprint, codec, schema, settings)
+        Self::canonical(operation, Some(fingerprint), codec, schema, settings)
+    }
+
+    // Runtime Authors Supply The Schema; Harmos Derives Its Canonical Identity.
+    pub fn from_schema(
+        operation: OperationDefinition, codec: Codec, schema: Schema, settings: &SchemaSettings,
+    ) -> Result<Self, ContractError> {
+        operation.validate()?;
+        Self::canonical(operation, None, codec, schema, settings)
     }
 
     fn canonical(
-        operation: OperationDefinition, fingerprint: crate::Fingerprint, codec: Codec, schema: Schema, settings: &SchemaSettings,
+        operation: OperationDefinition, fingerprint: Option<crate::Fingerprint>, codec: Codec, schema: Schema, settings: &SchemaSettings,
     ) -> Result<Self, ContractError> {
         let invalid = |source: schema::graph::Error| ContractError::Schema {
             id: operation.id.to_string(),
@@ -238,17 +246,19 @@ impl Contract {
                 reason: "expected request, response, and optional input/output roots",
             }));
         }
-        let contract = Self {
+        let mut contract = Self {
+            fingerprint: fingerprint.unwrap_or(operation.fingerprint),
             operation,
-            fingerprint,
             codec,
             schema,
             grpc: None,
         };
         let computed = contract.computed_fingerprint()?;
-        if fingerprint != computed || contract.operation.fingerprint != computed {
+        if fingerprint.is_some_and(|fingerprint| fingerprint != computed || contract.operation.fingerprint != computed) {
             return Err(ContractError::Fingerprint { id: contract.operation.id.to_string() });
         }
+        contract.fingerprint = computed;
+        contract.operation.fingerprint = computed;
         Ok(contract)
     }
 
@@ -314,7 +324,7 @@ impl Contract {
                         direction: "contract",
                         source: source.into(),
                     })?;
-            let contract = Self::canonical(operation, fingerprint, Codec::Postcard, schema, &SchemaSettings::default())?;
+            let contract = Self::canonical(operation, Some(fingerprint), Codec::Postcard, schema, &SchemaSettings::default())?;
             cache.get_or_init(|| contract)
         };
         let mut contract = template.clone();
@@ -343,7 +353,7 @@ impl Contract {
             direction: "contract",
             source: source.into(),
         })?;
-        Self::canonical(operation.clone(), operation.fingerprint, Codec::Postcard, schema, &SchemaSettings::default())
+        Self::canonical(operation.clone(), Some(operation.fingerprint), Codec::Postcard, schema, &SchemaSettings::default())
     }
 
     pub fn operation(&self) -> &OperationDefinition {
