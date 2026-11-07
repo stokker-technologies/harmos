@@ -7,4 +7,4 @@
 ## Validation and Delivery
 
 - [x] 2.1 Run focused compilation and affected deterministic tests with eight build jobs; no full lanes, lint or simulations under the owner's explicit gate.
-- [ ] 2.2 Run the required diff scanner and require CLEAN; prepare the authorized candidate for immediate squash delivery.
+- [x] 2.2 Run the required diff scanner and require CLEAN; prepare the authorized candidate for immediate squash delivery.

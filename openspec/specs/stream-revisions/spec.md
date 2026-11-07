@@ -1,4 +1,9 @@
-## ADDED Requirements
+# Stream Revisions Specification
+
+## Purpose
+Keep plugin stream rows decodable across reloads and restarts with automatic schema-derived revisions, explicit committed current selection, atomic staging and bounded live-window retention.
+
+## Requirements
 
 ### Requirement: Automatic Stable Revisions
 The core SHALL derive each plugin stream revision from a canonical encoding of its row schema and window, excluding presentation metadata, without an author version.
@@ -16,7 +21,7 @@ Current lookup SHALL follow the committed activation rather than revision orderi
 
 #### Scenario: Failed Reload
 - **WHEN** a staged replacement fails
-- **THEN** the previous revision remains current and its publisher remains usable
+- **THEN** the previous revision remains current and its rows remain readable
 
 #### Scenario: Many Reloads
 - **WHEN** successive revisions commit and old readers and ingest release them
