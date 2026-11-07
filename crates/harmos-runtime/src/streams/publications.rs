@@ -531,12 +531,12 @@ mod tests {
         let mut revisions = Revisions::default();
         revisions.definitions.insert(revision, Contract::of(&Definition::declared::<u64>("samples", revision, 4)));
         let mut windows = HashMap::from([(Arc::from("samples"), revisions)]);
-        assert!(matches!(validate_existing(&windows, &[proposed.clone()], false), Err(StreamAdmissionError::Native(_))));
+        assert!(matches!(validate_existing(&windows, std::slice::from_ref(&proposed), false), Err(StreamAdmissionError::Native(_))));
         windows.get_mut("samples").unwrap().definitions.insert(
             revision,
             Contract::of(&Definition::declared::<PublicationRow>("samples", revision, 4).publication("another", schema.clone())),
         );
-        assert!(matches!(validate_existing(&windows, &[proposed.clone()], false), Err(StreamAdmissionError::OwnerConflict(_))));
+        assert!(matches!(validate_existing(&windows, std::slice::from_ref(&proposed), false), Err(StreamAdmissionError::OwnerConflict(_))));
         let mut changed = schema;
         changed.definitions[0][0].kind = Kind::String;
         windows
