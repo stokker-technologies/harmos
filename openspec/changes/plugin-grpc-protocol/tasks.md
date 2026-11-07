@@ -36,8 +36,8 @@
 - [x] 5.2 If no stop condition has fired, remove the contiguous output copy through codec.rs and the prototype HTTP body, then measure alone. Keep ordinary control on Tonic. Not started: Gate 5 passed both payloads after 5.1.
 - [x] 5.3 If no stop condition has fired, measure Windows named pipes separately from TCP using Tonic's supported incoming/connector path; change opt-in manifests only if required. Not started: the owner-required stop fired after 5.1.
 - [x] 5.4 If the gap persists without an earlier stop, subdivide residual cost with CPU/ETW profiling. Stop at both-payload Gate 5 success, two consecutive changes each below 10% gain on both payloads, or a profiled gRPC/h2 cost with no available setting or codec remedy. Record measurements, stop decision, SDK costs, updated Gate 6 and README impact in design.md. Gate 5 success stopped tuning; no residual profile was started.
-- [ ] 5.5 Run focused Gates 2–4 and check:rust; commit, require CLEAN from the owner's scan, normal-push and verify remote SHA. No PR, merge, migration or Dokime edits.
-- [ ] 5.6 Preserve evidence, run native Cargo cleanup for owned worktree targets and retain the worktree.
+- [x] 5.5 Run focused Gates 2–4 and check:rust; commit, require CLEAN from the owner's scan, normal-push and verify remote SHA. No PR, merge, migration or Dokime edits.
+- [x] 5.6 Preserve evidence, run native Cargo cleanup for owned worktree targets and retain the worktree.
 
 ## Workflow Follow-Up
 
