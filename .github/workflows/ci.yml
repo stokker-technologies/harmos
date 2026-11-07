@@ -208,18 +208,14 @@ jobs:
         path: target/ci
         github-token: ${{ github.token }}
     - name: Extract package:rust / package
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst --profile ${{ env.PROFILE }}
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: package-${{ env.PROFILE }}-rust-windows
         path: target/ci
         github-token: ${{ github.token }}
     - name: Extract package:rust / package
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst --profile ${{ env.PROFILE }}
     - run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.build
@@ -316,18 +312,14 @@ jobs:
         path: target/ci
         github-token: ${{ github.token }}
     - name: Extract package:rust / package
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst --profile ${{ env.PROFILE }}
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: package-${{ env.PROFILE }}-rust-windows
         path: target/ci
         github-token: ${{ github.token }}
     - name: Extract package:rust / package
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst --profile ${{ env.PROFILE }}
     - run: mise run release:rehearse
     - uses: ./.github/actions/save-caches
       if: >-
@@ -412,9 +404,7 @@ jobs:
         name: build-product-${{ env.PROFILE }}-unix
         path: target/ci
     - name: Extract build / product
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }}
     - run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.test.archive --profile ${{ env.PROFILE }} --install-wheels
@@ -495,9 +485,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'build')) && (true)
     - name: Archive product
-      uses: ./.github/actions/archive-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f62696e222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6c6962222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f70726f64756374222c227461726765742f67656e6572617465642f707974686f6e2f707970726f6a6563742e746f6d6c222c227461726765742f67656e6572617465642f707974686f6e2f737263225d\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts pack --archive target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }} --paths 5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f62696e222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6c6962222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f70726f64756374222c227461726765742f67656e6572617465642f707974686f6e2f707970726f6a6563742e746f6d6c222c227461726765742f67656e6572617465642f707974686f6e2f737263225d
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'build')) && (true)
@@ -577,9 +565,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'build')) && (true)
     - name: Archive product
-      uses: ./.github/actions/archive-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f62696e222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6c6962222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f70726f64756374222c227461726765742f67656e6572617465642f707974686f6e2f707970726f6a6563742e746f6d6c222c227461726765742f67656e6572617465642f707974686f6e2f737263225d\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts pack --archive target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }} --paths 5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f62696e222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6c6962222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f70726f64756374222c227461726765742f67656e6572617465642f707974686f6e2f707970726f6a6563742e746f6d6c222c227461726765742f67656e6572617465642f707974686f6e2f737263225d
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'build')) && (true)
@@ -705,9 +691,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'build:rust:tests')) && (true)
     - name: Archive fixtures
-      uses: ./.github/actions/archive-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6669787475726573225d\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts pack --archive target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }} --paths 5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6669787475726573225d
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'build:rust:tests')) && (true)
@@ -722,9 +706,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'build:rust:tests')) && (true)
     - name: Archive tests
-      uses: ./.github/actions/archive-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f617263686976652e7461722e7a7374222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f636f6d70696c65722e6a736f6e225d\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts pack --archive target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }} --paths 5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f617263686976652e7461722e7a7374222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f636f6d70696c65722e6a736f6e225d
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'build:rust:tests')) && (true)
@@ -795,9 +777,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'build:rust:tests')) && (true)
     - name: Archive fixtures
-      uses: ./.github/actions/archive-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6669787475726573225d\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts pack --archive target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }} --paths 5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6669787475726573225d
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'build:rust:tests')) && (true)
@@ -812,9 +792,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'build:rust:tests')) && (true)
     - name: Archive tests
-      uses: ./.github/actions/archive-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f617263686976652e7461722e7a7374222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f636f6d70696c65722e6a736f6e225d\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts pack --archive target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }} --paths 5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f617263686976652e7461722e7a7374222c227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f74657374732f636f6d70696c65722e6a736f6e225d
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'build:rust:tests')) && (true)
@@ -1100,9 +1078,7 @@ jobs:
         github.event_name == 'workflow_dispatch')) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'package:rust')) && (true)
     - name: Extract build / product
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'unix' && (((github.event_name == 'schedule' ||
         github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v') ||
@@ -1115,9 +1091,7 @@ jobs:
         github.event_name == 'workflow_dispatch')) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'package:rust')) && (true)
     - name: Archive package
-      uses: ./.github/actions/archive-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f7061636b6167652f7b70726f66696c657d2f7b7461726765747d225d\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts pack --archive target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst --profile ${{ env.PROFILE }} --paths 5b227461726765742f7061636b6167652f7b70726f66696c657d2f7b7461726765747d225d
       if: >-
         matrix.platform == 'unix' && (((github.event_name == 'schedule' ||
         github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v') ||
@@ -1202,9 +1176,7 @@ jobs:
         github.event_name == 'workflow_dispatch')) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'package:rust')) && (true)
     - name: Extract build / product
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'windows' && (((github.event_name == 'schedule' ||
         github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v') ||
@@ -1217,9 +1189,7 @@ jobs:
         github.event_name == 'workflow_dispatch')) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'package:rust')) && (true)
     - name: Archive package
-      uses: ./.github/actions/archive-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f7061636b6167652f7b70726f66696c657d2f7b7461726765747d225d\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts pack --archive target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst --profile ${{ env.PROFILE }} --paths 5b227461726765742f7061636b6167652f7b70726f66696c657d2f7b7461726765747d225d
       if: >-
         matrix.platform == 'windows' && (((github.event_name == 'schedule' ||
         github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v') ||
@@ -1343,9 +1313,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'prepare:tests:fixtures')) && (true)
     - name: Extract build / product
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'prepare:tests:fixtures')) && (true)
@@ -1357,9 +1325,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'prepare:tests:fixtures')) && (true)
     - name: Extract build:rust:tests / fixtures
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'prepare:tests:fixtures')) && (true)
@@ -1372,9 +1338,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'prepare:tests:fixtures')) && (true)
     - name: Archive fixtures
-      uses: ./.github/actions/archive-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6669787475726573225d\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts pack --archive target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }} --paths 5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6669787475726573225d
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'prepare:tests:fixtures')) && (true)
@@ -1446,9 +1410,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'prepare:tests:fixtures')) && (true)
     - name: Extract build / product
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'prepare:tests:fixtures')) && (true)
@@ -1460,9 +1422,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'prepare:tests:fixtures')) && (true)
     - name: Extract build:rust:tests / fixtures
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'prepare:tests:fixtures')) && (true)
@@ -1475,9 +1435,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'prepare:tests:fixtures')) && (true)
     - name: Archive fixtures
-      uses: ./.github/actions/archive-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"pack\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\",\"--paths\",\"5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6669787475726573225d\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts pack --archive target/ci/build-fixtures-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }} --paths 5b227461726765742f6275696c642f7b70726f66696c657d2f7b7461726765747d2f6669787475726573225d
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'prepare:tests:fixtures')) && (true)
@@ -1596,9 +1554,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:acceptance')) && (true)
     - name: Extract build / product
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:acceptance')) && (true)
@@ -1610,9 +1566,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:acceptance')) && (true)
     - name: Extract build:rust:tests / tests
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:acceptance')) && (true)
@@ -1624,9 +1578,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:acceptance')) && (true)
     - name: Extract prepare:tests:fixtures / fixtures
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:acceptance')) && (true)
@@ -1701,9 +1653,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:acceptance')) && (true)
     - name: Extract build / product
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:acceptance')) && (true)
@@ -1715,9 +1665,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:acceptance')) && (true)
     - name: Extract build:rust:tests / tests
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:acceptance')) && (true)
@@ -1729,9 +1677,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:acceptance')) && (true)
     - name: Extract prepare:tests:fixtures / fixtures
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-fixtures-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:acceptance')) && (true)
@@ -1852,9 +1798,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:integration')) && (true)
     - name: Extract build:rust:tests / tests
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:integration')) && (true)
@@ -1866,9 +1810,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:integration')) && (true)
     - name: Extract prepare:tests:fixtures / fixtures
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:integration')) && (true)
@@ -1943,9 +1885,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:integration')) && (true)
     - name: Extract build:rust:tests / tests
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:integration')) && (true)
@@ -1957,9 +1897,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:integration')) && (true)
     - name: Extract prepare:tests:fixtures / fixtures
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-fixtures-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:integration')) && (true)
@@ -2079,9 +2017,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:system')) && (true)
     - name: Extract build / product
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:system')) && (true)
@@ -2093,9 +2029,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:system')) && (true)
     - name: Extract build:rust:tests / tests
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:system')) && (true)
@@ -2107,9 +2041,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:system')) && (true)
     - name: Extract prepare:tests:fixtures / fixtures
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:system')) && (true)
@@ -2184,9 +2116,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:system')) && (true)
     - name: Extract build / product
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-product-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:system')) && (true)
@@ -2198,9 +2128,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:system')) && (true)
     - name: Extract build:rust:tests / tests
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:system')) && (true)
@@ -2212,9 +2140,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:system')) && (true)
     - name: Extract prepare:tests:fixtures / fixtures
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-fixtures-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-fixtures-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:system')) && (true)
@@ -2333,9 +2259,7 @@ jobs:
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:unit')) && (true)
     - name: Extract build:rust:tests / tests
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-tests-${{ env.PROFILE }}-unix.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'unix' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:unit')) && (true)
@@ -2410,9 +2334,7 @@ jobs:
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:unit')) && (true)
     - name: Extract build:rust:tests / tests
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/build-tests-${{ env.PROFILE }}-windows.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'windows' && ((true) && needs.impact.result == 'success' &&
         contains(fromJSON(needs.impact.outputs.jobs), 'test:rust:unit')) && (true)

@@ -216,9 +216,7 @@ jobs:
         run-id: ${{ needs.validated.outputs.review_run }}
         github-token: ${{ github.token }}
     - name: Extract package:rust / package
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst --profile ${{ env.PROFILE }}
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: package-${{ env.PROFILE }}-rust-windows
@@ -226,9 +224,7 @@ jobs:
         run-id: ${{ needs.validated.outputs.review_run }}
         github-token: ${{ github.token }}
     - name: Extract package:rust / package
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst --profile ${{ env.PROFILE }}
     - name: Verify Target Commit Required CI
       shell: python
       run: |-
@@ -395,9 +391,7 @@ jobs:
         && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (true)
     - name: Extract package:rust / package
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'unix' && (always() && !contains(needs.*.result, 'failure')
         && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
@@ -480,9 +474,7 @@ jobs:
         'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,
         'refs/tags/v'))) && (true)
     - name: Extract package:rust / package
-      uses: ./.github/actions/extract-build
-      with:
-        command: "[\"mise\",\"exec\",\"--\",\"uv\",\"run\",\"--locked\",\"--project\",\"tools/python\",\"python\",\"-m\",\"harmos_tools.ci.artifacts\",\"extract\",\"--archive\",\"target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst\",\"--profile\",\"${{ env.PROFILE }}\"]"
+      run: mise exec -- uv run --locked --project tools/python python -m harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst --profile ${{ env.PROFILE }}
       if: >-
         matrix.platform == 'windows' && (always() && !contains(needs.*.result,
         'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref,

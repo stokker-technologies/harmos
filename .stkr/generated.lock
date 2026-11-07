@@ -2,10 +2,6 @@
   "version": 1,
   "files": {
     ".github/actionlint.yaml": "4651f131682a8ea8097c6d9653e365f5bbadc57aa3bf794c1c6621c2becd237a",
-    ".github/actions/archive-build/action.yml": "e15cbda33c9089d2704ca5c4cc0c6634f1dd7fcad295c084b247b0ff95b7c085",
-    ".github/actions/archive-build/run.py": "e69719630dbcae8ca28d6d3608f623fb650ba3d328e6161e195201822edb986b",
-    ".github/actions/extract-build/action.yml": "39a6b57fa268786d3d9c825f224112d4c727efcd430cba289f3002272900c8be",
-    ".github/actions/extract-build/run.py": "e69719630dbcae8ca28d6d3608f623fb650ba3d328e6161e195201822edb986b",
     ".github/actions/plan-impact/action.yml": "8592ba0ca1b3d451e45d59789f47a8978373ccaeed29424cbb09d59e62d29097",
     ".github/actions/plan-impact/gate.py": "6d687a7baad2b6c5d5a2901ced13f118e0e0f6ab93d53a6c43b1893dff64b6a3",
     ".github/actions/plan-impact/run.py": "49bb53501b495a23120b3df868fe230a8b1133508ec07286944885bfae6da6ed",

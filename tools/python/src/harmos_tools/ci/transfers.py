@@ -1,15 +1,18 @@
-"""Transfer Declared Build Outputs Through The Repository Artifact Task."""
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+"""Pack And Unpack Job Outputs For The Local CI Simulation."""
 
 # === Imports === #
 
 # Standard Library Imports
-import contextlib
 import glob
 import json
-import os
-import runpy
 import shutil
-import subprocess
 import tarfile
 from pathlib import Path
 
@@ -21,8 +24,6 @@ from pathlib import Path
 
 # === Constants === #
 
-spawn_flags = runpy.run_path(str(Path(__file__).resolve().parents[1] / "process.py"))["spawn_flags"]
-
 # === Types === #
 
 # === Classes === #
@@ -30,16 +31,6 @@ spawn_flags = runpy.run_path(str(Path(__file__).resolve().parents[1] / "process.
 # === Public Functions === #
 
 
-@contextlib.contextmanager
-def group(title):
-    print(f"::group::{title}", flush=True)
-    try:
-        yield
-    finally:
-        print("::endgroup::", flush=True)
-
-
-@group("Build / Archive")
 def export(root: Path, outputs: dict, archive: Path) -> None:
     archive.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive, "w") as transport:
@@ -57,7 +48,6 @@ def export(root: Path, outputs: dict, archive: Path) -> None:
                             transport.add(file, arcname=f"{output}/{file.relative_to(root).as_posix()}", recursive=False)
 
 
-@group("Build / Extract")
 def transport(archive: Path, destination: Path) -> None:
     modes = {}
     directories = []
@@ -127,20 +117,4 @@ def artifact_modes(path: Path) -> dict:
     return result
 
 
-def main():
-    operation = os.environ["TRANSFER_OPERATION"]
-    if operation not in ("pack", "extract"):
-        raise ValueError("unknown artifact operation")
-    print(f"::group::Build / {operation.title()}", flush=True)
-    try:
-        subprocess.run(json.loads(os.environ["TRANSFER_COMMAND"]), check=True, creationflags=spawn_flags())
-    finally:
-        print("::endgroup::", flush=True)
-
-
 # === Private Functions === #
-
-# === Entry Point === #
-
-if __name__ == "__main__":
-    main()
