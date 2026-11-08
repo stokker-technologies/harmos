@@ -852,7 +852,11 @@ mod tests {
             metadata: crate::Metadata::new(crate::Identifier::new("frozen.samples").unwrap(), "Samples", None),
             row_metadata: Vec::new(),
             window: 4,
-            row: crate::schema::graph::Schema { root: 0, definitions: vec![vec![]] },
+            row: crate::schema::graph::Schema {
+                representations: Default::default(),
+                root: 0,
+                definitions: vec![vec![]],
+            },
         };
         let scope = PluginScope::new("worker", PluginGeneration::fresh().unwrap()).with_streams(std::slice::from_ref(&stream));
         let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();

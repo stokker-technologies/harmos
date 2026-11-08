@@ -83,6 +83,7 @@ pub fn definition() -> harmos_domain::schema::graph::Schema {
     use harmos_domain::schema::Cardinality;
     use harmos_domain::schema::graph::{Field, Kind};
     harmos_domain::schema::graph::Schema {
+        representations: Default::default(),
         root: 0,
         definitions: vec![vec![
             Field {

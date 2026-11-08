@@ -400,3 +400,58 @@ fn wire_changes_drive_identity() {
     assert_ne!(revision(described::<Plain>()), revision(described::<Renamed>()));
     assert_ne!(revision(described::<Optional>()), revision(described::<Missing>()));
 }
+
+#[test]
+fn transparent_wrappers_preserve_wire_identity() {
+    #[derive(Serialize, Described)]
+    #[harmos_path(::harmos_domain)]
+    #[serde(transparent)]
+    struct Text(String);
+    #[derive(Serialize, Described)]
+    #[harmos_path(::harmos_domain)]
+    struct Numbers(Vec<u32>);
+    #[derive(Serialize, Described)]
+    #[harmos_path(::harmos_domain)]
+    struct Nested(Plain);
+    #[derive(Serialize, Described)]
+    #[harmos_path(::harmos_domain)]
+    struct Original {
+        text: String,
+        numbers: Vec<u32>,
+        nested: Plain,
+        texts: Vec<String>,
+        maybe: Option<String>,
+    }
+    #[derive(Serialize, Described)]
+    #[harmos_path(::harmos_domain)]
+    struct Wrapped {
+        text: Text,
+        numbers: Numbers,
+        nested: Nested,
+        texts: Vec<Text>,
+        maybe: Option<Text>,
+    }
+    let original = Original {
+        text: "text".into(),
+        numbers: vec![1, 2],
+        nested: Plain { value: 3 },
+        texts: vec!["entry".into()],
+        maybe: Some("present".into()),
+    };
+    let wrapped = Wrapped {
+        text: Text("text".into()),
+        numbers: Numbers(vec![1, 2]),
+        nested: Nested(Plain { value: 3 }),
+        texts: vec![Text("entry".into())],
+        maybe: Some(Text("present".into())),
+    };
+    assert_wire(&original);
+    assert_wire(&wrapped);
+    assert_wire(&Text("text".into()));
+    assert_wire(&Numbers(vec![1, 2]));
+    assert_wire(&Nested(Plain { value: 3 }));
+    assert_eq!(serde_json::to_value(original).unwrap(), serde_json::to_value(wrapped).unwrap());
+    assert_eq!(schema::identity::revision(&described::<Original>()).unwrap(), schema::identity::revision(&described::<Wrapped>()).unwrap());
+    assert_eq!(schema::identity::revision(&described::<Text>()).unwrap(), schema::identity::revision(&described::<String>()).unwrap());
+    assert_eq!(schema::identity::revision(&described::<Nested>()).unwrap(), schema::identity::revision(&described::<Plain>()).unwrap());
+}

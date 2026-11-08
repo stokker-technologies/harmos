@@ -46,7 +46,14 @@ async fn admission_durability_distinct() {
     let key = schema();
     assert_eq!(
         f.storage
-            .write_schema(key.clone(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] })
+            .write_schema(
+                key.clone(),
+                harmos_runtime::schema::graph::Schema {
+                    representations: Default::default(),
+                    root: 0,
+                    definitions: vec![vec![]]
+                }
+            )
             .await
             .unwrap()
             .sequence,

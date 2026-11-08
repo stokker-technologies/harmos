@@ -153,11 +153,20 @@ pub fn canonical(root: View<'_>) -> Result<Vec<u8>, Error> {
         }
     }
     // Existing Graphs Retain Their Exact Encoding; Wire Forms Use Canonical Graph Indices.
-    if order.iter().any(|index| schema.representations.contains_key(index)) {
+    if order
+        .iter()
+        .any(|index| schema.representations.get(index).is_some_and(|representation| !representation.is_value(&schema.definitions[*index])))
+    {
         bytes.extend_from_slice(b"harmos.serde.v1\0");
         for index in order {
-            let encoded =
-                schema.representations.get(&index).map(serde_json::to_vec).transpose().map_err(|_| Error::Budget)?.unwrap_or_default();
+            let encoded = schema
+                .representations
+                .get(&index)
+                .filter(|representation| !representation.is_value(&schema.definitions[index]))
+                .map(serde_json::to_vec)
+                .transpose()
+                .map_err(|_| Error::Budget)?
+                .unwrap_or_default();
             bytes.extend_from_slice(&u32::try_from(encoded.len()).map_err(|_| Error::Budget)?.to_le_bytes());
             bytes.extend_from_slice(&encoded);
         }

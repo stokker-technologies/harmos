@@ -51,6 +51,7 @@ struct Shape {
     helpers: Vec<TokenStream>,
     fields: Vec<TokenStream>,
     representation: Map<String, Value>,
+    value: Option<(TokenStream, TokenStream)>,
 }
 
 /* === Enums === */
@@ -94,6 +95,34 @@ pub(super) fn shape(item: &syn::Item, harmos: &HarmosPath) -> Result<TokenStream
                 return Err(refused(name.span(), "transparent", &owner, "exactly one serialized field is required"));
             }
             shape.representation.insert("form".into(), json!("value"));
+        }
+        let newtype = matches!(&item.fields, Fields::Unnamed(fields) if fields.unnamed.len() == 1);
+        if attributes.transparent || newtype {
+            let field = item
+                .fields
+                .iter()
+                .find(|field| attributes_for(&field.attrs, Location::Field, &owner).is_ok_and(|attributes| !attributes.skip))
+                .expect("one serialized field");
+            let ty = super::boxed(&field.ty).unwrap_or(&field.ty);
+            let container =
+                matches!(super::type_name(ty).as_deref(), Some("Vec" | "HashMap" | "BTreeMap" | "HashSet" | "BTreeSet" | "Box"));
+            if !container || super::is_bytes(ty) {
+                let (kind, cardinality) = shape.value.as_ref().expect("one value encoding");
+                return Ok(quote! {
+                    impl #harmos::schema::Described for #name {
+                        const NAME: &'static str = concat!(module_path!(), "::", stringify!(#name));
+                        const FIELDS: &'static [#harmos::schema::graph::Field<#harmos::schema::declaration::Definition>] = <#ty as #harmos::schema::Described>::FIELDS;
+                        const FIELD_KIND: #harmos::schema::graph::Kind<#harmos::schema::declaration::Definition> = #kind;
+                        const FIELD_CARDINALITY: #harmos::schema::Cardinality = #cardinality;
+                        const SERDE: &'static str = <#ty as #harmos::schema::Described>::SERDE;
+                        const SERDE_OBJECT: bool = <#ty as #harmos::schema::Described>::SERDE_OBJECT;
+                        const SERDE_TAG: ::std::option::Option<&'static str> = <#ty as #harmos::schema::Described>::SERDE_TAG;
+                        const MARKER: &'static [u8] = &#harmos::schema::declaration::encode_serde::<{
+                            #harmos::schema::declaration::encoded_serde_len(Self::NAME, Self::FIELDS, Self::SERDE)
+                        }>(Self::NAME, Self::FIELDS, Self::SERDE);
+                    }
+                });
+            }
         }
         return Ok(declare(name, shape, harmos));
     }
@@ -185,6 +214,7 @@ pub(super) fn shape(item: &syn::Item, harmos: &HarmosPath) -> Result<TokenStream
             helpers: Vec::new(),
             fields: variants,
             representation,
+            value: None,
         },
         harmos,
     );
@@ -362,6 +392,7 @@ fn fields(
     let mut helpers = Vec::new();
     let mut omissions = Map::new();
     let mut maps = Vec::new();
+    let mut value_encoding = None;
     for (position, field) in fields.iter().enumerate() {
         let attributes = attributes_for(&field.attrs, Location::Field, owner)?;
         if attributes.skip {
@@ -432,6 +463,7 @@ fn fields(
                     helpers: Vec::new(),
                     fields: vec![field],
                     representation: Map::from_iter([("form".into(), json!("value"))]),
+                    value: None,
                 },
                 harmos,
             );
@@ -439,8 +471,12 @@ fn fields(
             kind = quote!(#harmos::schema::graph::Kind::Message { definition: <#helper as #harmos::schema::Described>::DEFINITION });
             cardinality = quote!(#harmos::schema::Cardinality::Optional);
         }
+        if form == "value" {
+            value_encoding = Some((kind.clone(), cardinality.clone()));
+        }
+        let tag = if form == "value" { quote!(1) } else { quote!(#harmos::schema::field_tag(#name)) };
         output.push(quote!(#harmos::schema::graph::Field {
-            name: ::std::borrow::Cow::Borrowed(#name), tag: #harmos::schema::field_tag(#name), kind: #kind, cardinality: #cardinality,
+            name: ::std::borrow::Cow::Borrowed(#name), tag: #tag, kind: #kind, cardinality: #cardinality,
         }));
     }
     if !omissions.is_empty() {
@@ -452,7 +488,12 @@ fn fields(
     if form == "object" && representation.len() == 1 && !output.is_empty() {
         representation.clear();
     }
-    Ok(Shape { helpers, fields: output, representation })
+    Ok(Shape {
+        helpers,
+        fields: output,
+        representation,
+        value: value_encoding,
+    })
 }
 
 fn stored_encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream, TokenStream), Error> {
@@ -464,17 +505,41 @@ fn stored_encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream,
         let Some(syn::GenericArgument::Type(inner)) = arguments.args.first() else {
             return Err(super::unsupported(ty));
         };
-        return super::encoding(&syn::parse_quote!(Vec<#inner>), harmos);
+        return stored_encoding(&syn::parse_quote!(Vec<#inner>), harmos);
     }
     if matches!(super::type_name(ty).as_deref(), Some("u8" | "u16" | "i8" | "i16" | "usize" | "isize" | "u128" | "i128" | "char")) {
         return Ok((false, quote!(<#ty as #harmos::schema::Described>::FIELD_KIND), quote!(#harmos::schema::Cardinality::Required)));
     }
-    super::encoding(ty, harmos)
+    let encoding = super::encoding(ty, harmos)?;
+    if matches!(super::type_name(ty).as_deref(), Some("Option" | "Vec")) && !super::is_bytes(ty) {
+        let Type::Path(path) = ty else { unreachable!() };
+        let syn::PathArguments::AngleBracketed(arguments) = &path.path.segments.last().unwrap().arguments else { unreachable!() };
+        let Some(syn::GenericArgument::Type(inner)) = arguments.args.first() else { unreachable!() };
+        let kind = quote!(const { match <#inner as #harmos::schema::Described>::FIELD_CARDINALITY {
+            #harmos::schema::Cardinality::Required => <#inner as #harmos::schema::Described>::FIELD_KIND,
+            _ => #harmos::schema::graph::Kind::Message { definition: <#inner as #harmos::schema::Described>::DEFINITION },
+        } });
+        return Ok((false, kind, encoding.2));
+    }
+    if encoding.0 && !matches!(super::type_name(ty).as_deref(), Some("Box")) {
+        return Ok((
+            true,
+            quote!(<#ty as #harmos::schema::Described>::FIELD_KIND),
+            quote!(<#ty as #harmos::schema::Described>::FIELD_CARDINALITY),
+        ));
+    }
+    Ok(encoding)
 }
 
 fn declare(name: &syn::Ident, shape: Shape, harmos: &HarmosPath) -> TokenStream {
     let fields = shape.fields;
     let helpers = shape.helpers;
+    let value_encoding = shape.value.map(|(kind, cardinality)| {
+        quote! {
+            const FIELD_KIND: #harmos::schema::graph::Kind<#harmos::schema::declaration::Definition> = #kind;
+            const FIELD_CARDINALITY: #harmos::schema::Cardinality = #cardinality;
+        }
+    });
     let representation =
         if shape.representation.is_empty() { String::new() } else { Value::Object(shape.representation.clone()).to_string() };
     let object =
@@ -507,6 +572,7 @@ fn declare(name: &syn::Ident, shape: Shape, harmos: &HarmosPath) -> TokenStream 
             const SERDE: &'static str = #representation;
             const SERDE_OBJECT: bool = #object;
             const SERDE_TAG: ::std::option::Option<&'static str> = #tag;
+            #value_encoding
             const MARKER: &'static [u8] = &#harmos::schema::declaration::encode_serde::<{
                 #harmos::schema::declaration::encoded_serde_len(Self::NAME, Self::FIELDS, Self::SERDE)
             }>(Self::NAME, Self::FIELDS, Self::SERDE);

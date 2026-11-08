@@ -416,7 +416,12 @@ pub const fn encoded_serde_len(name: &str, fields: &[Field<Definition>], represe
 
 pub const fn encode_serde<const N: usize>(name: &str, fields: &[Field<Definition>], representation: &str) -> [u8; N] {
     assert!(N == encoded_serde_len(name, fields, representation));
-    assert!(N - crate::PREFIX.len() - 1 <= crate::FRAGMENT_LIMIT);
+    encode_serde_buffer(name, fields, representation)
+}
+
+pub const fn encode_serde_buffer<const N: usize>(name: &str, fields: &[Field<Definition>], representation: &str) -> [u8; N] {
+    assert!(N >= encoded_serde_len(name, fields, representation));
+    assert!(encoded_serde_len(name, fields, representation) - crate::PREFIX.len() - 1 <= crate::FRAGMENT_LIMIT);
     let mut output = encode_buffer::<N>(name, fields);
     if !representation.is_empty() {
         let mut cursor = encoded_len(name, fields) - 2;

@@ -80,6 +80,7 @@ pub(super) fn envelope(payload: StructArray, items: &[&str], sequences: &[u64]) 
 
 pub(super) async fn seed(f: &Fixture) {
     let graph = harmos_runtime::schema::graph::Schema {
+        representations: Default::default(),
         root: 0,
         definitions: vec![vec![harmos_runtime::schema::graph::Field {
             name: "value".into(),

@@ -138,6 +138,17 @@ impl<'de> Visitor<'de> for Seed<'_> {
 }
 
 impl Representation {
+    pub(crate) fn is_value(&self, fields: &[Field]) -> bool {
+        self.form == Form::Value
+            && self.tag.is_none()
+            && self.content.is_none()
+            && self.omissions.is_empty()
+            && self.maps.is_empty()
+            && fields.len() == 1
+            && fields[0].name == "value"
+            && fields[0].tag == 1
+    }
+
     pub fn parse(encoded: &str) -> Result<Option<Self>, super::graph::Error> {
         if encoded.is_empty() {
             return Ok(None);

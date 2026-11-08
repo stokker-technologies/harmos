@@ -158,7 +158,14 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
     let schema = super::super::schema();
     fixture
         .storage
-        .write_schema(schema.clone(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![field]] })
+        .write_schema(
+            schema.clone(),
+            harmos_runtime::schema::graph::Schema {
+                representations: Default::default(),
+                root: 0,
+                definitions: vec![vec![field]],
+            },
+        )
         .await
         .unwrap();
     for (index, value) in values.iter().enumerate() {
