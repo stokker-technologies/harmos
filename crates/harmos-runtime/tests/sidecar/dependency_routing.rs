@@ -170,7 +170,7 @@ async fn notice_wire_order() {
         let Notice::Published { publication: shared } = &cloned else { unreachable!() };
         assert_eq!(publication.stream(), "meter.pulse");
         assert_eq!(publication.owner(), "caller");
-        assert_eq!(publication.schema(), 1);
+        assert_eq!(publication.schema(), support::Pulse::definition().version());
         assert_eq!(publication.generation(), Some(expected_generation));
         assert_eq!(publication.sequence(), index as u64 + 1);
         assert_eq!(publication.wire_sequence(), index as u64 + 1);
@@ -221,7 +221,7 @@ async fn shutdown_delivery() {
         let Notice::Published { publication } = notice else { unreachable!() };
         assert_eq!(publication.owner(), "caller");
         assert_eq!(publication.generation(), Some(generation));
-        assert_eq!(publication.schema(), 1);
+        assert_eq!(publication.schema(), support::Pulse::definition().version());
         assert_eq!(publication.sequence(), index as u64 + 1);
         assert_eq!(publication.wire_sequence(), index as u64 + 1);
         assert_eq!(support::Pulse::decode(publication.payload()).unwrap().sample, sample);

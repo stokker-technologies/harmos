@@ -412,7 +412,16 @@ async fn declared_provider_call() {
     let request = EchoOperation { say: "dependency:child".into() };
     let bytes = session.call::<EchoOperation>(2, request.encode()).await.unwrap();
     assert_eq!(Echoed::decode(&bytes).unwrap().said, "child");
-    assert_eq!(session.store.data().calls, [Call::Provider { say: "child".into() }]);
+    assert_eq!(
+        session.store.data().calls,
+        [
+            Call::Submit { say: "child".into(), instance: 1 },
+            Call::Control {
+                instance: 1,
+                action: WireChildAction::Join
+            }
+        ]
+    );
 }
 
 #[tokio::test]

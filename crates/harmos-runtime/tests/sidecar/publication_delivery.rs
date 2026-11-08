@@ -292,6 +292,7 @@ async fn held_ingest_lossless() {
 
 #[tokio::test]
 async fn named_streams_isolated() {
+    use harmos_runtime::StreamSpec;
     let capacity = std::num::NonZeroUsize::new(2).unwrap();
     let source = harmos_sidecar::PluginNative::<Twins>::new(capacity).unwrap();
     let mut fixture =
@@ -301,14 +302,19 @@ async fn named_streams_isolated() {
     ready(fixture.ready().clone()).await;
     fixture.shutdown().await.unwrap();
 
-    for (id, expected) in [("left", vec![10, 11]), ("right", vec![20])] {
-        let stream = fixture.runtime.streams.publication(&format!("twins.{id}"), 1).unwrap();
+    for (id, window, expected) in [(Left::ID, Left::WINDOW, vec![10, 11]), (Right::ID, Right::WINDOW, vec![20])] {
+        let schema = support::Pulse::definition().schema().clone();
+        let definition = harmos_runtime::streams::Definition::declared::<support::Pulse>(id, schema, window).unwrap();
+        let stream = fixture.runtime.streams.publication(definition.id(), definition.version()).unwrap();
         let samples: Vec<_> =
             stream.query(..).await.unwrap().map(|row| support::Pulse::decode(row.value.payload.as_slice()).unwrap().sample).collect();
         assert_eq!(samples, expected);
         let contexts: Vec<_> = stream.query(..).await.unwrap().map(|row| row.value.context.clone()).collect();
-        assert_eq!(contexts, if id == "left" { vec![Some("execution-a".into()), Some("execution-b".into())] } else { vec![None] });
-        assert_eq!(stream.definition().id(), format!("twins.{id}"));
+        assert_eq!(
+            contexts,
+            if definition.id() == "twins.left" { vec![Some("execution-a".into()), Some("execution-b".into())] } else { vec![None] }
+        );
+        assert_eq!(stream.definition().id(), definition.id());
         assert_eq!(
             stream.definition().schema(),
             &harmos_runtime::schema::graph::Schema::from_declaration(

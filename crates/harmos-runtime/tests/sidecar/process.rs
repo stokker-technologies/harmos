@@ -480,7 +480,7 @@ async fn shutdown_sdk_publication() {
         };
         assert_eq!(publication.owner(), "process");
         assert_eq!(publication.stream(), "process.receipt");
-        assert_eq!(publication.schema(), 1);
+        assert_eq!(publication.schema(), Blob::definition().version());
         assert_eq!(publication.generation(), *generation.lock().unwrap());
         assert_eq!(publication.wire_sequence(), 1);
         assert_eq!(publication.sequence(), 1);
