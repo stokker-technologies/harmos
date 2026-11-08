@@ -833,14 +833,15 @@ async fn oversized_entry_warns_and_preserves_recovery() {
         harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("x".repeat(2048))).await.unwrap();
         runtime.shutdown().await.unwrap();
         assert_eq!(store.snapshot().through.sequence, 1);
-        let captured = warnings.0.lock().unwrap();
-        assert!(!captured.is_empty());
-        for warning in captured.iter() {
-            assert!(warning.size_bytes > 2048, "{warning:?}");
-            assert_eq!(warning.segment_limit, policy.max_bytes.get() as u64);
-            assert_eq!(warning.replay_entries, 1);
+        {
+            let captured = warnings.0.lock().unwrap();
+            assert!(!captured.is_empty());
+            for warning in captured.iter() {
+                assert!(warning.size_bytes > 2048, "{warning:?}");
+                assert_eq!(warning.segment_limit, policy.max_bytes.get() as u64);
+                assert_eq!(warning.replay_entries, 1);
+            }
         }
-        drop(captured);
         let storage = store.manager(config());
         let runtime = launch(policy, &storage).await;
         assert_eq!(balance(&runtime).await, 4);

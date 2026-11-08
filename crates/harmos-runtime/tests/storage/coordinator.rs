@@ -240,7 +240,7 @@ async fn snapshots_require_flush() {
         required_data: f.storage.cursor_saved(),
         through: through.clone(),
         payload: harmos_storage::state::SnapshotPayload::from_bytes(
-            &vec![5],
+            &[5],
             std::num::NonZeroUsize::new(65536).unwrap(),
             harmos_domain::state::Position::ORIGIN,
         )

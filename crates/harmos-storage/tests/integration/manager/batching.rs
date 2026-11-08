@@ -665,7 +665,7 @@ async fn progress_preserves_cursor() {
         required_data: f.storage.cursor_saved(),
         through: f.storage.status().recovery_accepted,
         payload: harmos_storage::state::SnapshotPayload::from_bytes(
-            &vec![7],
+            &[7],
             std::num::NonZeroUsize::new(65536).unwrap(),
             harmos_domain::state::Position::ORIGIN,
         )
