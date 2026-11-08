@@ -68,6 +68,7 @@ struct Encoded(String);
 pub enum Form {
     #[default]
     Object,
+
     Unit,
     Value,
     Tuple,

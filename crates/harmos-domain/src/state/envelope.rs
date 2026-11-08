@@ -101,7 +101,6 @@ impl SystemFact {
         Ok(Self { source, name, version, schema, payload })
     }
 
-    /// The Written Plugin Definition, Independent Of The Currently Installed Plugin.
     pub fn schema(&self) -> Option<&crate::schema::graph::Schema> {
         self.schema.as_ref()
     }
