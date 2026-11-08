@@ -677,7 +677,7 @@ def _run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: st
             for name, value in os.environ.items()
             if not any(word in name.upper() for word in ("TOKEN", "PASSWORD", "SECRET", "CREDENTIAL"))
             and name not in ("UV_PROJECT_ENVIRONMENT", "RUSTC_WRAPPER", "RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_TARGET_DIR")
-            and not name.startswith(("COMPILER_CACHE_", "SCCACHE_", "GITHUB_", "CI_", "CARGO_PROFILE_"))
+            and not name.startswith(("COMPILER_CACHE_", "SCCACHE_", "GITHUB_", "CI_", "CARGO_PROFILE_", "MISE_"))
         }
         environment.update(
             CI="true",
@@ -718,6 +718,9 @@ def _run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: st
                 local = cache / native
                 local.mkdir(parents=True, exist_ok=True)
                 environment.update(
+                    MISE_CONFIG_DIR=str(owner.root / "mise-config"),
+                    MISE_GLOBAL_CONFIG_FILE=str(owner.root / "mise-config/config.toml"),
+                    MISE_TRUSTED_CONFIG_PATHS=str(workspace),
                     MISE_DATA_DIR=str(local / "mise"),
                     MISE_CACHE_DIR=str(local / "mise-cache"),
                     MISE_DOWNLOADS_DIR=str(local / "mise-downloads"),
@@ -826,6 +829,7 @@ def docker(
                 "PROFILE",
                 "RELEASE_PROFILE",
                 "CARGO_INCREMENTAL",
+                "CARGO_BUILD_JOBS",
                 "MISE_YES",
                 "MISE_LOCKED",
                 "MISE_EXPERIMENTAL",
@@ -839,6 +843,9 @@ def docker(
             )
         }
         child.update(
+            MISE_CONFIG_DIR="/mise-config",
+            MISE_GLOBAL_CONFIG_FILE="/mise-config/config.toml",
+            MISE_TRUSTED_CONFIG_PATHS="/workspace",
             MISE_DATA_DIR="/cache/mise",
             MISE_CACHE_DIR="/cache/mise-cache",
             MISE_DOWNLOADS_DIR="/cache/downloads",
