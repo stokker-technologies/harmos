@@ -164,6 +164,7 @@ and `Builtins::catalog()` are available without runtime dependencies.
 
 Focused fixes, API feedback and useful examples are welcome. Read
 [Contributing](CONTRIBUTING.md) for setup, validation and pull requests.
+Run targeted tasks locally; hosted CI and Nightly provide full validation.
 
 ## About
 

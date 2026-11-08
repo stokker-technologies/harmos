@@ -102,11 +102,6 @@ def scope(plan: dict, selected: set[str], value: str = "") -> set[str]:
     return selected
 
 
-def selection(root: Path, plan: dict, target: str = "origin/dev") -> set[str]:
-    """Resolve Portable Local Impact From The Project's Changes."""
-    return select(plan, changed_paths(target, root))
-
-
 def main(plan: dict) -> None:
     """Native Providers Supply The Target Context; Missing Context Selects Full Proof."""
     target = os.environ.get("IMPACT_TARGET")
