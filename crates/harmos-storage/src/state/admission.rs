@@ -19,7 +19,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::{RecoveryEntry, RecoverySnapshot};
+use super::{RecoveryEntry, RecoverySnapshot, SnapshotPayload};
 use crate::storage::manager::{Inner, Operation, Pending, Target, recovery_encoded_bound};
 use crate::storage::{ReadLimits, RecordInput, StorageCursor, StorageManager, StoredRecord};
 use crate::{Error, Result};
@@ -45,6 +45,7 @@ pub struct Permit {
     payload: Vec<u8>,
     active: bool,
     snapshot: bool,
+    snapshot_payload: Option<SnapshotPayload>,
 }
 
 /* === Enums === */
@@ -143,6 +144,7 @@ impl<C> StorageManager<C> {
                         payload: Vec::new(),
                         active: true,
                         snapshot,
+                        snapshot_payload: None,
                     });
                 }
                 self.inner.relieve_pressure(&mut state, bytes, batches);
@@ -166,19 +168,19 @@ impl<C> StorageManager<C> {
 }
 
 impl Permit {
-    pub fn snapshot_payload(&mut self, payload: Vec<u8>) -> Result<()> {
+    pub fn snapshot_payload(&mut self, payload: SnapshotPayload) -> Result<()> {
         let context = self.context.clone();
         context.sync(|| {
             let _stage = tracing::debug_span!("storage.state.snapshot_payload").entered();
             debug_assert!(self.snapshot);
-            let bytes = recovery_encoded_bound(payload.len(), self.inner.recovery.history(), self.inner.primary.history())?;
+            let bytes = recovery_encoded_bound(payload.segment_bytes(), self.inner.recovery.history(), self.inner.primary.history())?;
             if bytes > self.bytes {
                 return Err(Error::InvalidInput {
                     field: "state snapshot",
                     reason: "payload exceeds reservation",
                 });
             }
-            self.payload = payload;
+            self.snapshot_payload = Some(payload);
             self.bytes = bytes;
             let mut state = self.inner.state.lock().unwrap();
             state.reserved = bytes;
@@ -322,7 +324,7 @@ impl Permit {
                     Operation::Snapshot(crate::StorageBatch::new(vec![RecoverySnapshot {
                         required_data: required_data.clone(),
                         through: position,
-                        payload: std::mem::take(&mut self.payload),
+                        payload: self.snapshot_payload.take().expect("snapshot payload prepared"),
                     }]))
                 } else {
                     Operation::Recovery(crate::StorageBatch::new(vec![RecoveryEntry {

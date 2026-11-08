@@ -73,7 +73,7 @@ impl<C> StorageManager<C> {
         self.check_raw_recovery()?;
         self.inner.recovery.history().check(&snapshot.through.history)?;
         self.check_state_dependency(&snapshot.required_data)?;
-        let bytes = recovery_encoded_bound(snapshot.payload.len(), &snapshot.through.history, &snapshot.required_data.history)?;
+        let bytes = recovery_encoded_bound(snapshot.payload.segment_bytes(), &snapshot.through.history, &snapshot.required_data.history)?;
         self.admit(Domain::Recovery, bytes, 0, |_| Ok(Operation::Snapshot(StorageBatch::new(vec![snapshot])))).await?;
         Ok(())
     }
@@ -136,7 +136,8 @@ impl<C> StorageManager<C> {
         if let Some(snapshot) = &snapshot
             && (!self.status().recovery_saved.covers(&snapshot.through)?
                 || !self.status().saved.covers(&snapshot.required_data)?
-                || encoded_size(snapshot)? > max_bytes.get())
+                || recovery_encoded_bound(snapshot.payload.segment_bytes(), &snapshot.through.history, &snapshot.required_data.history)?
+                    > max_bytes.get())
         {
             return Err(Error::InvalidInput {
                 field: "recovery snapshot",

@@ -91,7 +91,7 @@ impl<C> RecoveryReader<'_, C> {
             let snapshot =
                 self.storage.inner.bounded("recovery.read_snapshot", self.storage.inner.recovery.read_snapshot(encoded_bound)).await?;
             if let Some(snapshot) = &snapshot
-                && (!self.through.covers(&snapshot.through)? || snapshot.payload.len() > payload_limit.get())
+                && (!self.through.covers(&snapshot.through)? || snapshot.payload.segment_bytes() > payload_limit.get())
             {
                 return Err(Error::InvalidInput {
                     field: "state snapshot",
@@ -99,6 +99,10 @@ impl<C> RecoveryReader<'_, C> {
                 });
             }
             if let Some(snapshot) = &snapshot {
+                snapshot
+                    .payload
+                    .verify(payload_limit.get())
+                    .map_err(|error| Error::backend("verify snapshot", crate::BackendFailure::Corrupt, error))?;
                 self.storage.check_state_dependency(&snapshot.required_data)?;
             }
             Ok(snapshot.map(crate::ReadBatch::new))
