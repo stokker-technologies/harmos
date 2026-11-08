@@ -124,7 +124,8 @@ impl Fixture {
         let settings = harmos_runtime::config::PluginGuestSettings {
             component_bytes: nz(64 * 1024 * 1024),
             memory_bytes: nz(256 * 1024 * 1024),
-            fuel: NonZeroU64::new(2_000_000_000).unwrap(),
+            // Concurrent Criterion Streams May Keep the Guest Busy Between Iterations.
+            fuel: NonZeroU64::MAX,
             memories: nz(1),
             table_elements: nz(65_536),
             tables: nz(8),
