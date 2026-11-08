@@ -257,6 +257,7 @@ async fn runtime() -> (Runtime<Model>, StorageManager, tempfile::TempDir, Durati
     let preparation_bytes = nz(64 * 1024 * 1024);
     let runtime = Runtime::<Model>::launch_with((), (), |setup| {
         setup.resource::<StorageManager>(storage_resource);
+        setup.settings().storage(&storage);
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             queued: nz(64),
             lifecycle_queued: nz(16),

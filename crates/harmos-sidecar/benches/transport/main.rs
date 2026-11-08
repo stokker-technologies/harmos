@@ -331,7 +331,7 @@ async fn throughput_case(
             Frame::Call { id, method, params } if method == harmos_sdk::operations::CHILD_METHOD => {
                 let call: harmos_sdk::operations::WireChildCall =
                     harmos_sdk::operations::WireChildCall::decode(&params).expect("typed child envelope");
-                assert_eq!(call.operation, "host.publish");
+                assert_eq!(call.operation, "host.host.publish");
                 assert_eq!(call.generation_context, Some([2; 32]));
                 let row = harmos_operations::streams::Publish::decode(&call.payload).expect("typed publication");
                 calls += 1;
@@ -462,7 +462,12 @@ async fn sdk(outgoing: &Sender, incoming: &mut Receiver, id: u64, initialize: bo
         let request = Initialize {
             config_json: b"null".to_vec(),
             generation_context: vec![2; 32],
-            assignments: Vec::new(),
+            assignments: harmos_sdk::operations::AssignedOperation::encode(&[harmos_sdk::operations::AssignedOperation {
+                operation: "host.host.publish".into(),
+                fingerprint: <harmos_operations::streams::Publish as OperationDeclaration>::definition().fingerprint.0,
+                generation: 1,
+            }])
+            .unwrap(),
         };
         (Initialize::ID, (harmos_domain::operations::Entry::of::<Initialize>().fingerprint)().unwrap().0, request.encode())
     } else {
