@@ -57,6 +57,13 @@ impl JsonCodec {
 
     pub fn encode(&self, value: &Value) -> Result<Vec<u8>, MessageError> {
         let mut bytes = Vec::new();
+        let transformed;
+        let value = if self.schema.representations.is_empty() {
+            value
+        } else {
+            transformed = super::wire::encode(&self.schema, self.root, value)?;
+            &transformed
+        };
         encode(&self.schema, self.root, value, &mut bytes, 0)?;
         Ok(bytes)
     }
@@ -65,7 +72,7 @@ impl JsonCodec {
         let mut reader = Reader::new(bytes);
         let value = decode(&self.schema, self.root, &mut reader)?;
         reader.finish()?;
-        Ok(value)
+        if self.schema.representations.is_empty() { Ok(value) } else { super::wire::decode(&self.schema, self.root, &value) }
     }
 
     pub fn memory(&self, bytes: &[u8]) -> Result<usize, MessageError> {

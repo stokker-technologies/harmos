@@ -399,7 +399,17 @@ async fn split_collectors_coalesce() {
 #[tokio::test(start_paused = true)]
 async fn typed_prefix_survives() {
     let f = Fixture::new(config()).await;
-    f.storage.write_schema(schema(), harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
+    f.storage
+        .write_schema(
+            schema(),
+            harmos_storage::schema::graph::Schema {
+                representations: Default::default(),
+                root: 0,
+                definitions: vec![vec![]],
+            },
+        )
+        .await
+        .unwrap();
     write(&f.storage, "one").await;
     write(&f.storage, "two").await;
     for sequence in 1..=2 {
@@ -412,7 +422,17 @@ async fn typed_prefix_survives() {
             .await
             .unwrap();
     }
-    f.storage.write_schema(schema(), harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
+    f.storage
+        .write_schema(
+            schema(),
+            harmos_storage::schema::graph::Schema {
+                representations: Default::default(),
+                root: 0,
+                definitions: vec![vec![]],
+            },
+        )
+        .await
+        .unwrap();
     write(&f.storage, "three").await;
     write(&f.storage, "four").await;
     f.storage.write_recovery(vec![b"first".to_vec()]).await.unwrap();
@@ -718,7 +738,11 @@ async fn schema_decoding_bounded() {
             cardinality: Cardinality::Required,
         })
         .collect();
-    let graph = Arc::new(harmos_storage::schema::graph::Schema { root: 0, definitions: vec![fields] });
+    let graph = Arc::new(harmos_storage::schema::graph::Schema {
+        representations: Default::default(),
+        root: 0,
+        definitions: vec![fields],
+    });
     let mut policy = config();
     policy.request.max_pending_write_bytes = NonZeroUsize::new(16 * 1024).unwrap();
     let f = Fixture::new(policy.clone()).await;

@@ -54,6 +54,7 @@ fn schema(name: &str) -> SchemaInput {
             version: NonZeroU32::MIN,
         },
         Schema {
+            representations: ::std::collections::BTreeMap::new(),
             root: 0,
             definitions: vec![
                 vec![Field {

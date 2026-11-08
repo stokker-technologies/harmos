@@ -122,7 +122,7 @@ pub fn canonical(root: View<'_>) -> Result<Vec<u8>, Error> {
 
     let mut bytes = Vec::new();
     bytes.extend_from_slice(&u32::try_from(order.len()).map_err(|_| Error::Budget)?.to_le_bytes());
-    for index in order {
+    for &index in &order {
         let fields = &schema.definitions[index];
         bytes.extend_from_slice(&u32::try_from(fields.len()).map_err(|_| Error::Budget)?.to_le_bytes());
         for field in fields {
@@ -152,6 +152,25 @@ pub fn canonical(root: View<'_>) -> Result<Vec<u8>, Error> {
             }
         }
     }
+    // Existing Graphs Retain Their Exact Encoding; Wire Forms Use Canonical Graph Indices.
+    if order
+        .iter()
+        .any(|index| schema.representations.get(index).is_some_and(|representation| !representation.is_value(&schema.definitions[*index])))
+    {
+        bytes.extend_from_slice(b"harmos.serde.v1\0");
+        for index in order {
+            let encoded = schema
+                .representations
+                .get(&index)
+                .filter(|representation| !representation.is_value(&schema.definitions[index]))
+                .map(serde_json::to_vec)
+                .transpose()
+                .map_err(|_| Error::Budget)?
+                .unwrap_or_default();
+            bytes.extend_from_slice(&u32::try_from(encoded.len()).map_err(|_| Error::Budget)?.to_le_bytes());
+            bytes.extend_from_slice(&encoded);
+        }
+    }
     Ok(bytes)
 }
 
@@ -168,6 +187,7 @@ mod tests {
     #[test]
     fn canonical_record_revision_golden() {
         let schema = Schema {
+            representations: ::std::collections::BTreeMap::new(),
             root: 0,
             definitions: vec![vec![Field {
                 name: "value".into(),
@@ -208,6 +228,7 @@ mod tests {
             cardinality: Cardinality::Optional,
         }];
         let schema = Schema {
+            representations: ::std::collections::BTreeMap::new(),
             root: 0,
             definitions: vec![first, second],
         };

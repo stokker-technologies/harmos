@@ -14,6 +14,7 @@ pub mod graph;
 pub mod identity;
 pub mod json;
 mod payload;
+pub mod wire;
 
 /* === Re-Exports === */
 
@@ -39,6 +40,8 @@ pub const MAX_NAME_BYTES: usize = 256;
 macro_rules! wrapper {
     ($($ty:ty => $kind:ident),* $(,)?) => {$(
         impl Described for $ty {
+            const SERDE_OBJECT: bool = false;
+            const SERDE: &'static str = "{\"form\":\"value\"}";
             const FIELD_KIND: graph::Kind<declaration::Definition> = graph::Kind::$kind;
             const NAME: &'static str = concat!("harmos::", stringify!($ty));
             const FIELDS: &'static [graph::Field<declaration::Definition>] = &[graph::Field {
@@ -47,9 +50,9 @@ macro_rules! wrapper {
                 kind: graph::Kind::$kind,
                 cardinality: Cardinality::Required,
             }];
-            const MARKER: &'static [u8] = &declaration::encode::<{
-                declaration::encoded_len(Self::NAME, Self::FIELDS)
-            }>(Self::NAME, Self::FIELDS);
+            const MARKER: &'static [u8] = &declaration::encode_serde::<{
+                declaration::encoded_serde_len(Self::NAME, Self::FIELDS, Self::SERDE)
+            }>(Self::NAME, Self::FIELDS, Self::SERDE);
         }
     )*};
 }
@@ -59,14 +62,16 @@ wrapper!(bool => Bool, u32 => U32, u64 => U64, i32 => I32, i64 => I64, f32 => F3
 macro_rules! stored_scalar {
     ($($ty:ty => $kind:ident),* $(,)?) => {$(
         impl Described for $ty {
+            const SERDE_OBJECT: bool = false;
+            const SERDE: &'static str = "{\"form\":\"value\"}";
             const NAME: &'static str = concat!("harmos::", stringify!($ty));
             const FIELDS: &'static [graph::Field<declaration::Definition>] = &[graph::Field {
                 name: Cow::Borrowed(stringify!($ty)), tag: 1,
                 kind: graph::Kind::$kind, cardinality: Cardinality::Required,
             }];
-            const MARKER: &'static [u8] = &declaration::encode::<{
-                declaration::encoded_len(Self::NAME, Self::FIELDS)
-            }>(Self::NAME, Self::FIELDS);
+            const MARKER: &'static [u8] = &declaration::encode_serde::<{
+                declaration::encoded_serde_len(Self::NAME, Self::FIELDS, Self::SERDE)
+            }>(Self::NAME, Self::FIELDS, Self::SERDE);
         }
     )*};
 }
@@ -99,10 +104,15 @@ pub enum Error {
 // A Static Message Shape, Independent Of Payload Encoding Or Construction.
 pub trait Described: 'static {
     const FIELD_KIND: graph::Kind<declaration::Definition> = graph::Kind::Message { definition: Self::DEFINITION };
+    const FIELD_CARDINALITY: Cardinality = Cardinality::Required;
 
     const NAME: &'static str;
     const FIELDS: &'static [graph::Field<declaration::Definition>];
     const MARKER: &'static [u8];
+
+    const SERDE: &'static str = "";
+    const SERDE_OBJECT: bool = true;
+    const SERDE_TAG: Option<&'static str> = None;
 
     const DEFAULT_VARIANT: Option<usize> = Some(0);
 
@@ -118,6 +128,8 @@ impl Described for () {
 }
 
 impl<T: Described> Described for Option<T> {
+    const SERDE_OBJECT: bool = false;
+    const SERDE: &'static str = "{\"form\":\"value\"}";
     const NAME: &'static str = declaration::Name::new("harmos::Optional", &[T::NAME]).as_str();
     const FIELDS: &'static [graph::Field<declaration::Definition>] = &[graph::Field {
         name: Cow::Borrowed("value"),
@@ -125,8 +137,9 @@ impl<T: Described> Described for Option<T> {
         kind: T::FIELD_KIND,
         cardinality: Cardinality::Optional,
     }];
-    const MARKER: &'static [u8] =
-        declaration::encode_buffer::<2048>(Self::NAME, Self::FIELDS).split_at(declaration::encoded_len(Self::NAME, Self::FIELDS)).0;
+    const MARKER: &'static [u8] = declaration::encode_serde_buffer::<2048>(Self::NAME, Self::FIELDS, Self::SERDE)
+        .split_at(declaration::encoded_serde_len(Self::NAME, Self::FIELDS, Self::SERDE))
+        .0;
 }
 
 /* === Public Functions === */

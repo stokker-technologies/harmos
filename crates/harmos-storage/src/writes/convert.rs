@@ -319,6 +319,7 @@ mod tests {
 
     fn schema() -> Schema {
         Schema {
+            representations: ::std::collections::BTreeMap::new(),
             root: 0,
             definitions: vec![
                 vec![
@@ -375,7 +376,11 @@ mod tests {
 
     #[test]
     fn payload_empty_and_malformed() {
-        let empty = Schema { root: 0, definitions: vec![vec![]] };
+        let empty = Schema {
+            representations: ::std::collections::BTreeMap::new(),
+            root: 0,
+            definitions: vec![vec![]],
+        };
         {
             let maximum = NonZeroUsize::new(1_000_000).unwrap();
             assert!(encode_payloads(&empty, &StructArray::new_empty_fields(0, None), maximum).unwrap().is_empty());

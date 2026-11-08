@@ -168,6 +168,7 @@ fn authoring_refusals_compile() {
     fs::create_dir_all(&output).expect("the compile-test output directory is available");
 
     for (fixture, expected) in [
+        ("serde_refusals.rs", "Serde attribute"),
         ("operation_on_variant.rs", "catalogs only assemble types"),
         ("bad_operation_id.rs", "operation id"),
         ("undeclared_resource.rs", "Requires<u64>"),
@@ -230,6 +231,23 @@ fn authoring_refusals_compile() {
 
         assert!(!compiled.status.success(), "{fixture} unexpectedly compiled successfully");
         assert!(stderr.contains(expected), "{fixture} did not report `{expected}`:\n{stderr}");
+        if fixture == "serde_refusals.rs" {
+            for (attribute, owner) in [
+                ("flatten", "Flatten"),
+                ("serialize_with", "Serializer"),
+                ("with", "Module"),
+                ("into", "Conversion"),
+                ("remote", "Remote"),
+                ("skip_serializing_if", "Predicate"),
+                ("skip", "Positional"),
+                ("transparent", "Transparent"),
+                ("tag", "TaggedScalar"),
+                ("untagged", "MixedVariant"),
+            ] {
+                let diagnostic = format!("Serde attribute `{attribute}` on type `{owner}`");
+                assert!(stderr.contains(&diagnostic), "missing {diagnostic}:\n{stderr}");
+            }
+        }
     }
 }
 
