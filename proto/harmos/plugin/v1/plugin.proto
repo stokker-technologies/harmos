@@ -1,0 +1,284 @@
+// Harmos remote plugin protocol, version 1.
+//
+// A plugin is any process that serves this service at a URL. The user starts it
+// and keeps it alive; the host only connects. See docs/remote-plugins.md.
+//
+// Compatibility: within harmos.plugin.v1, fields and messages are only added.
+// Removing or renumbering anything, or changing a field's meaning, needs v2.
+
+syntax = "proto3";
+
+package harmos.plugin.v1;
+
+import "google/protobuf/descriptor.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+service Plugin {
+  // What the plugin offers. The host calls it on every connect and reconnect.
+  rpc Describe(DescribeRequest) returns (Catalog);
+
+  // One session per connection, opened by the host. Every call, cancellation,
+  // child call and stream row travels on it. Closing it ends every call.
+  rpc Session(stream HostMessage) returns (stream PluginMessage);
+}
+
+// === Describe ===
+
+message DescribeRequest {
+  // Highest protocol version the host speaks.
+  uint32 protocol = 1;
+}
+
+message Catalog {
+  // Protocol version this plugin speaks; 1 for this file.
+  uint32 protocol = 1;
+
+  // Owner identity. Exported operation and stream ids are "<id>.<local id>".
+  string id = 2;
+
+  // Semantic version of the plugin.
+  string version = 3;
+
+  string description = 4;
+
+  // Every message type named by operations and streams, with dependencies.
+  google.protobuf.FileDescriptorSet descriptors = 5;
+
+  repeated Operation operations = 6;
+  repeated Stream streams = 7;
+
+  // Operations this plugin calls through child calls. Calls outside this list
+  // are refused.
+  repeated Requirement requires = 8;
+
+  // Application-defined declarations the host interprets, such as test suites
+  // or settings. Harmos passes them through untouched.
+  repeated Section sections = 9;
+}
+
+message Operation {
+  // Local id, unique within the plugin.
+  string id = 1;
+
+  // Fully qualified message names in Catalog.descriptors.
+  string request_type = 2;
+  string response_type = 3;
+
+  Policy policy = 4;
+  Visibility visibility = 5;
+
+  string description = 6;
+}
+
+message Policy {
+  // Budget for the whole call, across attempts.
+  google.protobuf.Duration timeout = 1;
+
+  // Budget for one attempt.
+  google.protobuf.Duration attempt_timeout = 2;
+
+  // How long the host waits after a Cancel before abandoning the call.
+  google.protobuf.Duration cancellation_timeout = 3;
+
+  // The host retries an attempt only for idempotent operations.
+  Retry retry = 4;
+}
+
+message Retry {
+  // Zero means never retry.
+  uint32 max_attempts = 1;
+  google.protobuf.Duration initial_backoff = 2;
+  google.protobuf.Duration max_backoff = 3;
+}
+
+enum Visibility {
+  VISIBILITY_UNSPECIFIED = 0;
+
+  // Callable by remote clients of the host application.
+  VISIBILITY_PUBLIC = 1;
+
+  // Callable only by the host application and other plugins.
+  VISIBILITY_HOST = 2;
+}
+
+message Stream {
+  // Local id, unique within the plugin.
+  string id = 1;
+
+  // Fully qualified message name of one row in Catalog.descriptors.
+  string row_type = 2;
+
+  // Rows the host keeps in its live window.
+  uint64 window = 3;
+
+  string description = 4;
+}
+
+message Requirement {
+  // Exported id of the operation, for example "host.publish" or "obc.read".
+  string operation = 1;
+
+  // Optional resource scope (a channel, stream or source) the grant covers.
+  // Empty grants the operation for every scope.
+  string scope = 2;
+}
+
+message Section {
+  // Namespace owned by the host application, for example "dokime.suites".
+  string namespace = 1;
+
+  // Version of the namespace's own schema.
+  uint32 schema = 2;
+
+  // UTF-8 JSON document in the namespace's schema.
+  bytes json = 3;
+}
+
+// === Session ===
+
+message HostMessage {
+  oneof kind {
+    // Run one attempt of an operation.
+    Call call = 1;
+
+    // Ask a running call or attempt to stop.
+    Cancel cancel = 2;
+
+    // The outcome of a child call the plugin made.
+    Result result = 3;
+
+    // Start or stop producing a stream.
+    Demand demand = 4;
+  }
+}
+
+message PluginMessage {
+  oneof kind {
+    // The plugin accepted the session. Sent once, first.
+    Ready ready = 1;
+
+    // The outcome of a host call.
+    Result result = 2;
+
+    // A call from inside a running call to a required operation.
+    Call child = 3;
+
+    // Stop a child call the plugin no longer needs.
+    Cancel cancel_child = 4;
+
+    // Rows of a stream the host demanded.
+    Rows rows = 5;
+
+    // Diagnostics for the host log, replacing a sidecar's standard error.
+    Log log = 6;
+  }
+}
+
+message Ready {
+  // SHA-256 of the serialized Catalog this session serves. A mismatch with the
+  // catalog the host described makes the host describe again.
+  bytes catalog_digest = 1;
+}
+
+message Call {
+  // Unique per direction within the session.
+  uint64 id = 1;
+
+  // Host to plugin: local operation id. Plugin to host: exported id.
+  string operation = 2;
+
+  // Protobuf encoding of the operation's request type.
+  bytes request = 3;
+
+  // Plugin to host only: the host call this child call runs inside.
+  uint64 parent = 4;
+
+  // 1 for the first attempt; the host increments it on each retry.
+  uint32 attempt = 5;
+
+  google.protobuf.Timestamp deadline = 6;
+
+  // Portable context values, such as an execution scope, that the host
+  // propagates to child calls.
+  map<string, string> context = 7;
+}
+
+message Cancel {
+  uint64 id = 1;
+}
+
+message Result {
+  uint64 id = 1;
+
+  oneof outcome {
+    // Protobuf encoding of the operation's response type.
+    bytes response = 2;
+
+    Failure failure = 3;
+  }
+}
+
+message Failure {
+  FailureKind kind = 1;
+  string message = 2;
+
+  // Application refusal code, when the plugin refused the request.
+  int64 refusal_code = 3;
+
+  // Named, non-secret context for diagnostics.
+  map<string, string> detail = 4;
+}
+
+enum FailureKind {
+  FAILURE_KIND_UNSPECIFIED = 0;
+
+  // The request was invalid or refused; retrying the same request will not help.
+  FAILURE_KIND_REFUSED = 1;
+
+  // A transient fault; the host may retry if the policy allows.
+  FAILURE_KIND_TRANSIENT = 2;
+
+  // The call stopped because it was cancelled.
+  FAILURE_KIND_CANCELLED = 3;
+
+  // The attempt or call deadline passed.
+  FAILURE_KIND_DEADLINE = 4;
+
+  // Any other failure.
+  FAILURE_KIND_INTERNAL = 5;
+}
+
+message Demand {
+  // Local stream id.
+  string stream = 1;
+
+  // True while at least one consumer holds the stream.
+  bool active = 2;
+}
+
+message Rows {
+  // Local stream id.
+  string stream = 1;
+
+  // Protobuf encodings of the stream's row type, in order.
+  repeated bytes rows = 2;
+
+  google.protobuf.Timestamp published = 3;
+
+  // The call whose context these rows belong to, if any.
+  uint64 call = 4;
+}
+
+message Log {
+  Level level = 1;
+  string message = 2;
+
+  enum Level {
+    LEVEL_UNSPECIFIED = 0;
+    LEVEL_DEBUG = 1;
+    LEVEL_INFO = 2;
+    LEVEL_WARN = 3;
+    LEVEL_ERROR = 4;
+  }
+}
