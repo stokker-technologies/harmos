@@ -10,7 +10,7 @@
 ## Validation and Delivery
 
 - [x] 2.1 Run mise run check with the foreign Python environment removed.
-- [ ] 2.2 Push the combined candidate, verify the remote SHA and attempt all-platform local simulation.
+- [ ] 2.2 Push the combined candidate and verify the remote SHA. Run targeted tasks locally; hosted CI and Nightly provide full validation.
 - [ ] 2.3 Open one ready PR into dev, report its CI once and leave it unmerged.
 
 ## Workflow Follow-Up

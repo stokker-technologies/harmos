@@ -72,20 +72,12 @@ a `release/v*` head, so ordinary merges start no Release run.
 
 ## Tests and Checks
 
-Run targeted checks while implementing. After all agreed source work is
-complete and targeted proof passes, push the authorized candidate and immediately
-run local validation in parallel with hosted CI:
-
-```sh
-mise run ci:simulate
-```
-
-The default run covers all declared required platforms. Changes limited to skills,
-agent guidance, README or CONTRIBUTING files select no execution jobs; the
-required status gate still completes. Other documentation uses its declared
+Run targeted tasks locally. Hosted CI and Nightly provide full validation.
+Changes limited to skills, agent guidance, README or CONTRIBUTING files select
+no execution jobs; the required status gate still completes. Other documentation uses its declared
 checks, while mixed source or policy changes retain full selection.
-Required hosted CI controls integration. Keep auto-merge enabled; it may merge
-independently of local completion. Report and investigate local failures.
+Merges into dev remain ungated. Required hosted checks gate main and stable
+releases. Report and investigate local failures.
 
 Product and Tests compile independently. Build, test, bench and fixture tasks never
 run Clippy. `lint:rust` runs Clippy with warnings denied; `check:rust` includes it
@@ -117,7 +109,7 @@ To reproduce one generated compiler story from the existing test archive:
 mise run test:rust:starter --profile release --filter 'test(=authoring::sidecar_starter_works)'
 ```
 
-`mise run test:tooling` tests impact selection, release evidence and atomic
+`mise run test:python:integration` tests impact selection, release evidence and atomic
 channel publication without compiling products or contacting publication APIs.
 It also runs as part of `check:python`.
 

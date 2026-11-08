@@ -56,18 +56,13 @@ def main() -> int:
     parser.add_argument("--profile", choices=("dev", "release", "bench"))
     parser.add_argument("--output", choices=OUTPUTS)
     parser.add_argument("--task")
-    parser.add_argument("--internal-script", help=argparse.SUPPRESS)
-    parser.add_argument("--shell", choices=("bash", "pwsh"), help=argparse.SUPPRESS)
     options = parser.parse_args()
     try:
         if options.task is not None:
-            if options.profile is None or options.output is None or options.internal_script is not None:
+            if options.profile is None or options.output is None:
                 parser.error("--task requires --output and --profile")
             return run(options.task, options.output, options.profile)
-        script = (
-            bytes.fromhex(options.internal_script).decode("utf-8") if options.internal_script is not None else os.environ["BUILD_SCRIPT"]
-        )
-        return _run(script, "Task Build", options.shell)
+        return _run(os.environ["BUILD_SCRIPT"], "Task Build")
     except (OSError, ValueError, KeyError, RuntimeError):
         parser.exit(
             1,
@@ -78,7 +73,7 @@ def main() -> int:
 # === Private Functions === #
 
 
-def _run(command: Sequence[str] | str, label: str, shell: str | None = None) -> int:
+def _run(command: Sequence[str] | str, label: str) -> int:
     started = time.monotonic()
     statistics = {}
     backend = os.environ.get("COMPILER_CACHE_BACKEND")
@@ -94,10 +89,10 @@ def _run(command: Sequence[str] | str, label: str, shell: str | None = None) -> 
     print(f"{label}: starting", flush=True)
     try:
         if backend is not None:
-            status = compiler.run(command, shell, statistics=statistics)
+            status = compiler.run(command, statistics=statistics)
         else:
             if isinstance(command, str):
-                selected = shell or ("pwsh" if os.name == "nt" else "bash")
+                selected = "pwsh" if os.name == "nt" else "bash"
                 command = (
                     [
                         "pwsh",

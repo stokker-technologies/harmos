@@ -8,3 +8,7 @@
 
 - Start at `README.md` and `docs/product-guide.md`; its Documentation section links the topic guides in `docs/`.
 - Keep documentation in `docs/` and refer to code by path. Do not add `AGENTS.md`, `CLAUDE.md` or other Markdown notes inside code directories.
+
+## Validation
+
+- Run targeted tasks locally. Hosted CI and Nightly provide full validation.

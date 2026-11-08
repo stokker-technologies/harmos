@@ -6,7 +6,7 @@
 
 ## Development Workflow
 
-<!-- Describe task branches, source closure and the impact-selected ci:simulate review gate. -->
+<!-- Describe task branches and source closure. Run targeted tasks locally; hosted CI and Nightly provide full validation. -->
 
 ## Tests and Checks
 
