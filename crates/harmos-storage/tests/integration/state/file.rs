@@ -127,7 +127,7 @@ async fn snapshot_requires_singleton() {
         required_data: StorageCursor { history, sequence: 0 },
         through,
         payload: harmos_storage::state::SnapshotPayload::from_bytes(
-            &vec![7],
+            &[7],
             std::num::NonZeroUsize::new(65536).unwrap(),
             harmos_domain::state::Position::ORIGIN,
         )

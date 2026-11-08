@@ -408,7 +408,7 @@ async fn owner_refuses_raw() {
                 required_data: storage.cursor_saved(),
                 through: storage.status().recovery_accepted,
                 payload: harmos_storage::state::SnapshotPayload::from_bytes(
-                    &vec![],
+                    &[],
                     std::num::NonZeroUsize::new(65536).unwrap(),
                     harmos_domain::state::Position::ORIGIN
                 )

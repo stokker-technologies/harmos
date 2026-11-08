@@ -122,7 +122,7 @@ fn seven_day_recovery_seeks_and_compacts_without_rescanning_prefixes() {
         through: checkpoint.clone(),
         required_data: StorageCursor { history: history.clone(), sequence: 0 },
         payload: harmos_storage::state::SnapshotPayload::from_bytes(
-            &vec![7],
+            &[7],
             std::num::NonZeroUsize::new(65536).unwrap(),
             harmos_domain::state::Position::ORIGIN,
         )

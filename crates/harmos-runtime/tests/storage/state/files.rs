@@ -79,7 +79,7 @@ async fn checkpoint_survives_reopen() {
         through: at(2),
         required_data,
         payload: harmos_storage::state::SnapshotPayload::from_bytes(
-            &b"checkpoint".to_vec(),
+            b"checkpoint",
             std::num::NonZeroUsize::new(65536).unwrap(),
             harmos_domain::state::Position::ORIGIN,
         )
