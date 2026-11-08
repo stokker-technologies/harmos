@@ -414,7 +414,13 @@ async fn declared_provider_call() {
     assert_eq!(Echoed::decode(&bytes).unwrap().said, "child");
     assert_eq!(
         session.store.data().calls,
-        [Call::Submit { say: "child".into(), instance: 1 }, Call::Control { instance: 1, action: WireChildAction::Join }]
+        [
+            Call::Submit { say: "child".into(), instance: 1 },
+            Call::Control {
+                instance: 1,
+                action: WireChildAction::Join
+            }
+        ]
     );
 }
 
