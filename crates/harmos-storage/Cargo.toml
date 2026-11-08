@@ -162,6 +162,11 @@ path = "tests/integration/main.rs"
 # === Bench Targets === #
 
 [[bench]]
+name = "unit-payload-decode"
+path = "benches/query/source/main.rs"
+harness = false
+
+[[bench]]
 name = "integration-query"
 path = "benches/query/main.rs"
 harness = false
