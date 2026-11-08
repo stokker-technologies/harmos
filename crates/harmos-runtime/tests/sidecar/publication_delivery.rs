@@ -292,6 +292,7 @@ async fn held_ingest_lossless() {
 
 #[tokio::test]
 async fn named_streams_isolated() {
+    use harmos_runtime::StreamSpec;
     let capacity = std::num::NonZeroUsize::new(2).unwrap();
     let source = harmos_sidecar::PluginNative::<Twins>::new(capacity).unwrap();
     let mut fixture =
@@ -301,7 +302,9 @@ async fn named_streams_isolated() {
     ready(fixture.ready().clone()).await;
     fixture.shutdown().await.unwrap();
 
-    for (definition, expected) in [(Left::definition(), vec![10, 11]), (Right::definition(), vec![20])] {
+    for (id, window, expected) in [(Left::ID, Left::WINDOW, vec![10, 11]), (Right::ID, Right::WINDOW, vec![20])] {
+        let schema = support::Pulse::definition().schema().clone();
+        let definition = harmos_runtime::streams::Definition::declared::<support::Pulse>(id, schema, window).unwrap();
         let stream = fixture.runtime.streams.publication(definition.id(), definition.version()).unwrap();
         let samples: Vec<_> =
             stream.query(..).await.unwrap().map(|row| support::Pulse::decode(row.value.payload.as_slice()).unwrap().sample).collect();
