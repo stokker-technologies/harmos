@@ -431,10 +431,32 @@ with `setup.settings().store_records(projection)`. Managed state requires Serde 
 and decoding. Backend journal-entry and checkpoint bounds remain physical storage
 limits, separate from runtime snapshot cadence and payload limits.
 
-`SnapshotPolicy.max_bytes` limits logical snapshot payload bytes at both capture
-and recovery. Harmos derives the backend read bound with the same JSON/base64
-size calculation used for write reservations; encoded queue and physical backend
-limits still apply independently.
+`SnapshotPolicy.max_bytes` bounds each logical snapshot segment at capture and
+recovery. Large state values span segments; undo, receipt and recorded-tail entries must
+individually fit that bound. State, undo history, request receipts and the retained
+tail remain in the checkpoint. A refusal reports the entry size, segment bound and
+number of journal groups the next boot must replay. Unavailable sizes are marked
+with `size_known = false` rather than presented as a measured zero.
+
+`RecoverySnapshot.payload` is a `SnapshotPayload`: an immutable temporary-file spool
+with an ordered `SnapshotManifest` (logical position, count, total bytes and each
+segment's SHA-256). `SnapshotWriter` fills segments up to the bound; `finish_segment`
+also permits an earlier boundary when importing stored segments. `reader()` provides
+an independent read-only cursor. Readers verify the manifest and all segment hashes
+before using the snapshot, then decode in order without a whole-payload byte buffer.
+Queue admission reserves a segment rather than the whole checkpoint; the small
+manifest remains resident with the spool owner through retries.
+
+The filesystem backend writes a manifest header, ordered checksummed segment frames
+and a matching commit manifest to `state.json.pending`. Each frame carries the raw
+segment SHA-256; the manifest digest binds their ordered lengths and hashes. Manifest
+records have a protocol bound of 4096 bytes. `max_checkpoint_bytes` bounds each encoded
+segment frame, including its integrity envelope. The file is flushed and synced before
+atomic replacement of `state.json`; only then may the covered journal be compacted.
+An interruption between segments leaves the previous snapshot and journal intact.
+The journal format is unchanged. Existing single-payload checkpoint files remain
+readable; their imported manifest has no separate logical position, so runtime recovery
+uses the position in the original payload and its journal-boundary validation.
 
 For filesystem persistence, use the shipped JSON backend:
 

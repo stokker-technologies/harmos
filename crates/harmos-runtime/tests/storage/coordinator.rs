@@ -239,7 +239,12 @@ async fn snapshots_require_flush() {
     let snapshot = RecoverySnapshot {
         required_data: f.storage.cursor_saved(),
         through: through.clone(),
-        payload: vec![5],
+        payload: harmos_storage::state::SnapshotPayload::from_bytes(
+            &vec![5],
+            std::num::NonZeroUsize::new(65536).unwrap(),
+            harmos_domain::state::Position::ORIGIN,
+        )
+        .unwrap(),
     };
     f.storage.write_snapshot(snapshot.clone()).await.unwrap();
     f.storage.flush_recovery().await.unwrap();

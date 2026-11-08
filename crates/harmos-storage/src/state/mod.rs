@@ -13,12 +13,14 @@ mod admission;
 pub mod config;
 pub mod file;
 mod reader;
+mod segments;
 
 /* === Re-Exports === */
 
 pub use admission::Permit;
 pub use config::StorageStateSettings;
 pub use reader::RecoveryReader;
+pub use segments::{Segment, SnapshotManifest, SnapshotPayload, SnapshotWriter};
 
 /* === Imports === */
 
@@ -49,14 +51,11 @@ pub struct RecoveryEntry {
     pub payload: Vec<u8>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecoverySnapshot {
     pub required_data: super::StorageCursor,
     pub through: RecoveryPosition,
-
-    #[serde(with = "payload")]
-    pub payload: Vec<u8>,
+    pub payload: SnapshotPayload,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -98,7 +97,7 @@ impl MemorySize for RecoverySnapshot {
         std::mem::size_of::<Self>()
             .saturating_add(self.required_data.memory_size().saturating_sub(std::mem::size_of::<super::StorageCursor>()))
             .saturating_add(self.through.history.memory_size().saturating_sub(std::mem::size_of::<StoreHistory>()))
-            .saturating_add(self.payload.capacity())
+            .saturating_add(self.payload.retained_bytes())
     }
 }
 

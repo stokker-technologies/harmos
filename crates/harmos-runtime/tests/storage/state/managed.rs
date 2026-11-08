@@ -407,7 +407,12 @@ async fn owner_refuses_raw() {
             .write_snapshot(harmos_runtime::storage::state::RecoverySnapshot {
                 required_data: storage.cursor_saved(),
                 through: storage.status().recovery_accepted,
-                payload: vec![],
+                payload: harmos_storage::state::SnapshotPayload::from_bytes(
+                    &vec![],
+                    std::num::NonZeroUsize::new(65536).unwrap(),
+                    harmos_domain::state::Position::ORIGIN
+                )
+                .unwrap(),
             })
             .await
             .is_err()

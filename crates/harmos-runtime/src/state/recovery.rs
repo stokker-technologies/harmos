@@ -113,7 +113,7 @@ impl<A: Application> StateManager<A> {
         if let Some(snapshots) = snapshots
             && let Some(snapshot) = reader.snapshot().await.map_err(Incompatible::unreadable)?
         {
-            if snapshot.payload.len() > snapshots.policy.max_bytes.get() {
+            if snapshot.payload.segment_bytes() > snapshots.policy.max_bytes.get() {
                 return Err(Incompatible::unreadable("invalid managed snapshot boundary or size"));
             }
             let restored = (snapshots.decode)(&snapshot.payload, &snapshots.policy, catalog, tail)?;
@@ -127,7 +127,7 @@ impl<A: Application> StateManager<A> {
             undos = restored.undos;
             receipts = restored.receipts;
             retained = restored.tail;
-            snapshots.resumed(state.position);
+            snapshots.resumed(state.position, snapshot.through.sequence);
         }
         while after.sequence < through.sequence {
             let page = reader.page(&after).await.map_err(Incompatible::unreadable)?;

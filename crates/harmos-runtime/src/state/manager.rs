@@ -33,6 +33,7 @@ use super::{
     writer,
 };
 use crate::Application;
+use crate::supervision::executor::InContext;
 
 /* === Constants === */
 
@@ -139,7 +140,7 @@ impl<A: Application> StateManager<A> {
             reads,
             clock,
         });
-        let running = tokio::spawn(writer::run(receiver, Arc::clone(&tracked), durable, inverses, undos, capture));
+        let running = tokio::spawn(writer::run(receiver, Arc::clone(&tracked), durable, inverses, undos, capture).in_current_context());
 
         (
             Self {

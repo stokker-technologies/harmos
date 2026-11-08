@@ -29,6 +29,7 @@ use serde::{Serialize, de::DeserializeOwned};
 // Local Imports
 use super::snapshot_codec;
 use crate::state::{Tail, TrackedState, Undos, dispatch::Dispatch};
+use crate::storage::state::SnapshotPayload;
 use crate::storage::{SchemaKey, StorageManager};
 use crate::{
     Application, Error, Result, runtime::Incompatible, state::At, state::Entry, state::Position, state::Receipt, state::Recorded,
@@ -48,8 +49,8 @@ type Encoding<A> = fn(
     &Undos<A>,
     &Tail<A>,
     &HashMap<RequestKey, Receipt>,
-) -> Result<Vec<u8>>;
-type Decoding<A> = fn(&[u8], &SnapshotPolicy, &Dispatch<A, Payload<A>>, usize) -> std::result::Result<Restored<A>, Incompatible>;
+) -> Result<SnapshotPayload>;
+type Decoding<A> = fn(&SnapshotPayload, &SnapshotPolicy, &Dispatch<A, Payload<A>>, usize) -> std::result::Result<Restored<A>, Incompatible>;
 
 /* === Structs === */
 
@@ -65,6 +66,7 @@ pub(crate) struct Snapshots<A: Application> {
     encode: Encoding<A>,
     pub(crate) decode: Decoding<A>,
     last: AtomicU64,
+    last_sequence: AtomicU64,
 }
 
 pub(crate) struct Restored<A: Application> {
@@ -90,11 +92,13 @@ impl<A: Application> Snapshots<A> {
             encode: snapshot_codec::encode::<A>,
             decode: snapshot_codec::decode::<A>,
             last: AtomicU64::new(0),
+            last_sequence: AtomicU64::new(0),
         }
     }
 
-    pub(crate) fn resumed(&self, position: Position) {
+    pub(crate) fn resumed(&self, position: Position, sequence: u64) {
         self.last.store(position.0, Ordering::Relaxed);
+        self.last_sequence.store(sequence, Ordering::Relaxed);
     }
 
     #[tracing::instrument(target = "harmos::state", name = "state.capture", level = "debug", skip_all)]
@@ -112,6 +116,7 @@ impl<A: Application> Snapshots<A> {
         }
         // The journal writer is the only mutator. Reserve before holding readers;
         // no snapshot worker, detached state copy, or second persistence queue.
+        let mut size_bytes = None;
         let result = async {
             if final_save {
                 // Shutdown cannot wait for the periodic saver to free queue space.
@@ -140,20 +145,29 @@ impl<A: Application> Snapshots<A> {
                 };
             let state = tracked.state.read().await;
             let tail = tracked.tail.read().await;
-            self.last.store(position.0, Ordering::Relaxed);
             let payload = catch_unwind(AssertUnwindSafe(|| (self.encode)(&self.policy, &tracked.catalog, &state, undos, &tail, receipts)))
                 .map_err(|_| Error::InvalidInput {
                     field: "state snapshot",
                     reason: "serializer panicked",
                 })??;
+            drop(tail);
+            drop(state);
+            size_bytes = Some(payload.len());
             permit.snapshot_payload(payload)?;
             permit.commit(position);
+            storage.flush_recovery().await?;
+            self.resumed(position, storage.status().recovery_accepted.sequence);
             Ok::<(), Error>(())
         }
         .await;
         if let Err(error) = result {
+            if let Error::SnapshotEntry { bytes, .. } = &error {
+                size_bytes = Some(*bytes);
+            }
             let error = harmos_domain::failure::Report(&error);
-            tracing::warn!(%error, position = position.0, "snapshot skipped; recovery retains the journal");
+            let replay_entries = storage.status().recovery_accepted.sequence.saturating_sub(self.last_sequence.load(Ordering::Relaxed));
+            tracing::warn!(%error, position = position.0, size_bytes = size_bytes.unwrap_or(0), size_known = size_bytes.is_some(), segment_limit = self.policy.max_bytes.get(), replay_entries,
+                "snapshot skipped; the next boot replays {} journal entries", replay_entries);
         }
     }
 }
