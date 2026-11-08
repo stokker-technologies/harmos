@@ -29,6 +29,8 @@ mod typed;
 
 #[cfg(feature = "testing")]
 pub use reduction::testing::Coordinates;
+#[cfg(feature = "testing")]
+pub use source::testing::PayloadDecoder;
 
 pub use accumulate::Accumulator;
 pub use harmos_domain::model::storage::query::{
