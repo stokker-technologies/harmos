@@ -46,7 +46,16 @@ use harmos_domain::inventory::publications;
 /* === Type Aliases === */
 
 type ContextFactory<H> = Arc<dyn Fn(&H) -> Arc<dyn Any + Send + Sync> + Send + Sync>;
-type Open<H> = fn(Arc<harmos_sdk::ExecutionContext>, H, Option<ContextFactory<H>>, Identity, Duration) -> Result<Activity, ObserverError>;
+type Reporting<H> = Arc<dyn Fn(&H, &crate::CadenceReport) + Send + Sync>;
+type Open<H> = fn(
+    Arc<harmos_sdk::ExecutionContext>,
+    H,
+    Option<ContextFactory<H>>,
+    Identity,
+    Duration,
+    Option<Reporting<H>>,
+    Option<Supervisor>,
+) -> Result<Activity, ObserverError>;
 type Step<'a> = Pin<Box<dyn Future<Output = Result<(), ObserverError>> + Send + 'a>>;
 
 /* === Structs === */
@@ -77,6 +86,7 @@ pub struct Instance<H = Supervisor> {
     open: Open<H>,
     interval: fn(&harmos_sdk::ExecutionContext) -> Result<Duration, ObserverError>,
     context: Option<ContextFactory<H>>,
+    reporting: Option<Reporting<H>>,
 }
 
 // One activation of one observer: its resources, bound host and, once
@@ -95,6 +105,8 @@ struct Bound<S: Observer<H>, H: Send + Sync + 'static> {
     observer: Option<S>,
     interval: Duration,
     stopped: bool,
+    reporting: Option<Reporting<H>>,
+    transport: Option<Supervisor>,
 }
 
 /* === Enums === */
@@ -314,6 +326,7 @@ impl<H: Send + Sync + 'static> Instance<H> {
             open: Activity::open::<S, H>,
             interval: resolve_interval::<S, H>,
             context: None,
+            reporting: None,
         }
     }
 
@@ -323,6 +336,11 @@ impl<H: Send + Sync + 'static> Instance<H> {
             Arc::new(extension)
         };
         self.context = Some(Arc::new(erased));
+        self
+    }
+
+    pub fn with_cadence_reporting(mut self, report: impl Fn(&H, &crate::CadenceReport) + Send + Sync + 'static) -> Self {
+        self.reporting = Some(Arc::new(report));
         self
     }
 
@@ -349,18 +367,32 @@ impl<H: Send + Sync + 'static> Instance<H> {
     // Resolve cadence and bind one activation to its resources and host.
     // Initialization and sampling run when the caller drives `observe`.
     pub fn activate(&self, resources: Arc<harmos_sdk::ExecutionContext>, host: H) -> Result<Activity, ObserverError> {
+        self.activate_reporting(resources, host, None, None)
+    }
+
+    pub(super) fn activate_reporting(
+        &self, resources: Arc<harmos_sdk::ExecutionContext>, host: H, reporting: Option<Reporting<H>>, transport: Option<Supervisor>,
+    ) -> Result<Activity, ObserverError> {
+        let reporting = match (self.reporting.clone(), reporting) {
+            (Some(registered), Some(host)) => Some(Arc::new(move |owner: &H, report: &crate::CadenceReport| {
+                registered(owner, report);
+                host(owner, report);
+            }) as Reporting<H>),
+            (registered, host) => registered.or(host),
+        };
         let identity = Identity::new(self.entry.id).map_err(ObserverError::Identity)?;
         let interval = (self.interval)(&resources).inspect_err(|error| {
             tracing::error!(observer = identity.observer, activation_id = %identity.activation,
                 error = %harmos_domain::failure::Report(error), "observer interval resolution failed; activation refused");
         })?;
-        (self.open)(resources, host, self.context.clone(), identity, interval)
+        (self.open)(resources, host, self.context.clone(), identity, interval, reporting, transport)
     }
 }
 
 impl Activity {
     fn open<S: Observer<H>, H: Send + Sync + 'static>(
         resources: Arc<harmos_sdk::ExecutionContext>, host: H, context: Option<ContextFactory<H>>, identity: Identity, interval: Duration,
+        reporting: Option<Reporting<H>>, transport: Option<Supervisor>,
     ) -> Result<Self, ObserverError> {
         let create_extension = || match context {
             Some(factory) => {
@@ -385,6 +417,8 @@ impl Activity {
             observer: None,
             interval,
             stopped: false,
+            reporting,
+            transport,
         };
         Ok(Self { identity, body: Box::new(bound) })
     }
@@ -450,8 +484,31 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
             let mut tick = Tick { ordinal: 0, elapsed: Duration::ZERO };
             let observer = self.observer.as_mut().expect("initialized observer");
             let mut refused = None;
+            let mut expected: Option<Instant> = None;
             loop {
-                clock.tick().await;
+                let scheduled = clock.tick().await;
+                if let Some(mut skipped) = expected {
+                    while skipped < scheduled {
+                        let report = crate::CadenceReport {
+                            observer: name.to_owned(),
+                            activation: activation.to_string(),
+                            interval: self.interval,
+                            scheduled_at: skipped.saturating_duration_since(opened),
+                            started_at: None,
+                            callback_duration: Duration::ZERO,
+                            skipped: true,
+                            refused: false,
+                        };
+                        if let Some(reporting) = &self.reporting {
+                            reporting(&self.host, &report);
+                        }
+                        if let Some(transport) = &self.transport {
+                            transport.send_cadence(&report);
+                        }
+                        skipped += self.interval;
+                    }
+                }
+                expected = scheduled.checked_add(self.interval);
                 advance_tick(&mut tick, opened.elapsed(), self.identity)?;
                 let context = ObserverContext {
                     identity: self.identity,
@@ -461,7 +518,25 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
                     extension: self.extension.as_deref(),
                     streams: S::STREAMS,
                 };
+                let started = Instant::now();
                 let observed = AssertUnwindSafe(async { observer.observe(&context).await }).catch_unwind().await;
+                let callback_duration = started.elapsed();
+                let report = crate::CadenceReport {
+                    observer: name.to_owned(),
+                    activation: activation.to_string(),
+                    interval: self.interval,
+                    scheduled_at: scheduled.saturating_duration_since(opened),
+                    started_at: Some(started.saturating_duration_since(opened)),
+                    callback_duration,
+                    skipped: false,
+                    refused: !matches!(&observed, Ok(Ok(()))),
+                };
+                if let Some(reporting) = &self.reporting {
+                    reporting(&self.host, &report);
+                }
+                if let Some(transport) = &self.transport {
+                    transport.send_cadence(&report);
+                }
                 observed_result(observed, self.identity, tick.ordinal(), &mut refused)?;
             }
         })
@@ -597,6 +672,65 @@ mod tests {
     use super::{Identity, ObserverContext, Tick};
     use std::sync::Arc;
     use std::time::Duration;
+
+    struct SlowObserver(bool);
+
+    impl super::Observer<()> for SlowObserver {
+        type Error = std::io::Error;
+        const ID: &'static str = "slow.observer";
+        const INTERVAL: Duration = Duration::from_millis(10);
+
+        async fn initialize(_: &harmos_sdk::ExecutionContext) -> Result<Self, Self::Error> {
+            Ok(Self(false))
+        }
+
+        async fn observe(&mut self, _: &ObserverContext<'_, ()>) -> Result<(), Self::Error> {
+            if self.0 {
+                return Ok(());
+            }
+            self.0 = true;
+            tokio::time::advance(Duration::from_millis(35)).await;
+            Err(std::io::Error::other("first callback refused"))
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn slow_callback_reports_duration_refusal_recovery_and_skipped_ticks() {
+        let (sending, mut received) = tokio::sync::mpsc::unbounded_channel();
+        let instance = super::Instance::<()>::of::<SlowObserver>().with_cadence_reporting(move |_, report| {
+            sending.send(report.clone()).unwrap();
+        });
+        let mut activity = instance.activate(Arc::new(harmos_sdk::ExecutionContext::default()), ()).unwrap();
+        let observing = activity.observe(|| {});
+        tokio::pin!(observing);
+        let mut reports = Vec::new();
+        while reports.len() < 5 {
+            tokio::select! {
+                failure = &mut observing => panic!("unexpected observer failure: {failure}"),
+                report = received.recv() => reports.push(report.unwrap()),
+            }
+        }
+        let first = &reports[0];
+        assert_eq!(first.interval, Duration::from_millis(10));
+        assert_eq!(first.scheduled_at, Duration::from_millis(10));
+        assert_eq!(first.started_at, Some(Duration::from_millis(10)));
+        assert_eq!(first.callback_duration, Duration::from_millis(35));
+        assert!(first.refused && !first.skipped);
+        let recovered = &reports[1];
+        assert_eq!(recovered.scheduled_at, Duration::from_millis(20));
+        assert_eq!(recovered.started_at, Some(Duration::from_millis(45)));
+        assert_eq!(recovered.callback_duration, Duration::ZERO);
+        assert!(!recovered.refused && !recovered.skipped);
+        for (report, scheduled_ms) in reports[2..4].iter().zip([30, 40]) {
+            assert!(report.skipped && !report.refused);
+            assert_eq!(report.scheduled_at, Duration::from_millis(scheduled_ms));
+            assert_eq!(report.started_at, None);
+            assert_eq!(report.callback_duration, Duration::ZERO);
+            assert_eq!(report.activation, first.activation);
+        }
+        assert_eq!(reports[4].scheduled_at, Duration::from_millis(50));
+        assert_eq!(reports[4].started_at, Some(Duration::from_millis(50)));
+    }
 
     #[test]
     fn disconnected_host_stops() {

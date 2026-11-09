@@ -313,6 +313,7 @@ async fn attempts<O: Send + 'static>(
             return Err(budget.cancelled(attempt + 1).into());
         }
         let core = ScopeCore::new(instances.clone(), admission.clone(), cause, Arc::downgrade(instance));
+        let started_at = prepared.middleware.as_ref().map(super::middleware::Session::now);
         let answer = cooperative(
             prepared.policy.attempt_timeout.min(remaining),
             budget,
@@ -327,6 +328,7 @@ async fn attempts<O: Send + 'static>(
             cancelled,
         )
         .await;
+        let finished_at = prepared.middleware.as_ref().map(super::middleware::Session::now);
         let mut children = core.close();
         if let Some(middleware) = &prepared.middleware {
             let outcome = match &answer {
@@ -336,7 +338,9 @@ async fn attempts<O: Send + 'static>(
                 Stage::Completed(Err(_)) => Outcome::Failed,
             };
             // Record Each Completed Attempt Before Its Result Or Retry Is Exposed.
-            if let Err(error) = middleware.attempt(super::middleware::AttemptObservation { attempt, outcome }).await {
+            let started_at = started_at.expect("middleware attempt start");
+            let elapsed = finished_at.expect("middleware attempt end").instant.saturating_duration_since(started_at.instant);
+            if let Err(error) = middleware.attempt(super::middleware::AttemptObservation { attempt, outcome, started_at, elapsed }).await {
                 children.drain().await;
                 return Err(error);
             }

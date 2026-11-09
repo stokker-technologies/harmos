@@ -68,6 +68,15 @@ where
             Arrival::Frame(Frame::Push { method, params }) => {
                 if method == Frame::EXITING {
                     self.announced = Some(reason(&params));
+                } else if method == Frame::OBSERVER_CADENCE {
+                    let report = match harmos_sidecar::CadenceReport::decode(&params) {
+                        Ok(report) => report,
+                        Err(error) => return Absorbed::Malformed(error.to_string()),
+                    };
+                    if let Ok(reporter) = self.context.resource::<harmos_sidecar::CadenceReporter>() {
+                        reporter.report(&report);
+                    }
+                    (self.notice)(self.context, Notice::ObserverCadence { report });
                 } else {
                     return Absorbed::Malformed("application notifications require an admitted operation".to_owned());
                 }

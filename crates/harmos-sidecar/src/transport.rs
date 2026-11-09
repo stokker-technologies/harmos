@@ -365,6 +365,31 @@ mod payload {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn cadence_report_round_trips_and_rejects_another_shape() {
+        let report = crate::CadenceReport {
+            observer: "cadence.test".to_owned(),
+            activation: "activation".to_owned(),
+            interval: std::time::Duration::from_secs(1),
+            scheduled_at: std::time::Duration::from_secs(2),
+            started_at: Some(std::time::Duration::from_millis(2100)),
+            callback_duration: std::time::Duration::from_millis(250),
+            skipped: false,
+            refused: true,
+        };
+        let encoded = super::Packet::Frame(report.frame()).encode().unwrap();
+        let decoded = super::Packet::decode(super::Role::Data, encoded[4..].to_vec()).unwrap();
+        let super::Packet::Frame(crate::Frame::Push { method, params }) = decoded else { panic!("cadence push") };
+        assert_eq!(method, crate::Frame::OBSERVER_CADENCE);
+        assert_eq!(crate::CadenceReport::decode(&params).unwrap(), report);
+        let changed = postcard::to_allocvec(&(crate::CadenceReport::revision().wrapping_add(1), &report)).unwrap();
+        assert!(crate::CadenceReport::decode(&changed).is_err());
+        let mut skipped = report;
+        skipped.skipped = true;
+        let crate::Frame::Push { params, .. } = skipped.frame() else { unreachable!() };
+        assert!(crate::CadenceReport::decode(&params).is_err());
+    }
+
     use super::*;
     use std::pin::Pin;
     use std::task::{Context, Poll};
