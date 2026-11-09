@@ -925,7 +925,27 @@ Pass `.retry(settings.retry)` from settings, parameters or configuration. Retry 
 Enabling call-site retry requires declared `Idempotent` or `Deduplicated` replay safety; unknown safety is refused before execution.
 Declaration defaults retain their existing semantics: transient failures may retry with unknown safety, while ambiguous failures require replay safety.
 Sidecar and guest child envelopes carry the optional retry policy to host admission. The host execution loop owns every attempt;
-`operations::middleware::Middleware::attempt` observes each completed attempt with its number and outcome for durable application evidence.
+`operations::middleware::Middleware::attempt` receives this process-local observation for every handler attempt, including refusals, timeouts and retries:
+
+```rust,ignore
+AttemptObservation {
+    attempt: usize, // Zero-based, matching the handler context.
+    outcome: OperationOutcome,
+    started_at: AttemptStartedAt {
+        instant: tokio::time::Instant,
+        timestamp: state::Timestamp,
+    },
+    elapsed: std::time::Duration,
+}
+```
+
+Timing surrounds the handler call, including asynchronous suspension and cancellation grace.
+It excludes queueing, admission, initialization, child draining, cleanup and middleware callbacks.
+Each retry takes fresh readings. The timestamp identifies the start; elapsed uses only the
+monotonic readings. Before the first invocation, `operations.set_attempt_clock(AttemptClock::new(clock))`
+can inject a clock returning `AttemptStartedAt`; the default reads the operation executor's
+monotonic clock and the system timestamp. This does not change deadline clocks or timers.
+No attempt observation is emitted for admission refusals that never enter a handler.
 
 Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
 Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.
@@ -1333,6 +1353,46 @@ demand keys; it does not advertise the declared default as an effective interval
 A zero runtime duration, resolution error or panic refuses activation before
 initialization. Initialization retries and sampling use the captured interval;
 changed resources apply on the next activation.
+
+Cadence evidence uses `harmos_sidecar::CadenceReport`:
+
+```rust,ignore
+CadenceReport {
+    observer: String,
+    activation: String,
+    interval: Duration,
+    scheduled_at: Duration,
+    started_at: Option<Duration>,
+    callback_duration: Duration,
+    skipped: bool,
+    refused: bool,
+}
+```
+
+Scheduled and actual start times are monotonic offsets from the activation's sampling
+origin, after initialization. A skipped slot has no actual start, zero callback duration
+and `refused = false`. A completed callback records its duration before reporting;
+errors and panics set `refused`. Late callbacks still run under the existing Tokio Skip
+policy; gaps between returned scheduled deadlines identify omitted slots. Skipped slots
+are reported when the next scheduled tick is observed. Cancellation of an unfinished
+callback produces no completion report. Existing refused/recovered log lines remain unchanged.
+
+`ObserverHost::report_cadence(&self, &CadenceReport)` defaults to no action. Attachments
+invoke that hook and send a `harmos.observer.cadence` push over the existing bounded
+transport. A full outgoing queue defers delivery in a task instead of suspending the
+observer; reporting adds no timer. Pending reports share the connection/runtime lifetime.
+Consumers order received evidence by activation and scheduled time. Direct/native instances
+opt in with `Instance::with_cadence_reporting`, which can call the same host hook.
+There are no additional timers or sidecar log lines.
+
+The receiver validates the report's schema-derived revision, invokes an optional
+`CadenceReporter` application resource and delivers `Notice::ObserverCadence` through
+`Supervised`'s existing notice callback. Register `CadenceReporter::for_host(host)` to
+forward remote reports to the same `ObserverHost` hook, or `CadenceReporter::new(callback)`
+for an application callback. The report is an additive push payload; other transport
+shapes and tags are unchanged. Group by observer and activation; differences between
+non-skipped actual starts give mean interval and maximum gap, while the maximum
+callback duration identifies the longest callback.
 
 ## Reloadable gRPC Certificates
 

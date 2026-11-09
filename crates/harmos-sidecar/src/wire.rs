@@ -55,6 +55,20 @@ pub struct Publication {
     pub payload: Vec<u8>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct CadenceReport {
+    pub observer: String,
+    pub activation: String,
+    pub interval: std::time::Duration,
+    pub scheduled_at: std::time::Duration,
+    pub started_at: Option<std::time::Duration>,
+    pub callback_duration: std::time::Duration,
+    pub skipped: bool,
+    pub refused: bool,
+}
+
+struct CadenceDuration;
+
 /* === Enums === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -69,6 +83,127 @@ pub enum Frame {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_domain::schema::Described for CadenceDuration {
+    const NAME: &'static str = concat!(module_path!(), "::CadenceDuration");
+    const FIELDS: &'static [harmos_domain::schema::declaration::Field] = &[
+        harmos_domain::schema::declaration::Field {
+            name: std::borrow::Cow::Borrowed("secs"),
+            tag: 1,
+            kind: harmos_domain::schema::declaration::Kind::U64,
+            cardinality: harmos_domain::schema::Cardinality::Required,
+        },
+        harmos_domain::schema::declaration::Field {
+            name: std::borrow::Cow::Borrowed("nanos"),
+            tag: 2,
+            kind: harmos_domain::schema::declaration::Kind::U32,
+            cardinality: harmos_domain::schema::Cardinality::Required,
+        },
+    ];
+    const MARKER: &'static [u8] = &harmos_domain::schema::declaration::encode::<
+        { harmos_domain::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
+}
+
+impl harmos_domain::schema::Described for CadenceReport {
+    const NAME: &'static str = concat!(module_path!(), "::CadenceReport");
+    const FIELDS: &'static [harmos_domain::schema::declaration::Field] = &[
+        harmos_domain::schema::declaration::Field {
+            name: std::borrow::Cow::Borrowed("observer"),
+            tag: 1,
+            kind: harmos_domain::schema::declaration::Kind::String,
+            cardinality: harmos_domain::schema::Cardinality::Required,
+        },
+        harmos_domain::schema::declaration::Field {
+            name: std::borrow::Cow::Borrowed("activation"),
+            tag: 2,
+            kind: harmos_domain::schema::declaration::Kind::String,
+            cardinality: harmos_domain::schema::Cardinality::Required,
+        },
+        harmos_domain::schema::declaration::Field {
+            name: std::borrow::Cow::Borrowed("interval"),
+            tag: 3,
+            kind: harmos_domain::schema::declaration::Kind::Message {
+                definition: <CadenceDuration as harmos_domain::schema::Described>::DEFINITION,
+            },
+            cardinality: harmos_domain::schema::Cardinality::Required,
+        },
+        harmos_domain::schema::declaration::Field {
+            name: std::borrow::Cow::Borrowed("scheduled_at"),
+            tag: 4,
+            kind: harmos_domain::schema::declaration::Kind::Message {
+                definition: <CadenceDuration as harmos_domain::schema::Described>::DEFINITION,
+            },
+            cardinality: harmos_domain::schema::Cardinality::Required,
+        },
+        harmos_domain::schema::declaration::Field {
+            name: std::borrow::Cow::Borrowed("started_at"),
+            tag: 5,
+            kind: harmos_domain::schema::declaration::Kind::Message {
+                definition: <CadenceDuration as harmos_domain::schema::Described>::DEFINITION,
+            },
+            cardinality: harmos_domain::schema::Cardinality::Optional,
+        },
+        harmos_domain::schema::declaration::Field {
+            name: std::borrow::Cow::Borrowed("callback_duration"),
+            tag: 6,
+            kind: harmos_domain::schema::declaration::Kind::Message {
+                definition: <CadenceDuration as harmos_domain::schema::Described>::DEFINITION,
+            },
+            cardinality: harmos_domain::schema::Cardinality::Required,
+        },
+        harmos_domain::schema::declaration::Field {
+            name: std::borrow::Cow::Borrowed("skipped"),
+            tag: 7,
+            kind: harmos_domain::schema::declaration::Kind::Bool,
+            cardinality: harmos_domain::schema::Cardinality::Required,
+        },
+        harmos_domain::schema::declaration::Field {
+            name: std::borrow::Cow::Borrowed("refused"),
+            tag: 8,
+            kind: harmos_domain::schema::declaration::Kind::Bool,
+            cardinality: harmos_domain::schema::Cardinality::Required,
+        },
+    ];
+    const MARKER: &'static [u8] = &harmos_domain::schema::declaration::encode::<
+        { harmos_domain::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
+}
+
+impl CadenceReport {
+    pub fn revision() -> u32 {
+        use harmos_domain::schema::Described;
+        static REVISION: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+        *REVISION.get_or_init(|| {
+            let schema =
+                harmos_domain::schema::graph::Schema::from_declaration(Self::DEFINITION, &harmos_domain::config::SchemaSettings::default())
+                    .expect("cadence report schema");
+            harmos_domain::schema::identity::revision(&schema).expect("cadence report revision")
+        })
+    }
+
+    pub fn frame(&self) -> Frame {
+        let params = postcard::to_allocvec(&(Self::revision(), self)).expect("cadence report encoding");
+        Frame::Push {
+            method: Frame::OBSERVER_CADENCE.to_owned(),
+            params: params.into(),
+        }
+    }
+
+    pub fn decode(params: &[u8]) -> std::io::Result<Self> {
+        let (revision, report): (u32, Self) = postcard::from_bytes(params).map_err(std::io::Error::other)?;
+        if revision != Self::revision() {
+            return Err(std::io::Error::other("unsupported cadence report shape"));
+        }
+        let invalid = report.interval.is_zero()
+            || report.skipped != report.started_at.is_none()
+            || (report.skipped && (!report.callback_duration.is_zero() || report.refused));
+        if invalid {
+            return Err(std::io::Error::other("invalid cadence report"));
+        }
+        Ok(report)
+    }
+}
 
 impl FramePayload {
     pub fn as_slice(&self) -> &[u8] {
@@ -142,6 +277,7 @@ impl std::fmt::Debug for FramePayload {
 
 impl Frame {
     pub const REGISTER: &'static str = "harmos.register";
+    pub const OBSERVER_CADENCE: &'static str = "harmos.observer.cadence";
     pub const EXITING: &'static str = "harmos.exiting";
     pub const LIMIT: usize = 16 * 1024 * 1024;
     pub const OVERSIZED: i64 = -32_603;

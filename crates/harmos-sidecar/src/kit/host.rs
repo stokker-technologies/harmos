@@ -282,6 +282,18 @@ impl Drop for PendingCall<'_> {
 }
 
 impl Supervisor {
+    pub(super) fn send_cadence(&self, report: &crate::CadenceReport) {
+        let frame = match self.outgoing.try_send(Outgoing::Frame(report.frame())) {
+            Ok(()) | Err(mpsc::error::TrySendError::Closed(_)) => return,
+            Err(mpsc::error::TrySendError::Full(frame)) => frame,
+        };
+        // Transport Capacity Must Not Delay the Observer's Next Tick.
+        let outgoing = self.outgoing.clone();
+        tokio::spawn(async move {
+            let _ = outgoing.send(frame).await;
+        });
+    }
+
     pub(crate) fn new(outgoing: mpsc::Sender<Outgoing>, clock: fn() -> Option<i64>) -> Self {
         Self {
             outgoing,

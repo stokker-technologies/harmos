@@ -69,6 +69,10 @@ impl Manager {
         self.registry.middleware.register(middleware)
     }
 
+    pub fn set_attempt_clock(&self, clock: crate::operations::middleware::AttemptClock) -> Result<()> {
+        self.registry.middleware.set_clock(clock)
+    }
+
     pub fn register_authorizer(&self, authorizer: Arc<dyn crate::operations::authorization::Authorizer>) -> Result<()> {
         self.registry.middleware.register_authorizer(authorizer)
     }

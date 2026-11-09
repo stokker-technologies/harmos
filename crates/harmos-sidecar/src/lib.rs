@@ -45,14 +45,14 @@ pub use harmos_sdk::{Context, Dependent, ExecutionContext, Lifecycle, Operation,
 
 #[cfg(feature = "kit")]
 pub use kit::{
-    Activation, ActivationId, Activity, CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT, CallError, DemandKey, Instance, Observer,
-    ObserverAttachment, ObserverContext, ObserverError, ObserverHost, ObserverPublisher, ObserverStreamPublisher, OperationInstance,
-    PluginNative, PublicationError, PublishError, Publisher, Supervisor, Tick, run_plugin, run_plugin_with_settings, serve_plugin_channels,
-    serve_plugin_channels_with_settings,
+    Activation, ActivationId, Activity, CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT, CadenceReporter, CallError, DemandKey, Instance,
+    Observer, ObserverAttachment, ObserverContext, ObserverError, ObserverHost, ObserverPublisher, ObserverStreamPublisher,
+    OperationInstance, PluginNative, PublicationError, PublishError, Publisher, Supervisor, Tick, run_plugin, run_plugin_with_settings,
+    serve_plugin_channels, serve_plugin_channels_with_settings,
 };
 
 #[cfg(feature = "transport")]
-pub use wire::{Frame, FramePayload, PluginCatalog, Publication};
+pub use wire::{CadenceReport, Frame, FramePayload, PluginCatalog, Publication};
 
 #[cfg(feature = "derive")]
 pub use harmos_domain::observer;
