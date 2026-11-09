@@ -15,5 +15,10 @@
   semanticCommits: "enabled",
   semanticCommitType: "build",
   // The mise manager bumps the pinned [tools] versions; mise.lock, Cargo.lock, uv.lock and pnpm-lock.yaml refresh with them.
+  vulnerabilityAlerts: { enabled: true, labels: ["security"] },
+  osvVulnerabilityAlerts: true,
+  packageRules: [
+    { matchManagers: ["cargo", "npm", "pip_requirements", "pep621", "github-actions"], enabled: true },
+  ],
   lockFileMaintenance: { enabled: true },
 }
