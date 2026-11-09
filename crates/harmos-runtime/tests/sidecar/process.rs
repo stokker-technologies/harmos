@@ -431,7 +431,7 @@ async fn deadline_settles_nested() {
 
     // The Original Handler Deadline Settles the Pending Nested Call
     let result = pending.await;
-    assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
+    assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))));
     fixture.marks.marked("echo-finalized-0").await;
     fixture.marks.marked("nested-finalized-48").await;
     for mark in ["echo-prepared-0", "echo-dropped-0", "echo-finalized-0", "nested-initialized", "nested-finalized-48", "started"] {

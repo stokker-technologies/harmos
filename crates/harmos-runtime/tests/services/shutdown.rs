@@ -544,8 +544,8 @@ async fn domains_outlives_clones() {
     });
     runtime.shutdown().await.unwrap();
     host.await.expect("the host participant does not panic");
-    assert!(matches!(running.await, Err(Error::OperationRefused(Refusal::Cancelled))));
-    assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert!(matches!(running.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
+    assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     let trace = events.lock().expect("event lock is healthy").clone();
     assert!(
         matches!(trace.as_slice(), ["job-start", "job-end", "service", "participant"] | ["job-start", "service", "job-end", "participant"]),

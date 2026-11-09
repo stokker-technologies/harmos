@@ -609,7 +609,7 @@ fn attempt_deadline_expires() {
     let mut sim = bank(7, |_| {});
     let deadline = sim.submit::<PendingDeclaration>(PendingDeclaration {}).unwrap();
     sim.advance_ms(5);
-    assert!(matches!(sim.settle(deadline), Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
+    assert!(matches!(sim.settle(deadline), Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))));
 }
 
 #[test]

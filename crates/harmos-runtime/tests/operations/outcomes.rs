@@ -196,7 +196,7 @@ async fn aliases_preserve_values() {
 async fn deadlines_remain_distinct() {
     let (runtime, _) = runtime().await;
     let elapsed = runtime.operation(ComputeContractDeclaration { mode: Mode::Wait }).start().await.unwrap().await;
-    assert!(matches!(elapsed, Err(Error::OperationRefused(Refusal::TimedOut))));
+    assert!(matches!(elapsed, Err(Error::OperationRefused(Refusal::TimedOut { .. }))));
 
     let error = runtime.operation(ParentContractDeclaration { mode: Mode::Reject }).start().await.unwrap().await.unwrap_err();
     let Error::OperationFailed { operation, source } = error else { panic!("expected parent failure") };
@@ -209,7 +209,7 @@ async fn deadlines_remain_distinct() {
 
     let error = runtime.operation(ParentContractDeclaration { mode: Mode::Wait }).start().await.unwrap().await.unwrap_err();
     let Error::OperationFailed { source, .. } = error else { panic!("expected parent failure") };
-    assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Child(Error::OperationRefused(Refusal::TimedOut)))));
+    assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Child(Error::OperationRefused(Refusal::TimedOut { .. })))));
     runtime.shutdown().await.unwrap();
 }
 

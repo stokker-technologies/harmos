@@ -375,7 +375,7 @@ async fn cancellation_settles_handlers() {
     let invocation = runtime.operations.submit::<Forward>(Forward { value: 0 }).await.unwrap();
     (provider.started.notified()).await;
     invocation.request_cancel();
-    assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     (provider.dropped.notified()).await;
     assert_eq!(runtime.operations.operation::<Forward>(Forward { value: 9 }).await.unwrap().value, 9);
 
@@ -383,7 +383,7 @@ async fn cancellation_settles_handlers() {
     provider.started.notified().await;
     let timed = timed.await;
     assert!(
-        matches!(timed, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))),
+        matches!(timed, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))),
         "expected timeout: {timed:?}"
     );
     (provider.dropped.notified()).await;
@@ -457,13 +457,13 @@ async fn cancelled_dependency_capacity() {
         busy.as_ref().err()
     );
     invocation.request_cancel();
-    assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     (provider.dropped.notified()).await;
     let bytes = runtime.operations.call_encoded(&format!("caller.{}", Forward::ID), Message::encode(&Forward { value: 9 })).await.unwrap();
     assert_eq!(Amplified::decode(bytes.as_slice()).unwrap().value, 9);
     let timed =
         runtime.operations.call_encoded(&format!("provider.{}", AmplifyDeclaration::ID), AmplifyDeclaration { value: 0 }.encode()).await;
-    assert!(matches!(timed, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
+    assert!(matches!(timed, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))));
     (provider.dropped.notified()).await;
     let bytes = runtime
         .operations
@@ -598,7 +598,7 @@ async fn capacity_precedes_encoding() {
                 if matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Capacity))));
         }
         invocation.request_cancel();
-        assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+        assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
         let bytes =
             target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(AmplifyDeclaration { value: 9 }.encode())).unwrap().await.unwrap();
         assert_eq!(Amplified::decode(&bytes).unwrap().value, 9);

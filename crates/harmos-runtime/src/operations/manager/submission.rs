@@ -229,7 +229,11 @@ impl Manager {
             && !entry.contract.as_ref().is_some_and(|contract| contract.input().is_some() || contract.output().is_some())
             && let Some(deadline) = self.call_context().get::<crate::operations::context::Deadline>()
         {
-            job.policy.timeout = job.policy.timeout.min(deadline.0.saturating_duration_since(submitted));
+            let remaining = deadline.0.saturating_duration_since(submitted);
+            if remaining < job.policy.timeout {
+                job.timeout_source = "per-call gRPC deadline override";
+            }
+            job.policy.timeout = job.policy.timeout.min(remaining);
         }
         if !middleware.is_empty() {
             job.middleware = Some(crate::operations::middleware::Session::new(
@@ -243,7 +247,13 @@ impl Manager {
             ));
         }
         let refusal = if executor::now().saturating_duration_since(submitted) >= job.policy.timeout {
-            Err(crate::Refusal::TimedOut.into())
+            Err(crate::Refusal::TimedOut {
+                operation: entry.id().to_owned(),
+                attempt: 1,
+                timeout: job.policy.timeout,
+                configured_by: job.timeout_source,
+            }
+            .into())
         } else {
             source
                 .check()

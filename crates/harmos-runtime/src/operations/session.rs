@@ -75,6 +75,7 @@ pub struct Completion<O: OperationDeclaration> {
 
 // Channel Progress Only; Execution And Cleanup Remain On Instance.
 struct Ends {
+    operation: &'static str,
     input: AtomicBool,
     output: AtomicBool,
 }
@@ -165,7 +166,7 @@ impl<T: MemorySize> SessionInput<T> {
         let sender = self.sender.as_ref().ok_or(Error::NotReady { domain: "operation input closed" })?;
         tokio::select! {
             biased;
-            error = ended(&self.control) => Err(error),
+            error = ended(&self.control, self.ends.operation) => Err(error),
             permit = sender.reserve(bytes) => {
                 let permit = permit?;
                 let value = make()?;
@@ -192,7 +193,11 @@ impl<T> SessionOutput<T> {
             let current = status.borrow_and_update().clone();
             if current.cancellation_requested() {
                 self.receiver.close();
-                return Err(Refusal::Cancelled.into());
+                return Err(Refusal::Cancelled {
+                    operation: self.ends.operation.into(),
+                    attempt: current.attempt() + 1,
+                }
+                .into());
             }
             if current.outcome().is_some() {
                 self.receiver.close();
@@ -347,6 +352,7 @@ fn upload<O: crate::operations::OperationDeclaration>(
     let (sender, input) = stream(settings)?;
     let instance = submit(request, input)?;
     let ends = Arc::new(Ends {
+        operation: O::ID,
         input: AtomicBool::new(false),
         output: AtomicBool::new(true),
     });
@@ -370,6 +376,7 @@ fn download<O: crate::operations::OperationDeclaration>(
     let (output, receiver) = stream(settings)?;
     let instance = submit(request, output)?;
     let ends = Arc::new(Ends {
+        operation: O::ID,
         input: AtomicBool::new(true),
         output: AtomicBool::new(false),
     });
@@ -397,6 +404,7 @@ fn exchange<O: crate::operations::OperationDeclaration>(
     let (output, receiver) = stream(output)?;
     let instance = submit(request, (input, output))?;
     let ends = Arc::new(Ends {
+        operation: O::ID,
         input: AtomicBool::new(false),
         output: AtomicBool::new(false),
     });
@@ -419,12 +427,16 @@ fn cancel_unsettled(control: &Instance) {
         control.request_cancel();
     }
 }
-async fn ended(control: &Instance) -> Error {
+async fn ended(control: &Instance, operation: &str) -> Error {
     let mut status = control.settlement();
     loop {
         let current = status.borrow_and_update().clone();
         if current.cancellation_requested() {
-            return Refusal::Cancelled.into();
+            return Refusal::Cancelled {
+                operation: operation.into(),
+                attempt: current.attempt() + 1,
+            }
+            .into();
         }
         if current.outcome().is_some() {
             return Error::NotReady { domain: "operation completed" };
