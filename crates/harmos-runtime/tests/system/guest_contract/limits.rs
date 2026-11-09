@@ -106,7 +106,7 @@ async fn manager_bounds_wait() {
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let waited = runtime.operations.operation::<WaitOperation>(WaitOperation {}).await.unwrap_err();
-    assert!(matches!(waited, harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut)), "{waited:?}");
+    assert!(matches!(waited, harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. })), "{waited:?}");
     retire_failed_guest(&mut manager, &mut lifecycle).await;
     drop((manager, lifecycle));
     runtime.shutdown().await.unwrap();

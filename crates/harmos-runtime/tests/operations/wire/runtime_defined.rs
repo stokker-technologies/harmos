@@ -201,7 +201,7 @@ async fn owned_binding_retries_and_cancels_under_native_policy() {
 
     // A Retry Override Cannot Extend The Operation's Attempt Deadline
     let invocation = runtime.operations.submit_encoded_with(route, Text::from("block").encode(), Some(retry)).unwrap();
-    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
+    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))));
     manager.shutdown(&mut host).await.unwrap();
     runtime.shutdown().await.unwrap();
 }

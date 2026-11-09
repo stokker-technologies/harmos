@@ -115,7 +115,7 @@ async fn ambiguous_timeout_replay() {
     })
     .await;
     runtime.operations.register::<super::Single<Slow>>(Lanes::Open).await.unwrap();
-    assert!(matches!(runtime.operation(Slow(request())).await, Err(Error::OperationRefused(Refusal::TimedOut))));
+    assert!(matches!(runtime.operation(Slow(request())).await, Err(Error::OperationRefused(Refusal::TimedOut { .. }))));
     assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
 }
@@ -197,7 +197,7 @@ async fn unregister_reserves_owner() {
     assert!(runtime.operations.definition(Compute::ID).is_err());
     assert!(matches!(runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await, Err(Error::AlreadyRegistered { .. })));
     gate.notify_one();
-    assert!(matches!(invocation.await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert!(matches!(invocation.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     // Settled work does not release an interrupted explicit unregister's reservation.
     assert!(matches!(runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await, Err(Error::AlreadyRegistered { .. })));
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Compute::ID).unwrap()).await.unwrap();

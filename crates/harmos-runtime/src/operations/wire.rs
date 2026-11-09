@@ -320,7 +320,7 @@ impl PluginCallback {
         self.entry.available()?;
         self.entry.authorize(&origin)?;
         let timeout = self.entry.declared().policy.timeout;
-        budget(timeout, submitted)?;
+        budget(self.entry.id(), 1, timeout, submitted)?;
         let preparation = self.operations.claim_preparation(encoding_memory_bytes)?;
         #[cfg(feature = "plugin-sidecar")]
         let native_capacity = self
@@ -344,7 +344,7 @@ impl PluginCallback {
         }
         source.check()?;
         self.entry.available()?;
-        budget(timeout, submitted)?;
+        budget(self.entry.id(), 1, timeout, submitted)?;
         let dispatch = self.entry.wire.ok_or(Error::InvalidInput {
             field: "callback codec",
             reason: "callback target has no original codec binding",
@@ -471,7 +471,7 @@ pub(super) fn dispatch_native(
 ) -> Result<EncodedInvocation> {
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
-    budget(timeout, submitted)?;
+    budget(submission.entry.id(), 1, timeout, submitted)?;
     let factory = submission.entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>();
     let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
@@ -535,19 +535,21 @@ pub(super) fn dispatch_prepared(
     request.binding = Some(Arc::new(binding));
     request.grant = grant;
     request.key = key;
+    let operation = submission.entry.id().to_owned();
     let target = Arc::downgrade(&submission.entry);
-    budget(timeout, submitted)?;
+    budget(&operation, 1, timeout, submitted)?;
     let (scope, ancestors) = parent.map_or((None, &[][..]), |parent| (Some(parent.scope), parent.ancestors));
     let invocation = operations.admit_entry::<Encoded, ()>((request, ()), scope, ancestors, &source, submission)?;
     let id = invocation.id();
     let generation = invocation.generation();
     let control = Arc::clone(&invocation.control);
     let invocation = invocation.unguarded();
+    let outcome_control = Arc::clone(&control);
     let outcome = Box::pin(async move {
         let response = invocation.await?;
         available(&target, &source)?;
         if !streaming {
-            budget(timeout, submitted)?;
+            budget(&operation, outcome_control.status().attempt() + 1, timeout, submitted)?;
         }
         Ok(response.try_unwrap().unwrap_or_else(|response| response.to_vec()))
     });
@@ -566,9 +568,15 @@ pub(super) fn available(target: &Weak<Entry>, source: &Source) -> Result<()> {
     target.upgrade().ok_or(Error::Closing { domain: "operation" })?.available_to(&origin)
 }
 
-pub(super) fn budget(timeout: Duration, submitted: tokio::time::Instant) -> Result<()> {
+pub(super) fn budget(operation: &str, attempt: usize, timeout: Duration, submitted: tokio::time::Instant) -> Result<()> {
     if executor::now().saturating_duration_since(submitted) >= timeout {
-        return Err(Refusal::TimedOut.into());
+        return Err(Refusal::TimedOut {
+            operation: operation.into(),
+            attempt,
+            timeout,
+            configured_by: "operation policy.timeout",
+        }
+        .into());
     }
     Ok(())
 }

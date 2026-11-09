@@ -690,9 +690,8 @@ impl Supervisor {
 
 fn refused_line(code: i64, failure: &harmos_domain::Failure) -> String {
     match failure.context().operation() {
-        Some(operation) if matches!(code, -32_606 | -32_607) => {
-            format!("operation `{operation}` refused ({code}): {}", failure.cause())
-        }
+        Some(_) if code == -32_607 => format!("host call refused ({code}): {}", failure.cause()),
+        Some(operation) if code == -32_606 => format!("operation `{operation}` refused ({code}): {}", failure.cause()),
         Some(operation) => format!("operation `{operation}` failed"),
         None => format!("host call refused ({code}): {}", failure.cause()),
     }
@@ -717,11 +716,17 @@ mod tests {
 
     #[test]
     fn deadline_cause_survives() {
-        let failure =
-            harmos_domain::Failure::new(harmos_domain::operations::FailureKind::Permanent, "deadline elapsed").in_operation("device.read");
+        let failure = harmos_domain::Failure::new(
+            harmos_domain::operations::FailureKind::Permanent,
+            "operation device.read attempt 1 exceeded its 10 s deadline (configured by operation policy.attempt_timeout)",
+        )
+        .in_operation("device.read");
         let error = CallError::Refused { code: -32_607, failure };
         let displayed = error.to_string();
-        assert!(displayed.contains("device.read") && displayed.contains("deadline elapsed") && displayed.contains("-32607"));
+        assert_eq!(
+            displayed,
+            "host call refused (-32607): operation device.read attempt 1 exceeded its 10 s deadline (configured by operation policy.attempt_timeout)"
+        );
     }
 
     struct Samples;

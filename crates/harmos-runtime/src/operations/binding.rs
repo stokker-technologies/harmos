@@ -111,6 +111,8 @@ pub(super) fn prepared<O>(entry: &Entry, id: OperationInstanceId, body: Box<dyn 
     Prepared {
         body,
         policy: entry.declared().policy,
+        operation: entry.id().to_owned(),
+        timeout_source: "operation policy.timeout",
         replay: entry.declared().replay,
         id,
         completed: None,

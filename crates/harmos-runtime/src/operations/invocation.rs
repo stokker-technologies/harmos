@@ -467,7 +467,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn retry_override_keeps_declared_attempt_deadline() {
         let evidence = Evidence::default();
         let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
@@ -483,12 +483,40 @@ mod tests {
                 jitter: crate::Jitter::None,
             },
         };
-        assert!(runtime.operation(Deadline {}).retry(retry).await.is_err());
+        let error = runtime.operation(Deadline {}).retry(retry).await.unwrap_err();
+        assert!(
+            matches!(error, crate::Error::OperationRefused(crate::Refusal::TimedOut { ref operation, attempt: 2, timeout, configured_by: "operation policy.attempt_timeout" }) if operation == "test.deadline" && timeout == std::time::Duration::from_millis(10))
+        );
+        let displayed = error.to_string();
+        assert!(displayed.contains("test.deadline") && displayed.contains("0.01 s deadline") && displayed.contains("attempt 2"));
         let observed = evidence.lock().unwrap().iter().map(|entry| (entry.1, entry.2)).collect::<Vec<_>>();
         assert_eq!(observed, [(0, crate::operations::OperationOutcome::TimedOut), (1, crate::operations::OperationOutcome::TimedOut)]);
         assert!(runtime.operation(Deadline {}).await.is_err());
         assert_eq!(evidence.lock().unwrap().len(), 3);
         runtime.shutdown().await.unwrap();
+    }
+
+    #[cfg(feature = "grpc")]
+    mod deadline_overrides {
+        use super::*;
+
+        #[tokio::test(start_paused = true)]
+        async fn inherited_deadline_reports_applied_override() {
+            let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
+            runtime
+                .register_batch(harmos_sdk::__private::RegistrationBatch::new().operation::<Deadline>().lane(Lanes::Open))
+                .await
+                .unwrap();
+            let timeout = std::time::Duration::from_millis(5);
+            let mut context = crate::operations::CallContext::default();
+            context.insert(crate::operations::context::Deadline(crate::supervision::executor::now() + timeout)).unwrap();
+            let operations = runtime.operations.with_context(context);
+            let error = operations.operation::<Deadline>(Deadline {}).await.unwrap_err();
+            assert!(matches!(error, crate::Error::OperationRefused(crate::Refusal::TimedOut {
+                ref operation, attempt: 1, timeout: applied, configured_by: "per-call gRPC deadline override",
+            }) if operation == "test.deadline" && applied == timeout));
+            runtime.shutdown().await.unwrap();
+        }
     }
 
     struct CancellationProbe {
@@ -533,7 +561,9 @@ mod tests {
         runtime.register_batch(batch.lane(Lanes::Open)).await.unwrap();
         let running = runtime.operation(WaitParent {}).start().await.unwrap();
         probe.started.notified().await;
-        assert!(matches!(running.cancel().await, Err(crate::Error::OperationRefused(crate::Refusal::Cancelled))));
+        assert!(
+            matches!(running.cancel().await, Err(crate::Error::OperationRefused(crate::Refusal::Cancelled { operation, attempt: 1 })) if operation == "test.wait_parent")
+        );
         assert!(probe.cancelled.load(std::sync::atomic::Ordering::SeqCst));
         runtime.shutdown().await.unwrap();
     }

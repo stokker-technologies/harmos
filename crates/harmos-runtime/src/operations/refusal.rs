@@ -14,6 +14,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::time::Duration;
 
 // Third Party Imports
 
@@ -29,13 +30,13 @@
 
 /* === Enums === */
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum Refusal {
-    #[error("the operation deadline elapsed")]
-    TimedOut,
+    #[error("operation {operation} attempt {attempt} exceeded its {} s deadline (configured by {configured_by})", .timeout.as_secs_f64())]
+    TimedOut { operation: String, attempt: usize, timeout: Duration, configured_by: &'static str },
 
-    #[error("the operation was cancelled")]
-    Cancelled,
+    #[error("operation {operation} attempt {attempt} was cancelled")]
+    Cancelled { operation: String, attempt: usize },
 
     #[error("the operation runtime became unavailable")]
     Unavailable,

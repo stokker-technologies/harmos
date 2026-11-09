@@ -490,7 +490,7 @@ async fn cancellation_joins_child() {
     let parent = runtime.operation(NestedDeclaration::from("block")).start().await.unwrap();
     started.await;
     parent.request_cancel();
-    assert!(matches!(parent.await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert!(matches!(parent.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
 }

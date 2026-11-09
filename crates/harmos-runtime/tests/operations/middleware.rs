@@ -341,7 +341,7 @@ async fn cancellation_interrupts_policy() {
         runtime.operations.with_context(context("alice")).submit::<DeclareParentDeclaration>(DeclareParentDeclaration {}).unwrap();
     (entered.acquire()).await.unwrap().forget();
     invocation.request_cancel();
-    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     {
         let observations = observed.lock().unwrap();
         assert_eq!(observations.len(), 1);
