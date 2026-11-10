@@ -62,9 +62,29 @@ pub struct HostFixture {
     pub runtime: Runtime<support::App>,
     pub clock: support::Manual,
     pub signals: Arc<Signals>,
+    stored_changed: Arc<Notify>,
+    pub stored: Arc<std::sync::Mutex<Vec<(harmos_runtime::streams::Definition, harmos_runtime::streams::PublicationRow)>>>,
     types: tempfile::TempDir,
     request: String,
     response: String,
+}
+
+struct Store(
+    Arc<std::sync::Mutex<Vec<(harmos_runtime::streams::Definition, harmos_runtime::streams::PublicationRow)>>>,
+    Arc<Notify>,
+    harmos_runtime::storage::Cursor,
+);
+
+impl harmos_runtime::storage::StreamConsumer<support::App> for Store {
+    fn resume(&self) -> harmos_runtime::storage::Cursor {
+        self.2
+    }
+    async fn drain(&mut self, batch: harmos_runtime::storage::Batch<support::App>) -> harmos_runtime::storage::Cursor {
+        self.0.lock().unwrap().extend(batch.publications().map(|(definition, _, row)| (definition.clone(), row.value.clone())));
+        self.2 = batch.reaches();
+        self.1.notify_waiters();
+        self.2
+    }
 }
 
 pub struct Sdk {
@@ -119,9 +139,12 @@ impl HostFixture {
     pub async fn with_clock(source: Option<harmos_runtime::clock::Clock>) -> Self {
         let clock = support::Manual::new();
         let signals = Arc::new(Signals::default());
+        let stored_changed = Arc::new(Notify::new());
+        let stored = Arc::new(std::sync::Mutex::new(Vec::new()));
         let runtime = crate::support::booted(Default::default(), |setup| {
             setup.settings().clock(source.unwrap_or_else(|| harmos_runtime::clock::Clock::with_clock(clock.clone())));
             setup.resource::<Signals>(signals.clone());
+            setup.settings().attach_streams(Store(stored.clone(), stored_changed.clone(), harmos_runtime::storage::Cursor::ORIGIN));
         })
         .await;
         let registration = Registration::new(<crate::support::Lanes as harmos_runtime::operations::Lane>::default_lane())
@@ -143,10 +166,38 @@ impl HostFixture {
             runtime,
             clock,
             signals,
+            stored,
+            stored_changed,
             types,
             request,
             response,
         }
+    }
+
+    pub async fn wait_rows(&self, count: usize) {
+        loop {
+            let changed = self.stored_changed.notified();
+            if self.stored.lock().unwrap().len() >= count {
+                return;
+            }
+            changed.await;
+        }
+    }
+
+    pub fn rows(&self) -> Vec<harmos_runtime::streams::PublicationRow> {
+        self.stored.lock().unwrap().iter().map(|(_, row)| row.clone()).collect()
+    }
+
+    pub fn values(&self) -> Vec<serde_json::Value> {
+        self.stored
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(definition, row)| {
+                let codec = harmos_domain::schema::json::JsonCodec::new(definition.schema().root().unwrap(), &Default::default()).unwrap();
+                codec.decode(&row.payload).unwrap()
+            })
+            .collect()
     }
 
     pub async fn sdk(&self, mode: &str) -> Sdk {

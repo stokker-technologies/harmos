@@ -7,7 +7,7 @@
  * ***
  */
 
-// TODO: Describe this module's responsibility.
+// Plugin Waits Share Virtual Host Time
 
 /* === Modules === */
 

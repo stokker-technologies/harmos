@@ -114,6 +114,19 @@ or credentials. The host is always the client.
     checks the reply; managed mode also checks successful process exit. Remote
     mode calls Describe again after Stop. No active demand remains at this stage.
 
+## Host Stream Settings and Evidence
+
+For runtime attachments, `interval_setting` names a fully qualified section field
+(`fixture.Settings.interval`) in `Catalog.sections`. The field MUST contain a
+positive `google.protobuf.Duration`; an unresolved or invalid setting MUST refuse
+admission. It overrides `interval` when both are present.
+
+The runtime stores interval evidence at the tick's host time and device evidence at
+host arrival time. A device's supplied timestamp is retained separately as
+`context.source_time`, with `seconds` and `nanos` fields. Stored rows use the host's
+canonical storage encoding and the schema projected from the admitted protobuf row;
+this conversion does not change the protobuf-only transport contract.
+
 ## Schema Fingerprints
 
 The following general rule extends the fixture hash rule without changing any

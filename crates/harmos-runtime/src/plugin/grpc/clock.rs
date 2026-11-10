@@ -7,7 +7,7 @@
  * ***
  */
 
-// TODO: Describe this module's responsibility.
+// Host Clock Operations and Their Protocol Contracts
 
 /* === Modules === */
 
@@ -15,18 +15,15 @@
 
 /* === Imports === */
 
+// Standard Library Imports
 use std::time::Duration;
 
-// Standard Library Imports
-
+// Third Party Imports
 use prost::Message;
 use prost_types::{DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet};
 
-// Third Party Imports
-
-use super::{invoke::CallError, v1};
-
 // Local Imports
+use super::{invoke::CallError, v1};
 
 /* === Constants === */
 

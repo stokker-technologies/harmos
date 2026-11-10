@@ -27,6 +27,8 @@ use harmos_sdk_grpc::{Context, Message, Operation, OperationRequest, Plugin, Res
 
 /* === Constants === */
 
+static DEVICE_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 static HOST: OnceLock<(prost_types::FileDescriptorSet, String, String, u32, u32)> = OnceLock::new();
 
 /* === Macros === */
@@ -94,6 +96,14 @@ struct PrivateInput {
 struct MissingInput {
     #[prost(bytes = "vec", tag = "1")]
     value: Vec<u8>,
+}
+
+struct DeviceDemand;
+
+impl Drop for DeviceDemand {
+    fn drop(&mut self) {
+        DEVICE_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 /* === Enums === */
@@ -174,7 +184,19 @@ fn main() -> Result<()> {
     let request_tag = pool.get_message_by_name(&request).unwrap().get_field_by_name("value").unwrap().number();
     let response_tag = pool.get_message_by_name(&response).unwrap().get_field_by_name("value").unwrap().number();
     HOST.set((types, request, response, request_tag, response_tag)).unwrap();
-    let plugin = if mode == "provider" {
+    let plugin = if mode == "interval" {
+        let stream = harmos_sdk_grpc::Stream::<Value>::new("fixture.ticks");
+        let observer = harmos_sdk_grpc::Observer::new(&stream, observe).every_ms(1000);
+        Plugin::new("observer", "1.0.0").stream(stream).observer(observer).operation(Operation::new("fixture.echo", echo))
+    } else if mode == "device" {
+        let stream = harmos_sdk_grpc::Stream::<Value>::new("fixture.device").publish_on(device);
+        Plugin::new("device", "1.0.0").stream(stream).operation(Operation::new("fixture.echo", echo)).on_stop(|| {
+            if DEVICE_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(harmos_sdk_grpc::Error::Invalid("Device Demand Still Active".into()));
+            }
+            Ok(())
+        })
+    } else if mode == "provider" {
         Plugin::new("provider", "1.0.0")
             .operation(Operation::new("fixture.public", echo).visibility(Visibility::Public))
             .operation(Operation::new("fixture.private", echo))
@@ -199,6 +221,21 @@ fn main() -> Result<()> {
             }))
     };
     plugin.remote().serve()
+}
+
+async fn observe(context: &Context) -> Result<Value> {
+    Ok(Value {
+        value: context.sequence().to_le_bytes().to_vec(),
+    })
+}
+
+async fn device(context: &Context, publisher: harmos_sdk_grpc::Publisher<Value>) -> Result<()> {
+    DEVICE_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+    let _demand = DeviceDemand;
+    publisher.publish(Value { value: b"device".to_vec() }).await?;
+    publisher.publish_at(Value { value: b"source".to_vec() }, Some(prost_types::Timestamp { seconds: 7, nanos: 0 })).await?;
+    context.cancelled().await;
+    Ok(())
 }
 
 async fn clock(context: &Context, _: Value) -> Result<Value> {

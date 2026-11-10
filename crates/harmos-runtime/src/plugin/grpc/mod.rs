@@ -17,6 +17,8 @@ mod config;
 mod connection;
 pub(crate) mod invoke;
 mod managed;
+mod publish;
+mod rows;
 
 /* === Re-Exports === */
 
@@ -113,6 +115,7 @@ impl<A: Application> Runtime<A> {
         }
         Attached::start(
             self.operations.execution(),
+            self.streams.clone(),
             <A::Lanes as crate::operations::Lane>::default_lane().name(),
             placement,
             settings,
@@ -143,14 +146,15 @@ impl Activation {
 }
 
 impl Attached {
-    async fn start(
-        operations: crate::operations::Manager, lane: &'static str, placement: Placement, settings: PlacementSettings,
-        participant: crate::runtime::StopParticipant,
+    async fn start<A: Application>(
+        operations: crate::operations::Manager, streams: crate::streams::StreamManager<A>, lane: &'static str, placement: Placement,
+        settings: PlacementSettings, participant: crate::runtime::StopParticipant,
     ) -> Result<Self, Error> {
         let clock = operations.clock().clone();
         if settings.connect_timeout.is_zero() || settings.reconnect_delay.is_zero() || settings.stop_grace.is_zero() {
             return Err(Error::Invalid("Placement Durations Must Be Positive".into()));
         }
+        let _activity = clock.activity("plugin startup");
         let setup = async {
             let (process, address) = match &placement {
                 Placement::Managed(managed) => {
@@ -165,9 +169,10 @@ impl Attached {
                 error
             })?;
             activation.admission = Some(Arc::new(admission));
-            Ok::<_, Error>((process, address, activation))
+            let publications = publish::Publications::open(&streams, &activation, &clock, &settings).await?;
+            Ok::<_, Error>((process, address, activation, publications))
         };
-        let (process, address, activation) =
+        let (process, address, activation, publications) =
             clock.timeout(settings.connect_timeout, setup).await.map_err(|_| Error::Timeout("startup"))??;
         let (status, receiver) = watch::channel(Status {
             activation: Some(activation.clone()),
@@ -176,7 +181,21 @@ impl Attached {
         let (stop, stopping) = watch::channel(None);
         let (stopped, completed) = watch::channel(None);
         tokio::spawn(async move {
-            let result = supervise(operations, lane, clock, settings, process, address, activation, &status, stopping, participant).await;
+            let result = supervise(
+                operations,
+                streams,
+                lane,
+                clock,
+                settings,
+                process,
+                address,
+                activation,
+                publications,
+                &status,
+                stopping,
+                participant,
+            )
+            .await;
             status.send_modify(|status| {
                 status.activation = None;
                 if let Err(error) = &result {
@@ -286,9 +305,10 @@ async fn stopping(stop: &mut watch::Receiver<Option<String>>, participant: &mut 
     }
 }
 
-async fn supervise(
-    operations: crate::operations::Manager, lane: &'static str, clock: Clock, settings: PlacementSettings, mut process: Option<Process>,
-    address: String, mut activation: Activation, status: &watch::Sender<Status>, mut stop: watch::Receiver<Option<String>>,
+async fn supervise<A: Application>(
+    operations: crate::operations::Manager, streams: crate::streams::StreamManager<A>, lane: &'static str, clock: Clock,
+    settings: PlacementSettings, mut process: Option<Process>, address: String, mut activation: Activation,
+    mut publications: publish::Publications, status: &watch::Sender<Status>, mut stop: watch::Receiver<Option<String>>,
     mut participant: crate::runtime::StopParticipant,
 ) -> Outcome {
     loop {
@@ -309,13 +329,16 @@ async fn supervise(
             () = disconnected(activation.connection.closed.subscribe()) => None,
         };
         if let Some(reason) = reason {
+            let _activity = clock.activity("plugin stop");
             let deadline = clock.now() + settings.stop_grace;
+            let streams_closed = clock.timeout_at(deadline, publications.close()).await;
             let mut client = PluginClient::new(activation.connection.channel.clone());
             let result = clock
                 .timeout_at(deadline, client.stop(v1::StopRequest { reason }))
                 .await
                 .map_err(|_| Error::Timeout("Stop"))
                 .and_then(|result| result.map(|_| ()).map_err(|error| Error::Transport(error.to_string())));
+            let result = streams_closed.map_err(|_| Error::Timeout("Publish closure")).and(result);
             if let Err(error) = &result {
                 tracing::warn!(plugin = %activation.description.id, %error, "plugin Stop failed; closing its connection");
             }
@@ -335,6 +358,7 @@ async fn supervise(
             }
             return result.map_err(Arc::new);
         }
+        publications.close().await;
         activation.admission.as_ref().unwrap().remove();
         status.send_replace(Status {
             activation: None,
@@ -351,6 +375,7 @@ async fn supervise(
                 _ = stopping(&mut stop, &mut participant) => return Ok(()),
                 () = clock.sleep(settings.reconnect_delay) => {},
             }
+            let _activity = clock.activity("plugin reconnect");
             let reconnect = clock.timeout(settings.connect_timeout, connect(&address, number, previous, None));
             let result = tokio::select! {
                 biased;
@@ -370,6 +395,15 @@ async fn supervise(
                         Ok(admission) => next.admission = Some(Arc::new(admission)),
                         Err(error) => {
                             next.connection.closed.send_replace(true);
+                            status.send_modify(|status| status.failure = Some(Arc::new(error)));
+                            continue;
+                        }
+                    }
+                    match publish::Publications::open(&streams, &next, &clock, &settings).await {
+                        Ok(opened) => publications = opened,
+                        Err(error) => {
+                            next.connection.closed.send_replace(true);
+                            next.admission.as_ref().unwrap().remove();
                             status.send_modify(|status| status.failure = Some(Arc::new(error)));
                             continue;
                         }

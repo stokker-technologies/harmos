@@ -433,7 +433,7 @@ impl PluginStream {
 pub(super) fn publication_definitions(
     owner: &str, declarations: impl IntoIterator<Item = StreamDeclaration>,
 ) -> Result<Vec<Definition>, StreamAdmissionError> {
-    if !harmos_domain::identity::segment(owner) {
+    if !owner.split('.').all(harmos_domain::identity::segment) {
         return Err(StreamAdmissionError::Owner(owner.into()));
     }
     let mut ids = BTreeSet::new();

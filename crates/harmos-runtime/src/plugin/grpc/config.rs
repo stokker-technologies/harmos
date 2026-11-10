@@ -36,6 +36,8 @@ pub struct PlacementSettings {
     pub connect_timeout: Duration,
     pub reconnect_delay: Duration,
     pub stop_grace: Duration,
+    /// Maximum Retained Rows per Stream; The Consumer Owns This Budget.
+    pub stream_window: std::num::NonZeroUsize,
 }
 
 /* === Enums === */

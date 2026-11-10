@@ -322,6 +322,7 @@ pub fn settings() -> PlacementSettings {
         connect_timeout: Duration::from_secs(30),
         reconnect_delay: Duration::from_secs(1),
         stop_grace: Duration::from_secs(30),
+        stream_window: std::num::NonZeroUsize::new(64).unwrap(),
     }
 }
 

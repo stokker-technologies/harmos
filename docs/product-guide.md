@@ -1024,8 +1024,8 @@ loopback readiness address and drains standard output. A supplied or inherited
 `HARMOS_ADDRESS` overrides that dial address. `Placement::Remote(url)` owns only
 the connection and reconnects independently after transport loss.
 
-Pass `PlacementSettings { connect_timeout, reconnect_delay, stop_grace }` with
-positive durations. Startup, reconnect and shutdown budgets use the host's clock.
+Pass `PlacementSettings { connect_timeout, reconnect_delay, stop_grace, stream_window }`
+with positive durations and a nonzero retained-row budget per stream. Startup, reconnect and shutdown budgets use the host's clock.
 `Attached::status()` watches connection state and failures; `activation()` captures
 the current connection. An activation exposes its `description`, monotonic `number`,
 `previous_started_at` and optional `executable_digest`. Compare the current and
@@ -1038,7 +1038,28 @@ message names, and verifies operation fingerprints using the shared
 reference fixture and host use `harmos-protocol` for this computation. Inconsistent
 hashes or unresolved message names refuse admission before an activation becomes visible.
 
-`Attached::stop(reason).await` calls Stop, closes the connection and, for a managed
+The host opens one Publish call for each catalog stream at admission. Interval streams
+answer host-clock ticks; device streams publish without ticks. Each sample enters
+the existing stream storage consumer path in arrival order. Incoming protobuf rows
+are validated against their catalog type and converted to the host's canonical
+stored row encoding with its derived schema. Interval rows carry their tick time;
+device rows carry host arrival time in `published_unix_micros` and retain an optional
+device timestamp as `context.source_time` (seconds and nanos). Disconnect and stop
+close demand; reconnect opens fresh calls with sequence one. Lost samples are not replayed.
+
+An `interval_setting` names a fully qualified protobuf section field, such as
+`fixture.Settings.interval`, whose value is a positive `google.protobuf.Duration`.
+The host resolves it from `Catalog.sections`; it takes precedence over the declared
+interval. An absent or invalid setting refuses admission.
+
+Plugins declare requirements for the Public `harmos.clock.sleep` and
+`harmos.clock.now` operations. Both use the host clock through ordinary child calls.
+Tests can configure `clock::Clock::virtual_at(epoch)` and drive its controller with
+`advance_until(bound, condition)`. An invocation or unanswered tick keeps virtual time
+still while work is in flight; only clock waits park that activity. Device streams
+remain active until demand closes. Transport uses its normal scheduler.
+
+`Attached::stop(reason).await` closes stream demand, calls Stop, closes the connection and, for a managed
 plugin, waits for successful process exit within the same grace budget. Host
 shutdown and dropping the attachment also request this cleanup. Remote endpoints
 remain serving. Cleanup errors remain available in attachment status and its stop
