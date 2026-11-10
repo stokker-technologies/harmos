@@ -334,6 +334,7 @@ fn spawn<A: Application, C: Create<A>>(create: Arc<C>, start: Start) -> (Task<Ou
         logical: Mutex::new(None),
     });
     let retained = Arc::clone(&cleanup);
+    let _clock = crate::clock::enter(operations.clock().clone());
     let task = Task::with_cancellation(stopping, move |stopping| async move {
         let owned = Arc::clone(&retained);
         let attempt = report.clone();

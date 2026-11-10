@@ -46,7 +46,7 @@ impl Manager {
     }
 
     pub fn submit_from<O: OperationDeclaration>(&self, owner: &str, request: O::Request) -> Result<Running<O>> {
-        let submitted = executor::now();
+        let submitted = self.clock().now();
         let entry = self.capture_provider(O::ID, Some(owner))?;
         self.admit_entry::<O, ()>(
             (request.into(), ()),

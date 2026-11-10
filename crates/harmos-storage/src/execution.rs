@@ -16,8 +16,9 @@
 // Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::{Arc, RwLock};
 use std::task::{Context as TaskContext, Poll};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 // Third Party Imports
 use tokio::time::Instant;
@@ -34,13 +35,29 @@ pub type Sleep = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /* === Structs === */
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("clock deadline elapsed")]
 pub struct Elapsed;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Execution {
-    now: fn() -> Instant,
-    sleep: fn(Duration) -> Sleep,
+    source: Arc<RwLock<Arc<dyn Clock>>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Reading {
+    pub instant: Instant,
+    pub date: SystemTime,
+}
+
+struct RealClock {
+    origin: Reading,
+}
+
+struct CallbackClock {
+    origin: Reading,
+    now: Arc<dyn Fn() -> Instant + Send + Sync>,
+    sleep: Arc<dyn Fn(Duration) -> Sleep + Send + Sync>,
 }
 
 #[derive(Clone)]
@@ -58,21 +75,113 @@ struct Scoped<F> {
 
 /* === Traits === */
 
+/// A host time source. Sleeps register on this source, including absolute deadlines.
+pub trait Clock: Send + Sync + 'static {
+    fn read(&self) -> Reading;
+    fn sleep_until(&self, deadline: Instant) -> Sleep;
+}
+
 /* === Implementations === */
 
 impl Execution {
-    pub const fn new(now: fn() -> Instant, sleep: fn(Duration) -> Sleep) -> Self {
-        Self { now, sleep }
+    pub fn new(now: impl Fn() -> Instant + Send + Sync + 'static, sleep: impl Fn(Duration) -> Sleep + Send + Sync + 'static) -> Self {
+        Self::at(SystemTime::now(), now, sleep)
     }
-    pub fn now(self) -> Instant {
-        (self.now)()
+
+    pub fn real_at(date: SystemTime) -> Self {
+        Self::with_clock(RealClock {
+            origin: Reading { instant: Instant::now(), date },
+        })
     }
-    pub fn sleep(self, duration: Duration) -> Sleep {
-        (self.sleep)(duration)
+
+    pub fn at(
+        date: SystemTime, now: impl Fn() -> Instant + Send + Sync + 'static, sleep: impl Fn(Duration) -> Sleep + Send + Sync + 'static,
+    ) -> Self {
+        let origin = Reading { instant: now(), date };
+        Self::with_clock(CallbackClock {
+            origin,
+            now: Arc::new(now),
+            sleep: Arc::new(sleep),
+        })
     }
+
+    pub fn with_clock(clock: impl Clock) -> Self {
+        Self {
+            source: Arc::new(RwLock::new(Arc::new(clock))),
+        }
+    }
+
+    pub fn same_source(&self, other: &Self) -> bool {
+        if Arc::ptr_eq(&self.source, &other.source) {
+            return true;
+        }
+        let source = self.source.read().expect("clock source is healthy").clone();
+        let other = other.source.read().expect("clock source is healthy").clone();
+        Arc::ptr_eq(&source, &other)
+    }
+
+    pub(crate) fn adopt(&self, other: &Self) {
+        let source = other.source.read().expect("clock source is healthy").clone();
+        *self.source.write().expect("clock source is healthy") = source;
+    }
+
+    pub fn read(&self) -> Reading {
+        let source = self.source.read().expect("clock source is healthy").clone();
+        source.read()
+    }
+
+    pub fn now(&self) -> Instant {
+        self.read().instant
+    }
+
+    pub fn date(&self) -> SystemTime {
+        self.read().date
+    }
+
+    pub fn sleep(&self, duration: Duration) -> Sleep {
+        self.sleep_until(self.now() + duration)
+    }
+
+    pub fn sleep_until(&self, deadline: Instant) -> Sleep {
+        let source = self.source.read().expect("clock source is healthy").clone();
+        source.sleep_until(deadline)
+    }
+
     #[tracing::instrument(name = "storage.execution.timeout", level = "debug", skip_all)]
-    pub async fn timeout<F: Future>(self, duration: Duration, future: F) -> Result<F::Output, Elapsed> {
-        tokio::select! { biased; result = future => Ok(result), () = self.sleep(duration) => Err(Elapsed) }
+    pub async fn timeout<F: Future>(&self, duration: Duration, future: F) -> Result<F::Output, Elapsed> {
+        Box::pin(self.timeout_at(self.now() + duration, future)).await
+    }
+
+    pub async fn timeout_at<F: Future>(&self, deadline: Instant, future: F) -> Result<F::Output, Elapsed> {
+        let sleep = self.sleep_until(deadline);
+        Box::pin(async move {
+            tokio::select! { biased; result = future => Ok(result), () = sleep => Err(Elapsed) }
+        })
+        .await
+    }
+}
+
+impl Clock for RealClock {
+    fn read(&self) -> Reading {
+        let instant = Instant::now();
+        let date = self.origin.date + instant.saturating_duration_since(self.origin.instant);
+        Reading { instant, date }
+    }
+
+    fn sleep_until(&self, deadline: Instant) -> Sleep {
+        Box::pin(tokio::time::sleep_until(deadline))
+    }
+}
+
+impl Clock for CallbackClock {
+    fn read(&self) -> Reading {
+        let instant = (self.now)();
+        let date = self.origin.date + instant.saturating_duration_since(self.origin.instant);
+        Reading { instant, date }
+    }
+
+    fn sleep_until(&self, deadline: Instant) -> Sleep {
+        (self.sleep)(deadline.saturating_duration_since((self.now)()))
     }
 }
 
@@ -153,7 +262,7 @@ impl<F> Drop for Scoped<F> {
 
 impl Default for Execution {
     fn default() -> Self {
-        Self::new(Instant::now, |duration| Box::pin(tokio::time::sleep(duration)))
+        Self::real_at(SystemTime::now())
     }
 }
 
@@ -162,3 +271,105 @@ impl Default for Execution {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn clock(epoch: SystemTime) -> Execution {
+        Execution::real_at(epoch)
+    }
+
+    struct RegisteredClock {
+        reading: Reading,
+        timers: std::sync::Mutex<Vec<(Instant, tokio::sync::oneshot::Sender<()>)>>,
+    }
+
+    impl Clock for Arc<RegisteredClock> {
+        fn read(&self) -> Reading {
+            self.reading
+        }
+        fn sleep_until(&self, deadline: Instant) -> Sleep {
+            let (wake, waiting) = tokio::sync::oneshot::channel();
+            self.timers.lock().unwrap().push((deadline, wake));
+            Box::pin(async {
+                waiting.await.unwrap();
+            })
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn injected_source_owns_timeout_wakeups_and_cancelled_waiters() {
+        let source = Arc::new(RegisteredClock {
+            reading: Reading {
+                instant: Instant::now(),
+                date: SystemTime::UNIX_EPOCH,
+            },
+            timers: std::sync::Mutex::new(Vec::new()),
+        });
+        let clock = Execution::with_clock(source.clone());
+        let deadline = clock.now() + Duration::from_secs(60);
+        let timeout = clock.timeout_at(deadline, std::future::pending::<()>());
+        tokio::pin!(timeout);
+        assert!(std::future::poll_fn(|cx| Poll::Ready(timeout.as_mut().poll(cx).is_pending())).await);
+        let (registered, wake) = source.timers.lock().unwrap().pop().unwrap();
+        assert_eq!(registered, deadline);
+        wake.send(()).unwrap();
+        assert_eq!(timeout.await, Err(Elapsed));
+
+        let sleep = clock.sleep_until(deadline);
+        drop(sleep);
+        let (_, cancelled) = source.timers.lock().unwrap().pop().unwrap();
+        assert!(cancelled.is_closed());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn date_and_monotonic_readings_share_elapsed_time() {
+        let epoch = SystemTime::UNIX_EPOCH + Duration::from_secs(123);
+        let clock = clock(epoch);
+        let first = clock.read();
+        tokio::time::advance(Duration::from_secs(3600)).await;
+        let second = clock.read();
+        assert_eq!(second.instant - first.instant, Duration::from_secs(3600));
+        assert_eq!(second.date.duration_since(first.date).unwrap(), second.instant - first.instant);
+        assert_eq!(first.date, epoch);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn absolute_sleep_and_timeout_share_the_source() {
+        let clock = clock(SystemTime::UNIX_EPOCH);
+        let deadline = clock.now() + Duration::from_secs(60);
+        let mut sleep = clock.sleep_until(deadline);
+        assert!(std::future::poll_fn(|cx| Poll::Ready(sleep.as_mut().poll(cx).is_pending())).await);
+        tokio::time::advance(Duration::from_secs(59)).await;
+        assert!(std::future::poll_fn(|cx| Poll::Ready(sleep.as_mut().poll(cx).is_pending())).await);
+        tokio::time::advance(Duration::from_secs(1)).await;
+        sleep.await;
+        let expired = clock.timeout_at(deadline, std::future::pending::<()>()).await;
+        assert_eq!(expired, Err(Elapsed));
+        assert_eq!(clock.timeout(Duration::ZERO, std::future::ready(7)).await, Ok(7));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn adoption_updates_preexisting_handles_to_the_host_source() {
+        let storage = clock(SystemTime::UNIX_EPOCH);
+        let retained = storage.clone();
+        let host = clock(SystemTime::UNIX_EPOCH + Duration::from_secs(123));
+        storage.adopt(&host);
+        tokio::time::advance(Duration::from_secs(5)).await;
+        assert!(retained.same_source(&host));
+        assert_eq!(retained.date(), host.date());
+        assert_eq!(retained.now(), host.now());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cloned_clock_retains_epoch_and_independent_hosts_keep_their_dates() {
+        let first = clock(SystemTime::UNIX_EPOCH);
+        let retained = first.clone();
+        let second = clock(SystemTime::UNIX_EPOCH + Duration::from_secs(100));
+        drop(first);
+        tokio::time::advance(Duration::from_secs(5)).await;
+        assert_eq!(retained.date(), SystemTime::UNIX_EPOCH + Duration::from_secs(5));
+        assert_eq!(second.date(), SystemTime::UNIX_EPOCH + Duration::from_secs(105));
+    }
+}

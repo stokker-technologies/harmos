@@ -322,12 +322,13 @@ async fn publish(
     let mut sample = None;
     let mut sequence = 0;
     loop {
-        if observing.is_none() && sample.is_none() {
-            if let Some(at) = next_tick.take() {
-                let handler = observer.as_ref().expect("Validated Observer Tick");
-                context.sequence = sequence + 1;
-                observing = Some((at, dispatch(&jobs, handler.clone(), context.clone(), Vec::new()).await?));
-            }
+        if observing.is_none()
+            && sample.is_none()
+            && let Some(at) = next_tick.take()
+        {
+            let handler = observer.as_ref().expect("Validated Observer Tick");
+            context.sequence = sequence + 1;
+            observing = Some((at, dispatch(&jobs, handler.clone(), context.clone(), Vec::new()).await?));
         }
         tokio::select! {
             biased;

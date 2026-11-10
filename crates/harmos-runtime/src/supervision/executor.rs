@@ -17,8 +17,8 @@
 use std::future::Future;
 use std::time::Duration;
 // Third Party Imports
+use crate::clock::Elapsed;
 use tokio::task::JoinHandle;
-use tokio::time::error::Elapsed;
 use tracing::Instrument;
 // Local Imports
 
@@ -39,6 +39,7 @@ pub(crate) struct SpanContext {
 pub(crate) struct Contextual<F: std::future::Future> {
     future: Option<std::pin::Pin<Box<F>>>,
     dispatcher: tracing::Dispatch,
+    clock: crate::clock::Clock,
 }
 
 /* === Enums === */
@@ -47,7 +48,19 @@ pub(crate) struct Contextual<F: std::future::Future> {
 
 pub(crate) trait InContext: std::future::Future + Sized {
     fn in_context(self, dispatcher: tracing::Dispatch) -> Contextual<Self> {
-        Contextual { future: Some(Box::pin(self)), dispatcher }
+        Contextual {
+            future: Some(Box::pin(self)),
+            dispatcher,
+            clock: crate::clock::current(),
+        }
+    }
+
+    fn in_clock(self, clock: crate::clock::Clock) -> Contextual<Self> {
+        Contextual {
+            future: Some(Box::pin(self)),
+            dispatcher: tracing::dispatcher::get_default(Clone::clone),
+            clock,
+        }
     }
 
     fn in_current_context(self) -> Contextual<Self> {
@@ -91,12 +104,14 @@ impl<F: std::future::Future> std::future::Future for Contextual<F> {
     fn poll(self: std::pin::Pin<&mut Self>, context: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
         let owner = self.get_mut();
         let _dispatcher = tracing::dispatcher::set_default(&owner.dispatcher);
+        let _clock = crate::clock::enter(owner.clock.clone());
         owner.future.as_mut().expect("context future remains until drop").as_mut().poll(context)
     }
 }
 
 impl<F: std::future::Future> Drop for Contextual<F> {
     fn drop(&mut self) {
+        let _clock = crate::clock::enter(self.clock.clone());
         tracing::dispatcher::with_default(&self.dispatcher, || drop(self.future.take()));
     }
 }
@@ -121,42 +136,15 @@ where
 }
 
 pub(crate) fn now() -> tokio::time::Instant {
-    #[cfg(feature = "simulation")]
-    {
-        crate::simulation::executor::now()
-    }
-
-    #[cfg(not(feature = "simulation"))]
-    {
-        tokio::time::Instant::now()
-    }
+    crate::clock::current().now()
 }
 
-pub(crate) async fn sleep(duration: Duration) {
-    #[cfg(feature = "simulation")]
-    {
-        crate::simulation::executor::sleep(duration).await;
-    }
-
-    #[cfg(not(feature = "simulation"))]
-    {
-        tokio::time::sleep(duration).await;
-    }
+pub(crate) fn sleep(duration: Duration) -> crate::clock::Sleep {
+    crate::clock::current().sleep(duration)
 }
 
-pub(crate) async fn timeout<F>(duration: Duration, future: F) -> Result<F::Output, Elapsed>
-where
-    F: Future,
-{
-    #[cfg(feature = "simulation")]
-    {
-        crate::simulation::executor::timeout(duration, future).await
-    }
-
-    #[cfg(not(feature = "simulation"))]
-    {
-        tokio::time::timeout(duration, future).await
-    }
+pub(crate) async fn timeout<F: Future>(duration: Duration, future: F) -> Result<F::Output, Elapsed> {
+    crate::clock::current().timeout(duration, future).await
 }
 
 /* === Private Functions === */

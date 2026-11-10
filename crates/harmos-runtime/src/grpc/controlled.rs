@@ -141,7 +141,9 @@ impl<O: OperationDeclaration> tonic::server::StreamingService<StreamItem<Control
         let settings = self.settings;
         Box::pin(async move {
             let mut incoming = request.into_inner();
-            let first = tokio::time::timeout(settings.opening_timeout, incoming.next())
+            let first = authority
+                .clock()
+                .timeout(settings.opening_timeout, incoming.next())
                 .await
                 .map_err(|_| Status::deadline_exceeded("operation opening timed out"))?
                 .transpose()?

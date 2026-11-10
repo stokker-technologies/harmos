@@ -143,7 +143,7 @@ mod execution {
                     ctx.admit(grant).map_err(Error::Access)?;
                 }
                 let response = harmos_sdk::operations::Response::from_owner(event.owner());
-                tokio::time::timeout(IO_TIMEOUT, output.send_owned(response)).await.map_err(|_| crate::storage::output_timeout())??;
+                storage.clock().timeout(IO_TIMEOUT, output.send_owned(response)).await.map_err(|_| crate::storage::output_timeout())??;
             }
             Ok(follower.completion()?.into())
         }

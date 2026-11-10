@@ -240,6 +240,27 @@ impl<C> Clone for StorageManager<C> {
 }
 
 impl<C> StorageManager<C> {
+    /// Bind An Idle Storage Engine Before The Host Starts Its Worker.
+    pub fn adopt_clock(&self, clock: &Execution) -> Result<()> {
+        if self.inner.execution.same_source(clock) {
+            return Ok(());
+        }
+        let mut state = self.inner.state.lock().unwrap();
+        if state.status.running || state.ready || !state.receipts.is_empty() {
+            return Err(Error::AlreadyRegistered {
+                domain: "storage clock",
+                name: "active engine".to_owned(),
+            });
+        }
+        self.inner.execution.adopt(clock);
+        state.receipts = super::receipts::Receipts::new(MUTATION_RETENTION, self.inner.execution.clone())?;
+        Ok(())
+    }
+
+    pub fn clock(&self) -> &Execution {
+        &self.inner.execution
+    }
+
     pub fn erased(&self) -> StorageManager<ErasedCatalog> {
         StorageManager {
             inner: self.inner.clone(),
@@ -262,11 +283,11 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
         let history = primary.history().clone();
         let position = StorageCursor { history: history.clone(), sequence: 0 };
         let recovery_position = RecoveryPosition { history, sequence: 0 };
-        let receipts = super::receipts::Receipts::new(MUTATION_RETENTION, execution)?;
+        let receipts = super::receipts::Receipts::new(MUTATION_RETENTION, execution.clone())?;
         Ok(Self {
             catalog: PhantomData,
             inner: Arc::new(Inner {
-                execution,
+                execution: execution.clone(),
                 measurement_admission: tokio::sync::Mutex::new(()),
                 control_admission: tokio::sync::Mutex::new(()),
                 measurement_waiting: std::sync::atomic::AtomicUsize::new(0),
@@ -281,7 +302,7 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                 object_definition: harmos_domain::model::storage::catalog::definition::<C>,
                 object_retention: harmos_domain::model::storage::catalog::retention::<C>,
                 state: Mutex::new(State {
-                    execution,
+                    execution: execution.clone(),
                     prefer_measurement: false,
                     journal_required_data: position.clone(),
                     reserved: 0,

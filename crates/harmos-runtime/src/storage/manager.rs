@@ -25,7 +25,6 @@ use std::sync::{Arc, Mutex};
 use super::{StorageBackends, StorageSettings};
 use crate::operations::{Manager, resident::Lease};
 use crate::services::{Once, Resident, ServiceContext, ServiceDefinition};
-use crate::supervision::executor;
 use crate::{Application, Error, Result};
 
 /* === Constants === */
@@ -68,7 +67,7 @@ impl<C> std::ops::Deref for StorageManager<C> {
 impl<C: super::ObjectCatalog> StorageManager<C> {
     #[tracing::instrument(target = "harmos::storage", name = "storage.new", level = "debug", skip_all)]
     pub fn new(backends: StorageBackends, settings: StorageSettings) -> Result<Self> {
-        let execution = harmos_storage::execution::Execution::new(executor::now, |duration| Box::pin(executor::sleep(duration)));
+        let execution = crate::clock::current();
         Ok(Self {
             engine: harmos_storage::StorageManager::with_execution(backends, settings, execution)?,
         })

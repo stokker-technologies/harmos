@@ -55,7 +55,7 @@ pub(crate) struct TrackedState<A: Application> {
     pub(super) catalog: Arc<dispatch::Dispatch<A, crate::storage::Payload<A>>>,
     pub(super) reads: Reads<A>,
     pub(super) record_preparation: Arc<tokio::sync::Semaphore>,
-    pub(super) clock: fn() -> super::Timestamp,
+    pub(super) clock: crate::clock::Clock,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -116,7 +116,7 @@ impl<A: Application> StateManager<A> {
         origin: At<A::State>, inverses: Inverting<A>, undos: Undos<A>, requests: usize, tail: Tail<A>,
         durability: Option<watch::Receiver<Position>>, catalog: Arc<dispatch::Dispatch<A, crate::storage::Payload<A>>>,
         capture: Option<capture::Declaration<A>>, storage: Option<crate::storage::StorageManager<crate::storage::ErasedCatalog>>,
-        schema_settings: Arc<crate::config::SchemaSettings>, clock: fn() -> super::Timestamp,
+        schema_settings: Arc<crate::config::SchemaSettings>, clock: crate::clock::Clock,
     ) -> (Self, JoinHandle<()>, mpsc::Receiver<ReadRequest<A>>) {
         let position = origin.position;
         let (sender, receiver) = mpsc::channel(requests.max(1));

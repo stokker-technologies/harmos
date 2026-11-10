@@ -129,7 +129,7 @@ impl<C> StorageManager<C> {
                 session: Some(Session::recovered(
                     checkpoint.session.generation,
                     crate::storage::config::FILE_SESSION_TIMEOUT,
-                    self.inner.execution,
+                    self.inner.execution.clone(),
                 )),
                 extra: None,
                 mutation: None,

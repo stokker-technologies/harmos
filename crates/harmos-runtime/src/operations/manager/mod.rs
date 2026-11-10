@@ -51,7 +51,6 @@ use super::instances::Instances;
 use crate::operations::{OperationDeclaration, OperationDefinition};
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use crate::plugin::PluginScope;
-use crate::supervision::executor;
 use crate::supervision::instance::Instance;
 use crate::{Error, Identifier, Result, operations::Lane, operations::Scope, state::Position};
 
@@ -192,6 +191,10 @@ enum Retirement {
 /* === Implementations === */
 
 impl Manager {
+    pub(crate) fn clock(&self) -> &crate::clock::Clock {
+        &self.instances.clock
+    }
+
     pub(crate) fn resources(&self) -> &harmos_sdk::__private::ResourceSet {
         &self.instances.resources
     }
@@ -245,6 +248,10 @@ impl Manager {
 }
 
 impl<L: Lane> OperationManager<L> {
+    pub fn clock(&self) -> &crate::clock::Clock {
+        self.inner.clock()
+    }
+
     pub(crate) fn new(inner: Manager) -> Self {
         Self { inner, lane: std::marker::PhantomData }
     }

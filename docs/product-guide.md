@@ -859,9 +859,24 @@ Timing surrounds the handler call, including asynchronous suspension and cancell
 It excludes queueing, admission, initialization, child draining, cleanup and middleware callbacks.
 Each retry takes fresh readings. The timestamp identifies the start; elapsed uses only the
 monotonic readings. Before the first invocation, `operations.set_attempt_clock(AttemptClock::new(clock))`
-can inject a clock returning `AttemptStartedAt`; the default reads the operation executor's
-monotonic clock and the system timestamp. This does not change deadline clocks or timers.
+can inject observation readings returning `AttemptStartedAt`; the default uses the host
+clock for both readings. This observation override does not change deadlines or timers.
 No attempt observation is emitted for admission refusals that never enter a handler.
+
+Each host owns one cloneable `harmos_runtime::clock::Clock`. Its `read()` returns a
+monotonic `instant` and a `date` derived from a fixed epoch plus elapsed time.
+Operation scopes expose `scope.clock()`; `sleep`, `sleep_until`, `timeout` and
+`timeout_at` use that same source. Record envelopes, default attempt observations,
+storage expiry and polling, lifecycle bounds and client-facing gRPC bounds share it.
+Storage binds to the host before its worker starts; an already running engine with a
+different clock is refused. `setup.settings().clock(clock)` selects a source during
+composition. `Clock::with_clock(source)` accepts a `clock::Source` owning readings
+and timer registration, so callers do not depend on its scheduler.
+
+Simulation retains its existing paused executor and manual advancement interface,
+using a Unix epoch and the shared host clock across reboot. Its elapsed trace reading
+includes idle timer advancement. Filesystem and device timestamps remain source evidence.
+Directory watcher polling and Wasmtime epoch interruption remain physical mechanisms.
 
 Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
 Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.

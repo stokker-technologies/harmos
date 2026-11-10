@@ -28,7 +28,6 @@ use harmos_operations::lifecycle::Initialize;
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 use crate::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
-use crate::supervision::executor;
 use crate::{Error, Message, Result};
 
 /* === Constants === */
@@ -192,7 +191,7 @@ impl PluginSdkRegistration {
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.submit", level = "debug", skip_all)]
     fn submit(&self, index: usize, bytes: NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>) -> Result<EncodedInvocation> {
-        let submitted = executor::now();
+        let submitted = self.operations.clock().now();
         let entry = &self.entries[index];
         entry.available()?;
         if !entry.settled() {

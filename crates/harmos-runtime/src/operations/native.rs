@@ -1090,7 +1090,7 @@ pub(super) fn dispatch(
     let timeout = submission.entry.declared().policy.timeout;
     let operation = submission.entry.id().to_owned();
     let target = Arc::downgrade(&submission.entry);
-    super::wire::budget(&operation, 1, timeout, submitted)?;
+    super::wire::budget(operations.clock(), &operation, 1, timeout, submitted)?;
     let (scope, ancestors) = parent.map_or((None, &[][..]), |parent| (Some(parent.scope), parent.ancestors));
     let mut request = super::binding::Request::from(request);
     request.retry = input.retry;
@@ -1100,13 +1100,14 @@ pub(super) fn dispatch(
     let control = Arc::clone(&invocation.control);
     let invocation = invocation.unguarded();
     let outcome_control = Arc::clone(&control);
+    let clock = operations.clock().clone();
     let outcome = Box::pin(async move {
         let response = invocation.await?;
         super::wire::available(&target, &source)?;
-        super::wire::budget(&operation, outcome_control.status().attempt() + 1, timeout, submitted)?;
+        super::wire::budget(&clock, &operation, outcome_control.status().attempt() + 1, timeout, submitted)?;
         let payload = response.try_unwrap().unwrap_or_else(|response| (*response).clone()).0;
         super::wire::available(&target, &source)?;
-        super::wire::budget(&operation, outcome_control.status().attempt() + 1, timeout, submitted)?;
+        super::wire::budget(&clock, &operation, outcome_control.status().attempt() + 1, timeout, submitted)?;
         Ok(payload)
     });
     Ok(super::EncodedInvocation {

@@ -48,6 +48,7 @@ type Completion = Pin<Box<dyn Future<Output = (Arc<Instance>, std::result::Resul
 /* === Structs === */
 
 pub(crate) struct Instances {
+    pub(crate) clock: crate::clock::Clock,
     lanes: Lanes,
     state: Mutex<State>,
     ordinary: Queue,
@@ -118,6 +119,7 @@ impl Instances {
         };
         let supervisor = Task::spawn(move |stopping| dispatch(receiving, stopping.subscribe()));
         Arc::new(Self {
+            clock: crate::clock::current(),
             lanes,
             state: Mutex::new(State {
                 closing: false,
@@ -209,7 +211,7 @@ impl Instances {
         let owner = Arc::downgrade(self);
         let (cancellation, cancelled) = watch::channel(false);
         let (reply, outcome) = oneshot::channel();
-        let instance = Instance::queued(cancellation).on_settled(move || {
+        let instance = Instance::queued(cancellation, self.clock.clone()).on_settled(move || {
             retiring.release();
             if let Some(owner) = owner.upgrade() {
                 let retired = {
@@ -260,7 +262,7 @@ impl Instances {
                     }
                 }
                 .instrument(trace)
-                .in_current_context(),
+                .in_clock(self.clock.clone()),
             ),
         });
         Ok(reservation)

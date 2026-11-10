@@ -69,6 +69,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     commands.add_parser("prepare")
     generate = commands.add_parser("generate")
     generate.add_argument("--profile", choices=("dev", "release"), default="dev")
+    generate.add_argument("--sdk", choices=("python",))
     for name in ("format", "lint", "check"):
         command = commands.add_parser(name)
         command.add_argument("--language", choices=(*LANGUAGES, "csharp") if name != "lint" else LANGUAGES)
@@ -77,6 +78,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if name in ("lint", "check"):
             command.add_argument("--extended", action="store_true")
         if name == "check":
+            command.add_argument("--package", choices=("harmos-plugin",))
             command.add_argument("--repository", action="store_true")
             command.add_argument("--generated", action="store_true")
     build = commands.add_parser("build")
@@ -175,6 +177,32 @@ def dispatch(arguments: list[str] | None = None) -> int:
         return csharp.run(root, options.command, getattr(options, "profile", "dev"), check=getattr(options, "check", False))
 
     # Focused Cargo Selections
+    if options.command in ("build", "test") and options.features and not options.package:
+        parser.error("--features requires --package")
+    if options.command == "check" and options.package:
+        if options.language != "python" or options.repository or options.generated or options.extended:
+            parser.error("SDK checks require --language python --package harmos-plugin")
+        return _task("check:python:sdk")
+
+    if options.command == "test" and options.language == "python" and options.package == "harmos-plugin":
+        if (
+            options.target not in (None, "integration")
+            or options.coverage
+            or options.cpp
+            or options.extended
+            or options.features
+            or options.layer
+            or options.filter
+            or options.stress_count
+        ):
+            parser.error("Python SDK tests select --target integration and optional --exact")
+        selected = [options.exact] if options.exact else ["discover", "-s", "tests/integration", "-v"]
+        return _execute(
+            [sys.executable, "-m", "unittest", *selected],
+            directory=root / "sdk/python",
+            environment=dict(os.environ, TEST_PROFILE=options.profile),
+        )
+
     if options.command == "test" and options.language == "python" and options.exact:
         if options.package or options.target or options.coverage or options.cpp or options.extended or options.features:
             parser.error("focused Python tests select only --exact")
@@ -183,6 +211,23 @@ def dispatch(arguments: list[str] | None = None) -> int:
     if options.command == "build" and options.package:
         if options.artifact != "product" or options.compatibility or options.cpp or options.extended:
             parser.error("--package cannot select artifacts, compatibility, C++ or extended builds")
+        if options.package == "harmos-plugin":
+            if options.features or options.example:
+                parser.error("Python SDK builds have no Cargo features or examples")
+            if options.check:
+                return _task("check:python:sdk")
+            return _execute(
+                [
+                    sys.executable,
+                    "-m",
+                    "build",
+                    "--wheel",
+                    "--no-isolation",
+                    "--outdir",
+                    str(root / "target/build" / options.profile / "any/python"),
+                    str(root / "sdk/python"),
+                ]
+            )
         command = ["--locked", "--profile", options.profile, "-p", options.package]
         if options.features:
             command += ["--features", options.features]
@@ -204,8 +249,6 @@ def dispatch(arguments: list[str] | None = None) -> int:
             command += [options.exact, "--", "--exact"]
         return cargo.focused(root, "test", command)
 
-    if options.command in ("build", "test") and options.features:
-        parser.error("--features requires --package")
     if options.command == "build" and options.example:
         parser.error("--example requires --package")
 
@@ -213,6 +256,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
     if options.command == "prepare":
         return 0
     if options.command == "generate":
+        if options.sdk == "python":
+            return _module("build.python_protocol")
         from ..build.__main__ import generate
 
         generate(options.profile)
@@ -235,7 +280,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
             if options.command == "check" and language == "rust":
                 _task("check:rust")
             if options.command == "check" and language == "python":
-                _task("test:python:integration")
+                _module("build.python_protocol", "--check")
+                _task("test:python:integration", "--profile", os.environ.get("PROFILE", "dev"))
         if options.command == "check":
             _task("check:repository")
             if options.language in (None, "python"):
@@ -290,7 +336,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
             for layer in layers:
                 if language == "python":
                     if layer == "integration":
-                        _task("test:python:integration")
+                        _task("test:python:integration", "--profile", options.profile)
                     continue
                 extra = []
                 if options.filter:
@@ -356,9 +402,16 @@ def dispatch(arguments: list[str] | None = None) -> int:
 # === Private Functions === #
 
 
-def _execute(command: list[str], *, directory: Path | None = None) -> int:
+def _execute(command: list[str], *, directory: Path | None = None, environment: dict[str, str] | None = None) -> int:
     result = subprocess.run(
-        command, cwd=directory, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags(), check=True
+        command,
+        cwd=directory,
+        env=environment,
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        creationflags=spawn_flags(),
+        check=True,
     )
     return result.returncode
 

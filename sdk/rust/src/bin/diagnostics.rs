@@ -20,7 +20,7 @@
 // Third Party Imports
 
 // Local Imports
-use harmos::{Context, Message, Observer, Operation, Plugin, Result, Stream, clock};
+use harmos_sdk_grpc::{Context, Message, Observer, Operation, Plugin, Result, Stream, clock};
 
 /* === Constants === */
 

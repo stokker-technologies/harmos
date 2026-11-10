@@ -16,7 +16,7 @@
 // Standard Library Imports
 use std::fs;
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 // Third Party Imports
 
@@ -46,7 +46,7 @@ struct MeasureContractDeclaration {
     wait_nanos: u64,
 }
 
-// The Scope's Elapsed Clock, Then The Wall Clock, Across One Wait.
+// The Host's Monotonic And Date Readings Across One Wait.
 #[harmos_runtime::message]
 struct Measured {
     scoped_nanos: u64,
@@ -73,11 +73,11 @@ impl harmos_runtime::operations::Operation for MeasureContractDeclaration {
         let result: ::core::result::Result<Measured, Self::Error> = async move {
             let scope = context.scope();
             let scoped = scope.now();
-            let wall = Instant::now();
-            tokio::time::sleep(Duration::from_nanos(self.wait_nanos)).await;
+            let wall = scope.clock().date();
+            scope.clock().sleep(Duration::from_nanos(self.wait_nanos)).await;
             Ok(Measured {
                 scoped_nanos: nanos(scope.now() - scoped),
-                wall_nanos: nanos(wall.elapsed()),
+                wall_nanos: nanos(scope.clock().date().duration_since(wall).unwrap()),
             })
         }
         .await;

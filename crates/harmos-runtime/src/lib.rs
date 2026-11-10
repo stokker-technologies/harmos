@@ -9,6 +9,7 @@
 
 /* === Modules === */
 
+pub mod clock;
 pub mod config;
 mod error;
 pub mod filesystem;

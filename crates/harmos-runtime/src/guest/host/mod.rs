@@ -161,14 +161,16 @@ pub enum Error {
 /* === Implementations === */
 
 impl Epochs {
-    fn start(engine: &WasmEngine) -> Arc<Self> {
+    fn start(engine: &WasmEngine, clock: crate::clock::Clock) -> Arc<Self> {
         let epochs = Arc::new(Self { engine: engine.clone() });
         let ticking = Arc::downgrade(&epochs);
         std::thread::spawn(move || {
-            while let Some(clock) = ticking.upgrade() {
-                clock.engine.increment_epoch();
-                drop(clock);
-                std::thread::sleep(TICK);
+            let executor =
+                tokio::runtime::Builder::new_current_thread().enable_time().build().expect("the guest epoch clock executor builds");
+            while let Some(epochs) = ticking.upgrade() {
+                epochs.engine.increment_epoch();
+                drop(epochs);
+                executor.block_on(async { clock.sleep(TICK).await });
             }
         });
 
@@ -205,7 +207,7 @@ impl<A: Application> Host<A> {
             .consume_fuel(true)
             .epoch_interruption(true);
         let engine = WasmEngine::new(&config).map_err(|source| Error::Engine { message: source.to_string() })?;
-        let epochs = Epochs::start(&engine);
+        let epochs = Epochs::start(&engine, operations.clock().clone());
         Ok(Self {
             engine,
             epochs,
@@ -502,3 +504,49 @@ fn refused(refusal: sdk::capabilities::Refusal) -> OperationRefusal {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::clock::{Clock, Reading, Sleep, Source};
+    use tokio::sync::{mpsc, oneshot};
+    use tokio::time::Instant;
+
+    struct ControlledClock {
+        instant: Instant,
+        waits: mpsc::UnboundedSender<(Instant, oneshot::Sender<()>)>,
+    }
+
+    impl Source for ControlledClock {
+        fn read(&self) -> Reading {
+            Reading {
+                instant: self.instant,
+                date: std::time::SystemTime::UNIX_EPOCH,
+            }
+        }
+
+        fn sleep_until(&self, deadline: Instant) -> Sleep {
+            let (wake, waiting) = oneshot::channel();
+            self.waits.send((deadline, wake)).unwrap();
+            Box::pin(async move { waiting.await.unwrap() })
+        }
+    }
+
+    #[tokio::test]
+    async fn epoch_thread_waits_on_the_host_clock_and_releases_its_owner() {
+        // Start Epoch Interruption With A Controlled Host Source
+        let instant = Instant::now();
+        let (waits, mut observed) = mpsc::unbounded_channel();
+        let clock = Clock::with_clock(ControlledClock { instant, waits });
+        let epochs = Epochs::start(&WasmEngine::default(), clock);
+
+        // The Independent Thread Registers Its Wait On That Source
+        let (deadline, wake) = observed.recv().await.unwrap();
+        assert!(deadline > instant);
+
+        // Releasing The Guest Owner Ends The Thread After Its Pending Wait
+        drop(epochs);
+        wake.send(()).unwrap();
+        assert!(observed.recv().await.is_none());
+    }
+}
