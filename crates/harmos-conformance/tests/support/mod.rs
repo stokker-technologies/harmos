@@ -15,7 +15,7 @@ mod catalog_fault;
 
 /* === Re-Exports === */
 
-pub use catalog_fault::CatalogFault;
+pub use catalog_fault::{CatalogFault, Fault};
 
 /* === Imports === */
 

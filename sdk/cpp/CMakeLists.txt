@@ -45,6 +45,7 @@ if(HARMOS_BUILD_TESTS)
     add_custom_command(
         OUTPUT "${HARMOS_GENERATED}/harmos/conformance/v1/fixture.pb.cc" "${HARMOS_GENERATED}/harmos/conformance/v1/fixture.pb.h"
         COMMAND $<TARGET_FILE:protoc> --proto_path=${CMAKE_CURRENT_SOURCE_DIR}/proto
+            --proto_path=${grpc_SOURCE_DIR}/third_party/protobuf/src
             --cpp_out=${HARMOS_GENERATED} "${CMAKE_CURRENT_SOURCE_DIR}/proto/harmos/conformance/v1/fixture.proto"
         DEPENDS protoc "${CMAKE_CURRENT_SOURCE_DIR}/proto/harmos/conformance/v1/fixture.proto"
         VERBATIM)

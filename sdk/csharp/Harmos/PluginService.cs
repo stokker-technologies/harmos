@@ -59,17 +59,20 @@ internal sealed class PluginService(Description description, Dictionary<string, 
       Context context, ChannelWriter<PluginFrame> output, CancellationToken transport)
   {
     Task<ByteString>? executing = null;
+    Task<bool>? reading = null;
+    using var readingStopped = CancellationTokenSource.CreateLinkedTokenSource(transport);
     try
     {
       executing = Execute(handler, context, request);
-      Task<bool>? reading = input.MoveNext(transport);
+      var inputClosed = false;
       while (!executing.IsCompleted)
       {
-        if (reading is null)
+        if (inputClosed)
         {
           await Task.WhenAny(executing);
           break;
         }
+        reading ??= input.MoveNext(readingStopped.Token);
         await Task.WhenAny(executing, reading);
         if (executing.IsCompleted)
           break;
@@ -77,6 +80,7 @@ internal sealed class PluginService(Description description, Dictionary<string, 
         {
           if (context.HasPendingCalls)
             throw new RpcException(new Status(StatusCode.Unavailable, "Host Closed Before Child Replies"));
+          inputClosed = true;
           reading = null;
           continue;
         }
@@ -92,7 +96,7 @@ internal sealed class PluginService(Description description, Dictionary<string, 
           default:
             throw Invalid("Expected Child Response or Cancel");
         }
-        reading = input.MoveNext(transport);
+        reading = null;
       }
 
       V1.Response response;
@@ -111,6 +115,13 @@ internal sealed class PluginService(Description description, Dictionary<string, 
     }
     finally
     {
+      // Release the Reader Before Kestrel Can Reuse the Request Body.
+      await readingStopped.CancelAsync();
+      if (reading is not null)
+      {
+        try { await reading; }
+        catch (OperationCanceledException) when (readingStopped.IsCancellationRequested) { }
+      }
       context.Disconnected();
       if (executing is not null)
         _ = executing.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
@@ -151,22 +162,24 @@ internal sealed class PluginService(Description description, Dictionary<string, 
 
     using var stopped = CancellationTokenSource.CreateLinkedTokenSource(call.CancellationToken);
     var context = new Context(new Request { Operation = open.Stream, Scope = open.Scope }, description.Id, requires, stopped);
+    using var readingStopped = CancellationTokenSource.CreateLinkedTokenSource(call.CancellationToken);
+    Task<bool>? reading = null;
     Task? producing = null;
     Task<ByteString>? observing = null;
     try
     {
       if (publication.Observer is not null)
       {
-        var next = input.MoveNext(call.CancellationToken);
-        while (await next)
+        reading = input.MoveNext(readingStopped.Token);
+        while (await reading)
         {
           var at = TickTime(input.Current);
           context.Sequence++;
           context.At = at.Clone();
           observing = publication.Observer(context);
-          next = input.MoveNext(call.CancellationToken);
-          await Task.WhenAny(observing, next);
-          if (next.IsCompleted && !await next)
+          reading = input.MoveNext(readingStopped.Token);
+          await Task.WhenAny(observing, reading);
+          if (reading.IsCompleted && !await reading)
             return;
           var row = await observing;
           var sample = new Sample { At = at, Row = row, Sequence = context.Sequence };
@@ -177,7 +190,7 @@ internal sealed class PluginService(Description description, Dictionary<string, 
 
       var rows = Channel.CreateBounded<Sample>(1);
       producing = Produce(publication, context, rows.Writer);
-      var reading = input.MoveNext(call.CancellationToken);
+      reading = input.MoveNext(readingStopped.Token);
       var sampling = rows.Reader.WaitToReadAsync(call.CancellationToken).AsTask();
       while (true)
       {
@@ -206,6 +219,13 @@ internal sealed class PluginService(Description description, Dictionary<string, 
     }
     finally
     {
+      // Demand Closure Must Also Join Any Outstanding Input Read.
+      await readingStopped.CancelAsync();
+      if (reading is not null)
+      {
+        try { await reading; }
+        catch (OperationCanceledException) when (readingStopped.IsCancellationRequested) { }
+      }
       context.Disconnected();
       if (producing is not null)
         await producing;

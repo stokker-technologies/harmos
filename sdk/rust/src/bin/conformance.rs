@@ -11,6 +11,9 @@
 
 /* === Modules === */
 
+#[path = "../../../../crates/harmos-conformance/src/schema_fixture.rs"]
+mod schema_fixture;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -23,6 +26,7 @@
 use harmos_sdk_grpc::{
     Classification, Context, Failure, Message, Observer, Operation, OperationRequest, Plugin, Publisher, Result, Stream, Visibility,
 };
+use schema_fixture::{Graph, Nested};
 
 /* === Constants === */
 
@@ -32,11 +36,7 @@ use harmos_sdk_grpc::{
 
 /* === Structs === */
 
-#[derive(Message)]
-#[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto")]
-struct Value {
-    value: Vec<u8>,
-}
+use schema_fixture::Value;
 
 #[derive(Message)]
 #[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto", name = "Value")]
@@ -62,6 +62,36 @@ struct HostFail {
 
 /* === Implementations === */
 
+impl Message for Value {
+    fn name() -> String {
+        "harmos.conformance.v1.Value".into()
+    }
+    fn types() -> prost_types::FileDescriptorSet {
+        schema_fixture::types()
+    }
+}
+impl Message for Graph {
+    fn name() -> String {
+        "harmos.conformance.v1.Graph".into()
+    }
+    fn types() -> prost_types::FileDescriptorSet {
+        schema_fixture::types()
+    }
+}
+impl Message for Nested {
+    fn name() -> String {
+        "harmos.conformance.v1.Graph.Nested".into()
+    }
+    fn types() -> prost_types::FileDescriptorSet {
+        schema_fixture::types()
+    }
+}
+
+impl OperationRequest for Graph {
+    type Response = Value;
+    const ID: &'static str = "conformance.host.schema";
+}
+
 impl OperationRequest for HostEcho {
     type Response = Value;
     const ID: &'static str = "conformance.host.echo";
@@ -83,19 +113,54 @@ fn main() -> Result<()> {
     let ticks = Stream::<Value>::new("conformance.ticks");
     let observer = Observer::new(&ticks, tick).every_ms(1000);
     let device = Stream::<Value>::new("conformance.device").publish_on(device);
+    let settings = Stream::<Value>::new("conformance.settings");
+    let configured = Observer::new(&settings, tick).every_ms(1000).interval_setting("harmos.conformance.v1.Graph.interval");
     let plugin = Plugin::new("conformance", "1.0.0")
         .operation(Operation::new("conformance.echo", echo).visibility(Visibility::Public))
         .operation(Operation::new("conformance.children", children).visibility(Visibility::Public))
         .operation(Operation::new("conformance.cancel", cancel).visibility(Visibility::Public))
         .operation(Operation::new("conformance.failure", failure).visibility(Visibility::Public))
         .operation(Operation::new("conformance.child_failure", child_failure).visibility(Visibility::Public))
+        .operation(Operation::new("conformance.policy", policy).visibility(Visibility::Public))
+        .operation(Operation::new("conformance.schema", schema).visibility(Visibility::Public))
+        .operation(Operation::new("conformance.nested", nested).visibility(Visibility::Public))
+        .operation(Operation::new("conformance.projected", projected).visibility(Visibility::Public))
         .requires::<HostEcho>()
         .requires::<HostPending>()
         .requires::<HostFail>()
+        .requires::<Graph>()
         .stream(ticks)
         .stream(device)
-        .observer(observer);
+        .stream(settings)
+        .observer(observer)
+        .observer(configured)
+        .section(Graph {
+            interval: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+            ..Default::default()
+        });
     if std::env::args().any(|argument| argument == "--remote") { plugin.remote().serve() } else { plugin.serve() }
+}
+
+async fn policy(ctx: &Context, request: Value) -> Result<Value> {
+    let first = ctx
+        .operation_with(HostEcho { value: request.value }, Some(harmos_protocol::v1::OperationPolicy { attempts: 3, ..Default::default() }))
+        .await?;
+    ctx.operation(HostEcho { value: first.value }).await
+}
+
+async fn projected(_: &Context, request: Graph) -> Result<Value> {
+    Ok(request.tail.and_then(|tail| tail.value).unwrap_or_default())
+}
+
+async fn schema(_: &Context, request: Graph) -> Result<Nested> {
+    Ok(Nested {
+        count: Some(request.items.len() as i32),
+        next: Some(Box::new(request)),
+    })
+}
+
+async fn nested(_: &Context, request: Nested) -> Result<Graph> {
+    Ok(*request.next.unwrap_or_default())
 }
 
 async fn echo(_: &Context, request: Value) -> Result<Value> {

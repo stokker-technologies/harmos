@@ -114,6 +114,16 @@ or credentials. The host is always the client.
     checks the reply; managed mode also checks successful process exit. Remote
     mode calls Describe again after Stop. No active demand remains at this stage.
 
+17. **Schema Fingerprints.** The additional schema fixture below MUST use the
+    general Schema Fingerprints rule. The case verifies both advertised hashes
+    and retained descriptor metadata, then invokes nested, recursive and projected
+    messages, including an optional scalar explicitly set to zero.
+18. **Interval Setting.** The additional setting observer below MUST advertise
+    its typed section and both interval sources. It MUST answer only host ticks,
+    preserving each tick's timestamp and per-call sequence, and close on input EOF.
+    Resolution and invalid-setting admission remain host-runtime responsibilities.
+    Cases 17 and 18 run before case 16 so managed Stop remains the last RPC.
+
 ## Host Stream Settings and Evidence
 
 For runtime attachments, `interval_setting` names a fully qualified section field
@@ -212,6 +222,61 @@ diagnostics Fixture Diagnostics. Its cause has TRANSIENT classification, code
 fixture_cause, message Fixture Cause, action Retry, operation conformance.host.fail,
 plugin host, absent cause, empty details and diagnostics. The host's child-failure
 fixture uses operation conformance.host.fail and is otherwise identical.
+
+## Additional Fixture Catalog
+
+The Fixed Fixture Catalog section defines the original subset and its minimal
+Value projection; its original five operations, three requirements and two streams
+retain their order and fingerprints. Catalog.types is extended with the following
+messages in the same fixture.proto and the imported google/protobuf/duration.proto.
+The three SDK fixture.proto copies are identical. The normalized reachable Graph
+projection is stored as crates/harmos-conformance/fixtures/schema.bin for the
+hand-written plugin and Rust SDK fixture; case 17 compares it against each SDK's
+advertised graph. It retains Duration's declared file options.
+
+```proto
+import "google/protobuf/duration.proto";
+message Zebra { Value value = 1; }
+message Graph {
+  option deprecated = false;
+  message Nested {
+    optional int32 count = 1;
+    Graph next = 2;
+  }
+  repeated Nested items = 1;
+  Zebra tail = 2;
+  Graph next = 3;
+  google.protobuf.Duration interval = 4;
+  Status status = 5;
+}
+enum Status { STATUS_UNSPECIFIED = 0; STATUS_READY = 1; }
+```
+
+Append Public operations with empty descriptions and absent policies, in order:
+
+- conformance.policy: Value to Value. Call conformance.host.echo with the input
+  and policy attempts=3, await its reply, then call it again with that reply and
+  no policy override. Return the second reply. Child IDs are 1 and 2.
+- conformance.schema: Graph to Graph.Nested. Return count equal to items length
+  (including explicit zero presence) and next equal to the request.
+- conformance.nested: Graph.Nested to Graph. Return next, or an empty Graph.
+- conformance.projected: Graph to Value. Return tail.value, or an empty Value.
+
+Append conformance.settings after the original streams, with row Value, default
+interval one second and interval_setting harmos.conformance.v1.Graph.interval.
+Its rows follow conformance.ticks. The single section has type
+harmos.conformance.v1.Graph and payload Graph(interval=Duration(seconds=2)).
+It overrides the default. Append requirement conformance.host.schema, using the Graph-to-Value fingerprint.
+Catalog digest
+covers this complete extended inventory; only fingerprint projections discard
+unrelated declarations. Case 5 also checks the policy fixture; case 14 checks
+invalid timestamp ranges as well as missing timestamps.
+
+Rules 1, 5 and 7 also constrain host registry admission, opaque routing, visibility,
+clock-driven policy enforcement, activation replacement and connection-loss
+isolation. A fixture plugin cannot observe those host internals. Their proof lives
+in host-runtime validation; the reference-host cases check the plugin-visible
+frames, catalog and per-call policy preservation without reimplementing that runtime.
 
 ## Running the Reference Host
 

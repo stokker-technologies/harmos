@@ -34,6 +34,7 @@ internal static class ReferenceHost
     start.Environment["HARMOS_ADDRESS"] = "127.0.0.1:0";
     using var server = Process.Start(start) ?? throw new InvalidOperationException("Remote Plugin Did Not Start");
     var diagnostics = server.StandardError.ReadToEndAsync();
+    (int ExitCode, string Evidence, bool StillServing) result;
     try
     {
       // Guard Only Transport Setup; Scenario Time Still Comes Exclusively from Host Ticks.
@@ -50,7 +51,7 @@ internal static class ReferenceHost
       var stdout = process.StandardOutput.ReadToEndAsync();
       var stderr = process.StandardError.ReadToEndAsync();
       await process.WaitForExitAsync();
-      return (process.ExitCode, await stdout + await stderr, !server.HasExited);
+      result = (process.ExitCode, await stdout + await stderr, !server.HasExited);
     }
     finally
     {
@@ -59,5 +60,6 @@ internal static class ReferenceHost
       await server.WaitForExitAsync();
       await diagnostics;
     }
+    return (result.ExitCode, result.Evidence + await diagnostics, result.StillServing);
   }
 }
