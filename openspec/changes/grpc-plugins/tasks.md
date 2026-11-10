@@ -20,7 +20,7 @@
 
 ## 4. Rust SDK
 
-- [ ] 4.1 Serve `harmos.v1` from the SDK and move sidecar serving off the framed wire.
+- [ ] 4.1 Move `crates/harmos-sdk` to `sdk/rust`, keeping its crate name, and serve `harmos.v1` from it in place of the framed wire.
 - [ ] 4.2 Add `#[harmos::plugin]`, `harmos::PluginContext` and the target-selected `harmos::export_plugin!`.
 - [ ] 4.3 Rebuild observers as SDK code over streams and share `publish_on` and its error type.
 - [ ] 4.4 Migrate the examples and fixtures.

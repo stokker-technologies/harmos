@@ -152,7 +152,8 @@ auto reply = ctx.operation(thermal::v1::SetTemperature{.target = 85});
   admission and byte credits are removed. gRPC flow control is the backpressure.
 - Order is guaranteed within a stream. Streams do not block each other or operation calls.
 - An observer is authoring sugar in the SDK: a function plus an interval. The SDK runs the timer
-  while the stream's call is open and sends each returned value as one sample.
+  while the stream's call is open and sends each returned value as one sample. The interval is a
+  declared default or comes from the plugin's settings, as today.
 - Guests cannot hold a call open, so they declare no streams and no observers.
 
 ## Authoring
@@ -229,8 +230,10 @@ Behaviour tests under `crates/harmos-runtime/tests/sidecar/` migrate to the new 
 
 Not yet decided with the owner; each is settled before its task starts.
 
-1. Endpoint security. Proposed: a managed plugin listens on loopback and accepts only a token the
-   host passed at start; a remote URL is plain and trusted by whoever adds it, with transport
-   security added later.
-2. Reconciling `runtime-observer-cadence`, which changes the observer runner this change removes.
-3. Whether `operation-visibility` finishes first or folds into this change.
+1. The exact wire format: the complete `harmos.v1` `.proto` files with field numbers, reserved
+   ranges, the failure model and the rule for compatible changes. It is agreed before any
+   implementation so later changes do not break plugins.
+2. Endpoint security between host and plugin. Proposed: nothing on loopback for a managed plugin;
+   a remote URL is plain and trusted by whoever adds it; transport security is added later.
+3. Whether authorization of external clients (grants) is deleted from Harmos as well, now that
+   Dokime lets every connected client call every Public operation.

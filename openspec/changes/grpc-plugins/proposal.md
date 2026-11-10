@@ -48,7 +48,9 @@ nothing about tests or any product concept.
 ## Impact
 
 - Breaking for every sidecar: it must be rebuilt against the new SDK.
-- Supersedes `plugin-grpc-protocol` (deleted with this change). `harmos-sdk-go` now depends on
-  this change. `harmos-sdk-layout` is unchanged and still places the SDKs.
-- `runtime-observer-cadence` and `operation-visibility` touch the same code and are reconciled
-  before implementation starts (`design.md`, Open Points).
+- Supersedes `plugin-grpc-protocol` and absorbs `harmos-sdk-layout` (both deleted with this
+  change): `crates/harmos-sdk` moves to `sdk/rust`. `harmos-sdk-go` is removed; Go follows the
+  pilot.
+- `operation-visibility` stays its own change and ships in the same revision.
+  `runtime-observer-cadence` is landed; its rule that an observer's interval may come from
+  plugin settings carries over to SDK observers.
