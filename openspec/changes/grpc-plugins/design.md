@@ -69,6 +69,7 @@ plugin. The network is trusted, as it is for clients.
 
 ## Operations
 
+- Operations served by a plugin over `harmos.v1` are unary (one request and one response per `Invoke`); request and result streaming remains supported for operations implemented natively in the host process.
 - Visibility has two levels. `Private` operations may be called by the declaring plugin and the
   host; products use it for operations the host drives. `Public` operations may be called by
   everyone connected: other plugins and the host's clients. The `Host` level is removed.

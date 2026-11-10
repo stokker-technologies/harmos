@@ -8,6 +8,8 @@ or credentials. The host is always the client.
 
 ## Rules
 
+Operations served by a plugin over `harmos.v1` are unary (one request and one response per `Invoke`); request and result streaming remains supported for operations implemented natively in the host process.
+
 1. **Describe and Catalog.** Describe MUST be the first RPC on each connection.
    Peers advertise their highest revision (at least 1); their minimum applies.
    Description MUST identify the plugin, semantic version, SDK and SDK version
