@@ -159,7 +159,9 @@ async fn deletion_preserves_other() {
     let mut pinned = f.storage.read_file(whole(&removed)).await.unwrap();
     let request = request(&f, "removed-last");
     f.storage.delete_file_once(&request.mutation, &request.file).await.unwrap();
-    assert!(pinned.next().await.is_err());
+    // The Pinned Snapshot Retains Bytes After Deletion; Fresh Reads Refuse Them.
+    assert_eq!(pinned.next().await.unwrap().unwrap().bytes(), b"gone");
+    assert!(pinned.next().await.unwrap().is_none());
     assert!(f.storage.read_file(whole(&removed)).await.is_err());
     let mut reader = f.storage.read_file(whole(&kept)).await.unwrap();
     assert_eq!(reader.next().await.unwrap().unwrap().bytes(), b"kept");
