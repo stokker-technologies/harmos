@@ -277,14 +277,13 @@ async fn execute(mut jobs: mpsc::Receiver<Job>) {
                 let mut future = std::pin::pin!(future);
                 let first = futures_util::future::poll_fn(|cx| std::task::Poll::Ready(future.as_mut().poll(cx))).await;
                 let _ = started.send(());
-                let result = match first {
+                match first {
                     std::task::Poll::Ready(result) => result,
                     std::task::Poll::Pending => tokio::select! {
                         _ = complete.closed() => return,
                         result = &mut future => result,
                     },
-                };
-                result
+                }
             };
             let _ = complete.send(result);
         });
