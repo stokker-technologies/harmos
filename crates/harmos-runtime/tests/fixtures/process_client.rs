@@ -38,7 +38,7 @@ pub(crate) struct Client {
 }
 
 #[harmos_runtime::operation(codec = manual, resources = [Witness], id = <ProbeDeclaration as harmos_runtime::OperationDeclaration>::ID, response = Step,
-    policy = POLICY, visibility = Host)]
+    policy = POLICY, visibility = Private)]
 #[derive(Clone)]
 struct Probing(ProbeDeclaration);
 

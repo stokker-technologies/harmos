@@ -262,7 +262,8 @@ fn grpc_visibility_compiles() {
         ("visibility = harmos::operations::Visibility::Private,", false),
         ("visibility = PRIVATE,", false),
         ("visibility = Public,", true),
-        ("visibility = Host,", true),
+        ("visibility = Host,", false),
+        ("visibility = harmos::operations::Visibility::Host,", false),
         ("visibility = harmos::operations::Visibility::Public,", true),
         ("visibility = PUBLIC,", true),
         ("visibility = Shared,", false),
@@ -302,7 +303,13 @@ fn main() {{}}
         let diagnostic = String::from_utf8_lossy(&compiled.stderr);
         assert_eq!(compiled.status.success(), accepted, "{visibility}:\n{diagnostic}");
         if !accepted {
-            let expected = if visibility.contains("Shared") { "Shared" } else { "Private operations cannot declare a gRPC binding" };
+            let expected = if visibility.contains("Shared") {
+                "Shared"
+            } else if visibility.contains("Host") {
+                "Host"
+            } else {
+                "Private operations cannot declare a gRPC binding"
+            };
             assert!(diagnostic.contains(expected), "{diagnostic}");
         }
     }

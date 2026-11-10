@@ -125,7 +125,7 @@ struct Amplified {
         retries: RetryPolicy::Never,
     },
     response = (),
-    visibility = Host,
+    visibility = Private,
 )]
 #[derive(Clone, PartialEq, Eq)]
 struct SampleDeclaration {

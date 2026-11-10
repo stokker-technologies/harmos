@@ -116,13 +116,13 @@ async fn owned_binding_preserves_admission_and_generation() {
     assert!(runtime.operations.submit_encoded_with(&route, Text::from("unsafe").encode(), Some(retry)).is_err());
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
 
-    // Preserve Host Visibility For Plugin Callers And Callbacks
+    // Admit the Declaring Plugin and Its Callback to the Private Operation
     let caller = runtime.operations.caller(&host.callers["provider"]).unwrap();
-    assert!(matches!(caller.submit_encoded_with(&route, Text::from("denied").encode(), None), Err(Error::OperationUnauthorized { .. })));
-    assert!(matches!(
-        callback.submit_with_retry(NonZeroUsize::new(64).unwrap(), |_| Ok(Text::from("denied").encode()), None),
-        Err(Error::OperationUnauthorized { .. })
-    ));
+    let response = caller.submit_encoded_with(&route, Text::from("own").encode(), None).unwrap().await.unwrap();
+    assert_eq!(String::decode(&response).unwrap(), "own");
+    let response =
+        callback.submit_with_retry(NonZeroUsize::new(64).unwrap(), |_| Ok(Text::from("callback").encode()), None).unwrap().await.unwrap();
+    assert_eq!(String::decode(&response).unwrap(), "callback");
 
     // Retire The Original Generation Without Rebinding Its Callback
     owner.prepared.store(0, Ordering::SeqCst);

@@ -47,12 +47,16 @@ type Backends = PluginBackend<Resources, Resources, Resources>;
 
 #[harmos_runtime::operation(resources = [Owner], id = "fixture.host_control",
     response = String,
-    visibility = Host,
+    visibility = Private,
     policy = super::cases::EchoDeclaration::POLICY
 )]
 struct ControlDeclaration {
     value: String,
 }
+
+#[harmos_runtime::operation(id = "fixture.drive_control", response = String,
+    operations = [ControlDeclaration], policy = super::cases::EchoDeclaration::POLICY)]
+struct DriveControl;
 
 struct Principal(&'static str);
 
@@ -153,6 +157,14 @@ impl harmos_runtime::Operation for CorePublication {
 impl From<&str> for ControlDeclaration {
     fn from(value: &str) -> Self {
         Self { value: value.to_owned() }
+    }
+}
+
+impl harmos_runtime::Operation for DriveControl {
+    type Error = harmos_runtime::operations::InvocationError;
+
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<String>, Self::Error> {
+        ctx.operation(ControlDeclaration::from("host child")).await
     }
 }
 
@@ -369,7 +381,7 @@ async fn host_requirements_route() {
 }
 
 #[tokio::test]
-async fn host_visibility_enforced() {
+async fn private_visibility_enforced() {
     let host_owner = Arc::new(Owner::default());
     let runtime = runtime_with_resources(NonZeroUsize::new(128).unwrap(), host_owner.clone(), None).await;
     let mut host = Host {
@@ -384,28 +396,38 @@ async fn host_visibility_enforced() {
     let scope = host.scope.as_ref().unwrap().clone();
     let own = runtime.operations.caller(&host.callers["provider"]).unwrap();
     let dependency = runtime.operations.caller(&host.callers["client"]).unwrap();
-    for caller in [&own, &dependency] {
-        assert!(matches!(
-            caller.submit::<ControlDeclaration>(ControlDeclaration::from("plugin")),
-            Err(Error::OperationUnauthorized { .. })
-        ));
-        assert!(matches!(
-            caller.submit_encoded(&format!("provider.{}", ControlDeclaration::ID), Text::from("encoded").encode()),
-            Err(Error::OperationUnauthorized { .. })
-        ));
-    }
+    // Refuse Another Plugin Before Preparing the Request
+    assert!(matches!(
+        dependency.submit::<ControlDeclaration>(ControlDeclaration::from("plugin")),
+        Err(Error::OperationUnauthorized { .. })
+    ));
+    assert!(matches!(
+        dependency.submit_encoded(&format!("provider.{}", ControlDeclaration::ID), Text::from("encoded").encode()),
+        Err(Error::OperationUnauthorized { .. })
+    ));
+
+    // Admit the Declaring Plugin Through Typed and Encoded Calls
+    assert_eq!(*own.submit::<ControlDeclaration>(ControlDeclaration::from("plugin")).unwrap().await.unwrap(), "plugin");
+    let response = own.call_encoded(&format!("provider.{}", ControlDeclaration::ID), Text::from("encoded").encode()).await.unwrap();
+    assert_eq!(String::decode(&response).unwrap(), "encoded");
+
+    // Admit the Declaring Plugin's Captured Callback
     let contract = WireDeclaration::of::<ControlDeclaration>().contract().unwrap();
     let captured = runtime.operations.capture_callback(&scope, &contract).unwrap();
     let encoded = AtomicBool::new(false);
-    assert!(matches!(
-        captured.submit_with(NonZeroUsize::new(64).unwrap(), |_| {
+    let response = captured
+        .submit_with(NonZeroUsize::new(64).unwrap(), |_| {
             encoded.store(true, Ordering::SeqCst);
             Ok(Text::from("callback").encode())
-        }),
-        Err(Error::OperationUnauthorized { .. })
-    ));
-    assert!(!encoded.load(Ordering::SeqCst));
-    assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 0);
+        })
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(String::decode(&response).unwrap(), "callback");
+    assert!(encoded.load(Ordering::SeqCst));
+    assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 3);
+
+    // Admit the Host Through Typed and Encoded Calls
     assert_eq!(*runtime.operation(ControlDeclaration::from("host")).await.unwrap(), "host");
 
     let response = runtime
@@ -415,7 +437,12 @@ async fn host_visibility_enforced() {
         .unwrap();
     assert_eq!(String::decode(&response).unwrap(), "encoded host");
 
+    // Admit a Host Operation That Declares a Private Plugin Callee
+    runtime.operations.register::<crate::operations::Single<DriveControl>>(Lanes::Open).await.unwrap();
+    assert_eq!(*runtime.operation(DriveControl).await.unwrap(), "host child");
+
     // Revoke the Exact Managed Generation Before Its Replacement Becomes Ready
+    encoded.store(false, Ordering::SeqCst);
     host.owner.prepared.store(0, Ordering::SeqCst);
     manager.reload(definitions("second"), &mut host).await.unwrap();
     assert_ne!(scope.generation(), host.scope.as_ref().unwrap().generation());

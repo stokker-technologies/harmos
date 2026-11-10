@@ -76,7 +76,7 @@ struct Fetch {
 #[harmos_runtime::operation(resources = [Runs], id = "gated.remote",
     policy = POLICY,
     response = Fetch,
-    visibility = Host,
+    visibility = Public,
     grpc(package = "fixture.gated.v1", service = "Remote", method = "Fetch"),
     grant = |request: &RemoteFetchDeclaration| scoped("gated.remote", request.value),
 )]
@@ -88,7 +88,7 @@ struct RemoteFetchDeclaration {
 #[harmos_runtime::operation(resources = [Runs], id = "gated.local",
     policy = POLICY,
     response = Fetch,
-    visibility = Host,
+    visibility = Public,
     grpc(package = "fixture.gated.v1", service = "Local", method = "Fetch"),
     grant = |request: &LocalFetchDeclaration| scoped("gated.local", request.value),
 )]

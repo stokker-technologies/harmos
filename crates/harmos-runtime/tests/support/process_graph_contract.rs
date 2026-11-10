@@ -54,7 +54,7 @@ pub struct ReadDeclaration {
 #[harmos_runtime::operation(id = "process.graph.probe",
     policy = POLICY,
     response = Step,
-    visibility = Host,
+    visibility = Private,
 )]
 #[derive(Clone, PartialEq)]
 pub struct ProbeDeclaration {
