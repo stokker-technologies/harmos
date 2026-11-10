@@ -127,6 +127,77 @@ class StarterTests(unittest.TestCase):
         self.assertTrue(all(not directory.exists() for directory in directories))
 
 
+class ReleaseTagTests(unittest.TestCase):
+    def test_non_release_dev_push_is_skipped_and_refused(self):
+        action = runpy.run_path(str(ROOT / ".github/actions/review-release/run.py"))
+        environment = {"GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/dev", "GITHUB_SHA": NEW}
+        with (
+            patch.dict(os.environ, environment),
+            patch.dict(
+                action["github_release_mode"].__globals__, command=lambda *args: NEW if args[-1] == "HEAD" else "", pages=lambda *args: []
+            ),
+            patch.object(run.registry, "release_review", return_value=None),
+            patch.object(run, "release_tag", return_value="v1.2.3"),
+            patch.dict(os.environ, GITHUB_WORKFLOW_REF="owner/product/.github/workflows/release.yml@refs/heads/dev"),
+        ):
+            self.assertEqual(action["github_release_mode"](), "skip")
+            with self.assertRaises(policy.ToolError):
+                run._tag_event(ROOT, {"provider": "github", "repository": "owner/product"}, NEW)
+
+    def test_prepared_release_events_require_exact_merged_review(self):
+        action = runpy.run_path(str(ROOT / ".github/actions/review-release/run.py"))
+        with (ROOT / "tools/project.toml").open("rb") as stream:
+            tag = "v" + tomllib.load(stream)["version"]["value"]
+        review = {
+            "number": 211,
+            "merged": True,
+            "merged_at": "2026-11-10T00:00:00Z",
+            "merge_commit_sha": NEW,
+            "head": {"sha": OLD, "ref": "release/" + tag, "repo": {"full_name": "owner/product"}},
+            "base": {"ref": "dev", "repo": {"full_name": "owner/product"}},
+        }
+        for event in ("push", "workflow_dispatch"):
+            with (
+                self.subTest(event=event),
+                patch.dict(
+                    os.environ,
+                    {
+                        "GITHUB_EVENT_NAME": event,
+                        "GITHUB_REF": "refs/heads/dev",
+                        "GITHUB_SHA": NEW,
+                        "GITHUB_WORKFLOW_REF": "owner/product/.github/workflows/release.yml@refs/heads/dev",
+                    },
+                ),
+                patch.dict(
+                    action["github_release_mode"].__globals__,
+                    command=lambda *args: NEW if args[-1] == "HEAD" else "",
+                    pages=lambda *args: [review],
+                ),
+                patch.object(run.registry, "pages", return_value=[review]),
+                patch.object(run.registry, "document", return_value=review),
+                patch.object(run, "release_tag", return_value=tag),
+            ):
+                self.assertEqual(action["github_release_mode"](), "tag")
+                self.assertEqual(run._tag_event(ROOT, {"provider": "github", "repository": "owner/product"}, NEW), review)
+                with patch.dict(action["github_release_mode"].__globals__, command=lambda *args: NEW):
+                    self.assertEqual(action["github_release_mode"](), "prepare" if event == "workflow_dispatch" else "skip")
+                for mutation in (
+                    {"merge_commit_sha": LATER},
+                    {"merged_at": None},
+                    {"merged": False},
+                    {"head": {**review["head"], "ref": "feature/ordinary"}},
+                    {"base": {**review["base"], "ref": "main"}},
+                    {"head": {**review["head"], "repo": {"full_name": "fork/product"}}},
+                ):
+                    with (
+                        self.subTest(mutation=mutation),
+                        patch.object(run.registry, "pages", return_value=[{**review, **mutation}]),
+                        patch.object(run.registry, "document", return_value={**review, **mutation}),
+                        self.assertRaises(policy.ToolError),
+                    ):
+                        run._tag_event(ROOT, {"provider": "github", "repository": "owner/product"}, NEW)
+
+
 class ReleaseChecksTests(unittest.TestCase):
     def setUp(self):
         self.guard = runpy.run_path(str(ROOT / ".github/actions/review-release/checks.py"))
