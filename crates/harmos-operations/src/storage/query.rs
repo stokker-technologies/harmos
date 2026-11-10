@@ -154,7 +154,9 @@ mod execution {
             while let Some(item) = reader.next().await? {
                 ctx.admit(&grant).map_err(Error::Access)?;
                 let bytes = item.output_memory_size();
-                tokio::time::timeout(IO_TIMEOUT, output.send_with(bytes, || Ok(item.output())))
+                storage
+                    .clock()
+                    .timeout(IO_TIMEOUT, output.send_with(bytes, || Ok(item.output())))
                     .await
                     .map_err(|_| crate::storage::output_timeout())??;
             }

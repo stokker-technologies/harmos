@@ -154,7 +154,7 @@ impl PluginRestartSettings {
     pub fn validate(&self) -> Result<()> {
         if self.backoff_base.is_zero()
             || self.backoff_cap < self.backoff_base
-            || std::time::Instant::now().checked_add(self.backoff_cap).is_none()
+            || crate::clock::current().now().checked_add(self.backoff_cap).is_none()
         {
             return Err(Error::InvalidInput {
                 field: "plugin restart backoff",
@@ -195,7 +195,7 @@ impl PluginSettings {
     pub fn validate(&self) -> Result<()> {
         self.restart.validate()?;
         for timeout in [self.initialization_timeout, self.shutdown_timeout] {
-            if timeout.is_zero() || std::time::Instant::now().checked_add(timeout).is_none() {
+            if timeout.is_zero() || crate::clock::current().now().checked_add(timeout).is_none() {
                 return Err(Error::InvalidInput {
                     field: "plugin lifecycle timeout",
                     reason: "must be positive and representable",

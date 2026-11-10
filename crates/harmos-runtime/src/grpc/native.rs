@@ -204,7 +204,11 @@ impl Endpoint {
     }
     async fn opening(&self, request: Request<Incoming>) -> Result<Pending, Status> {
         let binding = self.binding(&request);
-        let (request, incoming) = tokio::time::timeout(self.settings.opening_timeout, super::open(request.into_inner()))
+        let (request, incoming) = self
+            .binding
+            .operations
+            .clock()
+            .timeout(self.settings.opening_timeout, super::open(request.into_inner()))
             .await
             .map_err(|_| Status::deadline_exceeded("operation opening timed out"))??;
         let mut pending = self.start(binding, request)?;
@@ -276,7 +280,11 @@ impl tonic::server::StreamingService<StreamItem<super::ControlEnvelope<Vec<u8>, 
         };
         Box::pin(async move {
             let mut incoming = request.into_inner();
-            let first = tokio::time::timeout(endpoint.settings.opening_timeout, incoming.next())
+            let first = endpoint
+                .binding
+                .operations
+                .clock()
+                .timeout(endpoint.settings.opening_timeout, incoming.next())
                 .await
                 .map_err(|_| Status::deadline_exceeded("operation opening timed out"))?
                 .transpose()?

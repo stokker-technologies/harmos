@@ -72,7 +72,7 @@ impl Inner {
                 Attempt::Wait => {}
             }
             let notified = match deadline {
-                Some(deadline) => tokio::time::timeout_at(deadline, changed.changed()).await.map_err(|_| Refusal::Elapsed)?,
+                Some(deadline) => self.execution.timeout_at(deadline, changed.changed()).await.map_err(|_| Refusal::Elapsed)?,
                 None => changed.changed().await,
             };
             notified.map_err(|_| Refusal::Failed(Error::Closing { domain: "storage" }))?;

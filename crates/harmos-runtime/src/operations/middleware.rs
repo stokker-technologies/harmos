@@ -79,7 +79,7 @@ struct State {
     entries: Vec<Arc<dyn Middleware>>,
     authorizer: Option<Arc<dyn super::authorization::Authorizer>>,
     authorization_frozen: bool,
-    clock: AttemptClock,
+    clock: Option<AttemptClock>,
 }
 
 pub(super) struct Capture {
@@ -114,9 +114,12 @@ pub trait Middleware: Send + Sync + 'static {
 
 impl Default for AttemptClock {
     fn default() -> Self {
-        Self::new(|| AttemptStartedAt {
-            instant: crate::supervision::executor::now(),
-            timestamp: crate::state::Timestamp::now(),
+        Self::new(|| {
+            let reading = crate::clock::current().read();
+            AttemptStartedAt {
+                instant: reading.instant,
+                timestamp: reading.date,
+            }
         })
     }
 }
@@ -205,16 +208,25 @@ impl Configuration {
                 domain: "operation middleware configuration",
             });
         }
-        state.clock = clock;
+        state.clock = Some(clock);
         Ok(())
     }
 
-    pub(super) fn capture(&self) -> Capture {
+    pub(super) fn capture(&self, clock: &crate::clock::Clock) -> Capture {
         let mut state = self.state.lock().expect("middleware configuration lock is healthy");
         state.frozen = true;
         Capture {
             entries: state.entries.clone(),
-            clock: state.clock.clone(),
+            clock: state.clock.clone().unwrap_or_else(|| {
+                let clock = clock.clone();
+                AttemptClock::new(move || {
+                    let reading = clock.read();
+                    AttemptStartedAt {
+                        instant: reading.instant,
+                        timestamp: reading.date,
+                    }
+                })
+            }),
         }
     }
 }

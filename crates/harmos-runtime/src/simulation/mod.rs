@@ -389,7 +389,9 @@ where
         let origin = Origin::at(self.origin.value.clone(), self.origin.position);
         let configure = Arc::clone(&self.configure);
         let memory = self.memory.source(true);
+        let clock = self.executor.clock();
         let mut runtime = self.executor.block_on(Runtime::<A>::launch_with(origin, self.config.clone(), move |setup| {
+            setup.settings().clock(clock);
             configure(setup);
             setup.settings().simulation_recovery(memory);
         }))?;

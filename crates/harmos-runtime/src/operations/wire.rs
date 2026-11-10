@@ -27,6 +27,7 @@ use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::{Manager, OperationInstanceId};
 use crate::operations::OperationDeclaration;
+#[cfg(test)]
 use crate::supervision::executor;
 use crate::{Error, Refusal, Result, operations::Scope};
 
@@ -152,7 +153,7 @@ impl Manager {
     }
 
     pub fn submit_encoded_with(&self, operation: &str, payload: Vec<u8>, retry: Option<super::RetryPolicy>) -> Result<EncodedInvocation> {
-        self.submit_encoded_at_as(operation, payload, Source::Host, None, executor::now(), EncodedOptions { expected: None, retry })
+        self.submit_encoded_at_as(operation, payload, Source::Host, None, self.clock().now(), EncodedOptions { expected: None, retry })
     }
 
     pub async fn call_encoded(&self, operation: &str, payload: Vec<u8>) -> Result<Vec<u8>> {
@@ -162,14 +163,14 @@ impl Manager {
     pub(super) fn submit_encoded_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>,
     ) -> Result<EncodedInvocation> {
-        self.submit_encoded_at_as(operation, payload, source, parent, executor::now(), EncodedOptions::default())
+        self.submit_encoded_at_as(operation, payload, source, parent, self.clock().now(), EncodedOptions::default())
     }
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) fn submit_encoded_retry_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, retry: Option<super::RetryPolicy>,
     ) -> Result<EncodedInvocation> {
-        self.submit_encoded_at_as(operation, payload, source, None, executor::now(), EncodedOptions { expected: None, retry })
+        self.submit_encoded_at_as(operation, payload, source, None, self.clock().now(), EncodedOptions { expected: None, retry })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.submit_encoded_at_as", level = "debug", skip_all)]
@@ -315,12 +316,12 @@ impl PluginCallback {
     ) -> Result<EncodedInvocation> {
         #[cfg(not(feature = "plugin-sidecar"))]
         let _ = resident;
-        let submitted = executor::now();
+        let submitted = self.operations.clock().now();
         let origin = source.check()?;
         self.entry.available()?;
         self.entry.authorize(&origin)?;
         let timeout = self.entry.declared().policy.timeout;
-        budget(self.entry.id(), 1, timeout, submitted)?;
+        budget(self.operations.clock(), self.entry.id(), 1, timeout, submitted)?;
         let preparation = self.operations.claim_preparation(encoding_memory_bytes)?;
         #[cfg(feature = "plugin-sidecar")]
         let native_capacity = self
@@ -344,7 +345,7 @@ impl PluginCallback {
         }
         source.check()?;
         self.entry.available()?;
-        budget(self.entry.id(), 1, timeout, submitted)?;
+        budget(self.operations.clock(), self.entry.id(), 1, timeout, submitted)?;
         let dispatch = self.entry.wire.ok_or(Error::InvalidInput {
             field: "callback codec",
             reason: "callback target has no original codec binding",
@@ -407,7 +408,7 @@ impl super::Context<'_> {
                 scope: &self.scope,
                 ancestors: self.admission.held(),
             }),
-            executor::now(),
+            self.operations.clock().now(),
             EncodedOptions { expected: None, retry },
         )
     }
@@ -458,7 +459,7 @@ impl super::Context<'_> {
                 scope: &self.scope,
                 ancestors: self.admission.held(),
             }),
-            executor::now(),
+            self.operations.clock().now(),
             EncodedOptions { expected: None, retry },
         )
     }
@@ -471,7 +472,7 @@ pub(super) fn dispatch_native(
 ) -> Result<EncodedInvocation> {
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
-    budget(submission.entry.id(), 1, timeout, submitted)?;
+    budget(operations.clock(), submission.entry.id(), 1, timeout, submitted)?;
     let factory = submission.entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>();
     let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
@@ -536,7 +537,7 @@ pub(super) fn dispatch_prepared(
     request.grant = grant;
     let operation = submission.entry.id().to_owned();
     let target = Arc::downgrade(&submission.entry);
-    budget(&operation, 1, timeout, submitted)?;
+    budget(operations.clock(), &operation, 1, timeout, submitted)?;
     let (scope, ancestors) = parent.map_or((None, &[][..]), |parent| (Some(parent.scope), parent.ancestors));
     let invocation = operations.admit_entry::<Encoded, ()>((request, ()), scope, ancestors, &source, submission)?;
     let id = invocation.id();
@@ -544,11 +545,12 @@ pub(super) fn dispatch_prepared(
     let control = Arc::clone(&invocation.control);
     let invocation = invocation.unguarded();
     let outcome_control = Arc::clone(&control);
+    let clock = operations.clock().clone();
     let outcome = Box::pin(async move {
         let response = invocation.await?;
         available(&target, &source)?;
         if !streaming {
-            budget(&operation, outcome_control.status().attempt() + 1, timeout, submitted)?;
+            budget(&clock, &operation, outcome_control.status().attempt() + 1, timeout, submitted)?;
         }
         Ok(response.try_unwrap().unwrap_or_else(|response| response.to_vec()))
     });
@@ -567,8 +569,10 @@ pub(super) fn available(target: &Weak<Entry>, source: &Source) -> Result<()> {
     target.upgrade().ok_or(Error::Closing { domain: "operation" })?.available_to(&origin)
 }
 
-pub(super) fn budget(operation: &str, attempt: usize, timeout: Duration, submitted: tokio::time::Instant) -> Result<()> {
-    if executor::now().saturating_duration_since(submitted) >= timeout {
+pub(super) fn budget(
+    clock: &crate::clock::Clock, operation: &str, attempt: usize, timeout: Duration, submitted: tokio::time::Instant,
+) -> Result<()> {
+    if clock.now().saturating_duration_since(submitted) >= timeout {
         return Err(Refusal::TimedOut {
             operation: operation.into(),
             attempt,

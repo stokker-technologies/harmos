@@ -32,6 +32,7 @@ use super::executor;
 /* === Structs === */
 
 pub(crate) struct Task<T> {
+    clock: crate::clock::Clock,
     stopping: watch::Sender<bool>,
     join: Mutex<Join<T>>,
 }
@@ -63,6 +64,7 @@ impl<T: Send + Sync + 'static> Task<T> {
     {
         let task = executor::task(work(stopping.clone()));
         Self {
+            clock: crate::clock::current(),
             stopping,
             join: Mutex::new(Join::Running(task)),
         }
@@ -84,6 +86,7 @@ impl<T: Send + Sync + 'static> Task<T> {
         if matches!(&*join, Join::Settled(_))
             && let Some(future) = retry()
         {
+            let _clock = crate::clock::enter(self.clock.clone());
             *join = Join::Running(executor::task(future));
         }
         if let Join::Running(task) = &mut *join {

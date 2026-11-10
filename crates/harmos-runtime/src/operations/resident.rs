@@ -615,7 +615,7 @@ impl Registry {
         let instance = super::handler::fresh_instance()?;
         let stopping = watch::channel(false).0;
         let index = self.shared.index.clone();
-        let lifecycle = Arc::new(Instance::queued(stopping.clone()).resident().on_settled(move || {
+        let lifecycle = Arc::new(Instance::queued(stopping.clone(), operations.clock().clone()).resident().on_settled(move || {
             if let Some(index) = index.upgrade() {
                 index.forget_resident(instance);
             }

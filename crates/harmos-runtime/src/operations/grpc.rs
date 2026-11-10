@@ -95,7 +95,7 @@ impl GrpcBinding {
         let invocation = super::wire::dispatch_prepared(
             &self.operations,
             Submission {
-                submitted: crate::supervision::executor::now(),
+                submitted: self.operations.clock().now(),
                 entry: self.entry.clone(),
                 cause: None,
                 preparation: None,
@@ -117,7 +117,7 @@ impl GrpcBinding {
             &[],
             &Source::Host.external()?,
             Submission {
-                submitted: crate::supervision::executor::now(),
+                submitted: self.operations.clock().now(),
                 entry: self.entry.clone(),
                 cause: None,
                 preparation: None,

@@ -94,6 +94,13 @@ impl<A: Application> Runtime<A> {
     pub async fn launch_with(
         origin: impl Into<crate::state::Origin<A::State>>, config: A::Config, overrides: impl FnOnce(&mut Setup<A>),
     ) -> Result<Self, StartupError> {
+        let clock = crate::clock::Clock::default();
+        crate::clock::scope(clock, Box::pin(Self::launch_clocked(origin, config, overrides))).await
+    }
+
+    async fn launch_clocked(
+        origin: impl Into<crate::state::Origin<A::State>>, config: A::Config, overrides: impl FnOnce(&mut Setup<A>),
+    ) -> Result<Self, StartupError> {
         let mut setup = Setup::<A>::new(Self::builder(origin));
         let mut preparation = Preparation {
             cleanup: setup.settings().startup_cleanup(),

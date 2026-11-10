@@ -147,6 +147,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
     root = Path.cwd()
 
     # Focused Cargo Selections
+    if options.command in ("build", "test") and options.features and not options.package:
+        parser.error("--features requires --package")
     if options.command == "test" and options.language == "python" and options.exact:
         if options.package or options.target or options.coverage or options.cpp or options.extended or options.features:
             parser.error("focused Python tests select only --exact")
@@ -176,8 +178,6 @@ def dispatch(arguments: list[str] | None = None) -> int:
             command += [options.exact, "--", "--exact"]
         return cargo.focused(root, "test", command)
 
-    if options.command in ("build", "test") and options.features:
-        parser.error("--features requires --package")
     if options.command == "build" and options.example:
         parser.error("--example requires --package")
 

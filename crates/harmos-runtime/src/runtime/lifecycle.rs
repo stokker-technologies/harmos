@@ -84,6 +84,7 @@ impl<A: Application> Runtime<A> {
                 });
             }
             storage.claim_owner(self.operations.resident_identity())?;
+            storage.adopt_clock(self.operations.clock())?;
             self.storage.get_or_init(|| storage)
         };
         storage.start_on::<A>(&self.operations).await
@@ -94,11 +95,11 @@ impl<A: Application> Runtime<A> {
     }
 
     pub async fn shutdown_with_timeout(&self, timeout: Duration) -> Result<Position> {
-        let deadline = tokio::time::Instant::now().checked_add(timeout).filter(|_| !timeout.is_zero()).ok_or(Error::InvalidInput {
+        let deadline = self.operations.clock().now().checked_add(timeout).filter(|_| !timeout.is_zero()).ok_or(Error::InvalidInput {
             field: "runtime shutdown timeout",
             reason: "must be positive and representable",
         })?;
-        match tokio::time::timeout_at(deadline, self.shutdown()).await {
+        match self.operations.clock().timeout_at(deadline, self.shutdown()).await {
             Ok(result) => result,
             Err(_) => {
                 let stopping = self.stopping.lock().expect("runtime transition is healthy");
@@ -132,6 +133,7 @@ impl<A: Application> Runtime<A> {
         let (cleanup, completed) = {
             let mut stopping = self.stopping.lock().expect("runtime transition is healthy");
             if let Stopping::Running(supervisor) = &mut *stopping {
+                let _clock = crate::clock::enter(self.operations.clock().clone());
                 let outcome = Arc::new(OnceLock::new());
                 let progress = watch::channel("producers and listeners").0;
                 let original = Shutdown {
@@ -216,7 +218,7 @@ impl<A: Application> Shutdown<A> {
             }
             self.handles.state.seal();
             self.progress.send_replace("journal");
-            let mut settled = joined(supervisor, &self.journal_handles, &self.notices).await;
+            let mut settled = joined(self.handles.operations.clock(), supervisor, &self.journal_handles, &self.notices).await;
             if let Some(source) = self.application.as_ref().and_then(super::launch::ApplicationCleanup::failure)
                 && settled.is_ok()
             {
@@ -277,8 +279,10 @@ impl<A: Application> Handle<A> {
 
 /* === Private Functions === */
 
-async fn joined(supervisor: &mut JoinHandle<Position>, journal_handles: &Weak<()>, notices: &watch::Sender<Option<String>>) -> Outcome {
-    let mut grace = Box::pin(tokio::time::sleep(STOP_GRACE));
+async fn joined(
+    clock: &crate::clock::Clock, supervisor: &mut JoinHandle<Position>, journal_handles: &Weak<()>, notices: &watch::Sender<Option<String>>,
+) -> Outcome {
+    let mut grace = Box::pin(clock.sleep(STOP_GRACE));
     let joined = std::future::poll_fn(|context| {
         if let Poll::Ready(settled) = Pin::new(&mut *supervisor).poll(context) {
             return Poll::Ready(Some(settled));

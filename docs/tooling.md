@@ -25,13 +25,16 @@ never scans or reclaims compiler output before compilation.
 ```sh
 mise run build -- --package harmos-domain
 mise run build -- --package harmos-domain --check
+mise run build -- --package harmos-runtime --features grpc,simulation --check
+mise run test -- --package harmos-runtime --features simulation --target lib --exact simulation::clock::tests::evidence_dates_retain_the_host_epoch_across_reboot
 mise run test -- --package harmos-macros --target lib --exact operation::tests::portable_domain_operation
 ```
 
 Focused builds select one package; focused tests select exactly one library or
 named integration target and use Cargo's default test profile, without an archive.
-Both accept `--features` for the selected package. Focused builds also accept
-`--example`. Check the packaging fixture driver with:
+Both accept `--features <list>` with `--package`, forwarding the comma- or
+space-separated Cargo feature list unchanged. Default features remain enabled.
+Focused builds also accept `--example`. Check the packaging fixture driver with:
 
 ```sh
 mise run build -- --package harmos-packaging --example fixture-driver --features guest,generate-python --check

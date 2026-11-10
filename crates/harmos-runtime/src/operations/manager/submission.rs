@@ -91,7 +91,7 @@ impl Manager {
         &self, id: &str, input: (crate::operations::binding::Request<O::Request>, P), scope: Option<&Scope<'_>>,
         ancestors: &[&'static str], source: &Source, cause: Option<Position>,
     ) -> Result<Running<O>> {
-        let submitted = executor::now();
+        let submitted = self.clock().now();
         let origin = source.check()?;
         let entry = self.entry_as(id, &origin)?;
         self.admit_entry::<O, P>(
@@ -209,7 +209,7 @@ impl Manager {
         pending.insert(id, Arc::clone(&control));
         drop(pending);
 
-        let middleware = self.registry.middleware.capture();
+        let middleware = self.registry.middleware.capture(self.clock());
         let context = if middleware.is_empty() { self.context.clone() } else { Arc::new(std::sync::OnceLock::new()) };
         request.context = context.clone();
         let mut job = (binding.prepare)(
@@ -246,7 +246,7 @@ impl Manager {
                 origin,
             ));
         }
-        let refusal = if executor::now().saturating_duration_since(submitted) >= job.policy.timeout {
+        let refusal = if self.clock().now().saturating_duration_since(submitted) >= job.policy.timeout {
             Err(crate::Refusal::TimedOut {
                 operation: entry.id().to_owned(),
                 attempt: 1,

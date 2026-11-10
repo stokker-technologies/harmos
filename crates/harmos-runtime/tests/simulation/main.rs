@@ -257,7 +257,7 @@ impl harmos_runtime::operations::Operation for TimingItsOwnWaitDeclaration {
         let context = host.borrow();
         let result: ::core::result::Result<u64, Self::Error> = async move {
             let started = context.scope().now();
-            tokio::time::sleep(Duration::from_millis(self.wait_ms)).await;
+            context.scope().clock().sleep(Duration::from_millis(self.wait_ms)).await;
             Ok(u64::try_from((context.scope().now() - started).as_nanos()).expect("the scripted wait fits in u64 nanoseconds"))
         }
         .await;

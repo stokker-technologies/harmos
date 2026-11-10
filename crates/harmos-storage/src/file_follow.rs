@@ -160,7 +160,7 @@ impl FileFollower {
                     Step::Wait => {
                         let mut changed = self.inner.changed.subscribe();
                         tokio::select! {
-                            _ = tokio::time::sleep(self.inner.settings.filesystem.poll_interval) => {},
+                            _ = self.inner.execution.sleep(self.inner.settings.filesystem.poll_interval) => {},
                             _ = changed.changed() => {},
                         }
                     }

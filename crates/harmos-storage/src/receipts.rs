@@ -98,8 +98,9 @@ impl Entry {
 
 impl Receipts {
     pub(super) fn new(retention: Duration, execution: crate::execution::Execution) -> Result<Self> {
-        let now = execution.now();
-        let wall = SystemTime::now();
+        let reading = execution.read();
+        let now = reading.instant;
+        let wall = reading.date;
         Ok(Self {
             execution,
             window: epoch()?,
@@ -119,12 +120,13 @@ impl Receipts {
     }
 
     pub(super) fn window(&mut self, history: &StoreHistory, retention: Duration) -> Result<MutationWindow> {
-        let now = self.execution.now();
+        let reading = self.execution.read();
+        let now = reading.instant;
         self.purge(now);
         if now >= self.deadline {
             self.window = epoch()?;
             self.deadline = now + retention;
-            self.expires_at = SystemTime::now().checked_add(retention).ok_or_else(expired)?;
+            self.expires_at = reading.date.checked_add(retention).ok_or_else(expired)?;
         }
         Ok(MutationWindow {
             history: history.clone(),
@@ -269,8 +271,9 @@ impl Receipts {
     }
 
     pub(super) fn restore(&mut self, mut receipts: Vec<MutationReceipt>) -> Result<()> {
-        let now = self.execution.now();
-        let wall = SystemTime::now();
+        let reading = self.execution.read();
+        let now = reading.instant;
+        let wall = reading.date;
         receipts.sort_by_key(|receipt| receipt.expires_at);
         let mut restored = BTreeMap::new();
         let mut order = VecDeque::with_capacity(receipts.len());
@@ -515,6 +518,28 @@ fn expired() -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn restored_receipts_expire_on_the_host_clock() {
+        let epoch = SystemTime::UNIX_EPOCH + Duration::from_secs(123);
+        let clock = crate::execution::Execution::at(epoch, Instant::now, |duration| Box::pin(tokio::time::sleep(duration)));
+        let mut original = Receipts::new(MUTATION_RETENTION, clock.clone()).unwrap();
+        let mutation = MutationId {
+            window: original.window.clone(),
+            key: Identifier::new("saved").unwrap(),
+        };
+        original.insert(&mutation, [1; 32]).unwrap();
+        original.complete(&mutation, MutationValue::Rejected);
+        let saved = original.snapshot(None);
+        assert_eq!(saved[0].expires_at, epoch + MUTATION_RETENTION);
+
+        tokio::time::advance(MUTATION_RETENTION / 2).await;
+        let mut restored = Receipts::new(MUTATION_RETENTION, clock).unwrap();
+        restored.restore(saved).unwrap();
+        assert!(matches!(restored.lookup(&mutation, &[1; 32], None).unwrap(), ReceiptState::Complete(MutationValue::Rejected)));
+        tokio::time::advance(MUTATION_RETENTION / 2).await;
+        assert!(restored.lookup(&mutation, &[1; 32], None).is_err());
+    }
 
     #[test]
     fn receipt_checkpoints_keep_unsaved_outcomes_until_success() {

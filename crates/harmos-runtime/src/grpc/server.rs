@@ -65,6 +65,15 @@ pub enum Authority {
 /* === Implementations === */
 
 impl Authority {
+    pub(super) fn clock(&self) -> &crate::clock::Clock {
+        match self {
+            Self::TrustedHost(operations) => operations.clock(),
+            Self::Binding(binding) => binding.operations.clock(),
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            Self::Plugin(caller) => caller.operations.clock(),
+        }
+    }
+
     pub fn trusted_host<L: crate::operations::Lane>(operations: &crate::operations::OperationManager<L>) -> Self {
         Self::TrustedHost(operations.execution())
     }
@@ -161,7 +170,9 @@ where
         let authority = self.authority.contextual(&request);
         let settings = self.settings;
         Box::pin(async move {
-            let (request, incoming) = tokio::time::timeout(settings.opening_timeout, super::open(request.into_inner()))
+            let (request, incoming) = authority
+                .clock()
+                .timeout(settings.opening_timeout, super::open(request.into_inner()))
                 .await
                 .map_err(|_| Status::deadline_exceeded("operation opening timed out"))??;
             let (input, endpoint) = crate::operations::stream(settings.input).map_err(status)?;
@@ -184,7 +195,9 @@ where
         let authority = self.authority.contextual(&request);
         let settings = self.settings;
         Box::pin(async move {
-            let (request, incoming) = tokio::time::timeout(settings.opening_timeout, super::open(request.into_inner()))
+            let (request, incoming) = authority
+                .clock()
+                .timeout(settings.opening_timeout, super::open(request.into_inner()))
                 .await
                 .map_err(|_| Status::deadline_exceeded("operation opening timed out"))??;
             let (input, receiving) = crate::operations::stream(settings.input).map_err(status)?;
