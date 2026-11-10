@@ -20,9 +20,11 @@
 // Third Party Imports
 
 // Local Imports
-use harmos::{Context, Message, Operation, Plugin, Result, clock};
+use harmos::{Context, Message, Observer, Operation, Plugin, Result, Stream, clock};
 
 /* === Constants === */
+
+static READING_RELEASED: tokio::sync::Notify = tokio::sync::Notify::const_new();
 
 /* === Macros === */
 
@@ -44,11 +46,22 @@ struct Isolation {
     absent: bool,
 }
 
+struct Reading {
+    cleanup: std::path::PathBuf,
+}
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Drop for Reading {
+    fn drop(&mut self) {
+        std::fs::write(&self.cleanup, b"released").expect("Write Reading Cleanup Evidence");
+        READING_RELEASED.notify_one();
+    }
+}
 
 /* === Public Functions === */
 
@@ -56,9 +69,20 @@ struct Isolation {
 
 fn main() -> Result<()> {
     let cleanup = std::env::args().nth(1).expect("Cleanup Evidence Path");
+    let reading_cleanup = std::path::PathBuf::from(&cleanup).with_extension("reading");
+    let reading = Stream::<Isolation>::new("execution.reading");
+    let observer = Observer::new(&reading, async move |ctx: &Context| {
+        ctx.set(Reading { cleanup: reading_cleanup.clone() });
+        println!("observer_reading");
+        std::future::pending::<Result<Isolation>>().await
+    })
+    .every_ms(1000);
     Plugin::new("execution", "1.0.0")
         .operation(Operation::new("execution.clock", clock_and_resource))
         .operation(Operation::new("execution.isolation", isolation))
+        .operation(Operation::new("execution.reading_released", reading_released))
+        .stream(reading)
+        .observer(observer)
         .requires::<clock::Sleep>()
         .requires::<clock::Now>()
         .on_stop(move || {
@@ -77,6 +101,11 @@ async fn clock_and_resource(ctx: &Context, _: Input) -> Result<Evidence> {
         resource: *ctx.get::<u64>()?,
         at: Some(at),
     })
+}
+
+async fn reading_released(_: &Context, _: Input) -> Result<Isolation> {
+    READING_RELEASED.notified().await;
+    Ok(Isolation { absent: true })
 }
 
 async fn isolation(ctx: &Context, _: Input) -> Result<Isolation> {

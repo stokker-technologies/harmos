@@ -82,8 +82,13 @@ pub use stream::{Observer, Publisher, Stream};
 pub mod encoding {
     pub use crate::message::merge_descriptor_types;
     pub use ::bytes::{Buf, BufMut};
-    pub use prost::{DecodeError, Message, encoding::*};
-    pub use prost_types::*;
+    pub use prost::encoding::{
+        DecodeContext, WireType, r#bool, bytes, double, float, int32, int64, message, skip_field, string, uint32, uint64,
+    };
+    pub use prost::{DecodeError, Message};
+    pub use prost_types::{
+        DescriptorProto, Duration, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet, OneofDescriptorProto, Timestamp,
+    };
 }
 
 /* === Imports === */

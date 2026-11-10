@@ -238,6 +238,9 @@ async fn execute(mut jobs: mpsc::Receiver<Job>) {
                 started,
                 mut complete,
             } = job;
+            if complete.is_closed() {
+                return;
+            }
             let future = handler.execute(&context, payload);
             let mut future = std::pin::pin!(future);
             let first = futures_util::future::poll_fn(|cx| std::task::Poll::Ready(future.as_mut().poll(cx))).await;
@@ -315,29 +318,41 @@ async fn publish(
         None => None,
     };
     let mut observing = None;
+    let mut next_tick = None;
+    let mut sample = None;
     let mut sequence = 0;
     loop {
+        if observing.is_none() && sample.is_none() {
+            if let Some(at) = next_tick.take() {
+                let handler = observer.as_ref().expect("Validated Observer Tick");
+                context.sequence = sequence + 1;
+                observing = Some((at, dispatch(&jobs, handler.clone(), context.clone(), Vec::new()).await?));
+            }
+        }
         tokio::select! {
             biased;
             _ = output.closed() => return Ok(()),
-            frame = input.message(), if observing.is_none() => {
+            frame = input.message(), if next_tick.is_none() => {
                 let Some(frame) = frame? else { return Ok(()); };
                 let Some(publish_frame::Frame::Tick(tick)) = frame.frame else { return Err(Status::invalid_argument("Expected Tick")); };
                 let at = tick.at.ok_or_else(|| Status::invalid_argument("Tick Time Required"))?; validate_timestamp(at)?;
-                let handler = observer.as_ref().ok_or_else(|| Status::invalid_argument("Device Streams Do Not Accept Ticks"))?;
-                context.sequence = sequence + 1;
-                let complete = dispatch(&jobs, handler.clone(), context.clone(), Vec::new()).await?;
-                observing = Some((at, complete));
+                if observer.is_none() { return Err(Status::invalid_argument("Device Streams Do Not Accept Ticks")); }
+                next_tick = Some(at);
+            }
+            permit = output.reserve(), if sample.is_some() => {
+                let permit = permit.map_err(|_| Status::cancelled("Demand Closed"))?;
+                sequence += 1;
+                let (row, at) = sample.take().expect("Sample Ready");
+                permit.send(Ok(v1::Samples { samples: vec![v1::Sample { at, row, sequence }] }));
             }
             result = async { let (_, complete) = observing.as_mut().expect("Observer Active"); complete.await }, if observing.is_some() => {
                 let (at, _) = observing.take().expect("Observer Active");
                 let row = result.map_err(|_| Status::internal("Observer Panicked"))?.map_err(|error| Status::internal(error.to_string()))?;
-                sequence += 1;
-                output.send(Ok(v1::Samples { samples: vec![v1::Sample { at: Some(at), row, sequence }] })).await.map_err(|_| Status::cancelled("Demand Closed"))?;
+                sample = Some((row, Some(at)));
             }
-            row = rows.recv(), if producing.is_some() => {
-                let Some((row, at)) = row else { return Ok(()); }; sequence += 1;
-                output.send(Ok(v1::Samples { samples: vec![v1::Sample { at, row, sequence }] })).await.map_err(|_| Status::cancelled("Demand Closed"))?;
+            row = rows.recv(), if observer.is_none() && sample.is_none() => {
+                let Some(row) = row else { return Ok(()); };
+                sample = Some(row);
             }
             result = async { producing.as_mut().expect("Producer Active").await }, if producing.is_some() => {
                 result.map_err(|_| Status::internal("Producer Panicked"))?.map_err(|error| Status::internal(error.to_string()))?;

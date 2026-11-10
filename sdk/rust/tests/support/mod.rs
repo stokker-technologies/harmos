@@ -44,6 +44,7 @@ use harmos_protocol::v1::{self as v1, child_response, host_frame, plugin_client:
 pub struct Process {
     pub client: PluginClient<Channel>,
     child: Child,
+    events: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
 }
 
 /* === Enums === */
@@ -63,10 +64,15 @@ impl Process {
             .kill_on_drop(true)
             .spawn()?;
         let stdout = child.stdout.take().ok_or("Missing Plugin Standard Output")?;
-        let line = BufReader::new(stdout).lines().next_line().await?.ok_or("Missing Readiness Line")?;
+        let mut events = BufReader::new(stdout).lines();
+        let line = events.next_line().await?.ok_or("Missing Readiness Line")?;
         let address = line.strip_prefix("harmos listening ").ok_or("Invalid Readiness Line")?;
         let client = PluginClient::connect(format!("http://{address}")).await?;
-        Ok(Self { client, child })
+        Ok(Self { client, child, events })
+    }
+
+    pub async fn event(&mut self) -> Result<String, Box<dyn std::error::Error>> {
+        self.events.next_line().await?.ok_or_else(|| "Plugin Closed Before Event".into())
     }
 
     pub async fn close(mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -140,5 +146,18 @@ pub async fn terminal<T: prost::Message + Default>(input: &mut Streaming<v1::Plu
 }
 
 /* === Private Functions === */
+
+pub async fn publish(
+    client: &mut PluginClient<Channel>, id: &str,
+) -> Result<(mpsc::Sender<v1::PublishFrame>, Streaming<v1::Samples>), Box<dyn std::error::Error>> {
+    let (send, receive) = mpsc::channel(1);
+    send.send(v1::PublishFrame {
+        frame: Some(v1::publish_frame::Frame::Open(v1::PublishRequest { stream: id.into(), scope: "scope".into() })),
+    })
+    .await?;
+    let input = stream::unfold(receive, |mut receive| async { receive.recv().await.map(|frame| (frame, receive)) });
+    let output = client.publish(input).await?.into_inner();
+    Ok((send, output))
+}
 
 /* === Tests === */
