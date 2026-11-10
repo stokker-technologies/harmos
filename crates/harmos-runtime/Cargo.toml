@@ -278,7 +278,7 @@ harness = false
 
 [[bench]]
 name = "unit-storage-transforms"
-path = "benches/storage/transforms.rs"
+path = "benches/storage/main.rs"
 harness = false
 
 [[bench]]
