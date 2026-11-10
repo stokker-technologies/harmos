@@ -607,12 +607,13 @@ def _tag_event(directory: Path, settings: dict, sha: str) -> dict | None:
         if source != "web" or os.environ.get("CI_COMMIT_BRANCH") != "dev" or os.environ.get("CI_COMMIT_SHA") != sha:
             raise policy.ToolError("GitLab tagging requires a web-started dev release pipeline at the checkout revision")
         return None
-    if (
-        os.environ.get("GITHUB_EVENT_NAME") not in {"push", "workflow_dispatch"}
-        or os.environ.get("GITHUB_REF") != "refs/heads/dev"
-        or os.environ.get("GITHUB_SHA") != sha
-    ):
-        raise policy.ToolError("GitHub tagging requires a dev push or dispatch at the checkout revision")
+    if os.environ.get("GITHUB_EVENT_NAME") not in {"workflow_run", "workflow_dispatch"} or os.environ.get("GITHUB_REF") != "refs/heads/dev":
+        raise policy.ToolError("GitHub tagging requires a dev validation completion or dispatch")
+    event_sha = os.environ.get("GITHUB_SHA", "")
+    if not event_sha:
+        raise policy.ToolError("GitHub tagging requires the dev event revision")
+    if sha != event_sha:
+        policy.execute(directory, ["git", "merge-base", "--is-ancestor", sha, event_sha])
     workflow = f"{settings['repository']}/.github/workflows/{RELEASE_WORKFLOW}@"
     if not os.environ.get("GITHUB_WORKFLOW_REF", "").startswith(workflow):
         raise policy.ToolError("GitHub tagging runs only in release.yml")
