@@ -15,7 +15,7 @@
 
 - [x] 3.1 Add the managed placement: start the process, read the address it announces, dial and supervise it, and call `Stop` before closing.
 - [x] 3.2 Add the remote placement: connect to a URL, reconnect, and expose the start time of each activation.
-- [ ] 3.3 Compute and admit the catalog digest; route child calls on the invoke call.
+- [x] 3.3 Compute and admit the catalog digest; route child calls on the invoke call.
 - [ ] 3.4 Open and close `Publish` calls per declared stream, send ticks for interval streams and ingest samples.
 - [x] 3.5 Lift the simulation clock into one clock per host with a monotonic and a date reading, and move every time read and wait in the runtime, storage, the client-facing gRPC layer and the built-in operations onto it.
 - [ ] 3.6 Serve `harmos.clock.sleep` and `harmos.clock.now`, and drive observer ticks from host timers.
