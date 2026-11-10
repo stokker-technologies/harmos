@@ -11,6 +11,7 @@
 
 /* === Modules === */
 
+mod catalog;
 mod config;
 mod connection;
 mod managed;
@@ -235,6 +236,7 @@ async fn connect(
     {
         return Err(Error::Invalid("Invalid Plugin Description".into()));
     }
+    catalog::verify(description.catalog.as_ref().expect("description catalog was checked"))?;
     Ok(Activation {
         number,
         description,

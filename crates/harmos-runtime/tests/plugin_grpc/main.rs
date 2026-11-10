@@ -11,6 +11,7 @@
 
 /* === Modules === */
 
+mod catalog_admission;
 mod managed_lifecycle;
 mod remote_reconnect;
 mod remote_stop;

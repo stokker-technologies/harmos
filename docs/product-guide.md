@@ -1006,6 +1006,12 @@ the current connection. An activation exposes its `description`, monotonic `numb
 previous `started_at` timestamps to distinguish a reconnect from a process restart.
 Retained activations fail after disconnect and never follow the next connection.
 
+Before admission the host verifies the catalog digest, resolves its declared
+message names, and verifies operation fingerprints using the shared
+[descriptor rule](../proto/harmos/v1/behaviour.md#schema-fingerprints). The Rust SDK,
+reference fixture and host use `harmos-protocol` for this computation. Inconsistent
+hashes or unresolved message names refuse admission before an activation becomes visible.
+
 `Attached::stop(reason).await` calls Stop, closes the connection and, for a managed
 plugin, waits for successful process exit within the same grace budget. Host
 shutdown and dropping the attachment also request this cleanup. Remote endpoints

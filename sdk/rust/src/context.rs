@@ -125,7 +125,7 @@ impl Context {
     }
 
     pub async fn operation_with<Q: OperationRequest>(&self, request: Q, policy: Option<v1::OperationPolicy>) -> Result<Q::Response> {
-        let fingerprint = fingerprint::<Q, Q::Response>(Q::ID);
+        let fingerprint = fingerprint::<Q, Q::Response>(Q::ID)?;
         if self.requires.get(Q::ID) != Some(&fingerprint) {
             return Err(Error::Invalid(format!("Undeclared Requirement: {}", Q::ID)));
         }

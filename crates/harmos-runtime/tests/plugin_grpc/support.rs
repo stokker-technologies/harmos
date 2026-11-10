@@ -80,6 +80,7 @@ pub struct Remote {
 
 #[derive(Clone)]
 struct Fixture {
+    catalog: Arc<Mutex<v1::Catalog>>,
     started_at: Arc<AtomicI64>,
     stops: Arc<AtomicUsize>,
     pending_description: Arc<Mutex<Option<oneshot::Sender<()>>>>,
@@ -143,6 +144,11 @@ impl Source for Manual {
 impl Remote {
     pub async fn start() -> Self {
         let service = Fixture {
+            catalog: Arc::new(Mutex::new({
+                let mut catalog = v1::Catalog::default();
+                catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
+                catalog
+            })),
             started_at: Arc::new(AtomicI64::new(100)),
             stops: Arc::new(AtomicUsize::new(0)),
             pending_description: Arc::new(Mutex::new(None)),
@@ -201,6 +207,10 @@ impl Remote {
         self.service.stops.load(Ordering::SeqCst)
     }
 
+    pub fn catalog(&self, catalog: v1::Catalog) {
+        *self.service.catalog.lock().unwrap() = catalog;
+    }
+
     pub fn hold_description(&self) -> oneshot::Receiver<()> {
         let (sender, receiver) = oneshot::channel();
         *self.service.pending_description.lock().unwrap() = Some(sender);
@@ -244,7 +254,7 @@ impl Plugin for Fixture {
                 seconds: self.started_at.load(Ordering::SeqCst),
                 nanos: 0,
             }),
-            catalog: Some(v1::Catalog::default()),
+            catalog: Some(self.catalog.lock().unwrap().clone()),
         }))
     }
     type InvokeStream = Output<v1::PluginFrame>;
@@ -267,6 +277,36 @@ impl Plugin for Fixture {
 }
 
 /* === Public Functions === */
+
+pub fn catalog() -> v1::Catalog {
+    let types = prost_types::FileDescriptorSet {
+        file: vec![prost_types::FileDescriptorProto {
+            name: Some("fixture.proto".into()),
+            package: Some("fixture".into()),
+            syntax: Some("proto3".into()),
+            message_type: vec![prost_types::DescriptorProto {
+                name: Some("Value".into()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+    };
+    let fingerprint = harmos_protocol::schema::fingerprint("fixture.echo", &types, "fixture.Value", "fixture.Value").unwrap();
+    let mut catalog = v1::Catalog {
+        types: Some(types),
+        operations: vec![v1::OperationContract {
+            id: "fixture.echo".into(),
+            request: "fixture.Value".into(),
+            response: "fixture.Value".into(),
+            visibility: v1::Visibility::Public as i32,
+            fingerprint,
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
+    catalog
+}
 
 pub async fn runtime(clock: Option<Clock>) -> Runtime<App> {
     crate::support::booted(Default::default(), |setup| {

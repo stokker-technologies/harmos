@@ -21,7 +21,6 @@ use std::collections::HashMap;
 // Third Party Imports
 use prost::Message;
 use prost_types::{DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet, Timestamp};
-use sha2::{Digest, Sha256};
 
 // Local Imports
 use harmos_protocol::v1::*;
@@ -82,11 +81,7 @@ pub fn types() -> FileDescriptorSet {
 }
 
 pub fn fingerprint(id: &str) -> Vec<u8> {
-    let mut input = id.as_bytes().to_vec();
-    input.push(0);
-    input.extend(types().encode_to_vec());
-    input.extend(types().encode_to_vec());
-    Sha256::digest(input).to_vec()
+    harmos_protocol::schema::fingerprint(id, &types(), ROW, ROW).expect("the fixed fixture descriptor resolves Value")
 }
 
 pub fn catalog() -> Catalog {
@@ -127,7 +122,7 @@ pub fn catalog() -> Catalog {
         types: Some(types()),
         ..Default::default()
     };
-    catalog.digest = Sha256::digest(catalog.encode_to_vec()).to_vec();
+    catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
     catalog
 }
 

@@ -8,8 +8,11 @@
  */
 
 //! Protobuf messages and gRPC bindings for the `harmos.v1` plugin protocol.
+//! [`schema`] owns descriptor fingerprints and catalog digests shared by peers.
 
 /* === Modules === */
+
+pub mod schema;
 
 // Checked-In Output of the Generator Exercised by the Integration Drift Check.
 #[rustfmt::skip]
