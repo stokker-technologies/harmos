@@ -810,7 +810,7 @@ dependencies = [
 
 [[package]]
 name = "harmos"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "harmos-domain",
  "harmos-guest",
@@ -822,7 +822,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-domain"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "harmos-macros",
  "memchr",
@@ -837,7 +837,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-guest"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "harmos-domain",
  "harmos-macros",
@@ -850,7 +850,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-macros"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "heck",
  "proc-macro-crate",
@@ -862,7 +862,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-operations"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "harmos-domain",
  "harmos-macros",
@@ -877,7 +877,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-packaging"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "harmos-domain",
  "semver",
@@ -892,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-runtime"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "futures-core",
  "futures-util",
@@ -919,14 +919,14 @@ dependencies = [
 
 [[package]]
 name = "harmos-sandbox-guest"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "harmos",
 ]
 
 [[package]]
 name = "harmos-sdk"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "harmos-domain",
  "harmos-macros",
@@ -941,7 +941,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-storage"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
