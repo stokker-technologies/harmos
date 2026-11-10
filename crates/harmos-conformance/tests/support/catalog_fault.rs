@@ -49,16 +49,24 @@ pub struct CatalogFault {
 
 struct Forward {
     client: PluginClient<Channel>,
+    fault: Fault,
 }
 
 /* === Enums === */
+
+#[derive(Clone, Copy)]
+pub enum Fault {
+    Identity,
+    Fingerprint,
+    Options,
+}
 
 /* === Traits === */
 
 /* === Implementations === */
 
 impl CatalogFault {
-    pub async fn start(address: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn start(address: &str, fault: Fault) -> Result<Self, Box<dyn std::error::Error>> {
         let client = PluginClient::connect(format!("http://{address}")).await?;
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?.to_string();
@@ -69,7 +77,7 @@ impl CatalogFault {
         let (stop, stopped) = oneshot::channel();
         let task = tokio::spawn(async move {
             tonic::transport::Server::builder()
-                .add_service(PluginServer::new(Forward { client }))
+                .add_service(PluginServer::new(Forward { client, fault }))
                 .serve_with_incoming_shutdown(incoming, async {
                     let _ = stopped.await;
                 })
@@ -89,7 +97,29 @@ impl CatalogFault {
 impl Plugin for Forward {
     async fn describe(&self, request: Request<v1::DescribeRequest>) -> Result<Response<v1::Description>, Status> {
         let mut response = self.client.clone().describe(request).await?;
-        response.get_mut().sdk.clear();
+        let description = response.get_mut();
+        match self.fault {
+            Fault::Identity => description.sdk.clear(),
+            Fault::Fingerprint => {
+                let catalog = description.catalog.as_mut().expect("reference catalog");
+                let operation =
+                    catalog.operations.iter_mut().find(|operation| operation.id == "conformance.schema").expect("schema operation");
+                operation.fingerprint[0] ^= 1;
+                catalog.digest = harmos_protocol::schema::catalog_digest(catalog);
+            }
+            Fault::Options => {
+                let catalog = description.catalog.as_mut().expect("reference catalog");
+                let types = catalog.types.as_mut().expect("reference types");
+                for file in &mut types.file {
+                    for message in &mut file.message_type {
+                        if message.name.as_deref() == Some("Graph") {
+                            message.options = None;
+                        }
+                    }
+                }
+                catalog.digest = harmos_protocol::schema::catalog_digest(catalog);
+            }
+        }
         Ok(response)
     }
 

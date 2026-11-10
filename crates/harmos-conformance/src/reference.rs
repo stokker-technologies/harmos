@@ -29,7 +29,10 @@ use tokio::{
 use tonic::{Request, Response, Status, Streaming};
 
 // Local Imports
-use crate::{Result, fixture};
+use crate::{
+    Result, fixture,
+    schema_fixture::{Graph, Nested},
+};
 use harmos_protocol::v1::{
     self as v1, child_response, host_frame, plugin_frame,
     plugin_server::{Plugin, PluginServer},
@@ -82,7 +85,17 @@ impl Plugin for Reference {
         if request.invocation.is_empty() || request.attempt == 0 {
             return Err(Status::invalid_argument("Invocation and Attempt Are Required"));
         }
-        fixture::Value::decode(request.payload.as_slice()).map_err(|_| Status::invalid_argument("Invalid Payload"))?;
+        match request.operation.as_str() {
+            "conformance.schema" | "conformance.projected" => {
+                Graph::decode(request.payload.as_slice()).map_err(|_| Status::invalid_argument("Invalid Graph"))?;
+            }
+            "conformance.nested" => {
+                Nested::decode(request.payload.as_slice()).map_err(|_| Status::invalid_argument("Invalid Nested"))?;
+            }
+            _ => {
+                fixture::Value::decode(request.payload.as_slice()).map_err(|_| Status::invalid_argument("Invalid Payload"))?;
+            }
+        }
         let (output, receiver) = mpsc::channel(8);
         tokio::spawn(async move {
             let result = invoke(request, &mut input, &output).await;
@@ -104,7 +117,7 @@ impl Plugin for Reference {
         let Some(publish_frame::Frame::Open(open)) = first else {
             return Err(Status::invalid_argument("Open Must Be First"));
         };
-        if !["conformance.ticks", "conformance.device"].contains(&open.stream.as_str()) {
+        if !["conformance.ticks", "conformance.device", "conformance.settings"].contains(&open.stream.as_str()) {
             return Err(Status::not_found("Unknown Stream"));
         }
         let (output, receiver) = mpsc::channel(8);
@@ -167,6 +180,55 @@ async fn invoke(
     request: v1::Request, input: &mut Streaming<v1::HostFrame>, output: &mpsc::Sender<std::result::Result<v1::PluginFrame, Status>>,
 ) -> std::result::Result<(), Status> {
     let result = match request.operation.as_str() {
+        "conformance.projected" => {
+            let graph = Graph::decode(request.payload.as_slice()).map_err(|_| Status::invalid_argument("Invalid Graph"))?;
+            response::Result::Payload(graph.tail.and_then(|tail| tail.value).unwrap_or_default().encode_to_vec())
+        }
+        "conformance.policy" => {
+            let child = v1::ChildRequest {
+                call: 1,
+                operation: "conformance.host.echo".into(),
+                payload: request.payload,
+                fingerprint: fixture::fingerprint("conformance.host.echo"),
+                policy: Some(v1::OperationPolicy { attempts: 3, ..Default::default() }),
+            };
+            output
+                .send(Ok(v1::PluginFrame {
+                    frame: Some(plugin_frame::Frame::Child(child)),
+                }))
+                .await
+                .map_err(|_| Status::cancelled("Host Closed"))?;
+            let Some(host_frame::Frame::Child(v1::ChildResponse {
+                call: 1,
+                result: Some(child_response::Result::Payload(payload)),
+            })) = input.message().await?.and_then(|frame| frame.frame)
+            else {
+                return Err(Status::invalid_argument("Expected First Child Reply"));
+            };
+            send_child(output, 2, "conformance.host.echo", payload).await?;
+            let Some(host_frame::Frame::Child(v1::ChildResponse {
+                call: 2,
+                result: Some(child_response::Result::Payload(payload)),
+            })) = input.message().await?.and_then(|frame| frame.frame)
+            else {
+                return Err(Status::invalid_argument("Expected Second Child Reply"));
+            };
+            response::Result::Payload(payload)
+        }
+        "conformance.schema" => {
+            let graph = Graph::decode(request.payload.as_slice()).map_err(|_| Status::invalid_argument("Invalid Graph"))?;
+            response::Result::Payload(
+                Nested {
+                    count: Some(graph.items.len() as i32),
+                    next: Some(Box::new(graph)),
+                }
+                .encode_to_vec(),
+            )
+        }
+        "conformance.nested" => {
+            let nested = Nested::decode(request.payload.as_slice()).map_err(|_| Status::invalid_argument("Invalid Nested"))?;
+            response::Result::Payload(nested.next.unwrap_or_default().encode_to_vec())
+        }
         "conformance.echo" => response::Result::Payload(request.payload),
         "conformance.failure" => response::Result::Failure(fixture::failure("conformance.failure")),
         "conformance.children" => {
@@ -282,7 +344,7 @@ async fn publish(
         let Some(at) = tick.at else {
             return Err(Status::invalid_argument("Tick Time Required"));
         };
-        if open.stream != "conformance.ticks"
+        if open.stream == "conformance.device"
             || at.nanos < 0
             || at.nanos >= 1_000_000_000
             || !(-62_135_596_800..=253_402_300_799).contains(&at.seconds)

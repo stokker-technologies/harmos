@@ -27,7 +27,7 @@ use tokio::sync::mpsc;
 use tonic::{Code, Streaming, transport::Channel};
 
 // Local Imports
-use crate::{Error, Result, fixture};
+use crate::{Error, Result, fixture, schema_fixture};
 use harmos_protocol::v1::{self as v1, child_response, host_frame, plugin_client::PluginClient, plugin_frame, publish_frame, response};
 
 /* === Constants === */
@@ -49,6 +49,8 @@ pub const CASES: &[&str] = &[
     "Publish Frame Validation",
     "Child Correlation Validation",
     "Stop and Cleanup",
+    "Schema Fingerprints",
+    "Interval Setting",
 ];
 
 static INVOCATION: AtomicU64 = AtomicU64::new(1);
@@ -79,14 +81,17 @@ pub struct Case {
 
 pub async fn run(address: &str, managed: bool) -> Result<Vec<Case>> {
     let mut results = Vec::new();
-    for (index, name) in CASES.iter().enumerate() {
-        let result = tokio::time::timeout(Duration::from_secs(30), case(index + 1, address, managed)).await;
+    // Keep Stop's Rule Number Stable and Run It After Additive Cases.
+    let order = (1..=CASES.len()).filter(|rule| *rule != 16).chain(std::iter::once(16));
+    for rule in order {
+        let name = CASES[rule - 1];
+        let result = tokio::time::timeout(Duration::from_secs(30), case(rule, address, managed)).await;
         let error = match result {
             Ok(Ok(())) => None,
             Ok(Err(error)) => Some(error.to_string()),
             Err(_) => Some("Case Hang Guard Expired".into()),
         };
-        results.push(Case { rule: index + 1, name, error });
+        results.push(Case { rule, name, error });
     }
     Ok(results)
 }
@@ -229,7 +234,14 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 "Description Identity Missing",
             )?;
             let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
-            require(catalog == fixture::catalog(), "Fixture Catalog Differs")?;
+            let expected = fixture::catalog();
+            require(
+                catalog.operations.get(..6) == expected.operations.get(..6)
+                    && catalog.requires == expected.requires
+                    && catalog.streams.get(..2) == expected.streams.get(..2),
+                "Fixed Fixture Catalog Differs",
+            )?;
+            require(catalog.digest == harmos_protocol::schema::catalog_digest(&catalog), "Catalog Digest Differs")?;
         }
         2 => {
             let first = description;
@@ -269,6 +281,26 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             require(input.message().await.err().is_some_and(|status| status.code() == Code::InvalidArgument), "Repeated Request Accepted")?;
         }
         5 => {
+            // Rule 5 / Override One Child Call and Preserve the Callee Policy on the Next.
+            let payload = fixture::payload(b"policy");
+            let (send, mut input) = invoke(&mut client, "conformance.policy", payload.clone()).await?;
+            let frame = input.message().await?.and_then(|frame| frame.frame);
+            let Some(plugin_frame::Frame::Child(overridden)) = frame else {
+                return Err(Error::Invalid("Missing Policy Child".into()));
+            };
+            require(
+                overridden.call == 1
+                    && overridden.operation == "conformance.host.echo"
+                    && overridden.payload == payload
+                    && overridden.fingerprint == fixture::fingerprint("conformance.host.echo")
+                    && overridden.policy == Some(v1::OperationPolicy { attempts: 3, ..Default::default() }),
+                "Child Policy Override Differs",
+            )?;
+            send_child(&send, 1, child_response::Result::Payload(payload.clone())).await?;
+            child(&mut input, 2, "conformance.host.echo", &payload).await?;
+            send_child(&send, 2, child_response::Result::Payload(payload.clone())).await?;
+            require(terminal(&mut input).await? == response::Result::Payload(payload), "Policy Call Changed Payload")?;
+            drop(send);
             let (send, mut input) = invoke(&mut client, "conformance.children", fixture::payload(b"")).await?;
             child(&mut input, 1, "conformance.host.echo", &fixture::payload(&[1])).await?;
             child(&mut input, 2, "conformance.host.echo", &fixture::payload(&[2])).await?;
@@ -397,10 +429,18 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 })),
             };
             publish_status(client.publish(stream::iter([open.clone(), open.clone()])).await, Code::InvalidArgument).await?;
-            let tick = v1::PublishFrame {
-                frame: Some(publish_frame::Frame::Tick(v1::Tick { at: None })),
-            };
-            publish_status(client.publish(stream::iter([open, tick])).await, Code::InvalidArgument).await?;
+            // Rule 14 / Reject Missing and Out-of-Range Tick Timestamps.
+            for at in [
+                None,
+                Some(prost_types::Timestamp { seconds: 253_402_300_800, nanos: 0 }),
+                Some(prost_types::Timestamp { seconds: 0, nanos: -1 }),
+                Some(prost_types::Timestamp { seconds: 0, nanos: 1_000_000_000 }),
+            ] {
+                let tick = v1::PublishFrame {
+                    frame: Some(publish_frame::Frame::Tick(v1::Tick { at })),
+                };
+                publish_status(client.publish(stream::iter([open.clone(), tick])).await, Code::InvalidArgument).await?;
+            }
             let missing = v1::PublishFrame {
                 frame: Some(publish_frame::Frame::Open(v1::PublishRequest {
                     stream: "conformance.absent".into(),
@@ -423,6 +463,53 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     "Unknown or Duplicate Child Accepted",
                 )?;
             }
+        }
+        17 => {
+            // Schema Fingerprints / Check Both Roots Against the Shared General Rule.
+            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
+            let types = catalog.types.as_ref().ok_or_else(|| Error::Invalid("Missing Types".into()))?;
+            let expected = fixture::catalog();
+            require(catalog.operations == expected.operations, "Schema Operation Order or Contracts Differ")?;
+            for operation in &expected.operations[6..] {
+                let actual = catalog
+                    .operations
+                    .iter()
+                    .find(|item| item.id == operation.id)
+                    .ok_or_else(|| Error::Invalid(format!("Missing Operation: {}", operation.id)))?;
+                let fingerprint = harmos_protocol::schema::fingerprint(&actual.id, types, &actual.request, &actual.response)
+                    .map_err(|error| Error::Invalid(error.to_string()))?;
+                require(actual == operation && actual.fingerprint == fingerprint, "General Schema Fingerprint Differs")?;
+            }
+            // Schema Fingerprints / Hash Request and Response Projections Independently.
+            let (send, mut input) = invoke(&mut client, "conformance.projected", vec![0x12, 5, 0x0a, 3, 0x0a, 1, 255]).await?;
+            drop(send);
+            require(terminal(&mut input).await? == response::Result::Payload(fixture::payload(&[255])), "Projected Response Differs")?;
+            // Schema Fingerprints / Retain Options, Optional Presence, Recursion and Imports.
+            let actual = harmos_protocol::schema::message_types(types, "harmos.conformance.v1.Graph.Nested")
+                .map_err(|error| Error::Invalid(error.to_string()))?;
+            require(actual == schema_fixture::types(), "Reachable Schema Definitions Differ")?;
+            // Schema Fingerprints / Round Trip a Nested Optional Zero Through the Graph.
+            let graph = vec![0x0a, 2, 8, 0];
+            let (send, mut input) = invoke(&mut client, "conformance.schema", graph.clone()).await?;
+            drop(send);
+            let mut nested = vec![8, 1, 0x12, graph.len() as u8];
+            nested.extend(&graph);
+            require(terminal(&mut input).await? == response::Result::Payload(nested.clone()), "Nested Graph Response Differs")?;
+            let (send, mut input) = invoke(&mut client, "conformance.nested", nested).await?;
+            drop(send);
+            require(terminal(&mut input).await? == response::Result::Payload(graph), "Nested Root Response Differs")?;
+        }
+        18 => {
+            // Host Stream Settings / Advertise the Setting and Its Overridden Default.
+            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
+            let expected = fixture::catalog();
+            require(catalog.sections == expected.sections && catalog.streams == expected.streams, "Interval Setting or Section Differs")?;
+            // Host Stream Settings / Answer Only the Host's Resolved Ticks.
+            let (send, mut input) = open(&mut client, "conformance.settings").await?;
+            tick(&send, &mut input, 1, 100).await?;
+            tick(&send, &mut input, 2, 102).await?;
+            drop(send);
+            require(input.message().await?.is_none(), "Setting Observer Survived Demand Closure")?;
         }
         16 => {
             client.stop(v1::StopRequest { reason: "Conformance Complete".into() }).await?;

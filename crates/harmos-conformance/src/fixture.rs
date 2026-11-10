@@ -23,11 +23,12 @@ use prost::Message;
 use prost_types::{DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet, Timestamp};
 
 // Local Imports
+use crate::schema_fixture;
 use harmos_protocol::v1::*;
 
 /* === Constants === */
 
-pub const OPERATIONS: &[&str] = &["echo", "children", "cancel", "failure", "child_failure"];
+pub const OPERATIONS: &[&str] = &["echo", "children", "cancel", "failure", "child_failure", "policy"];
 pub const ROW: &str = "harmos.conformance.v1.Value";
 
 /* === Macros === */
@@ -85,7 +86,7 @@ pub fn fingerprint(id: &str) -> Vec<u8> {
 }
 
 pub fn catalog() -> Catalog {
-    let operations = OPERATIONS
+    let mut operations: Vec<_> = OPERATIONS
         .iter()
         .map(|name| {
             let id = format!("conformance.{name}");
@@ -99,14 +100,14 @@ pub fn catalog() -> Catalog {
             }
         })
         .collect();
-    let requires = ["conformance.host.echo", "conformance.host.pending", "conformance.host.fail"]
+    let mut requires: Vec<_> = ["conformance.host.echo", "conformance.host.pending", "conformance.host.fail"]
         .into_iter()
         .map(|id| Requirement {
             id: id.into(),
             fingerprint: fingerprint(id),
         })
         .collect();
-    let streams = ["ticks", "device"]
+    let mut streams: Vec<_> = ["ticks", "device"]
         .into_iter()
         .map(|name| StreamDeclaration {
             id: format!("conformance.{name}"),
@@ -115,11 +116,51 @@ pub fn catalog() -> Catalog {
             ..Default::default()
         })
         .collect();
+    for (id, request, response) in [
+        ("conformance.schema", "harmos.conformance.v1.Graph", "harmos.conformance.v1.Graph.Nested"),
+        ("conformance.nested", "harmos.conformance.v1.Graph.Nested", "harmos.conformance.v1.Graph"),
+        ("conformance.projected", "harmos.conformance.v1.Graph", ROW),
+    ] {
+        operations.push(OperationContract {
+            id: id.into(),
+            request: request.into(),
+            response: response.into(),
+            visibility: Visibility::Public as i32,
+            fingerprint: harmos_protocol::schema::fingerprint(id, &schema_fixture::types(), request, response)
+                .expect("fixture schema resolves"),
+            ..Default::default()
+        });
+    }
+    streams.push(StreamDeclaration {
+        id: "conformance.settings".into(),
+        row: ROW.into(),
+        interval: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+        interval_setting: "harmos.conformance.v1.Graph.interval".into(),
+        ..Default::default()
+    });
+    requires.push(Requirement {
+        id: "conformance.host.schema".into(),
+        fingerprint: harmos_protocol::schema::fingerprint(
+            "conformance.host.schema",
+            &schema_fixture::types(),
+            "harmos.conformance.v1.Graph",
+            ROW,
+        )
+        .expect("fixture requirement resolves"),
+    });
     let mut catalog = Catalog {
         operations,
         requires,
         streams,
-        types: Some(types()),
+        types: Some(schema_fixture::types()),
+        sections: vec![Section {
+            r#type: "harmos.conformance.v1.Graph".into(),
+            payload: schema_fixture::Graph {
+                interval: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+                ..Default::default()
+            }
+            .encode_to_vec(),
+        }],
         ..Default::default()
     };
     catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
