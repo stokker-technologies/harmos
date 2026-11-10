@@ -22,7 +22,9 @@ nothing about tests or any product concept.
   over the catalog contents.
 - Plugin-to-host operation calls travel back on the `Invoke` call that started them.
 - The host opens one `Publish` call per declared stream; the plugin sends one sample per message.
-  An observer is SDK code that calls a function on an interval and sends the result on a stream.
+  An observer is a function that answers the host's ticks with one sample each.
+- The host owns the only clock. Every wait an SDK offers is served by the host, so a test can
+  advance time for the host and every plugin together.
 - One authoring surface for sidecars and guests: derives for data and plain builder values for
   plugins, operations, streams and observers, with `serve` selecting the transport by build
   target. The plugin, observer and catalog attribute macros are removed.
@@ -35,7 +37,8 @@ nothing about tests or any product concept.
 - No prototype phase and no throughput gate. The design favours simplicity; performance is tuned
   afterwards against measurements.
 - A reconnect is a new activation. Harmos has no resume concept.
-- Visibility stays `Private`, `Public` and `Host`. No hidden level is added.
+- Visibility has two levels: `Private` (the declaring plugin and the host) and `Public`
+  (everyone connected). The `Host` level is removed.
 - Protobuf is the only payload encoding, and calls between plugins are typed. There is no
   dynamic call layer.
 - Each plugin connects independently: no dependency-ordered start, no reload plans. A call to an
@@ -58,6 +61,7 @@ nothing about tests or any product concept.
 - Supersedes `plugin-grpc-protocol` and absorbs `harmos-sdk-layout` (both deleted with this
   change): `crates/harmos-sdk` moves to `sdk/rust`. `harmos-sdk-go` is removed; Go follows the
   pilot.
-- `operation-visibility` stays its own change and ships in the same revision.
+- `operation-visibility` stays its own change and ships in the same revision; this change then
+  removes its `Host` level.
   `runtime-observer-cadence` is landed; its rule that an observer's interval may come from
   plugin settings carries over to SDK observers.

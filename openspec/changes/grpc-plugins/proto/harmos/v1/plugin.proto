@@ -18,9 +18,11 @@ service Plugin {
   // Response. The host may send Cancel at any time.
   rpc Invoke(stream HostFrame) returns (stream PluginFrame);
 
-  // One declared stream. Opening the call is the demand for the stream and
-  // closing it ends the demand.
-  rpc Publish(PublishRequest) returns (stream Samples);
+  // One declared stream. The host opens the call with a PublishRequest;
+  // opening it is the demand for the stream and closing it ends the demand.
+  // For a stream with an interval the host then sends one Tick per interval
+  // and the plugin answers each with one sample.
+  rpc Publish(stream PublishFrame) returns (stream Samples);
 
   // Sent before the host shuts down or removes the plugin. The plugin runs
   // its stop and cleanup hooks and then replies. A managed plugin exits
@@ -86,12 +88,10 @@ message OperationContract {
 
 enum Visibility {
   VISIBILITY_UNSPECIFIED = 0;
-  // Only the declaring plugin and the host.
+  // The declaring plugin and the host.
   VISIBILITY_PRIVATE = 1;
-  // Other plugins as well.
+  // Everyone connected: other plugins and the host's clients.
   VISIBILITY_PUBLIC = 2;
-  // The host application and its clients; no plugin.
-  VISIBILITY_HOST = 3;
 }
 
 message OperationPolicy {
@@ -117,6 +117,11 @@ message StreamDeclaration {
   // Fully qualified message name of one row, found in Catalog.types.
   string row = 2;
   string description = 3;
+  // Set for a stream sampled on the host's clock. Unset means the plugin
+  // sends samples when its device produces them.
+  google.protobuf.Duration interval = 4;
+  // Identifier of a plugin setting that gives the interval instead, if any.
+  string interval_setting = 5;
 }
 
 message Section {
@@ -231,6 +236,20 @@ enum Classification {
 
 // ----------------------------------------------------------------- Publish
 
+message PublishFrame {
+  oneof frame {
+    // First frame.
+    PublishRequest open = 1;
+    Tick tick = 2;
+  }
+}
+
+// Asks for one sample of an interval stream.
+message Tick {
+  // Host time of the tick. The answering sample carries it.
+  google.protobuf.Timestamp at = 1;
+}
+
 message PublishRequest {
   string stream = 1;
   // Opaque to Harmos. The product names what the stream belongs to.
@@ -244,10 +263,31 @@ message Samples {
 }
 
 message Sample {
-  // When the plugin took the sample.
+  // For an interval stream, the time of the Tick this sample answers. For
+  // other streams, the device's own time if it supplies one; when unset
+  // the host stamps the sample on arrival.
   google.protobuf.Timestamp at = 1;
   // Serialized row message of the stream.
   bytes row = 2;
   // Counts samples on this call from 1, so the host can see a gap.
   uint64 sequence = 3;
+}
+
+// ------------------------------------------------------------------- Clock
+//
+// Built-in Public operations served by the host. An SDK offers no waits of
+// its own: every wait goes through these, so the host owns the only clock.
+//   harmos.clock.sleep   Sleep -> SleepResponse
+//   harmos.clock.now     Now   -> Time
+
+message Sleep {
+  google.protobuf.Duration duration = 1;
+}
+
+message SleepResponse {}
+
+message Now {}
+
+message Time {
+  google.protobuf.Timestamp now = 1;
 }

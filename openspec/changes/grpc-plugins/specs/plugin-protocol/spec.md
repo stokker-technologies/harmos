@@ -82,7 +82,8 @@ one sample per message on it.
 
 #### Scenario: Observer
 - **WHEN** an observer is declared with an interval on a stream whose call is open
-- **THEN** the SDK calls it on that interval and sends each returned value as one sample
+- **THEN** the host sends one tick per interval and the plugin answers each with one sample
+  carrying the tick's time
 
 #### Scenario: Independent Streams
 - **WHEN** one stream's consumer is slow
@@ -119,3 +120,24 @@ A server implementing `harmos.v1` from the `.proto` files without an SDK SHALL b
 #### Scenario: No SDK
 - **WHEN** the host connects to a server written directly against the generated stubs
 - **THEN** it admits the catalog and calls its operations as for any other plugin
+
+### Requirement: Host-Owned Clock
+Every wait an SDK offers SHALL be served by the host's clock, and the host SHALL be able to run
+that clock virtually in a test.
+
+#### Scenario: Wait in a Plugin
+- **WHEN** an operation in a plugin sleeps through its context
+- **THEN** the call returns when the host's clock has advanced by that duration
+
+#### Scenario: Accelerated Story
+- **WHEN** the host runs a virtual clock and every call in flight is waiting on it
+- **THEN** the clock jumps to the next timer and the waiting call continues without real time
+  passing
+
+### Requirement: Two Visibility Levels
+An operation SHALL be `Private`, callable by its declaring plugin and the host, or `Public`,
+callable by everyone connected.
+
+#### Scenario: Private Operation
+- **WHEN** another plugin or a client calls a `Private` operation
+- **THEN** the call is refused

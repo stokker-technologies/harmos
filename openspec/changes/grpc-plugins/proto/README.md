@@ -39,11 +39,10 @@ Each is open to review.
 | One lifecycle call, `Stop` | Settings are read through a host operation, so nothing is needed at start; `Stop` lets a plugin release hardware before the host closes |
 | No encryption or credentials on a plugin endpoint | The network is trusted, and a server written by hand from these files must work |
 | `Failure.action` | Every failure names what the user can do |
+| Two visibility values | Plugins and clients are all trusted, so `Private` (the plugin and the host) and `Public` (everyone connected) are enough |
+| The host owns the clock: `Tick` on `Publish`, and `harmos.clock.sleep` | One clock for the host and every plugin gives one time base for evidence and lets a test advance time for a plugin in any language |
 
 ## Questions for Review
 
-1. `Visibility` keeps today's three values. If connected plugins and clients
-   are all trusted, two would do: `PRIVATE` (the plugin and the host) and
-   `PUBLIC` (everyone connected).
-2. Whether `OperationPolicy.attempts` is enough, or retries need a delay
+1. Whether `OperationPolicy.attempts` is enough, or retries need a delay
    between attempts on the wire.

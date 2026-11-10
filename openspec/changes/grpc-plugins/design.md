@@ -5,76 +5,20 @@ owner's go. Code below is the intended shape, not landed source. Field numbers a
 
 ## Protocol
 
+The complete definition is `proto/harmos/v1/plugin.proto`, with its compatibility rules in
+`proto/README.md`. In outline:
+
 ```proto
-syntax = "proto3";
-package harmos.v1;
-
 service Plugin {
-  // Identity, start time and catalog. Called on every connect.
-  rpc Describe(DescribeRequest) returns (Description);
-
-  // One operation invocation. The host sends the request and may send a cancel; the plugin
-  // sends child calls to host operations and finally the response.
-  rpc Invoke(stream HostFrame) returns (stream PluginFrame);
-
-  // One declared stream. The host opens the call when it wants the stream and closes it when
-  // it no longer does. The plugin sends one sample per message.
-  rpc Publish(PublishRequest) returns (stream Sample);
-}
-
-message Description {
-  string id = 1;
-  string version = 2;
-  google.protobuf.Timestamp started_at = 3;  // captured once when the process starts
-  Catalog catalog = 4;
-}
-
-message Catalog {
-  repeated OperationContract operations = 1;  // provided, with visibility and policy
-  repeated OperationContract requires = 2;    // host or other-plugin operations it calls
-  repeated StreamDeclaration streams = 3;
-  repeated Section sections = 4;              // opaque to Harmos: namespace, schema, payload
-  bytes digest = 5;                           // SHA-256 over the other fields
-  google.protobuf.FileDescriptorSet types = 6;  // definitions of every message it serves
-}
-
-message OperationContract {
-  string id = 1;            // "thermal.set"; unique among connected plugins
-  string request = 2;       // "thermal.v1.SetTemperature"
-  string response = 3;
-  Visibility visibility = 4;
-  OperationPolicy policy = 5;
-  bytes fingerprint = 6;    // hash of the request and response definitions
-}
-
-message HostFrame {
-  oneof frame {
-    Request request = 1;       // first frame: operation id, payload, attempt, scope
-    ChildResponse child = 2;   // answer to a PluginFrame.child
-    Cancel cancel = 3;
-  }
-}
-
-message PluginFrame {
-  oneof frame {
-    ChildRequest child = 1;    // ctx.operation(...): a call to a required operation
-    Response response = 2;     // last frame: payload or Failure
-  }
-}
-
-message PublishRequest {
-  string stream = 1;
-  string scope = 2;            // opaque to Harmos; the product names what the stream belongs to
-}
-
-message Sample {
-  google.protobuf.Timestamp at = 1;
-  bytes row = 2;               // one row of the declared stream schema
+  rpc Describe(DescribeRequest) returns (Description);                 // identity, start time, catalog
+  rpc Invoke(stream HostFrame) returns (stream PluginFrame);           // one operation; child calls ride back
+  rpc Publish(stream PublishFrame) returns (stream Samples);           // one stream; the host sends ticks
+  rpc Stop(StopRequest) returns (StopResponse);                        // release before the host closes
 }
 ```
 
-`Failure` and `Refusal` keep today's content (classification, code, details, cause, operation
-context) as `harmos.v1` messages. Built-in operations use the same package.
+`Failure` keeps today's content (classification, code, message, cause, operation context) and adds
+the action a user can take. Built-in operations use the same package.
 
 ## Placement
 
@@ -125,8 +69,9 @@ plugin. The network is trusted, as it is for clients.
 
 ## Operations
 
-- A plugin's operations keep the three visibilities. `Host` means only the host application may
-  call it; products use it for operations the host drives.
+- Visibility has two levels. `Private` operations may be called by the declaring plugin and the
+  host; products use it for operations the host drives. `Public` operations may be called by
+  everyone connected: other plugins and the host's clients. The `Host` level is removed.
 - Retries are the existing operation policy. Nothing new is added for retry on connection loss.
 - An authored handler returns its value: `Result<T, E>`, not a result of a response of a type.
   The shared-owner `Response<T>` stays below the authoring surface for host code that returns a
@@ -171,10 +116,28 @@ auto reply = ctx.operation(thermal::v1::SetTemperature{.target = 85});
 - Opening a `Publish` call is the demand; closing it ends the demand. Publication leases,
   admission and byte credits are removed. gRPC flow control is the backpressure.
 - Order is guaranteed within a stream. Streams do not block each other or operation calls.
-- An observer is authoring sugar in the SDK: a function plus an interval. The SDK runs the timer
-  while the stream's call is open and sends each returned value as one sample. The interval is a
-  declared default or comes from the plugin's settings, as today.
+- An observer is a function the author registers for a stream with an interval. The host sends
+  one tick per interval on the stream's call and the SDK answers each tick by calling the
+  function and sending its value as one sample, stamped with the tick's time. The interval is a
+  declared default or a plugin setting, which the host resolves.
+- A stream without an interval is driven by the plugin, which sends a sample when its device
+  produces one.
 - Guests cannot hold a call open, so they declare no streams and no observers.
+
+## Clock
+
+The host owns the only clock. An SDK offers no waits of its own: `ctx.sleep` is a call to the
+host, and an observer runs on the host's ticks.
+
+- There is no tick rate. The host schedules each wait and each observer interval as a timer and
+  wakes the waiter when it is due.
+- Samples and records carry host time, so evidence from plugins on different machines shares one
+  time base.
+- In production the clock is real time. In a test the host can run a virtual clock: when every
+  call in flight is waiting on the clock, it jumps to the next timer. A story that waits for an
+  hour inside a plugin then finishes at once, for a plugin in any language and in any process.
+- Only waits that go through the context accelerate. Time a real device takes is real.
+- It costs one round trip per wait.
 
 ## Authoring
 
@@ -200,7 +163,7 @@ async fn read_temperature(ctx: &Context) -> Result<Temperature> {
 }
 
 fn main() -> Result<()> {
-    let set = Operation::new("thermal.set", set_temperature).visibility(Visibility::Host);
+    let set = Operation::new("thermal.set", set_temperature).visibility(Visibility::Public);
     let temperature = Stream::<Temperature>::new("thermal.temperature");
     let observer = Observer::new(&temperature, read_temperature).every_ms(1000);
 
@@ -283,14 +246,7 @@ Behaviour tests under `crates/harmos-runtime/tests/sidecar/` migrate to the new 
 Not yet decided with the owner; each is settled before its task starts.
 
 1. The exact wire format. A draft is in `proto/` with its compatibility rules and review
-   questions, including whether visibility needs three values or two. It is agreed before any
-   implementation.
-2. A clock shared by the host and its plugins (proposed). A plugin in another process has its
-   own clock, so a test cannot accelerate a story that waits inside a plugin. If every wait
-   an SDK offers (`ctx.sleep`, an observer's interval) is served by the host, the host owns
-   the only clock. In a test the host advances that clock to the next timer as soon as every
-   call in flight is parked on it, so a long story finishes at once in any language. It
-   costs one round trip per wait and makes observer ticks come from the host.
+   questions. It is agreed before any implementation.
 
 The hook through which an application authorizes external clients stays: without it Harmos falls
 back to anonymous access, and Dokime uses it to require an authenticated client.
