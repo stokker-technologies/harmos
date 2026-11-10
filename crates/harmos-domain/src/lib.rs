@@ -61,7 +61,7 @@ pub use model::operations::policy::{Backoff, Jitter, OperationPolicy, RetryPolic
 pub use model::services::policy::{RestartPolicy, ServicePolicy};
 pub use operations::{Invokes, OperationDeclaration, OperationDefinition, Requires};
 pub use presentation::{RowMetadata, StreamField};
-pub use streams::{Axial, Batched, Definition, Prefix, Track, Tracked};
+pub use streams::Definition;
 
 /* === Imports === */
 
@@ -108,7 +108,7 @@ pub mod __private {
     };
     pub use crate::postcard_product;
     pub use crate::state::{Catalogued, Mutual, Paired};
-    pub use crate::streams::{BatchDefinition, StreamCatalog, StreamRow};
+    pub use crate::streams::{StreamCatalog, StreamRow};
     pub use crate::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
 
     /* === Imports === */
@@ -142,7 +142,7 @@ pub mod __private {
     /* === Public Functions === */
 
     pub fn stream_definition<S: StreamRow>(id: &'static str, window: usize) -> crate::streams::Definition {
-        crate::streams::Definition::native::<S>(id, window).batching(S::batch_definition()).presentation(S::metadata(), S::row_metadata())
+        crate::streams::Definition::native::<S>(id, window).presentation(S::metadata(), S::row_metadata())
     }
 
     /* === Private Functions === */

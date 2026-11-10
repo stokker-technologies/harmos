@@ -71,6 +71,16 @@ class FocusedCargoTests(unittest.TestCase):
 
     def test_entry_points_dispatch_focused_cargo_directly(self):
         selections = [
+            (
+                ["build", "--package", "example", "--example", "fixture", "--features", "guest", "--check"],
+                "check",
+                ["--locked", "--profile", "dev", "-p", "example", "--features", "guest", "--example", "fixture"],
+            ),
+            (
+                ["test", "--package", "example", "--target", "lib", "--features", "simulation"],
+                "test",
+                ["--locked", "-p", "example", "--lib", "--features", "simulation"],
+            ),
             (["build", "--package", "example", "--check"], "check", ["--locked", "--profile", "dev", "-p", "example"]),
             (["build", "--package", "example", "--profile", "release"], "build", ["--locked", "--profile", "release", "-p", "example"]),
             (["test", "--package", "example", "--target", "lib"], "test", ["--locked", "-p", "example", "--lib"]),
@@ -91,6 +101,9 @@ class FocusedCargoTests(unittest.TestCase):
             ["test", "--package", "example", "--target", "lib", "--coverage"],
             ["test", "--package", "example", "--target", "lib", "--profile", "release"],
             ["build", "--package", "example", "--artifact", "tests"],
+            ["build", "--example", "fixture"],
+            ["build", "--features", "guest"],
+            ["test", "--features", "simulation"],
         ]
         for arguments in selections:
             with self.subTest(arguments=arguments), patch.object(cargo, "focused") as focused, contextlib.redirect_stderr(io.StringIO()):

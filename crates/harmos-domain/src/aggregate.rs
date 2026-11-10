@@ -54,7 +54,7 @@ struct Rank;
 
 // The one statistic vocabulary every Harmos reduction answers: plot buckets,
 // storage group-bys and stream batch measurements name what they compute with
-// these members, and `harmos::signal` holds the math behind each of them.
+// these members through private storage statistics.
 // `Std` is the population standard deviation. `Percentile` carries a whole
 // percentage, 0 to 100, answered by linear interpolation between ranks.
 //

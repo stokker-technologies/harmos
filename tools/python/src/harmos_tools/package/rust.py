@@ -75,26 +75,27 @@ def main() -> None:
     for bundle in bundles:
         _verify_schematic(destination / "rust" / bundle["output"], export, selectors)
 
-    tool = export / selectors["artifacts"]["cargo-harmos"]
-    for name, backend in (("schematic-sidecar", "sidecar"), ("schematic-guest", "guest")):
+    tool = export / "product/tools" / ("fixture-driver.exe" if sys.platform == "win32" else "fixture-driver")
+    tool.chmod(tool.stat().st_mode | 0o111)
+    for name in ("schematic-sidecar", "schematic-guest"):
         receipt = export / selectors["builds"][name]
         result = destination / f"{name}.json"
-        command = [
-            str(tool),
-            "harmos",
-            backend,
-            "package",
-            "--build-json",
-            str(receipt),
-            "--relocate-from",
-            selectors["build_roots"][name],
-            "--relocate-to",
-            str(examples / "builds" / name),
-            "--output",
-            str(destination),
-            "--json",
-        ]
-        _package_plugin(command, result)
+        request = {
+            "action": "package",
+            "build": str(receipt),
+            "from": selectors["build_roots"][name],
+            "to": str(examples / "builds" / name),
+            "output": str(destination),
+        }
+        output = subprocess.check_output(
+            [str(tool)],
+            input=json.dumps(request),
+            text=True,
+            cwd=ROOT,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stderr=sys.stderr,
+        )
+        result.write_text(output, encoding="utf-8")
         build = json.loads(receipt.read_text(encoding="utf-8"))
         produced = [destination / artifact["producer"] / f"{artifact['name']}.harmos" for artifact in build["artifacts"]]
         records = _records(produced, destination)
@@ -149,19 +150,6 @@ def _walkthrough(executable: Path, directory: Path, arguments: list[str]) -> Non
     )
     if "Reopened: 2 symbols, 1 net, 3 route points" not in result.stdout.splitlines():
         raise RuntimeError(f"packaged Schematic {directory.name} walkthrough did not reopen its document")
-
-
-def _package_plugin(command: list[str], result: Path) -> None:
-    with result.open("w", encoding="utf-8") as output:
-        subprocess.run(
-            command,
-            cwd=ROOT,
-            stdout=output,
-            check=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            stdin=sys.stdin,
-            stderr=sys.stderr,
-        )
 
 
 def _records(sources: Iterable[Path], destination: Path) -> dict:

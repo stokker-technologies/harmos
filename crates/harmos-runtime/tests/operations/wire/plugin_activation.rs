@@ -381,29 +381,31 @@ async fn plugin_caller_authorization() {
 }
 
 #[tokio::test]
-async fn operation_cache_partitioned() {
+async fn caller_generation_reexecutes_operations() {
+    // Activate The Provider And Client.
     let runtime = runtime().await;
     let mut manager = PluginManager::new(with_clients(true)).unwrap();
     let mut host = host(runtime.operations.clone());
     manager.initialize(&mut host).await.unwrap();
     let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
-    let keyed = || Public(Request { keyed: true, ..request() });
-    let host_response = runtime.operation(keyed()).await.unwrap();
-    let first = caller.operation::<Public>(keyed()).await.unwrap();
-    let again = caller.operation::<Public>(keyed()).await.unwrap();
+    // Execute Each Host And Client Call.
+    let call = || Public(request());
+    let host_response = runtime.operation(call()).await.unwrap();
+    let first = caller.operation::<Public>(call()).await.unwrap();
+    let again = caller.operation::<Public>(call()).await.unwrap();
     assert!(!host_response.ptr_eq(&first));
-    assert!(first.ptr_eq(&again));
-    assert_eq!(host.owner.runs.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert_eq!(first.value, again.value);
+    assert_eq!(host.owner.runs.load(std::sync::atomic::Ordering::SeqCst), 3);
 
-    // Only the client generation changes; the provider binding/cache stays live.
+    // Only the client generation changes; the provider binding stays live.
     let mut next = with_clients(true).definitions().cloned().collect::<Vec<_>>();
     next.iter_mut().find(|definition| definition.id == "client").unwrap().configuration = br#"{"revision":2}"#.to_vec();
     manager.reload(PluginDefinitions::new(next, []).unwrap(), &mut host).await.unwrap();
-    assert!(matches!(caller.submit::<Public>(keyed()), Err(Error::OperationCaller { .. })));
+    assert!(matches!(caller.submit::<Public>(call()), Err(Error::OperationCaller { .. })));
     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
-    let next = replacement.operation::<Public>(keyed()).await.unwrap();
+    let next = replacement.operation::<Public>(call()).await.unwrap();
     assert!(!first.ptr_eq(&next));
-    assert!(host_response.ptr_eq(&runtime.operation(keyed()).await.unwrap()));
+    assert_eq!(host_response.value, runtime.operation(call()).await.unwrap().value);
     manager.shutdown(&mut host).await.unwrap();
     runtime.shutdown().await.unwrap();
 }

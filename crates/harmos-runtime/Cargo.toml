@@ -51,9 +51,6 @@ grpc = [
 ]
 # Protobuf Descriptor Projection For The Runtime Transport.
 generate-proto = ["dep:harmos-packaging", "harmos-packaging/generate-proto"]
-# Hands Out The Signal Kernels; Core Reductions Use Them Regardless.
-signal = []
-signal-fft = ["signal", "harmos-storage/fft"]
 simulation = ["tokio/test-util"]
 
 # === Dependencies === #

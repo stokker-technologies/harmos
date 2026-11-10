@@ -165,7 +165,8 @@ pub(super) fn downsample(input: Spool, plan: &Downsample, check: &mut impl FnMut
         last: None,
     };
     if matches!(plan.algorithm, Algorithm::Decimate) {
-        for index in crate::signal::decimate_indices(input.rows, plan.max_rows) {
+        let stride = (input.rows as f64 / plan.max_rows as f64).ceil() as usize;
+        for index in (0..input.rows).step_by(stride.max(1)) {
             check()?;
             selected.push(index)?;
         }

@@ -9,7 +9,6 @@
 
 /* === Modules === */
 
-pub(crate) mod batch;
 pub(crate) mod stream;
 
 /* === Re-Exports === */

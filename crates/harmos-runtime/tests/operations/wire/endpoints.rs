@@ -29,9 +29,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos_runtime::operations::{
-    Backoff, CacheKey, Jitter, OperationPolicy, RetryPolicy, StreamInput, StreamOutput, StreamSettings, stream,
-};
+use harmos_runtime::operations::{OperationPolicy, RetryPolicy, StreamInput, StreamOutput, StreamSettings, stream};
 use harmos_runtime::{Error, Runtime};
 
 /* === Constants === */
@@ -39,14 +37,12 @@ use harmos_runtime::{Error, Runtime};
 /* === Macros === */
 
 macro_rules! operation {
-    ($name:ident, $id:literal, $retry:literal, $cache:literal) => {
+    ($name:ident, $id:literal) => {
         #[harmos_runtime::operation(resources = [Trace], id = $id, response = u32, input = u32, output = u32,
                                             policy = OperationPolicy {
                                                 timeout: Duration::from_secs(3), attempt_timeout: Duration::from_secs(2),
-                                                cancellation_timeout: std::time::Duration::ZERO, retries: if $retry { RetryPolicy::OnTransient { max_retries: 1,
-                                                    backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None } } }
-                                                    else { RetryPolicy::Never },
-                                            }, key = |_: &$name| $cache.then(|| CacheKey::new(vec![1]).unwrap()))]
+                                                cancellation_timeout: std::time::Duration::ZERO, retries: RetryPolicy::Never,
+                                            })]
         struct $name {
             consume: bool,
         }
@@ -73,9 +69,7 @@ macro_rules! operation {
     };
 }
 
-operation!(ForwardDeclaration, "endpoints.forward", false, false);
-operation!(RetryDeclaration, "endpoints.retry", true, false);
-operation!(CachedDeclaration, "endpoints.cache", false, true);
+operation!(ForwardDeclaration, "endpoints.forward");
 
 /* === Type Aliases === */
 
@@ -295,19 +289,6 @@ async fn decoded_charge_releases_on_hand_off() {
 async fn endpoint_admission_contract() {
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
-    {
-        runtime.operations.register::<crate::operations::Single<RetryDeclaration>>(Lanes::Open).await.unwrap();
-        runtime.operations.register::<crate::operations::Single<CachedDeclaration>>(Lanes::Open).await.unwrap();
-        let (input, receiving) = channel();
-        let (sending, _output) = channel();
-        assert!(matches!(
-            runtime.operations.submit_endpoints::<CachedDeclaration, _>(CachedDeclaration { consume: false }, (receiving, sending)),
-            Err(Error::InvalidInput { field: "operation stream cache", .. })
-        ));
-        assert_eq!(trace.new.load(Ordering::SeqCst), 0);
-        assert!(input.is_closed());
-    }
-
     runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();

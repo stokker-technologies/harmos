@@ -20,7 +20,7 @@ pub use harmos_macros::{guest_catalog as catalog, guest_operation as operation, 
 
 pub use harmos_guest::{kit, operations};
 
-pub use harmos_guest::operations::{CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+pub use harmos_guest::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 
 pub use harmos_guest::{ConfigError, Plugin, Registrar, Registration, RegistrationError, StreamSpec, inventory, reserved};
 

@@ -10,7 +10,6 @@
 /* === Modules === */
 
 mod admission;
-mod cache;
 mod construction;
 mod entry;
 mod grants;
@@ -33,9 +32,11 @@ mod residents;
 
 // Standard Library Imports
 use std::any::Any;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
+#[cfg(feature = "grpc")]
+use std::sync::Weak;
 use std::sync::{
-    Arc, Mutex, Weak,
+    Arc, Mutex,
     atomic::{AtomicBool, AtomicU8, Ordering},
 };
 // Third Party Imports
@@ -43,11 +44,11 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 // Local Imports
 use super::admission::{Admission, Lanes};
 use super::binding::Typed;
-use super::caller::{Identity, Origin, Source};
+use super::caller::{Origin, Source};
 use super::{OperationGeneration, OperationInstanceId, Running};
 
 use super::instances::Instances;
-use crate::operations::{CacheKey, OperationDeclaration, OperationDefinition};
+use crate::operations::{OperationDeclaration, OperationDefinition};
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use crate::plugin::PluginScope;
 use crate::supervision::executor;
@@ -56,13 +57,9 @@ use crate::{Error, Identifier, Result, operations::Lane, operations::Scope, stat
 
 /* === Constants === */
 
-const DEFAULT_CACHE_CAPACITY: usize = 64;
-
 /* === Macros === */
 
 /* === Type Aliases === */
-
-type CachedResponse = harmos_sdk::__private::ErasedResponse;
 
 /* === Structs === */
 
@@ -87,11 +84,11 @@ pub struct Manager {
 #[derive(Clone)]
 pub(crate) struct WeakOperationManager {
     schema_settings: std::sync::Weak<crate::config::SchemaSettings>,
-    registry: Weak<Registry>,
-    instances: Weak<Instances>,
-    lanes: Weak<Lanes>,
-    preparation: Option<Weak<Semaphore>>,
-    context: Weak<std::sync::OnceLock<super::CallContext>>,
+    registry: std::sync::Weak<Registry>,
+    instances: std::sync::Weak<Instances>,
+    lanes: std::sync::Weak<Lanes>,
+    preparation: Option<std::sync::Weak<Semaphore>>,
+    context: std::sync::Weak<std::sync::OnceLock<super::CallContext>>,
     resident: super::resident::WeakRegistry,
 }
 
@@ -114,13 +111,10 @@ struct State {
     staging: Vec<std::sync::Weak<PluginScope>>,
 
     #[cfg(feature = "grpc")]
-    grpc: BTreeMap<String, Weak<Entry>>,
+    grpc: BTreeMap<String, std::sync::Weak<Entry>>,
 
     #[cfg(feature = "grpc")]
     grpc_services: std::collections::BTreeSet<String>,
-
-    cache: VecDeque<Cached>,
-    cache_capacity: usize,
 }
 
 pub(super) struct Entry {
@@ -181,13 +175,6 @@ pub(super) struct GrantAuthority {
 
     // External Authority Never Replaces A Plugin Caller's Own Requirement.
     external: Option<crate::operations::authorization::Authorization>,
-}
-
-struct Cached {
-    target: Weak<Entry>,
-    key: CacheKey,
-    identity: Identity,
-    response: CachedResponse,
 }
 
 /* === Enums === */

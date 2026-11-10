@@ -7,12 +7,10 @@
  * ***
  */
 
-// Walk The Built Interfaces A Developer Runs: The Schematic CLI, The Cargo
-// Tool And The Generated Python Package.
+// Validate Exported Contracts And Generated Python Packages.
 
 /* === Modules === */
 
-mod authoring;
 mod bindings;
 #[path = "../../../harmos-runtime/tests/support/fixtures.rs"]
 mod fixtures;

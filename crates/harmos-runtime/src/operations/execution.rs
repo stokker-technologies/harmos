@@ -41,7 +41,6 @@ use crate::{Error, Refusal, Result, state::Position};
 /* === Type Aliases === */
 
 pub(super) type Attempt<'a, O> = Pin<Box<dyn Future<Output = Result<O>> + Send + 'a>>;
-type Completed<O> = Box<dyn Fn(&O) + Send>;
 
 /* === Structs === */
 
@@ -52,7 +51,6 @@ pub(crate) struct Prepared<O> {
     pub(super) timeout_source: &'static str,
     pub(super) replay: ReplaySafety,
     pub(super) id: OperationInstanceId,
-    pub(super) completed: Option<Completed<O>>,
     pub(super) refusal: Option<Error>,
     pub(super) middleware: Option<super::middleware::Session>,
 }
@@ -244,9 +242,6 @@ pub(super) async fn execute<O: Send + 'static>(
     } else {
         answer
     };
-    if let (Ok(response), Some(completed)) = (&answer, prepared.completed) {
-        completed(response);
-    }
     drop(permit);
     drop(admission);
     instance.complete(outcome(&answer));

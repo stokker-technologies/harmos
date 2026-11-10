@@ -63,10 +63,8 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
     fixtures.mkdir(parents=True)
     files: dict[str, str] = {}
 
-    # Nextest Builds The CLI Test Harness; Sandbox Collection Needs Its Ordinary Executable.
     compiler_profile = "test"
-    collector = staging.capture("collector", ROOT, compiler_profile, ["-p", "cargo-harmos"], scratch)
-    tool = staging.executable(staging.messages(collector), "cargo-harmos")
+    tool = staging.driver(compiler_profile, scratch)
 
     sandbox = "harmos-sandbox-guest"
     manifest = GUESTS[sandbox]

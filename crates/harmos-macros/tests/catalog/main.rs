@@ -175,7 +175,6 @@ fn authoring_refusals_compile() {
         ("undeclared_operation.rs", "Invokes<Other>"),
         ("unsafe_id.rs", "a stream id must be a filesystem-safe dotted name with non-keyword ASCII segments"),
         ("zero_window.rs", "a stream window must retain at least 1 row"),
-        ("absent_axis_field.rs", "the declared `axis` names no field of this row"),
         ("duplicate_id.rs", "__HARMOS_STREAM_ID_70756c7365"),
         ("unregistered_row.rs", "Stream<Studio>"),
         ("non_serde_row.rs", "Serialize"),

@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::watch;
 // Local Imports
 use super::definition::{Contract, Windows};
-use super::{Demand, Holding, Item, Query, StreamManager, Tier, Wired, window};
+use super::{Demand, Holding, Item, Query, StreamManager, Wired, window};
 use crate::{Application, state::Position, streams::Definition};
 use harmos_domain::StreamDeclaration;
 use harmos_domain::inventory::publications;
@@ -51,7 +51,6 @@ pub struct PublicationRow {
 #[derive(Clone)]
 pub struct PluginStream {
     pub(super) wired: Arc<Wired>,
-    pub(super) tier: Tier,
     pub(super) closed: Arc<AtomicBool>,
     pub(super) pool: Arc<super::publication::Pool>,
     pub(super) ingest: Arc<super::ingest::Ingest>,
@@ -149,7 +148,6 @@ impl<A: Application> StreamManager<A> {
 
         Some(PluginStream {
             wired,
-            tier: self.tier.clone(),
             closed: Arc::clone(&self.closed),
             pool: self.windows.publications.clone(),
             ingest: self.windows.ingest.clone(),
@@ -161,7 +159,6 @@ impl<A: Application> StreamManager<A> {
         wired.definition.owner()?;
         Some(PluginStream {
             wired,
-            tier: self.tier.clone(),
             closed: Arc::clone(&self.closed),
             pool: self.windows.publications.clone(),
             ingest: self.windows.ingest.clone(),
@@ -412,12 +409,9 @@ impl PluginStream {
     pub fn query(&self, range: impl RangeBounds<Position>) -> Query<PublicationRow> {
         Query {
             window: Arc::clone(&self.wired.window),
-            definition: self.wired.definition.clone(),
-            tier: self.tier.clone(),
             start: range.start_bound().cloned(),
             end: range.end_bound().cloned(),
             as_of: None,
-            partition: None,
             retained_only: false,
             marker: PhantomData,
         }

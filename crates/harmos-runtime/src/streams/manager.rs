@@ -23,14 +23,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 // Third Party Imports
-use harmos_domain::Aggregate;
 use tokio::sync::watch;
 // Local Imports
 use super::window::Window;
-use super::{
-    Aggregated, Axial, Batched, Batches, BeneathWindow, Bucket, Definition, Demand, Holding, Item, Prefix, Stream, Table, Tier, Tracked,
-    Wired, demand, window,
-};
+use super::{BeneathWindow, Demand, Item, Stream, Table, Wired, demand, window};
 use crate::{Application, state::At, state::Position, storage::Batch, storage::Cursor};
 
 /* === Constants === */
@@ -45,7 +41,6 @@ pub struct StreamManager<A: Application> {
     pub(super) schema_settings: Arc<crate::config::SchemaSettings>,
     pub(super) windows: Arc<Table>,
     pub(super) applied: watch::Receiver<Position>,
-    pub(super) tier: Tier,
     pub(super) closed: Arc<AtomicBool>,
     pub(super) marker: PhantomData<fn() -> A>,
 }
@@ -59,36 +54,12 @@ pub struct StreamFeed<A: Application> {
     pub(super) intake: super::ingest::Intake,
 }
 
-pub(super) struct Partition<S> {
-    pub(super) labels: Vec<String>,
-    pub(super) matches: Box<dyn Fn(&S) -> bool + Send>,
-}
-
 pub struct Query<S> {
     pub(super) window: Arc<Window>,
-    pub(super) definition: Definition,
-    pub(super) tier: Tier,
     pub(super) start: Bound<Position>,
     pub(super) end: Bound<Position>,
     pub(super) as_of: Option<Position>,
-    pub(super) partition: Option<Partition<S>>,
     pub(super) retained_only: bool,
-    pub(super) marker: PhantomData<fn() -> S>,
-}
-
-pub struct Survey<S> {
-    pub(super) definition: Definition,
-    pub(super) tier: Tier,
-    pub(super) start: Bound<u64>,
-    pub(super) end: Bound<u64>,
-    pub(super) track: Vec<String>,
-    pub(super) marker: PhantomData<fn() -> S>,
-}
-
-pub struct Seal<S> {
-    pub(super) definition: Definition,
-    pub(super) tier: Tier,
-    pub(super) track: Vec<String>,
     pub(super) marker: PhantomData<fn() -> S>,
 }
 
@@ -119,14 +90,11 @@ impl<A: Application> StreamFeed<A> {
 }
 
 impl<A: Application> StreamManager<A> {
-    pub(crate) fn wired(
-        windows: Table, applied: watch::Receiver<Position>, tier: Tier, schema_settings: Arc<crate::config::SchemaSettings>,
-    ) -> Self {
+    pub(crate) fn wired(windows: Table, applied: watch::Receiver<Position>, schema_settings: Arc<crate::config::SchemaSettings>) -> Self {
         Self {
             schema_settings,
             windows: Arc::new(windows),
             applied,
-            tier,
             closed: Arc::new(AtomicBool::new(false)),
             marker: PhantomData,
         }
@@ -160,33 +128,10 @@ impl<A: Application> StreamManager<A> {
 
         Query {
             window: Arc::clone(&wired.window),
-            definition: wired.definition.clone(),
-            tier: self.tier.clone(),
             start: range.start_bound().cloned(),
             end: range.end_bound().cloned(),
             as_of: None,
-            partition: None,
             retained_only: false,
-            marker: PhantomData,
-        }
-    }
-
-    pub fn survey<S: Stream<A> + Axial>(&self, range: impl RangeBounds<u64>) -> Survey<S> {
-        Survey {
-            definition: self.stream::<S>().definition.clone(),
-            tier: self.tier.clone(),
-            start: range.start_bound().cloned(),
-            end: range.end_bound().cloned(),
-            track: Vec::new(),
-            marker: PhantomData,
-        }
-    }
-
-    pub fn seal<S: Stream<A>>(&self) -> Seal<S> {
-        Seal {
-            definition: self.stream::<S>().definition.clone(),
-            tier: self.tier.clone(),
-            track: Vec::new(),
             marker: PhantomData,
         }
     }
@@ -198,19 +143,11 @@ impl<A: Application> StreamManager<A> {
         window::following(window, Arc::clone(&self.closed), held)
     }
 
-    pub fn batches<S: Stream<A> + Batched>(&self) -> Batches<S> {
-        let window = &self.stream::<S>().window;
-        window.batches::<S>(Holding::engage(Arc::clone(window)))
-    }
-
     pub fn demand<S: Stream<A>>(&self) -> Demand {
         Demand::of(&self.stream::<S>().window)
     }
 
     pub(crate) fn close(&self) {
-        for wired in self.windows.declared() {
-            wired.window.close_batches();
-        }
         self.closed.store(true, Ordering::Release);
         self.windows.wake();
         self.windows.ingest.wake();
@@ -235,10 +172,6 @@ impl<A: Application> StreamManager<A> {
         }
     }
 
-    pub(crate) fn declared(&self) -> Vec<Arc<Wired>> {
-        self.windows.declared()
-    }
-
     fn stream<S: Stream<A>>(&self) -> Arc<Wired> {
         self.windows
             .current(S::ID)
@@ -259,7 +192,6 @@ impl<A: Application> Clone for StreamManager<A> {
             schema_settings: Arc::clone(&self.schema_settings),
             windows: Arc::clone(&self.windows),
             applied: self.applied.clone(),
-            tier: self.tier.clone(),
             closed: Arc::clone(&self.closed),
             marker: PhantomData,
         }
@@ -284,47 +216,24 @@ impl<S: Clone + Send + 'static> Query<S> {
     }
 
     async fn answer(self) -> Result<std::vec::IntoIter<At<S>>, BeneathWindow> {
-        let Self {
-            window,
-            definition,
-            tier,
-            start,
-            end,
-            as_of,
-            partition,
-            retained_only,
-            ..
-        } = self;
-        let retained = if retained_only { window.snapshot_scope(start, end, as_of, false) } else { window.snapshot(start, end, as_of) };
-        let mut rows = Vec::new();
-
-        if retained.beneath && !retained_only {
-            let served =
-                tier.rows(definition, narrowed(partition.as_ref()), start, beneath(beneath_of(end, as_of), retained.floor)).await?;
-
-            rows.extend(served.into_iter().map(|At { value, position }| (position, value)));
+        let retained = if self.retained_only {
+            self.window.snapshot_scope(self.start, self.end, self.as_of, false)
+        } else {
+            self.window.snapshot(self.start, self.end, self.as_of)
+        };
+        if retained.beneath && !self.retained_only {
+            return Err(BeneathWindow::Floor { floor: retained.floor });
         }
-        rows.extend(retained.rows);
 
-        Ok(rows
+        Ok(retained
+            .rows
             .into_iter()
             .map(|(position, row)| At {
-                value: super::row_value::<S>(row.as_ref()).expect("a stream's tiers hold only its own rows").clone(),
+                value: super::row_value::<S>(row.as_ref()).expect("a stream window holds only its own rows").clone(),
                 position,
             })
-            .filter(|At { value, .. }| partition.as_ref().is_none_or(|partition| (partition.matches)(value)))
             .collect::<Vec<_>>()
             .into_iter())
-    }
-}
-
-impl<S: Clone + Send + Tracked + 'static> Query<S> {
-    pub fn track<K: Prefix<S::Track>>(mut self, track: K) -> Self {
-        self.partition = Some(Partition {
-            labels: track.labels(),
-            matches: Box::new(move |row: &S| track.selects(&row.track())),
-        });
-        self
     }
 }
 
@@ -337,64 +246,8 @@ impl<S: Clone + Send + 'static> IntoFuture for Query<S> {
     }
 }
 
-impl<S> Survey<S> {
-    pub async fn budget(self, points: usize) -> Result<Vec<Bucket>, BeneathWindow> {
-        self.tier.buckets(self.definition, self.track, self.start, self.end, points).await
-    }
-
-    pub async fn fold(self, kind: Aggregate) -> Result<Vec<Aggregated>, BeneathWindow> {
-        self.tier.aggregate(self.definition, self.track, self.start, self.end, checked(kind)).await
-    }
-}
-
-impl<S: Tracked> Survey<S> {
-    pub fn track<K: Prefix<S::Track>>(mut self, track: K) -> Self {
-        self.track = track.labels();
-        self
-    }
-}
-
-impl<S: Tracked> Seal<S> {
-    pub fn track<K: Prefix<S::Track>>(mut self, track: K) -> Self {
-        self.track = track.labels();
-        self
-    }
-}
-
-impl<S> IntoFuture for Seal<S> {
-    type Output = Position;
-    type IntoFuture = Pin<Box<dyn Future<Output = Position> + Send>>;
-
-    fn into_future(self) -> Self::IntoFuture {
-        Box::pin(async move { self.tier.seal(self.definition, self.track).await })
-    }
-}
-
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-fn checked(kind: Aggregate) -> Aggregate {
-    assert!(kind.answerable(), "a percentile rank is a percentage, and {kind:?} names none");
-    kind
-}
-
-fn narrowed<S>(partition: Option<&Partition<S>>) -> Vec<String> {
-    partition.map(|partition| partition.labels.clone()).unwrap_or_default()
-}
-
-fn beneath(end: Bound<Position>, ceiling: Position) -> Bound<Position> {
-    match end {
-        Bound::Included(at) | Bound::Excluded(at) if at <= ceiling => end,
-        _ => Bound::Included(ceiling),
-    }
-}
-
-fn beneath_of(end: Bound<Position>, as_of: Option<Position>) -> Bound<Position> {
-    match as_of {
-        Some(cutoff) => beneath(end, cutoff),
-        None => end,
-    }
-}
 
 /* === Tests === */

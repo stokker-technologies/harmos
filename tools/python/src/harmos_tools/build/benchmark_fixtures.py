@@ -51,8 +51,8 @@ def build(extra: list[str]) -> Path:
     files = dict(stamp["files"])
     artifacts = {}
 
-    tool = output / "bin" / ("cargo-harmos.exe" if os.name == "nt" else "cargo-harmos")
     with temporary.directory() as scratch:
+        tool = fixtures.driver("bench", scratch)
         for package, backend, target in (
             ("schematic-sidecar", "sidecar", []),
             ("schematic-guest", "guest", ["--target", "wasm32-unknown-unknown"]),

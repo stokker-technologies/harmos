@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 // Local Imports
 use super::response::ErasedResponse;
-use super::{CacheKey, OperationDeclaration, OperationDefinition, Response};
+use super::{OperationDeclaration, OperationDefinition, Response};
 use crate::{Message, MessageError};
 
 /* === Constants === */
@@ -55,7 +55,6 @@ pub struct Target {
     pub encode: fn(&(dyn Any + Send)) -> Option<Vec<u8>>,
     pub decode: fn(&[u8]) -> Result<ErasedResponse, MessageError>,
     pub grant: fn(&(dyn Any + Send)) -> Option<crate::plugin::Grant>,
-    pub key: fn(&(dyn Any + Send)) -> Option<CacheKey>,
 }
 
 /* === Enums === */
@@ -106,7 +105,6 @@ impl Target {
             encode: |request| request.downcast_ref::<T::Request>().map(Message::encode),
             decode: decode::<T>,
             grant: |request| request.downcast_ref::<T::Request>().and_then(T::grant),
-            key: |request| request.downcast_ref::<T::Request>().and_then(T::key),
         }
     }
 }

@@ -74,7 +74,7 @@ impl EncodedBinding {
         Ok(PreparedNative {
             instance: (self.prepare)(resources, payload)?,
             grant: None,
-            key: None,
+
             streams: None,
         })
     }

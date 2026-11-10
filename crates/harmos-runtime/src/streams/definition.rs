@@ -27,7 +27,7 @@ use tokio::sync::watch;
 // Local Imports
 use super::demand::Holding;
 use super::window::{Row, Window};
-use crate::streams::{BatchDefinition, Definition, StreamCatalog, StreamRow};
+use crate::streams::{Definition, StreamCatalog, StreamRow};
 use crate::{Application, state::Position, storage::Cursor};
 
 /* === Constants === */
@@ -107,10 +107,6 @@ pub trait Stream<A: Application>: crate::schema::Described + Clone + Send + Sync
 
     const WINDOW: usize;
 
-    fn batch_definition() -> Option<BatchDefinition> {
-        None
-    }
-
     fn metadata() -> crate::Metadata {
         crate::Metadata::new(crate::Identifier::declared(Self::ID, "stream"), Self::ID, None)
     }
@@ -120,9 +116,7 @@ pub trait Stream<A: Application>: crate::schema::Described + Clone + Send + Sync
     }
 
     fn definition() -> Definition {
-        Definition::native::<Self>(Self::ID, Self::WINDOW)
-            .batching(Self::batch_definition())
-            .presentation(Self::metadata(), Self::row_metadata())
+        Definition::native::<Self>(Self::ID, Self::WINDOW).presentation(Self::metadata(), Self::row_metadata())
     }
 }
 
@@ -142,10 +136,6 @@ where
 
     fn row_metadata() -> Vec<crate::StreamField> {
         S::row_metadata()
-    }
-
-    fn batch_definition() -> Option<BatchDefinition> {
-        S::batch_definition()
     }
 }
 
@@ -197,9 +187,7 @@ impl Table {
         }
 
         let window = Arc::new(
-            Window::wired(definition.window(), floor, Arc::clone(&self.sequence), self.pump.clone())
-                .visible_with(self.visibility.clone())
-                .batching(definition.batch()),
+            Window::wired(definition.window(), floor, Arc::clone(&self.sequence), self.pump.clone()).visible_with(self.visibility.clone()),
         );
         let wired = Arc::new(Wired {
             validation: None,

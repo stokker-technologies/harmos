@@ -28,13 +28,12 @@ extern crate facade as serde;
 
 /* === Structs === */
 
-#[facade::stream(id = "batched", window = 8, batch(samples = 3, gaps = "report"), harmos_path = ::facade::__harmos)]
+#[facade::stream(id = "reading", window = 8, harmos_path = ::facade::__harmos)]
 #[derive(facade::Serialize, facade::Deserialize)]
 #[serde(crate = "facade")]
 #[facade::message(harmos_path = ::facade::__harmos)]
 #[derive(Clone, PartialEq)]
 struct Reading {
-    #[harmos(measure)]
     value: u64,
 
     bytes: Vec<u8>,
@@ -98,7 +97,6 @@ fn main() {
     let _ = Outcome::default();
     let _ = Portable::default();
     let _ = Sample::default();
-    assert_eq!(<Reading as facade::__harmos::streams::Batched>::SAMPLES, 3);
 }
 
 /* === Tests === */

@@ -16,7 +16,7 @@
 // Standard Library Imports
 
 // Third Party Imports
-use crate::signal::{Series, Summary};
+use crate::statistics::Summary;
 
 // Local Imports
 use harmos_domain::Aggregate;
@@ -38,17 +38,9 @@ use harmos_domain::Aggregate;
 /* === Public Functions === */
 
 // Answers one member of the contract vocabulary from the signal math. The
-// kernels live in the sibling `signal` module; these functions connect them to
-// core reductions and for `signal::Aggregates` alike. Empty input answers
+// kernels live in the sibling `statistics` module; these functions connect them to
+// core reductions. Empty input answers
 // `Count` and `Sum` with zero and every other member with `None`.
-pub fn of_series(series: &Series<'_>, kind: Aggregate) -> Option<f64> {
-    match kind {
-        Aggregate::Median => series.median(),
-        Aggregate::Percentile(rank) => series.percentile(f64::from(rank)),
-        mergeable => of_summary(&series.summary(), mergeable),
-    }
-}
-
 pub fn of_summary(summary: &Summary, kind: Aggregate) -> Option<f64> {
     match kind {
         Aggregate::Count => Some(summary.count() as f64),

@@ -145,9 +145,9 @@ mod tests {
         let table = writer.finish().unwrap();
         assert_eq!(table.len(), x.len());
         for (algorithm, expected) in [
-            (Algorithm::Lttb, crate::signal::lttb(&x, &y, 31)),
-            (Algorithm::Extrema, crate::signal::extrema(&y, 15)),
-            (Algorithm::Decimate, crate::signal::decimate(x.len(), 31)),
+            (Algorithm::Lttb, crate::statistics::lttb(&x, &y, 31)),
+            (Algorithm::Extrema, crate::statistics::extrema(&y, 15)),
+            (Algorithm::Decimate, crate::statistics::decimate(x.len(), 31)),
         ] {
             let transform = Transform::Downsample(Downsample {
                 max_rows: 31,
