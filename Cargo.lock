@@ -1431,6 +1431,7 @@ dependencies = [
  "prost-reflect",
  "prost-types",
  "semver",
+ "serde_json",
  "tempfile",
  "thiserror",
  "tokio",

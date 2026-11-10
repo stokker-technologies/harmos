@@ -171,7 +171,11 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                 quote!(#encoding::encoded_len(#tag, &self.#ident)),
             )
         } else {
-            let default = if bytes || kind == 9 { quote!(!self.#ident.is_empty()) } else { quote!(self.#ident != Default::default()) };
+            let default = if bytes || kind == 9 {
+                quote!(!self.#ident.is_empty())
+            } else {
+                quote!(self.#ident != <#ty as ::core::default::Default>::default())
+            };
             (
                 quote!(if #default { #encoding::encode(#tag, &self.#ident, buf); }),
                 quote!(#encoding::merge(wire_type, &mut self.#ident, buf, ctx)),

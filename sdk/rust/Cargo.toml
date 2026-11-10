@@ -74,6 +74,7 @@ tonic = { workspace = true, features = ["codegen", "router", "transport"] }
 # === Dev Dependencies === #
 
 [dev-dependencies]
+serde_json = { workspace = true, features = ["std"] }
 # Local
 harmos-conformance = { workspace = true }
 

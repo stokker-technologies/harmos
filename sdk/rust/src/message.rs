@@ -150,6 +150,31 @@ mod tests {
         children: Vec<Node>,
     }
 
+    #[derive(crate::Message)]
+    struct Scalars {
+        enabled: bool,
+        signed: i32,
+        unsigned: u64,
+        fraction: f64,
+    }
+
+    #[test]
+    fn scalar_defaults_round_trip_with_json_comparisons_linked() {
+        // Link the Additional Scalar PartialEq Implementations
+        assert_eq!(serde_json::json!(7), 7);
+
+        // Omit Defaults and Encode Nondefault Scalars
+        assert!(Scalars::default().encode_to_vec().is_empty());
+        let value = Scalars { enabled: true, signed: -7, unsigned: 9, fraction: 1.5 };
+        let bytes = value.encode_to_vec();
+        assert_eq!(value.encoded_len(), bytes.len());
+        let decoded = Scalars::decode(bytes.as_slice()).unwrap();
+        assert!(decoded.enabled);
+        assert_eq!(decoded.signed, -7);
+        assert_eq!(decoded.unsigned, 9);
+        assert_eq!(decoded.fraction, 1.5);
+    }
+
     #[test]
     fn derived_messages_round_trip_protobuf_fields() {
         let value = Data {
