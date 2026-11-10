@@ -7,7 +7,7 @@
 
 ## 2. Protocol
 
-- [ ] 2.1 Add `crates/harmos-protocol` exposing the `harmos.v1` definitions as `harmos_protocol::v1`, with checked-in `proto/` files and generated Rust, and a drift check that needs no installed `protoc`.
+- [x] 2.1 Add `crates/harmos-protocol` exposing the `harmos.v1` definitions as `harmos_protocol::v1`, with checked-in `proto/` files and generated Rust, and a drift check that needs no installed `protoc`.
 - [ ] 2.2 Write the behaviour spec: describe, activation, invoke frames, child calls, cancellation, failures and streams.
 - [ ] 2.3 Add the conformance suite with a reference host usable by non-Rust SDKs.
 

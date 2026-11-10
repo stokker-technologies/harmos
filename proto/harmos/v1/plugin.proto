@@ -1,0 +1,295 @@
+// DRAFT for owner review. Not implemented. See ../../README.md for the rules.
+syntax = "proto3";
+
+package harmos.v1;
+
+import "google/protobuf/descriptor.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// Served by every plugin. The host is always the client.
+service Plugin {
+  // Identity, start time and catalog. Called once per connection, first.
+  rpc Describe(DescribeRequest) returns (Description);
+
+  // One invocation of one operation. The host opens the call with a Request.
+  // While it runs, the plugin may send ChildRequest frames and the host
+  // answers each with a ChildResponse. The plugin ends the call with a
+  // Response. The host may send Cancel at any time.
+  rpc Invoke(stream HostFrame) returns (stream PluginFrame);
+
+  // One declared stream. The host opens the call with a PublishRequest;
+  // opening it is the demand for the stream and closing it ends the demand.
+  // For a stream with an interval the host then sends one Tick per interval
+  // and the plugin answers each with one sample.
+  rpc Publish(stream PublishFrame) returns (stream Samples);
+
+  // Sent before the host shuts down or removes the plugin. The plugin runs
+  // its stop and cleanup hooks and then replies. A managed plugin exits
+  // afterwards; a remote plugin keeps running.
+  rpc Stop(StopRequest) returns (StopResponse);
+}
+
+// ---------------------------------------------------------------- Describe
+
+message DescribeRequest {
+  // Highest revision of harmos.v1 the host implements. Starts at 1 and grows
+  // with each additive release.
+  uint32 revision = 1;
+  // Name and version of the host application, for logs.
+  string host = 2;
+  string host_version = 3;
+}
+
+message Description {
+  // Stable plugin identifier, lowercase with dots or underscores.
+  string id = 1;
+  // Semantic version of the plugin.
+  string version = 2;
+  // Captured once when the process started. A changed value on reconnect
+  // means the process restarted.
+  google.protobuf.Timestamp started_at = 3;
+  Catalog catalog = 4;
+  // Highest revision of harmos.v1 the plugin implements.
+  uint32 revision = 5;
+  // Name and version of the SDK that built the plugin, for logs.
+  string sdk = 6;
+  string sdk_version = 7;
+}
+
+message Catalog {
+  // Operations the plugin serves.
+  repeated OperationContract operations = 1;
+  // Operations it calls on the host or on other plugins.
+  repeated Requirement requires = 2;
+  // Streams it can publish.
+  repeated StreamDeclaration streams = 3;
+  // Product contributions, opaque to Harmos.
+  repeated Section sections = 4;
+  // SHA-256 over the serialized fields 1 to 4 and 6, in field order.
+  bytes digest = 5;
+  // Definitions of every message named in this catalog.
+  google.protobuf.FileDescriptorSet types = 6;
+}
+
+message OperationContract {
+  // Unique among the host and all connected plugins, for example
+  // "thermal.set".
+  string id = 1;
+  // Fully qualified message names found in Catalog.types.
+  string request = 2;
+  string response = 3;
+  Visibility visibility = 4;
+  OperationPolicy policy = 5;
+  // SHA-256 over the id and the request and response definitions.
+  bytes fingerprint = 6;
+  string description = 7;
+}
+
+enum Visibility {
+  VISIBILITY_UNSPECIFIED = 0;
+  // The declaring plugin and the host.
+  VISIBILITY_PRIVATE = 1;
+  // Everyone connected: other plugins and the host's clients.
+  VISIBILITY_PUBLIC = 2;
+}
+
+message OperationPolicy {
+  // Bound on the whole invocation including retries.
+  google.protobuf.Duration timeout = 1;
+  // Bound on one attempt.
+  google.protobuf.Duration attempt_timeout = 2;
+  // Grace after Cancel before the host abandons the attempt.
+  google.protobuf.Duration cancellation_timeout = 3;
+  // Total attempts allowed. 0 and 1 both mean no retry.
+  uint32 attempts = 4;
+  // Wait on the host's clock between attempts.
+  google.protobuf.Duration backoff = 5;
+}
+
+message Requirement {
+  // Identifier of the operation the plugin calls.
+  string id = 1;
+  // Fingerprint the plugin was built against.
+  bytes fingerprint = 2;
+}
+
+message StreamDeclaration {
+  string id = 1;
+  // Fully qualified message name of one row, found in Catalog.types.
+  string row = 2;
+  string description = 3;
+  // Set for a stream sampled on the host's clock. Unset means the plugin
+  // sends samples when its device produces them.
+  google.protobuf.Duration interval = 4;
+  // Identifier of a plugin setting that gives the interval instead, if any.
+  string interval_setting = 5;
+}
+
+message Section {
+  // Fully qualified message name of the payload, for example
+  // "dokime.v1.Suites". At most one section per name.
+  string type = 1;
+  bytes payload = 2;
+}
+
+message StopRequest {
+  string reason = 1;
+}
+
+message StopResponse {}
+
+// ------------------------------------------------------------------ Invoke
+
+message HostFrame {
+  oneof frame {
+    Request request = 1;
+    ChildResponse child = 2;
+    Cancel cancel = 3;
+  }
+}
+
+message PluginFrame {
+  oneof frame {
+    ChildRequest child = 1;
+    ChildCancel child_cancel = 2;
+    Response response = 3;
+  }
+}
+
+message Request {
+  string operation = 1;
+  // Serialized request message of the operation.
+  bytes payload = 2;
+  // Unique per invocation, for logs and correlation.
+  string invocation = 3;
+  // 1 for the first attempt.
+  uint32 attempt = 4;
+  // Opaque to Harmos. The product names what the invocation belongs to.
+  string scope = 5;
+}
+
+message Cancel {
+  string reason = 1;
+}
+
+message Response {
+  oneof result {
+    // Serialized response message of the operation.
+    bytes payload = 1;
+    Failure failure = 2;
+  }
+}
+
+message ChildRequest {
+  // Chosen by the plugin, unique within this Invoke call.
+  uint64 call = 1;
+  string operation = 2;
+  bytes payload = 3;
+  // Fingerprint the plugin was built against.
+  bytes fingerprint = 4;
+  // Optional override of the callee's policy for this call.
+  OperationPolicy policy = 5;
+}
+
+message ChildCancel {
+  uint64 call = 1;
+}
+
+message ChildResponse {
+  uint64 call = 1;
+  oneof result {
+    bytes payload = 2;
+    Failure failure = 3;
+  }
+}
+
+// An operation failure. Transport faults use gRPC status instead.
+message Failure {
+  Classification classification = 1;
+  // Stable machine-readable code, for example "provider_absent".
+  string code = 2;
+  // What happened.
+  string message = 3;
+  // What the user can do about it.
+  string action = 4;
+  // Operation and plugin where it happened.
+  string operation = 5;
+  string plugin = 6;
+  // Failure of a child call that led to this one.
+  Failure cause = 7;
+  // Extra named facts.
+  map<string, string> details = 8;
+  // Stack or source chain for support. Never shown as the message.
+  string diagnostics = 9;
+}
+
+enum Classification {
+  CLASSIFICATION_UNSPECIFIED = 0;
+  // Retrying will not help.
+  CLASSIFICATION_PERMANENT = 1;
+  // Another attempt may succeed.
+  CLASSIFICATION_TRANSIENT = 2;
+  CLASSIFICATION_CANCELLED = 3;
+  CLASSIFICATION_TIMED_OUT = 4;
+  // Not admitted: visibility, fingerprint mismatch or absent provider.
+  CLASSIFICATION_REFUSED = 5;
+}
+
+// ----------------------------------------------------------------- Publish
+
+message PublishFrame {
+  oneof frame {
+    // First frame.
+    PublishRequest open = 1;
+    Tick tick = 2;
+  }
+}
+
+// Asks for one sample of an interval stream.
+message Tick {
+  // Host time of the tick. The answering sample carries it.
+  google.protobuf.Timestamp at = 1;
+}
+
+message PublishRequest {
+  string stream = 1;
+  // Opaque to Harmos. The product names what the stream belongs to.
+  string scope = 2;
+}
+
+// One message on the stream. An SDK sends one sample per message; the
+// repeated field lets a later SDK group samples without a protocol change.
+message Samples {
+  repeated Sample samples = 1;
+}
+
+message Sample {
+  // For an interval stream, the time of the Tick this sample answers. For
+  // other streams, the device's own time if it supplies one; when unset
+  // the host stamps the sample on arrival.
+  google.protobuf.Timestamp at = 1;
+  // Serialized row message of the stream.
+  bytes row = 2;
+  // Counts samples on this call from 1, so the host can see a gap.
+  uint64 sequence = 3;
+}
+
+// ------------------------------------------------------------------- Clock
+//
+// Built-in Public operations served by the host. An SDK offers no waits of
+// its own: every wait goes through these, so the host owns the only clock.
+//   harmos.clock.sleep   Sleep -> SleepResponse
+//   harmos.clock.now     Now   -> Time
+
+message Sleep {
+  google.protobuf.Duration duration = 1;
+}
+
+message SleepResponse {}
+
+message Now {}
+
+message Time {
+  google.protobuf.Timestamp now = 1;
+}
