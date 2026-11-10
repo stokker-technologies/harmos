@@ -71,7 +71,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     generate.add_argument("--profile", choices=("dev", "release"), default="dev")
     for name in ("format", "lint", "check"):
         command = commands.add_parser(name)
-        command.add_argument("--language", choices=LANGUAGES)
+        command.add_argument("--language", choices=(*LANGUAGES, "csharp") if name != "lint" else LANGUAGES)
         if name == "format":
             command.add_argument("--check", action="store_true")
         if name in ("lint", "check"):
@@ -80,6 +80,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
             command.add_argument("--repository", action="store_true")
             command.add_argument("--generated", action="store_true")
     build = commands.add_parser("build")
+    build.add_argument("--language", choices=("rust", "csharp"))
     build.add_argument("--profile", choices=("dev", "release"), default="dev")
     build.add_argument("--artifact", choices=("product", "tests", "bench", "fixtures"), default="product")
     build.add_argument("--package")
@@ -90,7 +91,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     build.add_argument("--cpp", action="store_true")
     build.add_argument("--extended", action="store_true")
     test = commands.add_parser("test")
-    test.add_argument("--language", choices=("rust", "python"))
+    test.add_argument("--language", choices=("rust", "python", "csharp"))
     test.add_argument("--layer", choices=LAYERS)
     test.add_argument("--package")
     test.add_argument("--features")
@@ -145,6 +146,33 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
         return workflow.run(options.command.partition(":")[2], options.arguments, options.profile)
     root = Path.cwd()
+
+    # C# SDK Selections Remain Independent of Rust Lanes and Tooling Python Tests.
+    if options.command in ("build", "test", "format", "check") and options.language == "csharp":
+        from .. import csharp
+
+        incompatible = (
+            "package",
+            "features",
+            "example",
+            "compatibility",
+            "cpp",
+            "extended",
+            "target",
+            "exact",
+            "coverage",
+            "filter",
+            "stress_count",
+            "repository",
+            "generated",
+        )
+        if any(getattr(options, name, None) for name in incompatible):
+            parser.error("C# selects only --language, --profile and --layer integration")
+        if getattr(options, "artifact", "product") != "product" or getattr(options, "layer", None) not in (None, "integration"):
+            parser.error("C# builds its SDK and tests its one integration story")
+        if options.command == "build" and options.check:
+            parser.error("C# formatting uses check --language csharp")
+        return csharp.run(root, options.command, getattr(options, "profile", "dev"), check=getattr(options, "check", False))
 
     # Focused Cargo Selections
     if options.command == "test" and options.language == "python" and options.exact:

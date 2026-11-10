@@ -58,6 +58,36 @@ build prerequisites; `bench --extended` consumes `build --artifact bench --exten
 
 ## Focused Integration Tests
 
+### C# Plugin SDK
+
+The optional C# SDK uses the project-pinned .NET 10 LTS tool through mise. Install it
+with `mise install dotnet`; no machine-wide SDK installation is required. The build
+restores locked NuGet dependencies, generates `harmos.v1` and fixture C# from protobuf,
+and builds the class library, managed fixture and test story. Generated C#, `bin/`,
+`obj/` and test results stay untracked under `sdk/csharp/`.
+
+```sh
+mise run build -- --language csharp
+mise run build -- --package harmos-conformance
+mise run test -- --language csharp
+mise run check -- --language csharp
+```
+
+The test consumes both build outputs without rebuilding. Its one managed-plugin story
+runs all 16 reference-host cases in managed and remote modes, including successful
+managed process exit and continued remote availability after Stop. A focused unit
+test also checks clock requirement descriptors and the Rust-compatible sleep fingerprint.
+`--profile release` selects matching Release C# and release Rust outputs. Formatting
+uses `dotnet format --verify-no-changes`; apply it with `format --language csharp`.
+Other languages' default selections remain unchanged. The C# authoring example lives
+in the `grpc-plugins` design's Language SDKs section while that change is implementing.
+
+CI adoption needs native Windows and Linux .NET build/format selections, transfer of
+the C# outputs and Rust reference host to the test consumer, and the C# conformance
+story in Nightly. No CI jobs are added by this SDK task.
+
+### Rust Integration Tests
+
 The integration task accepts a nextest filter and repeat count while retaining
 the configured per-test hang guards from `[conventions.testing.deadlines]` in
 `tools/project.toml`. Completed story durations remain measurements. It consumes the existing test archive and fixtures:
