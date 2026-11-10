@@ -36,6 +36,9 @@ per operating system.
 
 ## Settled
 
+- Tooling is duplicated between Harmos and Dokime on purpose: each project is an independent
+  module with its own copy. The copies are kept harmonized, with the same task names, arguments,
+  module layout and behaviour, and a fix made in one is made in the other.
 - Impact planning is removed. Every pull request runs every job, and its dependency graph is
   deleted.
 - The composite actions stay in each repository, reduced to the setup action. The duplication
