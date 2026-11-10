@@ -85,12 +85,15 @@ def product(profile: str, scratch: Path) -> None:
     examples = export / "product/examples"
     shutil.rmtree(examples, ignore_errors=True)
     examples.mkdir(parents=True)
-    tool = export / "bin" / ("cargo-harmos.exe" if os.name == "nt" else "cargo-harmos")
+    source = fixtures.driver(profile, scratch)
+    tool = export / "product/tools" / source.name
+    tool.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, tool)
     native = fixtures.capture("schematic", SCHEMATIC.parent, profile, ["-p", "schematic-cli", "-p", "schematic-sidecar"], scratch)
     files: dict[str, str] = {}
     # Export The Actual Shipping Libraries While Producer-Local Compiler Paths Still Exist.
     libraries = fixtures.libraries(fixtures.messages(native), files, examples)
-    artifacts = {"cargo-harmos": tool.relative_to(export).as_posix()}
+    artifacts = {}
     files[tool.relative_to(ROOT).as_posix()] = fixtures.digest(tool)
     cli = fixtures.executable(fixtures.messages(native), "schematic-cli")
     fixtures.copy(cli, export / "bin" / cli.name, files)
@@ -132,7 +135,7 @@ def generate(profile: str) -> None:
     export = paths.output(ROOT, "build", profile)
     catalog_path = export / "product/examples/catalog.json"
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
-    tool = export / catalog["artifacts"]["cargo-harmos"]
+    tool = export / "product/tools" / ("fixture-driver.exe" if os.name == "nt" else "fixture-driver")
     fixtures.generate_python(tool, export / catalog["builds"]["schematic-sidecar"], _protoc(), catalog["files"])
     catalog_path.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
 

@@ -62,8 +62,8 @@ impl Manager {
             // Notify the staging gate before revocation, outside registry guards.
             scope.unbind_operations();
         }
-        let retired = {
-            let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
+        {
+            let state = self.registry.state.lock().expect("operation registry lock is healthy");
             if !state.owned(id, entry.owner.as_str()).is_some_and(|current| Arc::ptr_eq(current, &entry)) {
                 return Err(Error::NotRegistered { domain: "operation", name: id.to_owned() });
             }
@@ -73,11 +73,8 @@ impl Manager {
             for control in _pending.values() {
                 control.request_cancel();
             }
-            let retired = state.remove_cache(|cached| !cached.target.upgrade().is_some_and(|target| !Arc::ptr_eq(&target, &entry)));
             drop(_pending);
-            retired
         };
-        drop(retired);
         settle(&entry).await?;
         let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
         if state.owned(id, entry.owner.as_str()).is_some_and(|current| Arc::ptr_eq(current, &entry)) {
@@ -88,8 +85,8 @@ impl Manager {
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(in crate::operations) fn fence(&self, entries: &[Arc<Entry>], abandoned: bool) {
-        let retired = {
-            let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
+        {
+            let _state = self.registry.state.lock().expect("operation registry lock is healthy");
             for entry in entries {
                 let _pending = entry.pending.lock().expect("operation settlement lock is healthy");
                 // A by-name unregister retains its reservation for retry even
@@ -103,11 +100,7 @@ impl Manager {
                 });
                 entry.active.store(false, Ordering::Release);
             }
-            state.remove_cache(|cached| {
-                cached.target.upgrade().is_some_and(|target| entries.iter().any(|entry| Arc::ptr_eq(&target, entry)))
-            })
         };
-        drop(retired);
     }
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]

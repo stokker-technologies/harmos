@@ -11,7 +11,7 @@
 
 mod admissions;
 
-pub mod aggregate;
+mod aggregate;
 pub mod arrow;
 mod backend;
 mod batch;
@@ -42,10 +42,10 @@ mod read_batch;
 mod receipts;
 mod schema_encoding;
 mod selection;
-pub mod signal;
 mod snapshot;
 mod staging;
 pub mod state;
+mod statistics;
 mod worker;
 pub mod writes;
 

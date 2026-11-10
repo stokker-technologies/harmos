@@ -121,27 +121,8 @@ async fn ambiguous_timeout_replay() {
 }
 
 #[tokio::test]
-async fn cache_serves_hits() {
-    let owner = Arc::new(Owner::default());
-    let runtime = runtime_with(|setup| {
-        setup.resource::<Owner>(owner.clone());
-    })
-    .await;
-    runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await.unwrap();
-    let keyed = || Request { keyed: true, ..request() };
-
-    let first = runtime.operation(keyed()).await.unwrap();
-    let second = runtime.operation(keyed()).await.unwrap();
-
-    // A hit reuses the cached response without constructing the operation.
-    assert!(first.ptr_eq(&second));
-    assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
-    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
-}
-
-#[tokio::test]
-async fn uncacheable_calls_rerun() {
+async fn repeated_calls_execute_handlers() {
+    // Register The Handler And Its Resource.
     let owner = Arc::new(Owner::default());
     let runtime = runtime_with(|setup| {
         setup.resource::<Owner>(owner.clone());
@@ -149,26 +130,19 @@ async fn uncacheable_calls_rerun() {
     .await;
     runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await.unwrap();
 
-    // Invalid Requests Bypass the Cache
-    let invalid = || Request { keyed: true, valid: false, ..request() };
+    // Prepare Invalid Requests
+    let invalid = || Request { valid: false, ..request() };
     for _ in 0..2 {
         assert!(matches!(runtime.operation(invalid()).await, Err(Error::OperationFailed { .. })));
     }
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 2);
 
-    // Unkeyed Requests Always Run
+    // Execute Every Successful Request
     for _ in 0..2 {
         runtime.operation(request()).await.unwrap();
     }
     assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
 
-    // Capacity Zero Disables Caching
-    runtime.operations.set_cache_capacity(0);
-    let keyed = || Request { keyed: true, ..request() };
-    for _ in 0..2 {
-        runtime.operation(keyed()).await.unwrap();
-    }
-    assert_eq!(owner.runs.load(Ordering::SeqCst), 4);
     runtime.shutdown().await.unwrap();
 }
 
@@ -184,7 +158,6 @@ async fn unregister_reserves_owner() {
     let gate = Arc::new(Notify::new());
     let invocation = runtime
         .operation(Request {
-            keyed: true,
             gate: Some((Arc::clone(&opened), Arc::clone(&gate))),
             ..request()
         })
@@ -202,7 +175,7 @@ async fn unregister_reserves_owner() {
     assert!(matches!(runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await, Err(Error::AlreadyRegistered { .. })));
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Compute::ID).unwrap()).await.unwrap();
     runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await.unwrap();
-    assert_eq!(runtime.operation(Request { keyed: true, ..request() }).await.unwrap().value, 7);
+    assert_eq!(runtime.operation(request()).await.unwrap().value, 7);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
     runtime.shutdown().await.unwrap();
 }
@@ -251,7 +224,7 @@ async fn shutdown_releases_bindings() {
     .await;
     let weak = Arc::downgrade(&owner);
     runtime.operations.register::<super::Single<Compute>>(Lanes::Open).await.unwrap();
-    runtime.operation(Request { keyed: true, ..request() }).await.unwrap();
+    runtime.operation(request()).await.unwrap();
     runtime.shutdown().await.unwrap();
     assert!(matches!(runtime.operation(request()).start().await, Err(Error::Closing { .. })));
     drop(owner);
@@ -354,31 +327,15 @@ async fn providers_route_explicitly() {
         Err(Error::NotRegistered { .. })
     ));
     assert_eq!(runtime.operations.definition_from("first", Compute::ID).unwrap().id.as_str(), Compute::ID);
-    let keyed = || Request { keyed: true, ..request() };
-    let first_result = runtime.operations.submit_from::<Compute>("first", keyed()).unwrap().await.unwrap();
-    let second_result = runtime.operations.submit_from::<Compute>("second", keyed()).unwrap().await.unwrap();
+    let first_result = runtime.operations.submit_from::<Compute>("first", request()).unwrap().await.unwrap();
+    let second_result = runtime.operations.submit_from::<Compute>("second", request()).unwrap().await.unwrap();
     assert_eq!(first_result.value, 17);
     assert_eq!(second_result.value, 17);
     assert!(!first_result.ptr_eq(&second_result));
-    let again = runtime.operations.submit_from::<Compute>("second", keyed()).unwrap().await.unwrap();
-    assert!(second_result.ptr_eq(&again));
-    assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
-    let key = Compute::key(&keyed()).unwrap();
-    assert!(matches!(runtime.operations.invalidate::<Compute>(&key), Err(Error::InvalidInput { field: "operation provider", .. })));
-    assert!(matches!(runtime.operations.invalidate_from::<Compute>("missing", &key), Err(Error::NotRegistered { .. })));
-    let unchanged = runtime.operations.submit_from::<Compute>("first", keyed()).unwrap().await.unwrap();
-    assert!(first_result.ptr_eq(&unchanged));
-    runtime.operations.invalidate_from::<Compute>("first", &key).unwrap();
-    let refreshed = runtime.operations.submit_from::<Compute>("first", keyed()).unwrap().await.unwrap();
-    assert!(!first_result.ptr_eq(&refreshed));
-    assert_eq!(owner.runs.load(Ordering::SeqCst), 3);
-    let preserved = runtime.operations.submit_from::<Compute>("second", keyed()).unwrap().await.unwrap();
-    assert!(second_result.ptr_eq(&preserved));
-    assert_eq!(owner.runs.load(Ordering::SeqCst), 3);
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("first", Compute::ID).unwrap()).await.unwrap();
     assert!(matches!(runtime.operations.submit_from::<Compute>("first", request()), Err(Error::NotRegistered { .. })));
-    let surviving = runtime.operation(keyed()).await.unwrap();
-    assert!(second_result.ptr_eq(&surviving));
+    let surviving = runtime.operation(request()).await.unwrap();
+    assert_eq!(surviving.value, 17);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 3);
     runtime.shutdown().await.unwrap();
 }

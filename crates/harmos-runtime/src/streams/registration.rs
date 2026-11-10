@@ -139,7 +139,6 @@ impl<A: Application> StreamManager<A> {
                 leases.push(Arc::new(PublicationLease {
                     stream: PluginStream {
                         wired,
-                        tier: self.tier.clone(),
                         closed: self.closed.clone(),
                         pool: self.windows.publications.clone(),
                         ingest: self.windows.ingest.clone(),
@@ -158,18 +157,8 @@ impl<A: Application> StreamManager<A> {
             }
         };
 
-        for lease in registration.leases() {
-            let wired = &lease.stream.wired;
-            let floor = self.tier.seal(wired.definition.clone(), Vec::new()).await;
-            if scope.is_closed() || self.closed.load(std::sync::atomic::Ordering::Acquire) {
-                return Err(StreamAdmissionError::Closed);
-            }
-            if wired.staged.as_ref().expect("staged inventory").previous.is_none()
-                && floor > Position::ORIGIN
-                && floor <= *self.applied.borrow()
-            {
-                wired.window.stands_on(floor);
-            }
+        if scope.is_closed() || self.closed.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(StreamAdmissionError::Closed);
         }
         scope.attach_streams(&registration.activation);
         if !scope.bind_streams() {

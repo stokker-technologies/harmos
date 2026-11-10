@@ -811,7 +811,7 @@ mod tests {
             .unwrap();
         assert!(scope.unregister(&crate::QualifiedId::parse("host.service").unwrap()).await.is_err());
         assert!(runtime.operations.resident_definition("worker.service").is_some());
-        tokio::time::timeout(std::time::Duration::from_secs(5), started.notified()).await.unwrap();
+        runtime.operations.clock().timeout(std::time::Duration::from_secs(5), started.notified()).await.unwrap();
         receipt.shutdown().await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert!(runtime.operations.resident_definition("worker.service").is_none());

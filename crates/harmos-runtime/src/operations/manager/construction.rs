@@ -58,8 +58,6 @@ impl Manager {
                     grpc: BTreeMap::new(),
                     #[cfg(feature = "grpc")]
                     grpc_services: std::collections::BTreeSet::new(),
-                    cache: VecDeque::new(),
-                    cache_capacity: DEFAULT_CACHE_CAPACITY,
                 }),
             }),
         }

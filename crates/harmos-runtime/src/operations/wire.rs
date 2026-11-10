@@ -528,14 +528,13 @@ pub(super) fn dispatch_prepared(
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
     let streaming = submission.entry.contract.as_ref().is_some_and(|contract| contract.input().is_some() || contract.output().is_some());
-    let harmos_sdk::__private::PreparedNative { instance, grant, key, .. } = prepared;
+    let harmos_sdk::__private::PreparedNative { instance, grant, .. } = prepared;
     let instance = std::sync::Mutex::new(Some(instance));
     let binding = super::authored::factory_with::<Encoded, ()>(operations, move |_, ()| {
         instance.lock().expect("native preparation lock is healthy").take().ok_or(harmos_sdk::ServingError::Uninitialized)
     });
     request.binding = Some(Arc::new(binding));
     request.grant = grant;
-    request.key = key;
     let operation = submission.entry.id().to_owned();
     let target = Arc::downgrade(&submission.entry);
     budget(operations.clock(), &operation, 1, timeout, submitted)?;

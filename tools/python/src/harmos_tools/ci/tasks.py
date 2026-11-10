@@ -84,6 +84,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     build.add_argument("--artifact", choices=("product", "tests", "bench", "fixtures"), default="product")
     build.add_argument("--package")
     build.add_argument("--features")
+    build.add_argument("--example")
     build.add_argument("--check", action="store_true")
     build.add_argument("--compatibility", action="store_true")
     build.add_argument("--cpp", action="store_true")
@@ -99,7 +100,6 @@ def dispatch(arguments: list[str] | None = None) -> int:
     test.add_argument("--profile", choices=("dev", "release"), default="dev")
     test.add_argument("--filter")
     test.add_argument("--stress-count", type=int)
-    test.add_argument("--starter", action="store_true")
     test.add_argument("--cpp", action="store_true")
     test.add_argument("--extended", action="store_true")
     bench = commands.add_parser("bench")
@@ -149,18 +149,25 @@ def dispatch(arguments: list[str] | None = None) -> int:
     # Focused Cargo Selections
     if options.command in ("build", "test") and options.features and not options.package:
         parser.error("--features requires --package")
+    if options.command == "test" and options.language == "python" and options.exact:
+        if options.package or options.target or options.coverage or options.cpp or options.extended or options.features:
+            parser.error("focused Python tests select only --exact")
+        return _execute([sys.executable, "-m", "unittest", options.exact], directory=root / "tools/python")
+
     if options.command == "build" and options.package:
         if options.artifact != "product" or options.compatibility or options.cpp or options.extended:
             parser.error("--package cannot select artifacts, compatibility, C++ or extended builds")
         command = ["--locked", "--profile", options.profile, "-p", options.package]
         if options.features:
             command += ["--features", options.features]
+        if options.example:
+            command += ["--example", options.example]
         return cargo.focused(root, "check" if options.check else "build", command)
     if options.command == "test" and options.package:
         if not options.target:
             parser.error("--package requires --target lib or a test target name")
-        if options.language not in (None, "rust") or options.coverage or options.starter or options.cpp or options.extended:
-            parser.error("focused tests require Rust without coverage, starter, C++ or extended selection")
+        if options.language not in (None, "rust") or options.coverage or options.cpp or options.extended:
+            parser.error("focused tests require Rust without coverage, C++ or extended selection")
         if options.profile != "dev" or options.layer or options.filter or options.stress_count:
             parser.error("focused tests use the default test profile and --exact for filtering")
         selected = ["--lib"] if options.target == "lib" else ["--test", options.target]
@@ -170,6 +177,9 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if options.exact:
             command += [options.exact, "--", "--exact"]
         return cargo.focused(root, "test", command)
+
+    if options.command == "build" and options.example:
+        parser.error("--example requires --package")
 
     # Prepare Explicit Inputs
     if options.command == "prepare":
@@ -231,15 +241,10 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if options.target or options.exact:
             parser.error("--target and --exact require --package")
         if options.filter or options.stress_count:
-            if options.layer != "integration" and not options.starter:
-                parser.error("--filter and --stress-count require integration or --starter")
-            if options.starter and options.stress_count:
-                parser.error("--starter does not support --stress-count")
+            if options.layer != "integration":
+                parser.error("--filter and --stress-count require integration")
         if options.cpp:
             return _task("test:rust:cpp")
-        if options.starter:
-            extra = ["--filter", options.filter] if options.filter else []
-            return _task("test:rust:starter", "--profile", options.profile, *extra)
         if options.extended:
             _task("build:product", "--profile", options.profile)
             _task("build:rust:compatibility", "--profile", options.profile)
@@ -249,7 +254,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
             if options.language == "python":
                 parser.error("the tooling unittest suite has no coverage lane")
             extra = ["--category", options.layer] if options.layer else []
-            _module("test.preflight", "--category", "acceptance", "--starter", "--profile", options.profile)
+            _module("test.preflight", "--category", "acceptance", "--profile", options.profile)
             return _module("test.run", "coverage", "--language", "rust", "--profile", options.profile, *extra)
         languages = [options.language] if options.language else ["rust", "python"]
         layers = [options.layer] if options.layer else list(LAYERS)
@@ -323,8 +328,10 @@ def dispatch(arguments: list[str] | None = None) -> int:
 # === Private Functions === #
 
 
-def _execute(command: list[str]) -> int:
-    result = subprocess.run(command, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags(), check=True)
+def _execute(command: list[str], *, directory: Path | None = None) -> int:
+    result = subprocess.run(
+        command, cwd=directory, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags(), check=True
+    )
     return result.returncode
 
 

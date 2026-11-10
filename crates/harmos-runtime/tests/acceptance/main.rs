@@ -7,13 +7,12 @@
  * ***
  */
 
-// Inspect Built Plugin Metadata Through The Cargo Subcommand.
+// Exercise Runtime Storage Through Published Interfaces.
 
 /* === Modules === */
 
 #[path = "../support/fixtures.rs"]
 mod fixtures;
-mod schematic;
 #[cfg(feature = "grpc")]
 mod storage;
 

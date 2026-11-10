@@ -34,6 +34,14 @@ Focused builds select one package; focused tests select exactly one library or
 named integration target and use Cargo's default test profile, without an archive.
 Both accept `--features <list>` with `--package`, forwarding the comma- or
 space-separated Cargo feature list unchanged. Default features remain enabled.
+Focused builds also accept `--example`. Check the packaging fixture driver with:
+
+```sh
+mise run build -- --package harmos-packaging --example fixture-driver --features guest,generate-python --check
+```
+
+Use `test --language python --exact tests.integration.<module>.<case>` for a
+focused tooling test.
 Before Cargo, mise selects the pinned environment, uv reuses `.venv/`, and a single
 Python process validates selectors and sets the warnings policy. Native sccache
 keeps its server across invocations. Lower Cargo parallelism if allocations fail.
@@ -46,7 +54,7 @@ builds missing inputs. `generate --profile dev|release` regenerates Python clien
 from the existing Product schemas. Product build also retains its current client
 producer while those clients remain in the tree.
 
-The optional selections `build --cpp`, `test --cpp`, `test --starter`,
+The optional selections `build --cpp`, `test --cpp`,
 `build --compatibility`, `build --artifact tests --extended`, `test --extended`
 and `bench --extended` retain existing facilities. `test --extended` owns its
 build prerequisites; `bench --extended` consumes `build --artifact bench --extended`.
@@ -62,6 +70,9 @@ mise run test -- --language rust --layer integration --filter 'package(=harmos-r
 ```
 
 Select `--profile release` to use an archive and fixtures from a Nightly build.
+The protocol drift test runs the pinned `protoc` from the transferred offline
+vendor inputs and restores its executable permission on Unix. Focused Cargo
+tests use the pinned compiler in the local Cargo registry.
 
 ## Validation
 
@@ -81,7 +92,7 @@ using the single implementation in `ci/artifacts.py`. Nested tasks never repeat
 transport. `--help` performs no transport. Provider steps only download and upload
 archives under `target/ci/`. The fixture producer joins Product, the Tests archive
 and stamped fixtures into one bundle consumed by integration, acceptance, system,
-coverage and starter tests. The bundle includes the test archive, so these jobs
+coverage tests. The bundle includes the test archive, so these jobs
 do not download it separately.
 
 Explicit transport is also available as `ci:pack` and `ci:extract`, with
@@ -113,8 +124,7 @@ outside a release review (`RELEASE_REVIEW=false`).
 Every pull request runs the full verification graph. Packaging consumes Product
 without waiting for checks. Unit tests download only Tests and wait only for its build.
 Integration, acceptance and system tests download the joined fixture bundle, which
-contains their test archive, and wait only for its producer. Coverage and starter
-tests also consume that bundle. Benchmarks consume only Bench. The required CI gate
+contains their test archive, and wait only for its producer. Coverage tests also consume that bundle. Benchmarks consume only Bench. The required CI gate
 collects all verification results; release rehearsal runs only on release reviews.
 Nightly freshness and release evidence are decision inputs; Nightly's final
 report consumes suite statuses as well as the publication result.

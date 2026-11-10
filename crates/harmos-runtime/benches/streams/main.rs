@@ -12,9 +12,6 @@
 #[path = "../../tests/support/allocation.rs"]
 pub mod allocation;
 
-#[path = "../../tests/support/stream_batches.rs"]
-pub mod batches;
-
 #[cfg(feature = "plugin-sidecar")]
 #[path = "../../tests/support/native_streams.rs"]
 mod native;
@@ -56,7 +53,6 @@ fn benchmarks(c: &mut criterion::Criterion) {
     let mut group = c.benchmark_group("streams");
     group.sample_size(10);
     group.bench_function("waveform", |b| b.iter(|| runtime.block_on(allocation::streams_ac006_concurrent_waveform_measurement())));
-    group.bench_function("summary", |b| b.iter(|| runtime.block_on(batches::summary_cost())));
     group.finish();
     #[cfg(feature = "plugin-sidecar")]
     {

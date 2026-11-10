@@ -68,12 +68,12 @@ pub use harmos_sdk::__private::{ErasedResponse, PreparedNative, ResourceSet, Ser
 pub use harmos_sdk::operations::Invocation;
 pub use harmos_sdk::operations::NativeInstance;
 pub use harmos_sdk::operations::{
-    Backoff, CHILD_METHOD, CacheKey, CacheKeyError, CallValue, Callees, Catalog, Codec, ContextError, ContextValue, Contract,
-    ContractError, Contracts, Declarations, Dependent, Direction, Entry, Executable, FailureKind, Grpc, InvocationError, Invokes, Jitter,
-    MAX_CACHE_KEY_BYTES, NoStream, Operation, OperationCatalog, OperationDeclaration, OperationDefinition, OperationPolicy, PORTABLE_BYTES,
-    PORTABLE_VALUES, PolicyError, ReplaySafety, Requires, Resource, RestartPolicy, RetryPolicy, ServingError, StartupIssue, StartupReport,
-    Stream, Visibility, WIRE_METHOD, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand,
-    WireDeclaration, WireEndpoints, WireStreamLimits, WireStreams, item_types,
+    Backoff, CHILD_METHOD, CallValue, Callees, Catalog, Codec, ContextError, ContextValue, Contract, ContractError, Contracts,
+    Declarations, Dependent, Direction, Entry, Executable, FailureKind, Grpc, InvocationError, Invokes, Jitter, NoStream, Operation,
+    OperationCatalog, OperationDeclaration, OperationDefinition, OperationPolicy, PORTABLE_BYTES, PORTABLE_VALUES, PolicyError,
+    ReplaySafety, Requires, Resource, RestartPolicy, RetryPolicy, ServingError, StartupIssue, StartupReport, Stream, Visibility,
+    WIRE_METHOD, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand, WireDeclaration,
+    WireEndpoints, WireStreamLimits, WireStreams, item_types,
 };
 pub use harmos_sdk::operations::{CallContext, Cancellation, Instance, OperationHost, RequestClaims, Response, instance};
 pub use lane::{Capacity, Lane, LaneSet, LaneSettings};

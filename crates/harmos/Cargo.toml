@@ -40,8 +40,6 @@ guest = [
 grpc = ["runtime", "harmos-runtime?/grpc", "harmos-sdk?/grpc", "harmos-sidecar?/grpc", "harmos-guest?/grpc"]
 streaming = ["runtime", "harmos-sdk?/streaming", "harmos-sidecar?/streaming", "harmos-guest?/streaming"]
 generate-proto = ["runtime", "harmos-runtime/generate-proto"]
-signal = ["runtime", "harmos-runtime/signal"]
-signal-fft = ["runtime", "harmos-runtime/signal-fft"]
 simulation = ["runtime", "harmos-runtime/simulation"]
 
 # === Dependencies === #

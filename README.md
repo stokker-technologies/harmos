@@ -46,15 +46,13 @@ Your application defines each change; Harmos manages its accepted history.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **Native Sidecars** [`plugin-sidecar`]: Integrate supervised executables through typed contracts; native processes do not provide a Wasm sandbox.
 - **gRPC Interfaces** [`grpc`, `generate-proto`]: Expose typed operations and generate client contracts.
-- **Signal Processing** [`signal`, `signal-fft`]: Summarize and downsample waveforms, with an optional FFT.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 
 ## Interfaces
 
 ### CLI
 
-`cargo harmos` supports plugin authoring and contract generation. The Schematic
-example supplies a runnable application CLI that demonstrates plugin routing,
+The Schematic example supplies a runnable application CLI that demonstrates plugin routing,
 history and recovery without a graphical editor.
 
 #### Examples
@@ -138,12 +136,8 @@ On Windows, run the corresponding executable under
 [published Harmos version](https://crates.io/crates/harmos) and the
 [Cargo features](crates/harmos/Cargo.toml) your application needs.
 
-The [release downloads](https://github.com/stokker-technologies/harmos/releases/latest)
-also provide `cargo-harmos` tool archives with README, LICENSE and generated
-CHANGELOG. See the [installation guide](docs/product-guide.md#tool-installation)
-for archive names and checksum verification. The
-[Nightly](https://github.com/stokker-technologies/harmos/releases/tag/nightly)
-prerelease provides unsigned release-profile tool archives, Schematic ZIPs and
+The [Nightly](https://github.com/stokker-technologies/harmos/releases/tag/nightly)
+prerelease provides unsigned release-profile Schematic ZIPs and
 plugin bundles from dev, with SHA256SUMS. Its downloads change in place with each
 nightly run, and its notes record whether that run's suite passed.
 

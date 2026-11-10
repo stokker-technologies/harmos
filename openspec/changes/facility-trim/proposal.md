@@ -27,8 +27,9 @@ State management stays. It is a Harmos feature that applications build on.
 - FFT, including the disk-backed variant, moves to Dokime, its only consumer.
 - Statistics and downsampling are used by the storage query and by stream summaries. They stay
   as internals of storage, with no public namespace.
-- The hand-maintained downsampling kernels (min/max, largest-triangle, decimation) are replaced
-  by the `tsdownsample` Rust kernels where those cover the same behaviour.
+- The hand-maintained downsampling kernels (min/max, largest-triangle, decimation) stay, private
+  to storage. Replacing them with `tsdownsample` was tried and dropped: the crate needs nightly
+  Rust (`argminmax/nightly_simd`, error `E0554` on stable). Open for the owner to revisit.
 
 ### Simulation
 

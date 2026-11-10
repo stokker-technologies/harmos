@@ -32,7 +32,6 @@ from unittest.mock import patch
 # Local Imports
 from harmos_tools.ci import bootstrap
 from harmos_tools.release import layout, nightly, pins, policy, registry, review, run
-from harmos_tools.test import preflight
 
 # Type Checking Imports
 
@@ -48,54 +47,6 @@ LATER = "c" * 40
 # === Types === #
 
 # === Classes === #
-
-
-class StarterTests(unittest.TestCase):
-    def test_version_preflight(self):
-        templates = ROOT / "crates/cargo-harmos/templates"
-        expected = [
-            ((templates / kind / "mise.toml.tmpl").read_bytes(), (templates / kind / "mise.lock.tmpl").read_bytes())
-            for kind in ("guest", "sidecar")
-        ]
-        installed = []
-        directories = []
-        trusted = set()
-        fail = False
-
-        def execute(arguments, **options):
-            directory = options["cwd"]
-            operation = arguments[1]
-            if operation == "trust":
-                trusted.add(directory)
-            elif operation == "untrust":
-                trusted.remove(directory)
-            elif operation == "install":
-                configuration = (directory / "mise.toml").read_bytes()
-                lock = (directory / "mise.lock").read_bytes()
-                tools = tomllib.loads(configuration.decode())["tools"]
-                self.assertEqual(set(options["env"]["MISE_ENABLE_TOOLS"].split(",")), set(tools))
-                self.assertNotIn("UV_PROJECT_ENVIRONMENT", options["env"])
-                self.assertIn(directory, trusted)
-                installed.append((configuration, lock))
-                directories.append(directory)
-                if fail and len(installed) == len(expected):
-                    raise subprocess.CalledProcessError(1, arguments)
-            return subprocess.CompletedProcess(arguments, 0)
-
-        with (
-            patch.object(preflight.os, "environ", dict(os.environ, UV_PROJECT_ENVIRONMENT="another-project")),
-            patch.object(preflight.subprocess, "run", side_effect=execute),
-        ):
-            preflight._install_starters()
-            self.assertCountEqual(installed, expected)
-            self.assertFalse(trusted)
-            installed.clear()
-            fail = True
-            with self.assertRaises(subprocess.CalledProcessError):
-                preflight._install_starters()
-        self.assertCountEqual(installed, expected)
-        self.assertFalse(trusted)
-        self.assertTrue(all(not directory.exists() for directory in directories))
 
 
 class ReleaseTagTests(unittest.TestCase):

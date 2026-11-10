@@ -21,14 +21,12 @@ use quote::{ToTokens, format_ident, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Error, Expr, Fields, Ident, Item, LitInt, LitStr, Meta, Path, Token, Type};
+use syn::{Error, Fields, Ident, Item, LitInt, LitStr, Meta, Path, Token, Type};
 // Local Imports
 use crate::path::{self, HarmosPath};
 use crate::set_once;
 
 /* === Constants === */
-
-const DEPTH: usize = 4;
 
 /* === Macros === */
 
@@ -40,15 +38,8 @@ struct Declaration {
     id: Option<LitStr>,
     presentation: crate::presentation::Presentation,
     window: Option<LitInt>,
-    track: Option<Tuple>,
-    axis: Option<Ident>,
-    batch: Option<LitInt>,
     row: Option<Type>,
     harmos: HarmosPath,
-}
-
-struct Tuple {
-    fields: Vec<Ident>,
 }
 
 /* === Enums === */
@@ -85,12 +76,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         if !matches!(marker.fields, Fields::Unit) || !marker.generics.params.is_empty() {
             return Err(Error::new(marker.span(), "a named stream uses a non-generic unit struct"));
         }
-        if declared.track.is_some() || declared.axis.is_some() || declared.batch.is_some() {
-            return Err(Error::new(
-                marker.span(),
-                "named plugin streams declare their row shape without native track, axis, or batch policies",
-            ));
-        }
         let id = declared.id.as_ref().ok_or_else(|| Error::new(marker.span(), "a named stream requires id and window"))?;
         let window = declared.window.as_ref().ok_or_else(|| Error::new(marker.span(), "a named stream requires id and window"))?;
         let name = &marker.ident;
@@ -109,10 +94,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         });
     }
 
-    if declared.batch.is_some() && (declared.track.is_some() || declared.id.is_none()) {
-        return Err(Error::new(parsed.span(), "batch is supported only on current, untracked streams"));
-    }
-    let batching = super::batch::expand(&mut parsed, declared.batch.as_ref(), &declared.harmos)?;
     let mut presentation_shape = parsed.clone();
     let row_metadata =
         if let Item::Struct(shape) = &mut presentation_shape { crate::presentation::fields(&mut shape.fields)? } else { "[]".to_owned() };
@@ -201,11 +182,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         quote!(#row_metadata)
     };
     let name = named(&parsed)?;
-    let batch_definition = declared.batch.as_ref().map(|_| {
-        let harmos = &declared.harmos;
-        quote! { fn batch_definition() -> Option<#harmos::__private::BatchDefinition> { Some(#harmos::__private::BatchDefinition::of::<Self>()) } }
-    });
-
     let id = declared.id.as_ref().ok_or_else(|| Error::new(parsed.span(), "a stream requires id and window"))?;
     let Some(window) = &declared.window else {
         return Err(Error::new(id.span(), "a current stream row declares `id = \"…\"` and `window = …`"));
@@ -213,57 +189,12 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     let encoded_id: String = id.value().bytes().map(|byte| format!("{byte:02x}")).collect();
     let id_guard = format_ident!("__HARMOS_STREAM_ID_{}", encoded_id);
     let harmos = &declared.harmos;
-    let tracked = match &declared.track {
-        Some(track) => {
-            let named: Vec<String> = track.fields.iter().map(Ident::to_string).collect();
-            let components = track.fields.iter().map(|field| declared_field(&parsed, field, "track")).collect::<Result<Vec<_>, _>>()?;
-            let fields = &track.fields;
-
-            quote! {
-                #[automatically_derived]
-                impl #harmos::streams::Tracked for #name {
-                    const TRACK: &'static [&'static str] = &[#(#named),*];
-
-                    type Track = (#(#components,)*);
-
-                    fn track(&self) -> Self::Track {
-                        (#(::core::clone::Clone::clone(&self.#fields),)*)
-                    }
-                }
-            }
-        }
-        None => quote!(),
-    };
-    let axial = match &declared.axis {
-        Some(field) => {
-            let named = field.to_string();
-            // The field's own type answers for the coordinate: a field that is
-            // not a `u64` fails to compile here rather than being coerced.
-            declared_field(&parsed, field, "axis")?;
-
-            quote! {
-                #[automatically_derived]
-                impl #harmos::streams::Axial for #name {
-                    const AXIS: &'static str = #named;
-
-                    fn axis(&self) -> u64 {
-                        self.#field
-                    }
-                }
-            }
-        }
-        None => quote!(),
-    };
-
     Ok(quote! {
         #item
 
         const _: () = assert!(#harmos::__private::stream_identity(#id),
             "a stream id must be a filesystem-safe dotted name with non-keyword ASCII segments; owner must match [a-z][a-z0-9_]*");
 
-        #tracked
-        #axial
-        #batching
 
         #[automatically_derived]
         impl #harmos::StreamSpec for #name {
@@ -278,7 +209,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         impl #harmos::__private::StreamRow for #name {
             const ID: &'static str = #id;
             const WINDOW: usize = #window;
-            #batch_definition
             fn metadata() -> #harmos::Metadata { <Self as #harmos::StreamSpec>::metadata() }
             fn row_metadata() -> Vec<#harmos::StreamField> { <Self as #harmos::StreamSpec>::row_metadata() }
         }
@@ -326,9 +256,6 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
     let mut id = None;
     let mut presentation = crate::presentation::Presentation::default();
     let mut window = None;
-    let mut track = None;
-    let mut axis = None;
-    let mut batch = None;
     let mut row = None;
     let mut harmos_path: Option<Path> = None;
 
@@ -350,20 +277,8 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
             Meta::NameValue(named) if named.path.is_ident("row") => {
                 set_once(&mut row, syn::parse2::<Type>(named.value.to_token_stream())?, named.span(), "row")?;
             }
-            Meta::NameValue(named) if named.path.is_ident("track") => {
-                set_once(&mut track, tuple(&named.value)?, named.span(), "track")?;
-            }
-            Meta::NameValue(named) if named.path.is_ident("axis") => {
-                set_once(&mut axis, syn::parse2::<Ident>(named.value.to_token_stream())?, named.span(), "axis")?;
-            }
-            Meta::List(listed) if listed.path.is_ident("batch") => {
-                set_once(&mut batch, super::batch::samples(listed)?, listed.span(), "batch")?;
-            }
             other => {
-                return Err(Error::new(
-                    other.span(),
-                    "a stream declares `id = \"…\"`, `window = …`, and optionally `track = (field, …)`, `axis = field`, `harmos_path = …`",
-                ));
+                return Err(Error::new(other.span(), "a stream declares `id = \"…\"`, `window = …`, and optionally `harmos_path = …`"));
             }
         }
     }
@@ -374,80 +289,13 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
     if let Some(window) = &window {
         positive_usize(window, "a stream window must retain at least 1 row")?;
     }
-    if let (Some(track), Some(axis)) = (&track, &axis)
-        && let Some(both) = track.fields.iter().find(|field| *field == axis)
-    {
-        return Err(Error::new(
-            both.span(),
-            "a field is a track component or the axis, never both: one places rows and the other partitions them",
-        ));
-    }
-
     Ok(Declaration {
         id,
         presentation,
         window,
-        track,
-        axis,
-        batch,
         row,
         harmos: HarmosPath::resolve(harmos_path),
     })
-}
-
-fn tuple(value: &Expr) -> Result<Tuple, Error> {
-    let span = value.span();
-    let fields = match value {
-        Expr::Tuple(listed) => listed.elems.iter().map(component).collect::<Result<Vec<_>, _>>()?,
-        Expr::Paren(single) => vec![component(&single.expr)?],
-        other => {
-            return Err(Error::new(other.span(), "a track is declared as a tuple of the row's own fields: `track = (run, probe)`"));
-        }
-    };
-
-    if fields.is_empty() {
-        return Err(Error::new(span, "a declared track names at least one field; a stream that partitions by nothing declares no track"));
-    }
-    if fields.len() > DEPTH {
-        return Err(Error::new(span, format!("a declared track names at most {DEPTH} fields")));
-    }
-    for (at, field) in fields.iter().enumerate() {
-        if fields[..at].contains(field) {
-            return Err(Error::new(field.span(), "a declared track names each field once; a repeated component partitions by nothing new"));
-        }
-    }
-
-    Ok(Tuple { fields })
-}
-
-fn component(value: &Expr) -> Result<Ident, Error> {
-    match value {
-        Expr::Path(path) => path
-            .path
-            .get_ident()
-            .cloned()
-            .ok_or_else(|| Error::new(path.span(), "a track component is one field of this row, named plainly")),
-        other => Err(Error::new(other.span(), "a track component is one field of this row, named plainly")),
-    }
-}
-
-fn declared_field<'row>(row: &'row Item, field: &Ident, coordinate: &str) -> Result<&'row Type, Error> {
-    let fields = match row {
-        Item::Struct(shape) => &shape.fields,
-        other => {
-            return Err(Error::new(other.span(), format!("a declared `{coordinate}` names a field, so the row is a struct")));
-        }
-    };
-    let Fields::Named(named) = fields else {
-        return Err(Error::new(fields.span(), format!("a declared `{coordinate}` names a field, so the row has named fields")));
-    };
-
-    named
-        .named
-        .iter()
-        .find(|candidate| candidate.ident.as_ref() == Some(field))
-        .map(|candidate| &candidate.ty)
-        .ok_or_else(|| Error::new(field.span(), format!("the declared `{coordinate}` names no field of this row")))
 }
 
 fn positive_usize(literal: &LitInt, message: &str) -> Result<(), Error> {
@@ -532,3 +380,21 @@ fn named(item: &Item) -> Result<&Ident, Error> {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn removed_series_and_batch_policies_are_refused() {
+        let row = quote!(
+            struct Sample {
+                value: u64,
+            }
+        );
+        for policy in [quote!(track = (value,)), quote!(axis = value), quote!(batch(samples = 3))] {
+            let declaration = quote!(id = "sample", window = 8, #policy);
+            assert!(expand(declaration, &row).is_err());
+        }
+    }
+}

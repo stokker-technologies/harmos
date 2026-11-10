@@ -63,7 +63,6 @@ pub struct PreparedNative {
 
     pub instance: Box<dyn NativeInstance>,
     pub grant: Option<crate::plugin::Grant>,
-    pub key: Option<super::CacheKey>,
 }
 
 #[derive(Clone)]
@@ -263,7 +262,6 @@ impl RegistrationBatch {
                 let request =
                     <<O::Declaration as OperationDeclaration>::Request as crate::Message>::decode(payload).map_err(ServingError::Codec)?;
                 let grant = D::grant(&request);
-                let key = D::key(&request);
                 let instance = NativeOperation::<O> {
                     dependencies,
                     operation: None,
@@ -281,7 +279,6 @@ impl RegistrationBatch {
                 Ok(PreparedNative {
                     instance: Box::new(instance),
                     grant,
-                    key,
                     #[cfg(feature = "streaming")]
                     streams: None,
                 })
@@ -300,7 +297,6 @@ impl RegistrationBatch {
                     }
                 };
                 let grant = D::grant(&request);
-                let key = D::key(&request);
                 let instance = NativeOperation::<O> {
                     dependencies,
                     operation: None,
@@ -315,7 +311,6 @@ impl RegistrationBatch {
                 Ok(PreparedNative {
                     instance: Box::new(instance),
                     grant,
-                    key,
                     streams,
                 })
             },
@@ -593,7 +588,6 @@ mod tests {
             cancellation_timeout: std::time::Duration::ZERO,
             retries: crate::RetryPolicy::Never,
         },
-        key = |_: &Read| Some(super::super::CacheKey::new(vec![42]).unwrap()),
     )]
     struct Read;
 
@@ -682,14 +676,13 @@ mod tests {
     }
 
     #[test]
-    fn encoded_factory_preserves_request_cache_key_and_response() {
+    fn encoded_factory_preserves_response() {
         use crate::Message;
 
         let mut dependencies = ResourceSet::new();
         dependencies.insert(Arc::new(42u64)).unwrap();
         let batch = RegistrationBatch::new().operation::<Read>();
         let mut prepared = batch.operations[0].prepare_encoded(dependencies, &Read.encode()).unwrap();
-        assert_eq!(prepared.key, Read::key(&Read));
         let context = ExecutionContext::new(ResourceSet::new(), super::super::CallContext::default());
         ready(prepared.instance.initialize(context.clone()));
         let response = ready(prepared.instance.run(context)).restore::<Vec<u8>>().unwrap();

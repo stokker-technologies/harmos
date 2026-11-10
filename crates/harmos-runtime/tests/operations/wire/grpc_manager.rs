@@ -68,7 +68,6 @@ struct Principal(String);
     response = Reply,
     policy = WHO_POLICY,
     grant = |_: &GuardedDeclaration| Some(harmos_domain::plugin::Grant::of(GuardedDeclaration::ID, "reading")),
-    key = |_: &GuardedDeclaration| Some(harmos_runtime::operations::CacheKey::new(b"same-request".to_vec()).unwrap()),
 )]
 struct GuardedDeclaration {}
 

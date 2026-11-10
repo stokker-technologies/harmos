@@ -20,7 +20,7 @@ use std::time::Duration;
 
 // Local Imports
 use super::{Failed, Lanes, Owner};
-use harmos_runtime::operations::{Backoff, CacheKey, FailureKind, Jitter, OperationDeclaration, OperationPolicy, RetryPolicy};
+use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Message, Refusal};
 
 /* === Constants === */
@@ -129,8 +129,6 @@ macro_rules! scripted_codec {
     response = String,
     visibility = Public,
     policy = ECHO_POLICY,
-    key = |request: &EchoDeclaration| (request.value == "retry")
-        .then(|| CacheKey::new(request.value.as_bytes().to_vec()).unwrap()),
 )]
 pub(super) struct EchoDeclaration {
     pub value: String,

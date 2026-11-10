@@ -309,7 +309,7 @@ generated = ["target/generated/python/src"]
 roots = ["tools/python"]
 
 [languages.rust]
-exclude = ["crates/cargo-harmos/templates"]
+exclude = []
 roots = ["crates", "examples"]
 targets = ["wasm32-unknown-unknown", "wasm32-wasip2"]
 
@@ -348,18 +348,6 @@ path = "target/build/{profile}/{target}/bin/plugins/schematic-sidecar.exe"
 [[package.bundles.inputs]]
 destination = "plugins/schematic-guest.wasm"
 path = "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm"
-
-[[package.executables]]
-command = "cargo-harmos"
-installers = ["mise"]
-name = "cargo-harmos"
-package = "cargo-harmos"
-release = true
-verify = ["--version"]
-
-[package.executables.targets]
-linux-x86_64 = "x86_64-unknown-linux-gnu"
-windows-x86_64 = "x86_64-pc-windows-msvc"
 
 [project]
 name = "Harmos"

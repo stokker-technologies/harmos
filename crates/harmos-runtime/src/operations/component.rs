@@ -553,7 +553,7 @@ fn sdk_dispatch(
         let payload = invocation.await?;
         payload.try_unwrap().map_err(|_| Error::InvalidInput {
             field: "SDK response",
-            reason: "uncached SDK response unexpectedly shared",
+            reason: "SDK response unexpectedly shared",
         })
     });
     Ok(super::EncodedInvocation {

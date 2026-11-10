@@ -49,8 +49,19 @@ LIBRARIES = ("harmos", "harmos_sdk", "harmos_sidecar", "harmos_macros", "serde")
 # === Private Functions === #
 
 
+def driver(profile: str, scratch: Path) -> Path:
+    captured = capture(
+        "fixture-driver",
+        ROOT,
+        profile,
+        ["-p", "harmos-packaging", "--example", "fixture-driver", "--features", "guest,generate-python"],
+        scratch,
+    )
+    return executable(messages(captured), "fixture-driver")
+
+
 def capture(name: str, directory: Path, profile: str, extra: list[str], scratch: Path) -> dict:
-    """Compile One Cargo Selection And Record The Collection Input `cargo harmos` Requires."""
+    """Compile One Cargo Selection And Record Stamped Collection Inputs."""
     destination = scratch / "captures" / name / profile
     shutil.rmtree(destination, ignore_errors=True)
     destination.mkdir(parents=True)
@@ -137,39 +148,26 @@ def collect(tool: Path, manifest: Path, package: str, backend: str, profile: str
     shutil.rmtree(destination, ignore_errors=True)
     destination.mkdir(parents=True)
     result = destination / "build.json"
-    command = [
-        str(tool),
-        "harmos",
-        backend,
-        "build",
-        "--manifest-path",
-        str(manifest),
-        "-p",
-        package,
-        "--profile",
-        profile,
-        "--target",
-        capture["target"],
-        "--from-cargo-json",
-        capture["messages"]["path"],
-        "--metadata-json",
-        capture["metadata"]["path"],
-        "--archive-json",
-        capture["receipt"],
-        "--json",
-    ]
-    with result.open("w", encoding="utf-8") as output:
-        completed = subprocess.run(
-            command,
-            cwd=ROOT,
-            stdout=output,
-            check=False,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            stdin=sys.stdin,
-            stderr=sys.stderr,
-        )
-    if completed.returncode:
-        raise RuntimeError(f"cargo harmos could not collect {package}")
+    request = {
+        "action": "collect",
+        "manifest": str(manifest),
+        "package": package,
+        "backend": backend,
+        "profile": profile,
+        "target": capture["target"],
+        "messages": capture["messages"]["path"],
+        "metadata": capture["metadata"]["path"],
+        "receipt": capture["receipt"],
+    }
+    output = subprocess.check_output(
+        [str(tool)],
+        input=json.dumps(request),
+        text=True,
+        cwd=ROOT,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        stderr=sys.stderr,
+    )
+    result.write_text(output, encoding="utf-8")
     return json.loads(result.read_text(encoding="utf-8")), result
 
 
@@ -191,10 +189,10 @@ def offline_inputs(destination: Path) -> Path:
         stdin=sys.stdin,
         stderr=sys.stderr,
     )
-    projects = [ROOT / "tools/python", *(ROOT / f"crates/cargo-harmos/templates/{kind}/tools/python" for kind in ("sidecar", "guest"))]
+    projects = [ROOT / "tools/python"]
     requirements = []
-    for index, project in enumerate(projects):
-        selected = destination / ("requirements.txt" if index == 0 else f"starter-{project.parents[1].name}.txt")
+    for project in projects:
+        selected = destination / ("requirements.txt")
         _requirements(project, selected)
         requirements.append(selected)
     bundled = importlib.resources.files("ensurepip").joinpath("_bundled")
@@ -259,43 +257,22 @@ def generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None:
     if len(catalogs) != 1:
         raise RuntimeError(f"expected one schematic-sidecar catalog, found {sorted(catalogs)}")
 
+    tool.chmod(tool.stat().st_mode | stat.S_IXUSR)
     protoc.chmod(protoc.stat().st_mode | stat.S_IXUSR)
     output = GENERATED / "python"
     shutil.rmtree(output, ignore_errors=True)
 
-    command = [
-        str(tool),
-        "harmos",
-        "bindings",
-        "python",
-        "--build-json",
-        str(build),
-        "--producer",
-        "schematic-sidecar",
-        "--catalog",
-        catalogs.pop(),
-        "--output",
-        str(output),
-        "--distribution",
-        "schematic-client",
-        "--module",
-        "schematic_client",
-        "--package-version",
-        "0.0.0",
-        "--description",
-        "Schematic Sidecar Client",
-        "--license",
-        "Apache-2.0",
-        "--protoc",
-        str(protoc),
-    ]
+    catalog = catalogs.pop()
+    schema = next(schema for schema in metadata["schemas"] if schema["producer"] == "schematic-sidecar" and schema["catalog"] == catalog)
+    request = {"action": "python", "export": schema["directory"], "output": str(output), "protoc": str(protoc)}
     subprocess.run(
-        command,
+        [str(tool)],
+        input=json.dumps(request),
+        text=True,
         cwd=ROOT,
         stdout=subprocess.DEVNULL,
         check=True,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        stdin=sys.stdin,
         stderr=sys.stderr,
     )
     generated = sorted(output.rglob("*"))

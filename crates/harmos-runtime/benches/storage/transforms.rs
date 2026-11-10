@@ -16,8 +16,6 @@ mod waveforms;
 
 /* === Imports === */
 
-extern crate harmos_runtime as harmos;
-
 // Standard Library Imports
 use std::sync::Arc;
 
@@ -40,9 +38,6 @@ use harmos_runtime::storage::query::transform::{
 
 /* === Macros === */
 
-criterion::criterion_group!(benches, benchmarks);
-criterion::criterion_main!(benches);
-
 /* === Type Aliases === */
 
 /* === Structs === */
@@ -57,7 +52,7 @@ criterion::criterion_main!(benches);
 
 /* === Private Functions === */
 
-fn benchmarks(criterion: &mut Criterion) {
+pub(super) fn benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("storage/transforms");
     group.sample_size(10);
     group.sampling_mode(criterion::SamplingMode::Flat);
@@ -124,8 +119,7 @@ fn benchmarks(criterion: &mut Criterion) {
                     for _ in 0..iterations {
                         std::hint::black_box(transform.apply(std::hint::black_box(&input), &mut || Ok(())).unwrap());
                     }
-                    let elapsed = started.elapsed();
-                    elapsed
+                    started.elapsed()
                 })
             });
         }

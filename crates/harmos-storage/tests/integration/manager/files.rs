@@ -57,9 +57,10 @@ fn whole(file: &harmos_storage::FileReference) -> harmos_storage::FileRead {
     }
 }
 
-fn shareable_tempfile() -> (tempfile::NamedTempFile, std::fs::File) {
-    let owner = tempfile::NamedTempFile::new().unwrap();
-    let file = owner.as_file().try_clone().unwrap();
+fn shareable_tempfile() -> (tempfile::TempDir, std::fs::File) {
+    // Keep Named Sources in a Private Directory With Ordinary Shared Handles.
+    let owner = tempfile::tempdir().unwrap();
+    let file = std::fs::OpenOptions::new().read(true).write(true).create_new(true).open(owner.path().join("source")).unwrap();
     (owner, file)
 }
 

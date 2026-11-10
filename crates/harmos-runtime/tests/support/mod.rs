@@ -19,7 +19,7 @@ pub mod fixtures;
 #[allow(unused_imports, reason = "each integration-test binary compiles only the fixture slice it needs")]
 pub use self::{
     app::{booted, runtime, runtime_from, streaming},
-    feeds::{Capture, Probe, Pulse, Reading, Run},
+    feeds::{Pulse, Reading},
 };
 
 /* === Imports === */
@@ -482,15 +482,6 @@ pub fn pulse(sample: u64) -> Pulse {
     Pulse { sample }
 }
 
-pub fn capture(run: u64, probe: u64, ordinal: u64, value: i64) -> Capture {
-    Capture {
-        run: Run(run),
-        probe: Probe(probe),
-        ordinal,
-        value,
-    }
-}
-
 pub async fn balance(runtime: &Runtime<Bank>, account: Account) -> i64 {
     runtime.state.state().read(|ledger| ledger.balance(account)).await.expect("reads are open").value
 }
@@ -618,50 +609,17 @@ mod feeds {
         pub value: i64,
     }
 
-    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-    pub struct Run(pub u64);
-
-    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-    pub struct Probe(pub u64);
-
-    #[harmos_runtime::stream(description = "A tracked capture row carrying both declared coordinates.\nThe track is two components deep, which is what a run of many probes is: one probe of one run, or everything one run published, and both are selections of the same declaration.",
-        id = "capture",
-        window = 4,
-        track = (run, probe),
-        axis = ordinal
-    )]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-    pub struct Capture {
-        pub run: Run,
-        pub probe: Probe,
-        pub ordinal: u64,
-        pub value: i64,
-    }
-
     /* === Enums === */
 
     #[harmos_runtime::streams]
     pub enum Bank {
         Pulse(Pulse),
         Reading(Reading),
-        Capture(Capture),
     }
 
     /* === Traits === */
 
     /* === Implementations === */
-
-    impl harmos_runtime::streams::Track for Run {
-        fn label(&self) -> String {
-            format!("run_{}", self.0)
-        }
-    }
-
-    impl harmos_runtime::streams::Track for Probe {
-        fn label(&self) -> String {
-            format!("probe_{}", self.0)
-        }
-    }
 
     /* === Public Functions === */
 

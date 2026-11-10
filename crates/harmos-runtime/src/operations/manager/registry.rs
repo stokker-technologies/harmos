@@ -43,32 +43,6 @@ impl Registry {
         }
         Ok(GenerationCommit { _state: state })
     }
-
-    pub(in crate::operations) fn insert_erased(
-        &self, entry: &Arc<Entry>, key: CacheKey, identity: Identity, response: harmos_sdk::__private::ErasedResponse,
-    ) {
-        let mut state = self.state.lock().expect("operation registry lock is healthy");
-        if state.closing
-            || state.cache_capacity == 0
-            || entry.available().is_err()
-            || !state.owned(entry.id(), entry.owner.as_str()).is_some_and(|current| Arc::ptr_eq(current, entry))
-        {
-            return;
-        }
-        let mut retired = state.remove_cache(|cached| {
-            cached.key == key && cached.identity == identity && cached.target.upgrade().is_some_and(|target| Arc::ptr_eq(&target, entry))
-        });
-        let available = state.cache_capacity - 1;
-        retired.extend(state.evict_to(available));
-        state.cache.push_back(Cached {
-            target: Arc::downgrade(entry),
-            key,
-            identity,
-            response,
-        });
-        drop(state);
-        drop(retired);
-    }
 }
 
 impl State {
@@ -161,30 +135,6 @@ impl State {
             })
             .map(|entry| entry.definition.clone())
             .collect()
-    }
-
-    pub(super) fn remove_cache(&mut self, mut remove: impl FnMut(&Cached) -> bool) -> Vec<Cached> {
-        let mut kept = VecDeque::new();
-        let mut retired = Vec::new();
-        for cached in std::mem::take(&mut self.cache) {
-            if remove(&cached) {
-                retired.push(cached);
-            } else {
-                kept.push_back(cached);
-            }
-        }
-        self.cache = kept;
-        retired
-    }
-
-    pub(super) fn evict_to(&mut self, capacity: usize) -> Vec<Cached> {
-        let mut retired = Vec::new();
-        while self.cache.len() > capacity {
-            if let Some(cached) = self.cache.pop_front() {
-                retired.push(cached);
-            }
-        }
-        retired
     }
 }
 

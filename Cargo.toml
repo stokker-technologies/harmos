@@ -2,7 +2,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "sdk/rust", "sdk/rust/derive"]
 exclude = ["crates/harmos-guest/tests/fixtures/sandbox", "examples/schematic"]
 
 # === Workspace Package === #
@@ -18,6 +18,7 @@ publish = true
 
 [workspace.dependencies]
 # Local
+harmos-conformance = { path = "crates/harmos-conformance", version = "=0.1.14" }
 harmos-domain = { path = "crates/harmos-domain", version = "=0.1.14", default-features = false }
 harmos-guest = { path = "crates/harmos-guest", version = "=0.1.14", default-features = false }
 harmos-macros = { path = "crates/harmos-macros", version = "=0.1.14" }
@@ -26,6 +27,7 @@ harmos-packaging = { path = "crates/harmos-packaging", version = "=0.1.14", defa
 harmos-protocol = { path = "crates/harmos-protocol", version = "=0.1.14", default-features = false }
 harmos-runtime = { path = "crates/harmos-runtime", version = "=0.1.14", default-features = false }
 harmos-sdk = { path = "crates/harmos-sdk", version = "=0.1.14", default-features = false }
+harmos-sdk-derive = { path = "sdk/rust/derive", version = "=0.1.14" }
 harmos-sidecar = { path = "crates/harmos-sidecar", version = "=0.1.14", default-features = false }
 harmos-storage = { path = "crates/harmos-storage", version = "=0.1.14", default-features = false }
 
@@ -88,7 +90,6 @@ wit-bindgen = { version = "=0.61.1", default-features = false }
 wit-component = { version = "=0.258.3", default-features = false }
 
 # Configuration
-clap = { version = "4.6.7", default-features = false }
 
 # Filesystem
 globset = { version = "0.4.20", default-features = false }
@@ -105,7 +106,6 @@ quote = { version = "1.0.47", default-features = false }
 syn = { version = "3.0.9", default-features = false, features = ["full"] }
 
 # Concurrency
-ctrlc = { version = "3.5.2", default-features = false }
 process-wrap = { version = "10.0.1", default-features = false }
 
 # Async
