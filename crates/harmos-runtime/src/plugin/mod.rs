@@ -13,6 +13,8 @@ mod backend;
 mod definition;
 mod definitions;
 mod events;
+#[cfg(feature = "plugin-grpc")]
+pub mod grpc;
 mod host;
 mod manager;
 mod reload;
