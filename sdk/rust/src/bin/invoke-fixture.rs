@@ -181,13 +181,16 @@ fn main() -> Result<()> {
     } else if mode == "incompatible" {
         Plugin::new("incompatible", "1.0.0").operation(Operation::new("fixture.public", empty).visibility(Visibility::Public))
     } else if mode == "duplicate" {
-        Plugin::new("duplicate", "1.0.0").operation(Operation::new("fixture.echo", echo))
+        Plugin::new("duplicate", "1.0.0").operation(Operation::new("fixture.clock", clock)).operation(Operation::new("fixture.echo", echo))
     } else {
         Plugin::new("caller", "1.0.0")
             .requires::<HostInput>()
+            .requires::<harmos_sdk_grpc::clock::Sleep>()
+            .requires::<harmos_sdk_grpc::clock::Now>()
             .requires::<PublicInput>()
             .requires::<PrivateInput>()
             .requires::<MissingInput>()
+            .operation(Operation::new("fixture.clock", clock))
             .operation(Operation::new("fixture.echo", echo))
             .operation(Operation::new("fixture.forward", forward))
             .operation(Operation::new("fixture.wait", wait).policy(v1::OperationPolicy {
@@ -196,6 +199,15 @@ fn main() -> Result<()> {
             }))
     };
     plugin.remote().serve()
+}
+
+async fn clock(context: &Context, _: Value) -> Result<Value> {
+    let before = context.now().await?;
+    context.sleep(std::time::Duration::from_secs(3600)).await?;
+    let after = context.now().await?;
+    Ok(Value {
+        value: (after.seconds - before.seconds).to_le_bytes().to_vec(),
+    })
 }
 
 async fn empty(_: &Context, _: ()) -> Result<()> {

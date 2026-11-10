@@ -16,6 +16,7 @@ mod catalog_admission;
 mod child_calls;
 mod connection_loss;
 mod duplicate_operation;
+mod host_clock;
 mod host_invoke;
 mod invoke_support;
 mod managed_lifecycle;

@@ -12,6 +12,7 @@
 /* === Modules === */
 
 mod catalog;
+pub(crate) mod clock;
 mod config;
 mod connection;
 pub(crate) mod invoke;

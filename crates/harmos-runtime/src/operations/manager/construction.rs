@@ -39,7 +39,7 @@ impl Manager {
         instances: Arc<Instances>, settings: &crate::operations::Settings, reserved: std::collections::BTreeSet<String>, identity: Arc<()>,
         schema_settings: Arc<crate::config::SchemaSettings>,
     ) -> Self {
-        Self {
+        let manager = Self {
             schema_settings,
             resident: crate::operations::resident::Registry::new(&instances, reserved, identity),
             context: Arc::new(std::sync::OnceLock::from(crate::operations::CallContext::default())),
@@ -60,7 +60,10 @@ impl Manager {
                     grpc_services: std::collections::BTreeSet::new(),
                 }),
             }),
-        }
+        };
+        #[cfg(feature = "plugin-grpc")]
+        manager.register_grpc_clock().expect("host clock contracts are valid");
+        manager
     }
 
     pub fn register_middleware(&self, middleware: Arc<dyn crate::operations::middleware::Middleware>) -> Result<()> {

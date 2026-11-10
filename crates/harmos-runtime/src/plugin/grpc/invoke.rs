@@ -43,7 +43,7 @@ pub(crate) struct Binding {
     pub(crate) owner: String,
     pub(crate) contract: v1::OperationContract,
     pub(crate) requires: Vec<v1::Requirement>,
-    connection: Arc<Connection>,
+    target: Target,
 }
 
 struct Invocation {
@@ -65,6 +65,12 @@ pub enum CallError {
     Protocol(String),
 }
 
+#[derive(Clone)]
+enum Target {
+    Plugin(Arc<Connection>),
+    Clock(crate::clock::Clock),
+}
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -75,7 +81,16 @@ impl Binding {
             owner: activation.description.id.clone(),
             contract,
             requires: activation.description.catalog.as_ref().unwrap().requires.clone(),
-            connection: activation.connection.clone(),
+            target: Target::Plugin(activation.connection.clone()),
+        }
+    }
+
+    pub(crate) fn clock(contract: v1::OperationContract, clock: crate::clock::Clock) -> Self {
+        Self {
+            owner: "host".into(),
+            contract,
+            requires: Vec::new(),
+            target: Target::Clock(clock),
         }
     }
 
@@ -117,7 +132,10 @@ impl NativeInstance for Invocation {
     fn run(&mut self, context: harmos_sdk::ExecutionContext) -> ServiceFuture<'_, ErasedResponse> {
         Box::pin(async move {
             let host = context.resource::<HostContext>().map_err(|_| harmos_sdk::ServingError::Catalog)?;
-            let result = invoke(&self.binding, self.payload.clone(), &context, &host).await;
+            let result = match &self.binding.target {
+                Target::Plugin(_) => invoke(&self.binding, self.payload.clone(), &context, &host).await,
+                Target::Clock(clock) => super::clock::run(clock, &self.binding.contract.id, &self.payload).await,
+            };
             result
                 .map(|bytes| crate::operations::Response::from(bytes).into_erased())
                 .map_err(|error| harmos_sdk::ServingError::Native(Arc::new(error)))
@@ -145,7 +163,8 @@ impl NativeInstance for Invocation {
 async fn invoke(
     binding: &Binding, payload: Vec<u8>, context: &harmos_sdk::ExecutionContext, host: &HostContext,
 ) -> Result<Vec<u8>, CallError> {
-    let closed = binding.connection.closed.subscribe();
+    let Target::Plugin(connection) = &binding.target else { unreachable!() };
+    let closed = connection.closed.subscribe();
     let work = async {
         let (output, input) = mpsc::channel(1);
         let request = v1::Request {
@@ -162,7 +181,7 @@ async fn invoke(
             .await
             .unwrap();
         let input = stream::unfold(input, |mut input| async { input.recv().await.map(|frame| (frame, input)) });
-        let mut client = v1::plugin_client::PluginClient::new(binding.connection.channel.clone());
+        let mut client = v1::plugin_client::PluginClient::new(connection.channel.clone());
         let mut input = client.invoke(input).await.map_err(CallError::Transport)?.into_inner();
         let mut children = futures_util::stream::FuturesUnordered::<
             futures_util::future::BoxFuture<'static, (u64, String, crate::Result<Vec<u8>>)>,
@@ -171,15 +190,35 @@ async fn invoke(
         let mut seen = BTreeSet::new();
         let mut cancelled = false;
         let mut cancelled_children = BTreeSet::new();
+        enum Event {
+            Cancel,
+            Child(u64, String, crate::Result<Vec<u8>>),
+            Frame(Result<Option<v1::PluginFrame>, tonic::Status>),
+        }
         loop {
-            tokio::select! {
-                biased;
-                () = context.cancellation.cancelled(), if !cancelled => {
-                    cancelled = true;
-                    let cancel = v1::Cancel { reason: format!("Operation {} Cancelled", binding.contract.id) };
-                    let _ = output.send(v1::HostFrame { frame: Some(host_frame::Frame::Cancel(cancel)) }).await;
+            let has_children = !children.is_empty();
+            let next = async {
+                tokio::select! {
+                    biased;
+                    () = context.cancellation.cancelled(), if !cancelled => Event::Cancel,
+                    Some((call, operation, result)) = children.next(), if has_children => Event::Child(call, operation, result),
+                    frame = input.message() => Event::Frame(frame),
                 }
-                Some((call, operation, result)) = children.next(), if !children.is_empty() => {
+            };
+            let event = if has_children { crate::clock::waiting(next).await } else { next.await };
+            match event {
+                Event::Cancel => {
+                    cancelled = true;
+                    let cancel = v1::Cancel {
+                        reason: format!("Operation {} Cancelled", binding.contract.id),
+                    };
+                    let _ = output
+                        .send(v1::HostFrame {
+                            frame: Some(host_frame::Frame::Cancel(cancel)),
+                        })
+                        .await;
+                }
+                Event::Child(call, operation, result) => {
                     controls.remove(&call);
                     if cancelled_children.remove(&call) {
                         continue;
@@ -189,49 +228,51 @@ async fn invoke(
                         Err(error) => v1::child_response::Result::Failure(failure(&error, &operation, "host")),
                     };
                     let child = v1::ChildResponse { call, result: Some(result) };
-                    let _ = output.send(v1::HostFrame { frame: Some(host_frame::Frame::Child(child)) }).await;
+                    let _ = output
+                        .send(v1::HostFrame {
+                            frame: Some(host_frame::Frame::Child(child)),
+                        })
+                        .await;
                 }
-                frame = input.message() => {
-                    match frame.map_err(CallError::Transport)?.and_then(|frame| frame.frame) {
-                        Some(plugin_frame::Frame::Response(response)) => {
-                            if input.message().await.map_err(CallError::Transport)?.is_some() {
-                                return Err(CallError::Protocol("Frame After Terminal Response".into()));
-                            }
-                            return match response.result {
-                                Some(v1::response::Result::Payload(payload)) => Ok(payload),
-                                Some(v1::response::Result::Failure(failure)) => Err(CallError::Remote(failure)),
-                                None => Err(CallError::Protocol("Missing Response Result".into())),
-                            };
+                Event::Frame(frame) => match frame.map_err(CallError::Transport)?.and_then(|frame| frame.frame) {
+                    Some(plugin_frame::Frame::Response(response)) => {
+                        if input.message().await.map_err(CallError::Transport)?.is_some() {
+                            return Err(CallError::Protocol("Frame After Terminal Response".into()));
                         }
-                        Some(plugin_frame::Frame::Child(child)) => {
-                            if !seen.insert(child.call) {
-                                return Err(CallError::Protocol(format!("Duplicate Child ID {}", child.call)));
-                            }
-                            let call = child.call;
-                            let operation = child.operation.clone();
-                            let invocation = host.borrow().submit_grpc_child(&binding.owner, &binding.requires, child);
-                            if let Ok(invocation) = &invocation {
-                                controls.insert(call, invocation.control.clone());
-                            }
-                            children.push(Box::pin(async move {
-                                let result = match invocation {
-                                    Ok(invocation) => invocation.await,
-                                    Err(error) => Err(error),
-                                };
-                                (call, operation, result)
-                            }));
-                        }
-                        Some(plugin_frame::Frame::ChildCancel(child)) => {
-                            if let Some(control) = controls.get(&child.call) {
-                                cancelled_children.insert(child.call);
-                                control.request_cancel();
-                            } else if !seen.contains(&child.call) {
-                                return Err(CallError::Protocol(format!("Unknown Child ID {}", child.call)));
-                            }
-                        }
-                        None => return Err(CallError::Protocol("Invoke Ended Without Response".into())),
+                        return match response.result {
+                            Some(v1::response::Result::Payload(payload)) => Ok(payload),
+                            Some(v1::response::Result::Failure(failure)) => Err(CallError::Remote(failure)),
+                            None => Err(CallError::Protocol("Missing Response Result".into())),
+                        };
                     }
-                }
+                    Some(plugin_frame::Frame::Child(child)) => {
+                        if !seen.insert(child.call) {
+                            return Err(CallError::Protocol(format!("Duplicate Child ID {}", child.call)));
+                        }
+                        let call = child.call;
+                        let operation = child.operation.clone();
+                        let invocation = host.borrow().submit_grpc_child(&binding.owner, &binding.requires, child);
+                        if let Ok(invocation) = &invocation {
+                            controls.insert(call, invocation.control.clone());
+                        }
+                        children.push(Box::pin(async move {
+                            let result = match invocation {
+                                Ok(invocation) => invocation.await,
+                                Err(error) => Err(error),
+                            };
+                            (call, operation, result)
+                        }));
+                    }
+                    Some(plugin_frame::Frame::ChildCancel(child)) => {
+                        if let Some(control) = controls.get(&child.call) {
+                            cancelled_children.insert(child.call);
+                            control.request_cancel();
+                        } else if !seen.contains(&child.call) {
+                            return Err(CallError::Protocol(format!("Unknown Child ID {}", child.call)));
+                        }
+                    }
+                    None => return Err(CallError::Protocol("Invoke Ended Without Response".into())),
+                },
             }
         }
     };

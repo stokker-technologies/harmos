@@ -68,6 +68,30 @@ impl Drop for Admission {
 }
 
 impl Manager {
+    pub(crate) fn register_grpc_clock(&self) -> Result<()> {
+        let mut entries = Vec::new();
+        for contract in crate::plugin::grpc::clock::contracts() {
+            let definition = OperationDefinition {
+                id: Identifier::new(&contract.id).unwrap(),
+                description: String::new(),
+                visibility: Visibility::Public,
+                policy: policy(None)?,
+                replay: ReplaySafety::Unknown,
+                fingerprint: harmos_domain::Fingerprint(contract.fingerprint.clone().try_into().unwrap()),
+            };
+            let binding = Arc::new(Binding::clock(contract, self.clock().clone()));
+            entries.push(self.binding_erased(
+                "host",
+                crate::operations::lane::RESIDENT,
+                binding,
+                definition,
+                Some(crate::operations::wire::dispatch_native),
+                None,
+            )?);
+        }
+        self.reserve(&entries)
+    }
+
     pub(crate) fn admit_grpc(&self, activation: &Activation, lane: &'static str) -> std::result::Result<Admission, PlacementError> {
         let catalog = activation.description.catalog.as_ref().unwrap();
         let mut entries = Vec::new();

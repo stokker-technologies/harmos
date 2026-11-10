@@ -33,6 +33,10 @@ thread_local! {
 
 /* === Macros === */
 
+tokio::task_local! {
+    static ACTIVITY: std::sync::Arc<tokio::sync::Mutex<Activity>>;
+}
+
 /* === Type Aliases === */
 
 /* === Structs === */
@@ -64,6 +68,18 @@ pub(crate) fn enter(clock: Clock) -> Entered {
 pub(crate) async fn scope<F: Future>(clock: Clock, future: F) -> F::Output {
     use crate::supervision::executor::InContext;
     future.in_clock(clock).await
+}
+
+pub(crate) async fn active<F: Future>(activity: Activity, future: F) -> F::Output {
+    ACTIVITY.scope(std::sync::Arc::new(tokio::sync::Mutex::new(activity)), future).await
+}
+
+pub(crate) async fn waiting<F: Future>(future: F) -> F::Output {
+    let activity = ACTIVITY.try_with(Clone::clone).ok();
+    match activity {
+        Some(activity) => activity.lock().await.wait(future).await,
+        None => future.await,
+    }
 }
 
 /* === Private Functions === */

@@ -113,10 +113,14 @@ impl harmos_runtime::Operation for Host {
 
 impl HostFixture {
     pub async fn new() -> Self {
+        Self::with_clock(None).await
+    }
+
+    pub async fn with_clock(source: Option<harmos_runtime::clock::Clock>) -> Self {
         let clock = support::Manual::new();
         let signals = Arc::new(Signals::default());
         let runtime = crate::support::booted(Default::default(), |setup| {
-            setup.settings().clock(harmos_runtime::clock::Clock::with_clock(clock.clone()));
+            setup.settings().clock(source.unwrap_or_else(|| harmos_runtime::clock::Clock::with_clock(clock.clone())));
             setup.resource::<Signals>(signals.clone());
         })
         .await;

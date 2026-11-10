@@ -245,11 +245,12 @@ impl Instances {
         };
         assert!(state.active.insert(id, instance.clone()).is_none(), "instance IDs are unique");
         let owner = self.clone();
+        let activity = self.clock.activity(format!("invocation {}", id.value()));
         let control = instance.clone();
         sending.send(Submission {
             instance,
             driver: Box::pin(
-                async move {
+                crate::clock::active(activity, async move {
                     let dispatch = tracing::debug_span!(target: "harmos::operations", "operations.dispatch");
                     dispatch.follows_from(queued_driver.id());
                     drop(queued_driver);
@@ -260,7 +261,7 @@ impl Instances {
                         }
                         Err(_) => control.finished(),
                     }
-                }
+                })
                 .instrument(trace)
                 .in_clock(self.clock.clone()),
             ),
