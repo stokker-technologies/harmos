@@ -279,6 +279,41 @@ Observers receive the host tick in `Context.At` and the per-demand `Context.Sequ
 they cannot call operations or sleep. Background work outside these host-visible waits
 is outside virtual-time accounting and runs in real time. Instance state shared by
 concurrent calls must use the application's normal synchronization.
+### C++ Authoring
+
+C++20 uses generated protobuf message classes and typed builder values. Handlers
+return their protobuf response directly and throw `harmos::Failure` for a structured
+application failure. `ctx.call` starts a child call and returns a typed future;
+`ctx.operation` waits for that future. C++20 reserves `requires`, so the builder
+spells the dependency method `requires_operation`.
+
+```cpp
+const harmos::Operation<thermal::v1::ReadSensor, thermal::v1::Reading>
+    read_sensor("sensor.read");
+harmos::Operation<thermal::v1::SetTemperature, thermal::v1::Reading>
+    set("thermal.set", set_temperature);
+set.visibility(harmos::wire::VISIBILITY_PUBLIC);
+harmos::Stream<thermal::v1::Reading> temperature("thermal.temperature");
+harmos::Observer<thermal::v1::Reading> observer(temperature, read_temperature);
+google::protobuf::Duration interval;
+interval.set_seconds(1);
+observer.every(interval);
+harmos::Plugin("thermal", "1.0.0")
+    .operation(set).requires_operation(read_sensor)
+    .stream(temperature).observer(observer)
+    .serve();
+```
+
+`serve()` selects managed lifecycle and reads `HARMOS_ADDRESS`, defaulting to an
+ephemeral loopback port. `serve("127.0.0.1:53124")` selects remote lifecycle and
+keeps serving after Stop. Both announce the bound address. Observer callbacks
+cannot make child calls or clock waits. Device producers use
+`Stream<Row>::publish_on` with a typed `Publisher<Row>`, ending when demand closes.
+`section(message)` carries typed settings/contributions; `on_stop(callback)` owns
+cleanup. Invocation resources use `ctx.set(value)` and `ctx.get<Type>()`; shared
+author state is captured explicitly by handlers. Authors synchronize shared state
+across concurrent calls. Independently started background work is invisible to
+virtual time.
 
 ## Validation
 

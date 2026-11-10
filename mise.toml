@@ -247,11 +247,6 @@ hide = true
 description = "Check Rust"
 run = ["cargo-machete --skip-target-dir"]
 
-[tasks."build:cpp"]
-hide = true
-description = "Build the C++ Sidecar Prototype"
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp"
-
 [tasks."build:rust:bench"]
 hide = true
 description = "Build Benchmark Executables"
@@ -337,11 +332,6 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category system --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}} -- --test-threads 1",
 ]
-
-[tasks."test:rust:cpp"]
-hide = true
-description = "Build and Prove the C++ Sidecar Prototype"
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --test"
 
 [tasks."bench:rust:unit"]
 hide = true

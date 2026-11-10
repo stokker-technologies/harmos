@@ -72,7 +72,12 @@ def dispatch(arguments: list[str] | None = None) -> int:
     generate.add_argument("--sdk", choices=("python",))
     for name in ("format", "lint", "check"):
         command = commands.add_parser(name)
-        command.add_argument("--language", choices=(*LANGUAGES, "csharp") if name != "lint" else LANGUAGES)
+        languages = LANGUAGES
+        if name in ("format", "check"):
+            languages = (*languages, "csharp")
+        if name == "check":
+            languages = (*languages, "cpp")
+        command.add_argument("--language", choices=languages)
         if name == "format":
             command.add_argument("--check", action="store_true")
         if name in ("lint", "check"):
@@ -82,7 +87,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
             command.add_argument("--repository", action="store_true")
             command.add_argument("--generated", action="store_true")
     build = commands.add_parser("build")
-    build.add_argument("--language", choices=("rust", "csharp"))
+    build.add_argument("--language", choices=("rust", "csharp", "cpp"))
     build.add_argument("--profile", choices=("dev", "release"), default="dev")
     build.add_argument("--artifact", choices=("product", "tests", "bench", "fixtures"), default="product")
     build.add_argument("--package")
@@ -90,10 +95,9 @@ def dispatch(arguments: list[str] | None = None) -> int:
     build.add_argument("--example")
     build.add_argument("--check", action="store_true")
     build.add_argument("--compatibility", action="store_true")
-    build.add_argument("--cpp", action="store_true")
     build.add_argument("--extended", action="store_true")
     test = commands.add_parser("test")
-    test.add_argument("--language", choices=("rust", "python", "csharp"))
+    test.add_argument("--language", choices=("rust", "python", "csharp", "cpp"))
     test.add_argument("--layer", choices=LAYERS)
     test.add_argument("--package")
     test.add_argument("--features")
@@ -103,7 +107,6 @@ def dispatch(arguments: list[str] | None = None) -> int:
     test.add_argument("--profile", choices=("dev", "release"), default="dev")
     test.add_argument("--filter")
     test.add_argument("--stress-count", type=int)
-    test.add_argument("--cpp", action="store_true")
     test.add_argument("--extended", action="store_true")
     bench = commands.add_parser("bench")
     bench.add_argument("--layer", choices=("unit", "integration", "system"))
@@ -176,6 +179,53 @@ def dispatch(arguments: list[str] | None = None) -> int:
             parser.error("C# formatting uses check --language csharp")
         return csharp.run(root, options.command, getattr(options, "profile", "dev"), check=getattr(options, "check", False))
 
+    if options.command in ("build", "test", "check") and options.language == "cpp":
+        if options.command == "build":
+            if (
+                options.package
+                or options.features
+                or options.example
+                or options.check
+                or options.artifact != "product"
+                or options.compatibility
+                or options.extended
+            ):
+                parser.error("C++ builds select only --language cpp and optional --profile")
+            return _module("build.cpp", "--profile", options.profile)
+        if options.command == "check":
+            if options.package or options.repository or options.generated or options.extended:
+                parser.error("C++ checks select only --language cpp")
+            return _module("build.cpp", "--check")
+        if (
+            options.package
+            or options.features
+            or options.target
+            or options.exact
+            or options.coverage
+            or options.extended
+            or options.filter
+            or options.stress_count
+            or options.layer
+        ):
+            parser.error("C++ conformance selects only --language cpp and optional --profile")
+        configuration = "Debug" if options.profile == "dev" else "Release"
+        _execute(
+            [
+                "ctest",
+                "--test-dir",
+                str(root / "target/cpp" / options.profile),
+                "-C",
+                configuration,
+                "--output-on-failure",
+                "--no-tests=error",
+            ]
+        )
+        return _execute(
+            [sys.executable, "-m", "unittest", "discover", "-s", "tests/integration", "-v"],
+            directory=root / "sdk/cpp",
+            environment=dict(os.environ, TEST_PROFILE=options.profile),
+        )
+
     # Focused Cargo Selections
     if options.command in ("build", "test") and options.features and not options.package:
         parser.error("--features requires --package")
@@ -188,7 +238,6 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if (
             options.target not in (None, "integration")
             or options.coverage
-            or options.cpp
             or options.extended
             or options.features
             or options.layer
@@ -206,12 +255,12 @@ def dispatch(arguments: list[str] | None = None) -> int:
         )
 
     if options.command == "test" and options.language == "python" and options.exact:
-        if options.package or options.target or options.coverage or options.cpp or options.extended or options.features:
+        if options.package or options.target or options.coverage or options.extended or options.features:
             parser.error("focused Python tests select only --exact")
         return _execute([sys.executable, "-m", "unittest", options.exact], directory=root / "tools/python")
 
     if options.command == "build" and options.package:
-        if options.artifact != "product" or options.compatibility or options.cpp or options.extended:
+        if options.artifact != "product" or options.compatibility or options.extended:
             parser.error("--package cannot select artifacts, compatibility, C++ or extended builds")
         if options.package == "harmos-plugin":
             if options.features or options.example:
@@ -239,7 +288,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     if options.command == "test" and options.package:
         if not options.target:
             parser.error("--package requires --target lib or a test target name")
-        if options.language not in (None, "rust") or options.coverage or options.cpp or options.extended:
+        if options.language not in (None, "rust") or options.coverage or options.extended:
             parser.error("focused tests require Rust without coverage, C++ or extended selection")
         if options.profile != "dev" or options.layer or options.filter or options.stress_count:
             parser.error("focused tests use the default test profile and --exact for filtering")
@@ -297,11 +346,9 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if options.check:
             parser.error("--check requires --package")
         if options.artifact == "fixtures":
-            if options.cpp or options.compatibility or options.extended:
+            if options.compatibility or options.extended:
                 parser.error("--artifact fixtures cannot select C++, compatibility or extended builds")
             return _task("prepare:tests:fixtures", "--profile", options.profile)
-        if options.cpp:
-            return _task("build:cpp")
         if options.compatibility:
             return _task("build:rust:compatibility", "--profile", options.profile)
         if options.artifact == "bench":
@@ -321,8 +368,6 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if options.filter or options.stress_count:
             if options.layer != "integration":
                 parser.error("--filter and --stress-count require integration")
-        if options.cpp:
-            return _task("test:rust:cpp")
         if options.extended:
             _task("build:product", "--profile", options.profile)
             _task("build:rust:compatibility", "--profile", options.profile)
