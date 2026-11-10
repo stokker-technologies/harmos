@@ -24,7 +24,6 @@ use harmos_storage::{Identifier, Message};
 
 // Local Imports
 use super::backend::{history, storage_settings};
-use super::fixture::state_settings;
 
 /* === Constants === */
 
@@ -46,12 +45,11 @@ struct Expansion {
     values: Vec<String>,
 }
 
-// Journaled Storage Holding Saved Records Of One Declared Schema.
+// Fixture Storage Holding Saved Records Of One Declared Schema.
 struct Mapped {
     storage: StorageManager,
     schema: SchemaKey,
     at: StorageCursor,
-    _directory: tempfile::TempDir,
 }
 
 /* === Enums === */
@@ -68,16 +66,12 @@ enum Event {
 
 impl Mapped {
     async fn new<T: harmos_domain::schema::Described + Message>(settings: StorageSettings, id: &str, payloads: &[T]) -> Self {
-        // Start Storage Over A Real Journal And File State Root.
-        let directory = tempfile::tempdir().unwrap();
-        let data = JsonStorage::new(
-            JsonStorageSettings {
-                root: directory.path().to_path_buf(),
-                max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
-            },
-            history(),
-        );
-        let backends = data.into_backends(state_settings());
+        // Start The Existing Storage Fixture.
+        let data = std::sync::Arc::new(super::backend::Data::new(history()));
+        let backends = StorageBackends {
+            primary: data,
+            state: std::sync::Arc::new(super::backend::Recovery::new(history())),
+        };
         let storage = StorageManager::new(backends, settings).unwrap();
         super::fixture::start(&storage).await;
 
@@ -110,12 +104,7 @@ impl Mapped {
             storage.write_records(records).await.unwrap();
         }
         let at = storage.flush().await.unwrap();
-        Self {
-            _directory: directory,
-            storage,
-            schema,
-            at,
-        }
+        Self { storage, schema, at }
     }
 
     fn query(&self, item: Option<&str>) -> Query {

@@ -53,7 +53,6 @@ fn benchmarks(c: &mut criterion::Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
     commands::run(c, &runtime);
     let fixture = runtime.block_on(fixture::Fixture::sidecar());
-    runtime.block_on(fixture.verify_filesystem());
     transfers::run(&runtime, "sidecar-host", &fixture);
     runtime.block_on(fixture.finish());
     let mut consumers = c.benchmark_group("streams/native_consumer");

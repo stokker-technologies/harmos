@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex};
 
 // Local Imports
 use harmos_runtime::state::{CatalogCodec, DecodeError, Position, SnapshotPolicy, Transaction};
-use harmos_runtime::storage::{JsonStorage, JsonStorageSettings, ObjectCatalog, ObjectRetention, StorageManager, StoredObject};
+use harmos_runtime::storage::{ObjectCatalog, ObjectRetention, StorageManager, StoredObject};
 use harmos_runtime::{Application, Identified, Lifecycle, Runtime, Setup, Startup};
 use serde::{Deserialize, Serialize};
 
@@ -120,6 +120,12 @@ enum PluginObjects {
 #[harmos_domain::catalog]
 enum NewPluginObjects {
     Object(NewPluginObject),
+}
+
+#[harmos_domain::catalog]
+enum StoredPluginObjects {
+    Old(PluginObject),
+    New(NewPluginObject),
 }
 
 /* === Traits === */
@@ -218,17 +224,6 @@ impl Transaction<i64> for Add {
 
 /* === Private Functions === */
 
-fn storage(root: &Path) -> StorageManager {
-    let primary = JsonStorage::new(
-        JsonStorageSettings {
-            root: root.to_owned(),
-            max_entry_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
-        },
-        crate::storage::history(),
-    );
-    StorageManager::new(primary.into_backends(crate::storage::state_settings()), crate::storage::config()).unwrap()
-}
-
 fn managed(snapshot: bool) -> harmos_runtime::config::ManagedStorageSettings {
     harmos_runtime::config::ManagedStorageSettings {
         replay: harmos_runtime::storage::ReadLimits {
@@ -262,15 +257,16 @@ async fn original<C>(storage: &StorageManager<C>, snapshot: bool) -> Runtime<Mod
     .unwrap()
 }
 
-fn plugin_storage<C: ObjectCatalog>(root: &Path) -> StorageManager<C> {
-    let primary = JsonStorage::new(
-        JsonStorageSettings {
-            root: root.to_owned(),
-            max_entry_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
-        },
-        crate::storage::history(),
-    );
-    StorageManager::new(primary.into_backends(crate::storage::state_settings()), crate::storage::config()).unwrap()
+fn plugin_storage<C: ObjectCatalog>(root: &Path, data: &Arc<crate::storage::Data<StoredPluginObjects>>) -> StorageManager<C> {
+    let backends = harmos_runtime::storage::StorageBackends {
+        primary: data.clone(),
+        state: Arc::new(harmos_runtime::storage::state::file::FileBackend::new(
+            root.join("state"),
+            crate::storage::history(),
+            crate::storage::state_settings(),
+        )),
+    };
+    StorageManager::new(backends, crate::storage::config()).unwrap()
 }
 
 async fn plugin_runtime<C>(storage: &StorageManager<C>, snapshot: bool) -> Runtime<Model<false>> {
@@ -334,7 +330,8 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
     for snapshot in [false, true] {
         // Write Plugin History And Host State.
         let root = tempfile::tempdir().unwrap();
-        let disk = plugin_storage::<PluginObjects>(root.path());
+        let data = Arc::new(crate::storage::Data::<StoredPluginObjects>::with_catalog(crate::storage::history()));
+        let disk = plugin_storage::<PluginObjects>(root.path(), &data);
         let runtime = plugin_runtime(&disk, snapshot).await;
         let value = PluginObject { id: "document".into(), value: 41 };
         let receipt = disk.write_object(&value).await.unwrap();
@@ -357,7 +354,7 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         runtime.shutdown().await.unwrap();
 
         // Reopen With The Changed Plugin Definition And Write Current State.
-        let disk = plugin_storage::<NewPluginObjects>(root.path());
+        let disk = plugin_storage::<NewPluginObjects>(root.path(), &data);
         let runtime = plugin_runtime(&disk, snapshot).await;
         let history = runtime.state.query::<SystemFact>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(history[0].value, old);
@@ -388,7 +385,7 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         runtime.shutdown().await.unwrap();
 
         // Reopen Without Any Plugin Object Catalog Or Installed Plugin.
-        let disk = plugin_storage::<()>(root.path());
+        let disk = plugin_storage::<()>(root.path(), &data);
         let runtime = plugin_runtime(&disk, snapshot).await;
         historical_plugin_values(&disk, &schema).await;
         assert_eq!(disk.lookup_schema(&schema).await.unwrap().schema.as_ref(), &graph);
@@ -398,7 +395,7 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         runtime.shutdown().await.unwrap();
 
         // The Same Root Still Refuses A Changed Host Record Definition.
-        let disk = plugin_storage::<()>(root.path());
+        let disk = plugin_storage::<()>(root.path(), &data);
         let result = Runtime::<Model<true>>::launch_with(0, (), |setup| {
             setup.settings().storage(&disk).register(Changes::catalog()).register(NewFacts::catalog()).managed_storage(managed(snapshot));
         })
@@ -409,7 +406,7 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         };
         assert!(error.to_string().contains(Observed::ID), "{error}");
         assert!(error.to_string().contains("fresh"), "{error}");
-        let disk = plugin_storage::<()>(root.path());
+        let disk = plugin_storage::<()>(root.path(), &data);
         let runtime = plugin_runtime(&disk, snapshot).await;
         historical_plugin_values(&disk, &schema).await;
         runtime.shutdown().await.unwrap();
@@ -420,14 +417,15 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
 async fn unchanged_shapes_restart_on_one_root() {
     for snapshot in [false, true] {
         let root = tempfile::tempdir().unwrap();
-        let disk = storage(root.path());
+        let data = Arc::new(crate::storage::Data::<StoredPluginObjects>::with_catalog(crate::storage::history()));
+        let disk = plugin_storage::<()>(root.path(), &data);
         let runtime = original(&disk, snapshot).await;
         runtime.state.commit(Add { amount: 7 }).await.unwrap();
         runtime.records.publish(Observed { before: 7 }).await.unwrap();
         let expected = runtime.state.applied();
         runtime.shutdown().await.unwrap();
 
-        let disk = storage(root.path());
+        let disk = plugin_storage::<()>(root.path(), &data);
         let runtime = original(&disk, snapshot).await;
         assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 7);
         assert_eq!(runtime.state.applied(), expected);
@@ -442,7 +440,8 @@ async fn changed_record_shape_refuses_root_and_preserves_history() {
     assert_ne!(Observed::definition().1, Changed::definition().1);
     for snapshot in [false, true] {
         let root = tempfile::tempdir().unwrap();
-        let disk = storage(root.path());
+        let data = Arc::new(crate::storage::Data::<StoredPluginObjects>::with_catalog(crate::storage::history()));
+        let disk = plugin_storage::<()>(root.path(), &data);
         let runtime = original(&disk, snapshot).await;
         runtime.records.publish(Observed { before: 3 }).await.unwrap();
         runtime.state.commit(Add { amount: 7 }).await.unwrap();
@@ -457,7 +456,7 @@ async fn changed_record_shape_refuses_root_and_preserves_history() {
             .unwrap();
         runtime.shutdown().await.unwrap();
 
-        let disk = storage(root.path());
+        let disk = plugin_storage::<()>(root.path(), &data);
         let result = Runtime::<Model<true>>::launch_with(0, (), |setup| {
             setup.settings().storage(&disk).register(Changes::catalog()).register(NewFacts::catalog()).managed_storage(managed(snapshot));
         })
@@ -478,7 +477,7 @@ async fn changed_record_shape_refuses_root_and_preserves_history() {
             if id.as_str() == Observed::ID && *version == Observed::definition().1));
         assert!(disk.status().closed);
 
-        let disk = storage(root.path());
+        let disk = plugin_storage::<()>(root.path(), &data);
         let runtime = original(&disk, snapshot).await;
         assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 7);
         runtime.shutdown().await.unwrap();
@@ -488,7 +487,8 @@ async fn changed_record_shape_refuses_root_and_preserves_history() {
 #[tokio::test]
 async fn native_stream_round_trip_uses_shared_revision() {
     let root = tempfile::tempdir().unwrap();
-    let disk = storage(root.path());
+    let data = Arc::new(crate::storage::Data::<StoredPluginObjects>::with_catalog(crate::storage::history()));
+    let disk = plugin_storage::<()>(root.path(), &data);
     let borrowed = Arc::new(Mutex::new(Vec::new()));
     let shared = Arc::new(Mutex::new(Vec::new()));
     let runtime = Runtime::<Model<false>>::launch_with(0, (), |setup| {

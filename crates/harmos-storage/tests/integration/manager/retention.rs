@@ -41,7 +41,7 @@ use std::sync::atomic::Ordering;
 
 /* === Structs === */
 
-// Journaled Storage Holding Two Durable Revisions Of One Object.
+// Fixture Storage Holding Two Durable Revisions Of One Object.
 struct Revisions {
     storage: StorageManager<Objects>,
     first: Experiment,
@@ -50,7 +50,6 @@ struct Revisions {
     earlier: StorageCursor,
     durable: StorageCursor,
     schema: SchemaKey,
-    _directory: tempfile::TempDir,
 }
 
 /* === Enums === */
@@ -61,15 +60,15 @@ struct Revisions {
 
 impl Revisions {
     async fn new() -> Self {
-        let directory = tempfile::tempdir().unwrap();
-        let data = JsonStorage::new(
-            JsonStorageSettings {
-                root: directory.path().to_path_buf(),
-                max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+        let data = std::sync::Arc::new(super::backend::Data::<Objects>::with_catalog(history()));
+        let storage = StorageManager::<Objects>::new(
+            StorageBackends {
+                primary: data,
+                state: std::sync::Arc::new(Recovery::new(history())),
             },
-            history(),
-        );
-        let storage = StorageManager::<Objects>::new(data.into_backends(super::fixture::state_settings()), storage_settings()).unwrap();
+            storage_settings(),
+        )
+        .unwrap();
         super::fixture::start(&storage).await;
 
         // Two Revisions Of One Object Are Durable At Distinct Cursors.
@@ -89,7 +88,6 @@ impl Revisions {
         let durable = storage.flush().await.unwrap();
         let encoded = Objects::encode(&first, NonZeroUsize::new(16 * 1024).unwrap()).unwrap();
         Self {
-            _directory: directory,
             storage,
             first,
             first_receipt,

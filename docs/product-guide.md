@@ -466,27 +466,6 @@ The journal format is unchanged. Existing single-payload checkpoint files remain
 readable; their imported manifest has no separate logical position, so runtime recovery
 uses the position in the original payload and its journal-boundary validation.
 
-For filesystem persistence, use the shipped JSON backend:
-
-```rust
-let primary = JsonStorage::new(
-    JsonStorageSettings { root, max_entry_bytes },
-    history,
-);
-let backends = primary.into_backends(StorageStateSettings {
-    max_entry_bytes,
-    max_checkpoint_bytes,
-});
-let storage = StorageManager::new(backends, settings)?;
-```
-
-Import `StorageStateSettings` from `storage::state`. The root holds bounded JSONL
-segments in `data/`, staged and finished binary files, recovery metadata, and the
-existing state backend under `state/`. A root has one active backend owner.
-Choose the JSON entry bound to accommodate encoded metadata and payloads; JSON
-encoding can be larger than the original binary payload. This adapter is a
-simple persistence option, not a performance bound for other backends.
-
 Backend writes are independently durable typed calls: `write_schemas`,
 `write_objects`, `write_records`, `write_stream` and `write_files` consume
 `StorageBatch<T>`; file appends consume `FileChunk`. The manager owns ordering
@@ -1196,13 +1175,11 @@ completion includes the receiver acknowledgment. Records, files and samples run
 concurrently on one reused host/plugin per carrier, with isolated transfer IDs;
 unary and streamed variants remain sequential within each dataset. The fixture retains at most
 64 MiB of data, with four queued batches and a 4 MiB stream budget. File transfer
-cases measure crossing the carrier boundary; the storage suite measures persistence.
-The real carrier hash check runs outside timing; its storage worker is started
-only for that check and stopped before command and transfer measurements.
+cases measure crossing the carrier boundary.
 
 | Suite | What It Measures |
 | --- | --- |
-| [Storage](../crates/harmos-runtime/benches/storage/main.rs) | Shipped JSON persistence: 30 MiB upload/download, 10,000 records and 1,000,000 samples with symmetric writes/reads, concurrent files and queries; local/stored read, hash, capture and follow; directory listing and change delivery. |
+| [Storage Transforms](../crates/harmos-runtime/benches/storage/transforms.rs) | In-memory RMS, histogram and downsampling kernels over balanced three-phase samples. |
 | [Sidecar Host](../crates/harmos-runtime/benches/sidecar/system.rs) | Real native process: bidirectional 10,000-record, 30 MiB file and 1,000,000-sample transfers, comparing unary batches and streams; startup and command latency. |
 | [Guest](../crates/harmos-runtime/benches/guest/main.rs) | Real Wasm component: the same bidirectional unary/streamed transfer workloads, plus startup and command latency. |
 | [External gRPC](../crates/harmos-runtime/benches/grpc/main.rs) | Separate server-process startup, client commands over a socket, and isolated Postcard/Protobuf codec costs. |
@@ -1210,19 +1187,12 @@ only for that check and stopped before command and transfer measurements.
 | [Plugin Transport](../crates/harmos-sidecar/benches/transport/main.rs) | Native transport throughput and latency, including 64-byte, 1 KiB, and 64 KiB bursts and a paced 10 MiB/s workload. |
 
 Build matching executables and carrier fixtures with `mise run build:rust:bench`,
-then run `mise run bench`. Storage uses 1 MiB chunks, 4096-row input ceilings,
-128 MiB read memory and 64 MiB pending-write memory. Reads start from persisted
-data; setup writes and verification are excluded from read timings. These are
-warm filesystem measurements, not forced cold-cache reads.
-The filesystem cases use 30 MiB files; directory listing and initial watching
-use 1,000 entries. Hash/capture include their required hashing work. Directory
-change latency includes creating the file and receiving its notification.
+then run `mise run bench`.
 
 One million samples represent one second at 1 MHz without pacing ingestion.
 The paced transport rate is also an input, not a claimed throughput result.
 Published comparisons need the revision, hardware, payload, batching and carrier
-alongside native Criterion results. The JSON backend gives one concrete reference;
-it does not establish a worst-case bound for other adapters.
+alongside native Criterion results.
 
 Native Criterion HTML and raw measurements live under `.stkr/benchmarks/criterion/`,
 partitioned by compatibility identity and benchmark executable. The runner compares

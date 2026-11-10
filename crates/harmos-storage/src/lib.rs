@@ -31,7 +31,6 @@ mod file_production;
 mod file_reads;
 pub mod follow;
 mod frozen_file;
-pub mod json;
 mod local;
 mod manager;
 mod object_admissions;
@@ -72,7 +71,6 @@ pub use harmos_domain::model::storage::{
     ObjectVersion, ObjectVersionToken, PayloadEncoding, RecordInput, RecordWrite, RecoveryPosition, SchemaInfo, SchemaInput, SchemaKey,
     StagedFile, StorageCursor, StorageInfo, StoreHistory, StoredIdentity, StoredObject, StoredRecord, StoredRow, StreamInput, StreamWrite,
 };
-pub use json::{JsonStorage, JsonStorageSettings};
 pub use manager::{ErasedCatalog, StorageManager, StorageMetrics, WorkerOwner, encoded_size};
 pub use objects::ObjectGroup;
 pub use opened_capture::OpenedCapture;

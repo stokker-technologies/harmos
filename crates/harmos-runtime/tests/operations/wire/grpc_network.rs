@@ -44,24 +44,17 @@ use super::*;
 
 #[tokio::test]
 async fn filesystem_hash_roundtrip() {
-    use harmos_runtime::storage::{ByteRange, FileHash, FileSource, JsonStorage, JsonStorageSettings, StorageManager};
+    use harmos_runtime::storage::{ByteRange, FileHash, FileSource, StorageManager};
     use sha2::{Digest, Sha256};
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("input.bin");
     let bytes = b"host filesystem across grpc";
     std::fs::write(&path, bytes).unwrap();
     let settings = crate::storage::fixture::config();
-    let primary = JsonStorage::new(
-        JsonStorageSettings {
-            root: directory.path().join("storage"),
-            max_entry_bytes: settings.request.max_pending_write_bytes,
-        },
-        crate::storage::fixture::history(),
-    );
-    let backends = primary.into_backends(harmos_runtime::storage::state::StorageStateSettings {
-        max_entry_bytes: settings.request.max_pending_write_bytes,
-        max_checkpoint_bytes: settings.request.max_pending_write_bytes,
-    });
+    let backends = harmos_runtime::storage::StorageBackends {
+        primary: Arc::new(crate::storage::fixture::Data::new(crate::storage::fixture::history())),
+        state: Arc::new(crate::storage::fixture::Recovery::new(crate::storage::fixture::history())),
+    };
     let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
         setup.settings().storage(&storage);

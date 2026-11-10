@@ -279,28 +279,16 @@ async fn filtered_storage_unchanged() {
 
 #[tokio::test]
 async fn filtered_backend_preserves_caller_outcome() {
-    use harmos_storage::{JsonStorage, JsonStorageSettings, StorageBackend};
-
     let capture = Capture::default();
     let subscriber = Registry::default().with(capture.clone()).with(tracing_subscriber::filter::LevelFilter::INFO);
     let dispatch = tracing::Dispatch::new(subscriber);
     async {
         let root = tempfile::tempdir().unwrap();
-        let json = JsonStorage::new(
-            JsonStorageSettings {
-                root: root.path().join("json"),
-                max_entry_bytes: NonZeroUsize::new(4096).unwrap(),
-            },
-            super::history(),
-        );
         let state =
             harmos_storage::state::file::FileBackend::new(root.path().join("state"), super::history(), super::fixture::state_settings());
         let caller = tracing::info_span!("backend_caller", outcome = "pending");
         async {
-            assert!(json.cursor_saved().await.is_err());
-            let opened = json.open().await.unwrap();
-            assert_eq!(json.cursor_saved().await.unwrap(), opened);
-            json.close().await.unwrap();
+            assert!(state.flush(&harmos_storage::RecoveryPosition { history: super::history(), sequence: 0 }).await.is_err());
             let opened = state.open().await.unwrap();
             assert_eq!(state.flush(&opened).await.unwrap(), opened);
             state.close().await.unwrap();
@@ -1071,7 +1059,6 @@ async fn filesystem_trace_lifetimes() {
     use harmos_domain::model::storage::files::{ByteRange, FileSource};
     use harmos_domain::model::storage::{DirectoryRule, DirectorySelection};
     use harmos_storage::FileRead;
-    use harmos_storage::{JsonStorage, JsonStorageSettings, StorageBackend};
     use std::future::Future;
     use std::task::Poll;
 
@@ -1128,17 +1115,12 @@ async fn filesystem_trace_lifetimes() {
         .unwrap();
     assert_eq!(digest.bytes_read, 15);
     let backend_root = tempfile::tempdir().unwrap();
-    let backend = JsonStorage::new(
-        JsonStorageSettings {
-            root: backend_root.path().to_owned(),
-            max_entry_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
-        },
-        super::history(),
-    );
+    let backend =
+        harmos_storage::state::file::FileBackend::new(backend_root.path().to_owned(), super::history(), super::fixture::state_settings());
     async {
-        assert!(backend.cursor_saved().await.is_err());
+        assert!(backend.flush(&harmos_storage::RecoveryPosition { history: super::history(), sequence: 0 }).await.is_err());
         backend.open().await.unwrap();
-        backend.cursor_saved().await.unwrap();
+        backend.flush(&harmos_storage::RecoveryPosition { history: super::history(), sequence: 0 }).await.unwrap();
         backend.close().await.unwrap();
     }
     .instrument(request.clone())
@@ -1170,13 +1152,13 @@ async fn filesystem_trace_lifetimes() {
         "storage.directory.watch.page",
         "storage.directory.subscription",
         "storage.backend.blocking",
-        "storage.json.backend",
+        "storage.state.file.mod.call",
     ] {
         assert!(captured.spans.values().any(|span| span.name == name && span.parent.is_some()), "missing {name}");
     }
     assert!(captured.spans.values().all(|span| span.closed.is_some()), "retained spans: {captured:#?}");
     assert!(captured.spans.values().any(|span| span.name == "storage.directory.watch.page" && span.fields["outcome"] == "\"cancelled\""));
-    assert!(captured.spans.values().any(|span| span.name == "storage.json.backend" && span.fields["outcome"] == "\"failed\""));
+    assert!(captured.spans.values().any(|span| span.name == "storage.state.backend" && span.fields["outcome"] == "\"failed\""));
     assert!(captured.spans.values().any(|span| span.name == "storage.backend.blocking" && span.fields["outcome"] == "\"completed\""));
     assert!(captured.spans.values().any(|span| span.name == "storage.backend.blocking" && span.fields["outcome"] == "\"failed\""));
     assert!(captured.spans.values().all(|span| !span.fields.contains_key("payload") && !span.fields.contains_key("path")));

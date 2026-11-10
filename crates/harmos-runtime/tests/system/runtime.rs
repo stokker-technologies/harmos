@@ -24,13 +24,13 @@ use arrow_array::{Array, Int64Array, StringArray, StructArray};
 use super::fixture::{
     Bank, Identifier, Ledger, Runtime, SchemaKey, StorageManager, catalog, config, history, record, schema, state_settings,
 };
+use super::fixture::{Data, StorageBackends};
 use super::operations::Lanes;
 use harmos_runtime::Message;
 use harmos_runtime::config::SchemaSettings;
 use harmos_runtime::schema::{Described, graph::Schema as Graph};
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
-use harmos_runtime::storage::{JsonStorage, JsonStorageSettings};
-use std::num::NonZeroUsize;
+use std::sync::Arc;
 
 /* === Constants === */
 
@@ -104,12 +104,11 @@ async fn runtime_baseline_walks() {
     let _report = crate::report::system();
     // Boot the Host over a Journal on Disk
     let root = tempfile::tempdir().unwrap();
-    let settings = JsonStorageSettings {
-        root: root.path().to_path_buf(),
-        max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+    let data = Arc::new(Data::new(history()));
+    let backends = StorageBackends {
+        primary: data.clone(),
+        state: Arc::new(harmos_runtime::storage::state::file::FileBackend::new(root.path().join("state"), history(), state_settings())),
     };
-    let data = JsonStorage::new(settings.clone(), history());
-    let backends = data.into_backends(state_settings());
     let storage: StorageManager = StorageManager::new(backends, config()).unwrap();
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
@@ -149,8 +148,11 @@ async fn runtime_baseline_walks() {
     assert!(!storage.status().running);
     assert!(storage.status().closed);
 
-    // Reopening The Shipped Backends Proves Shutdown Released Their Ownership.
-    let backends = JsonStorage::new(settings, history()).into_backends(state_settings());
+    // Reopening The Backends Proves Shutdown Released Their Ownership.
+    let backends = StorageBackends {
+        primary: data,
+        state: Arc::new(harmos_runtime::storage::state::file::FileBackend::new(root.path().join("state"), history(), state_settings())),
+    };
     let reopened: StorageManager = StorageManager::new(backends, config()).unwrap();
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());

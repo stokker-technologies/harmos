@@ -104,18 +104,14 @@ async fn dropped_write_retained() {
 
 #[tokio::test]
 async fn cancelled_query_releases() {
-    let directory = tempfile::tempdir().unwrap();
     let mut settings = storage_settings();
     settings.request.max_active_queries = NonZeroUsize::MIN;
     settings.request.max_pending_write_batches = NonZeroUsize::MIN;
-    let data = JsonStorage::new(
-        JsonStorageSettings {
-            root: directory.path().to_path_buf(),
-            max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
-        },
-        history(),
-    );
-    let backends = data.into_backends(super::fixture::state_settings());
+    let data = std::sync::Arc::new(super::backend::Data::new(history()));
+    let backends = StorageBackends {
+        primary: data,
+        state: std::sync::Arc::new(Recovery::new(history())),
+    };
     let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
     super::fixture::start(&storage).await;
     let accepted = storage.cursor_accepted();

@@ -7,7 +7,7 @@
  * ***
  */
 
-// Exercise Resumable Native Files And Durable Mutation Replay In JSON Storage.
+// Exercise Resumable Native Files And Durable Mutation Replay With The Storage Fixture.
 
 /* === Modules === */
 
@@ -16,13 +16,14 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{num::NonZeroUsize, path::Path, sync::Arc};
+use std::{num::NonZeroUsize, sync::Arc};
 
 // Third Party Imports
 use sha2::{Digest, Sha256};
 use tokio::{sync::Mutex, task::JoinHandle};
 
 // Local Imports
+use super::manager::backend::{Data, Recovery, history};
 use harmos_domain::model::storage::files::{CaptureConsistency, FileEvent, FileSource, FollowStart};
 use harmos_storage::*;
 
@@ -47,7 +48,7 @@ impl WorkerOwner for Task {
         Box::pin(async move {
             if let Some(task) = self.0.lock().await.take() {
                 task.await.map_err(|source| Error::OperationFailed {
-                    operation: "join JSON session worker".into(),
+                    operation: "join file session worker".into(),
                     source: Arc::new(source),
                 })??;
             }
@@ -60,8 +61,7 @@ impl WorkerOwner for Task {
 
 /* === Private Functions === */
 
-async fn storage(root: &Path) -> StorageManager {
-    let memory = NonZeroUsize::new(2 * 1024 * 1024).unwrap();
+async fn storage(primary: &Arc<Data>) -> StorageManager {
     let pending = NonZeroUsize::new(1024 * 1024).unwrap();
     let batch = NonZeroUsize::new(4096).unwrap();
     let settings = StorageSettings {
@@ -84,21 +84,10 @@ async fn storage(root: &Path) -> StorageManager {
         },
     };
 
-    let history = StoreHistory {
-        store: Identifier::new("json-sessions").unwrap(),
-        epoch: Identifier::new("first").unwrap(),
+    let backends = StorageBackends {
+        primary: primary.clone(),
+        state: Arc::new(Recovery::new(history())),
     };
-    let primary = JsonStorage::new(
-        JsonStorageSettings {
-            root: root.to_owned(),
-            max_entry_bytes: pending,
-        },
-        history,
-    );
-    let backends = primary.into_backends(state::StorageStateSettings {
-        max_entry_bytes: pending,
-        max_checkpoint_bytes: memory,
-    });
     let storage = StorageManager::new(backends, settings).unwrap();
     storage
         .start_with(Arc::new(()), |mut worker| {
@@ -144,11 +133,12 @@ async fn contents(storage: &StorageManager, source: FileSource, range: ByteRange
 
 #[tokio::test]
 async fn local_file_transfer() {
+    let data = Arc::new(Data::new(history()));
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("outside-backend.bin");
     let expected: Vec<_> = (0..20_000).map(|value| (value % 251) as u8).collect();
     std::fs::write(&path, &expected).unwrap();
-    let storage = storage(&directory.path().join("backend")).await;
+    let storage = storage(&data).await;
     let source = FileSource::Local(path.clone());
     let whole = ByteRange { offset: 0, limit: None };
     let mut reader = storage.read_file(FileRead { source: source.clone(), range: whole }).await.unwrap();
@@ -203,11 +193,12 @@ async fn local_file_transfer() {
 
 #[tokio::test]
 async fn capture_rejects_mutation() {
+    let data = Arc::new(Data::new(history()));
     use std::future::{Future, poll_fn};
     use std::task::Poll;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("mutable.bin");
-    let storage = storage(&directory.path().join("backend")).await;
+    let storage = storage(&data).await;
     for (index, consistency, replacement) in [(0, CaptureConsistency::Stable, vec![9; 8193]), (1, CaptureConsistency::Bounded, vec![9; 1])]
     {
         std::fs::write(&path, vec![7; 8192]).unwrap();
@@ -235,11 +226,12 @@ async fn capture_rejects_mutation() {
 
 #[tokio::test]
 async fn local_follow_changes() {
+    let data = Arc::new(Data::new(history()));
     use std::io::Write;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("growing.bin");
     std::fs::write(&path, b"first").unwrap();
-    let storage = storage(&directory.path().join("backend")).await;
+    let storage = storage(&data).await;
     let source = FileSource::Local(path.clone());
     let mut follower = storage
         .follow_file(FileFollow {
@@ -276,12 +268,13 @@ async fn local_follow_changes() {
 #[cfg(unix)]
 #[tokio::test]
 async fn native_path_rules() {
+    let data = Arc::new(Data::new(history()));
     use std::os::unix::{ffi::OsStringExt, fs::symlink};
     let directory = tempfile::tempdir().unwrap();
     let name = std::ffi::OsString::from_vec(vec![b'n', 0xff]);
     let path = directory.path().join(name);
     std::fs::write(&path, b"native bytes").unwrap();
-    let storage = storage(&directory.path().join("backend")).await;
+    let storage = storage(&data).await;
     let request = FileRead {
         source: FileSource::Local(path.clone()),
         range: ByteRange { offset: 0, limit: None },
@@ -314,93 +307,8 @@ async fn native_path_rules() {
 }
 
 #[tokio::test]
-async fn checkpoint_prefixes_extend() {
-    use sha2::digest::common::hazmat::SerializableState;
-    let directory = tempfile::tempdir().unwrap();
-    let root = directory.path().join("backend");
-    let history = StoreHistory {
-        store: Identifier::new("json-sessions").unwrap(),
-        epoch: Identifier::new("first").unwrap(),
-    };
-    let backend = JsonStorage::new(
-        JsonStorageSettings {
-            root: root.clone(),
-            max_entry_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
-        },
-        history.clone(),
-    );
-    backend.open().await.unwrap();
-    let metadata = metadata("incremental");
-    let file = backend.create_production(&metadata).await.unwrap();
-    let session = FileSession {
-        history: file.history.clone(),
-        id: file.id.clone(),
-        generation: 1,
-    };
-    let checkpoint = |bytes: &[u8]| {
-        let mut hash = Sha256::new();
-        hash.update(bytes);
-        FileCheckpoint {
-            metadata: metadata.clone(),
-            session: session.clone(),
-            length: bytes.len() as u64,
-            hash_format: 1,
-            hash_state: hash.serialize().to_vec(),
-        }
-    };
-    let save = |value| StorageBatch::new(vec![value]);
-
-    let first: Vec<_> = (0..80).map(|n| n as u8).collect();
-    backend.write_file(&file, 0, FileChunk::new(first.clone())).await.unwrap();
-    let first_checkpoint = checkpoint(&first);
-    backend.save_production(save(first_checkpoint.clone())).await.unwrap();
-    backend.save_production(save(first_checkpoint.clone())).await.unwrap();
-
-    let suffix: Vec<_> = (0..130).map(|n| (n * 3) as u8).collect();
-    backend.write_file(&file, first.len() as u64, FileChunk::new(suffix.clone())).await.unwrap();
-    let mut second = first.clone();
-    second.extend_from_slice(&suffix);
-    let mut wrong = second.clone();
-    *wrong.last_mut().unwrap() ^= 1;
-    assert!(backend.save_production(save(checkpoint(&wrong))).await.is_err());
-    let second_checkpoint = checkpoint(&second);
-    backend.save_production(save(second_checkpoint.clone())).await.unwrap();
-    assert!(backend.save_production(save(first_checkpoint)).await.is_err());
-    backend.close().await.unwrap();
-    drop(backend);
-    let backend = JsonStorage::new(
-        JsonStorageSettings {
-            root: root.clone(),
-            max_entry_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
-        },
-        history,
-    );
-    backend.open().await.unwrap();
-    backend.save_production(save(second_checkpoint.clone())).await.unwrap();
-
-    let suffix: Vec<_> = (0..301).map(|n| (n * 7) as u8).collect();
-    backend.write_file(&file, second.len() as u64, FileChunk::new(suffix.clone())).await.unwrap();
-    let mut complete = second;
-    complete.extend_from_slice(&suffix);
-    let final_checkpoint = checkpoint(&complete);
-    backend.save_production(save(final_checkpoint.clone())).await.unwrap();
-    backend.save_production(save(final_checkpoint)).await.unwrap();
-    assert!(backend.save_production(save(second_checkpoint)).await.is_err());
-    backend.close().await.unwrap();
-    drop(backend);
-
-    let recovered = storage(&root).await;
-    assert_eq!(recovered.file_progress(&file).await.unwrap().length, complete.len() as u64);
-    let mut reader = recovered.follow_production(&file, 0).await.unwrap();
-    let batch = reader.next_batch(NonZeroUsize::new(4096).unwrap()).await.unwrap().unwrap();
-    assert_eq!(batch.bytes(), complete);
-    drop((reader, batch));
-    recovered.close().await.unwrap();
-}
-
-#[tokio::test]
 async fn sessions_survive_reopen() {
-    let directory = tempfile::tempdir().unwrap();
+    let data = Arc::new(Data::new(history()));
     let expected: &[u8] = b"prefix and suffix";
     let prefix: &[u8] = b"prefix";
     let suffix: &[u8] = b" and suffix";
@@ -414,7 +322,7 @@ async fn sessions_survive_reopen() {
     };
 
     // Persist A Public Prefix And Its Original Mutation Outcomes.
-    let first = storage(directory.path()).await;
+    let first = storage(&data).await;
     let create = mutation(&first, "create");
     let append = mutation(&first, "prefix");
     let created = first.create_file_once(&create, &metadata).await.unwrap();
@@ -427,7 +335,7 @@ async fn sessions_survive_reopen() {
     first.close().await.unwrap();
 
     // Exact Retries Replay Persisted Outcomes; Resume Fences The Old Session.
-    let second = storage(directory.path()).await;
+    let second = storage(&data).await;
     assert_eq!(second.create_file_once(&create, &metadata).await.unwrap(), created);
     assert_eq!(second.append_file_once(&append, &created.session, 0, prefix.to_vec()).await.unwrap(), written);
     assert!(second.append_file_once(&append, &created.session, 0, b"changed".to_vec()).await.is_err());
@@ -456,7 +364,7 @@ async fn sessions_survive_reopen() {
     second.close().await.unwrap();
 
     // Reopen The Finished Publication And Verify Every Stored Byte.
-    let third = storage(directory.path()).await;
+    let third = storage(&data).await;
     assert_eq!(
         third.file_progress(&file).await.unwrap(),
         FileProgress {
@@ -491,7 +399,7 @@ async fn sessions_survive_reopen() {
     third.close().await.unwrap();
 
     // Deletion And Earlier Terminal Replies Keep Their Original Identities.
-    let fourth = storage(directory.path()).await;
+    let fourth = storage(&data).await;
     assert_eq!(fourth.delete_file_once(&deletion, &file).await.unwrap(), file);
     assert_eq!(fourth.finish_file_once(&finish, &resumed.session).await.unwrap(), reference);
     assert!(fourth.file_progress(&file).await.is_err());
@@ -500,8 +408,8 @@ async fn sessions_survive_reopen() {
 
 #[tokio::test]
 async fn immutable_reader_survives_deletion_and_stops_after_snapshot_release() {
-    let root = tempfile::tempdir().unwrap();
-    let storage = storage(root.path()).await;
+    let data = Arc::new(Data::new(history()));
+    let storage = storage(&data).await;
     let bytes = (0..20_000).map(|i| (i % 251) as u8).collect::<Vec<_>>();
     let mut producer = storage.create_file(metadata("leased-reader")).await.unwrap();
     producer.write_all(bytes.clone()).await.unwrap();

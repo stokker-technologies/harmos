@@ -16,7 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::num::{NonZeroU32, NonZeroUsize};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 // Third Party Imports
@@ -274,20 +274,15 @@ async fn label_only_reload_preserves_revision() {
 
 #[tokio::test]
 async fn restart_on_one_root_reads_each_revision_with_its_own_schema() {
-    let root = tempfile::tempdir().unwrap();
+    let data = Arc::new(crate::storage::fixture::Data::new(crate::storage::fixture::history()));
     let mut keys = Vec::new();
     for text in [false, true] {
         let (runtime, mut manager, mut host) = setup(text).await;
-        let backend = harmos_storage::JsonStorage::new(
-            harmos_storage::JsonStorageSettings {
-                root: root.path().to_owned(),
-                max_entry_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
-            },
-            crate::storage::fixture::history(),
-        );
-        let storage =
-            StorageManager::new(backend.into_backends(crate::storage::fixture::state_settings()), crate::storage::fixture::config())
-                .unwrap();
+        let backends = harmos_storage::StorageBackends {
+            primary: data.clone(),
+            state: Arc::new(crate::storage::fixture::Recovery::new(crate::storage::fixture::history())),
+        };
+        let storage = StorageManager::new(backends, crate::storage::fixture::config()).unwrap();
         storage.start(&runtime).await.unwrap();
         let mut feed = host.streams.follow(Cursor::ORIGIN);
         manager.initialize(&mut host).await.unwrap();

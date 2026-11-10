@@ -277,8 +277,8 @@ path = "benches/operations/main.rs"
 harness = false
 
 [[bench]]
-name = "integration-storage"
-path = "benches/storage/main.rs"
+name = "unit-storage-transforms"
+path = "benches/storage/transforms.rs"
 harness = false
 
 [[bench]]

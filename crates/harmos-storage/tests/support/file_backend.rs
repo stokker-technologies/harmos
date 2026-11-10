@@ -470,9 +470,9 @@ impl<C: ObjectCatalog> Data<C> {
                 self.control.read_entered.notify_one();
                 self.control.read_release.notified().await;
             }
-            self.image(snapshot)?;
+            let image = self.image(snapshot)?;
             let mut result = {
-                let blobs = self.blobs.lock().unwrap();
+                let blobs = &image.blobs;
                 let (actual, bytes) = blobs.get(file.metadata.id.as_str()).ok_or_else(|| failure(BackendFailure::Permanent))?;
                 if actual != file {
                     return Err(failure(BackendFailure::Conflict));

@@ -24,7 +24,6 @@ use harmos_storage::*;
 
 // Local Imports
 use super::backend::{history, storage_settings};
-use super::fixture::state_settings;
 use super::waveforms;
 
 /* === Constants === */
@@ -49,20 +48,13 @@ use super::waveforms;
 
 #[tokio::test]
 async fn oversized_batch_refused() {
-    let directory = tempfile::tempdir().unwrap();
     let mut settings = storage_settings();
     settings.request.max_pending_write_bytes = NonZeroUsize::new(8192).unwrap();
-    let data = Arc::new(JsonStorage::new(
-        JsonStorageSettings {
-            root: directory.path().to_path_buf(),
-            max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
-        },
-        history(),
-    ));
+    let data = Arc::new(super::backend::Data::new(history()));
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
-            state: Arc::new(harmos_storage::state::file::FileBackend::new(directory.path().join("state"), history(), state_settings())),
+            state: Arc::new(super::backend::Recovery::new(history())),
         },
         settings,
     )

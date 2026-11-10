@@ -64,6 +64,8 @@ impl<C: ObjectCatalog> Data<C> {
                 });
             }
             let snapshot = Snapshot {
+                pruned_objects: self.pruned_objects.lock().unwrap().clone(),
+                blobs: self.blobs.lock().unwrap().clone(),
                 lost_objects_through,
                 objects: self.objects.lock().unwrap().clone(),
                 files: self.files.lock().unwrap().clone(),
@@ -115,8 +117,14 @@ impl<C: ObjectCatalog> Data<C> {
         Box::pin(async move {
             self.control.gate_read().await;
             let image = self.image(snapshot)?;
-            // Complete Revision History Cannot Begin Before Pruned Revisions.
-            if selection.versions == ObjectVersions::Revisions && page.after < image.lost_objects_through {
+            // Only Pruning Within The Selected History Creates A Gap.
+            let pruned = image.pruned_objects.iter().any(|(position, (schema, item))| {
+                *position > page.after
+                    && *position <= snapshot.at.sequence
+                    && selection.schema.as_ref().is_none_or(|selected| selected == schema)
+                    && selection.key.as_ref().is_none_or(|selected| selected == item)
+            });
+            if selection.versions == ObjectVersions::Revisions && pruned {
                 return Err(Error::Gap {
                     requested: page.after + 1,
                     available: image.lost_objects_through + 1,

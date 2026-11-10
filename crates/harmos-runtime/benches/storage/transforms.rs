@@ -8,9 +8,15 @@
  */
 /* === Modules === */
 
+#[allow(dead_code, reason = "Only the waveform generator is used by the transform kernels.")]
+#[path = "../../../harmos-storage/tests/support/waveforms.rs"]
+mod waveforms;
+
 /* === Re-Exports === */
 
 /* === Imports === */
+
+extern crate harmos_runtime as harmos;
 
 // Standard Library Imports
 use std::sync::Arc;
@@ -29,11 +35,13 @@ use harmos_runtime::storage::query::transform::{
 };
 
 // Local Imports
-use super::waveforms;
 
 /* === Constants === */
 
 /* === Macros === */
+
+criterion::criterion_group!(benches, benchmarks);
+criterion::criterion_main!(benches);
 
 /* === Type Aliases === */
 
@@ -47,7 +55,9 @@ use super::waveforms;
 
 /* === Public Functions === */
 
-pub fn run(criterion: &mut Criterion, _: &tokio::runtime::Runtime) {
+/* === Private Functions === */
+
+fn benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("storage/transforms");
     group.sample_size(10);
     group.sampling_mode(criterion::SamplingMode::Flat);
@@ -110,13 +120,11 @@ pub fn run(criterion: &mut Criterion, _: &tokio::runtime::Runtime) {
             }
             group.bench_function(BenchmarkId::new(name, samples.len()), |bencher| {
                 bencher.iter_custom(|iterations| {
-                    let probe = super::metrics::Probe::start_process();
                     let started = std::time::Instant::now();
                     for _ in 0..iterations {
                         std::hint::black_box(transform.apply(std::hint::black_box(&input), &mut || Ok(())).unwrap());
                     }
                     let elapsed = started.elapsed();
-                    probe.finish().report(&format!("transforms/{name}/kernel"), samples.len(), 1, None);
                     elapsed
                 })
             });
@@ -124,6 +132,4 @@ pub fn run(criterion: &mut Criterion, _: &tokio::runtime::Runtime) {
     }
     group.finish();
 }
-/* === Private Functions === */
-
 /* === Tests === */

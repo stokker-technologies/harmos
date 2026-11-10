@@ -7,7 +7,7 @@
  * ***
  */
 
-// Journaled Stream and File Read Stories over Balanced Three-Phase Samples
+// Fixture Stream and File Read Stories over Balanced Three-Phase Samples
 
 /* === Modules === */
 
@@ -16,7 +16,6 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::num::NonZeroUsize;
 use std::time::{Duration, UNIX_EPOCH};
 // Third Party Imports
 use harmos_storage::Identifier;
@@ -32,7 +31,6 @@ use harmos_storage::*;
 use harmos_storage::{FileRead, Query};
 // Local Imports
 use super::backend::{history, storage_settings};
-use super::fixture::state_settings;
 use super::waveforms::{self, Sample};
 
 /* === Constants === */
@@ -43,13 +41,12 @@ use super::waveforms::{self, Sample};
 
 /* === Structs === */
 
-// Journaled Storage Holding Durable Three-Phase Stream Samples.
+// Fixture Storage Holding Durable Three-Phase Stream Samples.
 struct Nominal {
     storage: StorageManager,
     schema: SchemaKey,
     samples: Vec<Sample>,
     durable: StorageCursor,
-    _directory: tempfile::TempDir,
 }
 
 /* === Enums === */
@@ -60,16 +57,16 @@ struct Nominal {
 
 impl Nominal {
     async fn new() -> Self {
-        // Configure And Start A Real Temporary Journal.
-        let directory = tempfile::tempdir().unwrap();
-        let data = JsonStorage::new(
-            JsonStorageSettings {
-                root: directory.path().to_path_buf(),
-                max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+        // Configure And Start A Storage Fixture.
+        let data = std::sync::Arc::new(super::backend::Data::new(history()));
+        let storage: StorageManager = StorageManager::new(
+            StorageBackends {
+                primary: data,
+                state: std::sync::Arc::new(super::backend::Recovery::new(history())),
             },
-            history(),
-        );
-        let storage: StorageManager = StorageManager::new(data.into_backends(state_settings()), storage_settings()).unwrap();
+            storage_settings(),
+        )
+        .unwrap();
         super::fixture::start(&storage).await;
 
         // Store The Schema And Balanced Three-Phase Samples In Several Batches.
@@ -82,13 +79,7 @@ impl Nominal {
             storage.write_stream((batch).to_vec()).await.unwrap();
         }
         let durable = storage.flush().await.unwrap();
-        Self {
-            _directory: directory,
-            storage,
-            schema,
-            samples,
-            durable,
-        }
+        Self { storage, schema, samples, durable }
     }
 
     fn query(&self, selection: StreamSelection, transforms: Vec<Transform>) -> Query {

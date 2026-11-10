@@ -156,6 +156,8 @@ pub struct Control {
 
 #[derive(Clone)]
 struct Snapshot {
+    pruned_objects: BTreeMap<u64, (SchemaKey, ObjectKey)>,
+    blobs: BTreeMap<String, (FileReference, Vec<u8>)>,
     lost_objects_through: u64,
     objects: BTreeMap<u64, ObjectEntry>,
     files: BTreeMap<u64, FileReference>,
@@ -172,6 +174,7 @@ pub struct Release {
 }
 
 pub struct Data<C = ()> {
+    pruned_objects: Mutex<BTreeMap<u64, (SchemaKey, ObjectKey)>>,
     pub object_releases: Mutex<Vec<Release>>,
     catalog: PhantomData<fn() -> C>,
     pub objects: Mutex<BTreeMap<u64, ObjectEntry>>,
@@ -275,6 +278,7 @@ impl Data {
 impl<C: ObjectCatalog> Data<C> {
     pub fn with_catalog(history: StoreHistory) -> Self {
         Self {
+            pruned_objects: Mutex::default(),
             object_releases: Mutex::new(Vec::new()),
             catalog: PhantomData,
             objects: Mutex::default(),
@@ -433,7 +437,8 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                     }
                 }
                 for position in &remove {
-                    objects.remove(position);
+                    let object = objects.remove(position).unwrap();
+                    self.pruned_objects.lock().unwrap().insert(*position, (object.value.schema, object.value.item));
                 }
                 // Images Before This Cut May Have Needed A Reclaimed Revision.
                 if !remove.is_empty() {

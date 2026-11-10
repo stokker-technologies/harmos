@@ -20,17 +20,14 @@
 use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 // Third Party Imports
 
 // Local Imports
 use harmos_runtime::Runtime;
-use harmos_runtime::storage::*;
 use schematic_domain::model::Snapshot;
 use schematic_operations::schematic::{propose, validate};
-use sha2::{Digest, Sha256};
 
 /* === Constants === */
 
@@ -40,15 +37,11 @@ use sha2::{Digest, Sha256};
 
 /* === Structs === */
 
-pub struct Model {
-    storage: Option<StorageManager>,
-}
+pub struct Model;
 
 pub struct Fixture {
     pub runtime: Runtime<Model>,
     pub startup_elapsed: Duration,
-    storage: StorageManager,
-    _storage_root: tempfile::TempDir,
 }
 
 /* === Enums === */
@@ -69,21 +62,7 @@ impl harmos_runtime::Lifecycle for Model {
     type Context = harmos_runtime::Startup<Self>;
 
     async fn prepare(_: (), _setup: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
-        Ok(Self { storage: None })
-    }
-    async fn initialize(&mut self, context: &Self::Context) -> std::result::Result<(), Self::Error> {
-        self.storage = Some(context.resource::<StorageManager>().map_err(std::io::Error::other)?.as_ref().clone());
-        Ok(())
-    }
-    async fn stop(&mut self, _: &Self::Context) -> std::result::Result<(), Self::Error> {
-        if let Some(storage) = &self.storage {
-            storage.close().await.map_err(std::io::Error::other)?;
-        }
-        Ok(())
-    }
-    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
-        self.storage.take();
-        Ok(())
+        Ok(Self)
     }
 }
 
@@ -99,7 +78,7 @@ impl Fixture {
     #[cfg(feature = "plugin-sidecar")]
     #[allow(dead_code, reason = "Each Carrier Benchmark Selects Its Matching Constructor")]
     pub async fn sidecar() -> Self {
-        let (runtime, storage, root, host_elapsed) = runtime().await;
+        let (runtime, host_elapsed) = runtime().await;
         let started = Instant::now();
         let executable = harmos_runtime::sidecar::Executable::at(artifact("schematic-sidecar")).unwrap();
         let mut plugin = plugin_settings();
@@ -109,8 +88,6 @@ impl Fixture {
         runtime.plugin.initialize().await.unwrap();
         Self {
             runtime,
-            storage,
-            _storage_root: root,
             startup_elapsed: host_elapsed + started.elapsed(),
         }
     }
@@ -118,7 +95,7 @@ impl Fixture {
     #[cfg(feature = "plugin-guest")]
     #[allow(dead_code, reason = "Each Carrier Benchmark Selects Its Matching Constructor")]
     pub async fn guest() -> Self {
-        let (runtime, storage, root, host_elapsed) = runtime().await;
+        let (runtime, host_elapsed) = runtime().await;
         let started = Instant::now();
         let bytes = std::fs::read(artifact("schematic-guest")).unwrap();
         let settings = harmos_runtime::config::PluginGuestSettings {
@@ -137,8 +114,6 @@ impl Fixture {
         runtime.plugin.initialize().await.unwrap();
         Self {
             runtime,
-            storage,
-            _storage_root: root,
             startup_elapsed: host_elapsed + started.elapsed(),
         }
     }
@@ -157,26 +132,8 @@ impl Fixture {
         self.runtime.operation(request).await.unwrap()
     }
 
-    pub async fn verify_filesystem(&self) {
-        self.storage.start(&self.runtime).await.unwrap();
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("carrier-hash.bin");
-        let bytes = b"host filesystem through the carrier";
-        std::fs::write(&path, bytes).unwrap();
-        let request = schematic_operations::transfer::Hash {
-            request: harmos_operations::storage::HashFile {
-                source: FileSource::Local(path),
-                range: ByteRange { offset: 5, limit: Some(10) },
-            },
-        };
-        let answer = self.runtime.operation(request).await.unwrap();
-        assert_eq!(answer.read_bytes, 10);
-        assert_eq!(answer.sha256, <[u8; 32]>::from(Sha256::digest(&bytes[5..15])));
-    }
-
     pub async fn finish(self) {
         self.runtime.shutdown().await.unwrap();
-        assert!(!self.storage.status().running);
     }
 }
 
@@ -216,67 +173,27 @@ pub fn artifact(name: &str) -> PathBuf {
 
 /* === Private Functions === */
 
-async fn runtime() -> (Runtime<Model>, StorageManager, tempfile::TempDir, Duration) {
+async fn runtime() -> (Runtime<Model>, Duration) {
     let started = Instant::now();
-    let root = tempfile::tempdir().unwrap();
-    let settings = StorageSettings {
-        filesystem: StorageFilesystemSettings {
-            poll_interval: Duration::from_millis(100),
-            max_entries: nz(100_000),
-            event_capacity: nz(1024),
-        },
-
-        request: StorageRequestSettings {
-            max_pending_queries: nz(64),
-            max_active_queries: nz(4),
-            max_pending_write_batches: nz(256),
-            max_active_file_operations: nz(4),
-            max_pending_write_bytes: nz(64 * 1024 * 1024),
-        },
-        response: StorageResponseSettings {
-            batch_rows: nz(1024),
-            batch_bytes: nz(1024 * 1024),
-        },
-    };
-    let history = StoreHistory {
-        store: harmos_runtime::Identifier::new("carrier-benchmark").unwrap(),
-        epoch: harmos_runtime::Identifier::new("first").unwrap(),
-    };
-    let primary = JsonStorage::new(
-        JsonStorageSettings {
-            root: root.path().to_owned(),
-            max_entry_bytes: nz(16 * 1024 * 1024),
-        },
-        history,
-    );
-    let backends = primary.into_backends(state::StorageStateSettings {
-        max_entry_bytes: nz(16 * 1024 * 1024),
-        max_checkpoint_bytes: nz(16 * 1024 * 1024),
-    });
-    let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
-    let storage_resource = Arc::new(storage.clone());
     let preparation_bytes = nz(64 * 1024 * 1024);
     let runtime = Runtime::<Model>::launch_with((), (), |setup| {
-        setup.resource::<StorageManager>(storage_resource);
-        setup.settings().storage(&storage);
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             queued: nz(64),
             lifecycle_queued: nz(16),
             preparation_bytes: Some(preparation_bytes),
         });
-        setup.operations::<harmos_operations::storage::Storage>(Lanes::Open);
     })
     .await
     .unwrap();
     let host_elapsed = started.elapsed();
-    (runtime, storage, root, host_elapsed)
+    (runtime, host_elapsed)
 }
 
 fn plugin_settings() -> harmos_runtime::config::PluginSettings {
     harmos_runtime::config::PluginSettings {
         configuration: b"null".to_vec(),
         requires: Vec::new(),
-        host_operations: vec![harmos_runtime::Identifier::new("storage.hash_file").unwrap()],
+        host_operations: Vec::new(),
         initialization_timeout: Duration::from_secs(30),
         shutdown_timeout: Duration::from_secs(30),
         encoding_memory_bytes: nz(4 * 1024 * 1024),

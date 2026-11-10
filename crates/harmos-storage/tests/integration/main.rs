@@ -12,8 +12,7 @@
 mod cached_and_disk_coordinates_preserve_timestamps_and_bucket_selection;
 mod directory;
 mod exact_quantile_spill;
-mod json;
-mod json_sessions;
+mod file_sessions;
 mod manager;
 mod query;
 mod state;
