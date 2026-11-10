@@ -79,6 +79,34 @@ async fn host_refuses_tampered_catalogs_before_activation() {
     let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
     assert!(matches!(result, Err(Error::Invalid(_))));
 
+    // Refuse An Invalid Cadence Without Leaving Operations Admitted
+    let mut catalog = support::catalog();
+    catalog.streams.push(v1::StreamDeclaration {
+        id: "fixture.ticks".into(),
+        row: "fixture.Value".into(),
+        interval: Some(prost_types::Duration { seconds: 0, nanos: 0 }),
+        ..Default::default()
+    });
+    catalog.digest = schema::catalog_digest(&catalog);
+    remote.catalog(catalog);
+    let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
+    assert!(matches!(result, Err(Error::Invalid(_))));
+    assert!(runtime.operations.definition("fixture.echo").is_err());
+
+    // Refuse An Unresolved Interval Setting
+    let mut catalog = support::catalog();
+    catalog.streams.push(v1::StreamDeclaration {
+        id: "fixture.ticks".into(),
+        row: "fixture.Value".into(),
+        interval_setting: "fixture.Settings.interval".into(),
+        ..Default::default()
+    });
+    catalog.digest = schema::catalog_digest(&catalog);
+    remote.catalog(catalog);
+    let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
+    assert!(matches!(result, Err(Error::Invalid(_))));
+    assert!(runtime.operations.definition("fixture.echo").is_err());
+
     // Admit The Repaired Endpoint And Cleanly Remove It
     let catalog = support::catalog();
     remote.catalog(catalog.clone());

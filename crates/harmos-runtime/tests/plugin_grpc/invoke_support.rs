@@ -56,13 +56,15 @@ pub struct Reply {
 #[derive(Default)]
 pub struct Signals {
     pub entered: Notify,
+    pub storage_hold: std::sync::atomic::AtomicBool,
+    pub storage_entered: Notify,
+    pub storage_release: Notify,
 }
 
 pub struct HostFixture {
     pub runtime: Runtime<support::App>,
     pub clock: support::Manual,
     pub signals: Arc<Signals>,
-    stored_changed: Arc<Notify>,
     pub stored: Arc<std::sync::Mutex<Vec<(harmos_runtime::streams::Definition, harmos_runtime::streams::PublicationRow)>>>,
     types: tempfile::TempDir,
     request: String,
@@ -71,19 +73,22 @@ pub struct HostFixture {
 
 struct Store(
     Arc<std::sync::Mutex<Vec<(harmos_runtime::streams::Definition, harmos_runtime::streams::PublicationRow)>>>,
-    Arc<Notify>,
     harmos_runtime::storage::Cursor,
+    Arc<Signals>,
 );
 
 impl harmos_runtime::storage::StreamConsumer<support::App> for Store {
     fn resume(&self) -> harmos_runtime::storage::Cursor {
-        self.2
+        self.1
     }
     async fn drain(&mut self, batch: harmos_runtime::storage::Batch<support::App>) -> harmos_runtime::storage::Cursor {
+        if self.2.storage_hold.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            self.2.storage_entered.notify_one();
+            self.2.storage_release.notified().await;
+        }
         self.0.lock().unwrap().extend(batch.publications().map(|(definition, _, row)| (definition.clone(), row.value.clone())));
-        self.2 = batch.reaches();
-        self.1.notify_waiters();
-        self.2
+        self.1 = batch.reaches();
+        self.1
     }
 }
 
@@ -139,12 +144,11 @@ impl HostFixture {
     pub async fn with_clock(source: Option<harmos_runtime::clock::Clock>) -> Self {
         let clock = support::Manual::new();
         let signals = Arc::new(Signals::default());
-        let stored_changed = Arc::new(Notify::new());
         let stored = Arc::new(std::sync::Mutex::new(Vec::new()));
         let runtime = crate::support::booted(Default::default(), |setup| {
             setup.settings().clock(source.unwrap_or_else(|| harmos_runtime::clock::Clock::with_clock(clock.clone())));
             setup.resource::<Signals>(signals.clone());
-            setup.settings().attach_streams(Store(stored.clone(), stored_changed.clone(), harmos_runtime::storage::Cursor::ORIGIN));
+            setup.settings().attach_streams(Store(stored.clone(), harmos_runtime::storage::Cursor::ORIGIN, signals.clone()));
         })
         .await;
         let registration = Registration::new(<crate::support::Lanes as harmos_runtime::operations::Lane>::default_lane())
@@ -167,20 +171,9 @@ impl HostFixture {
             clock,
             signals,
             stored,
-            stored_changed,
             types,
             request,
             response,
-        }
-    }
-
-    pub async fn wait_rows(&self, count: usize) {
-        loop {
-            let changed = self.stored_changed.notified();
-            if self.stored.lock().unwrap().len() >= count {
-                return;
-            }
-            changed.await;
         }
     }
 
@@ -267,6 +260,10 @@ impl Drop for Sdk {
 }
 
 /* === Public Functions === */
+
+pub async fn pending<F: std::future::Future>(mut future: std::pin::Pin<&mut F>) -> bool {
+    std::future::poll_fn(|cx| std::task::Poll::Ready(future.as_mut().poll(cx).is_pending())).await
+}
 
 pub fn payload(value: &[u8]) -> Vec<u8> {
     #[derive(prost::Message)]

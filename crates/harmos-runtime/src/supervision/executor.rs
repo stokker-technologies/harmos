@@ -140,7 +140,8 @@ pub(crate) fn now() -> tokio::time::Instant {
 }
 
 pub(crate) fn sleep(duration: Duration) -> crate::clock::Sleep {
-    crate::clock::current().sleep(duration)
+    let sleep = crate::clock::current().sleep(duration);
+    crate::clock::waiting_scope(sleep)
 }
 
 pub(crate) async fn timeout<F: Future>(duration: Duration, future: F) -> Result<F::Output, Elapsed> {

@@ -276,6 +276,7 @@ impl Table {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
         let mut windows = self.windows.write().expect("stream registry poisoned");
         self.retire(&mut windows);
+        self.ingest.drained(cursor);
     }
 
     pub(crate) fn delivery(&self) -> watch::Receiver<()> {

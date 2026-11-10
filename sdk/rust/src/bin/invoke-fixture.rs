@@ -70,6 +70,11 @@ struct Value {
     value: Vec<u8>,
 }
 
+#[derive(Message)]
+struct Settings {
+    interval: Option<prost_types::Duration>,
+}
+
 #[derive(Debug, Default)]
 struct HostInput {
     value: Vec<u8>,
@@ -186,8 +191,15 @@ fn main() -> Result<()> {
     HOST.set((types, request, response, request_tag, response_tag)).unwrap();
     let plugin = if mode == "interval" {
         let stream = harmos_sdk_grpc::Stream::<Value>::new("fixture.ticks");
-        let observer = harmos_sdk_grpc::Observer::new(&stream, observe).every_ms(1000);
-        Plugin::new("observer", "1.0.0").stream(stream).observer(observer).operation(Operation::new("fixture.echo", echo))
+        let observer =
+            harmos_sdk_grpc::Observer::new(&stream, observe).every_ms(60_000).interval_setting("harmos.plugin.v1.Settings.interval");
+        Plugin::new("observer", "1.0.0")
+            .section(Settings {
+                interval: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+            })
+            .stream(stream)
+            .observer(observer)
+            .operation(Operation::new("fixture.echo", echo))
     } else if mode == "device" {
         let stream = harmos_sdk_grpc::Stream::<Value>::new("fixture.device").publish_on(device);
         Plugin::new("device", "1.0.0").stream(stream).operation(Operation::new("fixture.echo", echo)).on_stop(|| {
@@ -203,7 +215,7 @@ fn main() -> Result<()> {
     } else if mode == "incompatible" {
         Plugin::new("incompatible", "1.0.0").operation(Operation::new("fixture.public", empty).visibility(Visibility::Public))
     } else if mode == "duplicate" {
-        Plugin::new("duplicate", "1.0.0").operation(Operation::new("fixture.clock", clock)).operation(Operation::new("fixture.echo", echo))
+        Plugin::new("duplicate", "1.0.0").operation(Operation::new("fixture.echo", echo))
     } else {
         Plugin::new("caller", "1.0.0")
             .requires::<HostInput>()

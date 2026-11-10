@@ -11,6 +11,7 @@
 
 /* === Modules === */
 
+mod active_call;
 mod cancellation;
 mod catalog_admission;
 mod child_calls;

@@ -41,6 +41,7 @@ pub struct Scope<'a> {
 
 #[derive(Clone)]
 pub(crate) struct ScopeCore {
+    clock: crate::clock::Clock,
     cancellation: harmos_sdk::operations::Cancellation,
     instances: Arc<Instances>,
     parent: Weak<Instance>,
@@ -111,7 +112,7 @@ impl<'a> Scope<'a> {
     }
 
     pub fn clock(&self) -> &crate::clock::Clock {
-        &self.core.instances.clock
+        &self.core.clock
     }
 
     pub fn now(&self) -> tokio::time::Instant {
@@ -152,6 +153,7 @@ impl ScopeCore {
 
     pub(crate) fn new(instances: Arc<Instances>, admission: Admission, cause: Option<Position>, parent: Weak<Instance>) -> Self {
         Self {
+            clock: instances.clock.clone().with_wait_scope(crate::clock::waiting_scope),
             cancellation: Default::default(),
             instances,
             parent,

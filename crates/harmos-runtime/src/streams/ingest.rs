@@ -15,8 +15,8 @@
 
 // Standard Library Imports
 use std::collections::BTreeMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 // Third Party Imports
 use tokio::sync::watch;
 // Local Imports
@@ -31,10 +31,10 @@ use tokio::sync::watch;
 
 // The cursor each live feed has taken in. A plugin publication never evicts
 // a row past the slowest feed, and a sidecar publication waits for it.
-#[derive(Debug)]
 pub(crate) struct Ingest {
     taken: watch::Sender<BTreeMap<u64, u64>>,
     next: AtomicU64,
+    work: Mutex<BTreeMap<u64, crate::clock::Activity>>,
 }
 
 #[derive(Debug)]
@@ -49,11 +49,26 @@ pub(crate) struct Intake {
 
 /* === Implementations === */
 
+impl std::fmt::Debug for Ingest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("Ingest").field("taken", &self.taken).finish_non_exhaustive()
+    }
+}
+
 impl Ingest {
+    pub(crate) fn track(&self, cursor: u64, activity: crate::clock::Activity) {
+        self.work.lock().expect("stream work lock is healthy").insert(cursor, activity);
+    }
+
+    pub(crate) fn drained(&self, cursor: u64) {
+        self.work.lock().expect("stream work lock is healthy").retain(|pending, _| *pending > cursor);
+    }
+
     pub(crate) fn new() -> Self {
         Self {
             taken: watch::channel(BTreeMap::new()).0,
             next: AtomicU64::new(0),
+            work: Mutex::new(BTreeMap::new()),
         }
     }
 

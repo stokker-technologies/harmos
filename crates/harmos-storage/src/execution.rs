@@ -46,6 +46,7 @@ pub struct Elapsed;
 #[derive(Clone)]
 pub struct Execution {
     source: Arc<RwLock<Arc<dyn Clock>>>,
+    wait_scope: Option<fn(Sleep) -> Sleep>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -131,7 +132,14 @@ impl Execution {
     pub fn with_clock(clock: impl Clock) -> Self {
         Self {
             source: Arc::new(RwLock::new(Arc::new(clock))),
+            wait_scope: None,
         }
+    }
+
+    /// Decorate explicit waits while preserving the source and leaving deadlines active.
+    pub fn with_wait_scope(mut self, scope: fn(Sleep) -> Sleep) -> Self {
+        self.wait_scope = Some(scope);
+        self
     }
 
     pub fn same_source(&self, other: &Self) -> bool {
@@ -166,6 +174,14 @@ impl Execution {
     }
 
     pub fn sleep_until(&self, deadline: Instant) -> Sleep {
+        let timer = self.timer_until(deadline);
+        match self.wait_scope {
+            Some(scope) => scope(timer),
+            None => timer,
+        }
+    }
+
+    fn timer_until(&self, deadline: Instant) -> Sleep {
         let source = self.source.read().expect("clock source is healthy").clone();
         source.sleep_until(deadline)
     }
@@ -176,7 +192,7 @@ impl Execution {
     }
 
     pub async fn timeout_at<F: Future>(&self, deadline: Instant, future: F) -> Result<F::Output, Elapsed> {
-        let sleep = self.sleep_until(deadline);
+        let sleep = self.timer_until(deadline);
         Box::pin(async move {
             tokio::select! { biased; result = future => Ok(result), () = sleep => Err(Elapsed) }
         })
@@ -319,6 +335,29 @@ mod tests {
                 waiting.await.unwrap();
             })
         }
+    }
+
+    #[tokio::test]
+    async fn scoped_waits_preserve_source_identity_and_do_not_wrap_deadlines() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static WAITS: AtomicUsize = AtomicUsize::new(0);
+
+        // Decorate Explicit Waits On The Same Virtual Source
+        WAITS.store(0, Ordering::SeqCst);
+        let (clock, controller) = Execution::virtual_at(SystemTime::UNIX_EPOCH);
+        let scoped = clock.clone().with_wait_scope(|wait| {
+            WAITS.fetch_add(1, Ordering::SeqCst);
+            wait
+        });
+        let explicit = scoped.sleep(Duration::from_secs(5));
+
+        // A Deadline Still Uses Its Undecorated Timer
+        let deadline = scoped.timeout(Duration::from_secs(1), std::future::pending::<()>());
+        let (result, ()) = tokio::join!(deadline, controller.advance_by(Duration::from_secs(1)));
+        assert_eq!(result, Err(Elapsed));
+        assert_eq!(WAITS.load(Ordering::SeqCst), 1);
+        assert!(scoped.same_source(&clock));
+        drop(explicit);
     }
 
     #[tokio::test(start_paused = true)]

@@ -189,9 +189,10 @@ async fn run(
     {
         let work = async {
             let mut sequence = 0;
+            let mut next_tick = interval.map(|period| clock.now() + period);
             loop {
                 let tick = if let Some(period) = interval {
-                    let next = clock.sleep(period);
+                    let next = clock.sleep_until(next_tick.expect("interval streams have a next tick"));
                     let wait = async {
                         tokio::select! {
                             biased;
@@ -200,7 +201,9 @@ async fn run(
                         }
                     };
                     activity.wait(wait).await?;
-                    let at = clock.date().into();
+                    let reading = clock.read();
+                    next_tick = Some(reading.instant + period);
+                    let at = reading.date.into();
                     output
                         .send(v1::PublishFrame {
                             frame: Some(v1::publish_frame::Frame::Tick(v1::Tick { at: Some(at) })),
@@ -215,6 +218,7 @@ async fn run(
                 if samples.samples.len() != 1 {
                     return Err(invalid("Expected One Sample per Message"));
                 }
+                let _sample = clock.activity("plugin sample ingest");
                 let sample = samples.samples.into_iter().next().unwrap();
                 sequence += 1;
                 if sample.sequence != sequence {
@@ -237,14 +241,14 @@ async fn run(
                 };
                 let payload = row.decode(&sample.row)?;
                 lease
-                    .admit_row(
+                    .admit_clocked_row(
                         PublicationRow {
                             payload,
                             published_unix_micros: Some(published.seconds * 1_000_000 + i64::from(published.nanos) / 1000),
                             context,
                         },
                         sequence,
-                        0,
+                        clock,
                     )
                     .map_err(invalid)?;
                 lease.ingested().await.map_err(invalid)?;

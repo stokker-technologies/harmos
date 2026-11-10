@@ -74,6 +74,10 @@ pub(crate) async fn active<F: Future>(activity: Activity, future: F) -> F::Outpu
     ACTIVITY.scope(std::sync::Arc::new(tokio::sync::Mutex::new(activity)), future).await
 }
 
+pub(crate) fn waiting_scope(sleep: Sleep) -> Sleep {
+    Box::pin(waiting(sleep))
+}
+
 pub(crate) async fn waiting<F: Future>(future: F) -> F::Output {
     let activity = ACTIVITY.try_with(Clone::clone).ok();
     match activity {

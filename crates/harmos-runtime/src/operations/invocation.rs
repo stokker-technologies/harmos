@@ -148,7 +148,9 @@ impl ChildInstance for NativeChild {
         Box::pin(async { Ok(()) })
     }
     fn join(self: Box<Self>) -> CallFuture<'static> {
-        Box::pin(async move { self.0.await.map(|response| response.0.clone()).map_err(|error| InvocationError::failed(self.1, error)) })
+        Box::pin(async move {
+            crate::clock::waiting(self.0).await.map(|response| response.0.clone()).map_err(|error| InvocationError::failed(self.1, error))
+        })
     }
     fn detach(self: Box<Self>) -> super::OperationInstanceId {
         self.0.detach()
@@ -180,7 +182,7 @@ impl ChildInstance for EncodedChild {
                 }
             }
             let mut cancel = Cancel(Some(control));
-            let answer = invocation.await;
+            let answer = crate::clock::waiting(invocation).await;
             cancel.0.take();
             let bytes = answer.map_err(|error| InvocationError::failed(self.target.id, error))?;
             (self.target.decode)(&bytes).map_err(|error| InvocationError::failed(self.target.id, error))

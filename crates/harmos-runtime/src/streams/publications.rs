@@ -189,13 +189,20 @@ impl PublicationLease {
     }
 
     pub fn publish_row(&self, row: PublicationRow, missed: u64) -> Result<(), StreamPublicationError> {
-        self.admit(row, None, missed).map(|_| ())
+        self.admit(row, None, missed, None).map(|_| ())
     }
 
     pub fn admit_row(
         &self, row: PublicationRow, wire_sequence: u64, missed: u64,
     ) -> Result<super::ManagedPublication, StreamPublicationError> {
-        self.admit(row, Some(wire_sequence), missed)
+        self.admit(row, Some(wire_sequence), missed, None)
+    }
+
+    #[cfg(feature = "plugin-grpc")]
+    pub(crate) fn admit_clocked_row(
+        &self, row: PublicationRow, wire_sequence: u64, clock: &crate::clock::Clock,
+    ) -> Result<super::ManagedPublication, StreamPublicationError> {
+        self.admit(row, Some(wire_sequence), 0, Some(clock.activity("stream storage delivery")))
     }
 
     // An ordered batch takes contiguous sequences from `first_wire_sequence`;
@@ -287,7 +294,9 @@ impl PublicationLease {
         }
     }
 
-    fn admit(&self, row: PublicationRow, sequence: Option<u64>, missed: u64) -> Result<super::ManagedPublication, StreamPublicationError> {
+    fn admit(
+        &self, row: PublicationRow, sequence: Option<u64>, missed: u64, activity: Option<crate::clock::Activity>,
+    ) -> Result<super::ManagedPublication, StreamPublicationError> {
         let _visibility = self.stream.wired.window.visibility.write().expect("stream visibility poisoned");
         let result = {
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
@@ -306,8 +315,11 @@ impl PublicationLease {
                 self.admit_locked(row, sequence, missed, true)
             }
         };
-        drop(_visibility);
         let (publication, evicted) = result?;
+        if let Some(activity) = activity {
+            self.stream.ingest.track(self.stream.wired.window.latest_locked(), activity);
+        }
+        drop(_visibility);
         drop(evicted);
         self.stream.wired.window.knock();
         self.stream.wired.window.wake_delivery();

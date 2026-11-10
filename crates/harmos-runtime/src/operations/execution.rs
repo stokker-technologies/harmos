@@ -136,7 +136,7 @@ impl Budget {
 }
 
 impl<O> Prepared<O> {
-    pub(super) fn retain_unavailable(mut self, control: &Instance, admission: Admission) {
+    pub(super) fn retain_unavailable(mut self, control: &Instance, admission: Admission, clock: &crate::clock::Clock) {
         let outcome = self.refusal.take().or_else(|| Some(Refusal::Unavailable.into()));
         let cause = Arc::new(Error::Closing { domain: "preparation driver" });
         let (owner, _, diagnostic) = self.body.retain(outcome, cause);
@@ -146,6 +146,7 @@ impl<O> Prepared<O> {
                 owner,
                 _permit: None,
                 _admission: admission,
+                _activity: clock.activity("retained invocation cleanup"),
             },
             diagnostic,
         );
@@ -187,7 +188,7 @@ pub(super) async fn execute<O: Send + 'static>(
     let mut permit = None;
     let answer = match refusal {
         Some(error) => Err(error),
-        None => match acquire(&admission, &budget, &mut cancelled).await {
+        None => match crate::clock::waiting(acquire(&admission, &budget, &mut cancelled)).await {
             Err(error) => Err(error),
             Ok(acquired) => {
                 permit = Some(acquired);
@@ -222,6 +223,7 @@ pub(super) async fn execute<O: Send + 'static>(
                 owner,
                 _permit: permit,
                 _admission: admission,
+                _activity: instances.clock.activity("retained invocation cleanup"),
             },
             diagnostic,
         );
@@ -279,7 +281,7 @@ async fn initialize<O: Send + 'static>(
     instance.transition(Phase::Initializing);
     let core = ScopeCore::new(instances.clone(), admission.clone(), cause, Arc::downgrade(instance));
     let answer = bounded(budget.remaining(), body.initialize(Scope::over(&core)), cancelled).await;
-    core.close().drain().await;
+    crate::clock::waiting(core.close().drain()).await;
     if *cancelled.borrow() {
         return Err(budget.cancelled(1).into());
     }
@@ -336,12 +338,12 @@ async fn attempts<O: Send + 'static>(
             let started_at = started_at.expect("middleware attempt start");
             let elapsed = finished_at.expect("middleware attempt end").instant.saturating_duration_since(started_at.instant);
             if let Err(error) = middleware.attempt(super::middleware::AttemptObservation { attempt, outcome, started_at, elapsed }).await {
-                children.drain().await;
+                crate::clock::waiting(children.drain()).await;
                 return Err(error);
             }
         }
         if *cancelled.borrow() {
-            children.drain().await;
+            crate::clock::waiting(children.drain()).await;
             return match answer {
                 Stage::Completed(answer) => answer,
                 Stage::Cancelled | Stage::Expired => Err(budget.cancelled(attempt + 1).into()),
@@ -349,7 +351,7 @@ async fn attempts<O: Send + 'static>(
         }
         let (error, failure) = match answer {
             Stage::Completed(Ok(response)) => {
-                children.drain().await;
+                crate::clock::waiting(children.drain()).await;
                 return if !*cancelled.borrow() && budget.remaining().is_zero() {
                     Err(budget.timed_out(attempt + 1).into())
                 } else {
@@ -361,7 +363,7 @@ async fn attempts<O: Send + 'static>(
                 (error, failure)
             }
             Stage::Cancelled => {
-                children.drain().await;
+                crate::clock::waiting(children.drain()).await;
                 return Err(budget.cancelled(attempt + 1).into());
             }
             Stage::Expired => {
@@ -379,12 +381,12 @@ async fn attempts<O: Send + 'static>(
             }
         };
         if prepared.body.transferred() {
-            children.drain().await;
+            crate::clock::waiting(children.drain()).await;
             return Err(error);
         }
         let delay = prepared.policy.retries.retry_after(attempt, failure, prepared.replay, prepared.id.value());
         let Some(delay) = delay else {
-            children.drain().await;
+            crate::clock::waiting(children.drain()).await;
             return Err(error);
         };
         instance.transition(Phase::RetryWaiting);

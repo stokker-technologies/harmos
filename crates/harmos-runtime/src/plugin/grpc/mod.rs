@@ -59,6 +59,7 @@ pub struct Activation {
     pub previous_started_at: Option<prost_types::Timestamp>,
     pub executable_digest: Option<[u8; 32]>,
     connection: Arc<Connection>,
+    clock: Clock,
     admission: Option<Arc<crate::operations::GrpcAdmission>>,
 }
 
@@ -136,6 +137,7 @@ impl Activation {
     }
 
     async fn connected<T>(&self, future: impl Future<Output = Result<T, Error>>) -> Result<T, Error> {
+        let _activity = self.clock.activity("plugin transport");
         let closed = self.connection.closed.subscribe();
         tokio::select! {
             biased;
@@ -163,7 +165,7 @@ impl Attached {
                 }
                 Placement::Remote(address) => (None, address.clone()),
             };
-            let mut activation = connect(&address, 1, None, process.as_ref().map(|process| process.digest)).await?;
+            let mut activation = connect(&clock, &address, 1, None, process.as_ref().map(|process| process.digest)).await?;
             let admission = operations.admit_grpc(&activation, lane).map_err(|error| {
                 activation.connection.closed.send_replace(true);
                 error
@@ -257,7 +259,7 @@ async fn describe(connection: &Connection) -> Result<v1::Description, Error> {
 }
 
 async fn connect(
-    address: &str, number: u64, previous_started_at: Option<prost_types::Timestamp>, executable_digest: Option<[u8; 32]>,
+    clock: &Clock, address: &str, number: u64, previous_started_at: Option<prost_types::Timestamp>, executable_digest: Option<[u8; 32]>,
 ) -> Result<Activation, Error> {
     let connection = Arc::new(Connection::open(address).await?);
     let description = describe(&connection).await?;
@@ -282,6 +284,7 @@ async fn connect(
         executable_digest,
         connection,
         admission: None,
+        clock: clock.clone(),
     })
 }
 
@@ -376,7 +379,7 @@ async fn supervise<A: Application>(
                 () = clock.sleep(settings.reconnect_delay) => {},
             }
             let _activity = clock.activity("plugin reconnect");
-            let reconnect = clock.timeout(settings.connect_timeout, connect(&address, number, previous, None));
+            let reconnect = clock.timeout(settings.connect_timeout, connect(&clock, &address, number, previous, None));
             let result = tokio::select! {
                 biased;
                 _ = stopping(&mut stop, &mut participant) => return Ok(()),

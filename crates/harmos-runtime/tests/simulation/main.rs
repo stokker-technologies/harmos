@@ -56,7 +56,7 @@ type IdleManaged =
 
 /* === Structs === */
 
-#[harmos_runtime::operation(id = "sim.pending",
+#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "sim.pending",
     response = (),
     policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30),
@@ -145,8 +145,10 @@ enum SimOperations {
 impl harmos_runtime::Operation for PendingDeclaration {
     type Error = Infallible;
 
-    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
-        std::future::pending().await
+    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
+        let host = context.resource::<harmos_runtime::operations::HostContext>();
+        host.borrow().scope().clock().sleep(Duration::from_secs(30)).await;
+        Ok(().into())
     }
 }
 

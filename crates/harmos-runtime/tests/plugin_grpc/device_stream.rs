@@ -44,7 +44,7 @@
 #[tokio::test]
 async fn device_samples_need_no_tick_and_keep_source_time_separate() {
     // Open Device Demand Without Advancing Host Time
-    let (clock, _) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
+    let (clock, controller) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
     let host = super::invoke_support::HostFixture::with_clock(Some(clock.clone())).await;
     let sdk = host.sdk("device").await;
     let attached = host
@@ -54,7 +54,7 @@ async fn device_samples_need_no_tick_and_keep_source_time_separate() {
         .unwrap();
 
     // Await Storage Delivery Through Its Publication Watch
-    host.wait_rows(2).await;
+    controller.advance_until(std::time::Duration::from_secs(1), || host.rows().len() >= 2).await.unwrap();
     assert_eq!(host.values(), [serde_json::json!({"value": b"device"}), serde_json::json!({"value": b"source"})]);
     assert_eq!(host.rows().iter().map(|row| row.published_unix_micros).collect::<Vec<_>>(), [Some(0), Some(0)]);
     assert_eq!(host.rows()[0].context, None);
