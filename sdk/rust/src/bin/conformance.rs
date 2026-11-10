@@ -1,0 +1,157 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+// Rust Plugin SDK
+
+/* === Modules === */
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
+use harmos::{
+    Classification, Context, Failure, Message, Observer, Operation, OperationRequest, Plugin, Publisher, Result, Stream, Visibility,
+};
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+#[derive(Message)]
+#[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto")]
+struct Value {
+    value: Vec<u8>,
+}
+
+#[derive(Message)]
+#[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto", name = "Value")]
+struct HostEcho {
+    value: Vec<u8>,
+}
+
+#[derive(Message)]
+#[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto", name = "Value")]
+struct HostPending {
+    value: Vec<u8>,
+}
+
+#[derive(Message)]
+#[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto", name = "Value")]
+struct HostFail {
+    value: Vec<u8>,
+}
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+impl OperationRequest for HostEcho {
+    type Response = Value;
+    const ID: &'static str = "conformance.host.echo";
+}
+impl OperationRequest for HostPending {
+    type Response = Value;
+    const ID: &'static str = "conformance.host.pending";
+}
+impl OperationRequest for HostFail {
+    type Response = Value;
+    const ID: &'static str = "conformance.host.fail";
+}
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+fn main() -> Result<()> {
+    let ticks = Stream::<Value>::new("conformance.ticks");
+    let observer = Observer::new(&ticks, tick).every_ms(1000);
+    let device = Stream::<Value>::new("conformance.device").publish_on(device);
+    let plugin = Plugin::new("conformance", "1.0.0")
+        .operation(Operation::new("conformance.echo", echo).visibility(Visibility::Public))
+        .operation(Operation::new("conformance.children", children).visibility(Visibility::Public))
+        .operation(Operation::new("conformance.cancel", cancel).visibility(Visibility::Public))
+        .operation(Operation::new("conformance.failure", failure).visibility(Visibility::Public))
+        .operation(Operation::new("conformance.child_failure", child_failure).visibility(Visibility::Public))
+        .requires::<HostEcho>()
+        .requires::<HostPending>()
+        .requires::<HostFail>()
+        .stream(ticks)
+        .stream(device)
+        .observer(observer);
+    if std::env::args().any(|argument| argument == "--remote") { plugin.remote().serve() } else { plugin.serve() }
+}
+
+async fn echo(_: &Context, request: Value) -> Result<Value> {
+    Ok(request)
+}
+
+async fn children(ctx: &Context, _: Value) -> Result<Value> {
+    let first = ctx.operation(HostEcho { value: vec![1] });
+    let second = ctx.operation(HostEcho { value: vec![2] });
+    let (first, second) = futures_util::future::try_join(first, second).await?;
+    Ok(Value {
+        value: [first.value, second.value].concat(),
+    })
+}
+
+async fn cancel(ctx: &Context, request: Value) -> Result<Value> {
+    ctx.operation(HostPending { value: request.value }).await
+}
+
+async fn child_failure(ctx: &Context, request: Value) -> Result<Value> {
+    ctx.operation(HostFail { value: request.value }).await
+}
+
+async fn failure(_: &Context, _: Value) -> Result<Value> {
+    Err(Failure {
+        classification: Classification::Permanent as i32,
+        code: "fixture_failure".into(),
+        message: "Fixture Failed".into(),
+        action: "Use Another Input".into(),
+        operation: "conformance.failure".into(),
+        plugin: "conformance".into(),
+        cause: Some(Box::new(Failure {
+            classification: Classification::Transient as i32,
+            code: "fixture_cause".into(),
+            message: "Fixture Cause".into(),
+            action: "Retry".into(),
+            operation: "conformance.host.fail".into(),
+            plugin: "host".into(),
+            ..Default::default()
+        })),
+        details: std::collections::HashMap::from([("fixture".into(), "value".into())]),
+        diagnostics: "Fixture Diagnostics".into(),
+    }
+    .into())
+}
+
+async fn tick(ctx: &Context) -> Result<Value> {
+    Ok(Value {
+        value: ctx.sequence().to_le_bytes().to_vec(),
+    })
+}
+
+async fn device(ctx: &Context, publisher: Publisher<Value>) -> Result<()> {
+    publisher.publish(Value { value: b"device".to_vec() }).await?;
+    ctx.cancelled().await;
+    Ok(())
+}
+
+/* === Tests === */

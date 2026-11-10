@@ -1,0 +1,105 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Package === #
+
+[package]
+# Temporary package name until task 4.1 replaces the framed SDK.
+name = "harmos-sdk-grpc"
+description = "Rust plugin authoring over the Harmos v1 gRPC protocol."
+autotests = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# === Package Targets === #
+
+[lib]
+name = "harmos"
+
+[[bin]]
+name = "harmos-sdk-conformance-plugin"
+path = "src/bin/conformance.rs"
+
+[[bin]]
+name = "harmos-sdk-diagnostics-plugin"
+path = "src/bin/diagnostics.rs"
+
+# === Features === #
+
+# === Dependencies === #
+
+[dependencies]
+# Local
+harmos-protocol = { workspace = true }
+harmos-sdk-derive = { workspace = true }
+
+# Error Handling
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Utilities
+bytes = { workspace = true }
+semver = { workspace = true }
+sha2 = { workspace = true }
+
+# Serialization
+prost = { workspace = true, features = ["derive", "std"] }
+prost-reflect = { workspace = true }
+prost-types = { workspace = true, features = ["std"] }
+
+# Async
+futures-core = { workspace = true }
+futures-util = { workspace = true }
+tokio = { workspace = true, features = ["macros", "net", "rt", "sync"] }
+
+# Networking
+tonic = { workspace = true, features = ["codegen", "router", "transport"] }
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+[dev-dependencies]
+# Local
+harmos-conformance = { workspace = true }
+
+# Filesystem
+tempfile = { workspace = true }
+
+# Async
+tokio = { workspace = true, features = ["process", "io-util"] }
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+[lints]
+workspace = true
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #
