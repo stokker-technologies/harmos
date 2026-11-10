@@ -51,13 +51,45 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(&output_root)?;
     let output = tempfile::tempdir_in(output_root)?;
 
+    // Archived Tests Consume the Transferred Compiler, Not the Producer's Registry.
+    let (compiler, includes) = if let Ok(profile) = std::env::var("STKR_TEST_PROFILE") {
+        let target = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+        let vendor = root.join("target/build").join(profile).join(target).join("fixtures/inputs/vendor");
+        let platform = match (std::env::consts::OS, std::env::consts::ARCH) {
+            ("linux", "x86_64") => "linux-x86_64",
+            ("linux", "aarch64") => "linux-aarch_64",
+            ("macos", "x86_64") => "macos-x86_64",
+            ("macos", "aarch64") => "macos-aarch_64",
+            ("windows", _) => "win32",
+            other => panic!("no vendored protoc for {other:?}"),
+        };
+        let prefix = format!("protoc-bin-vendored-{platform}-");
+        let package = fs::read_dir(vendor)?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .find(|path| path.file_name().unwrap().to_string_lossy().starts_with(&prefix))
+            .expect("the transferred vendor inputs contain the pinned protobuf compiler");
+        let executable = if cfg!(windows) { "protoc.exe" } else { "protoc" };
+        (package.join("bin").join(executable), package.join("include"))
+    } else {
+        (protoc_bin_vendored::protoc_bin_path()?, protoc_bin_vendored::include_path()?)
+    };
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&compiler)?.permissions();
+        permissions.set_mode(permissions.mode() | 0o100);
+        fs::set_permissions(&compiler, permissions)?;
+    }
+
     // Regenerate With the Pinned Compiler, Without Mutating the Environment.
     let mut config = prost_build::Config::new();
-    config.protoc_executable(protoc_bin_vendored::protoc_bin_path()?);
+    config.protoc_executable(compiler);
     tonic_prost_build::configure().build_client(true).build_server(true).out_dir(output.path()).compile_with_config(
         config,
         &[proto.join("harmos/v1/plugin.proto")],
-        &[proto, protoc_bin_vendored::include_path()?],
+        &[proto, includes],
     )?;
 
     // Compare the Complete Generated Source, Retaining Evidence on Failure.

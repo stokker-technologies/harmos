@@ -58,6 +58,9 @@ mise run test -- --language rust --layer integration --filter 'package(=harmos-r
 ```
 
 Select `--profile release` to use an archive and fixtures from a Nightly build.
+The protocol drift test runs the pinned `protoc` from the transferred offline
+vendor inputs and restores its executable permission on Unix. Focused Cargo
+tests use the pinned compiler in the local Cargo registry.
 
 ## Validation
 
