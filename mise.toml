@@ -47,7 +47,7 @@ SCCACHE_CACHE_SIZE = "{{ get_env(name='SCCACHE_CACHE_SIZE', default='') if get_e
 # === Entry Points === #
 
 [tasks."prepare"]
-description = "Prepare Locked Tools and Fixtures"
+description = "Prepare Locked Tools"
 run = "uv run --locked --all-groups --project tools/python python -m harmos_tools.ci.tasks prepare"
 
 [tasks."generate"]
@@ -67,7 +67,7 @@ description = "Check Formatting, Lint and Repository Contracts"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks check"
 
 [tasks."build"]
-description = "Build Products, Tests or Benchmarks"
+description = "Build Products, Tests, Benchmarks or Fixtures"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks build"
 
 [tasks."test"]

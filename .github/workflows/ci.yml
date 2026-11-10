@@ -120,7 +120,7 @@ jobs:
         path: target/ci
         github-token: ${{ github.token }}
     - name: Run Project Task
-      run: mise run release:publish -- --step dry
+      run: mise run release:publish -- --dry
       env:
         RELEASE_PROFILE: ${{ env.PROFILE }}
         CI_INPUT_ARCHIVES: '["target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst","target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst"]'
@@ -452,7 +452,7 @@ jobs:
         name: build-tests-${{ env.PROFILE }}-${{ matrix.platform }}
         path: target/ci
     - name: Run Project Task
-      run: mise run prepare -- --fixtures --profile ${{ env.PROFILE }}
+      run: mise run build -- --artifact fixtures --profile ${{ env.PROFILE }}
       env:
         CI_INPUT_ARCHIVES: '["target/ci/build-product-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst", "target/ci/build_rust_tests-fixtures-${{
           env.PROFILE }}-${{ matrix.platform }}.tar.zst", "target/ci/build-tests-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst"]'
@@ -558,6 +558,7 @@ jobs:
     - prepare_test_fixtures
     - check_product
     - test
+    - test_unit
   check_product:
     name: Check / Python${{ matrix.suffix }}
     runs-on: ubuntu-24.04
@@ -607,6 +608,79 @@ jobs:
           arguments: --language python
         - suffix: ' / Generated'
           arguments: --generated
+  test_unit:
+    name: Test / ${{ matrix.language }} / ${{ matrix.label }} (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.minutes }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - id: setup
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: build-tests-${{ env.PROFILE }}-${{ matrix.platform }}
+        path: target/ci
+    - name: Run Project Task
+      run: mise run test -- --language ${{ matrix.language }} ${{ matrix.arguments }} --profile ${{ env.PROFILE }}
+      env:
+        CI_INPUT_ARCHIVES: '["target/ci/build-tests-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst"]'
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: junit-test_rust_${{ matrix.layer }}-${{ env.PROFILE }}-${{ matrix.platform }}
+        path: |-
+          target/tests/${{ env.PROFILE }}/*/${{ matrix.layer }}-rust/
+          target/traces/${{ env.PROFILE }}/*/${{ matrix.layer }}-rust/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+      if: always()
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
+        != 'true'
+      with:
+        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup.outputs.cargo_downloads-path }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
+      with:
+        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup.outputs.mise-path }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
+      with:
+        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup.outputs.uv-path }}
+    env:
+      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,uv
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+        - unix
+        - windows
+        include:
+        - platform: unix
+          runner: ubuntu-24.04
+          minutes: 120
+          container: ''
+        - platform: windows
+          runner: windows-2022
+          minutes: 120
+          container: ''
+        - layer: unit
+          label: Unit
+          arguments: --layer unit
+        layer:
+        - unit
+        language:
+        - rust
+    needs:
+    - build_tests
   test:
     name: Test / ${{ matrix.language }} / ${{ matrix.label }} (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
@@ -671,9 +745,6 @@ jobs:
           runner: windows-2022
           minutes: 120
           container: ''
-        - layer: unit
-          label: Unit
-          arguments: --layer unit
         - layer: integration
           label: Integration
           arguments: --layer integration
@@ -684,7 +755,6 @@ jobs:
           label: System
           arguments: --layer system
         layer:
-        - unit
         - integration
         - acceptance
         - system

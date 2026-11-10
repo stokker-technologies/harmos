@@ -100,7 +100,11 @@ mise run build -- --package harmos-domain --check
 mise run test -- --package harmos-macros --target lib --exact operation::tests::portable_domain_operation
 ```
 
-`prepare` synchronizes the locked Python environment. Other entry points use
+`prepare` synchronizes the locked Python environment.
+`mise run build -- --artifact fixtures --profile dev` joins existing Product and
+Tests inputs. Unit tests consume only the Tests archive; integration, acceptance,
+system, coverage and starter tests consume the joined fixture bundle. Benchmarks
+consume only the Bench build. Other entry points use
 `uv run --no-sync`. Focused selections invoke Cargo directly, without archives,
 compiler-output scans or locks. The compiler cache's background server persists
 across invocations; each worktree keeps its own `target/`. See
@@ -157,7 +161,7 @@ credentials. Contributions use the [Apache-2.0 license](LICENSE).
 Release preparation and publication follow the separate protected release
 workflow; an ordinary pull request does not publish packages.
 
-`mise run release:publish -- --step dry` stages the available native packages and dry-runs
+`mise run release:publish -- --dry` stages the available native packages and dry-runs
 crate publication. `mise run release:rehearse` uses existing release-profile
 packages for every declared release target, strips publication credentials and
 checks the same archive and crate inventories without creating a provider

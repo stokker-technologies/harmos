@@ -36,7 +36,7 @@ keeps its server across invocations. Lower Cargo parallelism if allocations fail
 
 `build --artifact tests --profile dev|release` produces the shared archive and test
 fixtures. `build --artifact bench` produces benchmarks and their matching fixtures.
-`prepare --fixtures --profile dev|release` joins already-built Product and Tests inputs.
+`build --artifact fixtures --profile dev|release` joins already-built Product and Tests inputs.
 `test` without `--package` consumes existing archives and fixtures. `package` never
 builds missing inputs. `generate --profile dev|release` regenerates Python clients
 from the existing Product schemas. Product build also retains its current client
@@ -68,7 +68,7 @@ Run targeted tasks locally. Hosted CI and Nightly provide full validation.
 Each job checks out, uses the composite setup action, restores caches, downloads
 its inputs, runs one task, and uploads its results. Setup runs `prepare` to
 synchronize the locked Python groups. Hidden `ci:<name>` tasks own provider
-bookkeeping; `prepare` only prepares tools or joins fixtures.
+bookkeeping; `prepare` only prepares the environment.
 
 The task step accepts `CI_INPUT_ARCHIVES` (a JSON array of archive paths) and
 `CI_OUTPUT_ARCHIVES` (a JSON array of objects with `archive`, `paths` and `profile`).
@@ -76,8 +76,9 @@ The entry point extracts inputs before its work and packs outputs after success,
 using the single implementation in `ci/artifacts.py`. Nested tasks never repeat
 transport. `--help` performs no transport. Provider steps only download and upload
 archives under `target/ci/`. The fixture producer joins Product, the Tests archive
-and stamped fixtures into one bundle consumed by the test matrix and coverage;
-neither consumer compiles those products again.
+and stamped fixtures into one bundle consumed by integration, acceptance, system,
+coverage and starter tests. The bundle includes the test archive, so these jobs
+do not download it separately.
 
 Explicit transport is also available as `ci:pack` and `ci:extract`, with
 `--profile <profile> -- <arguments>`; `--archive`, hex-encoded JSON `--paths` and
@@ -88,7 +89,7 @@ the Cargo lock hash is the final restorable component. Other tool versions do
 not invalidate compiler caches.
 
 Nightly uses `ci:nightly-gate` (`GITHUB_OUTPUT` receives `build`),
-`release:publish --step nightly`, then `ci:nightly-report` with `SUITE`
+`release:publish --stage nightly`, then `ci:nightly-report` with `SUITE`
 (`passed` or `failed`) and optional `RUN_URL`. Reports preserve a newer run's notes.
 Mirror uses `ci:mirror` with its SSH key, known hosts and GitHub ref/SHA inputs.
 `ci:runners` preserves the runner allowlist check. Release evidence lookup uses
@@ -99,15 +100,19 @@ cancellations and unexpected skips; only the release-review rehearsal may skip
 outside a release review (`RELEASE_REVIEW=false`).
 
 Every pull request runs the full verification graph. Packaging consumes Product
-without waiting for checks. Benchmarks consume only Bench. The required CI gate
+without waiting for checks. Unit tests download only Tests and wait only for its build.
+Integration, acceptance and system tests download the joined fixture bundle, which
+contains their test archive, and wait only for its producer. Coverage and starter
+tests also consume that bundle. Benchmarks consume only Bench. The required CI gate
 collects all verification results; release rehearsal runs only on release reviews.
 Nightly freshness and release evidence are decision inputs; Nightly's final
 report consumes suite statuses as well as the publication result.
 
 `release:prepare --review` prepares changes, checks the runner allowlist when
 configured, then creates the release review. Hosted GitHub `release:tag` and
-`release:publish` own identity reporting and the exact-commit CI guard. Publication substeps use
-`release:publish --step dry|assets|rust|finalize`. Default publication still drafts
+`release:publish` own identity reporting and the exact-commit CI guard. Publication uses
+`release:publish --dry` for a dry run or `release:publish --stage assets|rust|finalize|nightly`
+for one real publication stage. These selections are mutually exclusive. Default publication still drafts
 assets then finalizes. `release:rehearse` accepts `--target`, `--profile` and
 `--stage-only`; no release command builds missing products. Workflow and task changes are delivered together.
 

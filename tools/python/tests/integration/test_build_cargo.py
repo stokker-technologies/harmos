@@ -128,6 +128,68 @@ class FocusedCargoTests(unittest.TestCase):
 
 
 class WorkflowTaskTests(unittest.TestCase):
+    def test_fixture_join_selects_existing_inputs_without_compiling(self):
+        for profile in ("dev", "release"):
+            with (
+                self.subTest(profile=profile),
+                patch.object(tasks, "_task", return_value=0) as task,
+                patch.object(cargo, "focused") as focused,
+            ):
+                self.assertEqual(tasks.dispatch(["build", "--artifact", "fixtures", "--profile", profile]), 0)
+                task.assert_called_once_with("prepare:tests:fixtures", "--profile", profile)
+                focused.assert_not_called()
+        with patch.object(tasks, "_task") as task:
+            self.assertEqual(tasks.dispatch(["prepare"]), 0)
+        task.assert_not_called()
+
+    def test_publication_selectors_preserve_guards_and_default_order(self):
+        selections = [
+            (["--dry"], [("release:publish:dry",)], []),
+            (["--stage", "assets"], [("release:publish:assets",)], [("release.checks",), ("release.run", "identity")]),
+            (["--stage", "rust"], [("release:publish:rust",)], []),
+            (["--stage", "finalize"], [("release:publish:finalize",)], []),
+            (["--stage", "nightly"], [], [("release.nightly",)]),
+            ([], [("release:publish:assets",), ("release:publish:finalize",)], [("release.checks",), ("release.run", "identity")]),
+        ]
+        for arguments, expected_tasks, expected_modules in selections:
+            events = []
+            with (
+                self.subTest(arguments=arguments),
+                patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}),
+                patch.object(tasks, "_task", side_effect=lambda *args, events=events: events.append(args) or 0) as task,
+                patch.object(tasks, "_module", side_effect=lambda *args, events=events: events.append(args) or 0) as module,
+            ):
+                self.assertEqual(tasks.dispatch(["release:publish", *arguments]), 0)
+                self.assertEqual([call.args for call in task.call_args_list], expected_tasks)
+                self.assertEqual([call.args for call in module.call_args_list], expected_modules)
+                self.assertEqual(events, [*expected_modules, *expected_tasks])
+
+    def test_invalid_task_selectors_do_not_dispatch(self):
+        selections = [
+            ["prepare", "--fixtures"],
+            ["prepare", "--profile", "release"],
+            ["release:publish", "--step", "dry"],
+            ["release:publish", "--dry", "--stage", "assets"],
+            ["release:publish", "--stage", "dry"],
+            ["build", "--artifact", "fixtures", "--package", "example"],
+            ["build", "--artifact", "fixtures", "--extended"],
+            ["build", "--artifact", "fixtures", "--cpp"],
+            ["build", "--artifact", "fixtures", "--compatibility"],
+            ["build", "--artifact", "fixtures", "--check"],
+        ]
+        for arguments in selections:
+            with (
+                self.subTest(arguments=arguments),
+                patch.object(tasks, "_task") as task,
+                patch.object(tasks, "_module") as module,
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                with self.assertRaises(SystemExit) as error:
+                    tasks.dispatch(arguments)
+                self.assertEqual(error.exception.code, 2)
+                task.assert_not_called()
+                module.assert_not_called()
+
     def test_transport_surrounds_successful_task_and_does_not_recur(self):
         events = []
         environment = {

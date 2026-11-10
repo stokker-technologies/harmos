@@ -66,10 +66,7 @@ def main(arguments: list[str] | None = None) -> int:
 def dispatch(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    prepare = commands.add_parser("prepare")
-    prepare.add_argument("--fixtures", action="store_true")
-    prepare.add_argument("--profile", choices=("dev", "release"), default="dev")
-    prepare.add_argument("arguments", nargs=argparse.REMAINDER)
+    commands.add_parser("prepare")
     generate = commands.add_parser("generate")
     generate.add_argument("--profile", choices=("dev", "release"), default="dev")
     for name in ("format", "lint", "check"):
@@ -84,7 +81,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
             command.add_argument("--generated", action="store_true")
     build = commands.add_parser("build")
     build.add_argument("--profile", choices=("dev", "release"), default="dev")
-    build.add_argument("--artifact", choices=("product", "tests", "bench"), default="product")
+    build.add_argument("--artifact", choices=("product", "tests", "bench", "fixtures"), default="product")
     build.add_argument("--package")
     build.add_argument("--check", action="store_true")
     build.add_argument("--compatibility", action="store_true")
@@ -113,7 +110,9 @@ def dispatch(arguments: list[str] | None = None) -> int:
     for name in ("prepare", "tag", "rehearse", "publish", "verify"):
         release = commands.add_parser(f"release:{name}")
         if name == "publish":
-            release.add_argument("--step", choices=("dry", "assets", "rust", "finalize", "nightly"))
+            publication = release.add_mutually_exclusive_group()
+            publication.add_argument("--dry", action="store_true")
+            publication.add_argument("--stage", choices=("assets", "rust", "finalize", "nightly"))
         if name == "prepare":
             release.add_argument("--review", action="store_true")
         if name == "rehearse":
@@ -153,11 +152,6 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
     # Prepare Explicit Inputs
     if options.command == "prepare":
-        if options.fixtures:
-            extra = options.arguments[1:] if options.arguments[:1] == ["--"] else options.arguments
-            return _task("prepare:tests:fixtures", "--profile", options.profile, *extra)
-        if options.arguments:
-            parser.error("unexpected preparation arguments")
         return 0
     if options.command == "generate":
         from ..build.__main__ import generate
@@ -193,6 +187,10 @@ def dispatch(arguments: list[str] | None = None) -> int:
     if options.command == "build":
         if options.check:
             parser.error("--check requires --package")
+        if options.artifact == "fixtures":
+            if options.cpp or options.compatibility or options.extended:
+                parser.error("--artifact fixtures cannot select C++, compatibility or extended builds")
+            return _task("prepare:tests:fixtures", "--profile", options.profile)
         if options.cpp:
             return _task("build:cpp")
         if options.compatibility:
@@ -263,13 +261,15 @@ def dispatch(arguments: list[str] | None = None) -> int:
     # Release Operations
     operation = options.command.partition(":")[2]
     if operation == "publish":
-        if options.step in (None, "assets") and os.environ.get("GITHUB_ACTIONS"):
+        if not options.dry and options.stage in (None, "assets") and os.environ.get("GITHUB_ACTIONS"):
             _module("release.checks")
             _module("release.run", "identity")
-        if options.step == "nightly":
+        if options.stage == "nightly":
             return _module("release.nightly")
-        if options.step:
-            return _task(f"release:publish:{options.step}", *options.arguments)
+        if options.dry:
+            return _task("release:publish:dry", *options.arguments)
+        if options.stage:
+            return _task(f"release:publish:{options.stage}", *options.arguments)
         _task("release:publish:assets")
         return _task("release:publish:finalize")
     if operation == "prepare" and options.review:
