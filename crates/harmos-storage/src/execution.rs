@@ -9,7 +9,11 @@
 
 /* === Modules === */
 
+mod virtual_clock;
+
 /* === Re-Exports === */
+
+pub use virtual_clock::{Activity, AdvanceError, Controller, Interval};
 
 /* === Imports === */
 
@@ -79,11 +83,30 @@ struct Scoped<F> {
 pub trait Clock: Send + Sync + 'static {
     fn read(&self) -> Reading;
     fn sleep_until(&self, deadline: Instant) -> Sleep;
+
+    fn activity(&self, _name: String) -> Activity {
+        Activity::untracked()
+    }
 }
 
 /* === Implementations === */
 
 impl Execution {
+    /// Create a host clock that moves only through its controller.
+    pub fn virtual_at(date: SystemTime) -> (Self, Controller) {
+        virtual_clock::create(date)
+    }
+
+    /// Count work from admission through settlement, including external I/O.
+    pub fn activity(&self, name: impl Into<String>) -> Activity {
+        self.source.read().expect("clock source is healthy").activity(name.into())
+    }
+
+    /// An interval's first tick is one period after construction.
+    pub fn interval(&self, period: Duration) -> Interval {
+        Interval::new(self.clone(), period)
+    }
+
     pub fn new(now: impl Fn() -> Instant + Send + Sync + 'static, sleep: impl Fn(Duration) -> Sleep + Send + Sync + 'static) -> Self {
         Self::at(SystemTime::now(), now, sleep)
     }

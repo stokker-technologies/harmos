@@ -48,7 +48,6 @@ impl Executor {
     pub(crate) fn seeded(seed: u64) -> Self {
         let runtime =
             tokio::runtime::Builder::new_current_thread().enable_all().build().expect("the simulation current-thread executor builds");
-        runtime.block_on(async { tokio::time::pause() });
 
         let clock = {
             let _entered = runtime.enter();
@@ -62,7 +61,25 @@ impl Executor {
     }
 
     pub(crate) fn block_on<F: Future>(&self, future: F) -> F::Output {
-        self.runtime.block_on(crate::clock::scope(self.clock.host.clone(), self.entropy.scope(future)))
+        self.runtime.block_on(crate::clock::scope(
+            self.clock.host.clone(),
+            self.entropy.scope(async {
+                tokio::pin!(future);
+                loop {
+                    tokio::select! {
+                        biased;
+                        result = &mut future => return result,
+                        () = async {
+                            // Drain Runnable Host Work Before Choosing The Next Timer
+                            for _ in 0..8 {
+                                tokio::task::yield_now().await;
+                            }
+                            self.clock.controller.advance_next().await;
+                        } => {}
+                    }
+                }
+            }),
+        ))
     }
 
     pub(crate) fn drive(&self) {
@@ -74,7 +91,7 @@ impl Executor {
     }
 
     pub(crate) fn advance_ms(&self, milliseconds: u64) {
-        self.block_on(self.clock.advance_ms(milliseconds));
+        self.runtime.block_on(crate::clock::scope(self.clock.host.clone(), self.entropy.scope(self.clock.advance_ms(milliseconds))));
         self.drive();
     }
 

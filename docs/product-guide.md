@@ -873,10 +873,35 @@ different clock is refused. `setup.settings().clock(clock)` selects a source dur
 composition. `Clock::with_clock(source)` accepts a `clock::Source` owning readings
 and timer registration, so callers do not depend on its scheduler.
 
-Simulation retains its existing paused executor and manual advancement interface,
-using a Unix epoch and the shared host clock across reboot. Its elapsed trace reading
-includes idle timer advancement. Filesystem and device timestamps remain source evidence.
-Directory watcher polling and Wasmtime epoch interruption remain physical mechanisms.
+`Clock::virtual_at(epoch)` returns the same clock type plus a `Controller`. The
+source owns a cancellable timer queue ordered by deadline and registration order;
+Tokio and transport keep running normally. `controller.read()` exposes both readings.
+`advance_by(duration)` visits due timers in order. `advance_until(bound, condition)`
+stops when the condition holds and otherwise returns an `AdvanceError` listing pending
+timer IDs and their deadlines at the virtual bound. Active external work can keep the
+clock frozen; the test runner's separate hang guard bounds that case.
+
+Register work before scheduling it with `let mut activity = clock.activity("operation");`
+and retain the guard through settlement. Calls, unanswered observer ticks and host disk,
+process or transport work each need a guard; concurrent branches need separate guards.
+Use `activity.wait(clock.sleep(duration)).await` only when that branch's sole outstanding
+work is the clock wait. A timeout guarding active work must retain active accounting.
+The wake restores activity before scheduling the continuation. Dropping a wait removes
+its timer and restores its guard; dropping the guard settles the work. These hooks must
+be installed by each invocation, publication and I/O owner: unregistered work is invisible
+to the controller. Device-driven streams remain active while awaiting external samples.
+
+`clock.interval(period)` schedules its first tick one period later, preserves fixed
+cadence and returns the tick's readings. Missed ticks are delivered in deadline order.
+Use `activity.wait(interval.tick()).await` between observer answers and retain active
+accounting while answering each tick. Zero periods are refused.
+
+Simulation uses this virtual source with its existing manual advancement interface,
+a Unix epoch and the same clock across reboot. Settling work drives queued timers;
+manual advancement visits each deadline precisely, without Tokio's millisecond rounding.
+Recovery, replay and inverse-law oracles retain their existing meaning. Filesystem and
+device timestamps remain source evidence. Directory watcher polling and Wasmtime epoch
+interruption remain physical mechanisms.
 
 Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
 Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.
