@@ -91,6 +91,10 @@ The host obtains a channel in one of two ways. Everything above the channel is i
 Catalog admission does not depend on placement. The remote placement is a new physical backend
 behind the existing attach interface.
 
+A managed plugin is any executable that serves `harmos.v1` on the endpoint the host passes when
+it starts the process. Nothing else about the executable matters, so a plugin in any language
+with a build output can be managed.
+
 ## Connection and Reconnect
 
 - Every connect calls `Describe`, admits the catalog and creates a new activation. The
@@ -202,11 +206,27 @@ features.
 ## Language SDKs
 
 The pilot covers Rust (`sdk/rust`), Python (`sdk/python`), C# (`sdk/csharp`) and C++
-(`sdk/cpp`). Go is outside the pilot; `harmos-sdk-go` stays recorded for later.
+(`sdk/cpp`). Go is outside the pilot.
+
+Every SDK, Rust included, is built over the `.proto` files: the authoring layer produces and
+consumes `harmos.v1` messages, and a transport adapter carries them (a gRPC server for a
+sidecar, the guest interface for a Wasm guest). The Rust SDK therefore does not reach into the
+host's internal operation machinery, and all SDKs exercise the same contract.
 
 `sdk/<language>` provides, over `harmos.v1`: serve operations, call required operations, declare
 and publish streams, observers, lifecycle and settings. Each passes the conformance suite. Product
 SDKs (Dokime's `sdk/<language>`) build on these and add their own concepts.
+
+## Validation
+
+- Each SDK's conformance plugin builds from the `.proto` files alone, so the
+  languages build in parallel and none waits for the host build.
+- One story runs against every language: the same suite, written once per
+  SDK, executed by the same host, with the same expected evidence. A
+  difference between languages is a failure.
+- Tests at integration level and above follow a real user journey and read
+  as its storyline. Setup, fixtures and assertions live in shared modules
+  with one convention; a test does not rebuild what a shared module provides.
 
 ## What It Removes
 
@@ -231,9 +251,9 @@ Behaviour tests under `crates/harmos-runtime/tests/sidecar/` migrate to the new 
 
 Not yet decided with the owner; each is settled before its task starts.
 
-1. The exact wire format: the complete `harmos.v1` `.proto` files with field numbers, reserved
-   ranges, the failure model and the rule for compatible changes. It is agreed before any
-   implementation so later changes do not break plugins.
+1. The exact wire format. A draft is in `proto/` with its compatibility rules and review
+   questions, including whether visibility needs three values or two. It is agreed before any
+   implementation.
 2. Endpoint security between host and plugin. Proposed: nothing on loopback for a managed plugin;
    a remote URL is plain and trusted by whoever adds it; transport security is added later.
 
