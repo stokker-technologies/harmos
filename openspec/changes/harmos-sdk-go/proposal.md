@@ -7,13 +7,13 @@ Plugin authors should be able to write sidecars in Go against the language-neutr
 ## What Changes
 
 - Add `sdk/go` with sidecar interfaces generated from the checked-in `.proto` files.
-- Provide operation registration, plugin metadata, lifecycle, observers, streams and batched data.
+- Provide operation registration, plugin metadata, lifecycle, observers and streams.
 - Pass the conformance suite on Linux and Windows.
 - A Go module under `sdk/go`, released with subfolder tags.
 
 ## Locked Decisions
 
-- Depends on `plugin-grpc-protocol` passing its gates and migrating.
+- Depends on `grpc-plugins` landing the `harmos.v1` protocol.
 - Sidecars only. Guests are a later decision.
 
 ## Non-Goals
