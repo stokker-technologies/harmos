@@ -16,6 +16,12 @@ or credentials. The host is always the client.
    and host; Public operations by all connected callers. The host MUST refuse
    duplicate providers and incompatible requirements during admission. The fixture
    catalog MUST equal the catalog defined below, including order and hashes.
+   Operation identifiers are complete routing keys, with no provider prefix or
+   provider selection. Duplicate admission MUST name the identifier and both
+   owners, including when one owner is the host. A requirement whose operation
+   is absent MAY be admitted; no dependency ordering is required. If its callee
+   is present, its fingerprint MUST match. Disconnected or replaced activations
+   MUST remove their operations from the registry before replacement admission.
 2. **Activation and Started At.** Every connection creates a new host activation
    after Describe and catalog admission. started_at MUST be a valid protobuf
    Timestamp captured once at process startup, unchanged across connections to
@@ -41,6 +47,12 @@ or credentials. The host is always the client.
    conformance.children sends calls 1 and 2 to conformance.host.echo with Value
    values 01 and 02, respectively, before waiting for replies. It returns a Value
    concatenating reply values in call-ID order. Child calls are unary only.
+   The same registry routes host calls and child calls. An absent operation MUST
+   fail at call time with a REFUSED failure naming its operation identifier;
+   no provider identity is needed. Another plugin's Private operation MUST be
+   refused even when its fingerprint matches. A ChildRequest policy overrides
+   the callee's policy for that call only; otherwise the callee owns deadlines,
+   retries and cancellation grace, enforced using the host clock.
 6. **Child Failure Preservation.** A ChildResponse failure is an operation result,
    not a transport fault. conformance.child_failure sends call 1 to
    conformance.host.fail with its input and MUST return every field of the host's
@@ -53,6 +65,10 @@ or credentials. The host is always the client.
    message equal to Cancel.reason, operation conformance.cancel, plugin conformance,
    and a nonempty action. It MUST then close output without waiting for a child
    reply. Connection loss fails outstanding calls; it does not transfer them.
+   Connection loss MUST classify those calls as TRANSIENT and MUST NOT fail
+   calls on other plugin connections or calls executing on the host. After
+   observing ChildCancel the host MUST cancel that child and suppress any
+   subsequent ChildResponse for its ID.
 8. **Structured Failure.** Application failures MUST use Response.failure,
    preserving classification, stable code, message, action, operation, plugin,
    cause, details and separate support diagnostics. conformance.failure MUST return

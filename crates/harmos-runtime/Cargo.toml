@@ -35,7 +35,7 @@ default = []
 # Explicitly Selected Native SDK Prototype Story; Excluded From Shipping Builds.
 cpp-prototype = ["plugin-sidecar"]
 plugin = ["dep:petgraph", "dep:semver", "semver/serde", "dep:harmos-packaging"]
-plugin-grpc = ["plugin", "dep:harmos-protocol", "dep:hyper-util", "dep:tonic", "dep:tower", "dep:prost-reflect", "dep:prost-types", "tokio/fs", "tokio/io-util", "tokio/net", "tokio/process"]
+plugin-grpc = ["plugin", "grpc", "dep:harmos-protocol", "dep:hyper-util", "dep:tonic", "dep:tower", "dep:prost-reflect", "dep:prost-types", "tokio/fs", "tokio/io-util", "tokio/net", "tokio/process"]
 plugin-sidecar = ["plugin", "dep:harmos-sidecar", "harmos-sidecar/kit", "harmos-sidecar/derive", "tokio/io-util", "tokio/process"]
 plugin-guest = ["plugin", "dep:harmos-guest", "harmos-guest/kit", "harmos-guest/derive", "dep:wasmtime"]
 grpc = [

@@ -14,12 +14,14 @@
 mod catalog;
 mod config;
 mod connection;
+pub(crate) mod invoke;
 mod managed;
 
 /* === Re-Exports === */
 
 pub use config::PlacementSettings;
 pub use harmos_protocol::v1;
+pub use invoke::CallError;
 pub use managed::Managed;
 
 /* === Imports === */
@@ -32,6 +34,7 @@ use harmos_protocol::v1::plugin_client::PluginClient;
 use tokio::sync::watch;
 
 // Local Imports
+use crate::operations::Lane;
 use crate::{Application, Runtime, clock::Clock};
 use connection::Connection;
 use managed::Process;
@@ -53,6 +56,7 @@ pub struct Activation {
     pub previous_started_at: Option<prost_types::Timestamp>,
     pub executable_digest: Option<[u8; 32]>,
     connection: Arc<Connection>,
+    admission: Option<Arc<crate::operations::GrpcAdmission>>,
 }
 
 #[derive(Clone)]
@@ -106,7 +110,14 @@ impl<A: Application> Runtime<A> {
         if participant.is_stopping() {
             return Err(Error::Disconnected);
         }
-        Attached::start(self.operations.clock().clone(), placement, settings, participant).await
+        Attached::start(
+            self.operations.execution(),
+            <A::Lanes as crate::operations::Lane>::default_lane().name(),
+            placement,
+            settings,
+            participant,
+        )
+        .await
     }
 }
 
@@ -132,8 +143,10 @@ impl Activation {
 
 impl Attached {
     async fn start(
-        clock: Clock, placement: Placement, settings: PlacementSettings, participant: crate::runtime::StopParticipant,
+        operations: crate::operations::Manager, lane: &'static str, placement: Placement, settings: PlacementSettings,
+        participant: crate::runtime::StopParticipant,
     ) -> Result<Self, Error> {
+        let clock = operations.clock().clone();
         if settings.connect_timeout.is_zero() || settings.reconnect_delay.is_zero() || settings.stop_grace.is_zero() {
             return Err(Error::Invalid("Placement Durations Must Be Positive".into()));
         }
@@ -145,7 +158,12 @@ impl Attached {
                 }
                 Placement::Remote(address) => (None, address.clone()),
             };
-            let activation = connect(&address, 1, None, process.as_ref().map(|process| process.digest)).await?;
+            let mut activation = connect(&address, 1, None, process.as_ref().map(|process| process.digest)).await?;
+            let admission = operations.admit_grpc(&activation, lane).map_err(|error| {
+                activation.connection.closed.send_replace(true);
+                error
+            })?;
+            activation.admission = Some(Arc::new(admission));
             Ok::<_, Error>((process, address, activation))
         };
         let (process, address, activation) =
@@ -157,7 +175,7 @@ impl Attached {
         let (stop, stopping) = watch::channel(None);
         let (stopped, completed) = watch::channel(None);
         tokio::spawn(async move {
-            let result = supervise(clock, settings, process, address, activation, &status, stopping, participant).await;
+            let result = supervise(operations, lane, clock, settings, process, address, activation, &status, stopping, participant).await;
             status.send_modify(|status| {
                 status.activation = None;
                 if let Err(error) = &result {
@@ -243,6 +261,7 @@ async fn connect(
         previous_started_at,
         executable_digest,
         connection,
+        admission: None,
     })
 }
 
@@ -267,8 +286,9 @@ async fn stopping(stop: &mut watch::Receiver<Option<String>>, participant: &mut 
 }
 
 async fn supervise(
-    clock: Clock, settings: PlacementSettings, mut process: Option<Process>, address: String, mut activation: Activation,
-    status: &watch::Sender<Status>, mut stop: watch::Receiver<Option<String>>, mut participant: crate::runtime::StopParticipant,
+    operations: crate::operations::Manager, lane: &'static str, clock: Clock, settings: PlacementSettings, mut process: Option<Process>,
+    address: String, mut activation: Activation, status: &watch::Sender<Status>, mut stop: watch::Receiver<Option<String>>,
+    mut participant: crate::runtime::StopParticipant,
 ) -> Outcome {
     loop {
         let exited = async {
@@ -282,6 +302,7 @@ async fn supervise(
             reason = stopping(&mut stop, &mut participant) => Some(reason),
             result = exited => {
                 activation.connection.closed.send_replace(true);
+                activation.admission.as_ref().unwrap().remove();
                 return Err(Arc::new(result.map_or_else(|error| error, Error::Exit)));
             },
             () = disconnected(activation.connection.closed.subscribe()) => None,
@@ -298,6 +319,7 @@ async fn supervise(
                 tracing::warn!(plugin = %activation.description.id, %error, "plugin Stop failed; closing its connection");
             }
             activation.connection.closed.send_replace(true);
+            activation.admission.as_ref().unwrap().remove();
             if let Some(process) = &mut process {
                 let exit = clock.timeout_at(deadline, process.exited()).await;
                 match exit {
@@ -312,6 +334,7 @@ async fn supervise(
             }
             return result.map_err(Arc::new);
         }
+        activation.admission.as_ref().unwrap().remove();
         status.send_replace(Status {
             activation: None,
             failure: Some(Arc::new(Error::Disconnected)),
@@ -334,13 +357,21 @@ async fn supervise(
                 result = reconnect => result,
             };
             match result {
-                Ok(Ok(next)) => {
+                Ok(Ok(mut next)) => {
                     if next.description.id != activation.description.id {
                         next.connection.closed.send_replace(true);
                         status.send_modify(|status| {
                             status.failure = Some(Arc::new(Error::Invalid("Reconnect Changed Plugin Identity".into())))
                         });
                         continue;
+                    }
+                    match operations.admit_grpc(&next, lane) {
+                        Ok(admission) => next.admission = Some(Arc::new(admission)),
+                        Err(error) => {
+                            next.connection.closed.send_replace(true);
+                            status.send_modify(|status| status.failure = Some(Arc::new(error)));
+                            continue;
+                        }
                     }
                     activation = next;
                     status.send_replace(Status {

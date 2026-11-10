@@ -11,8 +11,15 @@
 
 /* === Modules === */
 
+mod cancellation;
 mod catalog_admission;
+mod child_calls;
+mod connection_loss;
+mod duplicate_operation;
+mod host_invoke;
+mod invoke_support;
 mod managed_lifecycle;
+mod private_refusal;
 mod remote_reconnect;
 mod remote_stop;
 mod support;

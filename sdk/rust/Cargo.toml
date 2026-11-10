@@ -33,6 +33,10 @@ path = "src/bin/diagnostics.rs"
 name = "harmos-sdk-host-fixture"
 path = "src/bin/host-fixture.rs"
 
+[[bin]]
+name = "harmos-sdk-invoke-fixture"
+path = "src/bin/invoke-fixture.rs"
+
 # === Features === #
 
 # === Dependencies === #

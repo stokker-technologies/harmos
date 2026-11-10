@@ -179,6 +179,12 @@ impl Manager {
         options: EncodedOptions,
     ) -> Result<EncodedInvocation> {
         let origin = source.check()?;
+        #[cfg(feature = "plugin-grpc")]
+        if let Ok(entry) = self.capture_entry(operation)
+            && entry.binding.is::<crate::plugin::grpc::invoke::Binding>()
+        {
+            return self.dispatch_encoded(entry, payload, source, parent, submitted, options);
+        }
         let qualified = crate::QualifiedId::parse(operation).map_err(|_| Error::InvalidInput {
             field: "encoded operation",
             reason: "routing requires an owner-qualified operation identity",
@@ -473,6 +479,17 @@ pub(super) fn dispatch_native(
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
     budget(operations.clock(), submission.entry.id(), 1, timeout, submitted)?;
+    #[cfg(feature = "plugin-grpc")]
+    if let Some(binding) = submission.entry.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() {
+        let prepared = harmos_sdk::__private::PreparedNative {
+            instance: binding.prepare(input.payload),
+            grant: None,
+            streams: None,
+        };
+        let mut request = super::binding::Request::from(Vec::new());
+        request.retry = input.retry;
+        return dispatch_prepared(operations, submission, source, parent, prepared, request);
+    }
     let factory = submission.entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>();
     let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
@@ -526,7 +543,7 @@ pub(super) fn dispatch_prepared(
     prepared: harmos_sdk::__private::PreparedNative, mut request: super::binding::Request<Vec<u8>>,
 ) -> Result<EncodedInvocation> {
     let submitted = submission.submitted;
-    let timeout = submission.entry.declared().policy.timeout;
+    let timeout = request.policy.unwrap_or(submission.entry.declared().policy).timeout;
     let streaming = submission.entry.contract.as_ref().is_some_and(|contract| contract.input().is_some() || contract.output().is_some());
     let harmos_sdk::__private::PreparedNative { instance, grant, .. } = prepared;
     let instance = std::sync::Mutex::new(Some(instance));

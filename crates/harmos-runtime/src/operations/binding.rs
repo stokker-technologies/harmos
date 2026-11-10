@@ -50,6 +50,7 @@ type Prepare<O, P> = dyn Fn(
 pub(super) struct Request<T> {
     pub(super) value: T,
     pub(super) retry: Option<super::RetryPolicy>,
+    pub(super) policy: Option<super::OperationPolicy>,
     pub(super) lane: Option<&'static str>,
     pub(super) context: Arc<std::sync::OnceLock<super::CallContext>>,
     pub(super) retention: Option<super::RequestClaims>,
@@ -72,6 +73,7 @@ impl<T> From<T> for Request<T> {
         Self {
             value,
             retry: None,
+            policy: None,
             lane: None,
             retention: None,
             binding: None,
@@ -94,6 +96,7 @@ impl<T> Request<T> {
         Ok(Self {
             value,
             retry: None,
+            policy: None,
             lane: None,
             retention: Some(claims),
             binding: None,

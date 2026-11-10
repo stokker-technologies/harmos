@@ -80,6 +80,40 @@ impl Manager {
         let (result, retired) = {
             let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
             let retired = state.retired();
+            #[cfg(feature = "plugin-grpc")]
+            for entry in entries {
+                if let Some(previous) = state.entries.get(entry.id()).and_then(|providers| {
+                    providers.values().find(|previous| {
+                        entry.binding.is::<crate::plugin::grpc::invoke::Binding>()
+                            || previous.binding.is::<crate::plugin::grpc::invoke::Binding>()
+                    })
+                }) {
+                    return Err(Error::AlreadyRegistered {
+                        domain: "operation",
+                        name: format!("{} (owners {} and {})", entry.id(), previous.owner, entry.owner),
+                    });
+                }
+            }
+            #[cfg(feature = "plugin-grpc")]
+            for caller in state.entries.values().flat_map(|providers| providers.values()).chain(entries) {
+                let Some(binding) = caller.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() else {
+                    continue;
+                };
+                for required in &binding.requires {
+                    let target = entries
+                        .iter()
+                        .find(|entry| entry.id() == required.id)
+                        .or_else(|| state.entries.get(&required.id).and_then(|providers| providers.values().next()));
+                    // Absent Callees Do Not Impose An Arrival Order.
+                    let Some(target) = target else { continue };
+                    if plugin_grpc::fingerprint(target)? != required.fingerprint {
+                        return Err(Error::InvalidInput {
+                            field: "plugin requirement",
+                            reason: "callee fingerprint differs from the declared requirement",
+                        });
+                    }
+                }
+            }
             for caller in entries {
                 let Some(factory) = caller.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>() else {
                     continue;

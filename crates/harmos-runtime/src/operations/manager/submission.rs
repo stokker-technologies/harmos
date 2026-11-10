@@ -170,7 +170,7 @@ impl Manager {
             domain: "operation lane",
             name: lane.to_owned(),
         })?;
-        let mut policy = entry.definition.policy;
+        let mut policy = request.policy.unwrap_or(entry.definition.policy);
         if let Some(retry) = request.retry {
             if retry != crate::operations::RetryPolicy::Never && entry.declared().replay == crate::operations::ReplaySafety::Unknown {
                 return Err(Error::InvalidInput {
