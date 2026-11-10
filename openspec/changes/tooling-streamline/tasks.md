@@ -1,0 +1,27 @@
+# Tasks
+
+## 1. Contract
+
+- [ ] 1.1 Settle the open points in `proposal.md` with the owner and record the final task table and CI shape.
+- [ ] 1.2 Lock the source inventory: `mise.toml`, `tools/python`, workflows, actions and the contributor guide.
+
+## 2. Tasks and Tooling
+
+- [ ] 2.1 Replace the task families with the entry points, with language and layer as arguments, and delete the tasks for removed facilities.
+- [ ] 2.2 Remove every `CARGO_INCREMENTAL` setting from `mise.toml` and tooling and set it once in the workflows.
+- [ ] 2.3 Adopt the shared build tooling without the storage preflight and delete the local wrapper code that existed only for it.
+- [ ] 2.4 Prune the compatibility and extended selections to what still proves something.
+
+## 3. Workflows
+
+- [ ] 3.1 Move archiving, summaries, the Nightly freshness check and report, the release review and the mirror push into tasks.
+- [ ] 3.2 Rewrite the CI, Nightly and Release workflows as matrix job templates that each run one task.
+
+## 4. Final Validation
+
+- [ ] 4.1 Run every entry point locally on Windows and Linux, and confirm hosted CI and Nightly run the same tasks.
+- [ ] 4.2 Update the contributor guide.
+
+## Workflow Follow-Up
+
+- Delivery uses targeted validation and merges to dev without waiting for CI; breakage is fixed in follow-ups.
