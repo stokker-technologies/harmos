@@ -41,6 +41,7 @@ use super::{inbound::Inbound, manager::Settings, middleware::Middleware};
 use crate::operations::resident::Activation;
 use crate::operations::{Manager, RestartPolicy, Running};
 use crate::services::{Resident, ServiceContext, ServiceDefinition};
+use crate::supervision::executor::InContext;
 use crate::{Application, Error, Result};
 
 /* === Constants === */
@@ -323,33 +324,39 @@ impl<A: Application> Resident<A> for Listener {
         let stopping = self.resources.stopping.subscribe();
         // Healthy Connections Drain Gracefully; Stalled Ones Are Aborted Before The Stop Deadline.
         let grace = self.resources.settings.shutdown_timeout / 2;
-        let incoming = futures_util::stream::unfold((listener, slots, stopping), move |(listener, slots, stopping)| async move {
-            let permit = slots.clone().acquire_owned().await.ok()?;
-            let connection = listener.accept().await.and_then(|(stream, _)| {
-                stream.set_nodelay(true)?;
-                let mut cancellation = stopping.clone();
-                Ok(Connection {
-                    stream,
-                    stopping: Box::pin(async move {
-                        let _ = cancellation.wait_for(|stopping| *stopping).await;
-                        tokio::time::sleep(grace).await;
-                    }),
-                    stopped: false,
-                    _permit: permit,
-                })
+        let clock = self.resources.operations.clock().clone();
+        let incoming =
+            futures_util::stream::unfold((listener, slots, stopping, clock), move |(listener, slots, stopping, clock)| async move {
+                let permit = slots.clone().acquire_owned().await.ok()?;
+                let connection = listener.accept().await.and_then(|(stream, _)| {
+                    stream.set_nodelay(true)?;
+                    let mut cancellation = stopping.clone();
+                    let clock = clock.clone();
+                    Ok(Connection {
+                        stream,
+                        stopping: Box::pin(async move {
+                            let _ = cancellation.wait_for(|stopping| *stopping).await;
+                            clock.sleep(grace).await;
+                        }),
+                        stopped: false,
+                        _permit: permit,
+                    })
+                });
+                Some((connection, (listener, slots, stopping, clock)))
             });
-            Some((connection, (listener, slots, stopping)))
-        });
         let certificate = self.resources.certificate.clone();
+        let clock = self.resources.operations.clock().clone();
         let incoming = incoming
             .map(move |connection| {
                 let certificate = certificate.clone();
+                let clock = clock.clone();
                 async move {
                     let connection = connection?;
                     let info = connection.connect_info();
                     let stream: Pin<Box<dyn Io>> = match certificate {
                         Some((certificate, timeout)) => {
-                            let stream = tokio::time::timeout(timeout, certificate.acceptor().accept(connection))
+                            let stream = clock
+                                .timeout(timeout, certificate.acceptor().accept(connection))
                                 .await
                                 .map_err(|error| std::io::Error::new(std::io::ErrorKind::ConnectionAborted, error))?
                                 .map_err(|error| std::io::Error::new(std::io::ErrorKind::ConnectionAborted, error))?;
@@ -383,8 +390,10 @@ impl<A: Application> Resident<A> for Listener {
                 }
             }
         };
-        self.task =
-            Some(tokio::spawn(async move { server.serve_with_incoming_shutdown(inbound, incoming, shutdown).await.map_err(failure) }));
+        self.task = Some(tokio::spawn(
+            async move { server.serve_with_incoming_shutdown(inbound, incoming, shutdown).await.map_err(failure) }
+                .in_clock(self.resources.operations.clock().clone()),
+        ));
         *self.resources.address.lock().expect("gRPC address lock is healthy") = Some(address);
         tracing::info!(%address, "gRPC listener ready");
         context.ready();
@@ -400,7 +409,11 @@ impl<A: Application> Resident<A> for Listener {
         tracing::debug!("stopping gRPC listener");
         self.resources.stopping.send_replace(true);
         if let Some(task) = &mut self.task {
-            let joined = tokio::time::timeout(self.resources.settings.shutdown_timeout, task)
+            let joined = self
+                .resources
+                .operations
+                .clock()
+                .timeout(self.resources.settings.shutdown_timeout, task)
                 .await
                 .map_err(|_| Error::NotReady { domain: "gRPC connection settlement" })?;
             self.task.take();

@@ -116,7 +116,7 @@ impl GrpcManager {
     pub async fn attach_with_certificate(
         &self, settings: Settings, certificate: super::ServerCertificate, handshake_timeout: std::time::Duration,
     ) -> Result<Attached> {
-        if settings.tls.is_some() || handshake_timeout.is_zero() || tokio::time::Instant::now().checked_add(handshake_timeout).is_none() {
+        if settings.tls.is_some() || handshake_timeout.is_zero() || self.operations.clock().now().checked_add(handshake_timeout).is_none() {
             return Err(Error::InvalidInput {
                 field: "gRPC reloadable TLS",
                 reason: "requires no fixed TLS configuration and a positive supported handshake timeout",
@@ -213,8 +213,8 @@ impl Settings {
     fn validate(&self) -> Result<()> {
         if self.request_timeout.is_zero()
             || self.shutdown_timeout.is_zero()
-            || tokio::time::Instant::now().checked_add(self.request_timeout).is_none()
-            || tokio::time::Instant::now().checked_add(self.shutdown_timeout).is_none()
+            || crate::supervision::executor::now().checked_add(self.request_timeout).is_none()
+            || crate::supervision::executor::now().checked_add(self.shutdown_timeout).is_none()
             || self.connections.get() > tokio::sync::Semaphore::MAX_PERMITS
             || self.calls_per_connection.get() > u32::MAX as usize
         {

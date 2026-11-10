@@ -114,14 +114,14 @@ impl Direction {
 }
 
 impl Unsealed {
-    fn mint(context: &Context, request: Option<RequestKey>, link: Option<Link>, clock: fn() -> Timestamp) -> Self {
+    fn mint(context: &Context, request: Option<RequestKey>, link: Option<Link>, clock: &crate::clock::Clock) -> Self {
         Self {
             principal: context.principal.clone(),
             correlation: context.correlation,
             causation: context.causation,
             request,
             link,
-            at: witnessed_at(clock()),
+            at: witnessed_at(clock.date()),
         }
     }
 
@@ -176,7 +176,7 @@ async fn run_admissions<A: Application>(
                         return true;
                     }
 
-                    let draft = Unsealed::mint(&context, key.clone(), None, tracked.clock);
+                    let draft = Unsealed::mint(&context, key.clone(), None, &tracked.clock);
 
                     // Prepare against the pre-state, release it while reserving capture
                     // capacity, then lock through apply and publication. Only this
@@ -291,7 +291,7 @@ async fn run_admissions<A: Application>(
                     // entry it appends, whichever handle carried the request.
                     context.principal = Some(principal);
                     let link = direction.link(original);
-                    let draft = Unsealed::mint(&context, None, Some(link), tracked.clock);
+                    let draft = Unsealed::mint(&context, None, Some(link), &tracked.clock);
 
                     // Prepare against the pre-state, release it while reserving capture
                     // capacity, then lock through apply and publication. Only this
@@ -390,7 +390,7 @@ async fn run_admissions<A: Application>(
                         let _ = reply.send(Err(PreparationError::Limit));
                         return true;
                     }
-                    let draft = Unsealed::mint(&context, None, None, tracked.clock);
+                    let draft = Unsealed::mint(&context, None, None, &tracked.clock);
                     let Some(next) = tracked
                         .state
                         .read()

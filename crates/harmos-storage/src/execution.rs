@@ -52,6 +52,10 @@ pub struct Reading {
 
 struct RealClock {
     origin: Reading,
+}
+
+struct CallbackClock {
+    origin: Reading,
     now: Arc<dyn Fn() -> Instant + Send + Sync>,
     sleep: Arc<dyn Fn(Duration) -> Sleep + Send + Sync>,
 }
@@ -85,14 +89,16 @@ impl Execution {
     }
 
     pub fn real_at(date: SystemTime) -> Self {
-        Self::at(date, Instant::now, |duration| Box::pin(tokio::time::sleep(duration)))
+        Self::with_clock(RealClock {
+            origin: Reading { instant: Instant::now(), date },
+        })
     }
 
     pub fn at(
         date: SystemTime, now: impl Fn() -> Instant + Send + Sync + 'static, sleep: impl Fn(Duration) -> Sleep + Send + Sync + 'static,
     ) -> Self {
         let origin = Reading { instant: now(), date };
-        Self::with_clock(RealClock {
+        Self::with_clock(CallbackClock {
             origin,
             now: Arc::new(now),
             sleep: Arc::new(sleep),
@@ -109,8 +115,8 @@ impl Execution {
         if Arc::ptr_eq(&self.source, &other.source) {
             return true;
         }
-        let source = self.source.read().expect("clock source is healthy");
-        let other = other.source.read().expect("clock source is healthy");
+        let source = self.source.read().expect("clock source is healthy").clone();
+        let other = other.source.read().expect("clock source is healthy").clone();
         Arc::ptr_eq(&source, &other)
     }
 
@@ -156,6 +162,18 @@ impl Execution {
 }
 
 impl Clock for RealClock {
+    fn read(&self) -> Reading {
+        let instant = Instant::now();
+        let date = self.origin.date + instant.saturating_duration_since(self.origin.instant);
+        Reading { instant, date }
+    }
+
+    fn sleep_until(&self, deadline: Instant) -> Sleep {
+        Box::pin(tokio::time::sleep_until(deadline))
+    }
+}
+
+impl Clock for CallbackClock {
     fn read(&self) -> Reading {
         let instant = (self.now)();
         let date = self.origin.date + instant.saturating_duration_since(self.origin.instant);
@@ -244,7 +262,7 @@ impl<F> Drop for Scoped<F> {
 
 impl Default for Execution {
     fn default() -> Self {
-        Self::new(Instant::now, |duration| Box::pin(tokio::time::sleep(duration)))
+        Self::real_at(SystemTime::now())
     }
 }
 
@@ -259,7 +277,50 @@ mod tests {
     use super::*;
 
     fn clock(epoch: SystemTime) -> Execution {
-        Execution::at(epoch, Instant::now, |duration| Box::pin(tokio::time::sleep(duration)))
+        Execution::real_at(epoch)
+    }
+
+    struct RegisteredClock {
+        reading: Reading,
+        timers: std::sync::Mutex<Vec<(Instant, tokio::sync::oneshot::Sender<()>)>>,
+    }
+
+    impl Clock for Arc<RegisteredClock> {
+        fn read(&self) -> Reading {
+            self.reading
+        }
+        fn sleep_until(&self, deadline: Instant) -> Sleep {
+            let (wake, waiting) = tokio::sync::oneshot::channel();
+            self.timers.lock().unwrap().push((deadline, wake));
+            Box::pin(async {
+                waiting.await.unwrap();
+            })
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn injected_source_owns_timeout_wakeups_and_cancelled_waiters() {
+        let source = Arc::new(RegisteredClock {
+            reading: Reading {
+                instant: Instant::now(),
+                date: SystemTime::UNIX_EPOCH,
+            },
+            timers: std::sync::Mutex::new(Vec::new()),
+        });
+        let clock = Execution::with_clock(source.clone());
+        let deadline = clock.now() + Duration::from_secs(60);
+        let timeout = clock.timeout_at(deadline, std::future::pending::<()>());
+        tokio::pin!(timeout);
+        assert!(std::future::poll_fn(|cx| Poll::Ready(timeout.as_mut().poll(cx).is_pending())).await);
+        let (registered, wake) = source.timers.lock().unwrap().pop().unwrap();
+        assert_eq!(registered, deadline);
+        wake.send(()).unwrap();
+        assert_eq!(timeout.await, Err(Elapsed));
+
+        let sleep = clock.sleep_until(deadline);
+        drop(sleep);
+        let (_, cancelled) = source.timers.lock().unwrap().pop().unwrap();
+        assert!(cancelled.is_closed());
     }
 
     #[tokio::test(start_paused = true)]

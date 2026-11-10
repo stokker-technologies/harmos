@@ -62,6 +62,7 @@ pub(super) struct Inbound {
 pub(super) struct TrustedContext(pub(super) CallContext);
 
 struct Observed {
+    clock: crate::clock::Clock,
     trace: Option<tracing::Span>,
     dispatcher: tracing::Dispatch,
     body: Body,
@@ -75,6 +76,7 @@ struct Observed {
 }
 
 struct Moving {
+    clock: crate::clock::Clock,
     body: Body,
     progress: watch::Sender<tokio::time::Instant>,
 }
@@ -96,6 +98,7 @@ impl Service<http::Request<Body>> for Inbound {
 
     #[tracing::instrument(target = "harmos::grpc", name = "grpc.call", level = "debug", skip_all, fields(status = tracing::field::Empty))]
     fn call(&mut self, mut request: http::Request<Body>) -> Self::Future {
+        let clock = self.operations.clock().clone();
         let trace = tracing::Span::current();
         let mut routes = self.routes.clone();
         let entries = self.middleware.clone();
@@ -115,7 +118,7 @@ impl Service<http::Request<Body>> for Inbound {
                     Ok(timeout) => timeout,
                     Err(status) => return Ok(status.into_http()),
                 };
-                let deadline = tokio::time::Instant::now() + timeout;
+                let deadline = clock.now() + timeout;
                 let metadata = MetadataMap::from_headers(request.headers().clone());
                 let peer = request.extensions().get::<tonic::transport::server::TcpConnectInfo>().and_then(|info| info.remote_addr);
 
@@ -128,7 +131,7 @@ impl Service<http::Request<Body>> for Inbound {
                 let entered = tokio::select! {
                     biased;
                     _ = shutdown(stopping.clone()) => Err(Status::unavailable("gRPC listener is stopping")),
-                    _ = tokio::time::sleep_until(deadline) => Err(Status::deadline_exceeded("RPC deadline elapsed")),
+                    _ = clock.sleep_until(deadline) => Err(Status::deadline_exceeded("RPC deadline elapsed")),
                     result = session.enter() => result.map_err(super::server::status),
                 };
                 if let Err(status) = entered {
@@ -144,11 +147,17 @@ impl Service<http::Request<Body>> for Inbound {
                 request.extensions_mut().insert(TrustedContext(context));
                 let (progress, mut response_deadline, operation): (_, Shutdown, _) = match streaming {
                     Some((operation, idle)) => {
-                        let (progress, observed) = watch::channel(tokio::time::Instant::now());
-                        request = request.map(|body| Body::new(Moving { body, progress: progress.clone() }));
-                        (Some(progress), Box::pin(idle_deadline(observed, idle)), Some(operation))
+                        let (progress, observed) = watch::channel(clock.now());
+                        request = request.map(|body| {
+                            Body::new(Moving {
+                                clock: clock.clone(),
+                                body,
+                                progress: progress.clone(),
+                            })
+                        });
+                        (Some(progress), Box::pin(idle_deadline(clock.clone(), observed, idle)), Some(operation))
                     }
-                    None => (None, Box::pin(tokio::time::sleep_until(deadline)), None),
+                    None => (None, Box::pin(clock.sleep_until(deadline)), None),
                 };
                 let response = tokio::select! {
                     biased;
@@ -170,6 +179,7 @@ impl Service<http::Request<Body>> for Inbound {
                         return body;
                     }
                     Body::new(Observed {
+                        clock: clock.clone(),
                         trace: Some(tracing::Span::current()),
                         dispatcher: tracing::dispatcher::get_default(Clone::clone),
                         body,
@@ -184,7 +194,7 @@ impl Service<http::Request<Body>> for Inbound {
                 }))
             }
             .instrument(trace)
-            .in_current_context(),
+            .in_clock(self.operations.clock().clone()),
         )
     }
 }
@@ -227,7 +237,7 @@ impl http_body::Body for Observed {
                 if frame.is_data()
                     && let Some(progress) = &self.progress
                 {
-                    progress.send_replace(tokio::time::Instant::now());
+                    progress.send_replace(self.clock.now());
                 }
                 if let Some(trailers) = frame.trailers_ref() {
                     self.ended = true;
@@ -264,7 +274,7 @@ impl http_body::Body for Moving {
     fn poll_frame(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<http_body::Frame<Self::Data>, Status>>> {
         let frame = Pin::new(&mut self.body).poll_frame(cx);
         if matches!(&frame, Poll::Ready(Some(Ok(frame))) if frame.is_data()) {
-            self.progress.send_replace(tokio::time::Instant::now());
+            self.progress.send_replace(self.clock.now());
         }
         frame
     }
@@ -280,10 +290,10 @@ impl http_body::Body for Moving {
 
 /* === Private Functions === */
 
-async fn idle_deadline(mut progress: watch::Receiver<tokio::time::Instant>, idle: Duration) {
+async fn idle_deadline(clock: crate::clock::Clock, mut progress: watch::Receiver<tokio::time::Instant>, idle: Duration) {
     loop {
         let last = *progress.borrow_and_update();
-        let remaining = idle.saturating_sub(tokio::time::Instant::now().saturating_duration_since(last));
+        let remaining = idle.saturating_sub(clock.now().saturating_duration_since(last));
         if remaining.is_zero() {
             return;
         }
@@ -291,12 +301,12 @@ async fn idle_deadline(mut progress: watch::Receiver<tokio::time::Instant>, idle
             biased;
             changed = progress.changed() => {
                 if changed.is_err() {
-                    tokio::time::sleep(remaining).await;
+                    clock.sleep(remaining).await;
                     return;
                 }
             }
-            _ = tokio::time::sleep(remaining) => {
-                if tokio::time::Instant::now().saturating_duration_since(*progress.borrow()) >= idle {
+            _ = clock.sleep(remaining) => {
+                if clock.now().saturating_duration_since(*progress.borrow()) >= idle {
                     return;
                 }
             }

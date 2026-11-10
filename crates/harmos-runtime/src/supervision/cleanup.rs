@@ -24,6 +24,7 @@ use tokio::task::JoinHandle;
 
 // Local Imports
 use super::executor;
+use super::executor::InContext;
 use crate::Error;
 
 /* === Constants === */
@@ -38,6 +39,7 @@ pub(crate) type Finalize<'a> = Pin<Box<dyn Future<Output = Outcome> + Send + 'a>
 /* === Structs === */
 
 pub(crate) struct Cleanup<R: Resource> {
+    clock: crate::clock::Clock,
     original: Arc<Mutex<Option<R>>>,
     joining: AsyncMutex<Join>,
 }
@@ -72,6 +74,7 @@ impl Resource for Box<dyn Resource> {
 impl<R: Resource> Cleanup<R> {
     pub(crate) fn new(resource: R) -> Self {
         Self {
+            clock: crate::clock::current(),
             original: Arc::new(Mutex::new(Some(resource))),
             joining: AsyncMutex::new(Join::Ready),
         }
@@ -107,7 +110,7 @@ impl<R: Resource> Cleanup<R> {
                 original.release();
                 Ok(())
             };
-            *joining = Join::Running(executor::task(future));
+            *joining = Join::Running(executor::task(future.in_clock(self.clock.clone())));
         }
         let Join::Running(task) = &mut *joining else { unreachable!("cleanup owns its join before waiting") };
         let result = task.await.unwrap_or_else(|source| {

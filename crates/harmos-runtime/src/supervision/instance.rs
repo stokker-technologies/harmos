@@ -23,7 +23,6 @@ use tracing::Instrument;
 
 // Local Imports
 use super::cleanup::{Cleanup, Finalize, Resource};
-use super::executor;
 use crate::Error;
 use crate::supervision::executor::InContext;
 
@@ -49,6 +48,7 @@ pub struct Status {
 }
 
 pub(crate) struct Instance {
+    clock: crate::clock::Clock,
     dispatcher: tracing::Dispatch,
     trace: Mutex<Option<tracing::Span>>,
     status: watch::Sender<Status>,
@@ -172,7 +172,7 @@ impl Phase {
 }
 
 impl Instance {
-    pub(crate) fn queued(cancellation: watch::Sender<bool>) -> Self {
+    pub(crate) fn queued(cancellation: watch::Sender<bool>, clock: crate::clock::Clock) -> Self {
         let status = Status {
             phase: Phase::Queued,
             outcome: None,
@@ -185,6 +185,7 @@ impl Instance {
             settled_at: None,
         };
         Self {
+            clock,
             dispatcher: tracing::dispatcher::get_default(Clone::clone),
             trace: Mutex::new(Some(
                 tracing::debug_span!(target: "harmos::operations", "operations.instance", instance_id = tracing::field::Empty, operation = tracing::field::Empty, generation = tracing::field::Empty, outcome = tracing::field::Empty, settled = false),
@@ -226,7 +227,7 @@ impl Instance {
             !matches!(phase, Phase::Queued | Phase::Stopped | Phase::Settled),
             "admission and physical settlement own terminal transitions"
         );
-        let now = executor::now();
+        let now = self.clock.now();
         self.status.send_modify(|status| {
             if status.phase.is_terminal() {
                 return;
@@ -256,7 +257,7 @@ impl Instance {
         tracing::dispatcher::with_default(&self.dispatcher, || {
             tracing::debug!(target: "harmos::operations", parent: &self.trace(), attempt, ?phase, "instance attempt");
         });
-        let now = executor::now();
+        let now = self.clock.now();
         let mut admitted = false;
         self.status.send_modify(|status| {
             if status.cancellation_requested || status.phase.is_terminal() {
@@ -294,7 +295,7 @@ impl Instance {
             if let Some(notify) = &self.on_settled {
                 notify();
             }
-            let now = executor::now();
+            let now = self.clock.now();
             let mut failure = None;
             self.status.send_modify(|status| {
                 status.phase = self.terminal;
@@ -407,6 +408,7 @@ impl Instance {
     }
 
     pub(crate) fn settle(&self) -> Finalize<'_> {
+        let _clock = crate::clock::enter(self.clock.clone());
         Box::pin(
             async move {
                 let mut changed = self.settlement();

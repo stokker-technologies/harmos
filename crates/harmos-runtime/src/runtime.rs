@@ -112,6 +112,7 @@ pub struct Handle<A: Application> {
 
 #[doc(hidden)]
 pub struct Builder<A: Application> {
+    clock: crate::clock::Clock,
     application: Option<A>,
     cleanup: BootstrapCleanup,
     origin: Origin<A::State>,
@@ -375,6 +376,7 @@ impl<A: Application> Runtime<A> {
 
     pub(crate) fn builder(origin: impl Into<Origin<A::State>>) -> Builder<A> {
         Builder {
+            clock: crate::clock::current(),
             application: None,
             cleanup: BootstrapCleanup::new(),
             origin: origin.into(),
@@ -639,6 +641,11 @@ impl<A: Application> Builder<A> {
         boot::Startup::new(self, storage).await.map_err(|source| StartupError::Runtime { source: Box::new(source) })
     }
 
+    pub fn clock(&mut self, clock: crate::clock::Clock) -> &mut Self {
+        self.clock = clock;
+        self
+    }
+
     pub fn storage<C>(&mut self, storage: &crate::storage::StorageManager<C>) -> &mut Self {
         self.resource(storage.engine_erased());
         self.startup_storage = Some(storage.erased());
@@ -689,7 +696,7 @@ impl<A: Application> Builder<A> {
         if self
             .initializers
             .iter()
-            .any(|initializer| initializer.timeout.is_zero() || tokio::time::Instant::now().checked_add(initializer.timeout).is_none())
+            .any(|initializer| initializer.timeout.is_zero() || self.clock.now().checked_add(initializer.timeout).is_none())
         {
             let source: crate::Error = Error::InvalidInput {
                 field: "runtime initialization timeout",
@@ -736,7 +743,10 @@ impl<A: Application> Builder<A> {
     async fn boot(
         mut self, storage: Option<&crate::storage::StorageManager<crate::storage::ErasedCatalog>>, cleanup: BootstrapCleanup,
     ) -> Result<Runtime<A>, Incompatible> {
-        let application = self.application.take().map(|application| launch::ApplicationCleanup::new(application, None));
+        let application = {
+            let _clock = crate::clock::enter(self.clock.clone());
+            self.application.take().map(|application| launch::ApplicationCleanup::new(application, None))
+        };
         let opened = boot::Boot::new(storage, cleanup.clone());
         let mut boot = match opened {
             Ok(boot) => boot,
@@ -754,6 +764,13 @@ impl<A: Application> Builder<A> {
     }
 
     async fn boot_owned(self, boot: &mut boot::Boot<A>) -> Result<(), Incompatible> {
+        crate::clock::scope(self.clock.clone(), Box::pin(self.boot_clocked(boot))).await
+    }
+
+    async fn boot_clocked(self, boot: &mut boot::Boot<A>) -> Result<(), Incompatible> {
+        if let Some(storage) = &boot.storage {
+            storage.adopt_clock(&self.clock).map_err(Incompatible::work)?;
+        }
         boot.acquire().await.map_err(Incompatible::work)?;
         #[cfg(feature = "simulation")]
         let simulation = self.simulation;
@@ -825,7 +842,7 @@ impl<A: Application> Builder<A> {
             attachments.capture.take(),
             boot.storage.clone(),
             schema_settings.clone(),
-            crate::state::Timestamp::now,
+            self.clock.clone(),
         );
         let journal_handles = journal.handle_probe();
         let records = crate::records::RecordManager::new(journal.clone());
@@ -940,7 +957,7 @@ impl<A: Application> Builder<A> {
         for initializer in initializers {
             let handle = boot.runtime.as_ref().expect("runtime is owned during initialization").handle();
             let initialize = (initializer.initialize)(handle);
-            match tokio::time::timeout(initializer.timeout, initialize).await {
+            match self.clock.timeout(initializer.timeout, initialize).await {
                 Ok(result) => result.map_err(Incompatible::initialization)?,
                 Err(source) => return Err(Incompatible::initialization(Box::new(source))),
             }

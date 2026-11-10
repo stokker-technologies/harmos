@@ -41,6 +41,7 @@ use tokio::sync::watch;
 // Local Imports
 use crate::ServicePolicy;
 use crate::operations::{Backoff, CallContext, ContextError, ContextValue, Jitter, Manager, OperationDeclaration, RestartPolicy, Running};
+#[cfg(test)]
 use crate::supervision::executor;
 use crate::{Application, Error, Result, state::StateManager, streams::StreamManager};
 
@@ -378,7 +379,8 @@ impl<A: Application> ServiceContext<A> {
     }
 
     pub async fn rest(&mut self, duration: Duration) -> bool {
-        self.until_stopping(executor::sleep(duration)).await.is_none()
+        let sleep = self.operations.clock().sleep(duration);
+        self.until_stopping(sleep).await.is_none()
     }
 
     pub async fn until_stopping<T>(&mut self, future: impl Future<Output = T>) -> Option<T> {

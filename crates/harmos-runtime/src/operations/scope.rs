@@ -110,8 +110,12 @@ impl<'a> Scope<'a> {
         Ok(preparation.inherit(self.core.cause))
     }
 
+    pub fn clock(&self) -> &crate::clock::Clock {
+        &self.core.instances.clock
+    }
+
     pub fn now(&self) -> tokio::time::Instant {
-        crate::supervision::executor::now()
+        self.core.instances.clock.now()
     }
 
     pub fn records<A: crate::Application>(&self) -> crate::records::RecordManager<A> {
