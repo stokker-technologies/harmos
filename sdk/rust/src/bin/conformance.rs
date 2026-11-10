@@ -20,7 +20,7 @@
 // Third Party Imports
 
 // Local Imports
-use harmos::{
+use harmos_sdk_grpc::{
     Classification, Context, Failure, Message, Observer, Operation, OperationRequest, Plugin, Publisher, Result, Stream, Visibility,
 };
 

@@ -21,9 +21,6 @@ publish = false
 
 # === Package Targets === #
 
-[lib]
-name = "harmos"
-
 [[bin]]
 name = "harmos-sdk-conformance-plugin"
 path = "src/bin/conformance.rs"
