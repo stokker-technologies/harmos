@@ -15,6 +15,9 @@ is code and tests to maintain, and some add branches to the runtime.
 | `cargo harmos` authoring tool and its embedded templates | 1,400 lines, plus 28,650 lines of templates in 191 files | Removed. Products create projects with their own tool |
 | JSON storage backend | 2,400 lines | Removed. It existed to produce benchmarks, and benchmark results depend on the consumer's own backend |
 | Public `signal` namespace | 1,450 lines | Removed as a public facility; see below |
+| Operation response cache | About 110 lines of dedicated tests; no caller selects a cache key in either repository | Removed |
+| External series adapter, axial surveys and tracked reads | About 210 lines of source and 520 of tests and fixtures | Removed |
+| Statistical stream batches | About 300 lines of source and 230 of tests and fixtures | Removed |
 | Simulation | 920 lines of source, about 1,040 of tests, support and benches | Proposed for removal; see below |
 
 State management stays. It is a Harmos feature that applications build on.
