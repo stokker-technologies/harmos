@@ -191,7 +191,7 @@ def windows(workspace):
         export({"PATH": os.pathsep.join([str(binary), os.environ["PATH"]])})
         subprocess.run(["mise", "--version"], check=True, stdout=sys.stderr, creationflags=spawn_flags())
 
-    if os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and ctypes.windll.shell32.IsUserAnAdmin():
+    if sys.platform == "win32" and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and ctypes.windll.shell32.IsUserAnAdmin():
         exclusions = [
             str(workspace),
             str(Path(os.environ.get("CARGO_TARGET_DIR", str(workspace / "target"))).resolve()),
