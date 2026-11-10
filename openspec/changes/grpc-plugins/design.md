@@ -108,6 +108,11 @@ behind the existing attach interface.
 - A plugin's operations keep the three visibilities. `Host` means only the host application may
   call it; products use it for operations the host drives.
 - Retries are the existing operation policy. Nothing new is added for retry on connection loss.
+- An authored handler returns its value: `Result<T, E>`, not a result of a response of a type.
+  The shared-owner `Response<T>` stays below the authoring surface for host code that returns a
+  view into a larger allocation.
+- A handle obtained on one connection fails when that connection closes and never follows its
+  replacement.
 - Streaming child calls stay unsupported.
 
 ## Calls Between Plugins
@@ -128,8 +133,11 @@ ctx.operation(SetTemperature) ─► ChildRequest{id, payload}
   it in `Catalog.types`. Message types are limited to what protobuf expresses.
 - The caller lists the operation in `Catalog.requires` with the fingerprint it was built
   against. A mismatch with the provider is reported when both are connected, naming both plugins.
-- Connected plugins trust each other. Grants and provider authorization are removed; visibility
-  and the fingerprint comparison remain.
+- Connected plugins trust each other. Grants and provider authorization between plugins are
+  removed; visibility and the fingerprint comparison remain, and so does authorization of
+  external clients.
+- An operation identifier is unique among connected plugins and host operations. A plugin that
+  declares an identifier already in use is refused at connect, so provider selection is removed.
 - A call to an operation whose provider is not connected is refused at call time, naming the
   missing plugin.
 
@@ -207,7 +215,7 @@ SDKs (Dokime's `sdk/<language>`) build on these and add their own concepts.
 | Postcard operation envelopes | `crates/harmos-sdk/src/operations/serving/codec.rs`, after guests move |
 | Publication leases, admission, cadence reports | With the stream path they serve |
 | Plugin graph, start and stop ordering, reload plans | `crates/harmos-runtime/src/plugin/{mod,reload}.rs` and their use in `manager.rs` |
-| Grants, provider selection and authorization | `crates/harmos-runtime/src/operations/manager/grants.rs`, `OperationProvider` |
+| Grants between plugins, provider selection | Plugin paths of `crates/harmos-runtime/src/operations/manager/grants.rs`, `OperationProvider` |
 | Generation tokens and stale-call fencing | `crates/harmos-runtime/src/plugin/scope.rs`, stale endpoints in `router.rs` |
 | Native observer runner | `crates/harmos-sidecar/src/kit/{observer,task}.rs` |
 | Transport tests and benches | `crates/harmos-sidecar/tests/transport/`, `benches/transport/` |
@@ -223,7 +231,3 @@ Not yet decided with the owner; each is settled before its task starts.
    its URL.
 2. Reconciling `runtime-observer-cadence`, which changes the observer runner this change removes.
 3. Whether `operation-visibility` finishes first or folds into this change.
-4. Whether two connected plugins may declare the same operation identifier. Proposed: no; the
-   second is refused at connect, which removes provider selection.
-5. A shorter operation handler signature than a result of a response of a type, and a context
-   without template-specific type parameters. Under research.

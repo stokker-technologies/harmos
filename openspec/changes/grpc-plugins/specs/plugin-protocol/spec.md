@@ -68,6 +68,10 @@ The host SHALL connect and disconnect each plugin without ordering it against ot
 - **WHEN** a plugin connects before a plugin whose operations it requires
 - **THEN** it becomes ready without waiting
 
+#### Scenario: Duplicate Identifier
+- **WHEN** a plugin declares an operation identifier that a connected plugin or the host already serves
+- **THEN** the plugin is refused at connect with a reason naming the identifier and its current owner
+
 ### Requirement: Host-Opened Streams
 The host SHALL open one `Publish` call per declared stream it wants, and the plugin SHALL send
 one sample per message on it.
