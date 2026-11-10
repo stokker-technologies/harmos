@@ -26,8 +26,8 @@ per operating system.
   collects and packages through the authoring tool.
 - **Compatibility and extended selections are pruned** to what still proves something after the
   removals.
-- **Shared tooling is fixed in its shared source,** not here: the Cargo wrapper, test runner,
-  release scripts, cache and artifact helpers. Only product-specific fixture code stays local.
+- **Tooling stays this project's own copy,** kept harmonized with Dokime's: the Cargo wrapper,
+  test runner, release scripts, cache and artifact helpers are fixed here and there alike.
 - **CI workflows call tasks.** One job template per kind of work, as a matrix over languages,
   layers and platforms. A job checks out, sets up mise, restores caches, downloads the build it
   consumes, runs one task and uploads results. Tasks own archiving, summaries, the Nightly
