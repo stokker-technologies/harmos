@@ -1,0 +1,55 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Package === #
+
+[package]
+name = "harmos-sdk-derive"
+description = "Data-only protobuf message derive for Harmos plugins."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# === Package Targets === #
+
+[lib]
+proc-macro = true
+
+# === Features === #
+
+# === Dependencies === #
+
+[dependencies]
+# Parsing
+proc-macro2 = { workspace = true, default-features = true }
+quote = { workspace = true, default-features = true }
+syn = { workspace = true, default-features = true }
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #
