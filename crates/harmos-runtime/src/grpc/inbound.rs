@@ -301,11 +301,11 @@ async fn idle_deadline(clock: crate::clock::Clock, mut progress: watch::Receiver
             biased;
             changed = progress.changed() => {
                 if changed.is_err() {
-                    clock.sleep(remaining).await;
+                    clock.sleep_until(last + idle).await;
                     return;
                 }
             }
-            _ = clock.sleep(remaining) => {
+            _ = clock.sleep_until(last + idle) => {
                 if clock.now().saturating_duration_since(*progress.borrow()) >= idle {
                     return;
                 }
@@ -362,3 +362,36 @@ fn request_timeout(headers: &http::HeaderMap, maximum: Duration) -> Result<Durat
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn idle_deadline_tracks_progress_on_the_host_clock() {
+        // Use A Host Instant Distinct From The Transport Clock
+        let clock = crate::clock::Clock::at(
+            std::time::SystemTime::UNIX_EPOCH,
+            || tokio::time::Instant::now() + Duration::from_secs(3600),
+            |duration| Box::pin(tokio::time::sleep(duration)),
+        );
+        let (progress, observed) = watch::channel(clock.now());
+        let deadline = idle_deadline(clock.clone(), observed, Duration::from_secs(10));
+        tokio::pin!(deadline);
+        assert!(futures_util::poll!(&mut deadline).is_pending());
+
+        // Progress Extends The Idle Deadline Beyond Its Original Due Time
+        tokio::time::advance(Duration::from_secs(4)).await;
+        progress.send_replace(clock.now());
+        assert!(futures_util::poll!(&mut deadline).is_pending());
+        tokio::time::advance(Duration::from_secs(7)).await;
+        assert!(futures_util::poll!(&mut deadline).is_pending());
+
+        // Closing Progress Retains The Remaining Host Budget
+        drop(progress);
+        assert!(futures_util::poll!(&mut deadline).is_pending());
+        tokio::time::advance(Duration::from_secs(4)).await;
+        tokio::task::yield_now().await;
+        assert!(futures_util::poll!(&mut deadline).is_ready());
+    }
+}

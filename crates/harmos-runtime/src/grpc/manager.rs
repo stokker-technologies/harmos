@@ -128,7 +128,7 @@ impl GrpcManager {
     async fn attach_inner(
         &self, settings: Settings, certificate: Option<(super::ServerCertificate, std::time::Duration)>,
     ) -> Result<Attached> {
-        settings.validate()?;
+        settings.validate(self.operations.clock())?;
         let router = super::routing::Router::new(self.operations.clone(), settings.operations).map_err(|_| Error::InvalidInput {
             field: "gRPC operation settings",
             reason: "invalid transport bounds",
@@ -210,11 +210,11 @@ impl Drop for Attached {
 }
 
 impl Settings {
-    fn validate(&self) -> Result<()> {
+    fn validate(&self, clock: &crate::clock::Clock) -> Result<()> {
         if self.request_timeout.is_zero()
             || self.shutdown_timeout.is_zero()
-            || crate::supervision::executor::now().checked_add(self.request_timeout).is_none()
-            || crate::supervision::executor::now().checked_add(self.shutdown_timeout).is_none()
+            || clock.now().checked_add(self.request_timeout).is_none()
+            || clock.now().checked_add(self.shutdown_timeout).is_none()
             || self.connections.get() > tokio::sync::Semaphore::MAX_PERMITS
             || self.calls_per_connection.get() > u32::MAX as usize
         {
