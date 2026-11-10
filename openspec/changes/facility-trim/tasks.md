@@ -2,16 +2,15 @@
 
 ## 1. Contract
 
-- [ ] 1.1 Confirm the simulation removal with the owner and lock the source inventory: features, exports, consumers, tests, benches, documents and tasks for each facility.
+- [ ] 1.1 Lock the source inventory: features, exports, consumers, tests, benches, documents and tasks for each facility.
 
 ## 2. Removal
 
 - [ ] 2.1 Delete `crates/cargo-harmos` with its templates and every reference to it.
 - [ ] 2.2 Delete the JSON storage backend and the benchmarks that depend on it.
 - [ ] 2.3 Make statistics and downsampling private to storage, replace the downsampling kernels with `tsdownsample` where equivalent, and delete the public `signal` namespace and its features once Dokime owns FFT.
-- [ ] 2.4 Rewrite the state recovery, replay and inverse-law tests on the paused clock, then delete the simulation facility, its feature branches and its benchmark.
-- [ ] 2.5 Delete the operation response cache, the external series adapter with axial surveys and tracked reads, and statistical stream batches, with their tests and fixtures.
-- [ ] 2.6 Update the README and product guide.
+- [ ] 2.4 Delete the operation response cache, the external series adapter with axial surveys and tracked reads, and statistical stream batches, with their tests and fixtures.
+- [ ] 2.5 Update the README and product guide.
 
 ## 3. Final Validation
 

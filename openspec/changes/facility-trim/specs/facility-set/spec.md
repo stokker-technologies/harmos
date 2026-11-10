@@ -12,15 +12,3 @@ and plugin responsibilities.
 #### Scenario: Query Statistics Unchanged
 - **WHEN** a storage query asks for an aggregate or a downsampled series
 - **THEN** it returns the same result as before the change
-
-### Requirement: State Properties Stay Tested
-State recovery, replay identity and inverse laws SHALL remain covered by tests that do not
-depend on the simulation facility.
-
-#### Scenario: Restart
-- **WHEN** a runtime with committed state and records restarts
-- **THEN** the recovered state equals the state before the restart
-
-#### Scenario: Undo
-- **WHEN** a transaction is applied and then undone
-- **THEN** the state equals the state before it was applied

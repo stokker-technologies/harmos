@@ -136,6 +136,8 @@ host, and an observer runs on the host's ticks.
 - In production the clock is real time. In a test the host can run a virtual clock: when every
   call in flight is waiting on the clock, it jumps to the next timer. A story that waits for an
   hour inside a plugin then finishes at once, for a plugin in any language and in any process.
+- The virtual clock is the simulation facility's clock, extended with the rule above. That
+  gives simulation its first consumer outside its own tests.
 - Only waits that go through the context accelerate. Time a real device takes is real.
 - It costs one round trip per wait.
 

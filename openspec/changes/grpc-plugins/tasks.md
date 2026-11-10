@@ -17,7 +17,7 @@
 - [ ] 3.2 Add the remote placement: connect to a URL, reconnect, and expose the start time of each activation.
 - [ ] 3.3 Compute and admit the catalog digest; route child calls on the invoke call.
 - [ ] 3.4 Open and close `Publish` calls per declared stream, send ticks for interval streams and ingest samples.
-- [ ] 3.5 Serve the clock operations from one host clock, with a virtual mode for tests that advances when every call in flight waits on it.
+- [ ] 3.5 Serve the clock operations from one host clock, with a virtual mode for tests, built on the simulation facility's clock, that advances when every call in flight waits on it.
 - [ ] 3.6 Reduce visibility to `Private` and `Public`.
 
 ## 4. Rust SDK
