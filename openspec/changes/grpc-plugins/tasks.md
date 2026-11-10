@@ -32,7 +32,7 @@
 ## 5. Pilot SDKs
 
 - [x] 5.1 Python: `sdk/python` over `harmos.v1`, passing the conformance suite.
-- [ ] 5.2 C#: `sdk/csharp` over `harmos.v1`, passing the conformance suite.
+- [x] 5.2 C#: `sdk/csharp` over `harmos.v1`, passing the conformance suite.
 - [ ] 5.3 C++: `sdk/cpp` over `harmos.v1`, passing the conformance suite.
 
 ## 6. Removal

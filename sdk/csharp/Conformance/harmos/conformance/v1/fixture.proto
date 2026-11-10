@@ -1,0 +1,3 @@
+syntax = "proto3";
+package harmos.conformance.v1;
+message Value { bytes value = 1; }

@@ -229,6 +229,57 @@ host's internal operation machinery, and all SDKs exercise the same contract.
 and publish streams, observers, lifecycle and settings. Each passes the conformance suite. Product
 SDKs (Dokime's `sdk/<language>`) build on these and add their own concepts.
 
+### C# Authoring
+
+C# uses a typed builder registering async instance methods. The class owns its state;
+requests, replies and rows are generated protobuf message classes. `Grpc.Tools` generates
+code at build time; generated C# is not checked in. This fills the previously unspecified
+C# authoring shape for owner review.
+
+```csharp
+using Harmos.Sdk;
+using Harmos.V1;
+using Google.Protobuf.WellKnownTypes;
+// SetTemperature, Temperature and ReadSensor are generated from the product's .proto files.
+
+await new ThermalPlugin().Build().ServeAsync();
+
+sealed class ThermalPlugin
+{
+    private readonly Chamber chamber = new();
+    private readonly Operation<ReadSensor, Temperature> read = new("thermal.read", Visibility.Public);
+
+    public Harmos.Sdk.Plugin Build() => new Harmos.Sdk.Plugin("thermal", "1.0.0")
+        .Operation(new Operation<SetTemperature, Temperature>("thermal.set", Visibility.Public), SetAsync)
+        .Requires(read)
+        .Observer("thermal.temperature", new Duration { Seconds = 1 }, ObserveAsync)
+        .OnStop(chamber.CloseAsync);
+
+    private async Task<Temperature> SetAsync(Context context, SetTemperature request)
+    {
+        await context.CallAsync(read, new ReadSensor());
+        await chamber.SetAsync(request.Target, context.CancellationToken);
+        return await ObserveAsync(context);
+    }
+
+    private Task<Temperature> ObserveAsync(Context context) => chamber.ReadAsync(context.CancellationToken);
+}
+```
+
+`ServeAsync(address: "127.0.0.1:53124", remote: true)` serves an explicitly chosen remote
+endpoint and remains alive after Stop. `HARMOS_ADDRESS` overrides the address in either
+mode. Managed mode defaults to a dynamically bound loopback port and announces readiness.
+`Stream<TRow>` registers a device producer receiving a context and typed `Publisher<TRow>`;
+closing demand cancels the context and ends publication. `Section` carries typed product
+contributions, including product settings definitions. `Context.Scope` remains opaque.
+
+Declare `Requires(Clock.Sleep)` or `Requires(Clock.Now)` before using `context.SleepAsync`
+or `context.NowAsync`. These are child calls on the invocation, never local timers.
+Observers receive the host tick in `Context.At` and the per-demand `Context.Sequence`;
+they cannot call operations or sleep. Background work outside these host-visible waits
+is outside virtual-time accounting and runs in real time. Instance state shared by
+concurrent calls must use the application's normal synchronization.
+
 ## Validation
 
 - Each SDK's conformance plugin builds from the `.proto` files alone, so the

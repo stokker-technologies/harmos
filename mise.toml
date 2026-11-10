@@ -8,6 +8,7 @@ lockfile = true
 [tools]
 # Languages and Runtimes
 cmake = "4.1.2"
+dotnet = "10.0.403"
 go = "1.27.3"
 node = "26.12.1"
 python = "3.15.2"
