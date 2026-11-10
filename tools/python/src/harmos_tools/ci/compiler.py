@@ -188,7 +188,6 @@ def _execute(
             child_environment = environment | {
                 "SCCACHE_SERVER_PORT": port,
                 "RUSTC_WRAPPER": "sccache",
-                "CARGO_INCREMENTAL": "0",
             }
             if os.name == "nt":
                 # MSVC link.exe Stamps Each Proc-Macro DLL With A Fresh Timestamp And PDB GUID; Every Crate Hashing That DLL As

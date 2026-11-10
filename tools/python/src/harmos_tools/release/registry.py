@@ -16,7 +16,6 @@ import hashlib
 import json
 import os
 import re
-import runpy
 import subprocess
 import time
 import urllib.error
@@ -30,9 +29,9 @@ from typing import Any
 from ..process import spawn_flags
 
 # isort: split
-from ..build import storage
 from ..package import changelog
 from . import pins, policy
+from . import review as evidence
 
 # Type Checking Imports
 
@@ -77,7 +76,6 @@ class ProviderRedirect(urllib.request.HTTPRedirectHandler):
 
 def publish_crates(directory: Path, *, sleep=time.sleep, clock=time.monotonic) -> None:
     """Publish Workspace Crates One At A Time In Dependency Order, Resuming Past Published Versions."""
-    storage.preflight(directory)
     if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
         raise policy.ToolError("crate publication requires clean source before generated CHANGELOG staging")
     pins.check(directory)
@@ -94,7 +92,6 @@ def rehearse_crates(directory: Path, *, skip_published: bool = True) -> None:
     if not pins.check(directory, warn=nightly):
         return
     with policy.credential_free(policy.policy(directory, "release")):
-        storage.preflight(directory)
         packages = publishable(directory)
         metadata = policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps"], capture=True)
         target = Path(json.loads(metadata)["target_directory"])
@@ -512,14 +509,13 @@ def rehearsed(directory: Path, settings: dict, review: dict, sha: str) -> None:
     """The Release Review Head Passed Its Rehearsal And Its Tree Is Exactly The Merged Tree."""
     head = review["head"]
     if settings["provider"] == "github":
-        evidence = runpy.run_path(str(directory / ".github/actions/review-release/run.py"))
         pull = document(settings, f"pulls/{review['number']}")
         runs = pages(settings, f"actions/workflows/ci.yml/runs?event=pull_request&head_sha={head}", "workflow_runs")
         try:
             if not isinstance(pull, dict) or pull.get("number") != review["number"] or pull.get("head", {}).get("sha") != head:
                 raise ValueError("review identity or head differs")
-            candidates = [run for run in runs if evidence["github_review_run"](run, pull)]
-            _, jobs = evidence["github_validation_run"](
+            candidates = [run for run in runs if evidence.github_review_run(run, pull)]
+            _, jobs = evidence.github_validation_run(
                 candidates, lambda identifier: pages(settings, f"actions/runs/{identifier}/jobs?filter=latest", "jobs")
             )
         except (KeyError, TypeError, ValueError) as error:

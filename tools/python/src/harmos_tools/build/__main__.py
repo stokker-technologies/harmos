@@ -24,7 +24,7 @@ from pathlib import Path
 
 # Local Imports
 from .. import temporary
-from . import cargo, fixtures, paths, storage
+from . import cargo, fixtures, paths
 from .fixtures import ROOT, TARGET, SCHEMATIC
 
 # Type Checking Imports
@@ -55,7 +55,6 @@ def product(profile: str, scratch: Path) -> None:
     messages = export / "product/compiler.json"
     messages.parent.mkdir(parents=True, exist_ok=True)
     arguments = ["--locked", "--workspace", "--profile", profile]
-    storage.preflight(ROOT)
     with messages.open("w", encoding="utf-8") as output:
         subprocess.run(
             ["cargo", "build", *arguments, "--message-format=json-render-diagnostics"],
@@ -97,18 +96,7 @@ def product(profile: str, scratch: Path) -> None:
     fixtures.copy(cli, export / "bin" / cli.name, files)
     artifacts["schematic-cli"] = f"bin/{cli.name}"
 
-    metadata = json.loads(
-        subprocess.check_output(
-            ["cargo", "metadata", "--locked", "--format-version", "1"],
-            cwd=ROOT,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            stdin=sys.stdin,
-            stderr=sys.stderr,
-        )
-    )
-    platform = {"linux": "linux-x86_64", "darwin": "macos-x86_64", "win32": "win32"}[sys.platform]
-    package = next(package for package in metadata["packages"] if package["name"] == f"protoc-bin-vendored-{platform}")
-    protoc = Path(package["manifest_path"]).parent / "bin" / ("protoc.exe" if os.name == "nt" else "protoc")
+    protoc = _protoc()
 
     builds = {}
     for package in ("schematic-sidecar", "schematic-guest"):
@@ -127,7 +115,7 @@ def product(profile: str, scratch: Path) -> None:
         artifacts[package] = destination.relative_to(export).as_posix()
         builds[package] = f"product/examples/{staged}"
         if package == "schematic-sidecar":
-            # Consume Producer-Local Schemas Before The Guest Compiler Preflight.
+            # Consume Producer-Local Schemas Before The Guest Build.
             fixtures.generate_python(tool, export / builds[package], protoc, files)
 
     catalog = {
@@ -138,6 +126,30 @@ def product(profile: str, scratch: Path) -> None:
         "files": files,
     }
     (examples / "catalog.json").write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
+
+
+def generate(profile: str) -> None:
+    export = paths.output(ROOT, "build", profile)
+    catalog_path = export / "product/examples/catalog.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    tool = export / catalog["artifacts"]["cargo-harmos"]
+    fixtures.generate_python(tool, export / catalog["builds"]["schematic-sidecar"], _protoc(), catalog["files"])
+    catalog_path.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
+
+
+def _protoc() -> Path:
+    metadata = json.loads(
+        subprocess.check_output(
+            ["cargo", "metadata", "--locked", "--format-version", "1"],
+            cwd=ROOT,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdin=sys.stdin,
+            stderr=sys.stderr,
+        )
+    )
+    platform = {"linux": "linux-x86_64", "darwin": "macos-x86_64", "win32": "win32"}[sys.platform]
+    package = next(package for package in metadata["packages"] if package["name"] == f"protoc-bin-vendored-{platform}")
+    return Path(package["manifest_path"]).parent / "bin" / ("protoc.exe" if os.name == "nt" else "protoc")
 
 
 # === Private Functions === #

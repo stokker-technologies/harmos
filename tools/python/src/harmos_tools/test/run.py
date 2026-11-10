@@ -28,7 +28,7 @@ from pathlib import Path
 # Third Party Imports
 # Local Imports
 from .. import temporary
-from ..build import paths, storage
+from ..build import paths
 from ..process import spawn_flags
 from . import archive, nextest, policy, pytest, report, vitest
 
@@ -133,7 +133,6 @@ def coverage(
 
         # Instrumented Run
         if language == "rust":
-            storage.preflight(directory)
             binaries = archive.binaries(directory, profile)
             names = sorted(set(binaries.values()))
             expression, rest = nextest.selection(category, extra, names)
@@ -477,7 +476,7 @@ def _bench_rust(
 ) -> tuple[list[tuple[str, float, float | None]], int]:
     messages = paths.output(directory, "build", "bench") / "bench/compiler.json"
     if not messages.is_file():
-        raise policy.TestError("missing benchmark compiler metadata; run build:rust:bench first")
+        raise policy.TestError("missing benchmark compiler metadata; run mise run build -- --artifact bench first")
     archive.fixtures(directory, "bench", [messages.relative_to(directory).as_posix()])
     compatibility = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     rows = []

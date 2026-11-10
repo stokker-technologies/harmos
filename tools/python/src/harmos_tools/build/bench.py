@@ -24,7 +24,7 @@ from pathlib import Path
 from .. import temporary
 from ..process import spawn_flags
 from ..test import archive
-from . import paths, storage
+from . import paths
 
 # Type Checking Imports
 
@@ -45,7 +45,6 @@ def build(directory: Path, extra: Sequence[str] = ()) -> Path:
     messages = output / "bench/compiler.json"
     messages.parent.mkdir(parents=True, exist_ok=True)
     messages.unlink(missing_ok=True)
-    storage.preflight(directory)
     command = [
         "cargo",
         "build",

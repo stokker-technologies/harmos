@@ -52,7 +52,7 @@ def main(arguments: list[str] | None = None) -> None:
     fixtures = paths.output(ROOT, "build", profile) / "fixtures"
     stamp_path = fixtures / "stamp.json"
     if not stamp_path.is_file():
-        sys.exit(f"fixture stamp {stamp_path} is absent; run mise run build:rust:tests")
+        sys.exit(f"fixture stamp {stamp_path} is absent; run mise run build -- --artifact tests")
     stamp = json.loads(stamp_path.read_text(encoding="utf-8"))
     if stamp.get("profile") != profile or stamp.get("target") != paths.target():
         sys.exit("fixture stamp belongs to another profile or native target")
@@ -69,7 +69,7 @@ def main(arguments: list[str] | None = None) -> None:
         selected.extend(selectors[name] for name in ("vendor", "wheels", "requirements"))
     missing = [relative for relative in selected if not _input(fixtures, relative).exists()]
     if missing:
-        sys.exit(f"fixture input {missing[0]} is absent; run mise run build:rust:tests")
+        sys.exit(f"fixture input {missing[0]} is absent; run mise run build -- --artifact tests")
 
     if options.starter:
         _install_starters()
@@ -84,7 +84,7 @@ def main(arguments: list[str] | None = None) -> None:
     for relative in executables:
         path = _input(fixtures, relative)
         if not path.is_file():
-            sys.exit(f"executable input {relative} is absent; run mise run build:rust:tests")
+            sys.exit(f"executable input {relative} is absent; run mise run build -- --artifact tests")
         path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 

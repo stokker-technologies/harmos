@@ -23,7 +23,7 @@ from typing import Any
 # Local Imports
 from ..ci import summary
 from ..process import spawn_flags
-from . import paths, storage
+from . import paths
 
 # Type Checking Imports
 
@@ -39,7 +39,6 @@ from . import paths, storage
 
 
 def clippy(directory: Path, arguments: Sequence[str], *, environment: Mapping[str, str] | None = None) -> None:
-    storage.preflight(directory)
     selected = dict(os.environ if environment is None else environment, CARGO_BUILD_WARNINGS="deny")
     with summary.phase("Clippy"):
         subprocess.run(
@@ -64,7 +63,6 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.unlink(missing_ok=True)
     compiler_profile = "test"
-    storage.preflight(directory)
     command = [
         "cargo",
         "nextest",
@@ -119,7 +117,6 @@ def focused(directory: Path, operation: str, arguments: Sequence[str]) -> int:
         raise ValueError("focused compilation requires a canonical Cargo profile")
     if operation == "test" and ("--release" in compiler_arguments or profile not in (None, "test")):
         raise ValueError("focused tests use Cargo's default test profile")
-    storage.preflight(directory)
     return subprocess.run(
         ["cargo", operation, *arguments],
         cwd=directory,

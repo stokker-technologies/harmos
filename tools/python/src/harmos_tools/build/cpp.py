@@ -23,8 +23,8 @@ from pathlib import Path
 # Third Party Imports
 
 # Local Imports
-from . import cargo
 from ..process import spawn_flags
+from . import cargo
 
 # Type Checking Imports
 
@@ -50,8 +50,7 @@ def main() -> None:
 
     os.environ.update(environment)
 
-    # Compile The Rust ABI With Its Matching Compiler Preflight.
-    cargo.clippy(root, selectors, environment=environment)
+    # Compile The Rust ABI.
     directory = root / "target/cpp"
     directory.mkdir(parents=True, exist_ok=True)
     messages = directory / "compiler.json"

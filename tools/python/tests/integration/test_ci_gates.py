@@ -49,36 +49,6 @@ LATER = "c" * 40
 # === Classes === #
 
 
-class ImpactTests(unittest.TestCase):
-    def setUp(self):
-        self.action = runpy.run_path(str(ROOT / ".github/actions/plan-impact/run.py"))
-        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        authored = next(line.removeprefix("        plan: ") for line in workflow.splitlines() if line.startswith("        plan: "))
-        self.plan = json.loads(json.loads(authored))
-
-    def test_dev_and_review(self):
-        full = self.action["select"](self.plan, {"Cargo.toml"})
-        development = self.action["scope"](self.plan, full, "build")
-        self.assertTrue({"build", "build:rust:tests", "check:rust"} <= development)
-        self.assertFalse(any(job.startswith(("test:", "release:", "bench:", "prepare:", "package:")) for job in development))
-        self.assertTrue(any(job.startswith("test:") for job in self.action["scope"](self.plan, full)))
-        for job in development:
-            self.assertTrue(set(self.plan["dependencies"][job]) <= development)
-        print("Dev Impact:", ", ".join(sorted(development)))
-        print("PR Impact:", ", ".join(sorted(full)))
-
-    def test_guidance_scope(self):
-        selected = self.action["select"](self.plan, {"CONTRIBUTING.md"})
-        self.assertEqual(self.action["scope"](self.plan, selected, "build"), set())
-
-    def test_conservative_scope(self):
-        plan = {"dependencies": {"package:rust": ["build"], "build": ["producer"], "producer": []}, "rules": []}
-        self.assertEqual(self.action["close"](plan["dependencies"], {"unknown"}), set(plan["dependencies"]))
-        self.assertEqual(self.action["scope"](plan, {"package:rust", "build"}, "build"), {"build", "producer"})
-        with self.assertRaises(ValueError):
-            self.action["scope"](plan, set(), "typo")
-
-
 class StarterTests(unittest.TestCase):
     def test_version_preflight(self):
         templates = ROOT / "crates/cargo-harmos/templates"
@@ -129,7 +99,7 @@ class StarterTests(unittest.TestCase):
 
 class ReleaseChecksTests(unittest.TestCase):
     def setUp(self):
-        self.guard = runpy.run_path(str(ROOT / ".github/actions/review-release/checks.py"))
+        self.guard = runpy.run_module("harmos_tools.release.checks")
         self.sha = "a" * 40
         self.ci_run: dict = {
             "id": 7,
@@ -227,11 +197,9 @@ class PinTests(unittest.TestCase):
         with (
             patch.object(pins, "check", return_value=False) as check,
             patch.dict(os.environ, {"GITHUB_WORKFLOW_REF": "owner/repo/.github/workflows/nightly.yml@refs/heads/dev"}, clear=True),
-            patch.object(registry.storage, "preflight") as preflight,
         ):
             registry.rehearse_crates(ROOT)
             self.assertTrue(check.call_args.kwargs["warn"])
-            preflight.assert_not_called()
 
 
 class PublicationTests(unittest.TestCase):

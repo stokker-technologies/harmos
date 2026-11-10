@@ -23,6 +23,7 @@ from unittest.mock import patch
 
 # Third Party Imports
 # Local Imports
+from harmos_tools import build
 from harmos_tools.test import run
 
 # Type Checking Imports
@@ -45,7 +46,11 @@ class RunTests(unittest.TestCase):
     def setUpClass(cls):
         cls.runners = [run]
         for path in sorted((ROOT / "crates/cargo-harmos/templates").rglob("test/run.py.tmpl")):
-            namespace = runpy.run_path(str(path), run_name=f"{run.__package__}.template_runner")
+            # Templates Still Own Their Storage Helper Until Their Separate Migration.
+            storage = ModuleType("template_storage")
+            storage.__dict__.update(runpy.run_path(str(path.parent.parent / "build/storage.py.tmpl")))
+            with patch.object(build, "storage", storage, create=True):
+                namespace = runpy.run_path(str(path), run_name=f"{run.__package__}.template_runner")
             module = ModuleType(namespace["__name__"])
             module.__dict__.update(namespace)
             cls.runners.append(module)
