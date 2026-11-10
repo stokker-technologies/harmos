@@ -285,6 +285,12 @@ Not yet decided with the owner; each is settled before its task starts.
 1. The exact wire format. A draft is in `proto/` with its compatibility rules and review
    questions, including whether visibility needs three values or two. It is agreed before any
    implementation.
+2. A clock shared by the host and its plugins (proposed). A plugin in another process has its
+   own clock, so a test cannot accelerate a story that waits inside a plugin. If every wait
+   an SDK offers (`ctx.sleep`, an observer's interval) is served by the host, the host owns
+   the only clock. In a test the host advances that clock to the next timer as soon as every
+   call in flight is parked on it, so a long story finishes at once in any language. It
+   costs one round trip per wait and makes observer ticks come from the host.
 
 The hook through which an application authorizes external clients stays: without it Harmos falls
 back to anonymous access, and Dokime uses it to require an authenticated client.
