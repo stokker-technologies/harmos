@@ -36,6 +36,8 @@ mise run test -- --package harmos-macros --target lib --exact operation::tests::
 
 Focused builds select one package; focused tests select exactly one library or
 named integration target and use Cargo's default test profile, without an archive.
+Both accept `--manifest-path examples/schematic/Cargo.toml` to select the separate
+example workspace while keeping compilation behind the same task interface.
 Both accept `--features <list>` with `--package`, forwarding the comma- or
 space-separated Cargo feature list unchanged. Default features remain enabled.
 Focused builds also accept `--example`. Check the packaging fixture driver with:

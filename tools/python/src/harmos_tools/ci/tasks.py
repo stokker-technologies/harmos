@@ -91,6 +91,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     build.add_argument("--profile", choices=("dev", "release"), default="dev")
     build.add_argument("--artifact", choices=("product", "tests", "bench", "fixtures"), default="product")
     build.add_argument("--package")
+    build.add_argument("--manifest-path", type=Path)
     build.add_argument("--features")
     build.add_argument("--example")
     build.add_argument("--check", action="store_true")
@@ -100,6 +101,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     test.add_argument("--language", choices=("rust", "python", "csharp", "cpp"))
     test.add_argument("--layer", choices=LAYERS)
     test.add_argument("--package")
+    test.add_argument("--manifest-path", type=Path)
     test.add_argument("--features")
     test.add_argument("--target")
     test.add_argument("--exact")
@@ -227,6 +229,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
         )
 
     # Focused Cargo Selections
+    if options.command in ("build", "test") and options.manifest_path and not options.package:
+        parser.error("--manifest-path requires --package")
     if options.command in ("build", "test") and options.features and not options.package:
         parser.error("--features requires --package")
     if options.command == "check" and options.package:
@@ -280,6 +284,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
                 ]
             )
         command = ["--locked", "--profile", options.profile, "-p", options.package]
+        if options.manifest_path:
+            command += ["--manifest-path", str(options.manifest_path)]
         if options.features:
             command += ["--features", options.features]
         if options.example:
@@ -294,6 +300,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
             parser.error("focused tests use the default test profile and --exact for filtering")
         selected = ["--lib"] if options.target == "lib" else ["--test", options.target]
         command = ["--locked", "-p", options.package, *selected]
+        if options.manifest_path:
+            command += ["--manifest-path", str(options.manifest_path)]
         if options.features:
             command += ["--features", options.features]
         if options.exact:

@@ -72,6 +72,16 @@ class FocusedCargoTests(unittest.TestCase):
     def test_entry_points_dispatch_focused_cargo_directly(self):
         selections = [
             (
+                ["build", "--package", "example", "--manifest-path", "nested/Cargo.toml", "--check"],
+                "check",
+                ["--locked", "--profile", "dev", "-p", "example", "--manifest-path", str(Path("nested/Cargo.toml"))],
+            ),
+            (
+                ["test", "--package", "example", "--manifest-path", "nested/Cargo.toml", "--target", "journey"],
+                "test",
+                ["--locked", "-p", "example", "--test", "journey", "--manifest-path", str(Path("nested/Cargo.toml"))],
+            ),
+            (
                 ["build", "--package", "example", "--features", "grpc,simulation", "--check"],
                 "check",
                 ["--locked", "--profile", "dev", "-p", "example", "--features", "grpc,simulation"],
@@ -112,6 +122,8 @@ class FocusedCargoTests(unittest.TestCase):
 
     def test_invalid_focused_selections_do_not_start_cargo(self):
         selections = [
+            ["build", "--manifest-path", "nested/Cargo.toml"],
+            ["test", "--manifest-path", "nested/Cargo.toml", "--target", "lib"],
             ["build", "--features", "grpc"],
             ["test", "--features", "simulation", "--target", "lib"],
             ["test", "--package", "example"],
