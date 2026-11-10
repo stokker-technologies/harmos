@@ -88,8 +88,8 @@ The host obtains a channel in one of two ways. Everything above the channel is i
 | Executable hash, kill on shutdown | Yes | No |
 | Startup failure | Spawn or connect failure | Connect failure |
 
-Generations, dependency order and contract admission do not depend on placement and stay as they
-are. The remote placement is a new physical backend behind the existing attach interface.
+Catalog admission does not depend on placement. The remote placement is a new physical backend
+behind the existing attach interface.
 
 ## Connection and Reconnect
 
