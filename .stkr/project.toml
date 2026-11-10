@@ -12,6 +12,9 @@ visibility = "public"
 [languages.rust]
 generated = ["crates/harmos-protocol/src/v1.rs"]
 
+[languages.python]
+generated = ["sdk/python/src/harmos/v1/*_pb2*", "sdk/python/src/harmos/conformance/v1/*_pb2*"]
+
 # === === Repository === === #
 
 [housekeeping.branches]

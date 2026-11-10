@@ -51,7 +51,7 @@ description = "Prepare Locked Tools"
 run = "uv run --locked --all-groups --project tools/python python -m harmos_tools.ci.tasks prepare"
 
 [tasks."generate"]
-description = "Generate Python Clients from Product Schemas"
+description = "Generate Python Clients or SDK Protocol Bindings"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks generate"
 
 [tasks."format"]
@@ -175,7 +175,7 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.p
 hide = true
 description = "Format Python"
 usage = 'flag "--check"'
-run = "uv run --locked --no-sync --project tools/python ruff format tools/python crates/harmos-packaging{% if usage.check %} --check{% endif %}"
+run = "uv run --locked --no-sync --project tools/python ruff format tools/python crates/harmos-packaging sdk/python{% if usage.check %} --check{% endif %}"
 
 [tasks."format:rust"]
 hide = true
@@ -197,8 +197,9 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.f
 hide = true
 description = "Lint Python"
 run = [
-  "uv run --locked --no-sync --project tools/python ruff check tools/python crates/harmos-packaging",
+  "uv run --locked --no-sync --project tools/python ruff check tools/python crates/harmos-packaging sdk/python",
   "uv run --locked --no-sync --project tools/python ty check --project tools/python tools/python",
+  "uv run --locked --no-sync --project tools/python ty check --project sdk/python sdk/python",
 ]
 
 [tasks."lint:rust"]
@@ -279,8 +280,23 @@ run = [
 
 [tasks."test:python:integration"]
 hide = true
-description = "Test CI and Release Tooling"
-run = "uv run --locked --no-sync --project tools/python python -m unittest discover -s tools/python/tests/integration -v"
+description = "Test Repository Tooling and Python SDK"
+usage = 'flag "--profile <profile>" default="dev"'
+run = [
+  "uv run --locked --no-sync --project tools/python python -m unittest discover -s tools/python/tests/integration -v",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks test --language python --package harmos-plugin --target integration --profile {{usage.profile}}",
+]
+
+[tasks."check:python:sdk"]
+hide = true
+description = "Check Python SDK and Protocol Drift"
+run = [
+  "uv run --locked --no-sync --project tools/python ruff format sdk/python tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/ci/tasks.py --check",
+  "uv run --locked --no-sync --project tools/python ruff check sdk/python tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/ci/tasks.py",
+  "uv run --locked --no-sync --project tools/python ty check --project sdk/python sdk/python",
+  "uv run --locked --no-sync --project tools/python ty check --project tools/python tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/ci/tasks.py",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.python_protocol --check",
+]
 
 [tasks."test:rust:unit"]
 hide = true
