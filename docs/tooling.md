@@ -127,6 +127,51 @@ The standalone fixture can be served with
 `harmos-conformance --address 127.0.0.1:53124`. Every current rule applies to remote
 plugins, including the remote-specific Stop check; none is skipped.
 
+## C++ Plugin SDK
+
+`sdk/cpp` is a C++20 plugin library over `harmos.v1`; it no longer links the Rust
+C ABI. Include `harmos/harmos.hpp` and link the CMake target `Harmos::Cpp` after
+adding `sdk/cpp` with `add_subdirectory`. Author request, response, row and section
+values as generated protobuf messages. The [conformance plugin](../sdk/cpp/examples/conformance/main.cpp)
+demonstrates operation, stream and observer builder values ending in `serve()`.
+`HARMOS_BUILD_TESTS` defaults on for a standalone SDK build and off when embedded
+with `add_subdirectory`; project tasks explicitly enable it.
+
+```sh
+mise run build -- --language cpp
+mise run check -- --language cpp
+mise run build -- --package harmos-conformance
+mise run test -- --language cpp
+```
+
+The build uses the existing pinned CMake 4.1.2 in `mise.toml`. Windows requires
+Visual Studio 2022 C++ Build Tools and a Windows SDK; Linux requires a C++20
+compiler and Make. Git and network access are needed on the first build.
+FetchContent pins gRPC 1.76.0 to commit
+`f5ffb68d8a2fd603dff16287e90a4ac571e1fec6`, including its immutable protobuf,
+Abseil, BoringSSL, c-ares, re2 and zlib submodule revisions. No dependencies are
+installed globally. The task enables Git long paths only in its child environment
+for nested Windows worktrees. `protoc` and `grpc_cpp_plugin` are built from that
+graph and generate the protocol and fixture C++ sources during the build.
+
+Outputs and dependency sources stay under `target/cpp/<profile>/`, with retained
+`configure.log` and `build.log`. `--profile release` selects Release; the default
+is Debug. Check configures and validates the CMake dependency/target graph without
+compilation. Test consumes the existing C++ executable and reference-host build;
+it never compiles. `HARMOS_CONFORMANCE_HOST` may select a separately built host.
+Native catalog tests run through CTest before the single managed-plugin story,
+which checks every reference-host case, including
+cleanup and successful process exit after Stop.
+
+The fixture is `target/cpp/dev/Debug/harmos-cpp-conformance.exe` on Windows and
+`target/cpp/dev/harmos-cpp-conformance` on Linux. Without arguments it binds an
+ephemeral loopback port and announces `harmos listening 127.0.0.1:PORT`.
+`HARMOS_ADDRESS` overrides its bind address. `--address HOST:PORT` selects remote
+lifecycle: Stop completes cleanup and leaves the server running. Both modes use
+plain gRPC. Host clock waits require declaring `harmos::SLEEP`/`harmos::NOW` with
+`requires_operation`; observers answer ticks and cannot wait. Authors must not
+start untracked background work if they require virtual-time execution.
+
 ## Focused Build Preparation
 
 Before Cargo, mise selects the pinned environment, uv reuses `.venv/`, and a single
@@ -141,8 +186,8 @@ builds missing inputs. `generate --profile dev|release` regenerates Python clien
 from the existing Product schemas. Product build also retains its current client
 producer while those clients remain in the tree.
 
-The optional selections `build --cpp`, `test --cpp`,
-`build --compatibility`, `build --artifact tests --extended`, `test --extended`
+The optional selections `build --compatibility`,
+`build --artifact tests --extended`, `test --extended`
 and `bench --extended` retain existing facilities. `test --extended` owns its
 build prerequisites; `bench --extended` consumes `build --artifact bench --extended`.
 
