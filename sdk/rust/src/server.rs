@@ -42,9 +42,15 @@ use harmos_protocol::v1::{
 /* === Type Aliases === */
 
 type Output<T> = Pin<Box<dyn Stream<Item = std::result::Result<T, Status>> + Send>>;
-type Completion = oneshot::Receiver<Result<Vec<u8>>>;
 
 /* === Structs === */
+
+struct Completion {
+    result: oneshot::Receiver<Result<Vec<u8>>>,
+    settled: oneshot::Receiver<()>,
+}
+
+struct Settled(Option<oneshot::Sender<()>>);
 
 struct Server {
     description: v1::Description,
@@ -67,6 +73,7 @@ struct Job {
     payload: Vec<u8>,
     started: oneshot::Sender<()>,
     complete: oneshot::Sender<Result<Vec<u8>>>,
+    settled: oneshot::Sender<()>,
 }
 
 /* === Enums === */
@@ -74,6 +81,28 @@ struct Job {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl std::future::Future for Completion {
+    type Output = std::result::Result<Result<Vec<u8>>, oneshot::error::RecvError>;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        Pin::new(&mut self.result).poll(cx)
+    }
+}
+
+impl Completion {
+    async fn cancel(mut self) {
+        self.result.close();
+        let _ = (&mut self.settled).await;
+    }
+}
+
+impl Drop for Settled {
+    fn drop(&mut self) {
+        if let Some(settled) = self.0.take() {
+            let _ = settled.send(());
+        }
+    }
+}
 
 #[tonic::async_trait]
 impl Service for Server {
@@ -237,20 +266,25 @@ async fn execute(mut jobs: mpsc::Receiver<Job>) {
                 payload,
                 started,
                 mut complete,
+                settled,
             } = job;
+            let _settled = Settled(Some(settled));
             if complete.is_closed() {
                 return;
             }
-            let future = handler.execute(&context, payload);
-            let mut future = std::pin::pin!(future);
-            let first = futures_util::future::poll_fn(|cx| std::task::Poll::Ready(future.as_mut().poll(cx))).await;
-            let _ = started.send(());
-            let result = match first {
-                std::task::Poll::Ready(result) => result,
-                std::task::Poll::Pending => tokio::select! {
-                    _ = complete.closed() => return,
-                    result = &mut future => result,
-                },
+            let result = {
+                let future = handler.execute(&context, payload);
+                let mut future = std::pin::pin!(future);
+                let first = futures_util::future::poll_fn(|cx| std::task::Poll::Ready(future.as_mut().poll(cx))).await;
+                let _ = started.send(());
+                let result = match first {
+                    std::task::Poll::Ready(result) => result,
+                    std::task::Poll::Pending => tokio::select! {
+                        _ = complete.closed() => return,
+                        result = &mut future => result,
+                    },
+                };
+                result
             };
             let _ = complete.send(result);
         });
@@ -262,17 +296,19 @@ async fn dispatch(
 ) -> std::result::Result<Completion, Status> {
     let (complete, receiver) = oneshot::channel();
     let (started, ready) = oneshot::channel();
+    let (settled, settlement) = oneshot::channel();
     jobs.send(Job {
         handler,
         context,
         payload,
         complete,
         started,
+        settled,
     })
     .await
     .map_err(|_| Status::unavailable("Plugin Stopped"))?;
     ready.await.map_err(|_| Status::internal("Handler Panicked"))?;
-    Ok(receiver)
+    Ok(Completion { result: receiver, settled: settlement })
 }
 
 async fn invoke(
@@ -321,6 +357,7 @@ async fn publish(
     let mut next_tick = None;
     let mut sample = None;
     let mut sequence = 0;
+    let result = async {
     loop {
         if observing.is_none()
             && sample.is_none()
@@ -361,6 +398,14 @@ async fn publish(
             }
         }
     }
+    }.await;
+    if let Some((_, complete)) = observing {
+        complete.cancel().await;
+    }
+    if let Some(complete) = producing {
+        complete.cancel().await;
+    }
+    result
 }
 
 /* === Tests === */

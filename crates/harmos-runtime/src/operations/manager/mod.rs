@@ -15,6 +15,8 @@ mod entry;
 mod grants;
 mod inspection;
 mod lookup;
+#[cfg(feature = "plugin-grpc")]
+mod plugin_grpc;
 mod registration;
 mod registry;
 mod retirement;
@@ -27,6 +29,9 @@ mod discovery;
 mod residents;
 
 /* === Re-Exports === */
+
+#[cfg(feature = "plugin-grpc")]
+pub(crate) use plugin_grpc::Admission as GrpcAdmission;
 
 /* === Imports === */
 

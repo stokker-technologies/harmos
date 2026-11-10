@@ -30,10 +30,12 @@ publish.workspace = true
 # Git
 
 # Error Handling
+thiserror = { workspace = true }
 
 # Logging
 
 # Utilities
+sha2 = { workspace = true }
 
 # Serialization
 prost = { workspace = true, features = ["derive", "std"] }

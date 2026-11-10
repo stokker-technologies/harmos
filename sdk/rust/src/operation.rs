@@ -21,7 +21,7 @@ use std::{future::Future, pin::Pin, sync::Arc};
 // Third Party Imports
 
 // Local Imports
-use crate::{Context, Message, Result, Visibility, message::fingerprint};
+use crate::{Context, Message, Result, Visibility};
 use harmos_protocol::v1;
 
 /* === Constants === */
@@ -68,7 +68,6 @@ impl Operation {
         crate::message::merge_descriptor_types(&mut types, R::types());
         Self {
             contract: v1::OperationContract {
-                fingerprint: fingerprint::<Q, R>(&id),
                 id,
                 request: Q::name(),
                 response: R::name(),

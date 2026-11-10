@@ -33,6 +33,10 @@ path = "src/bin/diagnostics.rs"
 name = "harmos-sdk-host-fixture"
 path = "src/bin/host-fixture.rs"
 
+[[bin]]
+name = "harmos-sdk-invoke-fixture"
+path = "src/bin/invoke-fixture.rs"
+
 # === Features === #
 
 # === Dependencies === #
@@ -51,7 +55,6 @@ tracing = { workspace = true }
 # Utilities
 bytes = { workspace = true }
 semver = { workspace = true }
-sha2 = { workspace = true }
 
 # Serialization
 prost = { workspace = true, features = ["derive", "std"] }

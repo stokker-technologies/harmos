@@ -16,6 +16,12 @@ or credentials. The host is always the client.
    and host; Public operations by all connected callers. The host MUST refuse
    duplicate providers and incompatible requirements during admission. The fixture
    catalog MUST equal the catalog defined below, including order and hashes.
+   Operation identifiers are complete routing keys, with no provider prefix or
+   provider selection. Duplicate admission MUST name the identifier and both
+   owners, including when one owner is the host. A requirement whose operation
+   is absent MAY be admitted; no dependency ordering is required. If its callee
+   is present, its fingerprint MUST match. Disconnected or replaced activations
+   MUST remove their operations from the registry before replacement admission.
 2. **Activation and Started At.** Every connection creates a new host activation
    after Describe and catalog admission. started_at MUST be a valid protobuf
    Timestamp captured once at process startup, unchanged across connections to
@@ -41,6 +47,12 @@ or credentials. The host is always the client.
    conformance.children sends calls 1 and 2 to conformance.host.echo with Value
    values 01 and 02, respectively, before waiting for replies. It returns a Value
    concatenating reply values in call-ID order. Child calls are unary only.
+   The same registry routes host calls and child calls. An absent operation MUST
+   fail at call time with a REFUSED failure naming its operation identifier;
+   no provider identity is needed. Another plugin's Private operation MUST be
+   refused even when its fingerprint matches. A ChildRequest policy overrides
+   the callee's policy for that call only; otherwise the callee owns deadlines,
+   retries and cancellation grace, enforced using the host clock.
 6. **Child Failure Preservation.** A ChildResponse failure is an operation result,
    not a transport fault. conformance.child_failure sends call 1 to
    conformance.host.fail with its input and MUST return every field of the host's
@@ -53,6 +65,10 @@ or credentials. The host is always the client.
    message equal to Cancel.reason, operation conformance.cancel, plugin conformance,
    and a nonempty action. It MUST then close output without waiting for a child
    reply. Connection loss fails outstanding calls; it does not transfer them.
+   Connection loss MUST classify those calls as TRANSIENT and MUST NOT fail
+   calls on other plugin connections or calls executing on the host. After
+   observing ChildCancel the host MUST cancel that child and suppress any
+   subsequent ChildResponse for its ID.
 8. **Structured Failure.** Application failures MUST use Response.failure,
    preserving classification, stable code, message, action, operation, plugin,
    cause, details and separate support diagnostics. conformance.failure MUST return
@@ -97,6 +113,58 @@ or credentials. The host is always the client.
     successfully after the reply; a remote plugin MUST keep serving. The case
     checks the reply; managed mode also checks successful process exit. Remote
     mode calls Describe again after Stop. No active demand remains at this stage.
+
+## Host Stream Settings and Evidence
+
+For runtime attachments, `interval_setting` names a fully qualified section field
+(`fixture.Settings.interval`) in `Catalog.sections`. The field MUST contain a
+positive `google.protobuf.Duration`; an unresolved or invalid setting MUST refuse
+admission. It overrides `interval` when both are present.
+
+The runtime stores interval evidence at the tick's host time and device evidence at
+host arrival time. A device's supplied timestamp is retained separately as
+`context.source_time`, with `seconds` and `nanos` fields. Stored rows use the host's
+canonical storage encoding and the schema projected from the admitted protobuf row;
+this conversion does not change the protobuf-only transport contract.
+
+## Schema Fingerprints
+
+The following general rule extends the fixture hash rule without changing any
+fixture bytes or hashes. All operations, including host operations and required
+operations, MUST use it. `crates/harmos-protocol/src/schema.rs` is the shared Rust
+implementation; other language implementations MUST produce the same bytes.
+
+For each request and response message, independently, project `Catalog.types`
+into a data-only FileDescriptorSet as follows:
+
+- Resolve the fully qualified message name (an optional leading dot is ignored).
+  Select its enclosing top-level message, including all nested declarations.
+- Follow every message field's `type_name` and extension's `extendee`, recursively,
+  selecting the enclosing top-level message or enum of each reference. References
+  MUST be absolute, with a leading dot. A missing root, unresolved reference,
+  duplicate file name or duplicate message/enum name is invalid. Recursive message
+  graphs are valid and each enclosing declaration is selected only once.
+- Retain only selected top-level messages and enums and their files. Remove file
+  services, file-level extensions, source_code_info and each field's json_name,
+  including nested fields. Retain all other descriptor fields and options exactly
+  as declared; authors using different compilers must agree on those definitions.
+- Sort files by name, and top-level messages and enums within each file by name,
+  using ascending UTF-8 byte order. Preserve all other repeated declaration order.
+  Retain only imports naming retained files, sorted by name with duplicates removed;
+  clear public_dependency and weak_dependency indices in this data-only projection.
+- Serialize descriptors in numeric field order, omitting default scalar values.
+
+The fingerprint is SHA-256 of the UTF-8 operation ID, one zero byte, the encoded
+request projection, then the encoded response projection. No other separator or
+length prefix is added. Thus unrelated operations added to a catalog do not
+change existing fingerprints. A root nested in a message intentionally includes
+its enclosing declaration, so changing that declaration changes the fingerprint.
+
+Catalog digest remains SHA-256 of the entire Catalog with digest empty/omitted;
+its repeated declaration order is preserved and its types are not projected.
+The host MUST verify the advertised digest and each operation fingerprint before
+admitting the catalog. Message names in operations, streams and sections MUST
+resolve in its types. This validation does not decode operation payloads.
 
 ## Fixed Fixture Catalog
 

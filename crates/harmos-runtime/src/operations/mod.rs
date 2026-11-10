@@ -112,6 +112,8 @@ pub(crate) use registration::RegistrationExt;
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub use registration::PluginRegistration;
 
+#[cfg(feature = "plugin-grpc")]
+pub(crate) use manager::GrpcAdmission;
 #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 pub use sdk::PluginSdkRegistration;
 pub use wire::EncodedInvocation;

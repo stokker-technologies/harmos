@@ -336,10 +336,10 @@ virtual time.
 - Setup, fixtures and mechanics live in shared modules with one convention.
   A shared module never chooses a scenario or hides an assertion, and a test
   never rebuilds what a shared module provides.
-- No test depends on real time. A test waits for a condition or runs on a
-  paused clock. A plugin under test can be served in the test's own process
-  over an in-memory channel, so a paused clock accelerates the host and the
-  plugin together.
+- No test depends on real time. A test waits for a condition and advances the
+  host's virtual clock through its controller. Transport keeps its ordinary
+  scheduler, including when a plugin runs in another process. Activity accounting
+  holds virtual time still while a call, tick answer or host work is in flight.
 
 ## What It Removes
 

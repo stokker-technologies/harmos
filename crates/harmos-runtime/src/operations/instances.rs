@@ -59,6 +59,7 @@ pub(crate) struct Instances {
 }
 
 pub(crate) struct Reservation<O> {
+    clock: crate::clock::Clock,
     outcome: oneshot::Receiver<Result<O>>,
     deposit: oneshot::Sender<(Prepared<O>, Option<crate::state::Position>)>,
     control: Arc<Instance>,
@@ -197,6 +198,7 @@ impl Instances {
         self: &Arc<Self>, id: OperationInstanceId, lane: &'static str, submitted: tokio::time::Instant, privileged: bool,
         retired: impl Fn() + Send + Sync + 'static,
     ) -> Result<Reservation<O>> {
+        let activity = self.clock.activity(format!("invocation {}", id.value()));
         let admission = self.lanes.get(lane).expect("registration validated its lane");
         let mut state = self.state.lock().expect("operation instance index is healthy");
         if state.closing {
@@ -230,6 +232,7 @@ impl Instances {
         let queued_driver = queued;
         let (deposit, prepared) = oneshot::channel();
         let reservation = Reservation {
+            clock: self.clock.clone(),
             outcome,
             deposit,
             control: instance.clone(),
@@ -249,7 +252,7 @@ impl Instances {
         sending.send(Submission {
             instance,
             driver: Box::pin(
-                async move {
+                crate::clock::active(activity, async move {
                     let dispatch = tracing::debug_span!(target: "harmos::operations", "operations.dispatch");
                     dispatch.follows_from(queued_driver.id());
                     drop(queued_driver);
@@ -260,7 +263,7 @@ impl Instances {
                         }
                         Err(_) => control.finished(),
                     }
-                }
+                })
                 .instrument(trace)
                 .in_clock(self.clock.clone()),
             ),
@@ -298,7 +301,7 @@ impl<O> Reservation<O> {
 
     pub(crate) fn submit(self, prepared: Prepared<O>, cause: Option<crate::state::Position>) -> oneshot::Receiver<Result<O>> {
         if let Err((prepared, _)) = self.deposit.send((prepared, cause.or(self.cause))) {
-            prepared.retain_unavailable(&self.control, self.admission);
+            prepared.retain_unavailable(&self.control, self.admission, &self.clock);
         }
         self.outcome
     }

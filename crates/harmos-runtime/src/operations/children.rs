@@ -211,14 +211,17 @@ pub(crate) fn refused(error: Error) -> Refusal {
 // drains before its outcome is reported.
 #[tracing::instrument(target = "harmos::operations", name = "operations.drained", level = "trace", skip_all)]
 async fn drained(mut invocation: Child, mut cancelled: oneshot::Receiver<()>) -> Result<Vec<u8>, Refusal> {
-    tokio::select! {
-        biased;
-        _ = &mut cancelled => {
-            invocation.invocation.as_ref().expect("owned child").request_cancel();
-            invocation.await.map_err(refused)
+    crate::clock::waiting(async {
+        tokio::select! {
+            biased;
+            _ = &mut cancelled => {
+                invocation.invocation.as_ref().expect("owned child").request_cancel();
+                invocation.await.map_err(refused)
+            }
+            outcome = &mut invocation => outcome.map_err(refused),
         }
-        outcome = &mut invocation => outcome.map_err(refused),
-    }
+    })
+    .await
 }
 
 fn unknown(instance: u64) -> Refusal {

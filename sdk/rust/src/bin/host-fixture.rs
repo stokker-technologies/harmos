@@ -20,7 +20,7 @@
 // Third Party Imports
 
 // Local Imports
-use harmos_sdk_grpc::{Plugin, Result};
+use harmos_sdk_grpc::{Context, Message, Operation, Plugin, Result};
 
 /* === Constants === */
 
@@ -29,6 +29,16 @@ use harmos_sdk_grpc::{Plugin, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
+#[derive(Message)]
+struct Input {
+    value: Vec<u8>,
+}
+
+#[derive(Message)]
+struct Output {
+    value: Vec<u8>,
+}
 
 /* === Enums === */
 
@@ -42,11 +52,15 @@ use harmos_sdk_grpc::{Plugin, Result};
 
 fn main() -> Result<()> {
     let cleanup = std::env::args().nth(1).expect("Cleanup Evidence Path");
-    let plugin = Plugin::new("placement", "1.0.0").on_stop(move || {
+    let plugin = Plugin::new("placement", "1.0.0").operation(Operation::new("placement.echo", echo)).on_stop(move || {
         std::fs::write(&cleanup, b"stopped")?;
         Ok(())
     });
     plugin.serve()
+}
+
+async fn echo(_: &Context, input: Input) -> Result<Output> {
+    Ok(Output { value: input.value })
 }
 
 /* === Tests === */

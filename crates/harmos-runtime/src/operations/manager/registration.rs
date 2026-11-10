@@ -189,7 +189,11 @@ impl Manager {
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] plugin: Option<PluginScope>,
     ) -> Result<Arc<Entry>> {
         let owner = Identifier::new(owner.into()).map_err(|source| Error::OperationDeclaration { source: source.into() })?;
-        if !harmos_domain::identity::segment(owner.as_str()) {
+        let valid_owner = harmos_domain::identity::segment(owner.as_str());
+        #[cfg(feature = "plugin-grpc")]
+        let valid_owner = valid_owner
+            || (binding.is::<crate::plugin::grpc::invoke::Binding>() && owner.as_str().split('.').all(harmos_domain::identity::segment));
+        if !valid_owner {
             return Err(Error::InvalidInput {
                 field: "operation owner",
                 reason: "owner must be a lowercase portable segment",

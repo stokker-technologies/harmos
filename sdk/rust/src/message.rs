@@ -18,9 +18,7 @@
 // Standard Library Imports
 
 // Third Party Imports
-use prost::Message as _;
 use prost_types::FileDescriptorSet;
-use sha2::{Digest, Sha256};
 
 // Local Imports
 use crate::{Error, Result};
@@ -78,13 +76,10 @@ impl Message for () {
 
 /* === Public Functions === */
 
-pub fn fingerprint<Q: Message, R: Message>(id: &str) -> Vec<u8> {
-    let mut hash = Sha256::new();
-    hash.update(id.as_bytes());
-    hash.update([0]);
-    hash.update(Q::types().encode_to_vec());
-    hash.update(R::types().encode_to_vec());
-    hash.finalize().to_vec()
+pub fn fingerprint<Q: Message, R: Message>(id: &str) -> Result<Vec<u8>> {
+    let mut types = Q::types();
+    merge_descriptor_types(&mut types, R::types());
+    harmos_protocol::schema::fingerprint(id, &types, &Q::name(), &R::name()).map_err(|error| Error::Invalid(error.to_string()))
 }
 
 /* === Private Functions === */
@@ -134,6 +129,7 @@ pub(crate) fn merge_types(target: &mut FileDescriptorSet, source: FileDescriptor
 #[cfg(test)]
 mod tests {
     use super::*;
+    use prost::Message as _;
 
     #[derive(crate::Message)]
     struct Reading {

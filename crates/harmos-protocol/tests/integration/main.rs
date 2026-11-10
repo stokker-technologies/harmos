@@ -12,6 +12,8 @@
 /* === Modules === */
 
 mod generated_code_matches_proto;
+mod schema_fingerprints;
+mod support;
 
 /* === Re-Exports === */
 

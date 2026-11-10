@@ -22,15 +22,9 @@ use std::{
 };
 
 // Third Party Imports
-use prost::Message as _;
-use sha2::{Digest, Sha256};
 
 // Local Imports
-use crate::{
-    Error, Message, Observer, Operation, OperationRequest, Result, Stream,
-    message::{fingerprint, merge_types},
-    stream::StreamDefinition,
-};
+use crate::{Error, Message, Observer, Operation, OperationRequest, Result, Stream, message::merge_types, stream::StreamDefinition};
 use harmos_protocol::v1;
 
 /* === Constants === */
@@ -47,10 +41,17 @@ pub struct Plugin {
     pub(crate) operations: Vec<Operation>,
     pub(crate) streams: Vec<StreamDefinition>,
     pub(crate) observers: Vec<Observer>,
-    requirements: Vec<(v1::Requirement, prost_types::FileDescriptorSet)>,
+    requirements: Vec<Required>,
     sections: Vec<(v1::Section, prost_types::FileDescriptorSet)>,
     pub(crate) cleanup: Vec<Box<dyn Fn() -> Result<()> + Send + Sync>>,
     pub(crate) remote: bool,
+}
+
+struct Required {
+    id: String,
+    request: String,
+    response: String,
+    types: prost_types::FileDescriptorSet,
 }
 
 /* === Enums === */
@@ -100,13 +101,12 @@ impl Plugin {
     pub fn requires<Q: OperationRequest>(mut self) -> Self {
         let mut types = Q::types();
         crate::message::merge_descriptor_types(&mut types, Q::Response::types());
-        self.requirements.push((
-            v1::Requirement {
-                id: Q::ID.into(),
-                fingerprint: fingerprint::<Q, Q::Response>(Q::ID),
-            },
+        self.requirements.push(Required {
+            id: Q::ID.into(),
+            request: Q::name(),
+            response: Q::Response::name(),
             types,
-        ));
+        });
         self
     }
 
@@ -141,16 +141,23 @@ impl Plugin {
             {
                 return Err(Error::Invalid(format!("Invalid Visibility: {}", operation.contract.id)));
             }
-            catalog.operations.push(operation.contract.clone());
+            let mut contract = operation.contract.clone();
+            contract.fingerprint =
+                harmos_protocol::schema::fingerprint(&contract.id, &operation.types, &contract.request, &contract.response)
+                    .map_err(|error| Error::Invalid(error.to_string()))?;
+            catalog.operations.push(contract);
             merge_types(&mut types, operation.types.clone())?;
         }
         let mut requires = HashSet::new();
-        for (requirement, definitions) in &self.requirements {
+        for requirement in &self.requirements {
             if !requires.insert(&requirement.id) {
                 return Err(Error::Invalid(format!("Duplicate Requirement: {}", requirement.id)));
             }
-            catalog.requires.push(requirement.clone());
-            merge_types(&mut types, definitions.clone())?;
+            let fingerprint =
+                harmos_protocol::schema::fingerprint(&requirement.id, &requirement.types, &requirement.request, &requirement.response)
+                    .map_err(|error| Error::Invalid(error.to_string()))?;
+            catalog.requires.push(v1::Requirement { id: requirement.id.clone(), fingerprint });
+            merge_types(&mut types, requirement.types.clone())?;
         }
         let mut streams = HashSet::new();
         for stream in &self.streams {
@@ -202,7 +209,7 @@ impl Plugin {
             }
         }
         catalog.types = Some(types);
-        catalog.digest = Sha256::digest(catalog.encode_to_vec()).to_vec();
+        catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
         Ok(catalog)
     }
 
