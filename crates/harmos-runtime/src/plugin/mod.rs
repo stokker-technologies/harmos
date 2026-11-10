@@ -233,10 +233,7 @@ impl PluginGraph {
                         declared[provider].contributions.wire_contracts.iter().find(|actual| actual.operation().id == operation.id);
                     let reason = if actual != Some(contract) {
                         Some("version, schema, policy, visibility or replay differs")
-                    } else if operation.visibility == crate::operations::Visibility::Host
-                        || provider == &artifact.id
-                        || provider != &artifact.id && operation.visibility != crate::operations::Visibility::Public
-                    {
+                    } else if provider != &artifact.id && operation.visibility != crate::operations::Visibility::Public {
                         Some("operation visibility denies this plugin caller")
                     } else {
                         None

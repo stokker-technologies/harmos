@@ -49,9 +49,6 @@ struct RootPublic {
     restricted: bool,
 }
 
-#[harmos_runtime::operation(id = "owners.host_only", visibility = Host, policy = harmos_runtime::builtins::host::POLICY)]
-struct RootHost;
-
 #[harmos_runtime::operation(id = "owners.private", policy = harmos_runtime::builtins::host::POLICY)]
 struct RootPrivate;
 
@@ -59,9 +56,6 @@ struct RootPrivate;
 struct PublicCaller {
     restricted: bool,
 }
-
-#[harmos_runtime::operation(id = "owners.restricted", operations = [RootHost], policy = harmos_runtime::builtins::host::POLICY)]
-struct RestrictedCaller;
 
 #[harmos_runtime::operation(id = "owners.private_call", operations = [RootPrivate], policy = harmos_runtime::builtins::host::POLICY)]
 struct PrivateCaller;
@@ -122,13 +116,6 @@ impl harmos_runtime::Operation for RootPublic {
     }
 }
 
-impl harmos_runtime::Operation for RootHost {
-    type Error = std::convert::Infallible;
-    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<()>, Self::Error> {
-        Ok(().into())
-    }
-}
-
 impl harmos_runtime::Operation for RootPrivate {
     type Error = std::convert::Infallible;
     async fn run(self, _: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<()>, Self::Error> {
@@ -140,13 +127,6 @@ impl harmos_runtime::Operation for PublicCaller {
     type Error = harmos_runtime::operations::InvocationError;
     async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<()>, Self::Error> {
         ctx.operation(RootPublic { restricted: self.restricted }).await
-    }
-}
-
-impl harmos_runtime::Operation for RestrictedCaller {
-    type Error = std::convert::Infallible;
-    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<()>, Self::Error> {
-        Ok(().into())
     }
 }
 
@@ -206,28 +186,6 @@ async fn host_owner_admission() {
 }
 
 #[tokio::test]
-async fn owner_name_permissions() {
-    for owner in ["host", "ordinary"] {
-        let runtime = harmos_runtime::Runtime::<Fixture>::launch((), ()).await.unwrap();
-        let root =
-            Registration::new(Lanes::Open).operation::<RootHost>(RootHost::ID).unwrap().operation::<RootPrivate>(RootPrivate::ID).unwrap();
-        runtime.register_batch(root).await.unwrap();
-        let mut plugin = plan().ordered().iter().find(|definition| definition.id == "provider").unwrap().clone();
-        plugin.id = owner.into();
-        plugin.contributions = PluginContributions::default();
-        runtime.plugin.register_embedded::<Operations<RestrictedCaller>, _>(plugin.clone(), Default::default(), Lanes::Open).await.unwrap();
-        let duplicate = runtime.plugin.register_embedded::<Operations<RestrictedCaller>, _>(plugin, Default::default(), Lanes::Open).await;
-        assert!(matches!(duplicate, Err(Error::AlreadyRegistered { .. })), "{owner}: {duplicate:?}");
-
-        assert!(runtime.plugin.initialize().await.is_err(), "{owner}");
-        assert_eq!(runtime.plugin.status(owner).unwrap().state, PluginState::Failed);
-        assert!(runtime.operations.definition(RestrictedCaller::ID).is_err());
-        runtime.operation(RootHost).await.unwrap();
-        runtime.shutdown().await.unwrap();
-    }
-}
-
-#[tokio::test]
 async fn private_owner_permissions() {
     for owner in ["host", "ordinary"] {
         let runtime = harmos_runtime::Runtime::<Fixture>::launch((), ()).await.unwrap();
@@ -236,7 +194,9 @@ async fn private_owner_permissions() {
         let mut plugin = plan().ordered().iter().find(|definition| definition.id == "provider").unwrap().clone();
         plugin.id = owner.into();
         plugin.contributions = PluginContributions::default();
-        runtime.plugin.register_embedded::<Operations<PrivateCaller>, _>(plugin, Default::default(), Lanes::Open).await.unwrap();
+        runtime.plugin.register_embedded::<Operations<PrivateCaller>, _>(plugin.clone(), Default::default(), Lanes::Open).await.unwrap();
+        let duplicate = runtime.plugin.register_embedded::<Operations<PrivateCaller>, _>(plugin, Default::default(), Lanes::Open).await;
+        assert!(matches!(duplicate, Err(Error::AlreadyRegistered { .. })), "{owner}: {duplicate:?}");
 
         assert!(runtime.plugin.initialize().await.is_err(), "{owner}");
         assert_eq!(runtime.plugin.status(owner).unwrap().state, PluginState::Failed);

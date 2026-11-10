@@ -45,7 +45,7 @@ product!(DeleteFile {
     id = "storage.delete_file",
     response = StagedFile,
     policy = POLICY,
-    visibility = Host,
+    visibility = Private,
     replay = ReplaySafety::Idempotent)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeleteFile {

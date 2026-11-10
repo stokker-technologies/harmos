@@ -97,9 +97,7 @@ impl Manager {
                     let runtime_caller = matches!(Source::for_binding(caller), Source::Host);
                     let runtime_target = matches!(Source::for_binding(target), Source::Host);
                     let same_owner = caller.owner == target.owner && runtime_caller == runtime_target;
-                    let permitted = same_owner
-                        || visibility == crate::operations::Visibility::Public
-                        || (runtime_caller && visibility == crate::operations::Visibility::Host);
+                    let permitted = same_owner || runtime_caller || visibility == crate::operations::Visibility::Public;
                     if !permitted {
                         return Err(Error::PermissionDenied);
                     }

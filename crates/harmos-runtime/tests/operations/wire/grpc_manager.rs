@@ -68,10 +68,10 @@ struct Principal(String);
     response = Reply,
     policy = WHO_POLICY,
     grant = |_: &GuardedDeclaration| Some(harmos_domain::plugin::Grant::of(GuardedDeclaration::ID, "reading")),
-)]
+    visibility = Public)]
 struct GuardedDeclaration {}
 
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "grpc.descendant",  response = Reply, policy = WHO_POLICY)]
+#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "grpc.descendant",  response = Reply, policy = WHO_POLICY, visibility = Public)]
 struct DescendantDeclaration {}
 
 struct ExternalAccess {
@@ -81,28 +81,28 @@ struct ExternalAccess {
 struct Sessions;
 struct PendingAuthentication;
 struct DiscoveryAccess;
-#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.who",  response = Reply, policy = WHO_POLICY)]
+#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.who",  response = Reply, policy = WHO_POLICY, visibility = Public)]
 struct WhoDeclaration {}
 
 #[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.download",
     response = Reply,
     output = Reply,
-    policy = WHO_POLICY
+    policy = WHO_POLICY, visibility = Public
 )]
 struct DownloadDeclaration {}
 
-#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.upload",  response = Reply, input = Reply, policy = WHO_POLICY)]
+#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.upload",  response = Reply, input = Reply, policy = WHO_POLICY, visibility = Public)]
 struct UploadDeclaration {}
 
 #[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.exchange",
     response = Reply,
     input = Reply,
     output = Reply,
-    policy = WHO_POLICY
+    policy = WHO_POLICY, visibility = Public
 )]
 struct ExchangeDeclaration {}
 
-#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.hold",  response = Reply, output = Reply, policy = WHO_POLICY)]
+#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.hold",  response = Reply, output = Reply, policy = WHO_POLICY, visibility = Public)]
 struct HoldDeclaration {}
 
 #[harmos_runtime::message]

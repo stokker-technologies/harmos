@@ -47,7 +47,7 @@ product!(AppendFile {
     id = "storage.append_file",
     response = FileProducer,
     policy = POLICY,
-    visibility = Host,
+    visibility = Private,
     replay = ReplaySafety::Idempotent)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppendFile {

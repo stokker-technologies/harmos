@@ -44,7 +44,7 @@ product!(FollowObjects {
     response = StorageCursor,
     policy = STREAM_POLICY,
     output = ObjectEntry,
-    visibility = Host)]
+    visibility = Private)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowObjects {
     pub after: Option<StorageCursor>,

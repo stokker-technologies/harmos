@@ -175,16 +175,19 @@ impl Entry {
     }
 
     pub(in crate::operations) fn authorize(&self, _origin: &Origin) -> Result<()> {
+        #[cfg(feature = "grpc")]
+        if matches!(_origin.identity, super::super::caller::Identity::External(_))
+            && self.definition.visibility != crate::operations::Visibility::Public
+        {
+            return Err(Error::OperationUnauthorized {
+                caller: "external".to_owned(),
+                owner: self.owner.to_string(),
+                operation: self.id().to_owned(),
+            });
+        }
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         if let Some(caller) = &_origin.scope {
             if self.sdk.is_some() {
-                return Err(Error::OperationUnauthorized {
-                    caller: caller.owner().to_owned(),
-                    owner: self.owner.to_string(),
-                    operation: self.id().to_owned(),
-                });
-            }
-            if self.definition.visibility == crate::operations::Visibility::Host {
                 return Err(Error::OperationUnauthorized {
                     caller: caller.owner().to_owned(),
                     owner: self.owner.to_string(),

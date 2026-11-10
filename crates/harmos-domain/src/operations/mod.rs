@@ -77,9 +77,11 @@ struct DecodedOperationDefinition {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Visibility {
+    /// Callable by the declaring plugin and the host.
     Private,
+
+    /// Callable by everyone connected, subject to client authorization.
     Public,
-    Host,
 }
 
 /* === Traits === */
@@ -183,9 +185,11 @@ mod tests {
         assert_eq!(serde_json::from_value::<Contract>(encoded.clone()).unwrap(), contract);
         assert_eq!(contract.fingerprint(), Published::definition().fingerprint);
 
-        let mut obsolete = encoded;
-        obsolete["operation"]["visibility"] = serde_json::json!("shared");
-        assert!(serde_json::from_value::<Contract>(obsolete).is_err());
+        for visibility in ["shared", "host"] {
+            let mut obsolete = encoded.clone();
+            obsolete["operation"]["visibility"] = serde_json::json!(visibility);
+            assert!(serde_json::from_value::<Contract>(obsolete).is_err());
+        }
 
         use crate::catalog::Node;
         use crate::inventory::contracts::{encode_fragments, encoded_fragments_len};
@@ -201,7 +205,7 @@ mod tests {
     #[test]
     fn grpc_visibility_contracts() {
         let binding = Grpc::new("visibility.v1", "Operations", "Call");
-        for visibility in [Visibility::Private, Visibility::Public, Visibility::Host] {
+        for visibility in [Visibility::Private, Visibility::Public] {
             let mut declaration = WireDeclaration::of::<Published>();
             declaration.operation.visibility = visibility;
             declaration.grpc = Some(binding.clone());
