@@ -1,15 +1,11 @@
 name: Release
-run-name: ${{ github.event_name == 'workflow_dispatch' && 'Release / Preparation' || github.event_name == 'push' && 'Release / Publication' ||
+run-name: ${{ github.event_name == 'workflow_dispatch' && 'Release / Preparation' || startsWith(github.ref, 'refs/tags/v') && 'Release / Publication' ||
   'Release / Tagging' }}
 'on':
   workflow_dispatch: {}
-  pull_request:
-    types:
-    - closed
-    branches:
-    - dev
-    paths:
-    - tools/project.toml
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   push:
     tags:
     - v*
@@ -27,6 +23,33 @@ env:
   GIT_CONFIG_KEY_0: core.longpaths
   GIT_CONFIG_VALUE_0: 'true'
 jobs:
+  mode:
+    name: Release / Mode
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      mode: ${{ steps.mode.outputs.mode }}
+      sha: ${{ steps.mode.outputs.sha }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: ./.github/actions/setup
+      with:
+        platform: unix
+    - name: Run Project Task
+      id: mode
+      run: mise run ci:release-mode --
+      env:
+        GH_TOKEN: ${{ github.token }}
+    env:
+      MISE_ENABLE_TOOLS: python,uv
+    permissions:
+      contents: read
+      pull-requests: read
   prepare:
     name: Release / Prepare
     runs-on: ubuntu-24.04
@@ -43,18 +66,18 @@ jobs:
     - name: Run Project Task
       run: mise run release:prepare -- --review
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.cargo_downloads-cache-hit
         != 'true'
       with:
         key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
         path: ${{ steps.setup.outputs.cargo_downloads-path }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.mise-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup.outputs.mise-path }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.uv-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
@@ -65,7 +88,8 @@ jobs:
       CRATES_BOOTSTRAP_AVAILABLE: ${{ secrets.CARGO_REGISTRY_TOKEN != '' }}
       GITHUB_RUNNER_WORKFLOWS: '{"ci.yml":{"unix":{"small":"ubuntu-24.04","large":"ubuntu-24.04"},"windows":{"small":"windows-2022","large":"windows-2022"},"nightly":{"small":"ubuntu-latest","coverage":"ubuntu-latest"}},"release.yml":{"unix":{"small":"ubuntu-24.04","large":"ubuntu-24.04"},"windows":{"small":"windows-2022","large":"windows-2022"},"nightly":{"small":"ubuntu-latest","coverage":"ubuntu-latest"}}}'
       RUNNER_GROUP_READ_TOKEN: ${{ secrets.RUNNER_GROUP_READ_TOKEN || github.token }}
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev'
+    needs: [mode]
+    if: needs.mode.outputs.mode == 'prepare'
     environment: release
     permissions:
       contents: read
@@ -78,7 +102,7 @@ jobs:
       with:
         fetch-depth: 0
         persist-credentials: false
-        ref: ${{ github.event.pull_request.merge_commit_sha }}
+        ref: ${{ needs.mode.outputs.sha }}
     - id: setup
       uses: ./.github/actions/setup
       with:
@@ -93,20 +117,20 @@ jobs:
         GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         GITHUB_TOKEN: ${{ github.token }}
         CARGO_REGISTRY_TOKEN: ${{ env.CARGO_REGISTRY_TOKEN != '' && env.CARGO_REGISTRY_TOKEN || steps.crates.outputs.token }}
-        RELEASE_TARGET_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+        RELEASE_TARGET_SHA: ${{ needs.mode.outputs.sha }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.cargo_downloads-cache-hit
         != 'true'
       with:
         key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
         path: ${{ steps.setup.outputs.cargo_downloads-path }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.mise-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup.outputs.mise-path }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.uv-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
@@ -117,9 +141,7 @@ jobs:
       RELEASE_BUILD_RUN_ID: ${{ needs.validated.outputs.review_run }}
       RELEASE_BUILD_SHA: ${{ needs.validated.outputs.review_sha }}
       RELEASE_BUILD_VERSION: ${{ needs.validated.outputs.review_version }}
-    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && (github.event_name == 'pull_request' &&
-      github.event.action == 'closed' && github.event.pull_request.merged && github.event.pull_request.base.ref == 'dev' && startsWith(github.event.pull_request.head.ref,
-      'release/v'))
+    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && needs.mode.outputs.mode == 'tag'
     environment: release
     permissions:
       checks: read
@@ -128,6 +150,7 @@ jobs:
       id-token: write
     needs:
     - validated
+    - mode
     concurrency:
       group: release-tag
       cancel-in-progress: false
@@ -144,7 +167,7 @@ jobs:
       with:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: disk
-        cache-mode: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
+        cache-mode: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/dev') && 'READ_WRITE'
           || 'READ_ONLY' }}
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
@@ -162,7 +185,7 @@ jobs:
       run: mise run release:publish --
       env:
         GH_TOKEN: ${{ github.token }}
-        RELEASE_TARGET_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+        RELEASE_TARGET_SHA: ${{ github.sha }}
         CI_INPUT_ARCHIVES: '["target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst","target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst"]'
     - name: Share Release Manifest
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -176,23 +199,23 @@ jobs:
       with:
         subject-checksums: target/release-assets/any/SHA256SUMS
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.cargo_downloads-cache-hit
         != 'true'
       with:
         key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
         path: ${{ steps.setup.outputs.cargo_downloads-path }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.mise-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup.outputs.mise-path }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.uv-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.sccache-cache-hit != 'true'
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.sccache-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
         path: ${{ steps.setup.outputs.sccache-path }}
@@ -201,7 +224,7 @@ jobs:
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       SCCACHE_CACHE_SIZE: 8G
-      COMPILER_CACHE_MODE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
+      COMPILER_CACHE_MODE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/dev') && 'READ_WRITE'
         || 'READ_ONLY' }}
       PROFILE: ${{ needs.validated.outputs.review_profile }}
       RELEASE_BUILD_RUN_ID: ${{ needs.validated.outputs.review_run }}
@@ -228,7 +251,7 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
-        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+        ref: ${{ needs.mode.outputs.sha || github.sha }}
     - id: setup
       uses: ./.github/actions/setup
       with:
@@ -237,18 +260,18 @@ jobs:
       run: mise run ci:review --
       id: review
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.cargo_downloads-cache-hit
         != 'true'
       with:
         key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
         path: ${{ steps.setup.outputs.cargo_downloads-path }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.mise-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup.outputs.mise-path }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.uv-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
@@ -269,8 +292,8 @@ jobs:
       review_sha: ${{ steps.review.outputs.review_sha }}
       review_version: ${{ steps.review.outputs.review_version }}
       stable_release: ${{ steps.review.outputs.stable_release }}
-    if: (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged && github.event.pull_request.base.ref
-      == 'dev' && startsWith(github.event.pull_request.head.ref, 'release/v')) || (startsWith(github.ref, 'refs/tags/v'))
+    if: always() && (needs.mode.outputs.mode == 'tag' || startsWith(github.ref, 'refs/tags/v'))
+    needs: [mode]
   verify:
     name: Release / Verify (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
@@ -302,18 +325,18 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         CI_INPUT_ARCHIVES: '["target/ci/package-${{ env.PROFILE }}-rust-${{ matrix.platform }}.tar.zst"]'
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.cargo_downloads-cache-hit
         != 'true'
       with:
         key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
         path: ${{ steps.setup.outputs.cargo_downloads-path }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.mise-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup.outputs.mise-path }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.uv-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}

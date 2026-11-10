@@ -397,4 +397,4 @@ targets = ["linux-x86_64", "windows-x86_64"]
 
 [version]
 files = ["Cargo.toml", "examples/schematic/Cargo.toml", "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"]
-value = "0.1.13"
+value = "0.1.14"

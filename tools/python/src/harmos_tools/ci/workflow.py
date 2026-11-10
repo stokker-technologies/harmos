@@ -45,6 +45,15 @@ def run(operation: str, arguments: list[str], profile: str) -> int:
 
         module = "release.review" if operation == "review" else "release.checks"
         return _module(module, *arguments)
+    if operation == "release-mode":
+        from ..release import review
+
+        if arguments:
+            raise ValueError("release-mode takes its inputs from the workflow environment")
+        result = review.github_release_mode()
+        with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+            output.write("".join(f"{key}={value}\n" for key, value in result.items()))
+        return 0
     if operation == "required":
         results = json.loads(os.environ["RESULTS"])
         optional = {"release_rehearsal"} if os.environ.get("RELEASE_REVIEW") != "true" else set()

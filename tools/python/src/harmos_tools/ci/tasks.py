@@ -120,7 +120,19 @@ def dispatch(arguments: list[str] | None = None) -> int:
             release.add_argument("--profile", choices=("dev", "release"))
             release.add_argument("--stage-only", action="store_true")
         release.add_argument("arguments", nargs=argparse.REMAINDER)
-    helpers = ("pack", "extract", "summary", "nightly-gate", "nightly-report", "mirror", "runners", "review", "release-checks", "required")
+    helpers = (
+        "pack",
+        "extract",
+        "summary",
+        "nightly-gate",
+        "nightly-report",
+        "mirror",
+        "runners",
+        "review",
+        "release-mode",
+        "release-checks",
+        "required",
+    )
     for name in helpers:
         helper = commands.add_parser(f"ci:{name}")
         helper.add_argument("--profile", choices=("dev", "release", "bench"), default="dev")

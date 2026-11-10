@@ -139,6 +139,11 @@ hide = true
 description = "CI / Runners"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:runners"
 
+[tasks."ci:release-mode"]
+hide = true
+description = "CI / Release Mode"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:release-mode"
+
 [tasks."ci:review"]
 hide = true
 description = "CI / Review"

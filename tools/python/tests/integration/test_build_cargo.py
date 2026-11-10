@@ -25,6 +25,7 @@ from unittest.mock import patch
 # Local Imports
 from harmos_tools.build import cargo
 from harmos_tools.ci import artifacts, tasks, workflow
+from harmos_tools.release import review
 
 # Type Checking Imports
 
@@ -97,6 +98,19 @@ class FocusedCargoTests(unittest.TestCase):
                     tasks.main(arguments)
                 self.assertEqual(error.exception.code, 2)
                 focused.assert_not_called()
+
+    def test_release_mode_task_exports_selected_squash(self):
+        for mode, sha in (("tag", "a" * 40), ("prepare", ""), ("skip", "")):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+                output = Path(temporary) / "output"
+                with (
+                    patch.dict(os.environ, GITHUB_OUTPUT=str(output)),
+                    patch.object(review, "github_release_mode", return_value={"mode": mode, "sha": sha}) as decision,
+                ):
+                    self.assertEqual(tasks.main(["ci:release-mode"]), 0)
+                decision.assert_called_once_with()
+                fields = dict(line.split("=", 1) for line in output.read_text().splitlines())
+                self.assertEqual(fields, {"mode": mode, "sha": sha})
 
     def test_nightly_gate_and_report_preserve_run_ownership(self):
         with tempfile.TemporaryDirectory() as temporary:

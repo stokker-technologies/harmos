@@ -762,12 +762,6 @@ jobs:
         - rust
     needs:
     - prepare_test_fixtures
-  cancel_closed:
-    name: Cancel / Closed Review
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
-    runs-on: ubuntu-24.04
-    steps:
-    - run: 'true'
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.event.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}

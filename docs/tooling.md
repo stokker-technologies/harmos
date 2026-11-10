@@ -92,7 +92,14 @@ Nightly uses `ci:nightly-gate` (`GITHUB_OUTPUT` receives `build`),
 `release:publish --stage nightly`, then `ci:nightly-report` with `SUITE`
 (`passed` or `failed`) and optional `RUN_URL`. Reports preserve a newer run's notes.
 Mirror uses `ci:mirror` with its SSH key, known hosts and GitHub ref/SHA inputs.
-`ci:runners` preserves the runner allowlist check. Release evidence lookup uses
+`ci:runners` preserves the runner allowlist check. `ci:release-mode` emits `mode`
+and `sha` to `GITHUB_OUTPUT`: successful release-review CI completion selects its
+merged, untagged release squash for tagging; unrelated completions skip. A dispatch
+on dev retries that squash, including after later dev merges, or prepares the next
+release when none is pending. Release / Tag waits for `ci:review` to validate the
+green review and package evidence, then `release:tag` checks exact-commit required
+CI and the release rehearsal before tagging and fast-forwarding main. CI closure cancellation excludes
+merged release reviews so their validation can finish. Release evidence lookup uses
 `ci:review` with `REVIEW_REQUIRED`, `REVIEW_RELEASE`, `REVIEW_PACKAGES` and
 `REVIEW_BUILDS`; outputs go to `GITHUB_OUTPUT`. `ci:release-checks` checks the exact
 `RELEASE_TARGET_SHA`. `ci:required` reads `RESULTS` JSON and refuses failures,

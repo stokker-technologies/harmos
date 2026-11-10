@@ -65,10 +65,12 @@ Every project uses the workflows `CI`, `Nightly`, `Release` and `Mirror`. Run na
 `Release / Publication` and `Mirror / Synchronization`. Job names read
 `<Stage> / <Subject>[ / <Kind>] [(<platform>)]`, such as `Check / Python`,
 `Test / Rust / Unit (windows)`, `Release / Tag`, `Nightly / Publish` or
-`Mirror / Push`; `CI / Required` is the aggregate gate. Release starts only for
-manual preparation, `v*` tag pushes and merged PRs into dev that change
-`tools/project.toml`, which every release review does; its jobs still require
-a `release/v*` head, so ordinary merges start no Release run.
+`Mirror / Push`; `CI / Required` is the aggregate gate. Release starts for
+manual dispatch, completed `CI` runs and `v*` tag pushes. Successful validation
+of a merged `release/v*` review starts tagging its prepared, untagged release;
+unrelated CI completions skip release jobs. A dispatch on dev retries tagging
+that prepared release, even after later dev merges, or prepares the next release
+otherwise.
 
 ## Tests and Checks
 
@@ -172,11 +174,13 @@ Before the first release with this workflow layout, the owner must register
 crates.io Trusted Publishing against `release.yml`, environment `release`, for
 `stokker-technologies/harmos`, replacing the previous workflow identity.
 
-Release reviews squash into dev. Before tagging or publishing, `release.yml`
-queries GitHub for the exact target SHA's latest dev push run, its successful
-`CI / Required` check and any additional required contexts in main's ruleset.
-Missing or pending proof waits up to 30 minutes; failed proof refuses release.
-Rerun Release after repairing CI if this gate times out. The green release-review
+Release / Prepare opens the `release/v<version>` review and squashes it into
+dev immediately. Its `CI / Validation` continues; successful completion starts
+Release / Tagging automatically, targeting the release squash even after later
+dev merges. A dispatch on dev retries a prepared, untagged release. The tag push
+starts publication and verification. Only the initial dispatch and `release`
+environment approvals require manual action. Before tagging or publishing,
+`release.yml` checks the exact target's required CI; the green release-review
 rehearsal and artifact checks remain required before tagging and fast-forwarding main.
 
 The repository owner must configure an active branch ruleset targeting `main`
