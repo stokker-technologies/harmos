@@ -115,27 +115,9 @@ wheels = [
 ]
 
 [[package]]
-name = "harmos-plugin"
-version = "0.1.14"
-source = { editable = "sdk/python" }
-dependencies = [
-    { name = "grpcio" },
-    { name = "protobuf" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "grpcio", specifier = ">=1.85.1" },
-    { name = "protobuf", specifier = ">=7.35.1,<8" },
-]
-
-[[package]]
 name = "harmos-tools"
 version = "0.0.0"
 source = { editable = "tools/python" }
-dependencies = [
-    { name = "harmos-plugin" },
-]
 
 [package.dev-dependencies]
 dev = [
@@ -153,7 +135,6 @@ test = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "harmos-plugin", editable = "sdk/python" }]
 
 [package.metadata.requires-dev]
 dev = [

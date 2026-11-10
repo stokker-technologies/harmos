@@ -197,10 +197,12 @@ def dispatch(arguments: list[str] | None = None) -> int:
         ):
             parser.error("Python SDK tests select --target integration and optional --exact")
         selected = [options.exact] if options.exact else ["discover", "-s", "tests/integration", "-v"]
+        environment = dict(os.environ, TEST_PROFILE=options.profile)
+        environment.pop("VIRTUAL_ENV", None)
         return _execute(
-            [sys.executable, "-m", "unittest", *selected],
+            ["uv", "run", "--locked", "--no-sync", "--project", str(root / "sdk/python"), "python", "-m", "unittest", *selected],
             directory=root / "sdk/python",
-            environment=dict(os.environ, TEST_PROFILE=options.profile),
+            environment=environment,
         )
 
     if options.command == "test" and options.language == "python" and options.exact:
@@ -254,7 +256,9 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
     # Prepare Explicit Inputs
     if options.command == "prepare":
-        return 0
+        environment = dict(os.environ)
+        environment.pop("VIRTUAL_ENV", None)
+        return _execute(["uv", "sync", "--locked", "--all-groups", "--project", str(root / "sdk/python")], environment=environment)
     if options.command == "generate":
         if options.sdk == "python":
             return _module("build.python_protocol")

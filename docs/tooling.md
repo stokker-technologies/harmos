@@ -2,8 +2,12 @@
 
 Mise is the public entry point. Run `mise tasks` to see the supported entry points;
 pass arguments after `--`. Python tooling lives in `tools/python/src/harmos_tools/`;
-the root uv workspace owns `.venv/` and `uv.lock`. Run `mise run prepare` once
-after checkout or dependency changes to synchronize all locked dependency groups.
+the root uv workspace owns `.venv/` and `uv.lock`. The standalone SDK owns
+`sdk/python/.venv/` and `sdk/python/uv.lock`; tooling does not depend on the SDK.
+Run `mise run prepare` once after checkout or dependency changes to synchronize
+all locked dependency groups in both projects.
+The SDK's development group includes tooling for reference-host test support;
+this dependency does not enter the tooling workspace or the SDK runtime.
 Every other entry point uses `uv run --locked --no-sync`.
 
 `mise run lint -- --language rust` owns Clippy with warnings denied, including
@@ -47,8 +51,8 @@ focused tooling test.
 
 `sdk/python` builds the pure Python `harmos-plugin` distribution for Python 3.13+.
 Its runtime dependencies are `grpcio` and `protobuf`; it contains no native code.
-`prepare` installs the local package into the root workspace's `.venv/` alongside
-the tooling. Generate application messages with protobuf; author handlers using
+`prepare` installs the local package into `sdk/python/.venv/`; SDK tests and type
+checks use that environment. Generate application messages with protobuf; author handlers using
 those message classes, without an intermediate JSON representation:
 
 ```python
