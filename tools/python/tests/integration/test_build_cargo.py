@@ -71,6 +71,26 @@ class FocusedCargoTests(unittest.TestCase):
 
     def test_entry_points_dispatch_focused_cargo_directly(self):
         selections = [
+            (
+                ["build", "--package", "example", "--features", "grpc,simulation", "--check"],
+                "check",
+                ["--locked", "--profile", "dev", "-p", "example", "--features", "grpc,simulation"],
+            ),
+            (
+                ["build", "--package", "example", "--features", "grpc simulation"],
+                "build",
+                ["--locked", "--profile", "dev", "-p", "example", "--features", "grpc simulation"],
+            ),
+            (
+                ["test", "--package", "example", "--features", "simulation", "--target", "lib", "--exact", "case::name"],
+                "test",
+                ["--locked", "-p", "example", "--lib", "--features", "simulation", "case::name", "--", "--exact"],
+            ),
+            (
+                ["test", "--package", "example", "--features", "grpc,simulation", "--target", "messages"],
+                "test",
+                ["--locked", "-p", "example", "--test", "messages", "--features", "grpc,simulation"],
+            ),
             (["build", "--package", "example", "--check"], "check", ["--locked", "--profile", "dev", "-p", "example"]),
             (["build", "--package", "example", "--profile", "release"], "build", ["--locked", "--profile", "release", "-p", "example"]),
             (["test", "--package", "example", "--target", "lib"], "test", ["--locked", "-p", "example", "--lib"]),
@@ -87,6 +107,8 @@ class FocusedCargoTests(unittest.TestCase):
 
     def test_invalid_focused_selections_do_not_start_cargo(self):
         selections = [
+            ["build", "--features", "grpc"],
+            ["test", "--features", "simulation", "--target", "lib"],
             ["test", "--package", "example"],
             ["test", "--package", "example", "--target", "lib", "--coverage"],
             ["test", "--package", "example", "--target", "lib", "--profile", "release"],

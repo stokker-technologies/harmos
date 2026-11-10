@@ -25,11 +25,15 @@ never scans or reclaims compiler output before compilation.
 ```sh
 mise run build -- --package harmos-domain
 mise run build -- --package harmos-domain --check
+mise run build -- --package harmos-runtime --features grpc,simulation --check
+mise run test -- --package harmos-runtime --features simulation --target lib --exact simulation::clock::tests::evidence_dates_retain_the_host_epoch_across_reboot
 mise run test -- --package harmos-macros --target lib --exact operation::tests::portable_domain_operation
 ```
 
 Focused builds select one package; focused tests select exactly one library or
 named integration target and use Cargo's default test profile, without an archive.
+Both accept `--features <list>` with `--package`, forwarding the comma- or
+space-separated Cargo feature list unchanged. Default features remain enabled.
 Before Cargo, mise selects the pinned environment, uv reuses `.venv/`, and a single
 Python process validates selectors and sets the warnings policy. Native sccache
 keeps its server across invocations. Lower Cargo parallelism if allocations fail.

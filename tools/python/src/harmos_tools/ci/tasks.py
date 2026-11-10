@@ -83,6 +83,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     build.add_argument("--profile", choices=("dev", "release"), default="dev")
     build.add_argument("--artifact", choices=("product", "tests", "bench", "fixtures"), default="product")
     build.add_argument("--package")
+    build.add_argument("--features")
     build.add_argument("--check", action="store_true")
     build.add_argument("--compatibility", action="store_true")
     build.add_argument("--cpp", action="store_true")
@@ -91,6 +92,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     test.add_argument("--language", choices=("rust", "python"))
     test.add_argument("--layer", choices=LAYERS)
     test.add_argument("--package")
+    test.add_argument("--features")
     test.add_argument("--target")
     test.add_argument("--exact")
     test.add_argument("--coverage", action="store_true")
@@ -145,10 +147,15 @@ def dispatch(arguments: list[str] | None = None) -> int:
     root = Path.cwd()
 
     # Focused Cargo Selections
+    if options.command in ("build", "test") and options.features and not options.package:
+        parser.error("--features requires --package")
     if options.command == "build" and options.package:
         if options.artifact != "product" or options.compatibility or options.cpp or options.extended:
             parser.error("--package cannot select artifacts, compatibility, C++ or extended builds")
-        return cargo.focused(root, "check" if options.check else "build", ["--locked", "--profile", options.profile, "-p", options.package])
+        command = ["--locked", "--profile", options.profile, "-p", options.package]
+        if options.features:
+            command += ["--features", options.features]
+        return cargo.focused(root, "check" if options.check else "build", command)
     if options.command == "test" and options.package:
         if not options.target:
             parser.error("--package requires --target lib or a test target name")
@@ -158,6 +165,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
             parser.error("focused tests use the default test profile and --exact for filtering")
         selected = ["--lib"] if options.target == "lib" else ["--test", options.target]
         command = ["--locked", "-p", options.package, *selected]
+        if options.features:
+            command += ["--features", options.features]
         if options.exact:
             command += [options.exact, "--", "--exact"]
         return cargo.focused(root, "test", command)
