@@ -92,7 +92,7 @@ impl<C> StorageManager<C> {
                                 queued: Some(tracing::debug_span!("storage.file.queue")),
                                 metadata: Arc::new(metadata),
                                 staging,
-                                session: resumable.then(|| Session::new(self.inner.execution)),
+                                session: resumable.then(|| Session::new(self.inner.execution.clone())),
                                 extra: None,
                                 mutation: None,
                                 progress: progress.clone(),

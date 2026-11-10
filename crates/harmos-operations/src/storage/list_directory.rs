@@ -108,7 +108,9 @@ mod execution {
             let mut reader = storage.list_directory(self.selection.clone()).await?;
             while let Some(item) = reader.next().await? {
                 let response = Response::from_owner(item.owner());
-                tokio::time::timeout(crate::storage::IO_TIMEOUT, output.send_owned(response))
+                storage
+                    .clock()
+                    .timeout(crate::storage::IO_TIMEOUT, output.send_owned(response))
                     .await
                     .map_err(|_| crate::storage::output_timeout())??;
             }
