@@ -64,7 +64,9 @@ async fn an_in_flight_plugin_call_blocks_virtual_time_until_settlement() {
 
     // Settling The Call Lets The Same Controller Advance
     call.request_cancel();
-    let drive = async { tokio::join!(advancing, timer); };
+    let drive = async {
+        tokio::join!(advancing, timer);
+    };
     let (answer, ()) = tokio::join!(call, drive);
     assert!(answer.is_ok());
     assert_eq!(clock.date(), std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1));
