@@ -22,13 +22,6 @@ mod revisions;
 #[path = "../streams/listeners.rs"]
 mod listeners;
 
-#[path = "series.rs"]
-mod series;
-
-#[path = "stream_batches.rs"]
-#[allow(dead_code, reason = "shared with the benchmark of the same domain")]
-pub mod stream_batches;
-
 #[path = "streams_macros.rs"]
 mod streams_macros;
 
@@ -205,12 +198,12 @@ async fn history_respects_cuts() {
 
         assert_eq!(
             runtime.streams.query::<Pulse>(..).await.expect_err("an unbounded start reaches beneath the window"),
-            BeneathWindow::Unserved,
-            "with no series adapter attached the window is the whole served history"
+            BeneathWindow::Floor { floor: Position(4) },
+            "the window cannot answer beneath its retained floor"
         );
         assert_eq!(
             runtime.streams.query::<Pulse>(Position::ORIGIN..).await.expect_err("the origin lies beneath the floor"),
-            BeneathWindow::Unserved,
+            BeneathWindow::Floor { floor: Position(4) },
         );
 
         // A start the caller actually holds — the stamp of a row still retained —

@@ -199,24 +199,3 @@ fn mean_of(x: &[f64], y: &[f64], range: std::ops::Range<usize>) -> Option<(f64, 
 }
 
 /* === Tests === */
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn decimation_indices_preserve_uniform_stride_and_empty_cases() {
-        for (length, count, expected) in
-            [(0, 4, vec![]), (8, 0, vec![]), (1, 1, vec![0]), (5, 8, vec![0, 1, 2, 3, 4]), (8, 3, vec![0, 3, 6]), (9, 3, vec![0, 3, 6])]
-        {
-            let mut indices = decimate_indices(length, count);
-            assert_eq!(indices.len(), expected.len());
-            assert_eq!(indices.clone().collect::<Vec<_>>(), expected);
-            assert_eq!(decimate(length, count), expected);
-            if let Some(last) = expected.last() {
-                assert_eq!(indices.next_back(), Some(*last));
-                assert_eq!(indices.len(), expected.len() - 1);
-            }
-        }
-    }
-}

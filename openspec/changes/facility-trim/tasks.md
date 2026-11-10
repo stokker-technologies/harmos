@@ -2,15 +2,15 @@
 
 ## 1. Contract
 
-- [ ] 1.1 Lock the source inventory: features, exports, consumers, tests, benches, documents and tasks for each facility.
+- [x] 1.1 Lock the source inventory: features, exports, consumers, tests, benches, documents and tasks for each facility.
 
 ## 2. Removal
 
-- [ ] 2.1 Delete `crates/cargo-harmos` with its templates and every reference to it.
+- [x] 2.1 Delete `crates/cargo-harmos` with its templates and every reference to it.
 - [x] 2.2 Delete the JSON storage backend and the benchmarks that depend on it.
-- [ ] 2.3 Make statistics and downsampling private to storage, replace the downsampling kernels with `tsdownsample` where equivalent, and delete the public `signal` namespace and its features once Dokime owns FFT.
-- [ ] 2.4 Delete the operation response cache, the external series adapter with axial surveys and tracked reads, and statistical stream batches, with their tests and fixtures.
-- [ ] 2.5 Update the README and product guide.
+- [ ] 2.3 Make statistics and downsampling private to storage, replace the downsampling kernels with `tsdownsample` where equivalent, and delete the public `signal` namespace and its features without waiting for Dokime to adopt FFT.
+- [x] 2.4 Delete the operation response cache, the external series adapter with axial surveys and tracked reads, and statistical stream batches, with their tests and fixtures.
+- [x] 2.5 Update the README and product guide.
 
 ## 3. Final Validation
 

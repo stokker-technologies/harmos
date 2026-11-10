@@ -229,10 +229,10 @@ mod tests {
         let y = batch.column(1).as_any().downcast_ref::<Float64Array>().unwrap().values();
         for algorithm in [Algorithm::Decimate, Algorithm::Extrema, Algorithm::Lttb, Algorithm::LttbLog] {
             let expected = match algorithm {
-                Algorithm::Decimate => crate::signal::decimate(batch.num_rows(), 40),
-                Algorithm::Extrema => crate::signal::extrema(y, 20),
-                Algorithm::Lttb => crate::signal::lttb(x, y, 40),
-                Algorithm::LttbLog => crate::signal::lttb_log(x, y, 40),
+                Algorithm::Decimate => crate::statistics::decimate(batch.num_rows(), 40),
+                Algorithm::Extrema => crate::statistics::extrema(y, 20),
+                Algorithm::Lttb => crate::statistics::lttb(x, y, 40),
+                Algorithm::LttbLog => crate::statistics::lttb_log(x, y, 40),
             };
             let transform = Transform::Downsample(Downsample {
                 algorithm,
@@ -262,7 +262,7 @@ mod tests {
             axis: None,
         });
         let actual = run(&batch, vec![sort, downsample], RowSlice { offset: 0, limit: None });
-        let expected = crate::signal::decimate(350, 20).into_iter().map(|i| 349 - i as u64).collect::<Vec<_>>();
+        let expected = crate::statistics::decimate(350, 20).into_iter().map(|i| 349 - i as u64).collect::<Vec<_>>();
         assert_eq!(actual, expected);
     }
 

@@ -15,7 +15,6 @@ mod contract;
 mod direction;
 mod grpc;
 pub mod instance;
-mod key;
 #[doc(hidden)]
 pub mod payload;
 
@@ -29,7 +28,6 @@ pub use context::{CallContext, CallValue, ContextError, ContextValue, PORTABLE_B
 pub use contract::{Codec, Contract, ContractError, Contracts, WireDeclaration};
 pub use direction::{Direction, NoStream, Stream, item_types};
 pub use grpc::Grpc;
-pub use key::{CacheKey, CacheKeyError, MAX_CACHE_KEY_BYTES};
 
 /* === Imports === */
 
@@ -107,10 +105,6 @@ pub trait OperationDeclaration: 'static {
     }
 
     fn grant(_request: &Self::Request) -> Option<crate::plugin::Grant> {
-        None
-    }
-
-    fn key(_request: &Self::Request) -> Option<CacheKey> {
         None
     }
 }

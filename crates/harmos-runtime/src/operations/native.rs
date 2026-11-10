@@ -1104,7 +1104,6 @@ pub(super) fn dispatch(
         let response = invocation.await?;
         super::wire::available(&target, &source)?;
         super::wire::budget(&operation, outcome_control.status().attempt() + 1, timeout, submitted)?;
-        // No Cache Opt-In Exists For An Opaque Inspected Request.
         let payload = response.try_unwrap().unwrap_or_else(|response| (*response).clone()).0;
         super::wire::available(&target, &source)?;
         super::wire::budget(&operation, outcome_control.status().attempt() + 1, timeout, submitted)?;

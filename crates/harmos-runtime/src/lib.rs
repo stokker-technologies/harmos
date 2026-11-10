@@ -47,7 +47,6 @@ pub use harmos_domain as domain;
 pub use harmos_domain::model;
 pub use harmos_domain::{DefinitionId, Identified};
 pub use harmos_operations as builtins;
-pub(crate) use harmos_storage::aggregate;
 
 pub use harmos_domain::{
     Aggregate, Failure, Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata, RowMetadata, Storable, StreamField,
@@ -59,8 +58,6 @@ pub use harmos_domain::{
 };
 pub use harmos_sdk::operations::{EndpointSet, OperationHost, Response};
 pub use harmos_sdk::{Context, Dependent, Executable, ExecutionContext, Lifecycle, Operation, Resource, ResourceError, Service, Setup};
-#[cfg(feature = "signal")]
-pub use harmos_storage::signal;
 pub use operations::refusal::Refusal;
 pub use operations::{Catalog, Invocation, InvocationExt, Lane, Running};
 pub use runtime::{Handle, Runtime, StartupError};
@@ -139,7 +136,7 @@ pub mod __private {
     // A stream declaration is authored wherever its row type is, host core or
     // no host core, so these three are as unconditional as the attribute that
     // generates them.
-    pub use harmos_domain::streams::{BatchDefinition, StreamCatalog, StreamRow};
+    pub use harmos_domain::streams::{StreamCatalog, StreamRow};
 
     // How generated code names a type the tokens it was handed cannot spell.
 
@@ -176,7 +173,7 @@ pub mod __private {
     /* === Public Functions === */
 
     pub fn stream_definition<S: StreamRow>(id: &'static str, window: usize) -> crate::streams::Definition {
-        crate::streams::Definition::native::<S>(id, window).batching(S::batch_definition()).presentation(S::metadata(), S::row_metadata())
+        crate::streams::Definition::native::<S>(id, window).presentation(S::metadata(), S::row_metadata())
     }
 
     /* === Private Functions === */

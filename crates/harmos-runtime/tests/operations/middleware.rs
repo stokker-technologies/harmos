@@ -54,14 +54,12 @@ struct OverlayChildDeclaration {}
 #[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], operations = [DeclareChildDeclaration], id = "middleware.parent",
     response = String,
     policy = POLICY,
-    key = keyed
 )]
 struct DeclareParentDeclaration {}
 
 #[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "middleware.child",
     response = String,
     policy = POLICY,
-    key = keyed
 )]
 struct DeclareChildDeclaration {}
 
@@ -155,10 +153,6 @@ impl Middleware for Policy {
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-fn keyed<O>(_: &O) -> Option<harmos_runtime::operations::CacheKey> {
-    Some(harmos_runtime::operations::CacheKey::new(vec![1]).unwrap())
-}
 
 async fn runtime() -> Runtime<App> {
     let runtime = Runtime::<App>::launch((), ()).await.unwrap();

@@ -66,15 +66,6 @@ impl Summary {
         Self::default()
     }
 
-    #[must_use]
-    pub fn of(values: &[f64]) -> Self {
-        let mut summary = Self::new();
-        for value in values {
-            summary.push(*value);
-        }
-        summary
-    }
-
     pub fn push(&mut self, value: f64) {
         if !value.is_finite() {
             return;
@@ -101,38 +92,8 @@ impl Summary {
     }
 
     #[must_use]
-    pub fn merge(&self, other: &Self) -> Self {
-        if self.count == 0 {
-            return *other;
-        }
-        if other.count == 0 {
-            return *self;
-        }
-
-        let count = self.count + other.count;
-        let total = count as f64;
-        let mean = self.mean * (self.count as f64 / total) + other.mean * (other.count as f64 / total);
-        let apart = other.mean - self.mean;
-        let weight = (self.count as f64 * other.count as f64) / total;
-
-        Self {
-            count,
-            sum: self.sum + other.sum,
-            mean,
-            lowest: self.lowest.min(other.lowest),
-            highest: self.highest.max(other.highest),
-            deviations: self.deviations + other.deviations + apart * apart * weight,
-        }
-    }
-
-    #[must_use]
     pub fn count(&self) -> u64 {
         self.count
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.count == 0
     }
 
     #[must_use]
@@ -148,11 +109,6 @@ impl Summary {
     #[must_use]
     pub fn max(&self) -> Option<f64> {
         (self.count > 0).then_some(self.highest)
-    }
-
-    #[must_use]
-    pub fn span(&self) -> Option<f64> {
-        (self.count > 0).then_some(self.highest - self.lowest)
     }
 
     #[must_use]
@@ -189,29 +145,20 @@ impl Summary {
 #[cfg(test)]
 mod tests {
     use super::Summary;
-    use crate::signal::Series;
 
-    const CLOSE: f64 = 1e-9;
-
-    fn close(found: Option<f64>, expected: f64) {
-        let found = found.expect("an answer");
-        assert!((found - expected).abs() <= CLOSE * expected.abs().max(1.0), "{found} is not {expected}");
-    }
-
-    // Series answers over the whole run at once; Summary is folded from chunks and
-    // merged, so agreement proves the streaming form matches the exact one.
     #[test]
-    fn chunked_summaries_agree() {
-        let values: Vec<f64> = (0..97).map(|index| ((index * 37) % 23) as f64 * 1.5 - 11.0).chain([f64::NAN, f64::INFINITY]).collect();
-        let series = Series::new(&values);
-        let summary = values.chunks(10).map(Summary::of).fold(Summary::new(), |held, next| held.merge(&next));
-
-        assert_eq!(series.count(), summary.count());
-        close(Some(series.sum()), summary.sum());
-        close(series.mean(), summary.mean().unwrap());
-        assert_eq!(series.min(), summary.min());
-        assert_eq!(series.max(), summary.max());
-        close(series.rms(), summary.rms().unwrap());
-        close(series.std(), summary.std().unwrap());
+    fn running_statistics_filter_nonfinite_samples() {
+        let mut summary = Summary::new();
+        for value in [1.0, f64::NAN, 2.0, f64::INFINITY, 3.0, f64::NEG_INFINITY, 4.0] {
+            summary.push(value);
+        }
+        assert_eq!(summary.count(), 4);
+        assert_eq!(summary.sum(), 10.0);
+        assert_eq!(summary.min(), Some(1.0));
+        assert_eq!(summary.max(), Some(4.0));
+        assert_eq!(summary.mean(), Some(2.5));
+        assert_eq!(summary.variance(), Some(1.25));
+        assert_eq!(summary.std(), Some(1.25_f64.sqrt()));
+        assert!((summary.rms().unwrap() - 7.5_f64.sqrt()).abs() < 1e-12);
     }
 }

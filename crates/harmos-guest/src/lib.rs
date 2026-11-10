@@ -26,16 +26,16 @@ pub use harmos_domain::{
 pub use harmos_operations as builtins;
 pub use harmos_sdk::operations;
 pub use harmos_sdk::operations::OperationHost;
-pub use harmos_sdk::operations::{Backoff, CacheKey, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+pub use harmos_sdk::operations::{Backoff, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 pub use harmos_sdk::{Context, Dependent, Executable, Lifecycle, Operation, Plugin, Resource, Response, Service, Setup};
 
 pub use harmos_domain::schema;
 pub use harmos_domain::streams;
-pub use harmos_domain::{Axial, Batched, Metadata, Prefix, StreamField, Track, Tracked};
 pub use harmos_domain::{
     Digest, Fingerprint, MemorySize, Message, MessageError, OperationDefinition, Portable, QualifiedId, RowMetadata, ServicePolicy,
     Storable,
 };
+pub use harmos_domain::{Metadata, StreamField};
 pub use harmos_sdk::__private;
 #[cfg(feature = "kit")]
 pub use kit::{OperationInstance, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREADABLE, WIT};

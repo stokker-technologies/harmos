@@ -49,7 +49,6 @@ impl Manager {
             return;
         }
         state.closing = true;
-        let retired = std::mem::take(&mut state.cache);
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         let staging: Vec<_> = state.staging.iter().filter_map(std::sync::Weak::upgrade).collect();
         for entry in state.entries.values().flat_map(|providers| providers.values()) {
@@ -72,7 +71,6 @@ impl Manager {
             }
         }
         drop(state);
-        drop(retired);
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         for scope in staging {
             scope.close_staging();

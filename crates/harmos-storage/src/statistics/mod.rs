@@ -9,7 +9,15 @@
 
 /* === Modules === */
 
+#[cfg(test)]
+mod reference;
+mod summary;
+
 /* === Re-Exports === */
+
+#[cfg(test)]
+pub use reference::{decimate, extrema, lttb, lttb_log};
+pub use summary::Summary;
 
 /* === Imports === */
 
@@ -25,23 +33,9 @@
 
 /* === Type Aliases === */
 
-pub type Result<T> = std::result::Result<T, Error>;
-
 /* === Structs === */
 
 /* === Enums === */
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("signal workspace I/O failed: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("invalid signal input: {reason}")]
-    InvalidInput { reason: &'static str },
-
-    #[error("signal computation interrupted")]
-    Interrupted,
-}
 
 /* === Traits === */
 

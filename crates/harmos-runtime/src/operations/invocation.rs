@@ -229,7 +229,6 @@ fn admit_native<P: Send + 'static>(
     factory: harmos_sdk::operations::OperationFactory, erase: fn(P) -> Box<dyn Any + Send>,
 ) -> crate::Result<super::Running<NativeCall>> {
     let grant = (target.grant)(request.as_ref());
-    let key = (target.key)(request.as_ref());
     let memory = (target.memory)(request.as_ref());
     let entry = context.operations.entry_as(target.id, &context.source.check()?)?;
     let resources = context.operations.resources_for(&entry);
@@ -241,7 +240,6 @@ fn admit_native<P: Send + 'static>(
             factory.prepare_native(resources.clone(), payload, erase(endpoints))
         },
         |response| Some(harmos_sdk::Response::new(Answer(response))),
-        |response| response.0.clone(),
     );
     let mut input = super::binding::Request::from(Request {
         payload: Mutex::new(Some(request)),
@@ -250,7 +248,6 @@ fn admit_native<P: Send + 'static>(
     input.retry = retry;
     input.binding = Some(Arc::new(binding));
     input.grant = grant;
-    input.key = key;
     let running = context.operations.admit_at::<NativeCall, P>(
         target.id,
         (input, endpoints),
@@ -304,8 +301,7 @@ mod tests {
         retries: crate::RetryPolicy::Never,
     };
 
-    #[crate::operation(harmos_path = crate, resources = [u64], id = "test.leaf", response = u64, policy = POLICY,
-        key = |request: &Leaf| crate::operations::CacheKey::new(request.value.to_le_bytes()).ok())]
+    #[crate::operation(harmos_path = crate, resources = [u64], id = "test.leaf", response = u64, policy = POLICY)]
     struct Leaf {
         value: u64,
     }
@@ -742,11 +738,10 @@ mod tests {
         .unwrap();
         let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<Parent>().operation::<Leaf>();
         runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
-        runtime.operations.set_cache_capacity(2);
         let direct = runtime.operation(Leaf { value: 5 }).await.unwrap();
         let child = runtime.operation(Parent { value: 5 }).await.unwrap();
         assert_eq!(*child, 12);
-        assert!(direct.ptr_eq(&child));
+        assert_eq!(*direct, *child);
         runtime.shutdown().await.unwrap();
     }
 

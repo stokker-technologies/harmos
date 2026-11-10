@@ -20,10 +20,7 @@ use std::pin::Pin;
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::{
-    Application, Runtime, state::At, state::Position, state::Transaction, streams::Axial, streams::Item, streams::Prefix, streams::Stream,
-    streams::Tracked,
-};
+use harmos_runtime::{Application, Runtime, state::At, state::Position, state::Transaction, streams::Item, streams::Stream};
 
 /* === Constants === */
 
@@ -190,33 +187,12 @@ mod streams {
         pub value: i64,
     }
 
-    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-    pub struct Take(pub u64);
-
-    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-    pub struct Lens(pub u64);
-
-    #[harmos_runtime::stream(description = "A row declaring both optional coordinates.",
-        id = "capture",
-        window = 4,
-        track = (take, lens),
-        axis = ordinal
-    )]
-    #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
-    pub struct Capture {
-        pub take: Take,
-        pub lens: Lens,
-        pub ordinal: u64,
-        pub value: i64,
-    }
-
     /* === Enums === */
 
     #[harmos_runtime::streams]
     pub enum Studio {
         Pulse(Pulse),
         Reading(Reading),
-        Capture(Capture),
     }
 
     /* === Traits === */
@@ -226,18 +202,6 @@ mod streams {
     impl<'de> Deserialize<'de> for Pulse {
         fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
             u64::deserialize(deserializer).map(Self)
-        }
-    }
-
-    impl harmos_runtime::streams::Track for Take {
-        fn label(&self) -> String {
-            format!("take_{}", self.0)
-        }
-    }
-
-    impl harmos_runtime::streams::Track for Lens {
-        fn label(&self) -> String {
-            format!("lens_{}", self.0)
         }
     }
 
@@ -254,7 +218,7 @@ mod streams {
 fn generated_catalog_registers() {
     let catalog = streams::Studio::catalog();
 
-    assert_eq!(catalog.len(), 3, "one enum variant yields one definition");
+    assert_eq!(catalog.iter().map(|definition| definition.id()).collect::<Vec<_>>(), ["pulse", "reading"]);
     assert_eq!(catalog[0].id(), "pulse");
     let graph = harmos_runtime::schema::graph::Schema::from_declaration(
         <streams::Pulse as harmos_runtime::schema::Described>::DEFINITION,
@@ -267,44 +231,6 @@ fn generated_catalog_registers() {
     assert!(streams::Studio::definition("outside").is_none());
     assert_eq!(streams::Pulse::definition().id(), "pulse");
     assert_eq!(<streams::Pulse as Stream<Studio>>::ID, "pulse");
-}
-
-#[test]
-fn declared_coordinates_carry() {
-    let row = streams::Capture {
-        take: streams::Take(3),
-        lens: streams::Lens(9),
-        ordinal: 41,
-        value: -7,
-    };
-
-    assert_eq!(row.track(), (streams::Take(3), streams::Lens(9)), "the declaration's depth and component types are the row's own");
-    assert_eq!(<streams::Capture as Tracked>::TRACK, ["take", "lens"]);
-    assert_eq!(row.axis(), 41);
-    assert_eq!(<streams::Capture as Axial>::AXIS, "ordinal");
-}
-
-#[test]
-fn selection_prefix_declared() {
-    fn narrows<S: Tracked, K: Prefix<S::Track>>(selection: K) -> Vec<String> {
-        selection.labels()
-    }
-
-    assert_eq!(narrows::<streams::Capture, _>((streams::Take(3),)), ["take_3"], "a shorter tuple selects the whole subtree beneath it");
-    assert_eq!(
-        narrows::<streams::Capture, _>((streams::Take(3), streams::Lens(9))),
-        ["take_3", "lens_9"],
-        "the whole tuple selects one partition, and its labels are its components'"
-    );
-    assert!(
-        (streams::Take(3),).selects(&(streams::Take(3), streams::Lens(1))),
-        "a prefix selects by the application's own equality, component by component"
-    );
-    assert!(!(streams::Take(3),).selects(&(streams::Take(4), streams::Lens(1))), "and cuts everything it does not name");
-    // Neither of these implements `Prefix<(Take, Lens)>`, so neither compiles:
-    //
-    //     narrows::<streams::Capture, _>((streams::Lens(9),));
-    //     narrows::<streams::Capture, _>((streams::Take(3), streams::Lens(9), streams::Take(1)));
 }
 
 #[test]

@@ -70,7 +70,6 @@ struct SelectedHost {
     response = Response,
     visibility = Public,
     policy = Compute::POLICY,
-    key = |request: &Public| Compute::key(&request.0),
 )]
 #[derive(Clone)]
 struct Public(Request);

@@ -25,7 +25,7 @@ pub(crate) use tokio::sync::Notify;
 // Local Imports
 use super::support;
 pub(crate) use harmos_runtime::operations::{
-    Backoff, CacheKey, Context, FailureKind, Jitter, OperationDeclaration, OperationInstanceId, OperationPolicy, RestartPolicy, RetryPolicy,
+    Backoff, Context, FailureKind, Jitter, OperationDeclaration, OperationInstanceId, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 pub(crate) use harmos_runtime::{Error, Refusal, Runtime};
 pub(crate) use support::{Bank, Ledger, catalog};
@@ -76,7 +76,7 @@ pub(crate) type Request = Compute;
 // Requests Clone Shared Gates; Responses Retain Their Owned Value.
 
 #[harmos_runtime::operation(codec = manual, id = "test.compute", response = Response,
-    resources = [Owner, harmos_runtime::operations::HostContext], key = |request: &Compute| (request.keyed && request.valid).then(|| CacheKey::new(request.value.to_le_bytes().to_vec()).unwrap()),
+    resources = [Owner, harmos_runtime::operations::HostContext],
     policy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
@@ -96,7 +96,6 @@ pub(crate) struct Compute {
     pub(crate) failures: usize,
     pub(crate) failure: FailureKind,
     pub(crate) valid: bool,
-    pub(crate) keyed: bool,
     pub(crate) gate: Option<(Arc<Notify>, Arc<Notify>)>,
 }
 
@@ -205,7 +204,6 @@ impl Request {
             failures: self.failures,
             failure: self.failure,
             valid: self.valid,
-            keyed: self.keyed,
             gate: self.gate.take(),
         }
     }
@@ -321,7 +319,6 @@ pub(crate) fn request() -> Request {
         failures: 0,
         failure: FailureKind::Transient,
         valid: true,
-        keyed: false,
         gate: None,
     }
 }

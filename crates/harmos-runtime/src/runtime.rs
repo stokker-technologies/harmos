@@ -42,8 +42,8 @@ use crate::services::{Once as DeclaredService, ServiceDefinition};
 use crate::state::dispatch::Dispatch;
 use crate::state::{Feed, Inverting, Origin, ReadRequest, Tail, Undos, replay};
 use crate::storage::attachments::{Attachments, Consumers, Horizon, Payload, Source, declare};
-use crate::storage::consumer::{JournalConsumer, Series, StreamConsumer};
-use crate::streams::{Definition, Holding, Request, StreamManager, Table, Tier};
+use crate::storage::consumer::{JournalConsumer, StreamConsumer};
+use crate::streams::{Definition, Holding, StreamManager, Table};
 use crate::supervision::executor::InContext;
 use crate::{
     Application, DefinitionId, Error, operations::LaneSet, services::Resident, state::At, state::CaptureLimits, state::DecodeError,
@@ -165,7 +165,6 @@ struct Supervision<A: Application> {
     catalog: Arc<Dispatch<A, Payload<A>>>,
     inverses: Inverting<A>,
     requests: mpsc::Receiver<ReadRequest<A>>,
-    served: mpsc::Receiver<Request>,
     ready: oneshot::Sender<()>,
 }
 
@@ -241,7 +240,6 @@ enum Cause {
 enum Turn<A: Application> {
     Advanced { journal: bool, streams: bool },
     Read(ReadRequest<A>),
-    Serve(Box<Request>),
     Stopped,
 }
 
@@ -561,14 +559,6 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn series(&mut self, series: impl Series<A>) -> &mut Self {
-        #[cfg(feature = "simulation")]
-        self.live_only.push("a series copy");
-
-        self.attachments.series(series);
-        self
-    }
-
     pub fn recover(&mut self, source: impl Source<A>) -> &mut Self {
         #[cfg(feature = "simulation")]
         self.live_only.push("a recovery source");
@@ -834,8 +824,7 @@ impl<A: Application> Builder<A> {
         // The windows are wired before the consumers start, so a recorder
         // attached below never misses a row published in the gap between the
         // two.
-        let (tier, served) = Tier::channel(REQUESTS);
-        let streams = StreamManager::wired(windows, journal.progress(), tier, schema_settings.clone());
+        let streams = StreamManager::wired(windows, journal.progress(), schema_settings.clone());
         let delivery = streams.delivery();
         operation_settings.validate().map_err(|source| Incompatible {
             cause: Cause::Operations(source),
@@ -887,7 +876,6 @@ impl<A: Application> Builder<A> {
             catalog,
             inverses,
             requests,
-            served,
             ready,
         }));
         #[cfg(feature = "grpc")]
@@ -1103,7 +1091,6 @@ async fn supervise<A: Application>(supervision: Supervision<A>) -> Position {
         catalog,
         inverses,
         mut requests,
-        mut served,
         ready,
     } = supervision;
     // Starting the consumers is a step of boot rather than a consequence of the
@@ -1112,11 +1099,10 @@ async fn supervise<A: Application>(supervision: Supervision<A>) -> Position {
     let booted = *progress.borrow_and_update();
     consumers.drain(&feed, booted).await;
     deliver(&mut consumers, &streams).await;
-    stand_windows(&streams, &mut consumers, booted).await;
     let _ = ready.send(());
 
     loop {
-        match turn(&mut progress, &mut delivery, &mut requests, &mut served, &mut writer).await {
+        match turn(&mut progress, &mut delivery, &mut requests, &mut writer).await {
             Turn::Advanced { journal, streams: rows } => {
                 if journal {
                     let applied = *progress.borrow_and_update();
@@ -1128,7 +1114,6 @@ async fn supervise<A: Application>(supervision: Supervision<A>) -> Position {
                 }
             }
             Turn::Read(request) => answer(request, &mut consumers, Some(&catalog), inverses).await,
-            Turn::Serve(request) => serve(*request, &mut consumers).await,
             Turn::Stopped => break,
         }
     }
@@ -1157,19 +1142,9 @@ async fn deliver<A: Application>(consumers: &mut Consumers<A>, streams: &StreamM
     streams.drained(drained);
 }
 
-async fn stand_windows<A: Application>(streams: &StreamManager<A>, consumers: &mut Consumers<A>, booted: Position) {
-    for wired in streams.declared() {
-        let durable = consumers.sealed(wired.definition.clone(), &[]).await;
-
-        if durable > Position::ORIGIN && durable <= booted {
-            wired.window.stands_on(durable);
-        }
-    }
-}
-
 async fn turn<A: Application>(
     progress: &mut watch::Receiver<Position>, delivery: &mut watch::Receiver<()>, requests: &mut mpsc::Receiver<ReadRequest<A>>,
-    served: &mut mpsc::Receiver<Request>, writer: &mut JoinHandle<()>,
+    writer: &mut JoinHandle<()>,
 ) -> Turn<A> {
     let mut advanced = Box::pin(progress.changed());
     let mut published = Box::pin(delivery.changed());
@@ -1194,10 +1169,7 @@ async fn turn<A: Application>(
         } else {
             match requests.poll_recv(context) {
                 Poll::Ready(Some(request)) => Poll::Ready(Turn::Read(request)),
-                Poll::Ready(None) | Poll::Pending => match served.poll_recv(context) {
-                    Poll::Ready(Some(request)) => Poll::Ready(Turn::Serve(Box::new(request))),
-                    Poll::Ready(None) | Poll::Pending => Poll::Pending,
-                },
+                Poll::Ready(None) | Poll::Pending => Poll::Pending,
             }
         }
     })
@@ -1252,26 +1224,6 @@ async fn answer<A: Application>(
             .in_context(trace.dispatcher.clone())
             .await;
             let _ = reply.send(answer);
-        }
-    }
-}
-
-async fn serve<A: Application>(request: Request, consumers: &mut Consumers<A>) {
-    match request {
-        Request::Rows { stream, track, start, end, reply } => {
-            let answer = consumers.served(stream, &track, start, end).await;
-            let _ = reply.send(answer);
-        }
-        Request::Buckets { stream, track, start, end, budget, reply } => {
-            let answer = consumers.surveyed(stream, &track, start, end, budget).await;
-            let _ = reply.send(answer);
-        }
-        Request::Aggregate { stream, track, start, end, kind, reply } => {
-            let answer = consumers.aggregated(stream, &track, start, end, kind).await;
-            let _ = reply.send(answer);
-        }
-        Request::Seal { stream, track, reply } => {
-            let _ = reply.send(consumers.sealed(stream, &track).await);
         }
     }
 }

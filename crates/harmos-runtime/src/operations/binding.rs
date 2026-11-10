@@ -55,7 +55,6 @@ pub(super) struct Request<T> {
     pub(super) retention: Option<super::RequestClaims>,
     pub(super) binding: Option<Arc<dyn std::any::Any + Send + Sync>>,
     pub(super) grant: Option<harmos_domain::plugin::Grant>,
-    pub(super) key: Option<super::CacheKey>,
 }
 
 pub(super) struct Typed<O: OperationDeclaration, P = ()> {
@@ -77,7 +76,7 @@ impl<T> From<T> for Request<T> {
             retention: None,
             binding: None,
             grant: None,
-            key: None,
+
             context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())),
         }
     }
@@ -99,7 +98,7 @@ impl<T> Request<T> {
             retention: Some(claims),
             binding: None,
             grant: None,
-            key: None,
+
             context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())),
         })
     }
@@ -115,7 +114,6 @@ pub(super) fn prepared<O>(entry: &Entry, id: OperationInstanceId, body: Box<dyn 
         timeout_source: "operation policy.timeout",
         replay: entry.declared().replay,
         id,
-        completed: None,
         refusal: None,
         middleware: None,
     }

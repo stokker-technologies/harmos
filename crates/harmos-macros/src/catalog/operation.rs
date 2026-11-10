@@ -60,7 +60,6 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
     let mut visibility = None::<Expr>;
     let mut replay = None::<Expr>;
     let mut grant = None::<Expr>;
-    let mut key = None::<Expr>;
     let mut grpc = None;
     attribute.parse_nested_meta(|meta| {
         let Some(name) = meta.path.get_ident() else {
@@ -96,7 +95,6 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
             "visibility" => visibility = Some(meta.value()?.parse()?),
             "replay" => replay = Some(meta.value()?.parse()?),
             "grant" => grant = Some(meta.value()?.parse()?),
-            "key" => key = Some(meta.value()?.parse()?),
             "grpc" => grpc = Some(grpc_binding(meta)?),
             _ => return Err(meta.error("unknown operation metadata field")),
         }
@@ -143,11 +141,6 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
     let grant = grant.map(|value| {
         quote! {
             fn grant(request: &Self::Request) -> ::core::option::Option<#sdk::__private::PluginGrant> { (#value)(request) }
-        }
-    });
-    let key = key.map(|value| {
-        quote! {
-            fn key(request: &Self::Request) -> ::core::option::Option<#sdk::operations::CacheKey> { (#value)(request) }
         }
     });
     let clone = item.attrs.iter().filter(|attribute| attribute.path().is_ident("derive")).any(|attribute| {
@@ -206,7 +199,7 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
             const ID: &'static str = #id;
             const OPERATIONS: &'static [#sdk::operations::WireDeclaration] = &[#(#sdk::operations::WireDeclaration::of::<#operations>()),*];
             const POLICY: #sdk::OperationPolicy = #policy;
-            #description #visibility #replay #grpc #grant #key
+            #description #visibility #replay #grpc #grant
         }
 
         #(#gates)*

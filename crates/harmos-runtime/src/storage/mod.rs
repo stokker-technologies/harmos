@@ -19,7 +19,7 @@ pub mod state;
 
 pub use attachments::{Horizon, Payload, Recovery, Source};
 pub use capture::{ProjectedRecords, RecordProjection};
-pub use consumer::{Batch, Cursor, JournalConsumer, Series, StreamConsumer};
+pub use consumer::{Batch, Cursor, JournalConsumer, StreamConsumer};
 pub use harmos_storage::*;
 pub use manager::StorageManager;
 

@@ -49,7 +49,6 @@ struct Physical {
 struct Bound<D: OperationDeclaration> {
     physical: Physical,
     project: fn(harmos_sdk::__private::ErasedResponse) -> Option<super::Response<Payload<D>>>,
-    cached: Option<super::Response<Payload<D>>>,
     entry: Arc<Entry>,
     operations: Manager,
     id: OperationInstanceId,
@@ -122,9 +121,7 @@ impl<D: OperationDeclaration> Body<super::Response<Payload<D>>> for Bound<D> {
     fn initialize<'s>(&'s mut self, scope: Scope<'s>) -> Attempt<'s, ()> {
         Box::pin(async move {
             let context = self.context(scope, 0)?;
-            if self.cached.is_some() {
-                return Ok(());
-            }
+
             let context = execution_context(context)?;
             guarded(self.entry.id(), self.physical.instance.initialize(context)).await?;
             Ok(())
@@ -134,9 +131,7 @@ impl<D: OperationDeclaration> Body<super::Response<Payload<D>>> for Bound<D> {
     fn run<'s>(&'s mut self, scope: Scope<'s>) -> Attempt<'s, super::Response<Payload<D>>> {
         Box::pin(async move {
             let context = self.context(scope, self.attempt)?;
-            if let Some(response) = &self.cached {
-                return Ok(response.clone());
-            }
+
             self.attempt = self.attempt.saturating_add(1);
             let context = execution_context(context)?;
             let response = guarded(self.entry.id(), self.physical.instance.run(context)).await?;
@@ -213,9 +208,7 @@ pub(super) fn factory_with<D: OperationDeclaration, P: Send + 'static>(
     + Sync
     + 'static,
 ) -> Typed<D, P> {
-    factory_projected::<D, P>(operations, prepare, harmos_sdk::__private::ErasedResponse::restore::<D::Response>, |response| {
-        response.clone().into_erased()
-    })
+    factory_projected::<D, P>(operations, prepare, harmos_sdk::__private::ErasedResponse::restore::<D::Response>)
 }
 
 pub(super) fn factory_projected<D: OperationDeclaration, P: Send + 'static>(
@@ -225,7 +218,6 @@ pub(super) fn factory_projected<D: OperationDeclaration, P: Send + 'static>(
     + Sync
     + 'static,
     project: fn(harmos_sdk::__private::ErasedResponse) -> Option<super::Response<Payload<D>>>,
-    erase: fn(&super::Response<Payload<D>>) -> harmos_sdk::__private::ErasedResponse,
 ) -> Typed<D, P> {
     let registry = Arc::downgrade(&operations.registry);
     let instances = operations.instances.clone();
@@ -235,9 +227,7 @@ pub(super) fn factory_projected<D: OperationDeclaration, P: Send + 'static>(
     let resident = operations.resident.clone();
     Typed {
         prepare: Box::new(move |(request, endpoints), id, control, entry, admission, source, origin, preparation| {
-            let super::binding::Request {
-                value: request, retention, context, key, ..
-            } = request;
+            let super::binding::Request { value: request, retention, context, .. } = request;
             let registry = registry.upgrade().ok_or(Error::Closing { domain: "operations" })?;
             let operations = Manager {
                 schema_settings: Arc::clone(&schema_settings),
@@ -248,17 +238,6 @@ pub(super) fn factory_projected<D: OperationDeclaration, P: Send + 'static>(
                 preparation: preparation_budget.clone(),
                 resident: resident.clone(),
             };
-            let key = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                if operations.context.get().is_some_and(|context| context.is_empty()) { key.or_else(|| D::key(&request)) } else { None }
-            }))
-            .map_err(|_| Error::OperationPanicked { operation: entry.id().to_owned() })?;
-            if key.is_some() && std::any::TypeId::of::<P>() != std::any::TypeId::of::<()>() {
-                return Err(Error::InvalidInput {
-                    field: "operation stream cache",
-                    reason: "endpoint execution cannot reuse a response without executing its streams",
-                });
-            }
-            let cached = key.as_ref().and_then(|key| operations.lookup_erased(&entry, key, &origin.identity).and_then(project));
             let bound = Bound::<D> {
                 project,
                 physical: Physical {
@@ -268,7 +247,6 @@ pub(super) fn factory_projected<D: OperationDeclaration, P: Send + 'static>(
                     })?,
                     _request: retention,
                 },
-                cached,
                 entry: entry.clone(),
                 operations: operations.clone(),
                 id,
@@ -279,17 +257,7 @@ pub(super) fn factory_projected<D: OperationDeclaration, P: Send + 'static>(
                 grants: origin.grants.clone(),
                 preparation,
             };
-            let mut prepared = super::binding::prepared(&entry, id, Box::new(bound));
-            let Some(key) = key else { return Ok(prepared) };
-            let registry = Arc::downgrade(&operations.registry);
-            prepared.completed = Some(Box::new(move |response| {
-                if source.check().is_ok()
-                    && let Some(registry) = registry.upgrade()
-                {
-                    registry.insert_erased(&entry, key.clone(), origin.identity.clone(), erase(response));
-                }
-            }));
-            Ok(prepared)
+            Ok(super::binding::prepared(&entry, id, Box::new(bound)))
         }),
     }
 }

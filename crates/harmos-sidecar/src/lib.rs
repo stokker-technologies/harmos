@@ -40,7 +40,7 @@ pub use harmos_domain::{
 pub use harmos_domain::{failure, listeners};
 pub use harmos_sdk::operations;
 pub use harmos_sdk::operations::OperationHost;
-pub use harmos_sdk::operations::{Backoff, CacheKey, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+pub use harmos_sdk::operations::{Backoff, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 pub use harmos_sdk::{Context, Dependent, ExecutionContext, Lifecycle, Operation, Plugin, Resource, Service, Setup};
 
 #[cfg(feature = "kit")]
@@ -58,11 +58,11 @@ pub use wire::{CadenceReport, Frame, FramePayload, PluginCatalog, Publication};
 pub use harmos_domain::observer;
 pub use harmos_domain::schema;
 pub use harmos_domain::streams;
-pub use harmos_domain::{Axial, Batched, Metadata, Prefix, StreamField, Track, Tracked};
 pub use harmos_domain::{
     Digest, Fingerprint, MemorySize, Message, MessageError, OperationDefinition, Portable, QualifiedId, RowMetadata, ServicePolicy,
     Storable,
 };
+pub use harmos_domain::{Metadata, StreamField};
 
 #[cfg(feature = "derive")]
 pub use harmos_domain::{listener, message, stream};

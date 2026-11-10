@@ -188,12 +188,11 @@ mod listed {
         value: u32,
     }
 
-    #[harmos_runtime::operation(resources = [BorrowOwner], id = "authored.cached_owner",
+    #[harmos_runtime::operation(resources = [BorrowOwner], id = "authored.borrow_owner",
         response = u32,
         policy = POLICY,
-        key = owner_key
     )]
-    struct CachedOwnerDeclaration {
+    struct BorrowOwnerDeclaration {
         value: u32,
     }
 
@@ -247,12 +246,12 @@ mod listed {
     impl std::borrow::Borrow<u32> for BorrowOwner {
         fn borrow(&self) -> &u32 {
             self.borrowed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            self.operations.get().unwrap().upgrade().unwrap().definition("authored.cached_owner").unwrap();
+            self.operations.get().unwrap().upgrade().unwrap().definition("authored.borrow_owner").unwrap();
             &self.value
         }
     }
 
-    impl harmos_runtime::Operation for CachedOwnerDeclaration {
+    impl harmos_runtime::Operation for BorrowOwnerDeclaration {
         type Error = harmos_runtime::Error;
 
         async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u32>, Self::Error> {
@@ -266,10 +265,6 @@ mod listed {
 
     /* === Private Functions === */
 
-    fn owner_key(request: &CachedOwnerDeclaration) -> Option<harmos_runtime::operations::CacheKey> {
-        Some(harmos_runtime::operations::CacheKey::new(request.value.to_le_bytes().to_vec()).unwrap())
-    }
-
     #[tokio::test]
     async fn restore_defers_borrow() {
         let owner = Arc::new(BorrowOwner {
@@ -281,24 +276,24 @@ mod listed {
         let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
             setup
                 .resource::<BorrowOwner>(owner.clone())
-                .operations::<crate::operations::Single<CachedOwnerDeclaration>>(crate::operations::fixture::Lanes::Open);
+                .operations::<crate::operations::Single<BorrowOwnerDeclaration>>(crate::operations::fixture::Lanes::Open);
         })
         .await
         .unwrap();
         let observed = Arc::new(runtime.operations.clone());
         owner.operations.set(Arc::downgrade(&observed)).unwrap();
-        let first = runtime.operation(CachedOwnerDeclaration { value: 0 }).await.unwrap();
-        let cached = runtime.operation(CachedOwnerDeclaration { value: 0 }).await.unwrap();
-        assert!(first.ptr_eq(&cached));
-        assert_eq!(owner.ran.load(std::sync::atomic::Ordering::SeqCst), 1);
+        let first = runtime.operation(BorrowOwnerDeclaration { value: 0 }).await.unwrap();
+        let second = runtime.operation(BorrowOwnerDeclaration { value: 0 }).await.unwrap();
+        assert!(first.ptr_eq(&second));
+        assert_eq!(owner.ran.load(std::sync::atomic::Ordering::SeqCst), 2);
         assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 0);
-        let erased = cached.clone().into_erased();
+        let erased = second.clone().into_erased();
         assert!(erased.clone().restore::<String>().is_none());
         let restored = erased.restore::<u32>().unwrap();
         assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert_eq!(*restored, 7);
         assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 1);
-        drop((first, cached, restored));
+        drop((first, second, restored));
         runtime.shutdown().await.unwrap();
     }
 

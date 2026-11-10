@@ -196,8 +196,6 @@ features imply `runtime`.
 | `guest` | Wasm guest authoring and native sandbox hosting with matching module attributes. |
 | `grpc` | gRPC, reflection and TLS; settings select their use. Includes `generate-proto`. |
 | `generate-proto` | Protobuf descriptor projection used by runtime transport. |
-| `signal` | Signal-processing kernels. |
-| `signal-fft` | FFT support; includes `signal`. |
 | `simulation` | Deterministic runtime simulation. |
 
 Application-local attributes use `harmos::runtime::{operation, catalog}`; plugin-local
@@ -217,7 +215,7 @@ or `Host` when needed; the default is `Private`. Applications and plugins share
 `Lifecycle` with async prepare, initialize, stop and cleanup. Plugin lifecycle
 contexts are `harmos::sidecar::Supervisor` or `harmos::guest::kit::Context`.
 Build tools use `harmos-packaging` for inert inspection and generation.
-`harmos-storage` owns the Arrow query and persistence engine plus signal kernels;
+`harmos-storage` owns the Arrow query and persistence engine plus private query statistics and downsampling;
 `harmos-runtime` composes that engine with host lifecycle and managed state.
 
 ```toml
@@ -237,28 +235,11 @@ launching and Wasm componentization. Inert bundle inspection and schema generati
 do not enable Cargo discovery, file watching or subprocess supervision. Select
 `build-tools` for those authoring APIs; `sidecar` and `guest` imply it.
 
-```sh
-cargo run --locked -p cargo-harmos -- harmos sidecar build --manifest-path examples/schematic/Cargo.toml -p schematic-sidecar --json > sidecar-build.json
-cargo run --locked -p cargo-harmos -- harmos sidecar package --build-json sidecar-build.json --output target/packages --json
-cargo run --locked -p cargo-harmos -- harmos guest build --manifest-path examples/schematic/Cargo.toml -p schematic-guest --json
-cargo run --locked -p cargo-harmos -- harmos sidecar inspect examples/schematic/target/x86_64-unknown-linux-gnu/debug/schematic-sidecar --json
-```
+Applications own project creation and authoring commands. Use the reusable
+`harmos_packaging::Build`, `package`, `proto` and `python` APIs from those commands;
+Harmos's repository tasks build and package its examples through the same APIs.
 
-The inspection path above is Cargo's default Linux target directory for the
-separate Schematic workspace. On other platforms or with a custom target
-directory, use the artifact path reported in `sidecar-build.json`.
-
-### Tool Installation
-
-The [current release](https://github.com/stokker-technologies/harmos/releases/latest) provides
-`cargo-harmos-<version>-<Rust-target-triple>.tar.gz` on Unix and `.zip` on Windows.
-Each archive contains `cargo-harmos` (`cargo-harmos.exe` on Windows), LICENSE,
-README.md and generated CHANGELOG.md. Verify the archive against `SHA256SUMS`,
-extract it, and place the executable on `PATH`, preserving its executable bit on
-Unix. Run `cargo harmos --help` to check installation. Mise installation is
-verified against the archived binary before release completion. Harmos library
-crates are published on crates.io with generated CHANGELOG.md; the Cargo tool
-is distributed through release archives.
+### Example Installation
 
 CI packages retain `schematic-<version>-<platform>.zip` demo bundles for
 `linux-x86_64` and `windows-x86_64`. Extract the complete ZIP and run
@@ -268,71 +249,26 @@ checks run both backends from an isolated extraction. Examples, test reports and
 fixtures remain source or CI artifacts. Release downloads include generated
 `CHANGELOG.md` and `SHA256SUMS`; the internal upload inventory is not a download.
 
-`package` consumes the existing build receipt and verifies every artifact and
+`harmos_packaging::package` consumes the existing build receipt and verifies every artifact and
 schema byte stamp before bundling. It never runs Cargo. Each sidecar bundle
 records the registrations its executable prints for `CATALOG_EXPORT_FLAG`. Relocated archives use
-explicit `--relocate-from` and `--relocate-to` path mapping while preserving hashes.
+explicit `Build::relocate(from, to)` path mapping while preserving hashes.
 Library consumers can stamp existing outputs with `Artifact::read` and
 `Schema::read`, then construct a `Build` without another compiler invocation.
 
-Create a plugin from the maintained starter with an explicit source selection:
+`harmos_packaging::build` prepares selected native plugins or converts guest core
+modules into inspected components. Producer build scripts export known catalogs
+to their own `OUT_DIR/grpc/<catalog>/`; collected builds retain those exact paths.
+Native collection requires Rust's `llvm-tools` component. Shipping copies omit
+debug information, while original compiler outputs remain available for debugging.
+The 128 MiB bundle limit applies to shipping bytes.
 
-```sh
-target/debug/cargo-harmos harmos new sidecar target/my-plugin --harmos-path .
-# For a separately maintained project, select a published revision:
-cargo harmos new guest my-plugin --harmos-rev <full-published-sha>
-```
-
-The starters include their managed Python runner and repository task graph.
-Keep generated guidance and tooling current through the owning authoring tool.
-
-`cargo harmos sidecar build` prepares native plugins; `cargo harmos guest build`
-drives the selected Wasm build and converts guest core modules
-into inspected `.component.wasm` files beside the selected module, and reports
-exact artifact and schema paths. Native collection requires Rust's `llvm-tools`
-component. Collection removes debug information from shipping copies under `harmos/<producer>/`
-beside compiler outputs on every platform. Original compiler outputs and separate
-debug files remain available for debugging. The 128 MiB bundle limit applies to
-shipping bytes; compiler profiles are unchanged. Each backend's `dev` command watches sources and local
-Cargo dependencies, coalesces changes and rebuilds serially. Failed builds keep
-the last usable artifact until preparation succeeds. Generated output directories
-are excluded; Ctrl+C stops watching and settles the active Cargo process tree.
-`dev --json` emits `started`, `built` and `failed` records with attempt numbers.
-`inspect` reads metadata without executing the plugin;
-`--json` provides machine-readable output. Producer build scripts
-export known catalogs to their own `OUT_DIR/grpc/<catalog>/`; build output reports
-those exact directories. Schematic bundles use package `schematic.v1` and service
-`Schematic`. Schema generation does not start a gRPC server. Applications configure
-and start their runtime transport separately; dynamic plugins appear in runtime
-reflection when their operations become ready.
-
-The packaging crate's `generate-python` feature exposes
-`harmos_packaging::python::generate`. It emits a producer-owned `src/` Python
-package with standard protobuf messages, `.pyi` stubs, `py.typed`, canonical
-contracts and descriptors. Producer build scripts export contracts normally;
-explicit binding generation needs `protoc`, while installing the resulting
-wheel or sdist needs Python 3.13+ and its declared protobuf dependency.
-Reserved protobuf message members use a trailing underscore (`Clear → Clear_`)
-in static and dynamic classes. Original field tags, finite graph names and JSON
-names remain unchanged. Map graph fields through `DESCRIPTOR.fields_by_number[tag]`;
-collisions after escaping are rejected.
-
-```sh
-cargo harmos sidecar build -p schematic-sidecar --json > build.json
-cargo harmos bindings python --build-json build.json \
-  --producer schematic-sidecar --catalog operations \
-  --distribution schematic-bindings --module schematic_bindings \
-  --package-version 0.1.0 --description "Schematic Operation Bindings" \
-  --license Apache-2.0 --output generated/schematic-bindings
-python -m pip install ./generated/schematic-bindings
-```
-
-The generator selects that exact producer/catalog receipt, or accepts an exact
-`--export` directory. `--operation` narrows the export by operation identity;
-selected contracts without protobuf bindings and generated name collisions
-fail explicitly. It creates a new output directory and preserves existing
-outputs. Each package owns a private descriptor pool, so separate producers can
-reuse protobuf names without sharing message-class identity.
+`harmos_packaging::python::generate` consumes an exact exported catalog and
+application-owned package settings. Selected contracts without Protobuf bindings
+and generated name collisions fail explicitly. Each generated package owns a
+private descriptor pool, so producers can reuse Protobuf names without sharing
+message-class identity. Connections and operation registration remain with the
+application.
 
 Generated `Operation` descriptors expose identity, typed
 request/response and stream-item classes, RPC envelopes and path, and the
@@ -354,7 +290,7 @@ JSON schema decode memory with `StorageSchema::decoding_memory_bytes(encoded_byt
 before decoding; add their own entry bookkeeping and reject `None` on overflow.
 
 Native managed calls return `operations::Response<T>`, which dereferences to the
-original declared payload. Response clones and cache entries share its owner.
+original declared payload. Response clones share its owner.
 Stream producers use `output.send_owned(response).await?` to retain the same owner
 through queueing and encoding; ordinary stream payloads keep their existing `Send`
 contract. Protobuf payloads and RPC paths remain unchanged.
@@ -398,7 +334,7 @@ Discovery lists finite selected grants without inventing wildcards;
 invocation always checks the actual request. Application policy owns entitlements.
 Registration freezes at first external access, allowing earlier internal boot
 work. Internal host calls retain their authority; external calls and descendants
-retain their authenticated context and separate cache identity. Existing
+retain their authenticated context. Existing
 explicitly anonymous routes keep their behavior when no authorizer is configured.
 
 Detaching or shutting down a gRPC listener ends in-flight calls with `Unavailable`
@@ -635,7 +571,7 @@ object encoding, decoding and catalog validation apply the same check.
 
 `storage::query::Accumulator` folds scalars over rows a caller already holds
 with the same semantics as query aggregates: exact rational `Sum`, `Mean` and
-`Median`, ordering for `Min`, `Max` and `Last`, and signal kernels for floating
+`Median`, ordering for `Min`, `Max` and `Last`, and private statistics for floating
 statistics. Exact order statistics keep numeric slots in memory up to the
 `StorageAccumulatorSettings::memory_bytes` budget, then spill to disk. The default
 is 64 KiB per accumulator; callers can supply their budget explicitly:
@@ -1183,7 +1119,7 @@ cases measure crossing the carrier boundary.
 | [Sidecar Host](../crates/harmos-runtime/benches/sidecar/system.rs) | Real native process: bidirectional 10,000-record, 30 MiB file and 1,000,000-sample transfers, comparing unary batches and streams; startup and command latency. |
 | [Guest](../crates/harmos-runtime/benches/guest/main.rs) | Real Wasm component: the same bidirectional unary/streamed transfer workloads, plus startup and command latency. |
 | [External gRPC](../crates/harmos-runtime/benches/grpc/main.rs) | Separate server-process startup, client commands over a socket, and isolated Postcard/Protobuf codec costs. |
-| [Streams](../crates/harmos-runtime/benches/streams/main.rs) | Concurrent waveform work, batch summaries, codec costs, and native consumers using 64 KiB and 1 MiB payloads. |
+| [Streams](../crates/harmos-runtime/benches/streams/main.rs) | Concurrent waveform work, codec costs, and native consumers using 64 KiB and 1 MiB payloads. |
 | [Plugin Transport](../crates/harmos-sidecar/benches/transport/main.rs) | Native transport throughput and latency, including 64-byte, 1 KiB, and 64 KiB bursts and a paced 10 MiB/s workload. |
 
 Build matching executables and carrier fixtures with `mise run build:rust:bench`,
