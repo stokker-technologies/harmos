@@ -350,6 +350,7 @@ class CompilerCacheKeyTests(unittest.TestCase):
                     patch.dict(os.environ, environment, clear=True),
                     patch("sys.argv", ["bootstrap", "--roots-only"]),
                     patch.object(bootstrap.Path, "cwd", return_value=root),
+                    patch.object(bootstrap.Path, "home", return_value=root),
                     patch.object(bootstrap, "rustup"),
                     contextlib.redirect_stdout(io.StringIO()),
                 ):

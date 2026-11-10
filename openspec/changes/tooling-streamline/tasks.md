@@ -15,7 +15,7 @@
 ## 3. Workflows
 
 - [x] 3.1 Move archiving, summaries, the Nightly freshness check and report, the release review and the mirror push into tasks.
-- [ ] 3.2 Rewrite the CI, Nightly and Release workflows as matrix job templates that each run one task.
+- [x] 3.2 Rewrite the CI, Nightly and Release workflows as matrix job templates that each run one task.
 
 ## 4. Final Validation
 

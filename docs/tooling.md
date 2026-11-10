@@ -65,32 +65,51 @@ Run targeted tasks locally. Hosted CI and Nightly provide full validation.
 
 ## Workflow Task Interface
 
-Workflows synchronize tools with `prepare` before calling other entry points.
-Artifact transport is `prepare --ci pack|extract --profile <profile> -- <arguments>`;
-the existing `--archive`, hex-encoded JSON `--paths` and `--target` arguments retain
-their meanings. Archives stay under `target/ci/`. Cache summaries use
-`prepare --ci summary` and the existing `CACHE_RESTORES` JSON environment input.
+Each job checks out, uses the composite setup action, restores caches, downloads
+its inputs, runs one task, and uploads its results. Setup runs `prepare` to
+synchronize the locked Python groups. Hidden `ci:<name>` tasks own provider
+bookkeeping; `prepare` only prepares tools or joins fixtures.
 
-Nightly uses `prepare --ci nightly-gate` (`GITHUB_OUTPUT` receives `build`),
-`release:publish --step nightly`, then `prepare --ci nightly-report` with `SUITE`
-(`passed` or `failed`) and optional `RUN_URL`. GitHub event, ref, SHA and run
-variables retain their existing meanings. Reports preserve a newer run's notes.
-Mirror uses `prepare --ci mirror` with the existing SSH key, known hosts and GitHub
-ref/SHA inputs. `prepare --ci runners` preserves the runner allowlist check. Release evidence lookup
-uses `prepare --ci review` with `REVIEW_REQUIRED`, `REVIEW_RELEASE`, `REVIEW_PACKAGES`
-and `REVIEW_BUILDS`; its existing outputs go to `GITHUB_OUTPUT`. The exact-commit
-gate is `prepare --ci release-checks` with `RELEASE_TARGET_SHA`. The required-job
-gate is `prepare --ci required` with `RESULTS` JSON. Retain these gates in release
-jobs before tagging or publishing. Release review and check helpers now live in
-`tools/python/src/harmos_tools/release/`; workflows can retire their action copies.
+The task step accepts `CI_INPUT_ARCHIVES` (a JSON array of archive paths) and
+`CI_OUTPUT_ARCHIVES` (a JSON array of objects with `archive`, `paths` and `profile`).
+The entry point extracts inputs before its work and packs outputs after success,
+using the single implementation in `ci/artifacts.py`. Nested tasks never repeat
+transport. `--help` performs no transport. Provider steps only download and upload
+archives under `target/ci/`. The fixture producer joins Product, the Tests archive
+and stamped fixtures into one bundle consumed by the test matrix and coverage;
+neither consumer compiles those products again.
+
+Explicit transport is also available as `ci:pack` and `ci:extract`, with
+`--profile <profile> -- <arguments>`; `--archive`, hex-encoded JSON `--paths` and
+`--target` retain their meanings. `ci:summary` accepts the `CACHE_RESTORES` JSON
+input when an actual summary is needed. Compiler cache keys contain OS,
+architecture, compilation profile and the Rust version read from `mise.toml`;
+the Cargo lock hash is the final restorable component. Other tool versions do
+not invalidate compiler caches.
+
+Nightly uses `ci:nightly-gate` (`GITHUB_OUTPUT` receives `build`),
+`release:publish --step nightly`, then `ci:nightly-report` with `SUITE`
+(`passed` or `failed`) and optional `RUN_URL`. Reports preserve a newer run's notes.
+Mirror uses `ci:mirror` with its SSH key, known hosts and GitHub ref/SHA inputs.
+`ci:runners` preserves the runner allowlist check. Release evidence lookup uses
+`ci:review` with `REVIEW_REQUIRED`, `REVIEW_RELEASE`, `REVIEW_PACKAGES` and
+`REVIEW_BUILDS`; outputs go to `GITHUB_OUTPUT`. `ci:release-checks` checks the exact
+`RELEASE_TARGET_SHA`. `ci:required` reads `RESULTS` JSON and refuses failures,
+cancellations and unexpected skips; only the release-review rehearsal may skip
+outside a release review (`RELEASE_REVIEW=false`).
+
+Every pull request runs the full verification graph. Packaging consumes Product
+without waiting for checks. Benchmarks consume only Bench. The required CI gate
+collects all verification results; release rehearsal runs only on release reviews.
+Nightly freshness and release evidence are decision inputs; Nightly's final
+report consumes suite statuses as well as the publication result.
 
 `release:prepare --review` prepares changes, checks the runner allowlist when
 configured, then creates the release review. Hosted GitHub `release:tag` and
 `release:publish` own identity reporting and the exact-commit CI guard. Publication substeps use
 `release:publish --step dry|assets|rust|finalize`. Default publication still drafts
 assets then finalizes. `release:rehearse` accepts `--target`, `--profile` and
-`--stage-only`; no release command builds missing products. Workflow files remain
-the separate workflow owner's responsibility during this change.
+`--stage-only`; no release command builds missing products. Workflow and task changes are delivered together.
 
 Broad CI compilation tasks retain the configured backend verification and measured
 build summary through `ci/build.py` and `ci/compiler.py`. Local invocations and

@@ -73,8 +73,9 @@ a `release/v*` head, so ordinary merges start no Release run.
 ## Tests and Checks
 
 Run targeted tasks locally. Hosted CI and Nightly provide full validation.
-Every pull request runs every configured job; impact planning is retired by the
-workflow rewrite.
+Every pull request runs all configured verification jobs; release rehearsal is
+limited to release reviews. Impact planning is removed. Each matrix job names one
+project task; see [Workflow Task Interface](docs/tooling.md#workflow-task-interface).
 Merges into dev remain ungated. Required hosted checks gate main and stable
 releases. Report and investigate local failures.
 
