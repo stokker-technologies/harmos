@@ -36,7 +36,8 @@ Each is open to review.
 | `Sample.sequence` | Lets the host record a gap after a dropped connection |
 | `Section.type` is a message name, with no separate schema number | The message definition is the schema |
 | A child call is request and response, with `ChildCancel` | Replaces submit, join, status, release and detach handles |
-| No lifecycle call | Settings are read through a host operation, and a managed plugin stops with its process |
+| One lifecycle call, `Stop` | Settings are read through a host operation, so nothing is needed at start; `Stop` lets a plugin release hardware before the host closes |
+| No encryption or credentials on a plugin endpoint | The network is trusted, and a server written by hand from these files must work |
 | `Failure.action` | Every failure names what the user can do |
 
 ## Questions for Review
@@ -44,7 +45,5 @@ Each is open to review.
 1. `Visibility` keeps today's three values. If connected plugins and clients
    are all trusted, two would do: `PRIVATE` (the plugin and the host) and
    `PUBLIC` (everyone connected).
-2. Whether a plugin needs a call when the host is about to disconnect, to
-   release hardware in an orderly way outside any execution.
-3. Whether `OperationPolicy.attempts` is enough, or retries need a delay
+2. Whether `OperationPolicy.attempts` is enough, or retries need a delay
    between attempts on the wire.

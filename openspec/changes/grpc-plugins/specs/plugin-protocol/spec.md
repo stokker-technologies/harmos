@@ -18,7 +18,7 @@ SHALL travel on the `Invoke` call that started them.
 
 #### Scenario: Managed Plugin
 - **WHEN** the host starts a managed plugin
-- **THEN** the plugin listens on the local endpoint the host assigned and the host connects to it
+- **THEN** the plugin announces the loopback address it listens on and the host connects to it
 
 #### Scenario: Remote Plugin
 - **WHEN** the product supplies a URL whose server is reachable
@@ -100,3 +100,22 @@ guest from the same source.
 #### Scenario: Native Facility
 - **WHEN** a plugin that declares a stream or an observer is built as a guest
 - **THEN** the build fails with a message naming the unsupported facility
+
+### Requirement: Orderly Stop
+The host SHALL call `Stop` on every connected plugin before it shuts down, and SHALL close only
+after each has replied or the grace period has ended.
+
+#### Scenario: Host Shuts Down
+- **WHEN** the host shuts down with plugins connected
+- **THEN** each plugin runs its stop and cleanup hooks before the host closes
+
+#### Scenario: Plugin Does Not Reply
+- **WHEN** a plugin has not replied when the grace period ends
+- **THEN** the host closes anyway and records which plugin did not reply
+
+### Requirement: Hand-Written Plugins
+A server implementing `harmos.v1` from the `.proto` files without an SDK SHALL be a valid plugin.
+
+#### Scenario: No SDK
+- **WHEN** the host connects to a server written directly against the generated stubs
+- **THEN** it admits the catalog and calls its operations as for any other plugin

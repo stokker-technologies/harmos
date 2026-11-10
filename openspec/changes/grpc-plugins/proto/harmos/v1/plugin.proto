@@ -21,6 +21,11 @@ service Plugin {
   // One declared stream. Opening the call is the demand for the stream and
   // closing it ends the demand.
   rpc Publish(PublishRequest) returns (stream Samples);
+
+  // Sent before the host shuts down or removes the plugin. The plugin runs
+  // its stop and cleanup hooks and then replies. A managed plugin exits
+  // afterwards; a remote plugin keeps running.
+  rpc Stop(StopRequest) returns (StopResponse);
 }
 
 // ---------------------------------------------------------------- Describe
@@ -120,6 +125,12 @@ message Section {
   string type = 1;
   bytes payload = 2;
 }
+
+message StopRequest {
+  string reason = 1;
+}
+
+message StopResponse {}
 
 // ------------------------------------------------------------------ Invoke
 

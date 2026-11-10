@@ -16,15 +16,17 @@ nothing about tests or any product concept.
 - One protocol package, `harmos.v1`, with one service: `Plugin { Describe, Invoke, Publish }`.
 - gRPC becomes the only sidecar protocol. The framed wire, its handshake, credits, control pipe
   and adapters are deleted.
-- The host always dials the plugin. A managed plugin is a process the host starts and gives a
-  local endpoint; a remote plugin is a URL.
+- The host always dials the plugin. A managed plugin is a process the host starts, which
+  announces its loopback address; a remote plugin is a URL.
 - `Describe` returns the plugin's identity, its start time and its catalog with a digest computed
   over the catalog contents.
 - Plugin-to-host operation calls travel back on the `Invoke` call that started them.
 - The host opens one `Publish` call per declared stream; the plugin sends one sample per message.
   An observer is SDK code that calls a function on an interval and sends the result on a stream.
-- One authoring surface for sidecars and guests: `#[harmos::plugin]`, `harmos::PluginContext` and
-  `harmos::export_plugin!`, selected by the build target.
+- One authoring surface for sidecars and guests: derives for data and plain builder values for
+  plugins, operations, streams and observers, with `serve` selecting the transport by build
+  target. The plugin, observer and catalog attribute macros are removed.
+- A `Stop` call lets a plugin release what it holds before the host closes.
 - `sdk/<language>` holds each language's SDK over `harmos.v1`. The pilot covers Rust, Python,
   C# and C++.
 
@@ -40,6 +42,11 @@ nothing about tests or any product concept.
   absent provider is refused at call time.
 - Connected plugins trust each other: grants and provider authorization are removed.
 - The connection is the generation: generation tokens and stale-call fencing are removed.
+- Plugin endpoints are plain gRPC without encryption or credentials, so a server written by
+  hand from the `.proto` files is a valid plugin.
+- Shared concepts have the same name in Harmos and in a product's SDK, and the old alias
+  variants of the Rust authoring macros are removed.
+- Some authoring mistakes are reported when a plugin starts instead of at compile time.
 - Guests stay Wasm. Their envelopes move to the `harmos.v1` messages as a second step, after the
   sidecar wire lands.
 - Authoring parity between sidecar and guest is a soft target, Rust first.

@@ -13,7 +13,7 @@
 
 ## 3. Host
 
-- [ ] 3.1 Add the managed placement: start the process, assign its local endpoint, dial and supervise it.
+- [ ] 3.1 Add the managed placement: start the process, read the address it announces, dial and supervise it, and call `Stop` before closing.
 - [ ] 3.2 Add the remote placement: connect to a URL, reconnect, and expose the start time of each activation.
 - [ ] 3.3 Compute and admit the catalog digest; route child calls on the invoke call.
 - [ ] 3.4 Open and close `Publish` calls per declared stream and ingest samples.
@@ -21,7 +21,7 @@
 ## 4. Rust SDK
 
 - [ ] 4.1 Move `crates/harmos-sdk` to `sdk/rust`, keeping its crate name, and serve `harmos.v1` from it in place of the framed wire.
-- [ ] 4.2 Add `#[harmos::plugin]`, `harmos::PluginContext` and the target-selected `harmos::export_plugin!`.
+- [ ] 4.2 Replace attribute-macro authoring with derives for data and builder values for plugins, operations, streams and observers, with a target-selected `serve`; delete the plugin, observer and catalog macros and their sidecar and guest variants.
 - [ ] 4.3 Rebuild observers as SDK code over streams and share `publish_on` and its error type.
 - [ ] 4.4 Migrate the examples and fixtures.
 
