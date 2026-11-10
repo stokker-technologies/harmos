@@ -28,3 +28,10 @@ of its own.
 - **WHEN** a CI job fails
 - **THEN** a developer reproduces it locally by running the task the job names with the same
   arguments
+
+### Requirement: Self-Contained Checkout
+Everything needed to prepare, build, test, package and release the project SHALL live in its own repository, so the tooling is this project's own copy and not a shared dependency.
+
+#### Scenario: Fresh Clone
+- **WHEN** a developer clones this repository alone and runs the prepare task
+- **THEN** every entry point works, with no other repository checked out and no company tooling installed
