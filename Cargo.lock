@@ -1261,6 +1261,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "harmos-conformance"
+version = "0.1.14"
+dependencies = [
+ "futures-core",
+ "futures-util",
+ "harmos-protocol",
+ "prost",
+ "prost-types",
+ "sha2 0.11.1",
+ "thiserror",
+ "tokio",
+ "tonic",
+]
+
+[[package]]
 name = "harmos-domain"
 version = "0.1.14"
 dependencies = [
