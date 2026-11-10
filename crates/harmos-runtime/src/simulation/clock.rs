@@ -30,6 +30,7 @@ use std::time::{Duration, SystemTime};
 pub(crate) struct Clock {
     pub(crate) host: crate::clock::Clock,
     origin: tokio::time::Instant,
+    pub(crate) controller: crate::clock::Controller,
 }
 
 /* === Enums === */
@@ -40,13 +41,13 @@ pub(crate) struct Clock {
 
 impl Clock {
     pub(crate) fn new() -> Self {
-        let host = crate::clock::Clock::real_at(SystemTime::UNIX_EPOCH);
+        let (host, controller) = crate::clock::Clock::virtual_at(SystemTime::UNIX_EPOCH);
         let origin = host.now();
-        Self { host, origin }
+        Self { host, origin, controller }
     }
 
     pub(crate) async fn advance_ms(&self, milliseconds: u64) {
-        tokio::time::advance(Duration::from_millis(milliseconds)).await;
+        self.controller.advance_by(Duration::from_millis(milliseconds)).await;
     }
 
     pub(crate) fn elapsed_ms(&self) -> u64 {

@@ -616,11 +616,8 @@ fn attempt_deadline_expires() {
 fn scope_clock_scripted() {
     let measured = scripted_wait(11);
 
-    // 751 rather than 750 because the work clock's timer rounds a deadline up
-    // to its next one-millisecond tick, so a 750 ms wait wakes on the 751st.
-    // The number is the same one every run, which is the property here: the
-    // measurement is scripted rather than observed.
-    assert_eq!(measured, Duration::from_millis(751), "the scope's clock is the one the script advances");
+    // The Host Timer Queue Preserves the Exact Scripted Deadline
+    assert_eq!(measured, Duration::from_millis(750), "the scope's clock is the one the script advances");
     assert_eq!(measured, scripted_wait(11), "and it measures the same duration every time the same script is run");
 }
 

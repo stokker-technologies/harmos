@@ -11,7 +11,9 @@
 
 /* === Re-Exports === */
 
-pub use harmos_storage::execution::{Clock as Source, Elapsed, Execution as Clock, Reading, Sleep};
+pub use harmos_storage::execution::{
+    Activity, AdvanceError, Clock as Source, Controller, Elapsed, Execution as Clock, Interval, Reading, Sleep,
+};
 
 /* === Imports === */
 

@@ -51,7 +51,7 @@ grpc = [
 ]
 # Protobuf Descriptor Projection For The Runtime Transport.
 generate-proto = ["dep:harmos-packaging", "harmos-packaging/generate-proto"]
-simulation = ["tokio/test-util"]
+simulation = []
 
 # === Dependencies === #
 
