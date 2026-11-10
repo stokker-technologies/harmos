@@ -129,43 +129,52 @@ def on_stop[F: Callable](handler: F) -> F:
 
 def message_types(message: type[Message]) -> descriptor_pb2.FileDescriptorSet:
     """Project Reachable Definitions Without Compiler Presentation Metadata."""
-    result = descriptor_pb2.FileDescriptorSet()
     files = {}
     seen = set()
+    selected = {}
 
     def visit(node):
-        if node.full_name in seen:
-            return
-        seen.add(node.full_name)
-        file = node.file
-        if file.name not in files:
-            source = descriptor_pb2.FileDescriptorProto.FromString(file.serialized_pb)
-            definition = result.file.add(name=file.name, package=file.package, syntax=source.syntax or "proto2")
-            files[file.name] = definition
-        definition = files[file.name]
         root = node
         while root.containing_type is not None:
             root = root.containing_type
-        if root is not node:
-            visit(root)
+        if root.full_name in seen:
+            return
+        seen.add(root.full_name)
+        source = descriptor_pb2.FileDescriptorProto.FromString(root.file.serialized_pb)
+        files[root.file.name] = source
+        selected.setdefault(root.file.name, set()).add(root.name)
         if hasattr(root, "fields"):
-            if not any(item.name == root.name for item in definition.message_type):
-                item = definition.message_type.add()
-                root.CopyToProto(item)
-                _normalize(item)
-            for field in getattr(node, "fields", ()):
-                dependency = field.message_type or field.enum_type
-                if dependency is None:
-                    continue
-                if dependency.file.name != file.name and dependency.file.name not in definition.dependency:
-                    definition.dependency.append(dependency.file.name)
-                visit(dependency)
-            for nested in getattr(node, "nested_types", ()):
-                visit(nested)
-        elif not any(item.name == root.name for item in definition.enum_type):
-            root.CopyToProto(definition.enum_type.add())
+            visit_fields(root)
+
+    def visit_fields(node):
+        for field in (*node.fields, *node.extensions):
+            if field.message_type is not None:
+                visit(field.message_type)
+            elif field.enum_type is not None:
+                visit(field.enum_type)
+            if field.is_extension:
+                visit(field.containing_type)
+        for child in node.nested_types:
+            visit_fields(child)
 
     visit(message.DESCRIPTOR)
+    result = descriptor_pb2.FileDescriptorSet()
+    for name, source in sorted(files.items()):
+        definition = result.file.add()
+        definition.CopyFrom(source)
+        definition.ClearField("message_type")
+        definition.ClearField("enum_type")
+        for item in sorted(source.message_type, key=lambda item: item.name.encode()):
+            if item.name in selected[name]:
+                definition.message_type.add().CopyFrom(item)
+        for item in sorted(source.enum_type, key=lambda item: item.name.encode()):
+            if item.name in selected[name]:
+                definition.enum_type.add().CopyFrom(item)
+        for field in ("service", "extension", "source_code_info", "public_dependency", "weak_dependency", "dependency"):
+            definition.ClearField(field)
+        definition.dependency.extend(sorted(set(source.dependency) & files.keys()))
+        for item in definition.message_type:
+            _normalize(item)
     return result
 
 
@@ -173,7 +182,7 @@ def message_types(message: type[Message]) -> descriptor_pb2.FileDescriptorSet:
 
 
 def _normalize(message: descriptor_pb2.DescriptorProto) -> None:
-    for field in message.field:
+    for field in (*message.field, *message.extension):
         field.ClearField("json_name")
     for nested in message.nested_type:
         _normalize(nested)

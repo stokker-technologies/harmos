@@ -48,16 +48,18 @@ public sealed class Plugin(string id, string version)
     return this;
   }
 
-  public Plugin Observer<TRow>(string stream, Duration interval, Func<Context, Task<TRow>> observer,
+  public Plugin Observer<TRow>(string stream, Duration? interval, Func<Context, Task<TRow>> observer,
       string description = "", string intervalSetting = "") where TRow : IMessage<TRow>, new()
   {
-    if (interval.Seconds < 0 || interval.Nanos < 0 || interval.Nanos >= 1_000_000_000 ||
-        interval.Seconds > 315_576_000_000 || (interval.Seconds == 0 && interval.Nanos == 0))
+    if (interval is null && string.IsNullOrEmpty(intervalSetting))
+      throw new ArgumentException("Observer Requires an Interval or Setting");
+    if (interval is not null && (interval.Seconds < 0 || interval.Nanos < 0 || interval.Nanos >= 1_000_000_000 ||
+        interval.Seconds > 315_576_000_000 || (interval.Seconds == 0 && interval.Nanos == 0)))
       throw new ArgumentException("Interval Must Be a Positive Protobuf Duration", nameof(interval));
     return AddStream<TRow>(new StreamDeclaration
     {
       Id = stream,
-      Interval = interval.Clone(),
+      Interval = interval?.Clone(),
       Description = description,
       IntervalSetting = intervalSetting
     }, new Publication(async context => (await observer(context)).ToByteString(), null));

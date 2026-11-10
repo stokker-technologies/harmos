@@ -10,6 +10,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+#include <algorithm>
 #include <map>
 #include <set>
 
@@ -93,64 +94,68 @@ void merge(google::protobuf::FileDescriptorSet& target, const google::protobuf::
 namespace {
 void normalize(google::protobuf::DescriptorProto& message) {
     for (auto& field : *message.mutable_field()) field.clear_json_name();
+    for (auto& field : *message.mutable_extension()) field.clear_json_name();
     for (auto& nested : *message.mutable_nested_type()) normalize(nested);
 }
 }
 
 google::protobuf::FileDescriptorSet types(const google::protobuf::Descriptor* descriptor) {
-    google::protobuf::FileDescriptorSet result;
     std::set<std::string> seen;
-    std::map<std::string, int> files;
-    auto file_definition = [&](const google::protobuf::FileDescriptor* file) {
-        const std::string name(file->name());
-        if (!files.contains(name)) {
-            files[name] = result.file_size();
-            google::protobuf::FileDescriptorProto source;
-            file->CopyTo(&source);
-            auto* definition = result.add_file();
-            definition->set_name(file->name());
-            definition->set_package(file->package());
-            definition->set_syntax(source.syntax().empty() ? "proto2" : source.syntax());
-        }
-        return result.mutable_file(files.at(name));
+    std::map<std::string, google::protobuf::FileDescriptorProto> files;
+    std::map<std::string, std::set<std::string>> selected;
+    auto select = [&](const auto* node) {
+        const std::string name(node->file()->name());
+        if (!files.contains(name)) node->file()->CopyTo(&files[name]);
+        selected[name].insert(std::string(node->name()));
     };
     std::function<void(const google::protobuf::Descriptor*)> visit;
-    std::function<void(const google::protobuf::EnumDescriptor*)> visit_enum;
-    visit_enum = [&](const auto* enumeration) {
-        if (!seen.insert(std::string(enumeration->full_name())).second) return;
-        auto* definition = file_definition(enumeration->file());
-        if (enumeration->containing_type()) { visit(enumeration->containing_type()); return; }
-        enumeration->CopyTo(definition->add_enum_type());
+    std::function<void(const google::protobuf::Descriptor*)> fields;
+    fields = [&](const auto* message) {
+        for (int index = 0; index < message->field_count() + message->extension_count(); ++index) {
+            const auto* field = index < message->field_count() ? message->field(index)
+                : message->extension(index - message->field_count());
+            if (field->message_type()) visit(field->message_type());
+            else if (field->enum_type()) {
+                if (field->enum_type()->containing_type()) visit(field->enum_type()->containing_type());
+                else select(field->enum_type());
+            }
+            if (field->is_extension()) visit(field->containing_type());
+        }
+        for (int index = 0; index < message->nested_type_count(); ++index) fields(message->nested_type(index));
     };
     visit = [&](const auto* message) {
+        while (message->containing_type()) message = message->containing_type();
         if (!seen.insert(std::string(message->full_name())).second) return;
-        auto* definition = file_definition(message->file());
-        const auto* root = message;
-        while (root->containing_type()) root = root->containing_type();
-        if (root != message) visit(root);
-        bool present = false;
-        for (const auto& existing : definition->message_type()) if (existing.name() == root->name()) present = true;
-        if (!present) {
-            auto* projected = definition->add_message_type();
-            root->CopyTo(projected);
-            normalize(*projected);
-        }
-        for (int index = 0; index < message->field_count(); ++index) {
-            const auto* field = message->field(index);
-            const auto* dependency = field->message_type() ? field->message_type()->file()
-                : field->enum_type() ? field->enum_type()->file() : nullptr;
-            if (!dependency) continue;
-            if (dependency != message->file()) {
-                bool dependency_present = false;
-                for (const auto& existing : definition->dependency()) if (existing == dependency->name()) dependency_present = true;
-                if (!dependency_present) definition->add_dependency(dependency->name());
-            }
-            if (field->message_type()) visit(field->message_type());
-            else visit_enum(field->enum_type());
-        }
-        for (int index = 0; index < message->nested_type_count(); ++index) visit(message->nested_type(index));
+        select(message);
+        fields(message);
     };
     visit(descriptor);
+    google::protobuf::FileDescriptorSet result;
+    for (const auto& [name, source] : files) {
+        auto* file = result.add_file();
+        *file = source;
+        file->clear_message_type();
+        file->clear_enum_type();
+        for (const auto& message : source.message_type()) {
+            if (selected[name].contains(message.name())) *file->add_message_type() = message;
+        }
+        for (const auto& enumeration : source.enum_type()) {
+            if (selected[name].contains(enumeration.name())) *file->add_enum_type() = enumeration;
+        }
+        auto order = [](const auto& left, const auto& right) { return left.name() < right.name(); };
+        std::sort(file->mutable_message_type()->begin(), file->mutable_message_type()->end(), order);
+        std::sort(file->mutable_enum_type()->begin(), file->mutable_enum_type()->end(), order);
+        file->clear_service();
+        file->clear_extension();
+        file->clear_source_code_info();
+        file->clear_public_dependency();
+        file->clear_weak_dependency();
+        file->clear_dependency();
+        std::set<std::string> dependencies;
+        for (const auto& dependency : source.dependency()) if (files.contains(dependency)) dependencies.insert(dependency);
+        for (const auto& dependency : dependencies) file->add_dependency(dependency);
+        for (auto& message : *file->mutable_message_type()) normalize(message);
+    }
     return result;
 }
 }
@@ -186,7 +191,6 @@ wire::Catalog Plugin::catalog() const {
         if (!streams.insert(stream.declaration.id()).second) throw std::invalid_argument("Duplicate Stream");
         bool interval = stream.declaration.has_interval();
         bool setting = !stream.declaration.interval_setting().empty();
-        if (interval && setting) throw std::invalid_argument("Observer Has Two Interval Sources");
         if (bool(stream.observer) != (interval || setting)) throw std::invalid_argument("Observer Requires an Interval");
         if (!stream.observer && !stream.producer) throw std::invalid_argument("Stream Requires a Producer");
         if (interval) {

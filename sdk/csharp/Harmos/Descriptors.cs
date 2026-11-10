@@ -21,67 +21,80 @@ internal static class Descriptors
 
   internal static FileDescriptorSet Types(MessageDescriptor message)
   {
-    var types = new FileDescriptorSet();
+    var files = new Dictionary<string, FileDescriptorProto>();
+    var selected = new Dictionary<string, HashSet<string>>();
     var visited = new HashSet<string>();
-    AddMessage(message, types, visited);
+
+    void Select(IDescriptor descriptor)
+    {
+      var file = descriptor.File;
+      if (!files.ContainsKey(file.Name))
+      {
+        files.Add(file.Name, file.ToProto());
+        selected.Add(file.Name, []);
+      }
+      selected[file.Name].Add(descriptor.Name);
+    }
+
+    void Visit(MessageDescriptor descriptor)
+    {
+      while (descriptor.ContainingType is not null)
+        descriptor = descriptor.ContainingType;
+      if (!visited.Add(descriptor.FullName))
+        return;
+      Select(descriptor);
+      Fields(descriptor);
+    }
+
+    void Fields(MessageDescriptor descriptor)
+    {
+      foreach (var field in descriptor.Fields.InDeclarationOrder().Concat(descriptor.Extensions.UnorderedExtensions))
+      {
+        if (field.FieldType is FieldType.Message or FieldType.Group)
+          Visit(field.MessageType);
+        else if (field.FieldType == FieldType.Enum)
+        {
+          if (field.EnumType.ContainingType is not null)
+            Visit(field.EnumType.ContainingType);
+          else
+            Select(field.EnumType);
+        }
+        if (field.IsExtension)
+          Visit(field.ExtendeeType);
+      }
+      foreach (var nested in descriptor.NestedTypes)
+        Fields(nested);
+    }
+
+    Visit(message);
+    var types = new FileDescriptorSet();
+    foreach (var (name, source) in files.OrderBy(item => item.Key, Utf8Order))
+    {
+      var file = source.Clone();
+      file.MessageType.Clear();
+      file.MessageType.Add(source.MessageType.Where(item => selected[name].Contains(item.Name)).OrderBy(item => item.Name, Utf8Order));
+      file.EnumType.Clear();
+      file.EnumType.Add(source.EnumType.Where(item => selected[name].Contains(item.Name)).OrderBy(item => item.Name, Utf8Order));
+      file.Service.Clear();
+      file.Extension.Clear();
+      file.SourceCodeInfo = null;
+      file.PublicDependency.Clear();
+      file.WeakDependency.Clear();
+      file.Dependency.Clear();
+      file.Dependency.Add(source.Dependency.Where(files.ContainsKey).Distinct().OrderBy(name => name, Utf8Order));
+      foreach (var definition in file.MessageType)
+        Normalize(definition);
+      types.File.Add(file);
+    }
     return types;
   }
 
-  private static FileDescriptorProto File(FileDescriptor descriptor, FileDescriptorSet types)
-  {
-    var file = types.File.FirstOrDefault(item => item.Name == descriptor.Name);
-    if (file is not null)
-      return file;
-    file = new FileDescriptorProto { Name = descriptor.Name, Package = descriptor.Package, Syntax = descriptor.ToProto().Syntax };
-    types.File.Add(file);
-    return file;
-  }
-
-  private static void AddMessage(MessageDescriptor descriptor, FileDescriptorSet types, HashSet<string> visited)
-  {
-    while (descriptor.ContainingType is not null)
-      descriptor = descriptor.ContainingType;
-    if (!visited.Add(descriptor.FullName))
-      return;
-    var file = File(descriptor.File, types);
-    var message = descriptor.ToProto();
-    Normalize(message);
-    file.MessageType.Add(message);
-    AddFields(descriptor, types, visited);
-  }
-
-  private static void AddFields(MessageDescriptor message, FileDescriptorSet types, HashSet<string> visited)
-  {
-    var file = File(message.File, types);
-    foreach (var field in message.Fields.InDeclarationOrder())
-    {
-      if (field.FieldType is FieldType.Message or FieldType.Group)
-      {
-        Dependency(file, field.MessageType.File);
-        AddMessage(field.MessageType, types, visited);
-      }
-      else if (field.FieldType == FieldType.Enum)
-      {
-        Dependency(file, field.EnumType.File);
-        if (field.EnumType.ContainingType is not null)
-          AddMessage(field.EnumType.ContainingType, types, visited);
-        else if (visited.Add(field.EnumType.FullName))
-          File(field.EnumType.File, types).EnumType.Add(field.EnumType.ToProto());
-      }
-    }
-    foreach (var nested in message.NestedTypes)
-      AddFields(nested, types, visited);
-  }
-
-  private static void Dependency(FileDescriptorProto file, FileDescriptor dependency)
-  {
-    if (file.Name != dependency.Name && !file.Dependency.Contains(dependency.Name))
-      file.Dependency.Add(dependency.Name);
-  }
+  private static readonly IComparer<string> Utf8Order = Comparer<string>.Create((left, right) =>
+      Encoding.UTF8.GetBytes(left).AsSpan().SequenceCompareTo(Encoding.UTF8.GetBytes(right)));
 
   private static void Normalize(DescriptorProto message)
   {
-    foreach (var field in message.Field)
+    foreach (var field in message.Field.Concat(message.Extension))
       field.ClearJsonName();
     foreach (var nested in message.NestedType)
       Normalize(nested);
