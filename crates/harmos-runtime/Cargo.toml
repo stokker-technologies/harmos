@@ -35,6 +35,7 @@ default = []
 # Explicitly Selected Native SDK Prototype Story; Excluded From Shipping Builds.
 cpp-prototype = ["plugin-sidecar"]
 plugin = ["dep:petgraph", "dep:semver", "semver/serde", "dep:harmos-packaging"]
+plugin-grpc = ["plugin", "dep:harmos-protocol", "dep:hyper-util", "dep:tonic", "dep:tower", "dep:prost-types", "tokio/fs", "tokio/io-util", "tokio/net", "tokio/process"]
 plugin-sidecar = ["plugin", "dep:harmos-sidecar", "harmos-sidecar/kit", "harmos-sidecar/derive", "tokio/io-util", "tokio/process"]
 plugin-guest = ["plugin", "dep:harmos-guest", "harmos-guest/kit", "harmos-guest/derive", "dep:wasmtime"]
 grpc = [
@@ -62,6 +63,7 @@ harmos-guest = { workspace = true, optional = true }
 harmos-macros = { workspace = true, default-features = true }
 harmos-operations = { workspace = true, features = ["runtime"] }
 harmos-packaging = { workspace = true, optional = true }
+harmos-protocol = { workspace = true, optional = true }
 harmos-sdk = { workspace = true, features = ["streaming"] }
 harmos-storage = { workspace = true }
 
@@ -83,6 +85,7 @@ sha2 = { workspace = true, default-features = true }
 
 # Serialization
 prost-reflect = { workspace = true, optional = true, features = ["serde"] }
+prost-types = { workspace = true, optional = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true, features = ["raw_value"] }
 
@@ -102,10 +105,12 @@ tokio = { workspace = true, default-features = true, features = ["rt", "sync", "
 
 # Networking
 http-body = { workspace = true, optional = true }
+hyper-util = { workspace = true, optional = true }
 rustls = { workspace = true, features = ["ring", "std"], optional = true }
 tokio-rustls = { workspace = true, features = ["ring"], optional = true }
 tonic = { workspace = true, default-features = true, optional = true }
 tonic-reflection = { workspace = true, features = ["server"], optional = true }
+tower = { workspace = true, optional = true }
 
 # Storage
 

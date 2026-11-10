@@ -16,6 +16,7 @@ version = { workspace = true }
 # === Features === #
 
 [features]
+plugin-grpc = ["runtime", "harmos-runtime/plugin-grpc"]
 default = []
 runtime = ["dep:harmos-runtime", "dep:harmos-sdk"]
 plugin = ["runtime", "harmos-runtime/plugin"]

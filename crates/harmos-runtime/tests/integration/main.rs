@@ -25,6 +25,10 @@ mod operations;
 #[path = "../plugin/main.rs"]
 mod plugin;
 
+#[cfg(feature = "plugin-grpc")]
+#[path = "../plugin_grpc/main.rs"]
+mod plugin_grpc;
+
 #[path = "../support/runtime_probe.rs"]
 mod probe;
 mod report;

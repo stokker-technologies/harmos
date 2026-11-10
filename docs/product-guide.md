@@ -989,6 +989,30 @@ clones that same owner. Embedded, guest and native registration is inert. Explic
 before closing their operation/state infrastructure. The schematic example uses
 this owner for both plugin backends.
 
+### gRPC Plugin Placement
+
+Enable `plugin-grpc` to attach a `harmos.v1` endpoint with
+`runtime.attach_grpc(placement, settings).await`. The types live in
+`harmos::plugin::grpc`. `Placement::Managed(Managed { executable, arguments,
+environment })` starts an executable, hashes its bytes with SHA-256, reads its
+loopback readiness address and drains standard output. A supplied or inherited
+`HARMOS_ADDRESS` overrides that dial address. `Placement::Remote(url)` owns only
+the connection and reconnects independently after transport loss.
+
+Pass `PlacementSettings { connect_timeout, reconnect_delay, stop_grace }` with
+positive durations. Startup, reconnect and shutdown budgets use the host's clock.
+`Attached::status()` watches connection state and failures; `activation()` captures
+the current connection. An activation exposes its `description`, monotonic `number`,
+`previous_started_at` and optional `executable_digest`. Compare the current and
+previous `started_at` timestamps to distinguish a reconnect from a process restart.
+Retained activations fail after disconnect and never follow the next connection.
+
+`Attached::stop(reason).await` calls Stop, closes the connection and, for a managed
+plugin, waits for successful process exit within the same grace budget. Host
+shutdown and dropping the attachment also request this cleanup. Remote endpoints
+remain serving. Cleanup errors remain available in attachment status and its stop
+result. The framed-wire placement remains separately available during migration.
+
 ```rust,ignore
 use harmos::config::{PluginRestartSettings, PluginSidecarSettings};
 

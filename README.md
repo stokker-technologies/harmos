@@ -45,6 +45,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **Plugin Lifecycle** [`plugin`]: Register typed plugin contracts and manage activation, routing and reload, with automatic stream schema revisions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **Native Sidecars** [`plugin-sidecar`]: Integrate supervised executables through typed contracts; native processes do not provide a Wasm sandbox.
+- **gRPC Plugin Placement** [`plugin-grpc`]: Start and stop managed SDK executables or reconnect remote `harmos.v1` endpoints, retaining each connection's process start time.
 - **gRPC Interfaces** [`grpc`, `generate-proto`]: Expose typed operations and generate client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 

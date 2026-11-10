@@ -29,6 +29,10 @@ path = "src/bin/conformance.rs"
 name = "harmos-sdk-diagnostics-plugin"
 path = "src/bin/diagnostics.rs"
 
+[[bin]]
+name = "harmos-sdk-host-fixture"
+path = "src/bin/host-fixture.rs"
+
 # === Features === #
 
 # === Dependencies === #
