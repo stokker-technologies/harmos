@@ -92,7 +92,7 @@ struct AttemptGuard(Arc<Trace>);
 struct Gate(Notify);
 
 #[cfg(feature = "grpc")]
-#[harmos_runtime::operation(resources = [Gate], id = "endpoints.slow", response = u32, input = u32, policy = ForwardDeclaration::POLICY)]
+#[harmos_runtime::operation(resources = [Gate], id = "endpoints.slow", response = u32, input = u32, policy = ForwardDeclaration::POLICY, visibility = Public)]
 struct SlowDeclaration {}
 
 #[harmos_runtime::operation(codec = manual, resources = [harmos_runtime::operations::HostContext],

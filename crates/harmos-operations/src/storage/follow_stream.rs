@@ -44,7 +44,7 @@ product!(FollowStream {
     response = StorageCursor,
     policy = STREAM_POLICY,
     output = StoredRow,
-    visibility = Host)]
+    visibility = Private)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowStream {
     pub after: Option<StorageCursor>,

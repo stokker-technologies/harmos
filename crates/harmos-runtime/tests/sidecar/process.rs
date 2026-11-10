@@ -69,7 +69,7 @@ macro_rules! operation {
 
 operation!(Echo, "process.echo", Private);
 
-operation!(Nested, "process.nested", Host);
+operation!(Nested, "process.nested", Private);
 
 /* === Type Aliases === */
 

@@ -522,8 +522,10 @@ async fn deadline_awaits_cleanup() {
     }
     assert!(probe.data.control.open.load(Ordering::SeqCst));
     gate.release.notify_one();
-    let error = open.await.err().unwrap();
-    assert!(error.to_string().contains("deadline has elapsed"));
+    let error = incompatible(open.await.err().unwrap());
+    let cause = std::error::Error::source(&error).unwrap();
+    let source = std::error::Error::source(cause).unwrap();
+    assert!(source.is::<harmos_runtime::clock::Elapsed>());
     assert!(probe.storage.status().closed);
     assert!(committed.load(Ordering::SeqCst), "journal stays open through physical service cleanup");
 }

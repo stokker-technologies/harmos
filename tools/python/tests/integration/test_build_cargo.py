@@ -180,9 +180,41 @@ class WorkflowTaskTests(unittest.TestCase):
                 self.assertEqual(tasks.dispatch(["build", "--artifact", "fixtures", "--profile", profile]), 0)
                 task.assert_called_once_with("prepare:tests:fixtures", "--profile", profile)
                 focused.assert_not_called()
-        with patch.object(tasks, "_task") as task:
+
+    def test_prepare_syncs_sdk_without_inheriting_tooling_environment(self):
+        with (
+            patch.dict(os.environ, VIRTUAL_ENV=str(Path.cwd() / ".venv")),
+            patch.object(tasks, "_execute", return_value=0) as execute,
+            patch.object(cargo, "focused") as focused,
+        ):
             self.assertEqual(tasks.dispatch(["prepare"]), 0)
-        task.assert_not_called()
+        execute.assert_called_once()
+        self.assertEqual(execute.call_args.args[0], ["uv", "sync", "--locked", "--all-groups", "--project", str(Path.cwd() / "sdk/python")])
+        self.assertNotIn("VIRTUAL_ENV", execute.call_args.kwargs["environment"])
+        focused.assert_not_called()
+
+    def test_sdk_tests_use_their_project_and_preserve_selection(self):
+        for exact in (None, "tests.integration.example.Story.test_behavior"):
+            arguments = ["test", "--language", "python", "--package", "harmos-plugin", "--target", "integration", "--profile", "release"]
+            selected = ["discover", "-s", "tests/integration", "-v"]
+            if exact:
+                arguments += ["--exact", exact]
+                selected = [exact]
+            with (
+                self.subTest(exact=exact),
+                patch.dict(os.environ, VIRTUAL_ENV=str(Path.cwd() / ".venv")),
+                patch.object(tasks, "_execute", return_value=0) as execute,
+            ):
+                self.assertEqual(tasks.dispatch(arguments), 0)
+            sdk = Path.cwd() / "sdk/python"
+            execute.assert_called_once()
+            self.assertEqual(
+                execute.call_args.args[0],
+                ["uv", "run", "--locked", "--no-sync", "--project", str(sdk), "python", "-m", "unittest", *selected],
+            )
+            self.assertEqual(execute.call_args.kwargs["directory"], sdk)
+            self.assertEqual(execute.call_args.kwargs["environment"]["TEST_PROFILE"], "release")
+            self.assertNotIn("VIRTUAL_ENV", execute.call_args.kwargs["environment"])
 
     def test_publication_selectors_preserve_guards_and_default_order(self):
         selections = [

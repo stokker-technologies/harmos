@@ -11,7 +11,9 @@
 
 /* === Re-Exports === */
 
-pub use harmos_storage::execution::{Clock as Source, Elapsed, Execution as Clock, Reading, Sleep};
+pub use harmos_storage::execution::{
+    Activity, AdvanceError, Clock as Source, Controller, Elapsed, Execution as Clock, Interval, Reading, Sleep,
+};
 
 /* === Imports === */
 
@@ -144,8 +146,8 @@ pub(crate) mod tests {
                 current().date()
             })
         };
-        let first = scope(first, async { spawn() }).await;
-        let second = scope(second, async { spawn() }).await;
+        let first = scope(first, async { Some(spawn()) }).await.unwrap();
+        let second = scope(second, async { Some(spawn()) }).await.unwrap();
         let (first, second) = tokio::join!(first, second);
         assert_eq!(first.unwrap(), SystemTime::UNIX_EPOCH + Duration::from_secs(160));
         assert_eq!(second.unwrap(), SystemTime::UNIX_EPOCH + Duration::from_secs(260));

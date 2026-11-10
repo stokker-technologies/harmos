@@ -305,8 +305,8 @@ timeout_seconds = 120
 
 [languages.python]
 exclude = [".venv", "tools/python/.ruff_cache"]
-generated = ["target/generated/python/src"]
-roots = ["tools/python"]
+generated = ["target/generated/python/src", "sdk/python/src/harmos/v1/*_pb2*", "sdk/python/src/harmos/conformance/v1/*_pb2*"]
+roots = ["tools/python", "sdk/python"]
 
 [languages.rust]
 exclude = []
@@ -384,5 +384,10 @@ repository = "stokker-technologies/harmos"
 targets = ["linux-x86_64", "windows-x86_64"]
 
 [version]
-files = ["Cargo.toml", "examples/schematic/Cargo.toml", "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"]
+files = [
+  "Cargo.toml",
+  "examples/schematic/Cargo.toml",
+  "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml",
+  "sdk/python/pyproject.toml",
+]
 value = "0.1.14"

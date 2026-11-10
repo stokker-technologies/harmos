@@ -42,7 +42,7 @@ product!(StorageStatus {});
     id = "storage.status",
     response = StorageInfo,
     policy = POLICY,
-    visibility = Host,
+    visibility = Private,
     replay = ReplaySafety::Idempotent)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StorageStatus {}

@@ -48,7 +48,7 @@ impl crate::operations::OperationDeclaration for Control {
     type Output = crate::operations::NoStream;
     const ID: &'static str = "harmos_observe";
     const POLICY: crate::operations::OperationPolicy = POLICY;
-    const VISIBILITY: crate::operations::Visibility = Visibility::Host;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Private;
     const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
 }
 

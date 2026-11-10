@@ -45,7 +45,7 @@ product!(AbandonFile {
     id = "storage.abandon_file",
     response = FileProgress,
     policy = POLICY,
-    visibility = Host,
+    visibility = Private,
     replay = ReplaySafety::Idempotent)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AbandonFile {

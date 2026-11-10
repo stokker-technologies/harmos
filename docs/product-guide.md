@@ -211,7 +211,7 @@ SDK execution without the native host runtime. Operations use
 is its required method. Declare `resources` and `operations` on the operation;
 resolve them through `ctx.resource::<T>()` and `ctx.operation(request)`.
 `ctx.streams()` exposes derived endpoints. Use dotted IDs and `visibility = Public`
-or `Host` when needed; the default is `Private`. Applications and plugins share
+for calls from other plugins or clients; the default is `Private`. Applications and plugins share
 `Lifecycle` with async prepare, initialize, stop and cleanup. Plugin lifecycle
 contexts are `harmos::sidecar::Supervisor` or `harmos::guest::kit::Context`.
 Build tools use `harmos-packaging` for inert inspection and generation.
@@ -754,10 +754,12 @@ mod runtime {
 
 The operations crate uses `harmos` with `default-features = false` and
 `runtime = ["harmos/runtime", "dep:device"]`. A unit operation struct is a unit request. `response` defaults to `()` and
-`visibility` to `Private`; `Public` and `Host` are short visibility forms. The operation struct is the request message;
+`visibility` to `Private`; `Private` and `Public` are the two visibility forms. The operation struct is the request message;
 its runtime implementation declares only `Error` and consuming `run` (plus optional error classification).
-Private operations cannot declare `grpc(...)`; use `Public` or `Host` for gRPC exposure.
+Private operations cannot declare `grpc(...)`; use `Public` for gRPC exposure.
 The macro rejects Private bindings at compile time, and runtime registration refuses them.
+Private operations admit their declaring plugin and the host. Public operations admit everyone
+connected, including other plugins and external clients subject to the client authorization hook.
 
 For a platform-only operation, put `#[cfg(windows)]` on its `mod` declaration and its catalog variant. The catalog preserves
 variant attributes for both portable projections and runtime registration. Short built-ins may keep their gated implementation inline.
@@ -824,8 +826,7 @@ lifecycle owner closes the resources it acquired; overrides change execution loo
 plugin requirements. Explicit grants still belong to the plugin. There are three verification layers:
 
 - Compile: generated `Requires<T>` and `Invokes<T>` bounds reject undeclared resource and operation access.
-- Activation: the complete registration requires all resources and callee contracts. Cross-plugin calls require `Public`, or `Host`
-  for a host caller; missing targets and incompatible fingerprints are refused before execution.
+- Activation: the complete registration requires all resources and callee contracts. Cross-plugin calls require `Public`; host callers may also invoke `Private` operations; missing targets and incompatible fingerprints are refused before execution.
 - Run: operation errors, deadlines and carrier faults remain fallible.
 
 `input = Item` and `output = Item` derive `StreamEndpoints`: `()` for unary calls, `StreamInput<Item>`, `StreamOutput<Item>`,
@@ -872,10 +873,35 @@ different clock is refused. `setup.settings().clock(clock)` selects a source dur
 composition. `Clock::with_clock(source)` accepts a `clock::Source` owning readings
 and timer registration, so callers do not depend on its scheduler.
 
-Simulation retains its existing paused executor and manual advancement interface,
-using a Unix epoch and the shared host clock across reboot. Its elapsed trace reading
-includes idle timer advancement. Filesystem and device timestamps remain source evidence.
-Directory watcher polling and Wasmtime epoch interruption remain physical mechanisms.
+`Clock::virtual_at(epoch)` returns the same clock type plus a `Controller`. The
+source owns a cancellable timer queue ordered by deadline and registration order;
+Tokio and transport keep running normally. `controller.read()` exposes both readings.
+`advance_by(duration)` visits due timers in order. `advance_until(bound, condition)`
+stops when the condition holds and otherwise returns an `AdvanceError` listing pending
+timer IDs and their deadlines at the virtual bound. Active external work can keep the
+clock frozen; the test runner's separate hang guard bounds that case.
+
+Register work before scheduling it with `let mut activity = clock.activity("operation");`
+and retain the guard through settlement. Calls, unanswered observer ticks and host disk,
+process or transport work each need a guard; concurrent branches need separate guards.
+Use `activity.wait(clock.sleep(duration)).await` only when that branch's sole outstanding
+work is the clock wait. A timeout guarding active work must retain active accounting.
+The wake restores activity before scheduling the continuation. Dropping a wait removes
+its timer and restores its guard; dropping the guard settles the work. These hooks must
+be installed by each invocation, publication and I/O owner: unregistered work is invisible
+to the controller. Device-driven streams remain active while awaiting external samples.
+
+`clock.interval(period)` schedules its first tick one period later, preserves fixed
+cadence and returns the tick's readings. Missed ticks are delivered in deadline order.
+Use `activity.wait(interval.tick()).await` between observer answers and retain active
+accounting while answering each tick. Zero periods are refused.
+
+Simulation uses this virtual source with its existing manual advancement interface,
+a Unix epoch and the same clock across reboot. Settling work drives queued timers;
+manual advancement visits each deadline precisely, without Tokio's millisecond rounding.
+Recovery, replay and inverse-law oracles retain their existing meaning. Filesystem and
+device timestamps remain source evidence. Directory watcher polling and Wasmtime epoch
+interruption remain physical mechanisms.
 
 Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
 Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.

@@ -45,7 +45,7 @@ product!(FinishFile {
     id = "storage.finish_file",
     response = FileReference,
     policy = POLICY,
-    visibility = Host,
+    visibility = Private,
     replay = ReplaySafety::Idempotent)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FinishFile {

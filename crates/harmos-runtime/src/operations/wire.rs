@@ -248,10 +248,10 @@ impl Manager {
     pub(crate) fn capture_host_control(
         &self, scope: &crate::plugin::PluginScope, contract: &crate::operations::Contract,
     ) -> Result<PluginControl> {
-        if contract.operation().visibility != crate::operations::Visibility::Host || scope.observe_contract() != Some(contract) {
+        if contract.operation().visibility != crate::operations::Visibility::Private || scope.observe_contract() != Some(contract) {
             return Err(Error::InvalidInput {
                 field: "observer control",
-                reason: "control differs from the frozen Host contract",
+                reason: "control differs from the frozen Private contract",
             });
         }
         self.capture_callback(scope, contract).map(PluginControl)
@@ -653,6 +653,33 @@ mod tests {
         async fn run(self, _: crate::Context<'_, Self>) -> std::io::Result<crate::Response<u64>> {
             Ok(self.value.into())
         }
+    }
+
+    #[cfg(feature = "grpc")]
+    #[tokio::test]
+    async fn private_external_calls_are_refused() {
+        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+            setup.settings().operation_settings(crate::operations::Settings {
+                preparation_bytes: std::num::NonZeroUsize::new(4096),
+                ..Default::default()
+            });
+        })
+        .await
+        .unwrap();
+        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<Probe>();
+        runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
+
+        let source = Source::Host.external().unwrap();
+        assert!(matches!(
+            runtime.operations.admit::<Probe, ()>((Probe { value: 7 }.into(), ()), None, &[], &source, None),
+            Err(Error::OperationUnauthorized { .. })
+        ));
+        assert!(matches!(
+            runtime.operations.submit_encoded_as("host.fenced.probe", Vec::new(), source, None),
+            Err(Error::OperationUnauthorized { .. })
+        ));
+        assert_eq!(*runtime.operation(Probe { value: 7 }).await.unwrap(), 7);
+        runtime.shutdown().await.unwrap();
     }
 
     #[tokio::test]
