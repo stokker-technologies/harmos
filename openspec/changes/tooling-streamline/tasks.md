@@ -2,7 +2,7 @@
 
 ## 1. Contract
 
-- [ ] 1.1 Settle the open points in `proposal.md` with the owner and record the final task table and CI shape.
+- [ ] 1.1 Fix the final argument names of the entry points and the job list per workflow from `proposal.md`.
 - [ ] 1.2 Lock the source inventory: `mise.toml`, `tools/python`, workflows, actions and the contributor guide.
 
 ## 2. Tasks and Tooling

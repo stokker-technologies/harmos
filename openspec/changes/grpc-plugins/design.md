@@ -268,6 +268,21 @@ SDKs (Dokime's `sdk/<language>`) build on these and add their own concepts.
 
 Behaviour tests under `crates/harmos-runtime/tests/sidecar/` migrate to the new transport.
 
+## Implementation Waves
+
+Every change on this branch is delivered together, and Dokime adopts the result. Work proceeds in
+waves; within a wave each worker owns a disjoint set of paths, and a wave starts when the one
+before it builds and its focused tests pass.
+
+| Wave | Work | Owned Paths |
+| --- | --- | --- |
+| 1 | The protocol crate and definitions (tasks 2.x); `facility-trim`; `tooling-streamline` | `crates/harmos-protocol`, `proto/`; the JSON backend, signal namespace, authoring tool, response cache, series adapter and stream batches; `mise.toml`, `tools/python`, `.github` |
+| 2 | The host clock (task 3.5), alone, because it moves every time read in the runtime, storage and operations | `crates/harmos-runtime`, `crates/harmos-storage`, `crates/harmos-operations` |
+| 3 | Placement, invoke, publish, clock operations, visibility and stop on the host (3.1 to 3.4, 3.6, 3.8); the Rust SDK over the protocol (4.x) | Runtime services, plugin, observers and streams; `sdk/rust`, `crates/harmos-sidecar`, `crates/harmos-guest` |
+| 4 | Removal of the framed wire, plugin graph, grants and tokens (6.x); the virtual clock mode (3.7); the Python, C# and C++ SDKs with the conformance suite (5.x, 2.3) | The paths being deleted; the clock and simulation; `sdk/python`, `sdk/csharp`, `sdk/cpp` |
+| 5 | `authoring-without-macros`, one worker at a time, since each step touches every crate | The whole workspace |
+| 6 | `test-stories`; guests on the `harmos.v1` messages (7.1); guides | Test trees; the guest crate and host; documentation |
+
 ## Open Points
 
 Not yet decided with the owner; each is settled before its task starts.

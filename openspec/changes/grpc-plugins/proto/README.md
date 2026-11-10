@@ -44,5 +44,4 @@ Each is open to review.
 
 ## Questions for Review
 
-1. Whether `OperationPolicy.attempts` is enough, or retries need a delay
-   between attempts on the wire.
+None open. A retry carries its delay as `OperationPolicy.backoff`.

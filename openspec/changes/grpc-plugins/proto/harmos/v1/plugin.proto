@@ -103,6 +103,8 @@ message OperationPolicy {
   google.protobuf.Duration cancellation_timeout = 3;
   // Total attempts allowed. 0 and 1 both mean no retry.
   uint32 attempts = 4;
+  // Wait on the host's clock between attempts.
+  google.protobuf.Duration backoff = 5;
 }
 
 message Requirement {

@@ -34,10 +34,12 @@ per operating system.
   freshness check and report, the release review and the mirror push. The target is about 1,400
   to 1,900 lines.
 
-## Open Points
+## Settled
 
-1. Impact planning: removed, so every pull request runs everything, or kept with one owner.
-2. Where the composite actions live, since they are 99 percent identical in both products.
+- Impact planning is removed. Every pull request runs every job, and its dependency graph is
+  deleted.
+- The composite actions stay in each repository, reduced to the setup action. The duplication
+  between products is accepted, since shared tooling no longer renders CI.
 
 ## Impact
 
