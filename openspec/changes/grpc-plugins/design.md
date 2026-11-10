@@ -229,6 +229,13 @@ host's internal operation machinery, and all SDKs exercise the same contract.
 and publish streams, observers, lifecycle and settings. Each passes the conformance suite. Product
 SDKs (Dokime's `sdk/<language>`) build on these and add their own concepts.
 
+### Python Authoring
+
+Python uses generated protobuf message classes and decorated async instance methods.
+The [Python authoring example](../../../docs/tooling.md#python-plugin-sdk) shows
+operation, observer and cleanup registration, typed child calls and remote serving.
+The instance owns author state; `Context` owns invocation resources and host clock calls.
+
 ### C# Authoring
 
 C# uses a typed builder registering async instance methods. The class owns its state;
