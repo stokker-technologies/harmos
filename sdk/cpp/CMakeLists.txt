@@ -1,55 +1,62 @@
 cmake_minimum_required(VERSION 3.24)
-project(HarmosCppPrototype VERSION 0.1.0 LANGUAGES C CXX)
+project(HarmosCpp VERSION 0.1.0 LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+include(cmake/Dependencies.cmake)
 
-include(FetchContent)
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
-
-set(NANOARROW_INSTALL_SHARED OFF CACHE BOOL "Prototype Links Static nanoarrow" FORCE)
-set(JSON_Install ON CACHE BOOL "Install the Prototype Header Dependency" FORCE)
-
-FetchContent_Declare(nanoarrow
-    URL https://github.com/apache/arrow-nanoarrow/archive/refs/tags/apache-arrow-nanoarrow-0.7.0.tar.gz
-    URL_HASH SHA256=bb422ce7ed486abd95eb027a1ac092bbc1b5ed44955e89c098f0a1cb75109d5c)
-FetchContent_Declare(nlohmann_json
-    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
-    URL_HASH SHA256=42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa)
-FetchContent_MakeAvailable(nanoarrow nlohmann_json)
-
-set(HARMOS_FFI_LIBRARY "" CACHE FILEPATH "Task-Built Harmos Rust Static Library")
-if(NOT EXISTS "${HARMOS_FFI_LIBRARY}")
-    message(FATAL_ERROR "Run mise run build:cpp to build the Rust ABI first")
-endif()
-
-add_library(harmos_ffi STATIC IMPORTED GLOBAL)
-set_target_properties(harmos_ffi PROPERTIES IMPORTED_LOCATION "${HARMOS_FFI_LIBRARY}")
-add_library(harmos_cpp INTERFACE)
+# Generate Protocol and Fixture Messages with the Same Pinned Compiler as the Runtime.
+# Only Callback Server APIs Are Needed; Omit Unused Synchronous and CQ APIs.
+set(HARMOS_PROTO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../proto")
+set(HARMOS_GENERATED "${CMAKE_CURRENT_BINARY_DIR}/generated")
+file(MAKE_DIRECTORY "${HARMOS_GENERATED}")
+add_custom_command(
+    OUTPUT "${HARMOS_GENERATED}/harmos/v1/plugin.pb.cc" "${HARMOS_GENERATED}/harmos/v1/plugin.pb.h"
+        "${HARMOS_GENERATED}/harmos/v1/plugin.grpc.pb.cc" "${HARMOS_GENERATED}/harmos/v1/plugin.grpc.pb.h"
+    COMMAND $<TARGET_FILE:protoc>
+        --proto_path=${HARMOS_PROTO_ROOT}
+        --proto_path=${grpc_SOURCE_DIR}/third_party/protobuf/src
+        --cpp_out=${HARMOS_GENERATED}
+        --grpc_out=allow_sync_server_api=false,allow_cq_api=false:${HARMOS_GENERATED}
+        --plugin=protoc-gen-grpc=$<TARGET_FILE:grpc_cpp_plugin>
+        "${HARMOS_PROTO_ROOT}/harmos/v1/plugin.proto"
+    DEPENDS protoc grpc_cpp_plugin "${HARMOS_PROTO_ROOT}/harmos/v1/plugin.proto"
+    VERBATIM)
+add_library(harmos_cpp_protocol STATIC
+    "${HARMOS_GENERATED}/harmos/v1/plugin.pb.cc" "${HARMOS_GENERATED}/harmos/v1/plugin.grpc.pb.cc")
+target_include_directories(harmos_cpp_protocol SYSTEM PUBLIC "${HARMOS_GENERATED}")
+target_link_libraries(harmos_cpp_protocol PUBLIC grpc++ libprotobuf)
+add_library(harmos_cpp STATIC src/catalog.cpp src/context.cpp src/server.cpp)
 add_library(Harmos::Cpp ALIAS harmos_cpp)
-set_target_properties(harmos_cpp PROPERTIES EXPORT_NAME Cpp)
-target_compile_features(harmos_cpp INTERFACE cxx_std_20)
-target_include_directories(harmos_cpp INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../crates/harmos-ffi/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-target_link_libraries(harmos_cpp INTERFACE harmos_ffi nanoarrow_static nlohmann_json::nlohmann_json)
+target_compile_features(harmos_cpp PUBLIC cxx_std_20)
+target_include_directories(harmos_cpp PUBLIC include)
+target_include_directories(harmos_cpp SYSTEM PUBLIC
+    "${grpc_SOURCE_DIR}/include"
+    "${grpc_SOURCE_DIR}/third_party/protobuf/src"
+    "${grpc_SOURCE_DIR}/third_party/abseil-cpp")
+target_link_libraries(harmos_cpp PUBLIC harmos_cpp_protocol PRIVATE crypto)
 if(MSVC)
-    target_compile_options(harmos_cpp INTERFACE /Zc:preprocessor /EHsc)
-    target_link_options(harmos_cpp INTERFACE /OPT:REF /OPT:ICF /INCREMENTAL:NO)
-    target_link_libraries(harmos_cpp INTERFACE ws2_32 userenv bcrypt ntdll advapi32)
+    target_compile_options(harmos_cpp PRIVATE /W4 /WX /EHsc /Zc:preprocessor)
 else()
-    target_link_libraries(harmos_cpp INTERFACE pthread dl m)
+    target_compile_options(harmos_cpp PRIVATE -Wall -Wextra -Werror)
 endif()
 
-add_executable(harmos-bench examples/bench/main.cpp)
-target_link_libraries(harmos-bench PRIVATE Harmos::Cpp)
+option(HARMOS_BUILD_TESTS "Build SDK Unit Tests and the Conformance Plugin" ${PROJECT_IS_TOP_LEVEL})
+if(HARMOS_BUILD_TESTS)
+    add_custom_command(
+        OUTPUT "${HARMOS_GENERATED}/harmos/conformance/v1/fixture.pb.cc" "${HARMOS_GENERATED}/harmos/conformance/v1/fixture.pb.h"
+        COMMAND $<TARGET_FILE:protoc> --proto_path=${CMAKE_CURRENT_SOURCE_DIR}/proto
+            --cpp_out=${HARMOS_GENERATED} "${CMAKE_CURRENT_SOURCE_DIR}/proto/harmos/conformance/v1/fixture.proto"
+        DEPENDS protoc "${CMAKE_CURRENT_SOURCE_DIR}/proto/harmos/conformance/v1/fixture.proto"
+        VERBATIM)
+    add_library(harmos_cpp_fixture STATIC "${HARMOS_GENERATED}/harmos/conformance/v1/fixture.pb.cc")
+    target_link_libraries(harmos_cpp_fixture PUBLIC Harmos::Cpp)
+    add_executable(harmos-cpp-conformance examples/conformance/main.cpp)
+    target_link_libraries(harmos-cpp-conformance PRIVATE harmos_cpp_fixture)
 
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(FILES ../../crates/harmos-ffi/include/harmos.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(FILES "${HARMOS_FFI_LIBRARY}" DESTINATION ${CMAKE_INSTALL_LIBDIR})
-configure_package_config_file(cmake/HarmosConfig.cmake.in
-    ${CMAKE_CURRENT_BINARY_DIR}/HarmosConfig.cmake
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Harmos)
-write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/HarmosConfigVersion.cmake
-    COMPATIBILITY SameMajorVersion)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/HarmosConfig.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/HarmosConfigVersion.cmake DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Harmos)
+    enable_testing()
+    add_executable(harmos-cpp-tests tests/unit/catalog.cpp)
+    target_link_libraries(harmos-cpp-tests PRIVATE harmos_cpp_fixture)
+    foreach(case catalog_rejects_duplicate_operations observer_preserves_its_stream_contract catalog_preserves_typed_sections_and_dependencies)
+        add_test(NAME ${case} COMMAND harmos-cpp-tests ${case})
+    endforeach()
+endif()
