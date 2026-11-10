@@ -10,7 +10,7 @@
 //! Plugin authoring over the generated `harmos.v1` protocol.
 //!
 //! ```no_run
-//! use harmos::{Context, Message, Observer, Operation, Plugin, Result, Stream, Visibility};
+//! use harmos_sdk_grpc::{Context, Message, Observer, Operation, Plugin, Result, Stream, Visibility};
 //!
 //! #[derive(Message)]
 //! struct SetTemperature { target: f64 }
@@ -66,7 +66,7 @@ mod stream;
 
 /* === Re-Exports === */
 
-extern crate self as harmos;
+extern crate self as harmos_sdk_grpc;
 
 pub use context::Context;
 pub use error::{Error, Result};

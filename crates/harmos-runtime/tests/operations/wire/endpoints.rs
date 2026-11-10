@@ -39,10 +39,10 @@ use harmos_runtime::{Error, Runtime};
 macro_rules! operation {
     ($name:ident, $id:literal) => {
         #[harmos_runtime::operation(resources = [Trace], id = $id, response = u32, input = u32, output = u32,
-                                            policy = OperationPolicy {
-                                                timeout: Duration::from_secs(3), attempt_timeout: Duration::from_secs(2),
-                                                cancellation_timeout: std::time::Duration::ZERO, retries: RetryPolicy::Never,
-                                            })]
+                                                    policy = OperationPolicy {
+                                                        timeout: Duration::from_secs(3), attempt_timeout: Duration::from_secs(2),
+                                                        cancellation_timeout: std::time::Duration::ZERO, retries: RetryPolicy::Never,
+                                                    })]
         struct $name {
             consume: bool,
         }
