@@ -36,9 +36,10 @@
 - [ ] 6.1 Delete the framed wire, handshake, credits, control pipe and binary carriers.
 - [ ] 6.2 Delete publication leases, admission, cadence reports and the native observer runner.
 - [ ] 6.3 Delete the plugin graph, start ordering and reload plans; grants and provider selection; generation tokens and stale-call fencing.
-- [ ] 6.4 Derive protobuf definitions from operation types into the catalog and delete the Postcard message encoding on the wire.
-- [ ] 6.5 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.
-- [ ] 6.6 Update the product guide, README and authoring guidance.
+- [ ] 6.4 Delete `crates/harmos-ffi` and the C ABI bridge under `sdk/cpp`.
+- [ ] 6.5 Derive protobuf definitions from operation types into the catalog and delete the Postcard message encoding on the wire.
+- [ ] 6.6 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.
+- [ ] 6.7 Update the product guide, README and authoring guidance.
 
 ## 7. Guests
 

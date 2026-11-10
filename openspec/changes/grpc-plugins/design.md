@@ -223,6 +223,7 @@ SDKs (Dokime's `sdk/<language>`) build on these and add their own concepts.
 | Generation tokens and stale-call fencing | `crates/harmos-runtime/src/plugin/scope.rs`, stale endpoints in `router.rs` |
 | Native observer runner | `crates/harmos-sidecar/src/kit/{observer,task}.rs` |
 | Transport tests and benches | `crates/harmos-sidecar/tests/transport/`, `benches/transport/` |
+| C ABI and its C++ prototype | `crates/harmos-ffi`, the reflection bridge under `sdk/cpp`; `sdk/cpp` is rebuilt over `harmos.v1` |
 
 Behaviour tests under `crates/harmos-runtime/tests/sidecar/` migrate to the new transport.
 
@@ -235,5 +236,6 @@ Not yet decided with the owner; each is settled before its task starts.
    implementation so later changes do not break plugins.
 2. Endpoint security between host and plugin. Proposed: nothing on loopback for a managed plugin;
    a remote URL is plain and trusted by whoever adds it; transport security is added later.
-3. Whether authorization of external clients (grants) is deleted from Harmos as well, now that
-   Dokime lets every connected client call every Public operation.
+
+The hook through which an application authorizes external clients stays: without it Harmos falls
+back to anonymous access, and Dokime uses it to require an authenticated client.
