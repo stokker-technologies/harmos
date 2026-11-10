@@ -266,15 +266,6 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}} -- --test-threads 1",
 ]
 
-[tasks."test:rust:coverage"]
-hide = true
-description = "Measure Coverage over Instrumented Lanes"
-usage = 'flag "--profile <profile>" default="dev"'
-run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category acceptance --starter --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust --profile {{usage.profile}}",
-]
-
 [tasks."test:rust:cpp"]
 hide = true
 description = "Build and Prove the C++ Sidecar Prototype"

@@ -10,7 +10,7 @@ Install [mise](https://mise.jdx.dev), then prepare the checkout:
 ```sh
 mise trust
 mise install --locked
-mise run prepare:tools
+mise run prepare
 ```
 
 Windows and Linux are supported. The [Schematic example](docs/schematic.md)
@@ -73,20 +73,18 @@ a `release/v*` head, so ordinary merges start no Release run.
 ## Tests and Checks
 
 Run targeted tasks locally. Hosted CI and Nightly provide full validation.
-Changes limited to skills, agent guidance, README or CONTRIBUTING files select
-no execution jobs; the required status gate still completes. Other documentation uses its declared
-checks, while mixed source or policy changes retain full selection.
+Every pull request runs every configured job; impact planning is retired by the
+workflow rewrite.
 Merges into dev remain ungated. Required hosted checks gate main and stable
 releases. Report and investigate local failures.
 
 Product and Tests compile independently. Build, test, bench and fixture tasks never
-run Clippy. `lint:rust` runs Clippy with warnings denied; `check:rust` includes it
-and CI Check / Rust gates it. A focused `clippy` operation remains an explicit choice.
-Use `mise run lint:rust --extended` for local compatibility lint coverage.
+run Clippy. `lint --language rust` runs Clippy with warnings denied; `check --language rust` includes it
+and CI Check / Rust gates it. Use `mise run lint -- --language rust --extended` for local compatibility lint coverage.
 Tests use the default unoptimized test profile; optional extended tests remain
 explicit local work. Nightly runs ordinary verification with release Product
 builds and downloadable unsigned packages, plus coverage, benchmarks and
-`test:rust:starter` for generated guest/sidecar compilation and development lifecycles.
+`test --starter` for generated guest/sidecar compilation and development lifecycles.
 Ordinary acceptance retains the other product stories without compiling starters.
 Lane deadlines are hang guards read from `[conventions.testing.deadlines]` in
 `tools/project.toml`. Native runners terminate hung stories; script lanes also
@@ -94,24 +92,28 @@ terminate their process tree at the lane deadline. Completed story durations are
 measurements and never change the runner's pass/fail result. Use benchmarks for
 performance measurements.
 
-For a focused Rust compiler check or selected test, use `mise run build:rust:focused`
-with the Cargo operation and selection arguments. This task applies the standard
-compiler-output preflight; it does not replace the final validation graph.
+For a focused Rust compiler check or selected test, use the package and target arguments:
 
-Compiling tasks acquire the project-owned workstation lock automatically.
-They share a 20 GB local sccache store while retaining each worktree's own
-`target/`; see [Workstation Builds](docs/tooling.md#workstation-builds) for lock
-semantics, CI behavior and the per-run cache override for memory pressure.
+```sh
+mise run build -- --package harmos-domain --check
+mise run test -- --package harmos-macros --target lib --exact operation::tests::portable_domain_operation
+```
+
+`prepare` synchronizes the locked Python environment. Other entry points use
+`uv run --no-sync`. Focused selections invoke Cargo directly, without archives,
+compiler-output scans or locks. The compiler cache's background server persists
+across invocations; each worktree keeps its own `target/`. See
+[Workstation Builds](docs/tooling.md#workstation-builds).
 
 To reproduce one generated compiler story from the existing test archive:
 
 ```sh
-mise run test:rust:starter --profile release --filter 'test(=authoring::sidecar_starter_works)'
+mise run test -- --starter --profile release --filter 'test(=authoring::sidecar_starter_works)'
 ```
 
-`mise run test:python:integration` tests impact selection, release evidence and atomic
+`mise run test -- --language python` tests task selection, release evidence and atomic
 channel publication without compiling products or contacting publication APIs.
-It also runs as part of `check:python`.
+It also runs as part of `check --language python`.
 
 Storage-engine stories exercise `harmos-storage` without a host runtime; its
 real `WorkerOwner` owns the canonical worker and settlement. Runtime storage
@@ -154,7 +156,7 @@ credentials. Contributions use the [Apache-2.0 license](LICENSE).
 Release preparation and publication follow the separate protected release
 workflow; an ordinary pull request does not publish packages.
 
-`mise run release:publish:dry` stages the available native packages and dry-runs
+`mise run release:publish -- --step dry` stages the available native packages and dry-runs
 crate publication. `mise run release:rehearse` uses existing release-profile
 packages for every declared release target, strips publication credentials and
 checks the same archive and crate inventories without creating a provider

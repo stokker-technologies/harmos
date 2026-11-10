@@ -249,6 +249,9 @@ def main(arguments: list[str] | None = None) -> int:
     # Release Operations
     operation = options.command.partition(":")[2]
     if operation == "publish":
+        if options.step in (None, "assets") and os.environ.get("GITHUB_ACTIONS"):
+            _module("release.checks")
+            _module("release.run", "identity")
         if options.step == "nightly":
             return _module("release.nightly")
         if options.step:
@@ -256,7 +259,13 @@ def main(arguments: list[str] | None = None) -> int:
         _task("release:publish:assets")
         return _task("release:publish:finalize")
     if operation == "prepare" and options.review:
+        _module("release.run", "prepare")
+        if os.environ.get("GITHUB_RUNNER_WORKFLOWS"):
+            _module("test.runners")
         operation = "review"
+    if operation == "tag" and os.environ.get("GITHUB_ACTIONS"):
+        _module("release.run", "identity")
+        _module("release.checks")
     extra = options.arguments[1:] if options.arguments[:1] == ["--"] else options.arguments
     if operation == "rehearse":
         if options.target:
