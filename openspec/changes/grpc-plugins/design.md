@@ -1,7 +1,7 @@
 # gRPC Plugins Design
 
-Status: shape agreed on 2026-11-10; not implemented. Code below is the intended shape, not landed
-source. Field numbers and exact names are settled during implementation.
+Status: locked by the owner on 2026-11-10; not implemented, and implementation waits for the
+owner's go. Code below is the intended shape, not landed source. Field numbers and exact names are settled during implementation.
 
 ## Protocol
 
@@ -200,6 +200,9 @@ features.
 
 ## Language SDKs
 
+The pilot covers Rust (`sdk/rust`), Python (`sdk/python`), C# (`sdk/csharp`) and C++
+(`sdk/cpp`). Go is outside the pilot; `harmos-sdk-go` stays recorded for later.
+
 `sdk/<language>` provides, over `harmos.v1`: serve operations, call required operations, declare
 and publish streams, observers, lifecycle and settings. Each passes the conformance suite. Product
 SDKs (Dokime's `sdk/<language>`) build on these and add their own concepts.
@@ -226,8 +229,8 @@ Behaviour tests under `crates/harmos-runtime/tests/sidecar/` migrate to the new 
 
 Not yet decided with the owner; each is settled before its task starts.
 
-1. Authentication of the managed local endpoint (for example a token passed at start) and
-   transport security for a remote URL. Agreed so far: a remote plugin is trusted by whoever adds
-   its URL.
+1. Endpoint security. Proposed: a managed plugin listens on loopback and accepts only a token the
+   host passed at start; a remote URL is plain and trusted by whoever adds it, with transport
+   security added later.
 2. Reconciling `runtime-observer-cadence`, which changes the observer runner this change removes.
 3. Whether `operation-visibility` finishes first or folds into this change.

@@ -23,3 +23,7 @@ Test-domain concepts, which belong to Dokime's SDK.
 ## Distribution
 
 A Go module under `sdk/go`, installed with `go get` and released with subfolder tags. mise pins Go.
+
+## Alignment With gRPC Plugins
+
+Recorded on 2026-11-10. Go is outside the pilot (Rust, Python, C# and C++) and follows it.

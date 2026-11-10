@@ -25,22 +25,28 @@
 - [ ] 4.3 Rebuild observers as SDK code over streams and share `publish_on` and its error type.
 - [ ] 4.4 Migrate the examples and fixtures.
 
-## 5. Removal
+## 5. Pilot SDKs
 
-- [ ] 5.1 Delete the framed wire, handshake, credits, control pipe and binary carriers.
-- [ ] 5.2 Delete publication leases, admission, cadence reports and the native observer runner.
-- [ ] 5.3 Delete the plugin graph, start ordering and reload plans; grants and provider selection; generation tokens and stale-call fencing.
-- [ ] 5.4 Derive protobuf definitions from operation types into the catalog and delete the Postcard message encoding on the wire.
-- [ ] 5.5 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.
-- [ ] 5.6 Update the product guide, README and authoring guidance.
+- [ ] 5.1 Python: `sdk/python` over `harmos.v1`, passing the conformance suite.
+- [ ] 5.2 C#: `sdk/csharp` over `harmos.v1`, passing the conformance suite.
+- [ ] 5.3 C++: `sdk/cpp` over `harmos.v1`, passing the conformance suite.
 
-## 6. Guests
+## 6. Removal
 
-- [ ] 6.1 Move guest command and child envelopes to the `harmos.v1` messages and delete the Postcard envelope codec.
+- [ ] 6.1 Delete the framed wire, handshake, credits, control pipe and binary carriers.
+- [ ] 6.2 Delete publication leases, admission, cadence reports and the native observer runner.
+- [ ] 6.3 Delete the plugin graph, start ordering and reload plans; grants and provider selection; generation tokens and stale-call fencing.
+- [ ] 6.4 Derive protobuf definitions from operation types into the catalog and delete the Postcard message encoding on the wire.
+- [ ] 6.5 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.
+- [ ] 6.6 Update the product guide, README and authoring guidance.
 
-## 7. Final Validation
+## 7. Guests
 
-- [ ] 7.1 Run targeted transport, lifecycle, conformance and guest tests on Linux and Windows.
+- [ ] 7.1 Move guest command and child envelopes to the `harmos.v1` messages and delete the Postcard envelope codec.
+
+## 8. Final Validation
+
+- [ ] 8.1 Run targeted transport, lifecycle, conformance and guest tests on Linux and Windows.
 
 ## Workflow Follow-Up
 

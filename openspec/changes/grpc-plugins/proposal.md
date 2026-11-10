@@ -1,6 +1,7 @@
 # gRPC Plugins
 
-Status: shape agreed with the owner on 2026-11-10; implementation waits for the owner's lock.
+Status: locked by the owner on 2026-11-10; implementation has not started and waits for the
+owner's go.
 Replaces `plugin-grpc-protocol`. The Dokime change `grpc-plugins` is the product side.
 
 ## Why
@@ -24,7 +25,8 @@ nothing about tests or any product concept.
   An observer is SDK code that calls a function on an interval and sends the result on a stream.
 - One authoring surface for sidecars and guests: `#[harmos::plugin]`, `harmos::PluginContext` and
   `harmos::export_plugin!`, selected by the build target.
-- `sdk/<language>` holds each language's SDK over `harmos.v1`.
+- `sdk/<language>` holds each language's SDK over `harmos.v1`. The pilot covers Rust, Python,
+  C# and C++.
 
 ## Locked Decisions
 
