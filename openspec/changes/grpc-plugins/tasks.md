@@ -17,8 +17,10 @@
 - [ ] 3.2 Add the remote placement: connect to a URL, reconnect, and expose the start time of each activation.
 - [ ] 3.3 Compute and admit the catalog digest; route child calls on the invoke call.
 - [ ] 3.4 Open and close `Publish` calls per declared stream, send ticks for interval streams and ingest samples.
-- [ ] 3.5 Serve the clock operations from one host clock, with a virtual mode for tests, built on the simulation facility's clock, that advances when every call in flight waits on it.
-- [ ] 3.6 Reduce visibility to `Private` and `Public`.
+- [ ] 3.5 Lift the simulation clock into one clock per host with a monotonic and a date reading, and move every time read and wait in the runtime, storage, the client-facing gRPC layer and the built-in operations onto it.
+- [ ] 3.6 Serve `harmos.clock.sleep` and `harmos.clock.now`, and drive observer ticks from host timers.
+- [ ] 3.7 Add the virtual mode: its own timer queue, activity accounting for calls, ticks and host work, and a controller that advances while a condition is unmet, with simulation's existing tests kept passing.
+- [ ] 3.8 Reduce visibility to `Private` and `Public`.
 
 ## 4. Rust SDK
 

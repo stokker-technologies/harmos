@@ -131,15 +131,40 @@ host, and an observer runs on the host's ticks.
 
 - There is no tick rate. The host schedules each wait and each observer interval as a timer and
   wakes the waiter when it is due.
+- One clock object per host gives two readings from one source: a monotonic instant for waits
+  and deadlines, and a date for evidence, derived as a fixed epoch plus the elapsed time. The
+  runtime reads time nowhere else; today about sixty places read Tokio or the system clock
+  directly.
 - Samples and records carry host time, so evidence from plugins on different machines shares one
-  time base.
-- In production the clock is real time. In a test the host can run a virtual clock: when every
-  call in flight is waiting on the clock, it jumps to the next timer. A story that waits for an
-  hour inside a plugin then finishes at once, for a plugin in any language and in any process.
-- The virtual clock is the simulation facility's clock, extended with the rule above. That
-  gives simulation its first consumer outside its own tests.
-- Only waits that go through the context accelerate. Time a real device takes is real.
+  time base. A device's own timestamp, when a plugin supplies one, is kept as the source's time
+  and never replaces the host's.
 - It costs one round trip per wait.
+
+### Virtual Mode
+
+In production the clock is real time. In a test the host runs a virtual clock so a story that
+waits for an hour inside a plugin finishes at once, for a plugin in any language and process.
+
+- The virtual clock has its own timer queue and moves only when its controller advances it.
+  Transport runs on real time. Tokio's paused clock is not used for this: it jumps whenever the
+  host is idle, and a host waiting for a plugin's answer looks idle, so an operation deadline
+  would fire before the plugin replied.
+- The controller advances to the next timer only when nothing is active: every call in flight
+  is waiting on the clock, no tick is unanswered, and no disk, process or transport work the
+  host started is outstanding. A deadline guarding active work is a timer but never a reason to
+  advance.
+- A call counts as waiting when its only outstanding activity is a sleep. A handler that starts
+  background work of its own and then sleeps is outside what virtual time can see; the SDKs
+  state this, and such a plugin simply runs in real time.
+- A stream driven by a device has no interval and never counts as waiting on the clock.
+- A test advances by running until a condition holds, so periodic observers cannot make the
+  clock run forever. A real-time bound on the whole test stays as a hang guard, since a plugin
+  that never waits would otherwise stall a frozen clock.
+- It is built by lifting the simulation facility's clock into this one clock, so simulation and
+  plugins share one virtual scheduler. Simulation's recovery, replay and inverse-law tests keep
+  their guarantees.
+- An observer function does not wait: the stream call carries no path for a child call. A
+  sample that needs a wait belongs in an operation.
 
 ## Authoring
 
