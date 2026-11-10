@@ -101,7 +101,7 @@ package-relative `.proto` files, preserving imports. The native catalogs include
 start a gRPC server; runtime reflection describes the methods actually exposed
 by a running host, including dynamic plugins.
 
-CI packages retain `cargo-harmos`, the schematic CLI and its native and guest plugins.
+CI packages retain the schematic CLI and its native and guest plugins.
 Examples and test reports remain GitHub Actions artifacts; Rust crates publish to crates.io.
 
 ## Tests and Persistence

@@ -135,6 +135,11 @@ required-features = ["generate-proto", "generate-python"]
 
 # === Example Targets === #
 
+[[example]]
+name = "fixture-driver"
+path = "examples/fixture-driver.rs"
+required-features = ["guest", "generate-python"]
+
 # === Workspace Lints === #
 
 # === Lints === #

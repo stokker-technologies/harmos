@@ -86,9 +86,7 @@ run Clippy. `lint --language rust` runs Clippy with warnings denied; `check --la
 and CI Check / Rust gates it. Use `mise run lint -- --language rust --extended` for local compatibility lint coverage.
 Tests use the default unoptimized test profile; optional extended tests remain
 explicit local work. Nightly runs ordinary verification with release Product
-builds and downloadable unsigned packages, plus coverage, benchmarks and
-`test --starter` for generated guest/sidecar compilation and development lifecycles.
-Ordinary acceptance retains the other product stories without compiling starters.
+builds and downloadable unsigned packages, plus coverage and benchmarks.
 Lane deadlines are hang guards read from `[conventions.testing.deadlines]` in
 `tools/project.toml`. Native runners terminate hung stories; script lanes also
 terminate their process tree at the lane deadline. Completed story durations are
@@ -105,18 +103,12 @@ mise run test -- --package harmos-macros --target lib --exact operation::tests::
 `prepare` synchronizes the locked Python environment.
 `mise run build -- --artifact fixtures --profile dev` joins existing Product and
 Tests inputs. Unit tests consume only the Tests archive; integration, acceptance,
-system, coverage and starter tests consume the joined fixture bundle. Benchmarks
+system and coverage tests consume the joined fixture bundle. Benchmarks
 consume only the Bench build. Other entry points use
 `uv run --no-sync`. Focused selections invoke Cargo directly, without archives,
 compiler-output scans or locks. The compiler cache's background server persists
 across invocations; each worktree keeps its own `target/`. See
 [Workstation Builds](docs/tooling.md#workstation-builds).
-
-To reproduce one generated compiler story from the existing test archive:
-
-```sh
-mise run test -- --starter --profile release --filter 'test(=authoring::sidecar_starter_works)'
-```
 
 `mise run test -- --language python` tests task selection, release evidence and atomic
 channel publication without compiling products or contacting publication APIs.
@@ -142,15 +134,12 @@ Tests-owned fixtures contain hash-verified inert Product plugin artifacts;
 sandbox inspection reuses Tests-owned sandbox bytes. Integration never executes
 these components. The Tests stamp selects artifacts, libraries and offline inputs
 with hashes; runtime fixture support resolves them, and collected Cargo metadata
-retains producer identity and byte hashes. Acceptance selects the Cargo
-subcommand and both plugin Product artifacts; system selects the Schematic CLI
+retains producer identity and byte hashes. Acceptance selects the libraries and both plugin Product artifacts; system selects the Schematic CLI
 and both plugins.
 
-Compiler execution for generated projects, macro diagnostics and development
-rebuild/cancellation belongs to acceptance; integration consumes already-built
-artifacts. Generated-project stories use starter manifests and locks, the
-build-owned Cargo vendor directory and a hash-checked Python wheelhouse covering
-root tooling and both starter locks. Python binding interoperability is
+Compiler execution for macro diagnostics belongs to acceptance; integration
+consumes already-built artifacts. Build exports a Cargo vendor directory and a
+hash-checked Python wheelhouse for the root tooling. Python binding interoperability is
 Rust-driven acceptance using the root `.venv`; generated Python packages remain
 consumer-owned.
 

@@ -912,15 +912,10 @@ jobs:
           label: System
           arguments: --layer system
           report_layer: system
-        - layer: starter
-          label: Starter
-          arguments: --starter
-          report_layer: acceptance
         layer:
         - integration
         - acceptance
         - system
-        - starter
         language:
         - rust
     needs:
