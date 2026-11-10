@@ -54,7 +54,7 @@ def driver(profile: str, scratch: Path) -> Path:
         "fixture-driver",
         ROOT,
         profile,
-        ["-p", "harmos-packaging", "--example", "fixture-driver", "--features", "guest,generate-python"],
+        ["-p", "harmos-packaging", "--example", "fixture-driver", "--features", "sidecar,guest,generate-python"],
         scratch,
     )
     return executable(messages(captured), "fixture-driver")
