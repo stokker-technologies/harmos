@@ -34,7 +34,17 @@ message Catalog {
   repeated OperationContract requires = 2;    // host or other-plugin operations it calls
   repeated StreamDeclaration streams = 3;
   repeated Section sections = 4;              // opaque to Harmos: namespace, schema, payload
-  bytes digest = 5;                           // SHA-256 over the fields above
+  bytes digest = 5;                           // SHA-256 over the other fields
+  google.protobuf.FileDescriptorSet types = 6;  // definitions of every message it serves
+}
+
+message OperationContract {
+  string id = 1;            // "thermal.set"; unique among connected plugins
+  string request = 2;       // "thermal.v1.SetTemperature"
+  string response = 3;
+  Visibility visibility = 4;
+  OperationPolicy policy = 5;
+  bytes fingerprint = 6;    // hash of the request and response definitions
 }
 
 message HostFrame {
@@ -83,8 +93,11 @@ are. The remote placement is a new physical backend behind the existing attach i
 
 ## Connection and Reconnect
 
-- Every connect calls `Describe`, admits the catalog and creates a new activation with a new
-  generation, exactly as a restart does today.
+- Every connect calls `Describe`, admits the catalog and creates a new activation. The
+  connection is the generation: a closed connection cannot deliver calls, so generation tokens
+  and stale-call fencing are removed. A monotonic activation counter remains for status.
+- Each plugin connects independently. There is no dependency graph, start order or reload plan
+  across plugins.
 - A lost connection fails the calls in flight. Their operation policy decides retries.
 - The host reconnects without user action. Harmos exposes `started_at` of the previous and the
   current activation; the product decides what a changed value means.
@@ -95,9 +108,35 @@ are. The remote placement is a new physical backend behind the existing attach i
 - A plugin's operations keep the three visibilities. `Host` means only the host application may
   call it; products use it for operations the host drives.
 - Retries are the existing operation policy. Nothing new is added for retry on connection loss.
-- Child calls keep today's authorization: requirements, grants and visibility, bound to the
-  parent invocation.
 - Streaming child calls stay unsupported.
+
+## Calls Between Plugins
+
+```text
+plugin A                        host                          plugin B
+ctx.operation(SetTemperature) ─► ChildRequest{id, payload}
+                                 Public? fingerprint matches? provider connected?
+                                 ──────────────────────────► Invoke{id, payload}
+                                 ◄────────────────────────── Response{payload}
+               ◄──────────────── ChildResponse{payload}
+```
+
+- Payloads are protobuf, the only wire encoding. The host routes bytes and never decodes them.
+- Calls are typed. The caller generates code from the provider's `.proto` files in its own
+  language's toolchain; there is no dynamic call by identifier and JSON.
+- An SDK derives the protobuf definition from the author's request and response types and puts
+  it in `Catalog.types`. Message types are limited to what protobuf expresses.
+- The caller lists the operation in `Catalog.requires` with the fingerprint it was built
+  against. A mismatch with the provider is reported when both are connected, naming both plugins.
+- Connected plugins trust each other. Grants and provider authorization are removed; visibility
+  and the fingerprint comparison remain.
+- A call to an operation whose provider is not connected is refused at call time, naming the
+  missing plugin.
+
+```cpp
+// C++ caller, Python or Rust provider
+auto reply = ctx.operation(thermal::v1::SetTemperature{.target = 85});
+```
 
 ## Streams and Observers
 
@@ -167,6 +206,9 @@ SDKs (Dokime's `sdk/<language>`) build on these and add their own concepts.
 | Handshake and frame exchange | `crates/harmos-runtime/src/services/sidecar/{handshake,carrier,frames,exchange}.rs` |
 | Postcard operation envelopes | `crates/harmos-sdk/src/operations/serving/codec.rs`, after guests move |
 | Publication leases, admission, cadence reports | With the stream path they serve |
+| Plugin graph, start and stop ordering, reload plans | `crates/harmos-runtime/src/plugin/{mod,reload}.rs` and their use in `manager.rs` |
+| Grants, provider selection and authorization | `crates/harmos-runtime/src/operations/manager/grants.rs`, `OperationProvider` |
+| Generation tokens and stale-call fencing | `crates/harmos-runtime/src/plugin/scope.rs`, stale endpoints in `router.rs` |
 | Native observer runner | `crates/harmos-sidecar/src/kit/{observer,task}.rs` |
 | Transport tests and benches | `crates/harmos-sidecar/tests/transport/`, `benches/transport/` |
 
@@ -181,4 +223,7 @@ Not yet decided with the owner; each is settled before its task starts.
    its URL.
 2. Reconciling `runtime-observer-cadence`, which changes the observer runner this change removes.
 3. Whether `operation-visibility` finishes first or folds into this change.
-4. Dependency-ordered start when a required provider is a remote plugin that is not reachable.
+4. Whether two connected plugins may declare the same operation identifier. Proposed: no; the
+   second is refused at connect, which removes provider selection.
+5. A shorter operation handler signature than a result of a response of a type, and a context
+   without template-specific type parameters. Under research.

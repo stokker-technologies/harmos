@@ -30,8 +30,14 @@ nothing about tests or any product concept.
 
 - No prototype phase and no throughput gate. The design favours simplicity; performance is tuned
   afterwards against measurements.
-- A reconnect is a new activation with a new generation. Harmos has no resume concept.
+- A reconnect is a new activation. Harmos has no resume concept.
 - Visibility stays `Private`, `Public` and `Host`. No hidden level is added.
+- Protobuf is the only payload encoding, and calls between plugins are typed. There is no
+  dynamic call layer.
+- Each plugin connects independently: no dependency-ordered start, no reload plans. A call to an
+  absent provider is refused at call time.
+- Connected plugins trust each other: grants and provider authorization are removed.
+- The connection is the generation: generation tokens and stale-call fencing are removed.
 - Guests stay Wasm. Their envelopes move to the `harmos.v1` messages as a second step, after the
   sidecar wire lands.
 - Authoring parity between sidecar and guest is a soft target, Rust first.

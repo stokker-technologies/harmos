@@ -31,7 +31,7 @@ SHALL travel on the `Invoke` call that started them.
 
 ### Requirement: Describe on Every Connect
 The plugin SHALL report its id, version, start time and catalog with a content digest, and each
-connect SHALL create a new activation with a new generation.
+connect SHALL create a new activation.
 
 #### Scenario: Same Process Reconnects
 - **WHEN** the connection drops and the host reconnects to the same process
@@ -44,6 +44,29 @@ connect SHALL create a new activation with a new generation.
 #### Scenario: Call in Flight
 - **WHEN** the connection drops during an operation
 - **THEN** that attempt fails and the operation's policy decides whether it is retried
+
+### Requirement: Typed Calls Between Plugins
+A plugin SHALL call another plugin's Public operation through the host with a protobuf payload
+generated from the provider's definitions, whatever language either is written in.
+
+#### Scenario: Cross-Language Call
+- **WHEN** a plugin in one language calls a Public operation served by a plugin in another
+- **THEN** the provider receives the request and the caller receives its typed response
+
+#### Scenario: Definition Mismatch
+- **WHEN** a caller was built against a different definition than the provider serves
+- **THEN** the host reports the mismatch naming both plugins and refuses the call
+
+#### Scenario: Provider Absent
+- **WHEN** a plugin calls an operation whose provider is not connected
+- **THEN** the call is refused naming the missing plugin, and succeeds once that plugin connects
+
+### Requirement: Independent Plugins
+The host SHALL connect and disconnect each plugin without ordering it against other plugins.
+
+#### Scenario: Provider Connects Later
+- **WHEN** a plugin connects before a plugin whose operations it requires
+- **THEN** it becomes ready without waiting
 
 ### Requirement: Host-Opened Streams
 The host SHALL open one `Publish` call per declared stream it wants, and the plugin SHALL send

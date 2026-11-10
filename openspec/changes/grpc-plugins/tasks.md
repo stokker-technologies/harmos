@@ -29,8 +29,10 @@
 
 - [ ] 5.1 Delete the framed wire, handshake, credits, control pipe and binary carriers.
 - [ ] 5.2 Delete publication leases, admission, cadence reports and the native observer runner.
-- [ ] 5.3 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.
-- [ ] 5.4 Update the product guide, README and authoring guidance.
+- [ ] 5.3 Delete the plugin graph, start ordering and reload plans; grants and provider selection; generation tokens and stale-call fencing.
+- [ ] 5.4 Derive protobuf definitions from operation types into the catalog and delete the Postcard message encoding on the wire.
+- [ ] 5.5 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.
+- [ ] 5.6 Update the product guide, README and authoring guidance.
 
 ## 6. Guests
 
