@@ -47,7 +47,7 @@ SCCACHE_CACHE_SIZE = "{{ get_env(name='SCCACHE_CACHE_SIZE', default='') if get_e
 # === Entry Points === #
 
 [tasks."prepare"]
-description = "Prepare Locked Tools and CI Inputs"
+description = "Prepare Locked Tools and Fixtures"
 run = "uv run --locked --all-groups --project tools/python python -m harmos_tools.ci.tasks prepare"
 
 [tasks."generate"]
@@ -103,6 +103,56 @@ description = "Verify Published Release Assets"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks release:verify"
 
 # === Internal Steps === #
+
+[tasks."ci:pack"]
+hide = true
+description = "CI / Pack"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:pack"
+
+[tasks."ci:extract"]
+hide = true
+description = "CI / Extract"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:extract"
+
+[tasks."ci:summary"]
+hide = true
+description = "CI / Summary"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:summary"
+
+[tasks."ci:nightly-gate"]
+hide = true
+description = "CI / Nightly Gate"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:nightly-gate"
+
+[tasks."ci:nightly-report"]
+hide = true
+description = "CI / Nightly Report"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:nightly-report"
+
+[tasks."ci:mirror"]
+hide = true
+description = "CI / Mirror"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:mirror"
+
+[tasks."ci:runners"]
+hide = true
+description = "CI / Runners"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:runners"
+
+[tasks."ci:review"]
+hide = true
+description = "CI / Review"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:review"
+
+[tasks."ci:release-checks"]
+hide = true
+description = "CI / Release Checks"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:release-checks"
+
+[tasks."ci:required"]
+hide = true
+description = "CI / Required"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:required"
 
 [tasks."prepare:tests:fixtures"]
 hide = true

@@ -47,8 +47,9 @@ def run(operation: str, arguments: list[str], profile: str) -> int:
         return _module(module, *arguments)
     if operation == "required":
         results = json.loads(os.environ["RESULTS"])
-        if any(job["result"] not in ("success", "skipped") for job in results.values()):
-            raise ValueError("selected CI jobs failed")
+        optional = {"release_rehearsal"} if os.environ.get("RELEASE_REVIEW") != "true" else set()
+        if any(job["result"] != "success" and not (name in optional and job["result"] == "skipped") for name, job in results.items()):
+            raise ValueError("required CI jobs failed or were skipped")
         return 0
     if operation in ("pack", "extract", "runners"):
         from .tasks import _module

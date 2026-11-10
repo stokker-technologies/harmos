@@ -12,6 +12,7 @@
 
 # Standard Library Imports
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -40,26 +41,34 @@ LAYERS = ("unit", "integration", "acceptance", "system")
 
 
 def main(arguments: list[str] | None = None) -> int:
+    from . import artifacts
+
+    # Nested Task Leaves Must Not Repeat Transport Or See The Outer Job's Plan.
+    inputs = os.environ.pop("CI_INPUT_ARCHIVES", "[]")
+    outputs = os.environ.pop("CI_OUTPUT_ARCHIVES", "[]")
+    selected = arguments if arguments is not None else sys.argv[1:]
+    if "--help" in selected or "-h" in selected:
+        return dispatch(arguments)
+    root = Path.cwd()
+    archives = [Path(path) for path in json.loads(inputs)]
+    for archive in archives:
+        artifacts.extract(root, archive)
+    status = dispatch(arguments)
+    if status:
+        return status
+    from ..build.paths import target
+
+    for output in json.loads(outputs):
+        artifacts.pack(root, Path(output["archive"]), output["paths"], output.get("profile", os.environ.get("PROFILE", "dev")), target())
+    return status
+
+
+def dispatch(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     prepare = commands.add_parser("prepare")
     prepare.add_argument("--fixtures", action="store_true")
     prepare.add_argument("--profile", choices=("dev", "release"), default="dev")
-    prepare.add_argument(
-        "--ci",
-        choices=(
-            "pack",
-            "extract",
-            "summary",
-            "nightly-gate",
-            "nightly-report",
-            "mirror",
-            "runners",
-            "review",
-            "release-checks",
-            "required",
-        ),
-    )
     prepare.add_argument("arguments", nargs=argparse.REMAINDER)
     generate = commands.add_parser("generate")
     generate.add_argument("--profile", choices=("dev", "release"), default="dev")
@@ -112,7 +121,16 @@ def main(arguments: list[str] | None = None) -> int:
             release.add_argument("--profile", choices=("dev", "release"))
             release.add_argument("--stage-only", action="store_true")
         release.add_argument("arguments", nargs=argparse.REMAINDER)
+    helpers = ("pack", "extract", "summary", "nightly-gate", "nightly-report", "mirror", "runners", "review", "release-checks", "required")
+    for name in helpers:
+        helper = commands.add_parser(f"ci:{name}")
+        helper.add_argument("--profile", choices=("dev", "release", "bench"), default="dev")
+        helper.add_argument("arguments", nargs=argparse.REMAINDER)
     options = parser.parse_args(arguments)
+    if options.command.startswith("ci:"):
+        from . import workflow
+
+        return workflow.run(options.command.partition(":")[2], options.arguments, options.profile)
     root = Path.cwd()
 
     # Focused Cargo Selections
@@ -135,10 +153,6 @@ def main(arguments: list[str] | None = None) -> int:
 
     # Prepare Explicit Inputs
     if options.command == "prepare":
-        if options.ci:
-            from . import workflow
-
-            return workflow.run(options.ci, options.arguments, options.profile)
         if options.fixtures:
             extra = options.arguments[1:] if options.arguments[:1] == ["--"] else options.arguments
             return _task("prepare:tests:fixtures", "--profile", options.profile, *extra)
@@ -261,7 +275,15 @@ def main(arguments: list[str] | None = None) -> int:
     if operation == "prepare" and options.review:
         _module("release.run", "prepare")
         if os.environ.get("GITHUB_RUNNER_WORKFLOWS"):
-            _module("test.runners")
+            previous = os.environ.get("GH_TOKEN")
+            os.environ["GH_TOKEN"] = os.environ.get("RUNNER_GROUP_READ_TOKEN", previous or "")
+            try:
+                _module("test.runners")
+            finally:
+                if previous is None:
+                    os.environ.pop("GH_TOKEN", None)
+                else:
+                    os.environ["GH_TOKEN"] = previous
         operation = "review"
     if operation == "tag" and os.environ.get("GITHUB_ACTIONS"):
         _module("release.run", "identity")

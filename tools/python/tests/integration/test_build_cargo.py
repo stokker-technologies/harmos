@@ -14,6 +14,7 @@
 import unittest
 import contextlib
 import io
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -23,7 +24,7 @@ from unittest.mock import patch
 # Third Party Imports
 # Local Imports
 from harmos_tools.build import cargo
-from harmos_tools.ci import tasks, workflow
+from harmos_tools.ci import artifacts, tasks, workflow
 
 # Type Checking Imports
 
@@ -124,6 +125,65 @@ class FocusedCargoTests(unittest.TestCase):
                     self.assertEqual(document.call_count, 2 if updated else 1)
                     if updated:
                         self.assertIn("failed", document.call_args.args[3]["body"])
+
+
+class WorkflowTaskTests(unittest.TestCase):
+    def test_transport_surrounds_successful_task_and_does_not_recur(self):
+        events = []
+        environment = {
+            "CI_INPUT_ARCHIVES": json.dumps(["target/ci/input.tar.zst"]),
+            "CI_OUTPUT_ARCHIVES": json.dumps(
+                [{"archive": "target/ci/output.tar.zst", "paths": ["target/build/{profile}/{target}/bin"], "profile": "release"}]
+            ),
+        }
+
+        def dispatch(arguments):
+            self.assertNotIn("CI_INPUT_ARCHIVES", os.environ)
+            self.assertNotIn("CI_OUTPUT_ARCHIVES", os.environ)
+            events.append("task")
+            return 0
+
+        with (
+            patch.dict(os.environ, environment),
+            patch.object(tasks, "dispatch", side_effect=dispatch),
+            patch.object(artifacts, "extract", side_effect=lambda *args: events.append("extract")),
+            patch.object(artifacts, "pack", side_effect=lambda *args: events.append("pack")) as pack,
+            patch("harmos_tools.build.paths.target", return_value="linux-x86_64"),
+        ):
+            self.assertEqual(tasks.main(["build", "--profile", "release"]), 0)
+        self.assertEqual(events, ["extract", "task", "pack"])
+        self.assertEqual(pack.call_args.args[3:], ("release", "linux-x86_64"))
+
+    def test_failed_task_does_not_export_output(self):
+        with (
+            patch.dict(os.environ, {"CI_OUTPUT_ARCHIVES": '[{"archive":"target/ci/output.tar.zst","paths":[]}]'}),
+            patch.object(tasks, "dispatch", return_value=1),
+            patch.object(artifacts, "pack") as pack,
+        ):
+            self.assertEqual(tasks.main(["build"]), 1)
+        pack.assert_not_called()
+
+    def test_help_never_transports_artifacts(self):
+        with (
+            patch.dict(os.environ, {"CI_INPUT_ARCHIVES": '["target/ci/missing.tar.zst"]'}),
+            patch.object(artifacts, "extract") as extract,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            with self.assertRaises(SystemExit) as error:
+                tasks.main(["build", "--help"])
+            self.assertEqual(error.exception.code, 0)
+        extract.assert_not_called()
+
+    def test_required_gate_refuses_unexpected_skips(self):
+        for result in ("failure", "cancelled", "skipped"):
+            with self.subTest(result=result), patch.dict(os.environ, {"RESULTS": json.dumps({"test": {"result": result}})}):
+                with self.assertRaises(ValueError):
+                    tasks.main(["ci:required"])
+        with patch.dict(os.environ, {"RESULTS": '{"release_rehearsal":{"result":"skipped"}}', "RELEASE_REVIEW": "false"}):
+            self.assertEqual(tasks.main(["ci:required"]), 0)
+        with patch.dict(os.environ, {"RESULTS": '{"release_rehearsal":{"result":"skipped"}}', "RELEASE_REVIEW": "true"}):
+            with self.assertRaises(ValueError):
+                tasks.main(["ci:required"])
 
 
 # === Public Functions === #
