@@ -4,9 +4,10 @@ run-name: >-
   startsWith(github.ref, 'refs/tags/v') && 'Release / Publication' || 'Release / Tagging' }}
 "on":
   workflow_dispatch: {}
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   push:
-    branches: [dev]
-    paths: [tools/project.toml]
     tags:
     - v*
 permissions:
@@ -28,10 +29,12 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       mode: ${{ steps.mode.outputs.mode }}
+      sha: ${{ steps.mode.outputs.sha }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         ref: ${{ github.sha }}
+        fetch-depth: 0
         persist-credentials: false
     - id: mode
       shell: python
@@ -39,9 +42,9 @@ jobs:
         import os, runpy
         from pathlib import Path
         action = runpy.run_path('.github/actions/review-release/run.py')
-        mode = action['github_release_mode']()
+        result = action['github_release_mode']()
         with Path(os.environ['GITHUB_OUTPUT']).open('a', encoding='utf-8') as stream:
-            stream.write(f'mode={mode}\n')
+            stream.write(''.join(f'{key}={value}\n' for key, value in result.items()))
       env:
         GH_TOKEN: ${{ github.token }}
     permissions:
@@ -123,7 +126,7 @@ jobs:
       with:
         fetch-depth: 0
         persist-credentials: false
-        ref: ${{ github.sha }}
+        ref: ${{ needs.mode.outputs.sha }}
     - id: setup
       uses: ./.github/actions/setup
       with:
@@ -146,7 +149,7 @@ jobs:
         runpy.run_path('.github/actions/review-release/checks.py', run_name='__main__')
       env:
         GH_TOKEN: ${{ github.token }}
-        RELEASE_TARGET_SHA: ${{ github.sha }}
+        RELEASE_TARGET_SHA: ${{ needs.mode.outputs.sha }}
     - run: mise run release:tag
       env:
         RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
@@ -333,7 +336,7 @@ jobs:
       with:
         fetch-depth: 0
         ref: >-
-          ${{ github.sha }}
+          ${{ needs.mode.outputs.sha || github.sha }}
     - id: setup
       uses: ./.github/actions/setup
       with:

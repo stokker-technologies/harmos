@@ -135,15 +135,45 @@ def github_release_mode():
     sha = command("git", "rev-parse", "HEAD")
     if sha != os.environ["GITHUB_SHA"]:
         raise ValueError("release decision checkout differs from event revision")
+    fallback = {"mode": "prepare" if os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" else "skip", "sha": ""}
     with open("tools/project.toml", "rb") as stream:
         version = tomllib.load(stream)["version"]["value"]
     tag = f"v{version}"
-    reviews = github_merged_reviews(sha)
-    prepared = len(reviews) == 1 and reviews[0].get("head", {}).get("ref") == f"release/{tag}"
-    existing = command("git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}")
-    if prepared and not existing:
-        return "tag"
-    return "prepare" if os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" else "skip"
+    if command("git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}"):
+        return fallback
+    repository = os.environ["GITHUB_REPOSITORY"]
+    head = urllib.parse.quote(f"{repository.split('/')[0]}:release/{tag}", safe="")
+    reviews = [
+        review
+        for review in pages(f"pulls?state=closed&base=dev&head={head}")
+        if review.get("merged_at")
+        and review.get("base", {}).get("ref") == "dev"
+        and review.get("head", {}).get("ref") == f"release/{tag}"
+        and all(review.get(side, {}).get("repo", {}).get("full_name") == repository for side in ("base", "head"))
+    ]
+    if not reviews:
+        return fallback
+    review = max(reviews, key=lambda item: item["merged_at"])
+    target = review.get("merge_commit_sha", "")
+    if OID.fullmatch(target) is None:
+        return fallback
+    try:
+        command("git", "merge-base", "--is-ancestor", target, sha)
+    except subprocess.CalledProcessError:
+        return fallback
+    target_version = tomllib.loads(command("git", "show", f"{target}:tools/project.toml"))["version"]["value"]
+    if target_version != version:
+        return fallback
+    if os.environ["GITHUB_EVENT_NAME"] == "workflow_run":
+        with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as stream:
+            completed = json.load(stream)["workflow_run"]
+        if (
+            completed.get("head_sha") != review["head"]["sha"]
+            or completed.get("event") != "pull_request"
+            or completed.get("conclusion") != "success"
+        ):
+            return fallback
+    return {"mode": "tag", "sha": target}
 
 
 def lookup():
