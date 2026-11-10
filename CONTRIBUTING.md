@@ -65,10 +65,12 @@ Every project uses the workflows `CI`, `Nightly`, `Release` and `Mirror`. Run na
 `Release / Publication` and `Mirror / Synchronization`. Job names read
 `<Stage> / <Subject>[ / <Kind>] [(<platform>)]`, such as `Check / Python`,
 `Test / Rust / Unit (windows)`, `Release / Tag`, `Nightly / Publish` or
-`Mirror / Push`; `CI / Required` is the aggregate gate. Release starts only for
-manual preparation, `v*` tag pushes and merged PRs into dev that change
-`tools/project.toml`, which every release review does; its jobs still require
-a `release/v*` head, so ordinary merges start no Release run.
+`Mirror / Push`; `CI / Required` is the aggregate gate. Release starts for
+manual dispatch, `v*` tag pushes and dev pushes that change
+`tools/project.toml`. A dev push tags only a prepared, untagged release whose
+commit is the squash of a merged `release/v*` review; other dev pushes skip
+release jobs. A dispatch on dev retries tagging that prepared release, or
+prepares the next release otherwise.
 
 ## Tests and Checks
 
@@ -165,7 +167,9 @@ Before the first release with this workflow layout, the owner must register
 crates.io Trusted Publishing against `release.yml`, environment `release`, for
 `stokker-technologies/harmos`, replacing the previous workflow identity.
 
-Release reviews squash into dev. Before tagging or publishing, `release.yml`
+Release reviews must finish `CI / Validation` successfully before they squash
+into dev. The dev push starts tagging; dispatch Release on dev to retry tagging
+a prepared, untagged release. Before tagging or publishing, `release.yml`
 queries GitHub for the exact target SHA's latest dev push run, its successful
 `CI / Required` check and any additional required contexts in main's ruleset.
 Missing or pending proof waits up to 30 minutes; failed proof refuses release.

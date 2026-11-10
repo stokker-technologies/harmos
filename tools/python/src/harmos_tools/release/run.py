@@ -608,18 +608,20 @@ def _tag_event(directory: Path, settings: dict, sha: str) -> dict | None:
             raise policy.ToolError("GitLab tagging requires a web-started dev release pipeline at the checkout revision")
         return None
     if (
-        os.environ.get("GITHUB_EVENT_NAME") != "pull_request"
+        os.environ.get("GITHUB_EVENT_NAME") not in {"push", "workflow_dispatch"}
         or os.environ.get("GITHUB_REF") != "refs/heads/dev"
         or os.environ.get("GITHUB_SHA") != sha
     ):
-        raise policy.ToolError("GitHub tagging requires a closed, merged release PR into dev at the checkout revision")
+        raise policy.ToolError("GitHub tagging requires a dev push or dispatch at the checkout revision")
     workflow = f"{settings['repository']}/.github/workflows/{RELEASE_WORKFLOW}@"
     if not os.environ.get("GITHUB_WORKFLOW_REF", "").startswith(workflow):
         raise policy.ToolError("GitHub tagging runs only in release.yml")
-    event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
-    review = event.get("pull_request", {})
+    merged = registry.release_review(settings, sha, registry.RELEASE_BRANCH + release_tag(directory))
+    if merged is None:
+        raise policy.ToolError("the revision has no merged release review")
+    review = registry.document(settings, f"pulls/{merged['number']}")
     if (
-        event.get("action") != "closed"
+        not isinstance(review, dict)
         or review.get("merged") is not True
         or review.get("merge_commit_sha") != sha
         or type(review.get("number")) is not int
@@ -627,7 +629,7 @@ def _tag_event(directory: Path, settings: dict, sha: str) -> dict | None:
         or review.get("head", {}).get("ref") != registry.RELEASE_BRANCH + release_tag(directory)
         or any(review.get(side, {}).get("repo", {}).get("full_name") != settings["repository"] for side in ("base", "head"))
     ):
-        raise policy.ToolError("GitHub event is not the merged release review for this version and revision")
+        raise policy.ToolError("GitHub review is not the merged release review for this version and revision")
     return review
 
 

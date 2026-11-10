@@ -9,6 +9,7 @@ import os
 import re
 import runpy
 import subprocess
+import tomllib
 import urllib.parse
 import urllib.request
 import zipfile
@@ -122,6 +123,29 @@ def github_validation_run(runs, jobs_for):
     raise ValueError("review has no validation run")
 
 
+def github_merged_reviews(sha):
+    return [
+        review
+        for review in pages(f"commits/{sha}/pulls")
+        if review.get("merged_at") and review.get("merge_commit_sha") == sha and review.get("base", {}).get("ref") == "dev"
+    ]
+
+
+def github_release_mode():
+    sha = command("git", "rev-parse", "HEAD")
+    if sha != os.environ["GITHUB_SHA"]:
+        raise ValueError("release decision checkout differs from event revision")
+    with open("tools/project.toml", "rb") as stream:
+        version = tomllib.load(stream)["version"]["value"]
+    tag = f"v{version}"
+    reviews = github_merged_reviews(sha)
+    prepared = len(reviews) == 1 and reviews[0].get("head", {}).get("ref") == f"release/{tag}"
+    existing = command("git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}")
+    if prepared and not existing:
+        return "tag"
+    return "prepare" if os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" else "skip"
+
+
 def lookup():
     sha = command("git", "rev-parse", "HEAD")
     tree = command("git", "rev-parse", "HEAD^{tree}")
@@ -129,11 +153,7 @@ def lookup():
         raise ValueError("invalid checkout tree")
     github = bool(os.environ.get("GITHUB_ACTIONS"))
     if github:
-        reviews = [
-            review
-            for review in pages(f"commits/{sha}/pulls")
-            if review.get("merged_at") and review.get("merge_commit_sha") == sha and review.get("base", {}).get("ref") == "dev"
-        ]
+        reviews = github_merged_reviews(sha)
     else:
         reviews = [
             review
