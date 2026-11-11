@@ -201,6 +201,7 @@
 - [x] 2.4 Canonicalize file options across SDK fingerprints, share Rust clock descriptors and pin both built-in clock fingerprints in conformance.
 
 - [x] 2.5 Extend conformance and every language fixture for schema graphs, setting-only observers and canonical descriptor metadata.
+- [ ] 2.6 Consolidate wire definitions in proto/generated protocol types; put only light Rust helpers in protocol and specify cross-language helper semantics in words with matching SDK implementations.
 
 ## 3. Host
 
@@ -213,6 +214,9 @@
 - [x] 3.7 Add the virtual mode: its own timer queue, activity accounting for calls, ticks and host work, and a controller that advances while a condition is unmet, with simulation's existing tests kept passing.
 - [x] 3.8 Reduce visibility to `Private` and `Public`.
 - [x] 3.9 Prove Python conformance plugin admission and host-clock sleep through the real runtime under virtual time.
+- [ ] 3.10 Before Dokime's Harmos-adoption wave 2, extend client-facing gRPC declarations/codecs to accept generated protobuf types and authoritative descriptors directly; preserve method paths, fingerprints, decoding-memory admission, cancellation, backpressure and all host streaming envelopes.
+- [ ] 3.11 In the host wave, migrate built-in request/results to protocol messages with declaration, gRPC mapping, callee policy and handler in each operation file; register directly through narrow resources without a runtime dependency or per-service adapters.
+- [ ] 3.12 Prove generated protobuf unary and streaming declarations through real gRPC routing, bounded decoding and the client authorization hook; provide the adoption example for Dokime's host-wave operations migration.
 
 ## 4. Rust SDK
 
@@ -225,6 +229,8 @@
   - [x] 4.4.1 Migrate Schematic advice to SDK protobuf builders and managed placement, host analysis and transfer streaming, native packaging and benchmark selectors.
   - [x] 4.4.2 Migrate the stream-consumer fixture and its host-row journey to SDK unary calls on managed placement.
   - [x] 4.4.3 Retire or migrate crates/harmos-sidecar/tests/fixtures/catalog_sidecar.rs, crates/harmos-runtime/tests/fixtures/process_client.rs and process_provider.rs, and the native macro fixture consumers under crates/harmos-macros/tests; authoring fixture libraries now select harmos_sdk_grpc instead of harmos_sidecar.
+- [ ] 4.5 Move surviving native invocation, resource and serving engine code from `crates/harmos-sdk` to host owners with narrow resources for operations; retain guest transport in the SDK and guest loading in runtime.
+- [ ] 4.6 Verify plugin and client SDK dependency closures contain no host crates; migrate example/build-script imports to protocol or runtime as appropriate, and update README/product guidance for the public entry point.
 
 ## 5. Pilot SDKs
 
@@ -246,6 +252,8 @@
     - [x] 6.6.2.1 Retire the process graph and graph reload-plan stories, the framed plugin upload/download/exchange transport stories and their fixture registrations, and the C ABI prototype story, feature and guide.
   - [x] 6.6.3 Delete framed transport tests and benches in crates/harmos-sidecar and native transport benchmark branches in crates/harmos-runtime/benches, preserving guest-used support.
 - [ ] 6.7 Update the product guide, README and authoring guidance.
+- [ ] 6.8 Replace domain wire mirrors with protocol types and delete dead conversions; retain only native state/recovery, schema/encoding and storage contracts listed in Crate Structure, moving dispatch/resource code to its engine owner.
+- [ ] 6.9 Redirect contract-only operations consumers to protocol/SDK, then remove the operations `runtime` feature without moving handlers out of their operation files; remove the superseded host SDK root after its consumers migrate.
 
 ## 7. Guests
 
@@ -260,5 +268,7 @@
 ## Workflow Follow-Up
 
 - Dokime adopts the merged revision in its own `grpc-plugins` change.
+- Dokime wave 2 adopts 3.10; host wave 3 moves server behaviour to operations with direct registration and deletes each area's `hosted!`/`Host`/`Serve`; waves 4–5 redirect CLI/desktop hosting to runtime and delete server/domain crates and dead conversions as specified in Crate Structure.
+- After the last gRPC wave, Harmos `storage-interface` implements and benchmarks the generic extensions; Dokime's change of the same name consumes them, extracts application persistence and supplies before/after multi-day benchmarks. No storage extension or extraction runs in a gRPC wave.
 - Delivery uses targeted validation and merges to dev without waiting for CI; breakage is fixed in follow-ups.
 - SDK system tests run in Nightly only, not on pull requests.

@@ -1,5 +1,33 @@
 ## ADDED Requirements
 
+### Requirement: Host-Free Product SDK
+The `harmos` crate at `sdk/rust` SHALL expose plugin authoring and client APIs through its prelude with only protocol as a product dependency; host embedding SHALL use `harmos-runtime`.
+
+#### Scenario: Author Imports the Prelude
+- **WHEN** an author uses `harmos::prelude::*` for a plugin or client
+- **THEN** the dependency graph compiles no host code
+
+### Requirement: Protocol-Owned Contracts
+Proto files SHALL own wire contracts; protocol SHALL contain generated definitions and light helpers only. Behaviour needed in another language SHALL be specified in words and implemented in each SDK.
+
+#### Scenario: Shared Behaviour
+- **WHEN** an SDK needs a behaviour exposed by a Rust protocol helper
+- **THEN** its implementation follows the written language-neutral contract
+
+### Requirement: Direct Protobuf Host Operations
+Host operations SHALL colocate declarations, gRPC mappings, callee policies and handlers, accepting generated protocol messages and descriptors without service adapters. They SHALL use narrow resources without depending on runtime.
+
+#### Scenario: Generated Request Reaches a Handler
+- **WHEN** a client invokes a registered generated-protobuf operation
+- **THEN** bounded decoding and the authorization hook apply before direct handler execution, preserving the declared streaming envelope
+
+### Requirement: Reduced Host Foundations
+Harmos domain SHALL retain only non-wire native state/recovery, encoding and storage contracts. Operations SHALL remove their runtime feature once no contract-only consumer remains, retaining handlers beside declarations.
+
+#### Scenario: Final Boundary Migration
+- **WHEN** contract-only consumers have migrated to protocol or SDK
+- **THEN** operations has no runtime feature and domain contains no duplicate wire models
+
 ### Requirement: One Sidecar Protocol
 gRPC with the `harmos.v1` package SHALL be the only sidecar protocol, defined by checked-in
 `.proto` files that need no Cargo to consume.

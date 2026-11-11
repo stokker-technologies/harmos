@@ -11,10 +11,14 @@ Final validation waits for source closure; completed source does not close nativ
 | --- | --- | --- | --- |
 | 1 | Protocol 2.x; `facility-trim`; `tooling-streamline`; `align-ci-release` | Source landed; tooling follow-ups and native proof remain | `proto/`, protocol/conformance crates; removed facilities; tooling and CI |
 | 2 | Host clock 3.5 | Landed | Runtime, storage and built-in operation time reads |
-| 3 | Host 3.1–3.4, 3.6, 3.8; Rust SDK 4.x | Host and plugin SDK landed; next 4.1 rename/replace, 4.2 host migration, 4.4 examples | Runtime plugin/services; both SDK roots; derive crate; sidecar and guest adapters |
-| 4 | Removal 6.x; virtual mode 3.7; pilot SDKs 5.x | Virtual mode and SDKs landed; next remaining 6.x | Removed transport/graph/grant/token paths; simulation; Python, C# and C++ SDKs |
+| 3 | Host 3.1–3.4, 3.6, 3.8, 3.10–3.12; Rust SDK 4.x | Finish generated-protobuf declarations before consumer adoption; migrate host handlers and SDK boundaries | Protocol, domain, operations, runtime, SDK roots, derives and adapters |
+| 4 | Removal 6.x; virtual mode 3.7; pilot SDKs 5.x | Finish host engine relocation, dead conversions and contract-only surface removal | Operations/domain/runtime; removed transport paths; simulation; pilot SDKs |
 | 5 | `authoring-without-macros` | Inventory, then declaration steps in task order | One writer across the workspace |
-| 6 | `test-stories`; guests 7.1; guides; coupled storage follow-ups | Inventory, stories and guest envelopes remain; consumer adoption is separate proof | Tests; guest/host adapters; docs; `dokime-storage-facilities` inventory |
+| 6 | `test-stories`; guests 7.1; guides | Inventory, stories and guest envelopes remain; consumer adoption is separate proof | Tests; guest/host adapters; docs |
+
+After the last gRPC wave in both products, `storage-interface` designs and implements the Harmos
+extensions first. Dokime consumes them and extracts storage in its own `storage-interface` change.
+Neither storage implementation nor extraction belongs to these gRPC waves.
 
 Give a worker one whole task, its specification section and an explicit disjoint path ownership list.
 Name its focused `mise run build -- --package ... --check` and `mise run test -- --package ... --target ...` selections;
@@ -25,6 +29,127 @@ SDK system suites run in Nightly only. No full lane has been established for thi
 Status: implementation is partial. The new `plugin-grpc` feature coexists with the framed path;
 `sdk/rust` supplies the plugin authoring half while `crates/harmos-sdk` still supplies host APIs.
 The intended final contracts below do not imply that the remaining removal and migration tasks are complete.
+
+## Crate Structure
+
+Target layout (arrows below mean "depends on"; this is the target, not the current manifests):
+
+```text
+sdk/rust/                         harmos: public plugin authoring + client
+crates/harmos-protocol/            generated protobuf definitions + light helpers
+crates/harmos-domain/              native state/recovery and storage contracts only
+crates/harmos-storage/             generic persistence, queries, capture and backends
+crates/harmos-operations/          built-in declarations + handlers, one file per operation
+crates/harmos-runtime/             host engine, composition, plugins, clock and listeners
+crates/harmos-conformance/         cross-language protocol proof and reference host
+sdk/{python,csharp,cpp}/           language authoring + client implementations
+sdk/rust/ (Wasm module)            guest transport; no host engine
+crates/harmos-runtime/ (guest)     guest loading and sandbox ownership
+examples/*/ and guest fixtures/   consumers, outside the core crate graph
+
+runtime -> operations -> storage -> protocol
+runtime/operations/storage -> reduced domain -> protocol
+SDK harmos -> protocol
+conformance -> protocol; reference host -> runtime
+CLI / desktop host consumers -> runtime
+```
+
+The host chain is linear: protocol, storage, operations, runtime, then shells. Direct downward
+edges are allowed; reverse edges are not. The reduced Harmos domain is a host-side foundation,
+not another wire model or an SDK dependency. Derive/build support is tooling, outside this
+runtime dependency chain. Public SDK runtime dependencies are protocol and transport/authoring
+support, never domain, storage, operations or runtime; the only product layer below it is protocol.
+
+`sdk/rust` is the `harmos` product crate itself. `use harmos::prelude::*;` exposes plugin
+authoring and the client without compiling host code. Host embedding uses `harmos-runtime`
+explicitly. Move the surviving engine from `crates/harmos-sdk` to its host owners; do not merge
+it into the public SDK. Fold client functionality into the SDK's client half and remove the
+old facade root at `crates/harmos`. Native serving and Wasm guest transport share this SDK;
+guest loading remains in runtime. Conformance is development-only, not an SDK dependency.
+
+`proto/` owns all language-neutral contracts. `harmos-protocol` holds generated messages,
+services and descriptors with light constructors, operators, `Display` and conversions for
+Harmos's own code. Behaviour needed by another language is specified in words beside the proto
+contract and implemented by each SDK; Rust helpers are not the cross-language specification.
+
+Keep in `harmos-domain` only non-wire native contracts: typed state/transaction catalogs,
+inverse pairing and undo/replay envelopes (`src/state/`, `src/journal.rs`), native schema and
+stored-value encoding/allocation contracts (`src/schema/`, `src/message/`), and storage catalog,
+object revision, snapshot, query-plan and durability contracts (`src/model/storage/`) needed by
+generic storage. These are Rust state/recovery/storage semantics, not parallel protobuf DTOs.
+Audit each retained type against its wire counterpart: replace wire mirrors with protocol types;
+move protocol helpers to protocol, dispatch/resources to their engine owners and operation
+policy to its callee. Delete obsolete plugin inventory, grant and envelope models after migration.
+
+Every host operation lives in `harmos-operations`, declaration and handler in one operation
+file, taking and returning protocol messages. Existing built-ins under
+`src/{host,lifecycle,storage,streams}/` already colocate implementations: retain that ownership.
+Handlers access narrow state, lifecycle, publication and storage resources supplied by runtime;
+operations never depends on runtime. Keep deadlines and retries with the Rust callee and allow
+call-site overrides for one call. Remove the operations `runtime` feature after all
+contract-only consumers use protocol/SDK; do not move handlers into runtime to keep that surface.
+
+Extend the client-facing gRPC declaration/codec integration before Dokime's Harmos-adoption
+wave (Dokime wave 2). Generated protobuf request/result types plus authoritative descriptors
+must register directly, retaining decoding-memory admission, fingerprints, method paths,
+cancellation, backpressure and unary/client-stream/server-stream/bidirectional envelopes.
+The affected seam is `crates/harmos-runtime/src/grpc/{codec,routing,native,input,envelope}.rs`,
+operation registration and `crates/harmos-sdk/src/operations/serving/protobuf.rs` as the engine
+moves. A declaration owns its gRPC mapping; the host exposes that declaration without a
+per-service adapter or a duplicate native request/response model.
+
+### Dokime Consumer Layout and Sequence
+
+```text
+sdk/rust/                         dokime: plugin authoring + client half
+crates/dokime-protocol/            generated product messages + light helpers
+crates/dokime-storage/             application persistence (after gRPC waves)
+crates/dokime-operations/          declarations + handlers + gRPC mappings
+crates/dokime-runtime/             execution manager, state, transactions, cycles,
+                                  effects, plugin entries, listener and main.rs
+crates/dokime-cli/                 commands; hosts through runtime's library API
+crates/dokime-gui/src-tauri/        desktop host composition
+crates/dokime-tracing/             small development subscriber/export support
+
+CLI / desktop -> runtime -> operations -> storage -> protocol
+dokime [sdk/rust] -> protocol; client crate becomes its client half
+```
+
+`use dokime::prelude::*;` supplies authoring and client APIs with no host compilation. There is
+no Dokime domain crate: definitions are protocol messages; admission validation, parameter
+expansion and expression evaluation live with the operations applying them; persisted shapes
+live in storage. Keep transactions, state and execution/cycle transitions together in runtime.
+No separate presentation extraction is required by this target.
+
+In Dokime's host wave (wave 3), move handlers area by area from
+`crates/dokime-runtime/src/runtime/operations/`, `domains/` and
+`crates/dokime-server/src/grpc/` into operations and register directly. Delete each area's
+`hosted!` and `hosting::{Host,Serve}` trampoline as it moves. Logs and trace replay, support
+bundles, transfers/upload commit and abandonment, paging/frontier closure, watches/heartbeats,
+plot deltas/reduction and redaction remain real operation behaviour. Retain their bounds,
+cleanup, snapshot and resume semantics; transport registration does not implement them.
+Remote access becomes listener configuration plus the one client authorization hook, preserving
+pairing/key persistence, certificate rotation and shutdown. Runtime owns reusable startup and
+listener composition, with `main.rs` as its thin process entry, so CLI hosting calls the runtime
+library rather than depending on a binary. No server crate or per-service adapters remain.
+
+In the last Dokime waves (CLI wave 4, removal wave 5), redirect CLI and desktop hosting to
+runtime, remove the server crate, dead conversions and generation dependencies, dissolve
+domain into the owners above, and remove the operations `runtime` feature when no contract-only
+consumer remains. Retain `dokime-tracing` as small development support. Update manifests,
+build scripts, examples and user guidance with these boundaries.
+
+Only after the last wave, Harmos `storage-interface` supplies the five generic extensions;
+Dokime's separate change of the same name then merges
+`crates/dokime-runtime/src/storage/` and `src/runtime/storage/` into `dokime-storage` through
+the Harmos storage interface. Break reverse dependencies on runtime/query/plot first; runtime
+retains transaction and cycle orchestration, passing owned inputs and narrow resources.
+Execution/step statistics, history filters/tokens, finalization/seals, report capture, artifact
+inventory and fresh-root refusal remain Dokime behaviour built on those generic facilities.
+Logs, support bundles, exports/report spools, plugin installation, desktop root lease/backup,
+client pairing/download files, CLI and build tooling stay with their owners. Extraction covers
+application persistence, not all disk I/O. Both changes require before/after benchmarks,
+including deterministic multi-day data, restart, late samples and finalization.
 
 ## Protocol
 
@@ -415,7 +540,8 @@ Behaviour tests under `crates/harmos-runtime/tests/sidecar/` migrate to the new 
 
 ## Remaining Source Inventory
 
-Task 1.2 covers `proto/`, `crates/harmos-protocol`, `crates/harmos-conformance`,
+Task 1.2 covers `proto/`, `crates/harmos`, `crates/harmos-domain`,
+`crates/harmos-protocol`, `crates/harmos-conformance`,
 `crates/harmos-sdk`, `crates/harmos-sdk-derive`, `sdk/{rust,python,csharp,cpp}`,
 `crates/harmos-runtime/src/{clock,plugin,operations,streams,observers,services,simulation}`,
 `crates/harmos-storage` timing consumers, `crates/harmos-operations`, `crates/harmos-macros`,
@@ -425,8 +551,9 @@ transport benches, manifests/locks, `mise.toml`, `tools/python`, CI, README, pro
 and canonical/generated authoring guidance. Removal paths are enumerated above.
 Cross-cutting declarations and test consolidation follow their own change inventories.
 
-Crate splitting and relaxing System test serialization are deferred until measurements after
-these removals. Existing serial scheduling remains; no new crate split is part of this batch.
+The Crate Structure section defines this batch's boundary replacements. Storage extensions and
+Dokime storage extraction follow after the last wave as separate `storage-interface` changes.
+Existing System test serial scheduling remains.
 The host clock and facility trim may share storage paths only through sequential handoff and
 review of the combined tree; the clock no longer needs an isolated implementation wave.
 
