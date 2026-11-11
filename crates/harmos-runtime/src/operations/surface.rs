@@ -152,11 +152,6 @@ impl crate::guest::host::plugin::PluginScope {
         self.register_batch(super::Registration::catalog(catalog, lane)?).await
     }
 
-    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(&self, lane: Lane) -> Result<()> {
-        use super::RegistrationExt;
-        self.register_batch(C::batch().lane(lane)).await
-    }
-
     pub async fn register_batch(&self, mut registration: super::Registration) -> Result<()> {
         if !self.is_ready() {
             return Err(Error::Closing { domain: "plugin scope" });
@@ -167,7 +162,7 @@ impl crate::guest::host::plugin::PluginScope {
             let entries = operations.native_entries(registration, self.owner(), Some(self))?;
             return operations.reserve(&entries);
         }
-        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new();
+        let mut batch = harmos_operations::execution::__private::Catalog::new();
         batch.services = services;
         let manager = crate::ServiceManager::scoped(operations.clone(), self.clone());
         let (staged, ids) = manager.stage(batch)?;
@@ -203,19 +198,12 @@ impl<A: crate::Application> crate::Runtime<A> {
         self.register_batch(super::Registration::catalog(catalog, lane)?).await
     }
 
-    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(
-        &self, lane: crate::operations::Lane,
-    ) -> Result<()> {
-        use super::RegistrationExt;
-        self.register_batch(C::batch().lane(lane)).await
-    }
-
     pub async fn register_batch(&self, mut registration: super::Registration) -> Result<()> {
         let services = std::mem::take(&mut registration.batch.services);
         if services.is_empty() {
             return self.operations.register_batch(registration).await;
         }
-        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new();
+        let mut batch = harmos_operations::execution::__private::Catalog::new();
         batch.services = services;
         let manager = self.services();
         let (staged, ids) = manager.stage(batch)?;
@@ -255,19 +243,12 @@ impl<A: crate::Application> crate::runtime::Handle<A> {
         self.register_batch(super::Registration::catalog(catalog, lane)?).await
     }
 
-    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(
-        &self, lane: crate::operations::Lane,
-    ) -> Result<()> {
-        use super::RegistrationExt;
-        self.register_batch(C::batch().lane(lane)).await
-    }
-
     pub async fn register_batch(&self, mut registration: super::Registration) -> Result<()> {
         let services = std::mem::take(&mut registration.batch.services);
         if services.is_empty() {
             return self.operations.register_batch(registration).await;
         }
-        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new();
+        let mut batch = harmos_operations::execution::__private::Catalog::new();
         batch.services = services;
         let manager = self.services();
         let (staged, ids) = manager.stage(batch)?;
@@ -542,7 +523,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch = harmos_operations::execution::__private::RegistrationBatch::new()
+        let batch = harmos_operations::execution::__private::Catalog::new()
             .entry(probe_operation().expect("representable operation"))
             .service::<Idle>(
                 "idle",
@@ -576,13 +557,12 @@ mod tests {
         })
         .await
         .unwrap();
-        let operation =
-            harmos_operations::execution::__private::RegistrationBatch::new().entry(probe_operation().expect("representable operation"));
+        let operation = harmos_operations::execution::__private::Catalog::new().entry(probe_operation().expect("representable operation"));
         let policy = crate::ServicePolicy {
             stop_timeout: std::time::Duration::from_secs(1),
             restart: crate::RestartPolicy::Never,
         };
-        let service = harmos_operations::execution::__private::RegistrationBatch::new().service::<Idle>("test.probe", policy);
+        let service = harmos_operations::execution::__private::Catalog::new().service::<Idle>("test.probe", policy);
         assert!(
             runtime
                 .register_batch(operation.clone().service::<Idle>("test.probe", policy).lane(crate::operations::Lane::default()))
@@ -608,8 +588,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch =
-            harmos_operations::execution::__private::RegistrationBatch::new().entry(probe_operation().expect("representable operation"));
+        let batch = harmos_operations::execution::__private::Catalog::new().entry(probe_operation().expect("representable operation"));
         assert!(
             runtime
                 .register_batch(

@@ -43,7 +43,7 @@ pub use registration::generated::{
     ProtobufOutput,
 };
 pub use registration::{
-    Catalog, FunctionContext, FunctionHandle, FunctionInvocation, NativeInstance, OperationCatalog, OperationFactory, ServiceFactory,
+    Catalog, CatalogDescription, FunctionContext, FunctionHandle, FunctionInvocation, NativeInstance, OperationFactory, ServiceFactory,
     ServiceInstance,
 };
 pub use registration::{FunctionContext as Context, OperationFactory as Operation};

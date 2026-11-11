@@ -82,38 +82,22 @@ struct DependencyHost {
 
 /* === Enums === */
 
-static PROVIDER_OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(PROVIDER_READ_OPERATION.wire())];
-static PROVIDER_OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(PROVIDER_READ_OPERATION.callees())];
+fn provider_operations_catalog() -> harmos_runtime::operations::Catalog {
+    provider_operations_catalog_batch().named(concat!(module_path!(), "::ProviderOperations"))
+}
 
-const PROVIDER_OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::ProviderOperations"),
-    &PROVIDER_OPERATIONS_CATALOG_DECLARATIONS,
-    &PROVIDER_OPERATIONS_CATALOG_CALLEES,
-    Some(provider_operations_catalog_batch),
-);
-
-fn provider_operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn provider_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(provider_read_operation().expect("representable operation"));
     batch
 }
 
-static FORWARD_OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(FORWARD_DECLARATION_OPERATION.wire())];
-static FORWARD_OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(FORWARD_DECLARATION_OPERATION.callees())];
+fn forward_operations_catalog() -> harmos_runtime::operations::Catalog {
+    forward_operations_catalog_batch().named(concat!(module_path!(), "::ForwardOperations"))
+}
 
-const FORWARD_OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::ForwardOperations"),
-    &FORWARD_OPERATIONS_CATALOG_DECLARATIONS,
-    &FORWARD_OPERATIONS_CATALOG_CALLEES,
-    Some(forward_operations_catalog_batch),
-);
-
-fn forward_operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn forward_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(forward_declaration_operation().expect("representable operation"));
     batch
 }
@@ -258,9 +242,9 @@ impl harmos_runtime::guest::PluginLifecycle for DependencyHost {
                 let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
                 resources.registration = Some(self.operations.stage_plugin(scope, |bindings| {
                     if definition.id == "provider" {
-                        bindings.catalog(PROVIDER_OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default())
+                        bindings.catalog(provider_operations_catalog(), harmos_runtime::operations::Lane::default())
                     } else {
-                        bindings.catalog(FORWARD_OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default())
+                        bindings.catalog(forward_operations_catalog(), harmos_runtime::operations::Lane::default())
                     }
                 })?);
             }

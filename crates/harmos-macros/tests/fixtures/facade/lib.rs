@@ -12,7 +12,6 @@
 /* === Re-Exports === */
 
 pub use harmos::{Request, Row, message, plugin};
-pub use harmos_operations::catalog;
 pub use serde::*;
 
 /* === Imports === */
@@ -68,8 +67,6 @@ pub mod __harmos {
     #[cfg(feature = "runtime")]
     pub use harmos::{Context, ExecutionContext, Operation, Resource, Response};
 
-    #[cfg(feature = "runtime")]
-    pub use harmos::operations::OperationCatalog;
     pub use harmos::{builtins, catalog, guest, listeners, model, operations, plugin, schema, streams};
 
     /* === Imports === */

@@ -38,8 +38,7 @@ type CleanupFuture = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 type ReconcileFuture = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 type InitializeFuture = Pin<Box<dyn Future<Output = std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>>;
 type Initialize<A> = Box<dyn FnOnce(super::Handle<A>) -> InitializeFuture + Send>;
-pub(super) type Reconciliation<A> =
-    Box<dyn FnOnce(super::StateManager<A>, StorageManager<crate::storage::ErasedCatalog>) -> ReconcileFuture + Send>;
+pub(super) type Reconciliation<A> = Box<dyn FnOnce(super::StateManager<A>, StorageManager) -> ReconcileFuture + Send>;
 
 /* === Structs === */
 
@@ -77,7 +76,7 @@ struct Retained {
 pub(super) struct Boot<A: Application> {
     pub(super) application: Option<super::launch::ApplicationCleanup<A>>,
     pub(super) identity: Arc<()>,
-    pub(super) storage: Option<StorageManager<crate::storage::ErasedCatalog>>,
+    pub(super) storage: Option<StorageManager>,
     pub(super) runtime: Option<Runtime<A>>,
     pub(super) writer: Option<tokio::task::JoinHandle<()>>,
     pub(super) state: Option<super::StateManager<A>>,
@@ -101,7 +100,7 @@ pub enum BootstrapStatus {
 /* === Implementations === */
 
 impl<A: Application> Startup<A> {
-    pub(super) fn new(builder: super::Builder<A>, storage: Option<StorageManager<crate::storage::ErasedCatalog>>) -> Self {
+    pub(super) fn new(builder: super::Builder<A>, storage: Option<StorageManager>) -> Self {
         let cleanup = builder.cleanup.clone();
         let receipt = cleanup.clone();
         let future = Box::pin(async move {
@@ -267,7 +266,7 @@ impl std::fmt::Debug for Cleanup {
 }
 
 impl<A: Application> Boot<A> {
-    pub(super) fn new(storage: Option<&StorageManager<crate::storage::ErasedCatalog>>, cleanup: BootstrapCleanup) -> Result<Self> {
+    pub(super) fn new(storage: Option<&StorageManager>, cleanup: BootstrapCleanup) -> Result<Self> {
         let identity = Arc::new(());
         if let Some(storage) = storage {
             // Refusal must precede installing a cleanup owner: another runtime's

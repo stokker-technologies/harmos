@@ -77,20 +77,12 @@ struct Reading {
     seen: u64,
 }
 
-static OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(READ_CONTRACT_DECLARATION_OPERATION.wire())];
-static OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(READ_CONTRACT_DECLARATION_OPERATION.callees())];
+fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
+}
 
-const OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::Operations"),
-    &OPERATIONS_CATALOG_DECLARATIONS,
-    &OPERATIONS_CATALOG_CALLEES,
-    Some(operations_catalog_batch),
-);
-
-fn operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(read_contract_declaration_operation().expect("representable operation"));
     batch
 }
@@ -147,7 +139,7 @@ async fn runtime_selected_ids() {
     });
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
         setup.resource::<Bench>(resources.clone());
-        setup.catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default());
+        setup.catalog(operations_catalog(), harmos_runtime::operations::Lane::default());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: std::num::NonZeroUsize::new(4096),
             ..Default::default()
@@ -214,7 +206,7 @@ async fn nested_resources_shared() {
     })
     .await
     .unwrap();
-    runtime.operations.register_catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register_catalog(operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
 
     let parent = runtime.operation(ReadContractDeclaration { nested: true }).start().await.unwrap().await.unwrap();
     assert_eq!(parent.device, "sim://rig-a");

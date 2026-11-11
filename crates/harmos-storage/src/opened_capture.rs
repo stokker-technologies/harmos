@@ -50,7 +50,7 @@ pub struct OpenedCapture {
 }
 
 struct State {
-    session: crate::StorageManager<crate::ErasedCatalog>,
+    session: crate::StorageManager,
     file: std::fs::File,
     diagnostic: std::path::PathBuf,
     range: ByteRange,
@@ -105,7 +105,7 @@ enum Step {
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     pub fn capture_frozen_file(&self, source: crate::FrozenFile, target: StorageFile) -> Result<OpenedCapture> {
         let (file, path) = source.opened_file()?;
         let range = ByteRange { offset: 0, limit: Some(source.length()) };
@@ -126,7 +126,7 @@ impl<C> StorageManager<C> {
         let diagnostic = crate::local::opened_path(&file);
         OpenedCapture {
             state: Some(State {
-                session: self.erased(),
+                session: self.clone(),
                 file,
                 diagnostic,
                 range,

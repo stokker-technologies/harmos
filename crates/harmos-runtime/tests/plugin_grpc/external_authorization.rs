@@ -81,20 +81,12 @@ const LOCAL_FETCH_DECLARATION_OPERATION: harmos_runtime::operations::OperationSp
 
 /* === Enums === */
 
-static LOCAL_OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(LOCAL_FETCH_DECLARATION_OPERATION.wire())];
-static LOCAL_OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(LOCAL_FETCH_DECLARATION_OPERATION.callees())];
+fn local_operations_catalog() -> harmos_runtime::operations::Catalog {
+    local_operations_catalog_batch().named(concat!(module_path!(), "::LocalOperations"))
+}
 
-const LOCAL_OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::LocalOperations"),
-    &LOCAL_OPERATIONS_CATALOG_DECLARATIONS,
-    &LOCAL_OPERATIONS_CATALOG_CALLEES,
-    Some(local_operations_catalog_batch),
-);
-
-fn local_operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn local_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(local_fetch_declaration_operation().expect("representable operation"));
     batch
 }
@@ -197,7 +189,7 @@ async fn external_request_grants() {
         });
     })
     .await;
-    runtime.operations.register_catalog(LOCAL_OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register_catalog(local_operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     runtime.operations.register_authorizer(Arc::new(Holdings)).unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Bearers)))).unwrap();
 

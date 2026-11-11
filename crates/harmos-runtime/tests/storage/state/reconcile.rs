@@ -123,9 +123,7 @@ fn failure() -> Error {
     }
 }
 
-async fn restore(
-    journal: harmos_runtime::state::StateManager<Bank>, storage: StorageManager<harmos_runtime::storage::ErasedCatalog>,
-) -> harmos_runtime::Result<()> {
+async fn restore(journal: harmos_runtime::state::StateManager<Bank>, storage: StorageManager) -> harmos_runtime::Result<()> {
     use harmos_runtime::storage::query::transform::{
         Transform,
         project::{Project, Projection},

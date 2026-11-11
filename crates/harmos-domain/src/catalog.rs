@@ -50,61 +50,12 @@ pub trait Member<T>: Visitor {
     const ENTRY: Self::Entry;
 }
 
-pub trait Projection<E> {
-    const LEN: usize;
-
-    fn try_for_each<F>(&self, visit: impl FnMut(&E) -> Result<(), F>) -> Result<(), F>;
-}
-
 pub trait InertCatalog<V: Visitor<Entry = E>, E: 'static> {
     const ENTRIES: &'static [Node<E>];
     const LEN: usize = count(Self::ENTRIES);
 }
 
-pub trait Catalog<V: Visitor> {
-    type Entries: Projection<V::Entry>;
-    const ENTRIES: Self::Entries;
-}
-
-pub trait Contains<T> {}
-
 /* === Implementations === */
-
-impl<E, const N: usize> Projection<E> for [E; N] {
-    const LEN: usize = N;
-
-    fn try_for_each<F>(&self, mut visit: impl FnMut(&E) -> Result<(), F>) -> Result<(), F> {
-        for entry in self {
-            visit(entry)?;
-        }
-        Ok(())
-    }
-}
-
-impl<E> Projection<E> for () {
-    const LEN: usize = 0;
-
-    fn try_for_each<F>(&self, _: impl FnMut(&E) -> Result<(), F>) -> Result<(), F> {
-        Ok(())
-    }
-}
-
-impl<E, L: Projection<E>, R: Projection<E>> Projection<E> for (L, R) {
-    const LEN: usize = match L::LEN.checked_add(R::LEN) {
-        Some(len) => len,
-        None => panic!("catalog leaf count overflows usize"),
-    };
-
-    fn try_for_each<F>(&self, mut visit: impl FnMut(&E) -> Result<(), F>) -> Result<(), F> {
-        self.0.try_for_each(&mut visit)?;
-        self.1.try_for_each(visit)
-    }
-}
-
-impl<V: Visitor> Catalog<V> for () {
-    type Entries = [V::Entry; 0];
-    const ENTRIES: Self::Entries = [];
-}
 
 impl<V: Visitor<Entry = E>, E: 'static> InertCatalog<V, E> for () {
     const ENTRIES: &'static [Node<E>] = &[];

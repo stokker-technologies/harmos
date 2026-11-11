@@ -778,7 +778,7 @@ mod tests {
         assert!(scope.commit());
         scope
             .register_batch(
-                harmos_operations::execution::__private::RegistrationBatch::new()
+                harmos_operations::execution::__private::Catalog::new()
                     .entry(read_operation().expect("representable operation"))
                     .service::<Worker>("service", crate::services::POLICY)
                     .lane(crate::operations::Lane::default()),
@@ -806,8 +806,7 @@ mod tests {
         .unwrap();
         let mut receipt = runtime.operations.stage_plugin(&scope, |_| Ok(())).unwrap();
         assert!(scope.commit());
-        let batch =
-            harmos_operations::execution::__private::RegistrationBatch::new().entry(read_operation().expect("representable operation"));
+        let batch = harmos_operations::execution::__private::Catalog::new().entry(read_operation().expect("representable operation"));
         let invocation = scope.operation::<Read>(Read);
         scope.register_batch(batch.clone().lane(crate::operations::Lane::default())).await.unwrap();
         assert_eq!(initialized.load(Ordering::SeqCst), 0);

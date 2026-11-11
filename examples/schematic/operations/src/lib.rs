@@ -61,46 +61,38 @@ pub use schematic::validate::ValidateSchematic;
 /* === Enums === */
 
 #[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
-pub struct Operations;
-#[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
-pub struct Native;
-
-#[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
-impl harmos_operations::execution::operations::OperationCatalog for Operations {
-    const CATALOG: harmos_operations::execution::operations::Catalog =
-        harmos_operations::execution::operations::Catalog::of::<Self>("schematic.operations", &[], &[]);
-    fn batch() -> harmos_operations::execution::__private::RegistrationBatch {
-        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new();
-        batch.operations.extend([
-            harmos_operations::execution::operations::OperationFactory::protobuf::<ValidateSchematic>()
-                .expect("ValidateSchematic declaration"),
-            harmos_operations::execution::operations::OperationFactory::protobuf::<ProposeRoute>().expect("ProposeRoute declaration"),
-            harmos_operations::execution::operations::OperationFactory::protobuf::<AnalyzeSchematic>()
-                .expect("AnalyzeSchematic declaration"),
-        ]);
-        batch
-    }
+pub fn operations_catalog() -> harmos_operations::execution::operations::Catalog {
+    operations_catalog_batch().named("schematic.operations")
 }
 
 #[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
-impl harmos_operations::execution::operations::OperationCatalog for Native {
-    const CATALOG: harmos_operations::execution::operations::Catalog =
-        harmos_operations::execution::operations::Catalog::of::<Self>("schematic.native", &[], &[]);
-    fn batch() -> harmos_operations::execution::__private::RegistrationBatch {
-        let mut batch = <Operations as harmos_operations::execution::operations::OperationCatalog>::batch();
-        batch.operations.extend([
-            harmos_operations::execution::operations::OperationFactory::protobuf::<ListDirectories>().expect("ListDirectories declaration"),
-            harmos_operations::execution::operations::OperationFactory::protobuf::<AnalyzeUpload>().expect("AnalyzeUpload declaration"),
-            harmos_operations::execution::operations::OperationFactory::protobuf::<AnalyzeExchange>().expect("AnalyzeExchange declaration"),
-        ]);
-        batch
-    }
+pub fn operations_catalog_batch() -> harmos_operations::execution::__private::Catalog {
+    let mut batch = harmos_operations::execution::__private::Catalog::new();
+    batch.operations.extend([
+        harmos_operations::execution::operations::OperationFactory::protobuf::<ValidateSchematic>().expect("ValidateSchematic declaration"),
+        harmos_operations::execution::operations::OperationFactory::protobuf::<ProposeRoute>().expect("ProposeRoute declaration"),
+        harmos_operations::execution::operations::OperationFactory::protobuf::<AnalyzeSchematic>().expect("AnalyzeSchematic declaration"),
+    ]);
+    batch
 }
 
 #[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
-impl Native {
-    pub fn contracts() -> Result<Vec<harmos_operations::operations::Contract>, harmos_operations::operations::ContractError> {
-        use harmos_operations::execution::operations::OperationCatalog;
-        Self::batch().operations.into_iter().map(|factory| factory.contract()).collect()
-    }
+pub fn native_catalog() -> harmos_operations::execution::operations::Catalog {
+    native_catalog_batch().named("schematic.native")
+}
+
+#[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
+pub fn native_catalog_batch() -> harmos_operations::execution::__private::Catalog {
+    let mut batch = operations_catalog_batch();
+    batch.operations.extend([
+        harmos_operations::execution::operations::OperationFactory::protobuf::<ListDirectories>().expect("ListDirectories declaration"),
+        harmos_operations::execution::operations::OperationFactory::protobuf::<AnalyzeUpload>().expect("AnalyzeUpload declaration"),
+        harmos_operations::execution::operations::OperationFactory::protobuf::<AnalyzeExchange>().expect("AnalyzeExchange declaration"),
+    ]);
+    batch
+}
+
+#[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
+pub fn native_contracts() -> Result<Vec<harmos_operations::operations::Contract>, harmos_operations::operations::ContractError> {
+    native_catalog_batch().operations.into_iter().map(|factory| factory.contract()).collect()
 }

@@ -155,28 +155,12 @@ const TIMING_ITS_OWN_WAIT_DECLARATION_OPERATION: harmos_runtime::operations::Ope
 
 /* === Enums === */
 
-static SIM_OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 4] = [
-    harmos_runtime::catalog::Node::Leaf(PENDING_DECLARATION_OPERATION.wire()),
-    harmos_runtime::catalog::Node::Leaf(ANSWERING_DECLARATION_OPERATION.wire()),
-    harmos_runtime::catalog::Node::Leaf(DRAWING_DECLARATION_OPERATION.wire()),
-    harmos_runtime::catalog::Node::Leaf(TIMING_ITS_OWN_WAIT_DECLARATION_OPERATION.wire()),
-];
-static SIM_OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 4] = [
-    harmos_runtime::catalog::Node::Leaf(PENDING_DECLARATION_OPERATION.callees()),
-    harmos_runtime::catalog::Node::Leaf(ANSWERING_DECLARATION_OPERATION.callees()),
-    harmos_runtime::catalog::Node::Leaf(DRAWING_DECLARATION_OPERATION.callees()),
-    harmos_runtime::catalog::Node::Leaf(TIMING_ITS_OWN_WAIT_DECLARATION_OPERATION.callees()),
-];
+fn sim_operations_catalog() -> harmos_runtime::operations::Catalog {
+    sim_operations_catalog_batch().named(concat!(module_path!(), "::SimOperations"))
+}
 
-const SIM_OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::SimOperations"),
-    &SIM_OPERATIONS_CATALOG_DECLARATIONS,
-    &SIM_OPERATIONS_CATALOG_CALLEES,
-    Some(sim_operations_catalog_batch),
-);
-
-fn sim_operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn sim_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(pending_declaration_operation().expect("representable operation"));
     batch = batch.entry(answering_declaration_operation().expect("representable operation"));
     batch = batch.entry(drawing_declaration_operation().expect("representable operation"));
@@ -366,7 +350,7 @@ impl harmos_runtime::state::TransactionCatalog<DivergentState> for DivergentChan
 
 fn bank(seed: u64, configure: impl Fn(&mut Setup<Bank>) + Send + Sync + 'static) -> SimulatedRuntime<Bank> {
     Runtime::<Bank>::simulate_with(Ledger::default(), (), seed, move |setup| {
-        setup.catalog(SIM_OPERATIONS_CATALOG, crate::support::SERIAL);
+        setup.catalog(sim_operations_catalog(), crate::support::SERIAL);
         setup.settings().register(catalog()).register(streams());
         configure(setup);
     })
@@ -417,7 +401,7 @@ fn entropy_run(seed: u64) -> (SimulatedRuntime<Bank>, Vec<u64>) {
 #[tokio::test]
 async fn start_stays_send() {
     let runtime = tokio::spawn(Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
-        setup.catalog(SIM_OPERATIONS_CATALOG, crate::support::SERIAL);
+        setup.catalog(sim_operations_catalog(), crate::support::SERIAL);
         setup.settings().register(catalog()).register(streams());
     }))
     .await

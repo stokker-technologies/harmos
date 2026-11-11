@@ -148,38 +148,22 @@ pub(super) struct Lifecycle {
 
 /* === Enums === */
 
-static ECHO_OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(ECHO_OPERATION.wire())];
-static ECHO_OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(ECHO_OPERATION.callees())];
+fn echo_operations_catalog() -> harmos_runtime::operations::Catalog {
+    echo_operations_catalog_batch().named(concat!(module_path!(), "::EchoOperations"))
+}
 
-const ECHO_OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::EchoOperations"),
-    &ECHO_OPERATIONS_CATALOG_DECLARATIONS,
-    &ECHO_OPERATIONS_CATALOG_CALLEES,
-    Some(echo_operations_catalog_batch),
-);
-
-fn echo_operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn echo_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(echo_operation().expect("representable operation"));
     batch
 }
 
-static PUBLICATION_OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(PUBLISH_OPERATION.wire())];
-static PUBLICATION_OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(PUBLISH_OPERATION.callees())];
+fn publication_operations_catalog() -> harmos_runtime::operations::Catalog {
+    publication_operations_catalog_batch().named(concat!(module_path!(), "::PublicationOperations"))
+}
 
-const PUBLICATION_OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::PublicationOperations"),
-    &PUBLICATION_OPERATIONS_CATALOG_DECLARATIONS,
-    &PUBLICATION_OPERATIONS_CATALOG_CALLEES,
-    Some(publication_operations_catalog_batch),
-);
-
-fn publication_operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn publication_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(publish_operation().expect("representable operation"));
     batch
 }
@@ -294,7 +278,7 @@ impl PluginLifecycle for Lifecycle {
                 resources.endpoint = Some(router.enter(&definition.id).unwrap());
                 let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
                 resources.registration =
-                    Some(self.operations.stage_plugin(scope, |bindings| bindings.catalog(ECHO_OPERATIONS_CATALOG, self.lane))?);
+                    Some(self.operations.stage_plugin(scope, |bindings| bindings.catalog(echo_operations_catalog(), self.lane))?);
             }
             PluginBackend::Guest(resources) => {
                 resources.start(&self.catalog, &self.operations, definition, router, authority, self.lane).await?;
@@ -405,7 +389,7 @@ impl Lifecycle {
 impl Lifecycle {
     // The Sandbox Requires Host Publication and an Embedded Provider in Its Own Lane
     pub(super) async fn sandbox_in(runtime: &Runtime<Bank>, lane: harmos_runtime::operations::Lane) -> Self {
-        runtime.operations.register_catalog(PUBLICATION_OPERATIONS_CATALOG, lane).await.unwrap();
+        runtime.operations.register_catalog(publication_operations_catalog(), lane).await.unwrap();
         let mut lifecycle = Self::for_component(guest_catalog(), runtime, super::sandbox(), lane);
         let contract = wire::PROVIDER_ECHO_OPERATION_OPERATION.wire().contract().unwrap();
         lifecycle.provider = Some(PluginDefinition {
@@ -482,8 +466,8 @@ impl Lifecycle {
 
 // Serves the Sandbox's Requirements from the Host When No Plugin Provides Them
 pub(super) async fn serve_host(runtime: &Runtime<Bank>, lane: harmos_runtime::operations::Lane) {
-    runtime.operations.register_catalog(PUBLICATION_OPERATIONS_CATALOG, lane).await.unwrap();
-    runtime.operations.register_catalog(ECHO_OPERATIONS_CATALOG, lane).await.unwrap();
+    runtime.operations.register_catalog(publication_operations_catalog(), lane).await.unwrap();
+    runtime.operations.register_catalog(echo_operations_catalog(), lane).await.unwrap();
 }
 
 fn guest_error(source: harmos_runtime::guest::Error) -> harmos_runtime::Error {

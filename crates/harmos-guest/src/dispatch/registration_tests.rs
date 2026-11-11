@@ -11,7 +11,7 @@
 
 use super::Table as WireTable;
 use harmos_domain::ServicePolicy;
-use harmos_operations::execution::__private::{RegistrationBatch, ResourceSet, ServiceFuture};
+use harmos_operations::execution::__private::{Catalog, ResourceSet, ServiceFuture};
 use harmos_operations::execution::operations::*;
 use harmos_operations::execution::services::Service;
 use std::sync::{
@@ -21,13 +21,10 @@ use std::sync::{
 
 struct Worker(Arc<AtomicUsize>);
 
-struct ReadCatalog;
+pub const READ_CATALOG_CATALOG: CatalogDescription = CatalogDescription::new("ReadCatalog", &[], &[], Some(read_catalog_catalog_batch));
 
-impl OperationCatalog for ReadCatalog {
-    const CATALOG: Catalog = Catalog::of::<Self>("ReadCatalog", &[], &[]);
-    fn batch() -> RegistrationBatch {
-        RegistrationBatch::new().entry(read_operation().expect("representable operation"))
-    }
+pub fn read_catalog_catalog_batch() -> Catalog {
+    Catalog::new().entry(read_operation().expect("representable operation"))
 }
 
 #[harmos_operations::execution::message(harmos_path = harmos_operations::execution)]
@@ -80,7 +77,7 @@ fn ready<T>(mut future: ServiceFuture<'_, T>) -> T {
 #[test]
 fn named_factory_contract() {
     let id = format!("fixture.device_{}", 7);
-    let batch = RegistrationBatch::new().entry_named(read_operation().expect("representable operation"), &id).unwrap();
+    let batch = Catalog::new().entry_named(read_operation().expect("representable operation"), &id).unwrap();
     let factory = &batch.operations[0];
     let definition = (&READ_OPERATION).named(&id).unwrap();
     assert_eq!(factory.definition, definition);
@@ -112,7 +109,7 @@ fn named_factory_contract() {
     assert!(changed.validate().is_err());
 
     for id in ["", "bad-name", "harmos.initialize"] {
-        assert!(RegistrationBatch::new().entry_named(read_operation().expect("representable operation"), id).is_err());
+        assert!(Catalog::new().entry_named(read_operation().expect("representable operation"), id).is_err());
     }
 }
 
@@ -156,7 +153,7 @@ fn encoded_factory_preserves_response() {
 
     let mut dependencies = ResourceSet::new();
     dependencies.insert(Arc::new(42u64)).unwrap();
-    let batch = RegistrationBatch::new().entry(read_operation().expect("representable operation"));
+    let batch = Catalog::new().entry(read_operation().expect("representable operation"));
     let mut prepared = batch.operations[0].prepare_encoded(dependencies, &Read.encode()).unwrap();
     let context = ExecutionContext::new(ResourceSet::new(), harmos_operations::execution::operations::CallContext::default());
     ready(prepared.instance.initialize(context.clone()));
@@ -183,7 +180,7 @@ impl Service for Worker {
 
 #[test]
 fn factory_rejects_a_substituted_declaration() {
-    let mut batch = RegistrationBatch::new().entry(read_operation().expect("representable operation"));
+    let mut batch = Catalog::new().entry(read_operation().expect("representable operation"));
     batch.operations[0].definition.id = harmos_operations::execution::Identifier::new("different").unwrap();
     assert!(matches!(batch.operations[0].validate(), Err(ServingError::Catalog)));
 }
@@ -192,7 +189,7 @@ fn factory_rejects_a_substituted_declaration() {
 fn wire_identity_fences_replacement_before_decoding() {
     use harmos_operations::execution::operations::ServingError;
     use harmos_operations::execution::{Message, QualifiedId};
-    let batch = RegistrationBatch::new().entry(read_operation().expect("representable operation"));
+    let batch = Catalog::new().entry(read_operation().expect("representable operation"));
     let fingerprint = (&READ_OPERATION).definition().unwrap().fingerprint.0;
     let mut table = WireTable::new("fixture").unwrap();
     table.resource(42u64);
@@ -220,7 +217,7 @@ fn service_factory_reconstructs_from_its_snapshot() {
         stop_timeout: std::time::Duration::from_secs(1),
         restart: harmos_operations::execution::RestartPolicy::Never,
     };
-    let batch = RegistrationBatch::new().service::<Worker>("worker", policy);
+    let batch = Catalog::new().service::<Worker>("worker", policy);
     let factory = &batch.services[0];
     let context = ExecutionContext::new(dependencies, harmos_operations::execution::operations::CallContext::default());
     let mut first = factory.initialize(context.clone());
@@ -236,7 +233,7 @@ fn binding_errors_aggregate() {
     use harmos_operations::execution::StartupError;
     let mut table = WireTable::new("fixture").unwrap();
     table.resource(7u32).resource(8u32);
-    table.catalog(&ReadCatalog::CATALOG).catalog(&ReadCatalog::CATALOG);
+    table.catalog(&READ_CATALOG_CATALOG).catalog(&READ_CATALOG_CATALOG);
     assert!(table.definitions().is_empty());
 
     let Err(ServingError::Startup(error)) = table.validate_binding() else {
@@ -261,7 +258,7 @@ fn frozen_dynamic_resources() {
     table.validate_binding().unwrap();
     assert!(Arc::ptr_eq(&owner, &table.context().resource::<u32>().unwrap()));
 
-    let error = table.register(ReadCatalog::batch()).unwrap_err();
+    let error = table.register(read_catalog_catalog_batch()).unwrap_err();
     assert!(matches!(error, ServingError::Resource { .. }));
     table.resource(42u64);
     assert!(table.validate_binding().is_err());
@@ -272,7 +269,7 @@ fn frozen_dynamic_resources() {
 #[test]
 fn resource_order_independence() {
     let mut table = WireTable::new("fixture").unwrap();
-    table.catalog(&ReadCatalog::CATALOG).resource(42u64);
+    table.catalog(&READ_CATALOG_CATALOG).resource(42u64);
     assert!(table.definitions().is_empty());
     table.validate_binding().unwrap();
     assert_eq!(table.definitions().len(), 1);

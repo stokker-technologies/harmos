@@ -46,7 +46,7 @@ pub struct FileCapture {
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     pub async fn capture_file(&self, request: FileCapture) -> Result<FileReference> {
         let context = crate::execution::Context::current();
         let span = context.sync(|| tracing::debug_span!("storage.file.capture_file", outcome = "cancelled"));

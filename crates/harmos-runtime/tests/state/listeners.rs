@@ -98,24 +98,12 @@ struct Host {
 
 /* === Enums === */
 
-static HANDLER_OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 2] = [
-    harmos_runtime::catalog::Node::Leaf(HEARING_FIRST_OPERATION.wire()),
-    harmos_runtime::catalog::Node::Leaf(HEARING_SECOND_OPERATION.wire()),
-];
-static HANDLER_OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 2] = [
-    harmos_runtime::catalog::Node::Leaf(HEARING_FIRST_OPERATION.callees()),
-    harmos_runtime::catalog::Node::Leaf(HEARING_SECOND_OPERATION.callees()),
-];
+fn handler_operations_catalog() -> harmos_runtime::operations::Catalog {
+    handler_operations_catalog_batch().named(concat!(module_path!(), "::HandlerOperations"))
+}
 
-const HANDLER_OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::HandlerOperations"),
-    &HANDLER_OPERATIONS_CATALOG_DECLARATIONS,
-    &HANDLER_OPERATIONS_CATALOG_CALLEES,
-    Some(handler_operations_catalog_batch),
-);
-
-fn handler_operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn handler_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(hearing_first_operation().expect("representable operation"));
     batch = batch.entry(hearing_second_operation().expect("representable operation"));
     batch
@@ -135,7 +123,7 @@ static CALLBACKS_CATALOG_CALLEES: [harmos_domain::catalog::Node<&'static [harmos
     harmos_domain::catalog::Node::Leaf(HEARING_SECOND_OPERATION.callees()),
 ];
 
-const CALLBACKS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
+const CALLBACKS_CATALOG: harmos_runtime::operations::CatalogDescription = harmos_runtime::operations::CatalogDescription::new(
     concat!(module_path!(), "::Callbacks"),
     &CALLBACKS_CATALOG_DECLARATIONS,
     &CALLBACKS_CATALOG_CALLEES,
@@ -401,7 +389,7 @@ impl PluginLifecycle for Host {
         self.scope = Some(scope.clone());
         resources.operations =
             Some(self.operations.stage_plugin(scope, |bindings| {
-                bindings.catalog(HANDLER_OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default())
+                bindings.catalog(handler_operations_catalog(), harmos_runtime::operations::Lane::default())
             })?);
         if !self.skip_sources {
             let original = Arc::new(tokio::sync::Mutex::new(self.owner.records.stage_listeners(

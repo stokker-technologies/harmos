@@ -43,7 +43,7 @@ pub struct FrozenFile {
     pub(crate) backing: Arc<Backing>,
     length: u64,
     sha256: [u8; 32],
-    pub(crate) session: StorageManager<crate::ErasedCatalog>,
+    pub(crate) session: StorageManager,
 }
 
 pub(crate) struct Backing {
@@ -79,7 +79,7 @@ impl FrozenFile {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     // Copies a stable opened range in native bounded batches. Cancellation drops
     // the partial copy only after any blocking writer releases its actual owners.
     // On Windows, exclusive handles are refused. A denied independent reopen falls
@@ -115,7 +115,7 @@ impl<C> StorageManager<C> {
             });
         }
         reader.check_unchanged().await?;
-        let session = self.erased();
+        let session = self.clone();
         Ok(FrozenFile {
             backing,
             length: completion.bytes,

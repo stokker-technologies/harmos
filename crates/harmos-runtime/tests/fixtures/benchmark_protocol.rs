@@ -67,20 +67,12 @@ pub struct Payload {
 
 /* === Enums === */
 
-static OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(ECHO_DECLARATION_OPERATION.wire())];
-static OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(ECHO_DECLARATION_OPERATION.callees())];
+pub fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
+}
 
-pub const OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::Operations"),
-    &OPERATIONS_CATALOG_DECLARATIONS,
-    &OPERATIONS_CATALOG_CALLEES,
-    Some(operations_catalog_batch),
-);
-
-fn operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(echo_declaration_operation().expect("representable operation"));
     batch
 }

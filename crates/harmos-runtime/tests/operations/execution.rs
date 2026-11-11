@@ -56,7 +56,7 @@ impl harmos_runtime::Lifecycle for InitializingBank {
     }
 
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Error> {
-        context.runtime.register_catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default()).await?;
+        context.runtime.register_catalog(operations_catalog(), harmos_runtime::operations::Lane::default()).await?;
         context.resource::<AtomicUsize>().expect("the test registers its initialization counter").fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -300,17 +300,17 @@ async fn operation_catalog_binding() {
         setup.resource::<Owner>(owner.clone());
     })
     .await;
-    let definitions = OPERATIONS_CATALOG.definitions().unwrap();
+    let definitions = operations_catalog().definitions().unwrap();
     assert_eq!(definitions[0].id.as_str(), COMPUTE_OPERATION.entry().id);
     assert_eq!(definitions[1].id.as_str(), SLOW_OPERATION.entry().id);
-    runtime.operations.register_catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register_catalog(operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
     assert_eq!(runtime.operation(request()).await.unwrap().value, 7);
 
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", COMPUTE_OPERATION.entry().id).unwrap()).await.unwrap();
     assert!(matches!(
-        runtime.operations.register_catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default()).await,
+        runtime.operations.register_catalog(operations_catalog(), harmos_runtime::operations::Lane::default()).await,
         Err(Error::AlreadyRegistered { .. })
     ));
     assert!(runtime.operations.definition(COMPUTE_OPERATION.entry().id).is_err());
@@ -326,8 +326,8 @@ async fn catalog_boot_atomic() {
         setup.settings().register(catalog());
         setup.resource::<Owner>(owner.clone());
         setup
-            .catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default())
-            .catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default());
+            .catalog(operations_catalog(), harmos_runtime::operations::Lane::default())
+            .catalog(operations_catalog(), harmos_runtime::operations::Lane::default());
     })
     .await;
     assert!(matches!(result, Err(harmos_runtime::StartupError::DuplicateCatalog { .. })));
@@ -339,7 +339,7 @@ async fn catalog_boot_atomic() {
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.resource::<Owner>(owner.clone());
-        setup.catalog(OPERATIONS_CATALOG, crate::support::SERIAL);
+        setup.catalog(operations_catalog(), crate::support::SERIAL);
     })
     .await
     .unwrap();
@@ -362,7 +362,7 @@ async fn providers_route_explicitly() {
         runtime
             .plugin
             .register_embedded(
-                OPERATIONS_CATALOG,
+                operations_catalog(),
                 harmos_runtime::guest::PluginDefinition {
                     id: id.into(),
                     version: "1.0.0".parse().unwrap(),
@@ -409,7 +409,7 @@ fn simulation_reboot_rebinds() {
     let mut sim = Runtime::<Bank>::simulate_with(Ledger::default(), (), 7, move |setup| {
         setup.settings().register(catalog());
         setup.resource::<Owner>(captured.clone());
-        setup.catalog(OPERATIONS_CATALOG, crate::support::SERIAL);
+        setup.catalog(operations_catalog(), crate::support::SERIAL);
     })
     .unwrap();
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);

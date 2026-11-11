@@ -54,15 +54,16 @@ type PrepareEncoded = std::sync::Arc<
 /* === Structs === */
 
 #[derive(Clone, Copy)]
-pub struct Catalog {
+pub struct CatalogDescription {
     pub name: &'static str,
     pub declarations: &'static [crate::execution::catalog::Node<WireDeclaration>],
     pub callees: &'static [crate::execution::catalog::Node<&'static [WireDeclaration]>],
-    factory: Option<fn() -> RegistrationBatch>,
+    factory: Option<fn() -> Catalog>,
 }
 
 #[derive(Clone, Default)]
-pub struct RegistrationBatch {
+pub struct Catalog {
+    pub name: &'static str,
     pub operations: Vec<OperationFactory>,
     pub services: Vec<ServiceFactory>,
 }
@@ -133,13 +134,6 @@ struct NativeOperation<O: Carrier> {
 
 /* === Traits === */
 
-pub trait OperationCatalog: 'static {
-    const CATALOG: Catalog;
-
-    #[doc(hidden)]
-    fn batch() -> RegistrationBatch;
-}
-
 pub trait ServiceInstance: Send {
     fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ()>;
     fn stop(&mut self) -> ServiceFuture<'_, ()>;
@@ -165,15 +159,25 @@ pub trait NativeInstance: Send {
 
 /* === Implementations === */
 
-impl Catalog {
+impl CatalogDescription {
     pub const fn new(
         name: &'static str, declarations: &'static [crate::execution::catalog::Node<WireDeclaration>],
-        callees: &'static [crate::execution::catalog::Node<&'static [WireDeclaration]>], factory: Option<fn() -> RegistrationBatch>,
+        callees: &'static [crate::execution::catalog::Node<&'static [WireDeclaration]>], factory: Option<fn() -> Catalog>,
     ) -> Self {
         Self { name, declarations, callees, factory }
     }
 
     pub fn definitions(&self) -> Result<Vec<OperationDefinition>, harmos_domain::Error> {
+        if let Some(factory) = self.factory {
+            let batch = factory();
+            let mut names = std::collections::BTreeSet::new();
+            for operation in &batch.operations {
+                if !names.insert(operation.definition.id.clone()) {
+                    return Err(harmos_domain::Error::DuplicateOperation { id: operation.definition.id.to_string() });
+                }
+            }
+            return Ok(batch.operations.into_iter().map(|operation| operation.definition).collect());
+        }
         let mut entries = Vec::new();
         let result: Result<(), std::convert::Infallible> = crate::execution::catalog::try_for_each(self.declarations, |declaration| {
             entries.push(crate::execution::catalog::Node::Leaf(declaration.operation));
@@ -186,31 +190,44 @@ impl Catalog {
         super::Declarations::from_tree(&entries)
     }
 
-    pub const fn of<C: OperationCatalog>(
-        name: &'static str, declarations: &'static [crate::execution::catalog::Node<WireDeclaration>],
-        callees: &'static [crate::execution::catalog::Node<&'static [WireDeclaration]>],
-    ) -> Self {
-        Self {
-            name,
-            declarations,
-            callees,
-            factory: Some(C::batch),
-        }
-    }
-
     #[doc(hidden)]
     pub fn identity(&self) -> &'static str {
         self.name
     }
 
     #[doc(hidden)]
-    pub fn batch(&self) -> Result<RegistrationBatch, ServingError> {
+    pub fn build(&self) -> Result<Catalog, ServingError> {
         let factory = self.factory.ok_or_else(|| ServingError::Unknown { operation: self.name.into() })?;
         Ok(factory())
     }
 }
 
-impl RegistrationBatch {
+impl Catalog {
+    pub fn named(mut self, name: &'static str) -> Self {
+        self.name = name;
+        self
+    }
+    pub fn build(self) -> Result<Self, ServingError> {
+        let mut names = std::collections::BTreeSet::new();
+        for operation in &self.operations {
+            if !operation.builtin {
+                operation.definition.validate().map_err(ServingError::Declaration)?;
+            }
+            if !names.insert(operation.definition.id.clone()) {
+                return Err(ServingError::Declaration(harmos_domain::Error::DuplicateOperation {
+                    id: operation.definition.id.to_string(),
+                }));
+            }
+        }
+        Ok(self)
+    }
+    pub fn contracts(&self) -> Result<Vec<Contract>, super::ContractError> {
+        self.operations.iter().map(OperationFactory::contract).collect()
+    }
+    pub fn definitions(&self) -> Result<Vec<OperationDefinition>, harmos_domain::Error> {
+        Ok(self.operations.iter().map(|operation| operation.definition.clone()).collect())
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -225,7 +242,7 @@ impl RegistrationBatch {
     }
 
     pub fn extend(mut self, catalog: Catalog) -> Result<Self, ServingError> {
-        let batch = catalog.batch()?;
+        let batch = catalog.build()?;
         self.operations.extend(batch.operations);
         self.services.extend(batch.services);
         Ok(self)

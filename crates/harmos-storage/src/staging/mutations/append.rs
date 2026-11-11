@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.staging.mutations.append.append_file_once", level = "debug", skip_all)]
     pub async fn append_file_once(
         &self, mutation: &MutationId, token: &FileSession, offset: u64, bytes: impl Into<crate::FileChunk>,

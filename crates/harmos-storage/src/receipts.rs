@@ -331,7 +331,7 @@ impl Receipts {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.receipts.recover_receipts", level = "debug", skip_all)]
     pub(super) async fn recover_receipts(&self) -> Result<()> {
         if !self.inner.primary.supports_mutation_receipts() {

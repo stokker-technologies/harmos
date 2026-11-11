@@ -25,7 +25,7 @@ local commit and focused proof for each complete macro family.
 ## 3. Operations and Messages
 
 - [x] 3.1 Replace `operation` with a request derive and an operation value, moving the declared-call and declared-resource checks to run time; migrate live `domain_operation`/`runtime_operation` aliases and consumers before removing their exports and generators.
-- [ ] 3.2 Replace the typed `catalog` enums with catalog values, giving storage and projections checked handles; migrate live `domain_catalog`/`runtime_catalog` aliases and consumers before removing their exports and generators.
+- [x] 3.2 Replace the typed `catalog` enums with catalog values, giving storage and projections checked handles; migrate live `domain_catalog`/`runtime_catalog` aliases and consumers before removing their exports and generators.
 - [ ] 3.3 Replace `records` with typed entries in an owned registry.
 - [ ] 3.4 Turn `message` into a derive.
 

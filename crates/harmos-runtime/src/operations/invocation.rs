@@ -535,7 +535,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch = harmos_operations::execution::__private::RegistrationBatch::new()
+        let batch = harmos_operations::execution::__private::Catalog::new()
             .entry(retry_parent_operation().expect("representable operation"))
             .entry(retry_child_operation().expect("representable operation"))
             .entry(uncertain_operation().expect("representable operation"));
@@ -605,7 +605,7 @@ mod tests {
         .unwrap();
         runtime
             .register_batch(
-                harmos_operations::execution::__private::RegistrationBatch::new()
+                harmos_operations::execution::__private::Catalog::new()
                     .entry(deadline_operation().expect("representable operation"))
                     .lane(crate::operations::Lane::default()),
             )
@@ -735,7 +735,7 @@ mod tests {
         runtime.operations.set_attempt_clock(AttemptClock::new(move || *clock.now.lock().unwrap())).unwrap();
         runtime
             .register_batch(
-                harmos_operations::execution::__private::RegistrationBatch::new()
+                harmos_operations::execution::__private::Catalog::new()
                     .entry(timed_attempt_operation().expect("representable operation"))
                     .lane(crate::operations::Lane::default()),
             )
@@ -805,7 +805,7 @@ mod tests {
             let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
             runtime
                 .register_batch(
-                    harmos_operations::execution::__private::RegistrationBatch::new()
+                    harmos_operations::execution::__private::Catalog::new()
                         .entry(deadline_operation().expect("representable operation"))
                         .lane(crate::operations::Lane::default()),
                 )
@@ -899,7 +899,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch = harmos_operations::execution::__private::RegistrationBatch::new()
+        let batch = harmos_operations::execution::__private::Catalog::new()
             .entry(wait_parent_operation().expect("representable operation"))
             .entry(wait_child_operation().expect("representable operation"));
         runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
@@ -920,7 +920,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch = harmos_operations::execution::__private::RegistrationBatch::new()
+        let batch = harmos_operations::execution::__private::Catalog::new()
             .entry(retry_parent_operation().expect("representable operation"))
             .entry(retry_child_operation().expect("representable operation"));
         runtime.register_batch(batch.lane(crate::operations::Lane::new("Serial", crate::operations::Capacity::serial()))).await.unwrap();
@@ -938,11 +938,9 @@ mod tests {
     #[tokio::test]
     async fn declared_calls_verify_activation_and_run_with_resources() {
         let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
-        let missing =
-            harmos_operations::execution::__private::RegistrationBatch::new().entry(parent_operation().expect("representable operation"));
+        let missing = harmos_operations::execution::__private::Catalog::new().entry(parent_operation().expect("representable operation"));
         assert!(runtime.register_batch(missing.lane(crate::operations::Lane::default())).await.is_err());
-        let missing =
-            harmos_operations::execution::__private::RegistrationBatch::new().entry(leaf_operation().expect("representable operation"));
+        let missing = harmos_operations::execution::__private::Catalog::new().entry(leaf_operation().expect("representable operation"));
         assert!(runtime.register_batch(missing.lane(crate::operations::Lane::default())).await.is_err());
         runtime.shutdown().await.unwrap();
         let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
@@ -950,7 +948,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch = harmos_operations::execution::__private::RegistrationBatch::new()
+        let batch = harmos_operations::execution::__private::Catalog::new()
             .entry(parent_operation().expect("representable operation"))
             .entry(leaf_operation().expect("representable operation"));
         runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
@@ -990,7 +988,7 @@ mod tests {
         .await
         .unwrap();
 
-        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new()
+        let mut batch = harmos_operations::execution::__private::Catalog::new()
             .carrier::<Leaf, Carrier>(LEAF_OPERATION)
             .expect("representable carrier");
         let factory = batch.operations.pop().unwrap();

@@ -74,7 +74,7 @@ enum Step {
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.file_follow.follow_file", level = "debug", skip_all)]
     pub async fn follow_file(&self, request: FileFollow) -> Result<FileFollower> {
         self.open_follower(request).await

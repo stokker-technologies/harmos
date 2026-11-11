@@ -36,7 +36,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C: ObjectCatalog> Data<C> {
+impl Data {
     #[allow(dead_code, reason = "Shared fixture also compiles in runtime stories without native snapshot reads.")]
     pub async fn snapshots_released(&self) {
         loop {

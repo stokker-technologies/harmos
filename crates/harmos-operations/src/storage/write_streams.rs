@@ -14,7 +14,7 @@ use crate::execution::operations::{
     ExecutionContext, Grpc, ProtobufInput, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility,
 };
 use harmos_domain::operations::FailureKind;
-use harmos_storage::{ErasedCatalog, StorageManager};
+use harmos_storage::StorageManager;
 
 /* === Structs === */
 
@@ -30,10 +30,10 @@ impl ProtobufOperation for WriteStreams {
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.storage.v1", "Storage", "WriteStreams"));
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager<ErasedCatalog>>(), Resource::of::<GrantAccess>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, endpoints: &Self::Endpoints) -> Result<Self::Response, ServingError> {
-        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
         let grants = context.resource::<GrantAccess>().map_err(|_| ServingError::Catalog)?;
         let result: crate::Result<harmos_protocol::storage::WriteCompletion> = async {
             let scope = request.scope.map(harmos_domain::Identifier::new).transpose().map_err(harmos_domain::Error::from)?;

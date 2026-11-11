@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.staging.mutations.create.create_file_once", level = "debug", skip_all)]
     pub async fn create_file_once(&self, mutation: &MutationId, metadata: &FileMetadata) -> Result<FileProducer> {
         let mut hash = Sha256::new();

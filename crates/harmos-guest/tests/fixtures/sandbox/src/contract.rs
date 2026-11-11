@@ -153,7 +153,7 @@ static OPERATIONS_CATALOG_CALLEES: [harmos_guest::catalog::Node<&'static [harmos
     harmos_guest::catalog::Node::Leaf(FINISH_OPERATION_OPERATION.callees()),
 ];
 
-pub const OPERATIONS_CATALOG: harmos_guest::operations::Catalog = harmos_guest::operations::Catalog::new(
+pub const OPERATIONS_CATALOG: harmos_guest::operations::CatalogDescription = harmos_guest::operations::CatalogDescription::new(
     concat!(module_path!(), "::Operations"),
     &OPERATIONS_CATALOG_DECLARATIONS,
     &OPERATIONS_CATALOG_CALLEES,
@@ -187,10 +187,9 @@ use registered_catalogs::OPERATIONS_CATALOG_FACTORY;
 #[cfg(target_arch = "wasm32")]
 mod registered_catalogs {
     use super::*;
-    pub(super) const OPERATIONS_CATALOG_FACTORY: Option<fn() -> harmos_guest::__private::RegistrationBatch> =
-        Some(operations_catalog_batch);
-    fn operations_catalog_batch() -> harmos_guest::__private::RegistrationBatch {
-        let mut batch = harmos_guest::__private::RegistrationBatch::new();
+    pub(super) const OPERATIONS_CATALOG_FACTORY: Option<fn() -> harmos_guest::__private::Catalog> = Some(operations_catalog_batch);
+    fn operations_catalog_batch() -> harmos_guest::__private::Catalog {
+        let mut batch = harmos_guest::__private::Catalog::new();
         batch = batch.entry(echo_operation_operation().expect("representable operation"));
         batch = batch.entry(decline_operation_operation().expect("representable operation"));
         batch = batch.entry(spin_operation_operation().expect("representable operation"));
@@ -205,5 +204,5 @@ mod registered_catalogs {
 
 #[cfg(not(target_arch = "wasm32"))]
 mod declared_catalogs {
-    pub(super) const OPERATIONS_CATALOG_FACTORY: Option<fn() -> harmos_guest::__private::RegistrationBatch> = None;
+    pub(super) const OPERATIONS_CATALOG_FACTORY: Option<fn() -> harmos_guest::__private::Catalog> = None;
 }

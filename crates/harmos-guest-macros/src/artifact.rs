@@ -288,7 +288,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     let inventory = quote!(#harmos::__private::PluginInventory);
     let declarations = quote!(#harmos::__private::PluginDeclared);
     let entry = quote!(#inventory::publications::Entry);
-    let catalog = quote!(#harmos::operations::Catalog);
+    let catalog = quote!(#harmos::operations::CatalogDescription);
     let declaration_node = quote!(#harmos::catalog::Node<#harmos::operations::WireDeclaration>);
     let callee_node = quote!(#harmos::catalog::Node<&'static [#harmos::operations::WireDeclaration]>);
     let catalog_provides = quote! {

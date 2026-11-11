@@ -72,12 +72,13 @@ static TRANSFERS_CATALOG_CALLEES: [harmos_operations::catalog::Node<&'static [ha
     harmos_operations::catalog::Node::Leaf(HASH_OPERATION.callees()),
 ];
 
-pub const TRANSFERS_CATALOG: harmos_operations::execution::operations::Catalog = harmos_operations::execution::operations::Catalog::new(
-    concat!(module_path!(), "::Transfers"),
-    &TRANSFERS_CATALOG_DECLARATIONS,
-    &TRANSFERS_CATALOG_CALLEES,
-    TRANSFERS_CATALOG_FACTORY,
-);
+pub const TRANSFERS_CATALOG: harmos_operations::execution::operations::CatalogDescription =
+    harmos_operations::execution::operations::CatalogDescription::new(
+        concat!(module_path!(), "::Transfers"),
+        &TRANSFERS_CATALOG_DECLARATIONS,
+        &TRANSFERS_CATALOG_CALLEES,
+        TRANSFERS_CATALOG_FACTORY,
+    );
 
 static GUEST_CATALOG_DECLARATIONS: [harmos_operations::catalog::Node<harmos_operations::operations::WireDeclaration>; 2] = [
     harmos_operations::catalog::Node::Nested(crate::guest::OPERATIONS_CATALOG.declarations),
@@ -88,12 +89,13 @@ static GUEST_CATALOG_CALLEES: [harmos_operations::catalog::Node<&'static [harmos
     harmos_operations::catalog::Node::Nested(TRANSFERS_CATALOG.callees),
 ];
 
-pub const GUEST_CATALOG: harmos_operations::execution::operations::Catalog = harmos_operations::execution::operations::Catalog::new(
-    concat!(module_path!(), "::Guest"),
-    &GUEST_CATALOG_DECLARATIONS,
-    &GUEST_CATALOG_CALLEES,
-    GUEST_CATALOG_FACTORY,
-);
+pub const GUEST_CATALOG: harmos_operations::execution::operations::CatalogDescription =
+    harmos_operations::execution::operations::CatalogDescription::new(
+        concat!(module_path!(), "::Guest"),
+        &GUEST_CATALOG_DECLARATIONS,
+        &GUEST_CATALOG_CALLEES,
+        GUEST_CATALOG_FACTORY,
+    );
 
 /* === Traits === */
 
@@ -117,10 +119,10 @@ use registered_catalogs::TRANSFERS_CATALOG_FACTORY;
 #[cfg(feature = "runtime")]
 mod registered_catalogs {
     use super::*;
-    pub(super) const TRANSFERS_CATALOG_FACTORY: Option<fn() -> harmos_operations::execution::__private::RegistrationBatch> =
+    pub(super) const TRANSFERS_CATALOG_FACTORY: Option<fn() -> harmos_operations::execution::__private::Catalog> =
         Some(transfers_catalog_batch);
-    fn transfers_catalog_batch() -> harmos_operations::execution::__private::RegistrationBatch {
-        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new();
+    fn transfers_catalog_batch() -> harmos_operations::execution::__private::Catalog {
+        let mut batch = harmos_operations::execution::__private::Catalog::new();
         batch = batch.entry(upload_operation().expect("representable operation"));
         batch = batch.entry(download_operation().expect("representable operation"));
         batch = batch.entry(put_operation().expect("representable operation"));
@@ -128,18 +130,17 @@ mod registered_catalogs {
         batch = batch.entry(hash_operation().expect("representable operation"));
         batch
     }
-    pub(super) const GUEST_CATALOG_FACTORY: Option<fn() -> harmos_operations::execution::__private::RegistrationBatch> =
-        Some(guest_catalog_batch);
-    fn guest_catalog_batch() -> harmos_operations::execution::__private::RegistrationBatch {
-        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new();
-        batch = batch.extend(crate::guest::OPERATIONS_CATALOG).expect("bound nested catalog");
-        batch = batch.extend(TRANSFERS_CATALOG).expect("bound nested catalog");
+    pub(super) const GUEST_CATALOG_FACTORY: Option<fn() -> harmos_operations::execution::__private::Catalog> = Some(guest_catalog_batch);
+    fn guest_catalog_batch() -> harmos_operations::execution::__private::Catalog {
+        let mut batch = harmos_operations::execution::__private::Catalog::new();
+        batch = batch.extend(crate::guest::OPERATIONS_CATALOG.build().expect("registered guest catalog")).expect("bound nested catalog");
+        batch = batch.extend(TRANSFERS_CATALOG.build().expect("registered guest catalog")).expect("bound nested catalog");
         batch
     }
 }
 
 #[cfg(not(feature = "runtime"))]
 mod declared_catalogs {
-    pub(super) const TRANSFERS_CATALOG_FACTORY: Option<fn() -> harmos_operations::execution::__private::RegistrationBatch> = None;
-    pub(super) const GUEST_CATALOG_FACTORY: Option<fn() -> harmos_operations::execution::__private::RegistrationBatch> = None;
+    pub(super) const TRANSFERS_CATALOG_FACTORY: Option<fn() -> harmos_operations::execution::__private::Catalog> = None;
+    pub(super) const GUEST_CATALOG_FACTORY: Option<fn() -> harmos_operations::execution::__private::Catalog> = None;
 }

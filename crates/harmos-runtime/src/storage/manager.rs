@@ -11,7 +11,6 @@
 
 /* === Re-Exports === */
 
-pub use harmos_storage::ErasedCatalog;
 pub(crate) use harmos_storage::encoded_size;
 
 /* === Imports === */
@@ -35,8 +34,8 @@ use crate::{Application, Error, Result};
 
 /* === Structs === */
 
-pub struct StorageManager<C = ()> {
-    engine: harmos_storage::StorageManager<C>,
+pub struct StorageManager {
+    engine: harmos_storage::StorageManager,
 }
 
 struct Worker(harmos_storage::Worker);
@@ -51,30 +50,33 @@ struct Owner {
 
 /* === Implementations === */
 
-impl<C> Clone for StorageManager<C> {
+impl Clone for StorageManager {
     fn clone(&self) -> Self {
         Self { engine: self.engine.clone() }
     }
 }
 
-impl<C> std::ops::Deref for StorageManager<C> {
-    type Target = harmos_storage::StorageManager<C>;
+impl std::ops::Deref for StorageManager {
+    type Target = harmos_storage::StorageManager;
     fn deref(&self) -> &Self::Target {
         &self.engine
     }
 }
 
-impl<C: super::ObjectCatalog> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(target = "harmos::storage", name = "storage.new", level = "debug", skip_all)]
     pub fn new(backends: StorageBackends, settings: StorageSettings) -> Result<Self> {
+        Self::with_catalog(super::ObjectCatalog::new(), backends, settings)
+    }
+    pub fn with_catalog(catalog: super::ObjectCatalog, backends: StorageBackends, settings: StorageSettings) -> Result<Self> {
         let execution = crate::clock::current();
         Ok(Self {
-            engine: harmos_storage::StorageManager::with_execution(backends, settings, execution)?,
+            engine: harmos_storage::StorageManager::with_catalog_execution(catalog, backends, settings, execution)?,
         })
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     pub(crate) fn claim_owner(&self, owner: Arc<()>) -> Result<()> {
         self.engine.claim_owner(owner).map_err(Into::into)
     }
@@ -87,13 +89,11 @@ impl<C> StorageManager<C> {
         self.engine.close().await.map_err(Into::into)
     }
 
-    pub(crate) fn engine_erased(&self) -> harmos_storage::StorageManager<ErasedCatalog> {
-        self.engine.erased()
+    pub(crate) fn engine(&self) -> harmos_storage::StorageManager {
+        self.engine.clone()
     }
-    pub(crate) fn erased(&self) -> StorageManager<ErasedCatalog> {
-        StorageManager { engine: self.engine.erased() }
-    }
-    pub(crate) fn same_instance<D>(&self, other: &StorageManager<D>) -> bool {
+
+    pub(crate) fn same_instance(&self, other: &StorageManager) -> bool {
         self.engine.same_instance(&other.engine)
     }
     #[tracing::instrument(target = "harmos::storage", name = "storage.start", level = "debug", skip_all)]

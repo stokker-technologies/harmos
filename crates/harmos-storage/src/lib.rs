@@ -67,11 +67,11 @@ pub use harmos_domain::model::storage::files;
 pub use harmos_domain::model::storage::{
     ByteRange, CaptureConsistency, FileBatch, FileCompletion, FileEvent, FileHash, FileMetadata, FilePhase, FileProducer, FileProgress,
     FileReference, FileSession, FileSource, FollowStart, IdentityKind, IdentitySelection, MutationId, MutationWindow, ObjectCatalog,
-    ObjectDefinition, ObjectDefinitions, ObjectEntry, ObjectKey, ObjectPoint, ObjectReceipt, ObjectRetention, ObjectRevision, ObjectValue,
+    ObjectDefinition, ObjectEntry, ObjectHandle, ObjectKey, ObjectPoint, ObjectReceipt, ObjectRetention, ObjectRevision, ObjectValue,
     ObjectVersion, ObjectVersionToken, PayloadEncoding, RecordInput, RecordWrite, RecoveryPosition, SchemaKey, StagedFile, StorageCursor,
     StorageInfo, StoreHistory, StoredIdentity, StoredObject, StoredRecord, StoredRow, StreamInput, StreamWrite,
 };
-pub use manager::{ErasedCatalog, StorageManager, StorageMetrics, WorkerOwner, encoded_size};
+pub use manager::{StorageManager, StorageMetrics, WorkerOwner, encoded_size};
 pub use objects::ObjectGroup;
 pub use opened_capture::OpenedCapture;
 pub use query::{ObjectRead, ObjectReader, Query, QueryReader, RecordRead, RecordReader, StreamRead, StreamReader};

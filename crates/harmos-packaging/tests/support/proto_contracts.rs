@@ -175,20 +175,21 @@ static ROUTES_CATALOG_CALLEES: [harmos_domain::catalog::Node<&'static [harmos_do
     harmos_domain::catalog::Node::Leaf(DOWNLOAD_OPERATION_OPERATION.callees()),
 ];
 
-pub(crate) const ROUTES_CATALOG: harmos_operations::execution::operations::Catalog = harmos_operations::execution::operations::Catalog::new(
-    concat!(module_path!(), "::Routes"),
-    &ROUTES_CATALOG_DECLARATIONS,
-    &ROUTES_CATALOG_CALLEES,
-    None,
-);
+pub(crate) const ROUTES_CATALOG: harmos_operations::execution::operations::CatalogDescription =
+    harmos_operations::execution::operations::CatalogDescription::new(
+        concat!(module_path!(), "::Routes"),
+        &ROUTES_CATALOG_DECLARATIONS,
+        &ROUTES_CATALOG_CALLEES,
+        None,
+    );
 
 static PORTABLE_CATALOG_DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>; 1] =
     [harmos_domain::catalog::Node::Leaf(ANNOTATED_OPERATION_OPERATION.wire())];
 static PORTABLE_CATALOG_CALLEES: [harmos_domain::catalog::Node<&'static [harmos_domain::operations::WireDeclaration]>; 1] =
     [harmos_domain::catalog::Node::Leaf(ANNOTATED_OPERATION_OPERATION.callees())];
 
-pub(crate) const PORTABLE_CATALOG: harmos_operations::execution::operations::Catalog =
-    harmos_operations::execution::operations::Catalog::new(
+pub(crate) const PORTABLE_CATALOG: harmos_operations::execution::operations::CatalogDescription =
+    harmos_operations::execution::operations::CatalogDescription::new(
         concat!(module_path!(), "::Portable"),
         &PORTABLE_CATALOG_DECLARATIONS,
         &PORTABLE_CATALOG_CALLEES,
@@ -207,12 +208,13 @@ static BOXED_CATALOG_DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::
 static BOXED_CATALOG_CALLEES: [harmos_domain::catalog::Node<&'static [harmos_domain::operations::WireDeclaration]>; 1] =
     [harmos_domain::catalog::Node::Leaf(ENVELOPE_OPERATION_OPERATION.callees())];
 
-pub(crate) const BOXED_CATALOG: harmos_operations::execution::operations::Catalog = harmos_operations::execution::operations::Catalog::new(
-    concat!(module_path!(), "::Boxed"),
-    &BOXED_CATALOG_DECLARATIONS,
-    &BOXED_CATALOG_CALLEES,
-    None,
-);
+pub(crate) const BOXED_CATALOG: harmos_operations::execution::operations::CatalogDescription =
+    harmos_operations::execution::operations::CatalogDescription::new(
+        concat!(module_path!(), "::Boxed"),
+        &BOXED_CATALOG_DECLARATIONS,
+        &BOXED_CATALOG_CALLEES,
+        None,
+    );
 
 /* === Traits === */
 

@@ -56,7 +56,7 @@ impl Drop for CheckpointSource {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.files.capture", level = "debug", skip_all)]
     pub fn capture_files(&self, through: Option<&StorageCursor>) -> Result<Option<FileSave>> {
         let mut state = self.inner.state.lock().unwrap();

@@ -16,7 +16,6 @@ mod lifecycle;
 /* === Re-Exports === */
 
 pub use boot::{BootstrapCleanup, BootstrapStatus};
-pub use harmos_macros::runtime_catalog as catalog;
 pub use harmos_operations::execution::StartupError;
 
 /* === Imports === */
@@ -89,7 +88,7 @@ pub struct Runtime<A: Application> {
 
     stopping: Mutex<Stopping<A>>,
     closing: AtomicBool,
-    storage: Arc<OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
+    storage: Arc<OnceLock<crate::storage::StorageManager>>,
     journal_handles: Weak<()>,
     participants: Participants,
     notices: watch::Sender<Option<String>>,
@@ -107,7 +106,7 @@ pub struct Handle<A: Application> {
     #[cfg(feature = "grpc")]
     grpc: crate::grpc::GrpcManager,
 
-    storage: Arc<OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
+    storage: Arc<OnceLock<crate::storage::StorageManager>>,
 }
 
 #[doc(hidden)]
@@ -124,7 +123,7 @@ pub struct Builder<A: Application> {
     definitions: Vec<Definition>,
     attachments: Attachments<A>,
     managed_storage: Option<crate::config::ManagedStorageSettings>,
-    startup_storage: Option<crate::storage::StorageManager<crate::storage::ErasedCatalog>>,
+    startup_storage: Option<crate::storage::StorageManager>,
     record_projection: Option<Box<dyn crate::storage::RecordProjection>>,
     reconciliation: Option<boot::Reconciliation<A>>,
     initializers: Vec<boot::Initializer<A>>,
@@ -474,19 +473,13 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub(crate) fn operations<C: harmos_operations::execution::operations::OperationCatalog>(
-        &mut self, lane: crate::operations::Lane,
-    ) -> &mut Self {
-        self.catalog(C::CATALOG, lane)
-    }
-
     pub(crate) fn catalog(&mut self, catalog: crate::operations::Catalog, lane: crate::operations::Lane) -> &mut Self {
         use crate::operations::RegistrationExt;
-        if !self.operation_catalogs.insert(catalog.name) {
+        if !catalog.name.is_empty() && !self.operation_catalogs.insert(catalog.name) {
             self.configuration_errors.push(StartupError::DuplicateCatalog { name: catalog.name });
             return self;
         }
-        match catalog.batch() {
+        match catalog.build() {
             Ok(batch) => self.with_registration(batch.lane(lane)),
             Err(source) => {
                 self.configuration_errors.push(StartupError::Binding { source: Box::new(source) });
@@ -653,9 +646,9 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn storage<C>(&mut self, storage: &crate::storage::StorageManager<C>) -> &mut Self {
-        self.resource(storage.engine_erased());
-        self.startup_storage = Some(storage.erased());
+    pub fn storage(&mut self, storage: &crate::storage::StorageManager) -> &mut Self {
+        self.resource(storage.engine());
+        self.startup_storage = Some(storage.clone());
         self
     }
 
@@ -680,7 +673,7 @@ impl<A: Application> Builder<A> {
 
     pub fn reconcile<F, Fut>(&mut self, reconcile: F) -> &mut Self
     where
-        F: FnOnce(StateManager<A>, crate::storage::StorageManager<crate::storage::ErasedCatalog>) -> Fut + Send + 'static,
+        F: FnOnce(StateManager<A>, crate::storage::StorageManager) -> Fut + Send + 'static,
         Fut: Future<Output = crate::Result<()>> + Send + 'static,
     {
         self.reconciliation = Some(Box::new(move |journal, storage| Box::pin(reconcile(journal, storage))));
@@ -748,7 +741,7 @@ impl<A: Application> Builder<A> {
     }
 
     async fn boot(
-        mut self, storage: Option<&crate::storage::StorageManager<crate::storage::ErasedCatalog>>, cleanup: BootstrapCleanup,
+        mut self, storage: Option<&crate::storage::StorageManager>, cleanup: BootstrapCleanup,
     ) -> Result<Runtime<A>, Incompatible> {
         let application = {
             let _clock = crate::clock::enter(self.clock.clone());

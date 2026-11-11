@@ -47,13 +47,13 @@ macro_rules! inert_plugin {
         }
         #[harmos_runtime::guest(id = $id, description = "Inert Inventory Fixture", requires = (), harmos_path = crate::operations::wire::artifact::facade::__harmos)]
         impl harmos_runtime::guest::Plugin for $name {
-            const CATALOGS: &'static [harmos_runtime::operations::Catalog] = $catalogs;
+            const CATALOGS: &'static [harmos_runtime::operations::CatalogDescription] = $catalogs;
         }
     };
 }
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(Guest, "selected_guest", harmos_runtime::guest::kit::Context, &[OPERATIONS_CATALOG]);
+inert_plugin!(Guest, "selected_guest", harmos_runtime::guest::kit::Context, &[OPERATIONS_CATALOG_DESCRIPTION]);
 
 #[cfg(feature = "plugin-guest")]
 inert_plugin!(EmptyGuest, "empty_guest", harmos_runtime::guest::kit::Context, &[]);
@@ -133,52 +133,64 @@ static LEAVES_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtim
 static LEAVES_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
     [harmos_runtime::catalog::Node::Leaf(SELECTED_DECLARATION_OPERATION.callees())];
 
-const LEAVES_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
+const LEAVES_CATALOG_DESCRIPTION: harmos_runtime::operations::CatalogDescription = harmos_runtime::operations::CatalogDescription::new(
     concat!(module_path!(), "::Leaves"),
     &LEAVES_CATALOG_DECLARATIONS,
     &LEAVES_CATALOG_CALLEES,
     Some(leaves_catalog_batch),
 );
 
-fn leaves_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn leaves_catalog() -> harmos_runtime::operations::Catalog {
+    leaves_catalog_batch().named(concat!(module_path!(), "::Leaves"))
+}
+
+fn leaves_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(selected_declaration_operation().expect("representable operation"));
     batch
 }
 
 static NESTED_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-    [harmos_runtime::catalog::Node::Nested(LEAVES_CATALOG.declarations)];
+    [harmos_runtime::catalog::Node::Nested(LEAVES_CATALOG_DESCRIPTION.declarations)];
 static NESTED_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-    [harmos_runtime::catalog::Node::Nested(LEAVES_CATALOG.callees)];
+    [harmos_runtime::catalog::Node::Nested(LEAVES_CATALOG_DESCRIPTION.callees)];
 
-const NESTED_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
+const NESTED_CATALOG_DESCRIPTION: harmos_runtime::operations::CatalogDescription = harmos_runtime::operations::CatalogDescription::new(
     concat!(module_path!(), "::Nested"),
     &NESTED_CATALOG_DECLARATIONS,
     &NESTED_CATALOG_CALLEES,
     Some(nested_catalog_batch),
 );
 
-fn nested_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
-    batch = batch.extend(LEAVES_CATALOG).expect("bound nested catalog");
+fn nested_catalog() -> harmos_runtime::operations::Catalog {
+    nested_catalog_batch().named(concat!(module_path!(), "::Nested"))
+}
+
+fn nested_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.extend(leaves_catalog()).expect("bound nested catalog");
     batch
 }
 
 static OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-    [harmos_runtime::catalog::Node::Nested(NESTED_CATALOG.declarations)];
+    [harmos_runtime::catalog::Node::Nested(NESTED_CATALOG_DESCRIPTION.declarations)];
 static OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-    [harmos_runtime::catalog::Node::Nested(NESTED_CATALOG.callees)];
+    [harmos_runtime::catalog::Node::Nested(NESTED_CATALOG_DESCRIPTION.callees)];
 
-const OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
+const OPERATIONS_CATALOG_DESCRIPTION: harmos_runtime::operations::CatalogDescription = harmos_runtime::operations::CatalogDescription::new(
     concat!(module_path!(), "::Operations"),
     &OPERATIONS_CATALOG_DECLARATIONS,
     &OPERATIONS_CATALOG_CALLEES,
     Some(operations_catalog_batch),
 );
 
-fn operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
-    batch = batch.extend(NESTED_CATALOG).expect("bound nested catalog");
+fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
+}
+
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.extend(nested_catalog()).expect("bound nested catalog");
     batch
 }
 
@@ -252,7 +264,7 @@ fn guest_inventory_contains() {
 
     let bytes = <Guest as Declared>::markers().unwrap().concat();
     let inspected = Declaration::inspect(&bytes, Facility::Guest).unwrap();
-    let expected = OPERATIONS_CATALOG.definitions().unwrap();
+    let expected = operations_catalog().definitions().unwrap();
     assert_eq!(inspected.operations, expected.clone());
     assert_eq!(harmos_runtime::operations::Contracts::from_tree(Guest::PROVIDES).unwrap()[0].operation().clone(), expected[0]);
     assert_ne!(expected[0].id.as_str(), UNSELECTED_DECLARATION_OPERATION.entry().id);

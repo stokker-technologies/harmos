@@ -131,39 +131,23 @@ enum Phase {
     Cleanup,
 }
 
-static OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 2] =
-    [harmos_runtime::catalog::Node::Leaf(READ_OPERATION.wire()), harmos_runtime::catalog::Node::Leaf(PENDING_OPERATION.wire())];
-static OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 2] =
-    [harmos_runtime::catalog::Node::Leaf(READ_OPERATION.callees()), harmos_runtime::catalog::Node::Leaf(PENDING_OPERATION.callees())];
+fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
+}
 
-const OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::Operations"),
-    &OPERATIONS_CATALOG_DECLARATIONS,
-    &OPERATIONS_CATALOG_CALLEES,
-    Some(operations_catalog_batch),
-);
-
-fn operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(read_operation().expect("representable operation"));
     batch = batch.entry(pending_operation().expect("representable operation"));
     batch
 }
 
-static MISSING_OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(MISSING_OPERATION.wire())];
-static MISSING_OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(MISSING_OPERATION.callees())];
+fn missing_operations_catalog() -> harmos_runtime::operations::Catalog {
+    missing_operations_catalog_batch().named(concat!(module_path!(), "::MissingOperations"))
+}
 
-const MISSING_OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::MissingOperations"),
-    &MISSING_OPERATIONS_CATALOG_DECLARATIONS,
-    &MISSING_OPERATIONS_CATALOG_CALLEES,
-    Some(missing_operations_catalog_batch),
-);
-
-fn missing_operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn missing_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(missing_operation().expect("representable operation"));
     batch
 }
@@ -220,10 +204,10 @@ impl Lifecycle for App {
         setup.resource::<Counter>(config.counter.clone());
         if config.invalid {
             setup.resource::<Counter>(config.counter.clone());
-            setup.catalog(MISSING_OPERATIONS_CATALOG, Lane::new("lifecycle.unknown", Capacity::serial()));
-            setup.catalog(MISSING_OPERATIONS_CATALOG, Lane::new("lifecycle.open", Capacity::serial()));
+            setup.catalog(missing_operations_catalog(), Lane::new("lifecycle.unknown", Capacity::serial()));
+            setup.catalog(missing_operations_catalog(), Lane::new("lifecycle.open", Capacity::serial()));
         } else {
-            setup.catalog(OPERATIONS_CATALOG, Lane::new("lifecycle.open", Capacity::serial()));
+            setup.catalog(operations_catalog(), Lane::new("lifecycle.open", Capacity::serial()));
         }
         Ok(Self(config))
     }

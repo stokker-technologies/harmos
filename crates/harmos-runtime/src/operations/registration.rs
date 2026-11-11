@@ -45,7 +45,7 @@ type BindCatalog = dyn Fn(&Manager) -> Result<()> + Send + Sync;
 
 #[derive(Clone)]
 pub struct Registration {
-    pub(crate) batch: harmos_operations::execution::__private::RegistrationBatch,
+    pub(crate) batch: harmos_operations::execution::__private::Catalog,
     pub(crate) lane: Option<Lane>,
     pub(crate) defaults: std::collections::BTreeMap<&'static str, Lane>,
 }
@@ -92,14 +92,15 @@ impl Registration {
         self
     }
     pub fn catalog(catalog: crate::operations::Catalog, lane: Lane) -> Result<Self> {
-        catalog.batch().map(|batch| batch.lane(lane)).map_err(|source| crate::Error::OperationFailed {
-            operation: catalog.name.into(),
+        let name = catalog.name;
+        catalog.build().map(|batch| batch.lane(lane)).map_err(|source| crate::Error::OperationFailed {
+            operation: name.into(),
             source: Arc::new(source),
         })
     }
 
     pub fn new(lane: Lane) -> Self {
-        harmos_operations::execution::__private::RegistrationBatch::new().lane(lane)
+        harmos_operations::execution::__private::Catalog::new().lane(lane)
     }
 
     #[cfg(feature = "grpc")]
@@ -124,7 +125,7 @@ impl Registration {
     }
 }
 
-impl RegistrationExt for harmos_operations::execution::__private::RegistrationBatch {
+impl RegistrationExt for harmos_operations::execution::__private::Catalog {
     fn lane(self, lane: Lane) -> Registration {
         Registration {
             batch: self,
@@ -224,9 +225,6 @@ impl Bindings<'_> {
     pub fn catalog(&mut self, catalog: crate::operations::Catalog, lane: Lane) -> Result<()> {
         self.register(Registration::catalog(catalog, lane)?)
     }
-    pub fn operations<C: harmos_operations::execution::operations::OperationCatalog>(&mut self, lane: Lane) -> Result<()> {
-        self.register(C::batch().lane(lane))
-    }
 
     pub fn register(&mut self, registration: Registration) -> Result<()> {
         let entries = self.operations.native_entries(registration, self.owner, self.scope)?;
@@ -253,13 +251,12 @@ impl Bindings<'_> {
         let wire = (contract.input().is_none() && contract.output().is_none())
             .then_some(crate::operations::wire::dispatch_native as crate::operations::wire::Dispatch);
         dependencies.insert(Arc::new(specification))?;
-        let mut batch =
-            harmos_operations::execution::__private::RegistrationBatch::new().carrier::<D, O>(specification).map_err(|source| {
-                Error::OperationFailed {
-                    operation: definition.id.to_string(),
-                    source: Arc::new(source),
-                }
-            })?;
+        let mut batch = harmos_operations::execution::__private::Catalog::new().carrier::<D, O>(specification).map_err(|source| {
+            Error::OperationFailed {
+                operation: definition.id.to_string(),
+                source: Arc::new(source),
+            }
+        })?;
         let factory = batch.operations.pop().expect("one native implementation");
         let mut entry = self.operations.binding_erased(self.owner, lane, Arc::new(factory), definition, wire, self.scope.cloned())?;
         Arc::get_mut(&mut entry).expect("new native entry").carrier = dependencies;

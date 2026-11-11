@@ -518,34 +518,39 @@ mod guest_plugins {
     static LEAVES_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
         [harmos_runtime::catalog::Node::Leaf(ECHO_OPERATION.callees())];
 
-    const LEAVES_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
+    const LEAVES_CATALOG_DESCRIPTION: harmos_runtime::operations::CatalogDescription = harmos_runtime::operations::CatalogDescription::new(
         concat!(module_path!(), "::Leaves"),
         &LEAVES_CATALOG_DECLARATIONS,
         &LEAVES_CATALOG_CALLEES,
         Some(leaves_catalog_batch),
     );
 
-    fn leaves_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-        let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+    fn leaves_catalog() -> harmos_runtime::operations::Catalog {
+        leaves_catalog_batch().named(concat!(module_path!(), "::Leaves"))
+    }
+
+    fn leaves_catalog_batch() -> harmos_runtime::__private::Catalog {
+        let mut batch = harmos_runtime::__private::Catalog::new();
         batch = batch.entry(echo_operation().expect("representable operation"));
         batch
     }
 
     static SELECTED_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-        [harmos_runtime::catalog::Node::Nested(LEAVES_CATALOG.declarations)];
+        [harmos_runtime::catalog::Node::Nested(LEAVES_CATALOG_DESCRIPTION.declarations)];
     static SELECTED_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-        [harmos_runtime::catalog::Node::Nested(LEAVES_CATALOG.callees)];
+        [harmos_runtime::catalog::Node::Nested(LEAVES_CATALOG_DESCRIPTION.callees)];
 
-    const SELECTED_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-        concat!(module_path!(), "::Selected"),
-        &SELECTED_CATALOG_DECLARATIONS,
-        &SELECTED_CATALOG_CALLEES,
-        Some(selected_catalog_batch),
-    );
+    const SELECTED_CATALOG_DESCRIPTION: harmos_runtime::operations::CatalogDescription =
+        harmos_runtime::operations::CatalogDescription::new(
+            concat!(module_path!(), "::Selected"),
+            &SELECTED_CATALOG_DECLARATIONS,
+            &SELECTED_CATALOG_CALLEES,
+            Some(selected_catalog_batch),
+        );
 
-    fn selected_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-        let mut batch = harmos_runtime::__private::RegistrationBatch::new();
-        batch = batch.extend(LEAVES_CATALOG).expect("bound nested catalog");
+    fn selected_catalog_batch() -> harmos_runtime::__private::Catalog {
+        let mut batch = harmos_runtime::__private::Catalog::new();
+        batch = batch.extend(leaves_catalog()).expect("bound nested catalog");
         batch
     }
 
@@ -558,15 +563,16 @@ mod guest_plugins {
     static CALLBACKS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
         [harmos_runtime::catalog::Node::Leaf(ROW_CALLBACK_OPERATION.callees())];
 
-    const CALLBACKS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-        concat!(module_path!(), "::Callbacks"),
-        &CALLBACKS_CATALOG_DECLARATIONS,
-        &CALLBACKS_CATALOG_CALLEES,
-        Some(callbacks_catalog_batch),
-    );
+    const CALLBACKS_CATALOG_DESCRIPTION: harmos_runtime::operations::CatalogDescription =
+        harmos_runtime::operations::CatalogDescription::new(
+            concat!(module_path!(), "::Callbacks"),
+            &CALLBACKS_CATALOG_DECLARATIONS,
+            &CALLBACKS_CATALOG_CALLEES,
+            Some(callbacks_catalog_batch),
+        );
 
-    fn callbacks_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-        let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+    fn callbacks_catalog_batch() -> harmos_runtime::__private::Catalog {
+        let mut batch = harmos_runtime::__private::Catalog::new();
         batch = batch.entry(row_callback_operation().expect("representable operation"));
         batch
     }
@@ -613,7 +619,7 @@ mod guest_plugins {
         streams(Row)
     )]
     impl harmos_runtime::guest::Plugin for Guest {
-        const CATALOGS: &'static [harmos_runtime::Catalog] = &[SELECTED_CATALOG];
+        const CATALOGS: &'static [harmos_runtime::CatalogDescription] = &[SELECTED_CATALOG_DESCRIPTION];
     }
 
     impl harmos_runtime::Message for RowCallback {
@@ -676,7 +682,7 @@ mod guest_plugins {
 
     #[harmos_runtime::guest(id = "unified_listening_guest", requires = (), listeners = AUDIENCE)]
     impl harmos_runtime::guest::Plugin for ListeningGuest {
-        const CATALOGS: &'static [harmos_runtime::Catalog] = &[CALLBACKS_CATALOG];
+        const CATALOGS: &'static [harmos_runtime::CatalogDescription] = &[CALLBACKS_CATALOG_DESCRIPTION];
     }
 
     /* === Public Functions === */
@@ -699,7 +705,7 @@ mod guest_plugins {
         assert_eq!(declaration.description, P::DESCRIPTION);
         assert!(!declaration.config.is_empty());
         let contracts = declaration.contracts;
-        assert_eq!(contracts.provides, harmos_domain::operations::Contracts::from_tree(SELECTED_CATALOG.declarations).unwrap());
+        assert_eq!(contracts.provides, harmos_domain::operations::Contracts::from_tree(SELECTED_CATALOG_DESCRIPTION.declarations).unwrap());
         assert_eq!(contracts.requires.len(), requires);
         if requires != 0 {
             let required = contracts.requires.iter().map(|required| required.contract.clone()).collect::<Vec<_>>();

@@ -78,7 +78,7 @@ struct Failure {
 pub(crate) enum Declaration<A: Application> {
     Callback(CallbackDeclaration<A>),
     Managed {
-        storage: crate::storage::StorageManager<crate::storage::ErasedCatalog>,
+        storage: crate::storage::StorageManager,
         receipts: HashMap<RequestKey, Receipt>,
         projection: Option<crate::storage::capture::Projection>,
         snapshots: Option<crate::state::snapshot::Snapshots<A>>,
@@ -88,7 +88,7 @@ pub(crate) enum Declaration<A: Application> {
 pub(crate) enum Capture<A: Application> {
     Callback(Callback<A>),
     Managed {
-        storage: crate::storage::StorageManager<crate::storage::ErasedCatalog>,
+        storage: crate::storage::StorageManager,
         receipts: HashMap<RequestKey, Receipt>,
         projection: Option<crate::storage::capture::Projection>,
         snapshots: Option<crate::state::snapshot::Snapshots<A>>,

@@ -209,8 +209,7 @@ pub(crate) mod tests {
         })
         .await
         .unwrap();
-        let batch =
-            harmos_operations::execution::__private::RegistrationBatch::new().entry(wait_operation().expect("representable operation"));
+        let batch = harmos_operations::execution::__private::Catalog::new().entry(wait_operation().expect("representable operation"));
         runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
 
         // Record Evidence Before And After A Host Wait

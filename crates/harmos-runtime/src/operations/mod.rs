@@ -73,8 +73,8 @@ pub use grpc::GrpcMethod;
 pub use harmos_operations::execution::__private::{ErasedResponse, PreparedNative, ResourceSet, ServiceFuture};
 pub use harmos_operations::execution::operations::Invocation;
 pub use harmos_operations::execution::operations::{
-    Backoff, CallValue, Callees, Catalog, Codec, ContextError, ContextValue, Contract, ContractError, Contracts, Declarations, Direction,
-    Entry, FailureKind, Grpc, InvocationError, Jitter, NoStream, Operation, OperationCatalog, OperationDefinition, OperationPolicy,
+    Backoff, CallValue, Callees, Catalog, CatalogDescription, Codec, ContextError, ContextValue, Contract, ContractError, Contracts,
+    Declarations, Direction, Entry, FailureKind, Grpc, InvocationError, Jitter, NoStream, Operation, OperationDefinition, OperationPolicy,
     PORTABLE_BYTES, PORTABLE_VALUES, PolicyError, ReplaySafety, RequestShape, Resource, RestartPolicy, RetryPolicy, ServingError,
     StartupIssue, StartupReport, Stream, Visibility, WireDeclaration, WireEndpoints, WireStreamLimits, WireStreams, item_types,
 };

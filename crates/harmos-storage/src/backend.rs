@@ -26,8 +26,8 @@ use std::sync::Arc;
 // Local Imports
 use super::query::{FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection};
 use super::{
-    FileCheckpoint, FileChunk, FileMetadata, FileProgress, FileReference, MutationReceipt, ObjectEntry, ObjectKey, ObjectPoint,
-    ObjectRetention, SchemaKey, StagedFile, StorageBatch, StorageCursor, StorageSchema, StoreHistory, StoredRecord, StoredRow,
+    FileCheckpoint, FileChunk, FileMetadata, FileProgress, FileReference, MutationReceipt, ObjectCatalog, ObjectEntry, ObjectKey,
+    ObjectPoint, SchemaKey, StagedFile, StorageBatch, StorageCursor, StorageSchema, StoreHistory, StoredRecord, StoredRow,
 };
 use crate::{Error, Result};
 use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
@@ -113,8 +113,7 @@ pub trait StorageBackend: Send + Sync + 'static {
     ) -> StorageFuture<'a, ()>;
 
     fn prune_objects<'a>(
-        &'a self, through: &'a StorageCursor, max_entries: NonZeroUsize,
-        retention: fn(&SchemaKey) -> harmos_domain::Result<ObjectRetention>,
+        &'a self, through: &'a StorageCursor, max_entries: NonZeroUsize, retention: &'a ObjectCatalog,
     ) -> StorageFuture<'a, bool>;
 
     // Finished File Publication

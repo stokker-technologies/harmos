@@ -179,7 +179,12 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
 #[tokio::test]
 async fn write_grants_enforced() {
     let fixture = Fixture::new(config()).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    fixture
+        .runtime
+        .operations
+        .register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let mut host = Host {
         operations: fixture.runtime.operations.clone(),
         callers: BTreeMap::new(),
@@ -243,7 +248,12 @@ async fn write_grants_enforced() {
 async fn query_grants_enforced() {
     let fixture = Fixture::new(config()).await;
     seed(&fixture, &[9_007_199_254_740_993, 9_007_199_254_740_995]).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    fixture
+        .runtime
+        .operations
+        .register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let mut host = Host {
         operations: fixture.runtime.operations.clone(),
         callers: BTreeMap::new(),

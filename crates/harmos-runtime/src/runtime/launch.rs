@@ -165,10 +165,6 @@ impl<A: Application> harmos_operations::execution::lifecycle::ApplicationConfigu
         }
     }
 
-    fn operations<C: harmos_operations::execution::operations::OperationCatalog>(&mut self, lane: crate::operations::Lane) {
-        self.operations::<C>(lane);
-    }
-
     fn catalog(&mut self, catalog: crate::operations::Catalog, lane: crate::operations::Lane) {
         self.catalog(catalog, lane);
     }

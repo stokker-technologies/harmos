@@ -37,9 +37,8 @@ pub struct ValidatedSchematic {
 
 /* === Enums === */
 
-#[harmos_domain::catalog]
-pub enum Objects {
-    Schematic(ValidatedSchematic),
+pub fn objects_catalog() -> harmos_domain::model::storage::ObjectCatalog {
+    harmos_domain::model::storage::ObjectCatalog::new().entry(harmos_domain::model::storage::ObjectDefinition::of::<ValidatedSchematic>())
 }
 
 /* === Traits === */

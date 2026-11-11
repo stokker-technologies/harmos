@@ -58,7 +58,7 @@ async fn filesystem_hash_roundtrip() {
     let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
         setup.settings().storage(&storage);
-        setup.operations::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default());
+        setup.catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();
@@ -143,7 +143,7 @@ async fn builtin_grpc_roundtrip() {
         .register_operation(parked_contract_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
-    runtime.operations.register::<harmos_operations::Lifecycle>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     let paths = runtime
         .operations
         .grpc_methods()
@@ -195,10 +195,10 @@ async fn builtin_grpc_roundtrip() {
 
 #[tokio::test]
 async fn external_authority_parity() {
-    use harmos_storage::{ErasedCatalog, StorageManager};
+    use harmos_storage::StorageManager;
 
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
-        setup.resource::<Option<Arc<StorageManager<ErasedCatalog>>>>(None);
+        setup.resource::<Option<Arc<StorageManager>>>(None);
     })
     .await
     .unwrap();
@@ -215,7 +215,7 @@ async fn external_authority_parity() {
         )
         .await
         .unwrap();
-    runtime.operations.register::<harmos_operations::Host>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register_catalog(harmos_operations::host_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     // Internal Boot Work Does Not Freeze The Later Listener Policy.
     assert_eq!(runtime.operation(GuardedDeclaration {}).await.unwrap().actor, "host:anonymous");
     let mode = Arc::new(std::sync::atomic::AtomicUsize::new(0));

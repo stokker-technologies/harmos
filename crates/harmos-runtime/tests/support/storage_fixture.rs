@@ -63,7 +63,7 @@ impl Fixture {
         )
         .unwrap();
         let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
-            setup.resource(std::ops::Deref::deref(&storage).erased());
+            setup.resource(std::ops::Deref::deref(&storage).clone());
             setup.settings().operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
                 ..Default::default()
@@ -117,7 +117,7 @@ pub(crate) fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &
     }
 }
 
-pub(crate) async fn saved_records<C>(storage: &StorageManager<C>, schema: &SchemaKey) -> Vec<(u64, Identifier)> {
+pub(crate) async fn saved_records(storage: &StorageManager, schema: &SchemaKey) -> Vec<(u64, Identifier)> {
     use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
         .query(harmos_runtime::storage::Query {
@@ -153,7 +153,7 @@ pub(crate) async fn pending<F: std::future::Future + ?Sized>(mut future: std::pi
     std::future::poll_fn(|context| std::task::Poll::Ready(future.as_mut().poll(context).is_pending())).await
 }
 
-pub(crate) async fn write<C>(storage: &StorageManager<C>, id: &str) -> StorageCursor {
+pub(crate) async fn write(storage: &StorageManager, id: &str) -> StorageCursor {
     storage.write_records(vec![record(&schema(), &Identifier::new(id).unwrap(), &[1, 2, 3])]).await.unwrap()
 }
 

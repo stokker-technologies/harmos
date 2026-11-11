@@ -39,7 +39,7 @@ use harmos_domain::model::storage::files::FileHash;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     pub async fn hash_file(&self, request: FileRead) -> Result<FileHash> {
         let context = crate::execution::Context::current();
         let span = context.sync(|| tracing::debug_span!("storage.file.hash_file", outcome = "cancelled"));

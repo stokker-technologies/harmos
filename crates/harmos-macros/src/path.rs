@@ -32,7 +32,7 @@ pub(crate) const KEY: &str = "harmos_path";
 
 /* === Structs === */
 
-pub(crate) struct HarmosPath(Path, bool);
+pub(crate) struct HarmosPath(Path);
 
 /* === Enums === */
 
@@ -51,22 +51,13 @@ impl HarmosPath {
                 proc_macro_crate::FoundCrate::Name(name) => name,
             };
             let name = syn::Ident::new(&name, proc_macro2::Span::call_site());
-            return Self(syn::parse_quote!(::#name), true);
+            return Self(syn::parse_quote!(::#name));
         }
-        Self(syn::parse_quote!(::harmos), true)
+        Self(syn::parse_quote!(::harmos))
     }
 
     pub(crate) fn resolve(explicit: Option<Path>) -> Self {
-        explicit.map(|path| Self(path, true)).unwrap_or_else(Self::catalog)
-    }
-
-    pub(crate) fn execution_gate(&self) -> TokenStream {
-        if self.1 { quote::quote!(#[cfg(feature = "runtime")]) } else { TokenStream::new() }
-    }
-
-    pub(crate) fn runtime_enabled(mut self) -> Self {
-        self.1 = false;
-        self
+        explicit.map(|path| Self(path)).unwrap_or_else(Self::catalog)
     }
 }
 

@@ -665,8 +665,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch =
-            harmos_operations::execution::__private::RegistrationBatch::new().entry(probe_operation().expect("representable operation"));
+        let batch = harmos_operations::execution::__private::Catalog::new().entry(probe_operation().expect("representable operation"));
         runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
 
         let source = Source::Host.external().unwrap();
@@ -685,8 +684,7 @@ mod tests {
     #[tokio::test]
     async fn assigned_identity_fences_before_decoding() {
         let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
-        let batch =
-            harmos_operations::execution::__private::RegistrationBatch::new().entry(probe_operation().expect("representable operation"));
+        let batch = harmos_operations::execution::__private::Catalog::new().entry(probe_operation().expect("representable operation"));
         runtime.register_batch(batch.clone().lane(crate::operations::Lane::default())).await.unwrap();
         let entry = runtime.operations.entry(PROBE_OPERATION.entry().id).unwrap();
         let fingerprint = entry.declared().fingerprint.0;

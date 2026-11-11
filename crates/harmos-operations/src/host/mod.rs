@@ -21,7 +21,7 @@ pub use catalog::{Catalog, limits};
 pub use harmos_protocol::host::DiscoveredOperation;
 pub use harmos_protocol::host::{CatalogKind, CatalogPage};
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use registration::Host;
+pub use registration::host_catalog;
 
 /* === Imports === */
 

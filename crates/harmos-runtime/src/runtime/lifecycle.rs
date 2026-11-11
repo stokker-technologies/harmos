@@ -68,8 +68,8 @@ enum Drain {
 /* === Implementations === */
 
 impl<A: Application> Runtime<A> {
-    pub async fn start_storage<C>(&self, storage: StorageManager<C>) -> Result<()> {
-        let storage = storage.erased();
+    pub async fn start_storage(&self, storage: StorageManager) -> Result<()> {
+        let storage = storage.clone();
         let storage = {
             let _stopping = self.stopping.lock().expect("runtime transition is healthy");
             if self.closing.load(Ordering::Acquire) {
@@ -90,7 +90,7 @@ impl<A: Application> Runtime<A> {
         storage.start_on::<A>(&self.operations).await
     }
 
-    pub fn storage(&self) -> Option<&StorageManager<crate::storage::ErasedCatalog>> {
+    pub fn storage(&self) -> Option<&StorageManager> {
         self.storage.get()
     }
 
@@ -255,7 +255,7 @@ impl<A: Application> Shutdown<A> {
 }
 
 impl<A: Application> Handle<A> {
-    pub fn storage(&self) -> Option<&StorageManager<crate::storage::ErasedCatalog>> {
+    pub fn storage(&self) -> Option<&StorageManager> {
         self.storage.get()
     }
 }

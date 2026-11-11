@@ -63,27 +63,26 @@ struct Counter {
 
 /* === Enums === */
 
-#[harmos_domain::catalog]
-enum NumericObjects {
-    Counter(Counter),
+fn numeric_objects_catalog() -> harmos_domain::model::storage::ObjectCatalog {
+    harmos_domain::model::storage::ObjectCatalog::new().entry(harmos_domain::model::storage::ObjectDefinition::of::<Counter>())
 }
 
-#[harmos_domain::catalog]
-enum Objects {
-    Current(Document),
-    Different(DifferentDocument),
+fn objects_catalog() -> harmos_domain::model::storage::ObjectCatalog {
+    harmos_domain::model::storage::ObjectCatalog::new()
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<Document>())
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<DifferentDocument>())
 }
 
-#[harmos_domain::catalog]
-enum RenamedVariants {
-    NothingToDoWithWireNames(Document),
-    Different(DifferentDocument),
+fn renamed_variants_catalog() -> harmos_domain::model::storage::ObjectCatalog {
+    harmos_domain::model::storage::ObjectCatalog::new()
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<Document>())
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<DifferentDocument>())
 }
 
-#[harmos_domain::catalog]
-enum Ambiguous {
-    First(Document),
-    Second(Duplicate),
+fn ambiguous_catalog() -> harmos_domain::model::storage::ObjectCatalog {
+    harmos_domain::model::storage::ObjectCatalog::new()
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<Document>())
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<Duplicate>())
 }
 
 /* === Traits === */
@@ -159,8 +158,9 @@ fn document(status: &str) -> Document {
 
 #[tokio::test]
 async fn numeric_keys_roundtrip() {
-    let primary = Arc::new(Data::<NumericObjects>::with_catalog(history()));
-    let storage = StorageManager::<NumericObjects>::new(
+    let primary = Arc::new(Data::with_catalog(numeric_objects_catalog(), history()));
+    let storage = StorageManager::with_catalog(
+        numeric_objects_catalog(),
         StorageBackends {
             primary,
             state: Arc::new(Recovery::new(history())),
@@ -181,28 +181,29 @@ async fn numeric_keys_roundtrip() {
 
 #[test]
 fn catalog_projects_schema() {
-    Objects::validate().unwrap();
-    <() as ObjectCatalog>::validate().unwrap();
-    assert!(<() as ObjectCatalog>::definitions().as_ref().is_empty());
-    let definitions = Objects::definitions();
+    objects_catalog().validate().unwrap();
+    ObjectCatalog::new().validate().unwrap();
+    assert!(ObjectCatalog::new().definitions().is_empty());
+    let catalog = objects_catalog();
+    let definitions = catalog.definitions();
     assert_eq!(
-        definitions.as_ref().iter().map(|d| d.schema().unwrap().version.get()).collect::<Vec<_>>(),
+        definitions.iter().map(|d| d.schema().unwrap().version.get()).collect::<Vec<_>>(),
         [Document::definition().1, DifferentDocument::definition().1]
     );
-    assert!((definitions.as_ref()[0].declaration().fields)().iter().any(|field| field.name == "status"));
-    assert!(Ambiguous::validate().is_err());
+    assert!((definitions[0].declaration().fields)().iter().any(|field| field.name == "status"));
+    assert!(ambiguous_catalog().validate().is_err());
 }
 
 #[test]
 fn updates_keep_identity() {
-    let first = Objects::encode(&document("running"), limit()).unwrap();
-    let second = Objects::encode(&document("finished"), limit()).unwrap();
+    let first = objects_catalog().encode(&document("running"), limit()).unwrap();
+    let second = objects_catalog().encode(&document("finished"), limit()).unwrap();
     assert_eq!(first.schema, second.schema);
     assert_eq!(first.item, second.item);
     assert_ne!(first.payload, second.payload);
-    assert_eq!(Objects::decode::<Document>(&second, limit()).unwrap(), document("finished"));
-    assert_eq!(RenamedVariants::encode(&document("finished"), limit()).unwrap(), second);
-    Objects::validate_value(&second, limit()).unwrap();
+    assert_eq!(objects_catalog().decode::<Document>(&second, limit()).unwrap(), document("finished"));
+    assert_eq!(renamed_variants_catalog().encode(&document("finished"), limit()).unwrap(), second);
+    objects_catalog().validate_value(&second, limit()).unwrap();
 }
 
 #[test]
@@ -212,18 +213,18 @@ fn decode_requires_matching_shape() {
         status: "archived".into(),
         annotation: 7,
     };
-    let value = Objects::encode(&old, limit()).unwrap();
-    Objects::validate_value(&value, limit()).unwrap();
-    assert_eq!(Objects::decode::<DifferentDocument>(&value, limit()).unwrap(), old);
-    assert!(Objects::decode::<Document>(&value, limit()).is_err());
+    let value = objects_catalog().encode(&old, limit()).unwrap();
+    objects_catalog().validate_value(&value, limit()).unwrap();
+    assert_eq!(objects_catalog().decode::<DifferentDocument>(&value, limit()).unwrap(), old);
+    assert!(objects_catalog().decode::<Document>(&value, limit()).is_err());
     let mut unknown = value;
     unknown.schema.version = std::num::NonZeroU32::new(unknown.schema.version.get().wrapping_add(1).max(1)).unwrap();
-    assert!(Objects::validate_value(&unknown, limit()).is_err());
+    assert!(objects_catalog().validate_value(&unknown, limit()).is_err());
 }
 
 #[test]
 fn forged_values_refused() {
-    let original = Objects::encode(&document("running"), limit()).unwrap();
+    let original = objects_catalog().encode(&document("running"), limit()).unwrap();
     for case in 0..4 {
         let mut value = original.clone();
         match case {
@@ -234,14 +235,14 @@ fn forged_values_refused() {
         }
         if case == 3 {
             // A value update with the same logical identity is valid.
-            Objects::validate_value(&value, limit()).unwrap();
+            objects_catalog().validate_value(&value, limit()).unwrap();
         } else {
-            assert!(Objects::validate_value(&value, limit()).is_err());
-            assert!(Objects::decode::<Document>(&value, limit()).is_err());
+            assert!(objects_catalog().validate_value(&value, limit()).is_err());
+            assert!(objects_catalog().decode::<Document>(&value, limit()).is_err());
         }
     }
     let invalid = Document { id: String::new(), status: "new".into() };
-    assert!(Objects::encode(&invalid, limit()).is_err());
+    assert!(objects_catalog().encode(&invalid, limit()).is_err());
 }
 
 #[test]
@@ -249,18 +250,19 @@ fn payload_limit_bounds() {
     let source = document(&"x".repeat(100));
     let exact = NonZeroUsize::new(source.encoded_size()).unwrap();
     let small = NonZeroUsize::new(source.encoded_size() - 1).unwrap();
-    assert!(Objects::encode(&source, small).is_err());
-    let value = Objects::encode(&source, exact).unwrap();
-    assert!(Objects::decode::<Document>(&value, small).is_err());
-    assert!(Objects::validate_value(&value, small).is_err());
-    assert_eq!(Objects::decode::<Document>(&value, exact).unwrap(), source);
+    assert!(objects_catalog().encode(&source, small).is_err());
+    let value = objects_catalog().encode(&source, exact).unwrap();
+    assert!(objects_catalog().decode::<Document>(&value, small).is_err());
+    assert!(objects_catalog().validate_value(&value, small).is_err());
+    assert_eq!(objects_catalog().decode::<Document>(&value, exact).unwrap(), source);
 }
 
 #[test]
 fn ambiguous_catalog_refused() {
-    let primary = Arc::new(Data::<Ambiguous>::with_catalog(history()));
+    let primary = Arc::new(Data::with_catalog(ambiguous_catalog(), history()));
     let recovery = Arc::new(Recovery::new(history()));
-    let result = StorageManager::<Ambiguous>::new(
+    let result = StorageManager::with_catalog(
+        ambiguous_catalog(),
         StorageBackends {
             primary: primary.clone(),
             state: recovery.clone(),

@@ -44,9 +44,10 @@ use super::*;
 
 #[tokio::test]
 async fn object_exchange_saves() {
-    let storage = StorageManager::<Objects>::new(
+    let storage = StorageManager::with_catalog(
+        objects_catalog(),
         StorageBackends {
-            primary: Arc::new(Data::<Objects>::with_catalog(history())),
+            primary: Arc::new(Data::with_catalog(objects_catalog(), history())),
             state: Arc::new(Recovery::new(history())),
         },
         config(),
@@ -60,7 +61,7 @@ async fn object_exchange_saves() {
     })
     .await
     .unwrap();
-    runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     let first = value("a/b", "first");
     let second = value("second", "two");
     // Register Authored Schema Before Sending Its Typed Payload.

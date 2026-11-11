@@ -266,20 +266,12 @@ mod listed {
 
     /* === Enums === */
 
-    static DECLARED_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-        [harmos_runtime::catalog::Node::Leaf(DOUBLING_DECLARATION_OPERATION.wire())];
-    static DECLARED_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-        [harmos_runtime::catalog::Node::Leaf(DOUBLING_DECLARATION_OPERATION.callees())];
+    pub fn declared_catalog() -> harmos_runtime::operations::Catalog {
+        declared_catalog_batch().named(concat!(module_path!(), "::Declared"))
+    }
 
-    pub const DECLARED_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-        concat!(module_path!(), "::Declared"),
-        &DECLARED_CATALOG_DECLARATIONS,
-        &DECLARED_CATALOG_CALLEES,
-        Some(declared_catalog_batch),
-    );
-
-    fn declared_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-        let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+    fn declared_catalog_batch() -> harmos_runtime::__private::Catalog {
+        let mut batch = harmos_runtime::__private::Catalog::new();
         batch = batch.entry(doubling_declaration_operation().expect("representable operation"));
         batch
     }
@@ -433,10 +425,9 @@ mod listed {
 
     #[test]
     fn catalogs_project_declarations() {
-        let projected = DECLARED_CATALOG.definitions().expect("valid catalog");
-        assert_eq!(projected, DECLARED_CATALOG.definitions().unwrap());
+        let projected = declared_catalog().definitions().expect("valid catalog");
         assert_eq!(projected[0].id.as_str(), "authored.doubling");
-        let contracts = harmos_domain::operations::Contracts::from_tree(DECLARED_CATALOG.declarations).unwrap();
+        let contracts = declared_catalog().contracts().unwrap();
         assert_eq!(contracts[0].fingerprint(), projected[0].fingerprint);
     }
 }

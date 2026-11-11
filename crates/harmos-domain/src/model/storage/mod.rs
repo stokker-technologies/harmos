@@ -31,7 +31,7 @@ pub mod writes;
 /* === Re-Exports === */
 
 pub use arrow::ArrowIpc;
-pub use catalog::{ObjectCatalog, ObjectDefinition, ObjectDefinitions, StoredObject};
+pub use catalog::{ObjectCatalog, ObjectDefinition, ObjectHandle, StoredObject};
 pub use data::{RecordInput, RecordWrite, StoredRecord, StoredRow, StreamInput, StreamWrite};
 pub use directory::{DirectoryCompletion, DirectoryEntry, DirectoryEvent, DirectoryRule, DirectorySelection};
 pub use files::{

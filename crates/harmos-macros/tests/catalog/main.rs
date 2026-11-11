@@ -112,7 +112,7 @@ impl harmos::Lifecycle for Example {{
 }}
 #[harmos::guest(harmos_path = ::harmos, id = {literal}, requires = ())]
 impl harmos::guest::Plugin for Example {{
-    const CATALOGS: &'static [harmos::operations::Catalog] = &[];
+    const CATALOGS: &'static [harmos::operations::CatalogDescription] = &[];
 }}
 fn main() {{}}
 "#

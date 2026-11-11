@@ -34,9 +34,9 @@ use harmos_domain::state::Position;
 
 /* === Structs === */
 
-pub struct RecoveryReader<'a, C> {
+pub struct RecoveryReader<'a> {
     context: crate::execution::Context,
-    storage: &'a StorageManager<C>,
+    storage: &'a StorageManager,
     _lifecycle: RwLockReadGuard<'a, Lifecycle>,
     through: RecoveryPosition,
     limits: ReadLimits,
@@ -49,9 +49,9 @@ pub struct RecoveryReader<'a, C> {
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.state.reader.recovery_reader", level = "debug", skip_all)]
-    pub async fn recovery_reader(&self, limits: ReadLimits, snapshot_bytes: Option<NonZeroUsize>) -> Result<RecoveryReader<'_, C>> {
+    pub async fn recovery_reader(&self, limits: ReadLimits, snapshot_bytes: Option<NonZeroUsize>) -> Result<RecoveryReader<'_>> {
         let lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         let invalid = |reason| Error::InvalidInput { field: "state recovery", reason };
         let through = {
@@ -73,7 +73,7 @@ impl<C> StorageManager<C> {
     }
 }
 
-impl<C> RecoveryReader<'_, C> {
+impl RecoveryReader<'_> {
     pub fn through(&self) -> &RecoveryPosition {
         &self.through
     }

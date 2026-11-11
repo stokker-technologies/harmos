@@ -47,7 +47,12 @@ async fn rejects_noncontiguous_input() {
     use harmos_operations::storage::WriteFile;
     use harmos_protocol::storage as wire;
     let fixture = Fixture::new(config()).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    fixture
+        .runtime
+        .operations
+        .register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let mut upload = fixture
         .runtime
         .operations

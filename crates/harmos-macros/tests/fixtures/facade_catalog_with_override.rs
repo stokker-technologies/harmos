@@ -19,7 +19,7 @@ async fn export(_: Export, _: facade::__harmos::operations::FunctionContext<Expo
 async fn export(_: Export, _: facade::__harmos::operations::FunctionContext<Export>) -> Result<facade::__harmos::Response<u64>, std::convert::Infallible> { Ok(0.into()) }
 fn main() {
  let entry = facade::__harmos::operations::Operation::function(SPEC, &[], export, |_| facade::__harmos::operations::FailureKind::Permanent).unwrap();
- let nested = facade::__harmos::__private::RegistrationBatch::new().entry(entry);
+ let nested = facade::__harmos::__private::Catalog::new().entry(entry);
  assert_eq!(nested.operations.len(), 1);
  assert_eq!(nested.operations[0].definition.id.as_str(), "test.export");
 }

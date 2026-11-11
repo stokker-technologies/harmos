@@ -52,7 +52,7 @@ impl Drop for Chunk<'_> {
     }
 }
 
-impl<C: ObjectCatalog> Data<C> {
+impl Data {
     pub(super) fn fixture_supports_file_sessions(&self) -> bool {
         true
     }

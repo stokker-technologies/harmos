@@ -161,20 +161,12 @@ pub(crate) struct ParentOwner;
 
 /* === Enums === */
 
-static OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 2] =
-    [harmos_runtime::catalog::Node::Leaf(COMPUTE_OPERATION.wire()), harmos_runtime::catalog::Node::Leaf(SLOW_OPERATION.wire())];
-static OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 2] =
-    [harmos_runtime::catalog::Node::Leaf(COMPUTE_OPERATION.callees()), harmos_runtime::catalog::Node::Leaf(SLOW_OPERATION.callees())];
+pub(crate) fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
+}
 
-pub(crate) const OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::Operations"),
-    &OPERATIONS_CATALOG_DECLARATIONS,
-    &OPERATIONS_CATALOG_CALLEES,
-    Some(operations_catalog_batch),
-);
-
-fn operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(compute_operation().expect("representable operation"));
     batch = batch.entry(slow_operation().expect("representable operation"));
     batch

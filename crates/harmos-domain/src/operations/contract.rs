@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use super::ProtobufExt;
 use super::{Direction, Entry, OperationDefinition};
-use crate::catalog::{Catalog, Projection, Visitor};
+use crate::catalog::Visitor;
 use crate::config::SchemaSettings;
 use crate::schema::declaration::Definition as SchemaDefinition;
 use crate::schema::graph::{Kind, Schema, View};
@@ -585,21 +585,10 @@ impl Visitor for Contracts {
 }
 
 impl Contracts {
-    pub fn of<C: Catalog<Self>>() -> Result<Vec<Contract>, ContractError> {
-        Self::from_projection(&C::ENTRIES)
-    }
-
     pub fn from_tree(entries: &[crate::catalog::Node<WireDeclaration>]) -> Result<Vec<Contract>, ContractError> {
         let mut ids = BTreeSet::new();
         let mut contracts = Vec::new();
         crate::catalog::try_for_each(entries, |declaration| append(declaration, &mut ids, &mut contracts))?;
-        Ok(contracts)
-    }
-
-    pub fn from_projection<P: Projection<WireDeclaration>>(entries: &P) -> Result<Vec<Contract>, ContractError> {
-        let mut ids = BTreeSet::new();
-        let mut contracts = Vec::with_capacity(P::LEN);
-        entries.try_for_each(|declaration| append(declaration, &mut ids, &mut contracts))?;
         Ok(contracts)
     }
 }

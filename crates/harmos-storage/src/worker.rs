@@ -42,7 +42,7 @@ type Attempt =
 
 /* === Structs === */
 
-pub struct Worker(pub(crate) StorageManager<crate::storage::ErasedCatalog>);
+pub struct Worker(pub(crate) StorageManager);
 
 struct Running(Arc<Inner>);
 
@@ -606,10 +606,7 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
     match action {
         Action::Delete(work) => work.perform(inner).await.map(|()| Completed::Deleted),
         Action::Prune(through) => inner
-            .bounded(
-                "primary.prune_objects",
-                inner.primary.prune_objects(through, super::config::OBJECT_PRUNE_ENTRIES, inner.object_retention),
-            )
+            .bounded("primary.prune_objects", inner.primary.prune_objects(through, super::config::OBJECT_PRUNE_ENTRIES, &inner.catalog))
             .await
             .map(Completed::Pruned),
         Action::File(action) => super::staging::perform(inner, action).await.map(Completed::File),

@@ -18,7 +18,7 @@ const SPEC: harmos::operations::OperationSpec<Read> = harmos::operations::Operat
 async fn read(_: Read, _: harmos::operations::FunctionContext<Read>) -> Result<harmos::Response<()>, std::convert::Infallible> { Ok(().into()) }
 fn main() {
  let first = harmos::operations::Operation::function(SPEC, &[], read, |_| harmos::operations::FailureKind::Permanent).unwrap();
- let batch = harmos::__private::RegistrationBatch::new().entry(first);
+ let batch = harmos::__private::Catalog::new().entry(first);
  #[cfg(feature = "optional_operation")]
  let batch = batch.entry(harmos::operations::Operation::function(optional::SPEC, &[], read, |_| harmos::operations::FailureKind::Permanent).unwrap());
  let expected = if cfg!(feature = "optional_operation") { 2 } else { 1 };

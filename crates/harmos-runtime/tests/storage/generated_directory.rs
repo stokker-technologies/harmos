@@ -51,7 +51,12 @@ async fn list_and_watch_existing_files() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(root.path().join("sample.bin"), b"directory-content").unwrap();
     let fixture = super::Fixture::new(super::config()).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    fixture
+        .runtime
+        .operations
+        .register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let selection = Some(wire::DirectorySelection {
         root: root.path().to_str().unwrap().into(),
         recursive: false,

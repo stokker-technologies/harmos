@@ -72,26 +72,6 @@ pub fn described(item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    catalog::typed::declare(attribute.into(), item.into()).into()
-}
-
-#[proc_macro_attribute]
-pub fn guest_catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    catalog::typed::declare_runtime(attribute.into(), item.into()).into()
-}
-
-#[proc_macro_attribute]
-pub fn domain_catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    catalog::typed::declare_domain(attribute.into(), item.into()).into()
-}
-
-#[proc_macro_attribute]
-pub fn runtime_catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    catalog::typed::declare_runtime(attribute.into(), item.into()).into()
-}
-
-#[proc_macro_attribute]
 pub fn transaction(attribute: TokenStream, item: TokenStream) -> TokenStream {
     identity::stamp(attribute.into(), item.into()).into()
 }

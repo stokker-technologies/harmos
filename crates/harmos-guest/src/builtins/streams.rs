@@ -78,7 +78,6 @@ where
 
 static DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>; 1] =
     [harmos_domain::catalog::Node::Leaf(PUBLISH_OPERATION.wire())];
-pub struct Streams;
 
 pub static PUBLISH_DESCRIPTION: harmos_operations::execution::operations::WireDeclaration =
     harmos_operations::execution::operations::WireDeclaration::request::<Publish>("host.publish", harmos_operations::host::POLICY)
@@ -86,14 +85,14 @@ pub static PUBLISH_DESCRIPTION: harmos_operations::execution::operations::WireDe
 
 pub const PUBLISH_OPERATION: harmos_operations::execution::operations::OperationSpec<Publish> =
     harmos_operations::execution::operations::OperationSpec::<Publish>::new(&PUBLISH_DESCRIPTION);
-impl harmos_operations::execution::operations::OperationCatalog for Streams {
-    const CATALOG: harmos_operations::execution::operations::Catalog =
-        harmos_operations::execution::operations::Catalog::of::<Self>("harmos.guest.streams", &DECLARATIONS, &[]);
-    fn batch() -> harmos_operations::execution::__private::RegistrationBatch {
-        harmos_operations::execution::__private::RegistrationBatch::new()
-    }
-}
-impl Streams {
-    pub const CATALOG: harmos_operations::execution::operations::Catalog =
-        <Self as harmos_operations::execution::operations::OperationCatalog>::CATALOG;
+pub const STREAMS_CATALOG: harmos_operations::execution::operations::CatalogDescription =
+    harmos_operations::execution::operations::CatalogDescription::new(
+        "harmos.guest.streams",
+        &DECLARATIONS,
+        &[],
+        Some(streams_catalog_batch),
+    );
+
+pub fn streams_catalog_batch() -> harmos_operations::execution::__private::Catalog {
+    harmos_operations::execution::__private::Catalog::new()
 }

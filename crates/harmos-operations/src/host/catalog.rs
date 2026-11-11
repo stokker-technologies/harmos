@@ -17,9 +17,7 @@ use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Re
 use crate::{Error, Identifier, MessageError};
 use harmos_domain::plugin::Grant;
 use harmos_protocol::host::{CatalogKind as Kind, CatalogPage};
-use harmos_storage::{
-    ErasedCatalog, IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection,
-};
+use harmos_storage::{IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection};
 use serde::Serialize;
 use std::{num::NonZeroUsize, sync::Arc};
 
@@ -49,10 +47,8 @@ impl ProtobufOperation for Catalog {
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Host", "Catalog"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
-    const RESOURCES: &'static [Resource] = &[
-        Resource::of::<Option<Arc<StorageManager<ErasedCatalog>>>>(),
-        Resource::of::<crate::execution::operations::access::DiscoveryAccess>(),
-    ];
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<Option<Arc<StorageManager>>>(), Resource::of::<crate::execution::operations::access::DiscoveryAccess>()];
     fn grant(request: &Self::Request) -> std::result::Result<Option<Grant>, MessageError> {
         if let Some(schema) = &request.schema {
             Identifier::new(schema.as_str()).map_err(|_| MessageError::borrowed("invalid catalog schema identifier"))?;
@@ -87,8 +83,7 @@ fn kind(request: &harmos_protocol::host::Catalog) -> std::result::Result<Kind, M
     Kind::try_from(request.kind).map_err(|_| MessageError::borrowed("unknown catalog kind"))
 }
 async fn run(context: ExecutionContext, request: harmos_protocol::host::Catalog) -> Result<CatalogPage> {
-    let storage =
-        context.resource::<Option<Arc<StorageManager<ErasedCatalog>>>>().map_err(|_| Error::NotReady { domain: "catalog storage" })?;
+    let storage = context.resource::<Option<Arc<StorageManager>>>().map_err(|_| Error::NotReady { domain: "catalog storage" })?;
     let access = context
         .resource::<crate::execution::operations::access::DiscoveryAccess>()
         .map_err(|_| Error::NotReady { domain: "catalog discovery" })?;
@@ -132,7 +127,7 @@ async fn run(context: ExecutionContext, request: harmos_protocol::host::Catalog)
 }
 
 async fn stored<T>(
-    storage: &StorageManager<ErasedCatalog>, selection: &T::Selection, request: &harmos_protocol::host::Catalog, keep: impl Fn(&T) -> bool,
+    storage: &StorageManager, selection: &T::Selection, request: &harmos_protocol::host::Catalog, keep: impl Fn(&T) -> bool,
 ) -> Result<CatalogPage>
 where
     T: harmos_storage::follow::Entry,

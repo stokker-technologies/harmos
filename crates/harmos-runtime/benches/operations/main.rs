@@ -54,20 +54,12 @@ struct DispatchGuard(Arc<Signals>);
 
 /* === Enums === */
 
-static DISPATCH_OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(DISPATCH_OPERATION.wire())];
-static DISPATCH_OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(DISPATCH_OPERATION.callees())];
+fn dispatch_operations_catalog() -> harmos_runtime::operations::Catalog {
+    dispatch_operations_catalog_batch().named(concat!(module_path!(), "::DispatchOperations"))
+}
 
-const DISPATCH_OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::DispatchOperations"),
-    &DISPATCH_OPERATIONS_CATALOG_DECLARATIONS,
-    &DISPATCH_OPERATIONS_CATALOG_CALLEES,
-    Some(dispatch_operations_catalog_batch),
-);
-
-fn dispatch_operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn dispatch_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(dispatch_operation().expect("representable operation"));
     batch
 }
@@ -137,7 +129,7 @@ impl harmos_runtime::Lifecycle for App {
     type Context = harmos_runtime::Startup<Self>;
 
     async fn prepare(_: (), setup: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-        setup.catalog(DISPATCH_OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default());
+        setup.catalog(dispatch_operations_catalog(), harmos_runtime::operations::Lane::default());
         Ok(Self)
     }
 }

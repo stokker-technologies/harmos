@@ -95,7 +95,7 @@ pub struct ServiceDefinition {
 
 // The runtime managers a service context lends as typed values.
 pub(crate) struct Handles<A: Application> {
-    pub(crate) storage: Arc<std::sync::OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
+    pub(crate) storage: Arc<std::sync::OnceLock<crate::storage::StorageManager>>,
     pub(crate) state: StateManager<A>,
     pub(crate) records: crate::records::RecordManager<A>,
     pub(crate) streams: StreamManager<A>,
@@ -187,18 +187,18 @@ impl ServiceManager {
     }
 
     pub async fn register<S: harmos_operations::execution::Service>(&self, id: &str, policy: crate::ServicePolicy) -> Result<()> {
-        let batch = harmos_operations::execution::__private::RegistrationBatch::new().service::<S>(id, policy);
+        let batch = harmos_operations::execution::__private::Catalog::new().service::<S>(id, policy);
         self.register_batch(batch).await
     }
 
-    pub(crate) async fn register_batch(&self, batch: harmos_operations::execution::__private::RegistrationBatch) -> Result<()> {
+    pub(crate) async fn register_batch(&self, batch: harmos_operations::execution::__private::Catalog) -> Result<()> {
         let (staged, ids) = self.stage(batch)?;
         staged.commit()?;
         self.activate(&ids).await
     }
 
     pub(crate) fn stage(
-        &self, batch: harmos_operations::execution::__private::RegistrationBatch,
+        &self, batch: harmos_operations::execution::__private::Catalog,
     ) -> Result<(crate::operations::resident::Staged, Vec<String>)> {
         if !batch.operations.is_empty() {
             return Err(Error::InvalidInput {
@@ -570,7 +570,7 @@ mod tests {
                 },
             },
         };
-        let batch = harmos_operations::execution::__private::RegistrationBatch::new().service::<Worker>("worker", policy);
+        let batch = harmos_operations::execution::__private::Catalog::new().service::<Worker>("worker", policy);
         runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
         executor::timeout(Duration::from_secs(2), counts.running.notified()).await.unwrap();
         assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);

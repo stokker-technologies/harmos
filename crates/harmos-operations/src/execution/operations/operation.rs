@@ -101,7 +101,7 @@ impl<I: crate::execution::Portable, T: crate::execution::Portable> Shape for (St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution::__private::{RegistrationBatch, ResourceSet};
+    use crate::execution::__private::{Catalog, ResourceSet};
     use crate::execution::operations::{CallContext, ExecutionContext, Response};
     use std::{future::Future, sync::Arc};
 
@@ -156,12 +156,12 @@ mod tests {
 
     #[test]
     fn declared_resources_and_attempt_clones() {
-        let missing = RegistrationBatch::new().entry(increment_operation().unwrap());
+        let missing = Catalog::new().entry(increment_operation().unwrap());
         assert!(missing.operations[0].verify_resources(&ResourceSet::new(), &[]).is_err());
         assert!(missing.operations[0].verify_resources(&ResourceSet::new(), &[TypeId::of::<u64>()]).is_ok());
         let mut dependencies = ResourceSet::new();
         dependencies.insert(Arc::new(2_u64)).unwrap();
-        let batch = RegistrationBatch::new().entry(increment_operation().unwrap());
+        let batch = Catalog::new().entry(increment_operation().unwrap());
         let factory = &batch.operations[0];
         factory.verify_resources(&dependencies, &[]).unwrap();
         let mut instance = factory.prepare_native(dependencies, Box::new(Increment { value: 5 }), Box::new(())).unwrap();

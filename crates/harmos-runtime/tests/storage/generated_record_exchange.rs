@@ -45,7 +45,7 @@ use super::*;
 #[tokio::test]
 async fn record_exchange_receipts() {
     let f = Fixture::new(config()).await;
-    f.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    f.runtime.operations.register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     seed(&f).await;
     let mut records = f
         .runtime

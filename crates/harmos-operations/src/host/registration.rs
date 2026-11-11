@@ -31,27 +31,21 @@ use super::Catalog;
 
 /* === Structs === */
 
-pub struct Host;
-
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl Host {
-    pub const CATALOG: crate::execution::operations::Catalog = <Self as crate::execution::operations::OperationCatalog>::CATALOG;
-    pub fn catalog() -> Vec<crate::OperationDefinition> {
-        <Self as crate::execution::operations::OperationCatalog>::batch().operations.into_iter().map(|factory| factory.definition).collect()
-    }
+pub fn host_catalog() -> crate::execution::operations::Catalog {
+    host_catalog_batch().named("harmos.host")
 }
-impl crate::execution::operations::OperationCatalog for Host {
-    const CATALOG: crate::execution::operations::Catalog = crate::execution::operations::Catalog::of::<Self>("harmos.host", &[], &[]);
-    fn batch() -> crate::execution::__private::RegistrationBatch {
-        crate::execution::__private::RegistrationBatch {
-            operations: vec![crate::execution::operations::OperationFactory::protobuf::<Catalog>().expect("catalog declaration")],
-            services: vec![],
-        }
+
+pub fn host_catalog_batch() -> crate::execution::__private::Catalog {
+    crate::execution::__private::Catalog {
+        name: "",
+        operations: vec![crate::execution::operations::OperationFactory::protobuf::<Catalog>().expect("catalog declaration")],
+        services: vec![],
     }
 }
 

@@ -150,7 +150,7 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
         .register_operation(hold_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
-    runtime.operations.register::<harmos_operations::Lifecycle>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     (runtime, gate)
 }
 

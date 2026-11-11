@@ -91,8 +91,8 @@ impl<P> Group<P> {
 }
 
 impl<A: Application> StateManager<A> {
-    pub(crate) async fn recover<C>(
-        storage: &StorageManager<C>, mut state: At<A::State>, catalog: &Dispatch<A, Payload<A>>, inverses: Inverting<A>, tail: usize,
+    pub(crate) async fn recover(
+        storage: &StorageManager, mut state: At<A::State>, catalog: &Dispatch<A, Payload<A>>, inverses: Inverting<A>, tail: usize,
         limits: ReadLimits, snapshots: Option<&super::snapshot::Snapshots<A>>,
     ) -> std::result::Result<Recovered<A>, Incompatible> {
         if state.position != Position::ORIGIN {

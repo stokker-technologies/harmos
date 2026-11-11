@@ -103,8 +103,8 @@ impl<A: Application> Snapshots<A> {
 
     #[tracing::instrument(target = "harmos::state", name = "state.capture", level = "debug", skip_all)]
     pub(crate) async fn capture(
-        &self, storage: &StorageManager<crate::storage::ErasedCatalog>, tracked: &TrackedState<A>, undos: &Undos<A>,
-        receipts: &HashMap<RequestKey, Receipt>, final_save: bool,
+        &self, storage: &StorageManager, tracked: &TrackedState<A>, undos: &Undos<A>, receipts: &HashMap<RequestKey, Receipt>,
+        final_save: bool,
     ) {
         if tracked.poisoned() {
             return;

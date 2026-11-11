@@ -95,20 +95,12 @@ static PENDING_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wir
 const PENDING_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<PendingContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<PendingContractDeclaration>::new(&PENDING_CONTRACT_DECLARATION_DESCRIPTION);
 
-static OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(PENDING_CONTRACT_DECLARATION_OPERATION.wire())];
-static OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(PENDING_CONTRACT_DECLARATION_OPERATION.callees())];
+fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
+}
 
-const OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::Operations"),
-    &OPERATIONS_CATALOG_DECLARATIONS,
-    &OPERATIONS_CATALOG_CALLEES,
-    Some(operations_catalog_batch),
-);
-
-fn operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(pending_contract_declaration_operation().expect("representable operation"));
     batch
 }
@@ -158,7 +150,7 @@ async fn services_stop_first() {
     })
     .await
     .unwrap();
-    runtime.operations.register_catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register_catalog(operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     let operation = runtime.operations.submit::<PendingContractDeclaration>(PendingContractDeclaration {}).unwrap();
     trace.started.notified().await;
     runtime

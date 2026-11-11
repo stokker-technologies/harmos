@@ -18,7 +18,6 @@ use std::fmt;
 use std::num::{NonZeroU32, NonZeroUsize};
 // Third Party Imports
 // Local Imports
-use crate::catalog::{Catalog, Contains, Member, Projection, Visitor};
 use crate::model::storage::{ObjectRetention, ObjectValue, SchemaKey, check_length, invalid, object_key};
 use crate::{Error, Identified, Identifier, MemorySize, Result, schema};
 
@@ -37,6 +36,7 @@ const VALIDATION_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ObjectDefinition {
+    type_id: fn() -> std::any::TypeId,
     schema: fn() -> Result<SchemaKey>,
     declaration: schema::declaration::Definition,
     retention: ObjectRetention,
@@ -45,7 +45,15 @@ pub struct ObjectDefinition {
     verify_admitted: fn(&ObjectValue, NonZeroUsize, usize) -> Result<()>,
 }
 
-pub struct ObjectDefinitions;
+#[derive(Clone, Debug, Default)]
+pub struct ObjectCatalog {
+    entries: Vec<ObjectDefinition>,
+}
+
+pub struct ObjectHandle<T: StoredObject> {
+    definition: ObjectDefinition,
+    marker: std::marker::PhantomData<fn() -> T>,
+}
 
 struct KeyMatch<'a> {
     expected: &'a str,
@@ -68,23 +76,57 @@ pub trait StoredObject: Identified + schema::Described + crate::Message + Memory
     }
 }
 
-pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
-    fn definitions() -> <Self as Catalog<ObjectDefinitions>>::Entries {
-        <Self as Catalog<ObjectDefinitions>>::ENTRIES
-    }
+/* === Implementations === */
 
-    fn definition_count() -> usize {
-        <<Self as Catalog<ObjectDefinitions>>::Entries as Projection<ObjectDefinition>>::LEN
+impl ObjectCatalog {
+    pub fn new() -> Self {
+        Self::default()
     }
-
-    fn validate() -> Result<()> {
-        let count = Self::definition_count();
+    pub fn entry(mut self, entry: ObjectDefinition) -> Self {
+        self.entries.push(entry);
+        self
+    }
+    pub fn extend(mut self, catalog: Self) -> Self {
+        self.entries.extend(catalog.entries);
+        self
+    }
+    pub fn build(self) -> Result<Self> {
+        self.validate()?;
+        Ok(self)
+    }
+    pub fn definitions(&self) -> &[ObjectDefinition] {
+        &self.entries
+    }
+    pub fn definition_count(&self) -> usize {
+        self.entries.len()
+    }
+    pub fn handle<T: StoredObject>(&self) -> Result<ObjectHandle<T>> {
+        self.validate()?;
+        let definition = self
+            .entries
+            .iter()
+            .find(|entry| (entry.type_id)() == std::any::TypeId::of::<T>())
+            .copied()
+            .ok_or_else(|| invalid("object type is absent from the catalog"))?;
+        Ok(ObjectHandle {
+            definition,
+            marker: std::marker::PhantomData,
+        })
+    }
+    pub fn encode<T: StoredObject>(&self, value: &T, max_payload_bytes: NonZeroUsize) -> Result<ObjectValue> {
+        self.handle::<T>()?.encode(value, max_payload_bytes)
+    }
+    pub fn decode<T: StoredObject>(&self, value: &ObjectValue, max_payload_bytes: NonZeroUsize) -> Result<T> {
+        self.handle::<T>()?.decode(value, max_payload_bytes)
+    }
+    pub fn validate(&self) -> Result<()> {
+        let count = self.definition_count();
         if count > MAX_DEFINITIONS {
             return Err(invalid("object catalog exceeds its definition limit"));
         }
-        let entries = Self::definitions();
+        let entries = self.definitions();
         let mut visited = 0usize;
-        entries.try_for_each(|_| {
+        entries.iter().try_for_each(|_| {
             visited += 1;
             if visited > count {
                 return Err(invalid("object catalog projection count differs"));
@@ -102,7 +144,7 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
             return Err(invalid("object catalog exceeds its validation byte limit"));
         }
         let mut identities = Vec::with_capacity(count);
-        entries.try_for_each(|entry| {
+        entries.iter().try_for_each(|entry| {
             if identities.len() >= count {
                 return Err(invalid("object catalog projection count differs"));
             }
@@ -134,11 +176,27 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
         Ok(())
     }
 
-    fn encode<T: StoredObject>(value: &T, max_payload_bytes: NonZeroUsize) -> Result<ObjectValue>
-    where
-        Self: Contains<T>,
-    {
-        Self::validate()?;
+    pub fn validate_value(&self, value: &ObjectValue, max_payload_bytes: NonZeroUsize) -> Result<()> {
+        self.validate()?;
+        check_length(value.payload.len(), max_payload_bytes)?;
+        let mut verify = None;
+        self.definitions().iter().try_for_each(|entry| {
+            if verify.is_none() && entry.schema()? == value.schema {
+                verify = Some(entry.verify);
+            }
+            Ok::<(), Error>(())
+        })?;
+        match verify {
+            Some(verify) => verify(value, max_payload_bytes),
+            None => Err(invalid("object schema is absent from the catalog")),
+        }
+    }
+}
+impl<T: StoredObject> ObjectHandle<T> {
+    pub fn definition(&self) -> ObjectDefinition {
+        self.definition
+    }
+    pub fn encode(&self, value: &T, max_payload_bytes: NonZeroUsize) -> Result<ObjectValue> {
         value.validate()?;
         let schema = object_schema::<T>()?;
         let item = object_key(value.key(), max_payload_bytes)?;
@@ -151,32 +209,10 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
         Ok(ObjectValue { schema, item, payload })
     }
 
-    fn decode<T: StoredObject>(value: &ObjectValue, max_payload_bytes: NonZeroUsize) -> Result<T>
-    where
-        Self: Contains<T>,
-    {
-        Self::validate()?;
+    pub fn decode(&self, value: &ObjectValue, max_payload_bytes: NonZeroUsize) -> Result<T> {
         decode::<T>(value, max_payload_bytes)
     }
-
-    fn validate_value(value: &ObjectValue, max_payload_bytes: NonZeroUsize) -> Result<()> {
-        Self::validate()?;
-        check_length(value.payload.len(), max_payload_bytes)?;
-        let mut verify = None;
-        Self::definitions().try_for_each(|entry| {
-            if verify.is_none() && entry.schema()? == value.schema {
-                verify = Some(entry.verify);
-            }
-            Ok::<(), Error>(())
-        })?;
-        match verify {
-            Some(verify) => verify(value, max_payload_bytes),
-            None => Err(invalid("object schema is absent from the catalog")),
-        }
-    }
 }
-
-/* === Implementations === */
 
 impl ObjectDefinition {
     pub fn retention(&self) -> ObjectRetention {
@@ -203,22 +239,41 @@ impl ObjectDefinition {
     }
 }
 
-impl Visitor for ObjectDefinitions {
-    type Entry = ObjectDefinition;
+impl ObjectDefinition {
+    pub const fn of<T: StoredObject>() -> Self {
+        Self {
+            type_id: std::any::TypeId::of::<T>,
+            schema: object_schema::<T>,
+            declaration: T::DEFINITION,
+            retention: T::RETENTION,
+            verify: verify::<T>,
+            verify_admitted: verify_admitted::<T>,
+        }
+    }
 }
 
-impl<T: StoredObject> Member<T> for ObjectDefinitions {
-    const ENTRY: ObjectDefinition = ObjectDefinition {
-        schema: object_schema::<T>,
-        declaration: T::DEFINITION,
-        retention: T::RETENTION,
-        verify: verify::<T>,
-
-        verify_admitted: verify_admitted::<T>,
-    };
+impl ObjectCatalog {
+    pub fn definition(&self, key: &SchemaKey) -> Result<ObjectDefinition> {
+        let mut found = None;
+        self.definitions().iter().try_for_each(|entry| {
+            if found.is_none() && entry.schema()? == *key {
+                found = Some(*entry);
+            }
+            Ok::<(), Error>(())
+        })?;
+        found.ok_or_else(|| invalid("object schema is absent from the catalog"))
+    }
+    pub fn retention(&self, key: &SchemaKey) -> Result<ObjectRetention> {
+        let mut retention = ObjectRetention::All;
+        self.definitions().iter().try_for_each(|entry| {
+            if entry.schema()? == *key {
+                retention = entry.retention();
+            }
+            Ok::<(), Error>(())
+        })?;
+        Ok(retention)
+    }
 }
-
-impl<C: Catalog<ObjectDefinitions> + Send + Sync + 'static> ObjectCatalog for C {}
 
 impl fmt::Write for KeyMatch<'_> {
     fn write_str(&mut self, value: &str) -> fmt::Result {
@@ -232,28 +287,6 @@ impl fmt::Write for KeyMatch<'_> {
 }
 
 /* === Public Functions === */
-
-pub fn definition<C: ObjectCatalog>(key: &SchemaKey) -> Result<ObjectDefinition> {
-    let mut found = None;
-    C::definitions().try_for_each(|entry| {
-        if found.is_none() && entry.schema()? == *key {
-            found = Some(*entry);
-        }
-        Ok::<(), Error>(())
-    })?;
-    found.ok_or_else(|| invalid("object schema is absent from the catalog"))
-}
-
-pub fn retention<C: ObjectCatalog>(key: &SchemaKey) -> Result<ObjectRetention> {
-    let mut retention = ObjectRetention::All;
-    C::definitions().try_for_each(|entry| {
-        if entry.schema()? == *key {
-            retention = entry.retention();
-        }
-        Ok::<(), Error>(())
-    })?;
-    Ok(retention)
-}
 
 pub fn object_schema<T: StoredObject>() -> Result<SchemaKey> {
     let (id, version) = T::definition();
@@ -321,3 +354,50 @@ fn verification_limit() -> Error {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[crate::message(harmos_path = crate)]
+    #[derive(Clone, PartialEq)]
+    struct Document {
+        id: String,
+        value: u64,
+    }
+    #[crate::message(harmos_path = crate)]
+    struct Other {
+        id: String,
+    }
+
+    impl crate::Identified for Document {
+        const ID: &'static str = "example.document";
+    }
+    impl crate::Identified for Other {
+        const ID: &'static str = "example.other";
+    }
+    impl StoredObject for Document {
+        type Key = str;
+        const RETENTION: ObjectRetention = ObjectRetention::All;
+        fn key(&self) -> &str {
+            &self.id
+        }
+    }
+    impl StoredObject for Other {
+        type Key = str;
+        const RETENTION: ObjectRetention = ObjectRetention::All;
+        fn key(&self) -> &str {
+            &self.id
+        }
+    }
+    #[test]
+    fn typed_handles_require_a_registered_entry() {
+        let catalog = ObjectCatalog::new().entry(ObjectDefinition::of::<Document>()).build().unwrap();
+        assert!(catalog.handle::<Other>().is_err());
+        let handle = catalog.handle::<Document>().unwrap();
+        let value = Document { id: "one".into(), value: 7 };
+        let encoded = handle.encode(&value, NonZeroUsize::new(4096).unwrap()).unwrap();
+        assert_eq!(handle.decode(&encoded, NonZeroUsize::new(4096).unwrap()).unwrap(), value);
+        assert!(ObjectCatalog::new().entry(ObjectDefinition::of::<Document>()).entry(ObjectDefinition::of::<Document>()).build().is_err());
+    }
+}

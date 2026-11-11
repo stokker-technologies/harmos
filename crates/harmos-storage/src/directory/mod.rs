@@ -64,7 +64,7 @@ impl DirectoryOutput for DirectoryEvent {
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     pub async fn list_directory(&self, selection: DirectorySelection) -> Result<DirectoryReader> {
         let context = crate::execution::Context::current();
         let span = context.sync(|| tracing::debug_span!("storage.directory.list_directory", outcome = "cancelled"));

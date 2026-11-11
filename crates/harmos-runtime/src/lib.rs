@@ -56,7 +56,7 @@ pub use harmos_domain::{
 pub use harmos_operations::execution::operations::{EndpointSet, OperationHost, Response};
 pub use harmos_operations::execution::{Context, ExecutionContext, Lifecycle, Operation, Resource, ResourceError, Service, Setup};
 pub use operations::refusal::Refusal;
-pub use operations::{Catalog, Invocation, InvocationExt, Lane, Running};
+pub use operations::{Catalog, CatalogDescription, Invocation, InvocationExt, Lane, Running};
 pub use runtime::{Handle, Runtime, StartupError};
 pub use services::{ServiceContext, ServiceManager};
 
@@ -67,7 +67,7 @@ pub use harmos_guest::guest;
 
 // `message` Names Both The Contract Module And Its Same-Named Attribute.
 pub use harmos_domain::{StreamEntry, artifacts, failure, listeners, message, schema};
-pub use harmos_macros::{Described, Request, Row, records, runtime_catalog as catalog, transaction, transactions};
+pub use harmos_macros::{Described, Request, Row, records, transaction, transactions};
 
 /* === Imports === */
 
@@ -120,7 +120,7 @@ pub mod __private {
         Requirements as PluginRequirements,
     };
     pub use harmos_domain::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
-    pub use harmos_operations::execution::__private::RegistrationBatch;
+    pub use harmos_operations::execution::__private::Catalog;
 
     // A stream declaration is authored wherever its row type is, host core or
     // no host core, so these three are as unconditional as the attribute that

@@ -102,11 +102,11 @@ struct Third {
 
 /* === Enums === */
 
-#[harmos_domain::catalog]
-enum Objects {
-    First(First),
-    Second(Second),
-    Third(Third),
+fn objects_catalog() -> harmos_domain::model::storage::ObjectCatalog {
+    harmos_domain::model::storage::ObjectCatalog::new()
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<First>())
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<Second>())
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<Third>())
 }
 
 /* === Traits === */

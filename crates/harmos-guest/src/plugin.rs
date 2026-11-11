@@ -47,7 +47,7 @@ pub trait Context: harmos_operations::execution::lifecycle::Context<Configuratio
 }
 
 pub trait Plugin: harmos_operations::execution::Lifecycle<Context: Context> + lifecycle::Policy + Sync {
-    const CATALOGS: &'static [harmos_operations::execution::operations::Catalog];
+    const CATALOGS: &'static [harmos_operations::execution::operations::CatalogDescription];
 
     fn register(_registrar: &mut harmos_operations::execution::Registrar) -> Result<(), harmos_operations::execution::RegistrationError> {
         Ok(())

@@ -33,7 +33,7 @@ use std::task::{Poll, Waker};
 use tracing::Instrument;
 // Local Imports
 use crate::envelope::{WireAnswer, WireCommand, encode_prepared_grant};
-use harmos_operations::execution::__private::{RegistrationBatch, ResourceSet};
+use harmos_operations::execution::__private::{Catalog, ResourceSet};
 use harmos_operations::execution::QualifiedId;
 use harmos_operations::execution::operations::*;
 
@@ -60,7 +60,7 @@ pub struct Table {
     resources: ResourceSet,
     resources_frozen: bool,
     trusted_resources: ResourceSet,
-    pending: Vec<RegistrationBatch>,
+    pending: Vec<Catalog>,
     catalogs: std::collections::HashSet<&'static str>,
     configuration_errors: Vec<StartupError>,
     binding_failed: bool,
@@ -215,7 +215,7 @@ impl Table {
     }
 
     #[doc(hidden)]
-    pub fn register(&mut self, batch: RegistrationBatch) -> Result<(), ServingError> {
+    pub fn register(&mut self, batch: Catalog) -> Result<(), ServingError> {
         if self.closed || self.ordinary_closed {
             return Err(ServingError::Closing);
         }
@@ -226,7 +226,7 @@ impl Table {
         self.register_now(batch)
     }
 
-    fn register_now(&mut self, batch: RegistrationBatch) -> Result<(), ServingError> {
+    fn register_now(&mut self, batch: Catalog) -> Result<(), ServingError> {
         if self.closed || self.ordinary_closed {
             return Err(ServingError::Closing);
         }

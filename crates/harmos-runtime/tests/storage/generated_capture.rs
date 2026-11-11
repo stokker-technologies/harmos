@@ -52,7 +52,12 @@ async fn capture_then_follow_stored_contents() {
     let source = root.path().join("source.bin");
     std::fs::write(&source, b"captured-content").unwrap();
     let fixture = super::Fixture::new(super::config()).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    fixture
+        .runtime
+        .operations
+        .register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let reference = fixture
         .runtime
         .operations

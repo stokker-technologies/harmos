@@ -40,12 +40,13 @@ static OPERATIONS_CATALOG_CALLEES: [harmos_operations::catalog::Node<&'static [h
     harmos_operations::catalog::Node::Leaf(ANALYZE_SCHEMATIC_OPERATION.callees()),
 ];
 
-pub const OPERATIONS_CATALOG: harmos_operations::execution::operations::Catalog = harmos_operations::execution::operations::Catalog::new(
-    concat!(module_path!(), "::Operations"),
-    &OPERATIONS_CATALOG_DECLARATIONS,
-    &OPERATIONS_CATALOG_CALLEES,
-    OPERATIONS_CATALOG_FACTORY,
-);
+pub const OPERATIONS_CATALOG: harmos_operations::execution::operations::CatalogDescription =
+    harmos_operations::execution::operations::CatalogDescription::new(
+        concat!(module_path!(), "::Operations"),
+        &OPERATIONS_CATALOG_DECLARATIONS,
+        &OPERATIONS_CATALOG_CALLEES,
+        OPERATIONS_CATALOG_FACTORY,
+    );
 
 #[cfg(not(feature = "runtime"))]
 use declared_catalogs::OPERATIONS_CATALOG_FACTORY;
@@ -55,10 +56,10 @@ use registered_catalogs::OPERATIONS_CATALOG_FACTORY;
 #[cfg(feature = "runtime")]
 mod registered_catalogs {
     use super::*;
-    pub(super) const OPERATIONS_CATALOG_FACTORY: Option<fn() -> harmos_operations::execution::__private::RegistrationBatch> =
+    pub(super) const OPERATIONS_CATALOG_FACTORY: Option<fn() -> harmos_operations::execution::__private::Catalog> =
         Some(operations_catalog_batch);
-    fn operations_catalog_batch() -> harmos_operations::execution::__private::RegistrationBatch {
-        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new();
+    fn operations_catalog_batch() -> harmos_operations::execution::__private::Catalog {
+        let mut batch = harmos_operations::execution::__private::Catalog::new();
         batch = batch.entry(validate_schematic_operation().expect("representable operation"));
         batch = batch.entry(propose_route_operation().expect("representable operation"));
         batch = batch.entry(analyze_schematic_operation().expect("representable operation"));
@@ -68,5 +69,5 @@ mod registered_catalogs {
 
 #[cfg(not(feature = "runtime"))]
 mod declared_catalogs {
-    pub(super) const OPERATIONS_CATALOG_FACTORY: Option<fn() -> harmos_operations::execution::__private::RegistrationBatch> = None;
+    pub(super) const OPERATIONS_CATALOG_FACTORY: Option<fn() -> harmos_operations::execution::__private::Catalog> = None;
 }

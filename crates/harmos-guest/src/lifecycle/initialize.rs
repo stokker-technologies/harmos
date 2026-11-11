@@ -110,10 +110,7 @@ impl harmos_operations::execution::operations::Carrier for Control {
 
 pub fn operation()
 -> Result<harmos_operations::execution::operations::OperationFactory, harmos_operations::execution::operations::ServingError> {
-    Ok(harmos_operations::execution::__private::RegistrationBatch::new()
-        .carrier::<Initialize, Control>(INITIALIZE_OPERATION)?
-        .operations
-        .remove(0))
+    Ok(harmos_operations::execution::__private::Catalog::new().carrier::<Initialize, Control>(INITIALIZE_OPERATION)?.operations.remove(0))
 }
 
 /* === Private Functions === */

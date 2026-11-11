@@ -265,11 +265,6 @@ impl OperationManager {
         self.register_batch(crate::operations::Registration::catalog(catalog, lane)?).await
     }
 
-    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(&self, lane: Lane) -> Result<()> {
-        use crate::operations::RegistrationExt;
-        self.register_batch(C::batch().lane(lane)).await
-    }
-
     pub async fn register_batch(&self, registration: crate::operations::Registration) -> Result<()> {
         self.inner.register_native(registration)
     }

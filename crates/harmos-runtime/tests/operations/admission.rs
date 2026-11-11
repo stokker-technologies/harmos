@@ -73,20 +73,12 @@ struct Counts {
 
 /* === Enums === */
 
-static OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(HOLD_CONTRACT_DECLARATION_OPERATION.wire())];
-static OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
-    [harmos_runtime::catalog::Node::Leaf(HOLD_CONTRACT_DECLARATION_OPERATION.callees())];
+fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
+}
 
-const OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
-    concat!(module_path!(), "::Operations"),
-    &OPERATIONS_CATALOG_DECLARATIONS,
-    &OPERATIONS_CATALOG_CALLEES,
-    Some(operations_catalog_batch),
-);
-
-fn operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
-    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
     batch = batch.entry(hold_contract_declaration_operation().expect("representable operation"));
     batch
 }
@@ -162,7 +154,7 @@ fn request(blocked: bool) -> HoldContractDeclaration {
 async fn queue_refuses_construction() {
     let counts = Arc::new(Counts::default());
     let runtime = runtime(counts.clone()).await;
-    runtime.operations.register_catalog(OPERATIONS_CATALOG, crate::support::SERIAL).await.unwrap();
+    runtime.operations.register_catalog(operations_catalog(), crate::support::SERIAL).await.unwrap();
     let first_request = request(true);
     let started = first_request.started.clone();
     let first = runtime.operation(first_request).start().await.unwrap();
@@ -181,7 +173,7 @@ async fn queue_refuses_construction() {
 async fn queued_cancel_unbuilt() {
     let counts = Arc::new(Counts::default());
     let runtime = runtime(counts.clone()).await;
-    runtime.operations.register_catalog(OPERATIONS_CATALOG, crate::support::SERIAL).await.unwrap();
+    runtime.operations.register_catalog(operations_catalog(), crate::support::SERIAL).await.unwrap();
     let first_request = request(true);
     let started = first_request.started.clone();
     let first = runtime.operation(first_request).start().await.unwrap();
@@ -216,7 +208,7 @@ async fn queued_cancel_unbuilt() {
 async fn instances_leave_lookup() {
     let counts = Arc::new(Counts::default());
     let runtime = runtime(counts.clone()).await;
-    runtime.operations.register_catalog(OPERATIONS_CATALOG, crate::support::SERIAL).await.unwrap();
+    runtime.operations.register_catalog(operations_catalog(), crate::support::SERIAL).await.unwrap();
     for _ in 0..64 {
         let instance = runtime.operation(request(false)).start().await.unwrap();
         let id = instance.id();
@@ -231,7 +223,7 @@ async fn instances_leave_lookup() {
 async fn thread_submission_works() {
     let counts = Arc::new(Counts::default());
     let runtime = runtime(counts.clone()).await;
-    runtime.operations.register_catalog(OPERATIONS_CATALOG, crate::support::SERIAL).await.unwrap();
+    runtime.operations.register_catalog(operations_catalog(), crate::support::SERIAL).await.unwrap();
     let operations = runtime.operations.clone();
     let instance = std::thread::spawn(move || operations.submit::<HoldContractDeclaration>(request(false))).join().unwrap().unwrap();
     instance.join().await.unwrap();

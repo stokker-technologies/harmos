@@ -23,7 +23,6 @@ pub use settings::storage_settings;
 
 // Standard Library Imports
 use std::collections::BTreeMap;
-use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -32,7 +31,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::sync::Notify;
 
 // Local Imports
-use harmos_domain::catalog::Projection;
 use harmos_storage::query::{FileSelection, ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection, StreamSelection};
 use harmos_storage::state::*;
 use harmos_storage::*;
@@ -173,10 +171,10 @@ pub struct Release {
     pub through: StorageCursor,
 }
 
-pub struct Data<C = ()> {
+pub struct Data {
     pruned_objects: Mutex<BTreeMap<u64, (SchemaKey, ObjectKey)>>,
     pub object_releases: Mutex<Vec<Release>>,
-    catalog: PhantomData<fn() -> C>,
+    catalog: ObjectCatalog,
     pub objects: Mutex<BTreeMap<u64, ObjectEntry>>,
     pub object_schemas: Mutex<BTreeMap<(String, u32), Vec<harmos_domain::schema::Field>>>,
     pub staged: Mutex<BTreeMap<String, (FileMetadata, Vec<u8>)>>,
@@ -271,16 +269,16 @@ impl Control {
 
 impl Data {
     pub fn new(history: StoreHistory) -> Self {
-        Self::with_catalog(history)
+        Self::with_catalog(ObjectCatalog::new(), history)
     }
 }
 
-impl<C: ObjectCatalog> Data<C> {
-    pub fn with_catalog(history: StoreHistory) -> Self {
+impl Data {
+    pub fn with_catalog(catalog: ObjectCatalog, history: StoreHistory) -> Self {
         Self {
             pruned_objects: Mutex::default(),
             object_releases: Mutex::new(Vec::new()),
-            catalog: PhantomData,
+            catalog,
             objects: Mutex::default(),
             object_schemas: Mutex::default(),
             staged: Mutex::default(),
@@ -309,7 +307,7 @@ impl<C: ObjectCatalog> Data<C> {
     }
 }
 
-impl<C: ObjectCatalog> StorageBackend for Data<C> {
+impl StorageBackend for Data {
     fn release_object_history<'a>(
         &'a self, schema: &'a SchemaKey, item: &'a ObjectKey, through: &'a StorageCursor,
     ) -> StorageFuture<'a, ()> {
@@ -360,8 +358,11 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             &self.objects,
             |value| &value.position,
             |object| {
-                C::validate_value(&object.value, NonZeroUsize::MAX)?;
-                let definition = C::definitions()
+                self.catalog.validate_value(&object.value, NonZeroUsize::MAX)?;
+                let definition = self
+                    .catalog
+                    .definitions()
+                    .iter()
                     .try_for_each(|definition| if definition.schema().unwrap() == object.value.schema { Err(*definition) } else { Ok(()) })
                     .err()
                     .unwrap();
@@ -391,8 +392,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         )
     }
     fn prune_objects<'a>(
-        &'a self, through: &'a StorageCursor, max_entries: NonZeroUsize,
-        retention: fn(&SchemaKey) -> harmos_domain::Result<ObjectRetention>,
+        &'a self, through: &'a StorageCursor, max_entries: NonZeroUsize, retention: &'a ObjectCatalog,
     ) -> StorageFuture<'a, bool> {
         Box::pin(async move {
             self.history.check(&through.history)?;
@@ -409,7 +409,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 // Controlled test storage uses a scan; real adapters use their key index.
                 // Only a bounded removal list is allocated, independent of key count.
                 for (&position, object) in objects.range(..=through.sequence) {
-                    let retention = retention(&object.value.schema)?;
+                    let retention = retention.retention(&object.value.schema)?;
                     if retention == ObjectRetention::All {
                         continue;
                     }
@@ -562,7 +562,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     }
 }
 
-impl<C: ObjectCatalog> Data<C> {
+impl Data {
     fn persist<'a, T: Clone + PartialEq + Send + Sync + 'static>(
         &'a self, batch: StorageBatch<T>, stored: &'a Mutex<BTreeMap<u64, T>>, position: fn(&T) -> &StorageCursor,
         validate: impl Fn(&T) -> Result<()> + Send + 'a,

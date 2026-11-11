@@ -37,23 +37,15 @@ pub use publish::Publish;
 /* === Enums === */
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub struct Streams;
+pub fn streams_catalog() -> crate::execution::operations::Catalog {
+    streams_catalog_batch().named("harmos.streams")
+}
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-impl crate::execution::operations::OperationCatalog for Streams {
-    const CATALOG: crate::execution::operations::Catalog = crate::execution::operations::Catalog::of::<Self>("harmos.streams", &[], &[]);
-    fn batch() -> crate::execution::__private::RegistrationBatch {
-        let mut batch = crate::execution::__private::RegistrationBatch::new();
-        batch.operations.push(crate::execution::operations::OperationFactory::protobuf::<Publish>().expect("Publish declaration"));
-        batch
-    }
-}
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-impl Streams {
-    pub fn catalog() -> Vec<crate::OperationDefinition> {
-        <Self as crate::execution::operations::OperationCatalog>::batch().operations.into_iter().map(|factory| factory.definition).collect()
-    }
-    pub const CATALOG: crate::execution::operations::Catalog = <Self as crate::execution::operations::OperationCatalog>::CATALOG;
+pub fn streams_catalog_batch() -> crate::execution::__private::Catalog {
+    let mut batch = crate::execution::__private::Catalog::new();
+    batch.operations.push(crate::execution::operations::OperationFactory::protobuf::<Publish>().expect("Publish declaration"));
+    batch
 }
 
 /* === Traits === */

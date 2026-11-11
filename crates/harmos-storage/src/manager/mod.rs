@@ -29,7 +29,6 @@ pub(crate) use encoding::recovery_encoded_bound;
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::io::{self, Write};
-use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
 // Third Party Imports
@@ -77,9 +76,8 @@ pub struct StorageMetrics {
     pub failure: Option<Arc<Error>>,
 }
 
-pub struct StorageManager<C = ()> {
+pub struct StorageManager {
     pub(super) inner: Arc<Inner>,
-    catalog: PhantomData<fn() -> C>,
 }
 
 pub(super) struct Inner {
@@ -95,8 +93,7 @@ pub(super) struct Inner {
     pub(super) primary: Arc<dyn StorageBackend>,
     pub(super) recovery: Arc<dyn StateBackend>,
     pub(super) has_objects: bool,
-    pub(super) object_definition: fn(&SchemaKey) -> harmos_domain::Result<harmos_domain::model::storage::catalog::ObjectDefinition>,
-    pub(super) object_retention: fn(&SchemaKey) -> harmos_domain::Result<super::ObjectRetention>,
+    pub(super) catalog: super::ObjectCatalog,
     pub(super) state: Mutex<State>,
     pub(super) changed: watch::Sender<u64>,
     pub(super) lifecycle: tokio::sync::RwLock<Lifecycle>,
@@ -185,8 +182,6 @@ enum Admitted {
     Reserved(u64, u64, u64),
 }
 
-pub enum ErasedCatalog {}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Domain {
     Data,
@@ -230,16 +225,13 @@ impl Pending {
     }
 }
 
-impl<C> Clone for StorageManager<C> {
+impl Clone for StorageManager {
     fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            catalog: PhantomData,
-        }
+        Self { inner: self.inner.clone() }
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     /// Bind An Idle Storage Engine Before The Host Starts Its Worker.
     pub fn adopt_clock(&self, clock: &Execution) -> Result<()> {
         if self.inner.execution.same_source(clock) {
@@ -260,23 +252,24 @@ impl<C> StorageManager<C> {
     pub fn clock(&self) -> &Execution {
         &self.inner.execution
     }
-
-    pub fn erased(&self) -> StorageManager<ErasedCatalog> {
-        StorageManager {
-            inner: self.inner.clone(),
-            catalog: PhantomData,
-        }
-    }
 }
 
-impl<C: super::ObjectCatalog> StorageManager<C> {
+impl StorageManager {
     pub fn new(backends: StorageBackends, settings: StorageSettings) -> Result<Self> {
-        Self::with_execution(backends, settings, Execution::default())
+        Self::with_catalog(super::ObjectCatalog::new(), backends, settings)
     }
 
-    #[tracing::instrument(name = "storage.manager.new", level = "debug", skip_all)]
+    pub fn with_catalog(catalog: super::ObjectCatalog, backends: StorageBackends, settings: StorageSettings) -> Result<Self> {
+        Self::with_catalog_execution(catalog, backends, settings, Execution::default())
+    }
     pub fn with_execution(backends: StorageBackends, settings: StorageSettings, execution: Execution) -> Result<Self> {
-        C::validate()?;
+        Self::with_catalog_execution(super::ObjectCatalog::new(), backends, settings, execution)
+    }
+    #[tracing::instrument(name = "storage.manager.new", level = "debug", skip_all)]
+    pub fn with_catalog_execution(
+        catalog: super::ObjectCatalog, backends: StorageBackends, settings: StorageSettings, execution: Execution,
+    ) -> Result<Self> {
+        catalog.validate()?;
         settings.validate()?;
         let StorageBackends { primary, state: state_backend } = backends;
         primary.history().check(state_backend.history())?;
@@ -285,7 +278,6 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
         let recovery_position = RecoveryPosition { history, sequence: 0 };
         let receipts = super::receipts::Receipts::new(MUTATION_RETENTION, execution.clone())?;
         Ok(Self {
-            catalog: PhantomData,
             inner: Arc::new(Inner {
                 execution: execution.clone(),
                 measurement_admission: tokio::sync::Mutex::new(()),
@@ -298,9 +290,8 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                 settings,
                 primary,
                 recovery: state_backend,
-                has_objects: C::definition_count() != 0,
-                object_definition: harmos_domain::model::storage::catalog::definition::<C>,
-                object_retention: harmos_domain::model::storage::catalog::retention::<C>,
+                has_objects: catalog.definition_count() != 0,
+                catalog,
                 state: Mutex::new(State {
                     execution: execution.clone(),
                     prefer_measurement: false,
