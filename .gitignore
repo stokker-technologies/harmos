@@ -46,6 +46,7 @@ Thumbs.db
 __pycache__/
 .ruff_cache/
 !.vscode/project.code-snippets
+!.vscode/settings.json
 
 # Native Coverage Profiles
 *.profraw

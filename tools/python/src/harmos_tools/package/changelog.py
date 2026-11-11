@@ -38,7 +38,7 @@ def notes(directory: Path, tag: str, *, tagged: bool | None = None) -> str:
     if tagged is None:
         tags = policy.execute(directory, ["git", "tag", "--points-at", "HEAD"], capture=True).splitlines()
         tagged = tag in tags
-    command = ["git-cliff", "--strip", "header"]
+    command = ["git-cliff", "--config", "tools/config/cliff.toml", "--strip", "header"]
     command += ["--current"] if tagged else ["--unreleased", "--tag", tag]
     return policy.execute(directory, command, capture=True).strip() + "\n"
 

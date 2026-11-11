@@ -152,7 +152,7 @@ jobs:
       SCCACHE_CACHE_SIZE: 8G
       COMPILER_CACHE_MODE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
         || 'READ_ONLY' }}
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    if: github.event_name != 'push' && (github.event_name != 'pull_request' || github.event.action != 'closed')
     permissions:
       actions: read
       contents: read
@@ -404,7 +404,7 @@ jobs:
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    if: github.event_name != 'push' && (github.event_name != 'pull_request' || github.event.action != 'closed')
     env:
       MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,uv
     strategy:
@@ -495,7 +495,7 @@ jobs:
       SCCACHE_CACHE_SIZE: 8G
       COMPILER_CACHE_MODE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
         || 'READ_ONLY' }}
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    if: github.event_name != 'push' && (github.event_name != 'pull_request' || github.event.action != 'closed')
     strategy:
       fail-fast: false
       matrix:
@@ -529,6 +529,7 @@ jobs:
       run: mise run ci:required --
       env:
         RESULTS: ${{ toJSON(needs) }}
+        OPTIONAL_JOBS: ${{ github.event_name == 'push' && '["release_dry","release_rehearsal","package_rust","prepare_test_fixtures","test","test_unit"]' || '[]' }}
         RELEASE_REVIEW: ${{ github.event_name == 'pull_request' && github.base_ref == 'dev' && startsWith(github.head_ref, 'release/v') }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
@@ -575,7 +576,13 @@ jobs:
       with:
         name: build-product-${{ env.PROFILE }}-unix
         path: target/ci
+    - name: Check Python on Dev
+      if: github.event_name == 'push' && matrix.suffix == ''
+      run: |
+        mise run format -- --language python --check
+        mise run lint -- --language python
     - name: Run Project Task
+      if: github.event_name != 'push' || matrix.suffix != ''
       run: mise run check -- ${{ matrix.arguments }}
       env:
         CI_INPUT_ARCHIVES: '["target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst"]'
@@ -656,7 +663,7 @@ jobs:
         path: ${{ steps.setup.outputs.uv-path }}
     env:
       MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,uv
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    if: github.event_name != 'push' && (github.event_name != 'pull_request' || github.event.action != 'closed')
     strategy:
       fail-fast: false
       matrix:
@@ -729,7 +736,7 @@ jobs:
         path: ${{ steps.setup.outputs.uv-path }}
     env:
       MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,uv
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    if: github.event_name != 'push' && (github.event_name != 'pull_request' || github.event.action != 'closed')
     strategy:
       fail-fast: false
       matrix:

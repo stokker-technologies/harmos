@@ -13,6 +13,7 @@
 # Standard Library Imports
 import json
 import os
+import re
 import shlex
 import subprocess
 import tempfile
@@ -56,7 +57,9 @@ def run(operation: str, arguments: list[str], profile: str) -> int:
         return 0
     if operation == "required":
         results = json.loads(os.environ["RESULTS"])
-        optional = {"release_rehearsal"} if os.environ.get("RELEASE_REVIEW") != "true" else set()
+        optional = set(json.loads(os.environ.get("OPTIONAL_JOBS", "[]")))
+        if os.environ.get("RELEASE_REVIEW") != "true":
+            optional.add("release_rehearsal")
         if any(job["result"] != "success" and not (name in optional and job["result"] == "skipped") for name, job in results.items()):
             raise ValueError("required CI jobs failed or were skipped")
         return 0
@@ -72,36 +75,55 @@ def run(operation: str, arguments: list[str], profile: str) -> int:
         caches = json.loads(os.environ.get("CACHE_RESTORES", "{}"))
         summary.render("Cache Summary", None, None, caches={name: {"Restore": value} for name, value in caches.items()})
         return 0
-    if operation == "nightly-gate":
+    if operation == "nightly-freshness":
+        from ..release.review import pages, request
+
+        if os.environ["GITHUB_REF"] != "refs/heads/dev":
+            raise ValueError("nightly requires dev")
         build = True
         if os.environ["GITHUB_EVENT_NAME"] == "schedule":
+            # A Missing Tag Is The First Nightly; Other API Failures Must Fail Closed.
             result = subprocess.run(
-                ["gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/git/ref/tags/nightly", "--jq", ".object.sha"],
+                ["gh", "api", "--include", f"repos/{os.environ['GITHUB_REPOSITORY']}/git/ref/tags/nightly"],
+                check=False,
                 capture_output=True,
                 text=True,
                 creationflags=spawn_flags(),
-                check=False,
             )
-            build = result.returncode != 0 or result.stdout.strip() != os.environ["GITHUB_SHA"]
+            if result.returncode and not re.search(r"HTTP/\S+ 404", result.stdout) and "HTTP 404" not in result.stderr:
+                raise RuntimeError("nightly tag lookup failed")
+            if not result.returncode:
+                published = request("git/ref/tags/nightly")
+                build = published["object"]["sha"] != os.environ["GITHUB_SHA"]
+        for status in ("in_progress", "queued"):
+            runs = pages(f"actions/workflows/nightly.yml/runs?head_sha={os.environ['GITHUB_SHA']}&status={status}", "workflow_runs")
+            if any(str(run["id"]) != os.environ["GITHUB_RUN_ID"] for run in runs):
+                build = False
+                break
         with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
             output.write(f"build={str(build).lower()}\n")
+        return 0
+    if operation == "nightly-publish":
+        from ..release import nightly
+
+        nightly.publish(policy.root())
         return 0
     if operation == "nightly-report":
         root = policy.root()
         settings = policy.policy(root, "release")
         current = registry.document(settings, "releases/tags/nightly", channel=True)
         notes = current["body"]
-        url = (
-            os.environ.get("RUN_URL")
-            or f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
-        )
-        if f"({url})" not in notes:
+        url = os.environ["RUN_URL"]
+        identity = f"| CI Run | [{os.environ['GITHUB_RUN_ID']}]({url}) |"
+        if identity not in notes.splitlines():
             print("A Newer Run Replaced Nightly; Leaving Its Notes Unchanged")
             return 0
-        suite = os.environ["SUITE"]
-        if suite not in ("passed", "failed"):
-            raise ValueError("SUITE must be passed or failed")
-        registry.document(settings, f"releases/{current['id']}", "PATCH", {"body": notes + f"\n**Suite:** {suite}, {url}\n"}, channel=True)
+        results = json.loads(os.environ["NEEDS"])
+        failed = [name for name, job in results.items() if name != "publish" and job["result"] != "success"]
+        status = "failed: " + ", ".join(failed) if failed else "passed"
+        line = f"**Suite:** {status} ([run]({url}))"
+        notes = "\n".join(row for row in notes.splitlines() if not row.startswith("**Suite:**")).rstrip()
+        registry.document(settings, f"releases/{current['id']}", "PATCH", {"body": notes + "\n\n" + line + "\n"}, channel=True)
         return 0
     if operation == "mirror":
         branch = os.environ["GITHUB_REF_NAME"]

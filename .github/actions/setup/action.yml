@@ -110,8 +110,8 @@ runs:
       SETUP_PLATFORM: ${{ inputs.platform }}
       CACHE_PLAN: ${{ inputs.caches }}
       SETUP_BOOTSTRAP: ${{ inputs.bootstrap }}
-      COMPILER_CACHE_BACKEND: ${{ inputs.cache-backend }}
-      COMPILER_CACHE_MODE: ${{ inputs.cache-mode }}
+      COMPILER_CACHE_BACKEND: ${{ inputs.cache-backend || env.COMPILER_CACHE_BACKEND }}
+      COMPILER_CACHE_MODE: ${{ inputs.cache-mode || env.COMPILER_CACHE_MODE }}
   - id: bench_baselines
     name: Cache / bench-baselines
     if: steps.native.outputs.bench_baselines-path != ''

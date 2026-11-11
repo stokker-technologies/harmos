@@ -37,6 +37,8 @@ git-cliff = "2.14.2"
 # === Environment === #
 
 [env]
+RUFF_CACHE_DIR = "{{ config_root }}/tools/python/.ruff_cache"
+TAPLO_CONFIG = "{{ config_root }}/tools/config/taplo.toml"
 RUSTC_WRAPPER = "{{ get_env(name='RUSTC_WRAPPER', default='') if get_env(name='CI', default='') else get_env(name='RUSTC_WRAPPER', default='sccache') }}"
 SCCACHE_DIR = "{{ get_env(name='SCCACHE_DIR', default='') if get_env(name='CI', default='') else (get_env(name='LOCALAPPDATA', default=env.HOME ~ '/AppData/Local') if os() == 'windows' else get_env(name='XDG_CACHE_HOME', default=env.HOME ~ '/.cache')) ~ '/sccache' }}"
 SCCACHE_CACHE_SIZE = "{{ get_env(name='SCCACHE_CACHE_SIZE', default='') if get_env(name='CI', default='') else '20G' }}"
@@ -120,10 +122,15 @@ hide = true
 description = "CI / Summary"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:summary"
 
-[tasks."ci:nightly-gate"]
+[tasks."ci:nightly-freshness"]
 hide = true
-description = "CI / Nightly Gate"
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:nightly-gate"
+description = "CI / Nightly Freshness"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:nightly-freshness"
+
+[tasks."ci:nightly-publish"]
+description = "Publish Nightly Packages"
+hide = true
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:nightly-publish"
 
 [tasks."ci:nightly-report"]
 hide = true

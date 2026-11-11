@@ -8,7 +8,7 @@
 - [ ] 1.4 Update the rehearsal, the README and the product guide.
 - [ ] 1.5 Attach `benchmarks.json` to Nightly under its fixed name.
 - [ ] 1.6 Extract the shared validation, publish and verify jobs as reusable workflows and make Nightly call them with the nightly channel.
-- [ ] 1.7 Align the Nightly contract with Dokime: triggers, cancellation, freshness, names, artifact interface, publish entry point, verification and report; stop cancelling Nightly runs.
+- [x] 1.7 Align the Nightly contract with Dokime: triggers, cancellation, freshness, names, artifact interface, publish entry point, verification and report; stop cancelling Nightly runs.
 
 ## 2. Final Validation
 
@@ -17,3 +17,13 @@
 ## Workflow Follow-Up
 
 - Dokime carries the same layout in its change `release-layout`.
+
+- 1.7 preserves Harmos's native artifact interface and the existing staged publisher's
+  tag, release identity and asset verification. Nightly uses UTC schedule/manual
+  triggers, noncancelling runs, fail-closed freshness and idempotent run-owned reports.
+- Shared workflow extraction remains 1.6. Release assets, reports, benchmark uploads
+  and a real publication rehearsal remain open in 1.1–1.5 and 2.1.
+- Provider follow-ups from the workflow audit remain owner work: main's required
+  checks, unused full-validation/mirror environments and mirror credential scope.
+- Draft-review routing, release completion predicates and compiler-cache saver
+  consolidation remain separate workflow work; this task does not introduce reusable workflows.

@@ -13,7 +13,7 @@ mise install --locked
 mise run prepare
 ```
 
-Windows and Linux are supported. The [Schematic example](docs/schematic.md)
+Windows and Linux are supported. The [Schematic example](schematic.md)
 is a complete application for understanding composition, plugins and storage.
 
 ## Development Workflow
@@ -39,13 +39,15 @@ while retaining its checks, builds, packages, suites, coverage and benchmarks.
 
 Nightly is the provisional release channel: one mutable GitHub prerelease
 titled `Nightly` under the `nightly` tag, built from dev in the release profile.
-It runs on its schedule and on manual dispatch; a scheduled run skips when the
-`nightly` tag already points at dev HEAD, while a manual run always builds.
+It runs every four hours in UTC and on manual dispatch, without cancelling
+earlier runs; a scheduled run skips when the `nightly` tag already points at
+dev HEAD. A manual run bypasses the tag comparison. Both skip duplicate queued
+or running revisions; tag lookup errors other than a missing tag fail closed.
 Publication depends only on the build and package jobs and consumes that run's
 native tool archives, Schematic ZIPs and plugin bundles from both platforms;
 plugin download names include their producer target. Tests, benchmarks and
 coverage run in parallel and may fail, so a nightly can be broken: the final
-`Nightly / Report` job appends the suite result and run URL to the release
+`Nightly / Report` job replaces this run's suite result and run URL in the release
 notes. Benchmark results stay CI artifacts, never release assets.
 
 One serialized publisher drafts the release, uploads and verifies every asset
@@ -76,7 +78,7 @@ otherwise.
 Run targeted tasks locally. Hosted CI and Nightly provide full validation.
 Every pull request runs all configured verification jobs; release rehearsal is
 limited to release reviews. Impact planning is removed. Each matrix job names one
-project task; see [Workflow Task Interface](docs/tooling.md#workflow-task-interface).
+project task; see [Workflow Task Interface](tooling.md#workflow-task-interface).
 Merges into dev remain ungated. Required hosted checks gate main and stable
 releases. Report and investigate local failures.
 
@@ -107,7 +109,7 @@ consume only the Bench build. Other entry points use
 `uv run --no-sync`. Focused selections invoke Cargo directly, without archives,
 compiler-output scans or locks. The compiler cache's background server persists
 across invocations; each worktree keeps its own `target/`. See
-[Workstation Builds](docs/tooling.md#workstation-builds).
+[Workstation Builds](tooling.md#workstation-builds).
 
 `mise run test -- --language python` tests task selection, release evidence and atomic
 channel publication without compiling products or contacting publication APIs.
@@ -146,7 +148,7 @@ consumer-owned.
 
 Target `dev` and explain the user-visible problem, resulting behavior and
 verification. Keep required checks enabled and include no private data or
-credentials. Contributions use the [Apache-2.0 license](LICENSE).
+credentials. Contributions use the [Apache-2.0 license](../LICENSE).
 
 Release preparation and publication follow the separate protected release
 workflow; an ordinary pull request does not publish packages.

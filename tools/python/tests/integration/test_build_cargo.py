@@ -24,7 +24,7 @@ from unittest.mock import patch
 # Third Party Imports
 # Local Imports
 from harmos_tools.build import cargo
-from harmos_tools.ci import artifacts, tasks, workflow
+from harmos_tools.ci import artifacts, tasks
 from harmos_tools.release import review
 
 # Type Checking Imports
@@ -162,34 +162,6 @@ class FocusedCargoTests(unittest.TestCase):
                 fields = dict(line.split("=", 1) for line in output.read_text().splitlines())
                 self.assertEqual(fields, {"mode": mode, "sha": sha})
 
-    def test_nightly_gate_and_report_preserve_run_ownership(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            output = Path(temporary) / "output"
-            environment = {
-                "GITHUB_EVENT_NAME": "schedule",
-                "GITHUB_REPOSITORY": "owner/repo",
-                "GITHUB_SHA": "abc",
-                "GITHUB_OUTPUT": str(output),
-            }
-            with (
-                patch.dict(os.environ, environment),
-                patch.object(workflow.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="abc\n")),
-            ):
-                self.assertEqual(workflow.run("nightly-gate", [], "release"), 0)
-            self.assertEqual(output.read_text(), "build=false\n")
-            environment.update(RUN_URL="https://example.test/run/1", SUITE="failed")
-            for body, updated in [("[1](https://example.test/run/1)", True), ("[2](https://example.test/run/2)", False)]:
-                with (
-                    patch.dict(os.environ, environment),
-                    patch.object(workflow.policy, "root", return_value=Path(temporary)),
-                    patch.object(workflow.policy, "policy", return_value={}),
-                    patch.object(workflow.registry, "document", return_value={"id": 9, "body": body}) as document,
-                ):
-                    self.assertEqual(workflow.run("nightly-report", [], "release"), 0)
-                    self.assertEqual(document.call_count, 2 if updated else 1)
-                    if updated:
-                        self.assertIn("failed", document.call_args.args[3]["body"])
-
 
 class WorkflowTaskTests(unittest.TestCase):
     def test_fixture_join_selects_existing_inputs_without_compiling(self):
@@ -261,7 +233,6 @@ class WorkflowTaskTests(unittest.TestCase):
             (["--stage", "assets"], [("release:publish:assets",)], [("release.checks",), ("release.run", "identity")]),
             (["--stage", "rust"], [("release:publish:rust",)], []),
             (["--stage", "finalize"], [("release:publish:finalize",)], []),
-            (["--stage", "nightly"], [], [("release.nightly",)]),
             ([], [("release:publish:assets",), ("release:publish:finalize",)], [("release.checks",), ("release.run", "identity")]),
         ]
         for arguments, expected_tasks, expected_modules in selections:
@@ -357,6 +328,20 @@ class WorkflowTaskTests(unittest.TestCase):
         with patch.dict(os.environ, {"RESULTS": '{"release_rehearsal":{"result":"skipped"}}', "RELEASE_REVIEW": "false"}):
             self.assertEqual(tasks.main(["ci:required"]), 0)
         with patch.dict(os.environ, {"RESULTS": '{"release_rehearsal":{"result":"skipped"}}', "RELEASE_REVIEW": "true"}):
+            with self.assertRaises(ValueError):
+                tasks.main(["ci:required"])
+
+        environment = {
+            "OPTIONAL_JOBS": '["test","package_rust"]',
+            "RESULTS": '{"test":{"result":"skipped"},"package_rust":{"result":"skipped"},"build_product":{"result":"success"}}',
+        }
+        with patch.dict(os.environ, environment):
+            self.assertEqual(tasks.main(["ci:required"]), 0)
+            for name in ("test", "package_rust", "build_product"):
+                os.environ["RESULTS"] = json.dumps({name: {"result": "failure"}})
+                with self.assertRaises(ValueError):
+                    tasks.main(["ci:required"])
+            os.environ["RESULTS"] = '{"build_product":{"result":"skipped"}}'
             with self.assertRaises(ValueError):
                 tasks.main(["ci:required"])
 

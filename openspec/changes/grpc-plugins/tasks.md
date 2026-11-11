@@ -4,7 +4,7 @@
 
 - [ ] 1.1 Settle the open points in `design.md` with the owner and record each outcome there.
 - [x] 1.2 Lock the source inventory: producers, consumers, tests, fixtures, examples and guidance.
-  - `CONTRIBUTING.md` — Migrate native authoring/example/fixture instructions to SDK builder values, serve and managed/remote `plugin-grpc`; retain guest guidance until 7.1.
+  - `docs/CONTRIBUTING.md` — Migrate native authoring/example/fixture instructions to SDK builder values, serve and managed/remote `plugin-grpc`; retain guest guidance until 7.1.
   - `Cargo.lock` — Migrate default native features and facade exports to the new SDK/placement; remove obsolete fixture/bench target selections as consumers move, retaining guest dependencies until 7.1.
   - `Cargo.toml` — Migrate default native features and facade exports to the new SDK/placement; remove obsolete fixture/bench target selections as consumers move, retaining guest dependencies until 7.1.
   - `README.md` — Migrate native authoring/example/fixture instructions to SDK builder values, serve and managed/remote `plugin-grpc`; retain guest guidance until 7.1.
@@ -275,3 +275,19 @@
 - After the last gRPC wave, Harmos `storage-interface` implements and benchmarks the generic extensions; Dokime's change of the same name consumes them, extracts application persistence and supplies before/after multi-day benchmarks. No storage extension or extraction runs in a gRPC wave.
 - Delivery uses targeted validation and merges to dev without waiting for CI; breakage is fixed in follow-ups.
 - SDK system tests run in Nightly only, not on pull requests.
+
+## Repository Layout and Nightly Follow-Up
+
+- [x] Move explicit git-cliff/Taplo configuration to `tools/config/`, remove unused
+  Typos configuration and its ownership records, and move contributor guidance to
+  `docs/CONTRIBUTING.md`; update callers, editors, templates, snippets and links.
+- [x] Place Ruff caches under `tools/python/` and document tool configuration owners.
+- [x] Restrict dev pushes to check/build jobs and harmonize Nightly freshness,
+  cancellation, task/job names and run-owned reporting with the sibling product.
+- [x] Run the requested format, repository and Python checks and repair owned findings.
+- [ ] Complete generated-client proof after the combined Product producer supplies
+  `target/generated/python/src` and
+  `target/build/dev/windows-x86_64/product/examples/catalog.json`. The Python check
+  passed formatting, lint, protocol drift, 45 tooling tests and both SDK journeys,
+  then failed on the absent generated-client directory. Focused conformance build,
+  format and repository checks passed; Linux and hosted proof remain open.

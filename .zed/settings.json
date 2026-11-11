@@ -17,6 +17,18 @@
           "rust-analyzer"
         ]
       }
+    },
+    "taplo": {
+      "settings": {
+        "evenBetterToml": {
+          "taplo": {
+            "configFile": {
+              "path": "tools/config/taplo.toml",
+              "enabled": true
+            }
+          }
+        }
+      }
     }
   }
 }

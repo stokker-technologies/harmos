@@ -8,6 +8,10 @@ Run `mise run prepare` once after checkout or dependency changes to synchronize
 all locked dependency groups in both projects and install the components and targets
 from `rust-toolchain.toml`. Tool versions stay pinned in `mise.toml` and `mise.lock`;
 release, CI and package settings live in `tools/project.toml`.
+Explicit tool configuration lives in `tools/config/`: git-cliff uses `cliff.toml`
+and Taplo uses `taplo.toml`. Tasks pass these paths; editor settings select Taplo
+explicitly. Mise puts Ruff caches in `tools/python/.ruff_cache/`.
+Contributor guidance lives in [Contributing](CONTRIBUTING.md).
 The SDK's development group includes tooling for reference-host test support;
 this dependency does not enter the tooling workspace or the SDK runtime.
 Every other entry point uses `uv run --locked --no-sync`.
@@ -298,9 +302,16 @@ architecture, compilation profile and the Rust version read from `mise.toml`;
 the Cargo lock hash is the final restorable component. Other tool versions do
 not invalidate compiler caches.
 
-Nightly uses `ci:nightly-gate` (`GITHUB_OUTPUT` receives `build`),
-`release:publish --stage nightly`, then `ci:nightly-report` with `SUITE`
-(`passed` or `failed`) and optional `RUN_URL`. Reports preserve a newer run's notes.
+Nightly runs every four hours in UTC and on manual dispatch, only on dev.
+Whole runs never cancel an earlier run. `ci:nightly-freshness` writes `build` to
+`GITHUB_OUTPUT`: scheduled runs compare the nightly tag with the source revision;
+a missing tag allows the first build, while other lookup errors fail closed.
+Manual runs bypass tag freshness. Both skip duplicate queued or running revisions.
+`ci:nightly-publish` consumes both native package archives and uses the existing
+publisher's staged upload and tag, release and asset verification. Publication
+waits only for packages. `ci:nightly-report` reads `NEEDS` JSON and `RUN_URL`,
+replaces its previous suite verdict idempotently and lists failed or skipped jobs.
+It updates only the release whose CI Run row matches this run's ID and URL.
 Mirror uses `ci:mirror` with its SSH key, known hosts and GitHub ref/SHA inputs.
 `ci:runners` preserves the runner allowlist check. `ci:release-mode` emits `mode`
 and `sha` to `GITHUB_OUTPUT`: successful release-review CI completion selects its
@@ -313,8 +324,15 @@ merged release reviews so their validation can finish. Release evidence lookup u
 `ci:review` with `REVIEW_REQUIRED`, `REVIEW_RELEASE`, `REVIEW_PACKAGES` and
 `REVIEW_BUILDS`; outputs go to `GITHUB_OUTPUT`. `ci:release-checks` checks the exact
 `RELEASE_TARGET_SHA`. `ci:required` reads `RESULTS` JSON and refuses failures,
-cancellations and unexpected skips; only the release-review rehearsal may skip
-outside a release review (`RELEASE_REVIEW=false`).
+cancellations and unexpected skips; the release-review rehearsal may skip
+outside a release review (`RELEASE_REVIEW=false`). `OPTIONAL_JOBS` explicitly allows
+skipped suites, fixture preparation, packaging and dry publication on dev pushes.
+Dev pushes run only checks and Product/Tests builds; they never run those consumers.
+The dev Python job selects the existing format/lint tasks because the complete
+Python check also runs SDK and tooling tests. Generated-client checks consume
+Product outputs, including `target/generated/python/src`; they do not build or
+invent missing clients. Local complete Python checks require the reference host
+(`mise run build -- --package harmos-conformance`) and matching Product outputs.
 
 Every pull request runs the full verification graph. Packaging consumes Product
 without waiting for checks. Unit tests download only Tests and wait only for its build.
@@ -327,7 +345,7 @@ report consumes suite statuses as well as the publication result.
 `release:prepare --review` prepares changes, checks the runner allowlist when
 configured, then creates the release review. Hosted GitHub `release:tag` and
 `release:publish` own identity reporting and the exact-commit CI guard. Publication uses
-`release:publish --dry` for a dry run or `release:publish --stage assets|rust|finalize|nightly`
+`release:publish --dry` for a dry run or `release:publish --stage assets|rust|finalize`
 for one real publication stage. These selections are mutually exclusive. Default publication still drafts
 assets then finalizes. `release:rehearse` accepts `--target`, `--profile` and
 `--stage-only`; no release command builds missing products. Workflow and task changes are delivered together.

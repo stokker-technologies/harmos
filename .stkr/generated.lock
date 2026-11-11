@@ -2,8 +2,8 @@
   "version": 1,
   "files": {
     ".github/renovate.json5": "f28f8044207b75a12f37410c2b6e1fd65e240e7cc29f63a823fbb32eed6c2b0b",
-    ".vscode/project.code-snippets": "3701d5f29060d3c3f52ffdf060bd3d4c6aa4ff65c05b60b96148646559f505f1",
-    ".zed/project.code-snippets": "3701d5f29060d3c3f52ffdf060bd3d4c6aa4ff65c05b60b96148646559f505f1",
+    ".vscode/project.code-snippets": "db7e773d9a98edb4a0e1cd3f83cc07b04baca3739542b45b2bf61a366ab48e7a",
+    ".zed/project.code-snippets": "db7e773d9a98edb4a0e1cd3f83cc07b04baca3739542b45b2bf61a366ab48e7a",
     "crates/cargo-harmos/templates/guest/.gitignore.tmpl": "130c3bec81909d3826860be7c3f62ea7bdb39afaedf6fa471a1b15846d6ba1a8",
     "crates/cargo-harmos/templates/guest/.gitlab/renovate.json5.tmpl": "c23d96f67113ee073446ad89aa0afdeb761dc8943185c8e0121b0558be521e58",
     "crates/cargo-harmos/templates/guest/cliff.toml.tmpl": "0e241058e797fc414896cdb5493158daf917ba8299e0ca8f99a997c3e62b3e7c",
@@ -37,7 +37,6 @@
     "crates/cargo-harmos/templates/guest/tools/python/src/project_tools/test/report.py.tmpl": "47812ff27cc1bd88d1f8fa3c171375c5c92e3b90c8d719e7e2fbcab83a659a20",
     "crates/cargo-harmos/templates/guest/tools/python/src/project_tools/test/run.py.tmpl": "d8ab840dc9b57c2e62608685fff3ddeadf80fec6988bb2dbd7c2d1b56c16bb5a",
     "crates/cargo-harmos/templates/guest/tools/python/src/project_tools/test/vitest.py.tmpl": "90e2b1cf1cca9b70d8f98455ff3d00d8e56ad6241623b2b85e5c9fbb58c1b3c1",
-    "crates/cargo-harmos/templates/guest/typos.toml.tmpl": "8bb26fada284139ea728c578a91bb377007782f181b3d2fd2bd5ba2b18531f1a",
     "crates/cargo-harmos/templates/sidecar/.gitignore.tmpl": "130c3bec81909d3826860be7c3f62ea7bdb39afaedf6fa471a1b15846d6ba1a8",
     "crates/cargo-harmos/templates/sidecar/.gitlab/renovate.json5.tmpl": "c23d96f67113ee073446ad89aa0afdeb761dc8943185c8e0121b0558be521e58",
     "crates/cargo-harmos/templates/sidecar/cliff.toml.tmpl": "0e241058e797fc414896cdb5493158daf917ba8299e0ca8f99a997c3e62b3e7c",
@@ -71,9 +70,8 @@
     "crates/cargo-harmos/templates/sidecar/tools/python/src/project_tools/test/report.py.tmpl": "47812ff27cc1bd88d1f8fa3c171375c5c92e3b90c8d719e7e2fbcab83a659a20",
     "crates/cargo-harmos/templates/sidecar/tools/python/src/project_tools/test/run.py.tmpl": "d8ab840dc9b57c2e62608685fff3ddeadf80fec6988bb2dbd7c2d1b56c16bb5a",
     "crates/cargo-harmos/templates/sidecar/tools/python/src/project_tools/test/vitest.py.tmpl": "90e2b1cf1cca9b70d8f98455ff3d00d8e56ad6241623b2b85e5c9fbb58c1b3c1",
-    "crates/cargo-harmos/templates/sidecar/typos.toml.tmpl": "8bb26fada284139ea728c578a91bb377007782f181b3d2fd2bd5ba2b18531f1a",
     "rustfmt.toml": "2158f9b04388a8b3322acd46935c43a86bfc9d1e17c460842d685984081e0254",
-    "taplo.toml": "584c93ba77db66a8cd7af9ee25fd406f47a140ffc439ec0de5ba4a052437a270",
+    "tools/config/taplo.toml": "584c93ba77db66a8cd7af9ee25fd406f47a140ffc439ec0de5ba4a052437a270",
     "tools/python/ruff.toml": "a030f2edb97ce152cca18428e4b35fb81cb07b94626300fb5116639c1b6c914e",
     "tools/python/src/harmos_tools/build/__init__.py": "02ba0f91890cfbeefa51c7aa179c04a33acf9388f6e4151a97540e87de6a4d8d",
     "tools/python/src/harmos_tools/build/bench.py": "b359318a06d5e3e1951fd4029c8e16a803d9dc4a95d201579b2cc9e98c21f6a5",
@@ -98,7 +96,6 @@
     "tools/python/src/harmos_tools/test/pytest.py": "44f40de3639b011b13a2b6ff7d5d93b096f4825c94e2486b474baf60affa4249",
     "tools/python/src/harmos_tools/test/report.py": "e3db9fc744e575b490cc158be85a53436d2e18f774aaae73da51b8e06d70d617",
     "tools/python/src/harmos_tools/test/run.py": "1adbe1e975f25dd263622d4b5a09ee9055064da24c79b02d14157be1d44dea6c",
-    "tools/python/src/harmos_tools/test/vitest.py": "22591e28d397e796b4d675cc8b780d4ca78bf5508404d162f5b1d00b0b1e9ea6",
-    "typos.toml": "6f945081e8758f502f01edd8ba6dbd02c047dca73bab5524e9f39aa93d4217f9"
+    "tools/python/src/harmos_tools/test/vitest.py": "22591e28d397e796b4d675cc8b780d4ca78bf5508404d162f5b1d00b0b1e9ea6"
   }
 }

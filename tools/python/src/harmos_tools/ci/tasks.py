@@ -125,7 +125,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if name == "publish":
             publication = release.add_mutually_exclusive_group()
             publication.add_argument("--dry", action="store_true")
-            publication.add_argument("--stage", choices=("assets", "rust", "finalize", "nightly"))
+            publication.add_argument("--stage", choices=("assets", "rust", "finalize"))
         if name == "prepare":
             release.add_argument("--review", action="store_true")
         if name == "rehearse":
@@ -137,8 +137,9 @@ def dispatch(arguments: list[str] | None = None) -> int:
         "pack",
         "extract",
         "summary",
-        "nightly-gate",
+        "nightly-freshness",
         "nightly-report",
+        "nightly-publish",
         "mirror",
         "runners",
         "review",
@@ -443,8 +444,6 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if not options.dry and options.stage in (None, "assets") and os.environ.get("GITHUB_ACTIONS"):
             _module("release.checks")
             _module("release.run", "identity")
-        if options.stage == "nightly":
-            return _module("release.nightly")
         if options.dry:
             return _task("release:publish:dry", *options.arguments)
         if options.stage:

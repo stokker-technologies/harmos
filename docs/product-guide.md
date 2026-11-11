@@ -1132,7 +1132,8 @@ in its output. HTML rendering uses Plotters and does not require Gnuplot.
 
 ## Documentation
 
-- [Repository Tooling](tooling.md) — workstation builds and shared compiler cache.
+- [Repository Tooling](tooling.md) — workstation builds, shared compiler cache and `tools/config/` configuration.
+- [Contributing](CONTRIBUTING.md) — development setup and validation.
 - [Runnable Examples](examples.md) — application composition and plugin integration.
 - [C++ Plugin SDK](tooling.md#c-plugin-sdk) — C++20 authoring with protobuf messages and gRPC plugin serving.
 - [Schematic Walkthrough](schematic.md) — the example application, its crates and backends.
