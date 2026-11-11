@@ -562,6 +562,8 @@ access; products may use it to require an authenticated client.
 
 ## Open Points
 
+Guest migration (7.1) is deferred: lifecycle phases and child submit, status, join and release controls have no equivalent in `harmos.v1`; guest-private dispatch, envelopes and authoring support preserve those behaviours independently of native plugin removal.
+
 ### Awaiting Owner Confirmation
 
 - Unary-only plugin operations, with streamed requests/results confined to host-native operations.
