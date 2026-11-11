@@ -219,6 +219,11 @@
   - [x] 3.10.2 Prove generated unary and streamed gRPC calls, authorization, reflection and decoding-memory refusal with a vendored-compiler test proto; document the declaration.
 
 - [ ] 3.11 In the host wave, migrate built-in request/results to protocol messages with declaration, gRPC mapping, callee policy and handler in each operation file; register directly through narrow resources without a runtime dependency or per-service adapters.
+  - [x] 3.11.1 Migrate lifecycle status, cancel and watch with generated messages and native/gRPC proof.
+  - [ ] 3.11.2 Migrate clock operations and remove the plugin-specific clock binding.
+  - [ ] 3.11.3 Migrate host discovery and stream publication.
+  - [ ] 3.11.4 Migrate storage operation families and native streaming consumers.
+  - [ ] 3.11.5 Migrate example operations and remove superseded host projections and wire mirrors.
 - [x] 3.12 Prove generated protobuf unary and streaming declarations through real gRPC routing, bounded decoding and the client authorization hook; provide the adoption example for Dokime's host-wave operations migration.
 
 ## 4. Rust SDK

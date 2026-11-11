@@ -1274,6 +1274,7 @@ version = "0.1.14"
 dependencies = [
  "prost",
  "prost-build",
+ "prost-reflect",
  "prost-types",
  "protoc-bin-vendored",
  "sha2 0.11.1",

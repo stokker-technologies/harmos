@@ -19,6 +19,15 @@ use `stage_plugin_observers(resources, scope, backends)` and
 `submit_resident_in(id, resources)` to retain plugin scope and resource identity;
 generation retirement stops these observers with the plugin.
 
+Host lifecycle operations use `harmos_protocol::host::{Status, Cancel, Watch,
+InstanceState}` directly. Register `harmos_operations::Lifecycle` and invoke
+`operations.call_protobuf::<harmos_operations::lifecycle::Status>(request)` for a
+native unary call. `submit_protobuf` supplies bounded stream endpoints for Watch.
+The consumer configures `preparation_bytes` for encoded admission; the callee owns
+its timeout and cancellation policy. Status and cancellation expose only instances
+owned by the caller. Guest child controls keep their private status codec until
+the guest protocol migration.
+
 Operation failures retain their classification, application refusal code and source
 diagnostics across carriers. Applications can attach named, non-secret context
 with `Failure::with_detail` and read it with `Failure::detail`; a plugin admission

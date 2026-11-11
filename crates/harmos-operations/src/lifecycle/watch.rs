@@ -13,16 +13,9 @@
 
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-#[cfg(feature = "runtime")]
+use crate::Error;
 use crate::execution::operations::instances::InstanceAccess;
-
-#[cfg(feature = "runtime")]
-use crate::{Error, Operation, Response};
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
 use harmos_domain::operations::instance::Id;
 
 /* === Constants === */
@@ -33,20 +26,7 @@ use harmos_domain::operations::instance::Id;
 
 /* === Structs === */
 
-#[harmos::operation(
-    harmos_path = crate,
-    resources = [InstanceAccess],
-    id = "host.operations.watch",
-    response = super::InstanceState,
-    output = super::InstanceState,
-    policy = super::WATCH_POLICY,
-    visibility = Public,
-    grpc(package = "harmos.host.v1", service = "Operations", method = "Watch"),
-)]
-#[derive(Clone, Default, PartialEq)]
-pub struct Watch {
-    pub instance: u64,
-}
+pub struct Watch;
 
 /* === Enums === */
 
@@ -54,32 +34,38 @@ pub struct Watch {
 
 /* === Implementations === */
 
-impl Watch {
-    pub fn of(instance: Id) -> Self {
-        Self { instance: instance.value() }
-    }
-}
+impl ProtobufOperation for Watch {
+    type Request = harmos_protocol::host::Watch;
+    type Response = super::InstanceState;
+    type Endpoints = ProtobufOutput<super::InstanceState>;
+    const ID: &'static str = "host.operations.watch";
+    const GRPC: Grpc = Grpc::new("harmos.host.v1", "Operations", "Watch");
+    const POLICY: crate::OperationPolicy = super::WATCH_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<InstanceAccess>()];
 
-#[cfg(feature = "runtime")]
-impl Operation for Watch {
-    type Error = Error;
-
-    async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<Response<super::InstanceState>, Error> {
-        let access = context.resource::<crate::execution::operations::instances::InstanceAccess>();
-        let output = context.streams();
-
-        let instance = access.0.owned(Id::new(self.instance)).ok_or(Error::UnknownInstance(self.instance))?;
-        use harmos_domain::MemorySize;
+    async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let access = context.resource::<InstanceAccess>().map_err(|_| ServingError::Catalog)?;
+        let instance = access
+            .0
+            .owned(Id::new(request.instance))
+            .ok_or_else(|| ServingError::Native(std::sync::Arc::new(Error::UnknownInstance(request.instance))))?;
         let mut changes = instance.subscribe();
         drop(instance);
         loop {
             let status = changes.current();
-            let state = super::InstanceState::from(status);
-            output.send_with(state.memory_size(), || Ok(state.clone())).await?;
+            let state = super::state(status);
+            output.send(state.clone()).await.map_err(ServingError::Stream)?;
             if status.is_settled() || !changes.changed().await {
-                return Ok(state.into());
+                return Ok(state);
             }
         }
+    }
+}
+
+impl Watch {
+    pub fn of(instance: Id) -> harmos_protocol::host::Watch {
+        harmos_protocol::host::Watch { instance: instance.value() }
     }
 }
 

@@ -46,6 +46,8 @@ mod registration;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod remote;
 
+#[cfg(feature = "grpc")]
+mod protobuf;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod sdk;
 mod wire;

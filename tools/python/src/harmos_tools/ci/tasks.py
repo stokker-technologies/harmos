@@ -70,7 +70,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     commands.add_parser("prepare")
     generate = commands.add_parser("generate")
     generate.add_argument("--profile", choices=("dev", "release"), default="dev")
-    generate.add_argument("--sdk", choices=("python",))
+    generate.add_argument("--sdk", choices=("python", "rust"))
     for name in ("format", "lint", "check"):
         command = commands.add_parser(name)
         languages = LANGUAGES
@@ -342,6 +342,9 @@ def dispatch(arguments: list[str] | None = None) -> int:
     if options.command == "generate":
         if options.sdk == "python":
             return _module("build.python_protocol")
+        if options.sdk == "rust":
+            binary = root / "target" / ("debug" if options.profile == "dev" else "release") / "examples" / ("generate.exe" if os.name == "nt" else "generate")
+            return _execute([str(binary)])
         from ..build.__main__ import generate
 
         generate(options.profile)

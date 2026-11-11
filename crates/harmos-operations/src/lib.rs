@@ -13,6 +13,7 @@
 mod error;
 pub mod execution;
 pub mod host;
+#[cfg(feature = "runtime")]
 pub mod lifecycle;
 pub mod storage;
 pub mod streams;
@@ -27,6 +28,7 @@ pub use harmos_macros::{catalog, operation};
 #[cfg(feature = "lifecycle")]
 pub use crate::execution::{Context, Dependent, Executable, ExecutionContext, Operation, Resource, ResourceError, Response};
 pub use host::Host;
+#[cfg(feature = "runtime")]
 pub use lifecycle::Lifecycle;
 pub use storage::Storage;
 pub use streams::Streams;
@@ -78,6 +80,7 @@ pub struct Builtins;
 
 /* === Implementations === */
 
+#[cfg(feature = "runtime")]
 impl Builtins {
     pub fn catalog() -> Vec<harmos_domain::OperationDefinition> {
         let mut definitions = Host::catalog();

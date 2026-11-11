@@ -107,6 +107,10 @@ async fn builtin_grpc_roundtrip() {
     let release = Arc::new(tokio::sync::Notify::new());
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
         setup.resource::<tokio::sync::Notify>(release.clone());
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
+            ..Default::default()
+        });
     })
     .await
     .unwrap();
@@ -127,19 +131,34 @@ async fn builtin_grpc_roundtrip() {
     let id = parked.id();
 
     // An External Caller Neither Sees nor Cancels a Host Instance
-    let status = builtin_call::<Status, InstanceState>(channel.clone(), "/harmos.host.v1.Operations/Status", Status::of(id)).await;
+    let status = generated_call::<harmos_protocol::host::Status, InstanceState>(
+        channel.clone(),
+        "/harmos.host.v1.Operations/Status",
+        Status::of(id),
+    )
+    .await;
     assert!(status.is_err());
     let unknown = harmos_runtime::operations::OperationInstanceId::new(u64::MAX);
-    let cancel = builtin_call::<Cancel, InstanceState>(channel.clone(), "/harmos.host.v1.Operations/Cancel", Cancel::of(unknown)).await;
+    let cancel = generated_call::<harmos_protocol::host::Cancel, InstanceState>(
+        channel.clone(),
+        "/harmos.host.v1.Operations/Cancel",
+        Cancel::of(unknown),
+    )
+    .await;
     assert!(cancel.is_err());
-    let foreign = builtin_call::<Cancel, InstanceState>(channel.clone(), "/harmos.host.v1.Operations/Cancel", Cancel::of(id)).await;
+    let foreign = generated_call::<harmos_protocol::host::Cancel, InstanceState>(
+        channel.clone(),
+        "/harmos.host.v1.Operations/Cancel",
+        Cancel::of(id),
+    )
+    .await;
     assert_eq!(foreign.unwrap_err().code(), cancel.unwrap_err().code());
     assert!(!parked.status().cancellation_requested());
 
     // The Submitting Host Reads and Cancels Its Own Instance
-    let owned = runtime.operation(Status::of(id)).await.unwrap();
+    let owned = runtime.operations.call_protobuf::<Status>(Status::of(id)).await.unwrap();
     assert_eq!(owned.phase, "running");
-    let cancelled = runtime.operation(Cancel::of(id)).await.unwrap();
+    let cancelled = runtime.operations.call_protobuf::<Cancel>(Cancel::of(id)).await.unwrap();
     assert!(cancelled.cancellation_requested);
     assert!(parked.await.is_err());
     drop(attached);
@@ -1189,4 +1208,17 @@ async fn settled_stream_drain_keeps_idle_deadline() {
     let _ = awake.await;
     tokio::time::resume();
     runtime.shutdown().await.unwrap();
+}
+
+async fn generated_call<Q, R>(channel: tonic::transport::Channel, path: &'static str, request: Q) -> Result<R, tonic::Status>
+where
+    Q: prost::Message + Default + Send + Sync + 'static,
+    R: prost::Message + Default + Send + Sync + 'static,
+{
+    let mut client = tonic::client::Grpc::new(channel);
+    client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
+    client
+        .unary(tonic::Request::new(request), http::uri::PathAndQuery::from_static(path), tonic_prost::ProstCodec::default())
+        .await
+        .map(tonic::Response::into_inner)
 }

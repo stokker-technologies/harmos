@@ -67,6 +67,19 @@ Build the componentizer with the fixture-driver selection above, without `--chec
 Use `test --language python --exact tests.integration.<module>.<case>` for a
 focused tooling test.
 
+## Protocol Generation
+
+The checked-in Rust messages and descriptor set come from `proto/harmos/v1`:
+
+```sh
+mise run build -- --package harmos-protocol --example generate
+mise run generate -- --sdk rust
+mise run test -- --package harmos-protocol --target integration --exact generated_code_matches_proto::generated_code_matches_proto
+```
+
+`harmos-protocol` supplies reflection for generated host messages. Lifecycle
+handlers register their generated request and response contracts directly.
+
 ## Python Plugin SDK
 
 `sdk/python` builds the pure Python `harmos-plugin` distribution for Python 3.13+.

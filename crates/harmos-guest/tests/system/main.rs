@@ -34,8 +34,8 @@ use harmos::guest::capabilities::Refusal as BridgeRefusal;
 use harmos_domain::inventory::{Declaration, Facility};
 use harmos_domain::{Message, Refusal};
 use harmos_guest::lifecycle::Initialize;
+use harmos_guest::lifecycle::InstanceState;
 use harmos_guest::operations::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
-use harmos_operations::lifecycle::InstanceState;
 use sandbox::{EchoOperation, Echoed};
 
 /* === Constants === */

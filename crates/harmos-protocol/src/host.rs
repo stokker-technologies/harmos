@@ -16,3 +16,34 @@ pub struct OperationAssignments {
     #[prost(message, repeated, tag = "1")]
     pub operations: ::prost::alloc::vec::Vec<AssignedOperation>,
 }
+/// Controls refer only to instances owned by the authenticated caller.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Status {
+    #[prost(uint64, tag = "1")]
+    pub instance: u64,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Cancel {
+    #[prost(uint64, tag = "1")]
+    pub instance: u64,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Watch {
+    #[prost(uint64, tag = "1")]
+    pub instance: u64,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct InstanceState {
+    #[prost(string, tag = "1")]
+    pub phase: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub outcome: ::prost::alloc::string::String,
+    #[prost(bool, tag = "3")]
+    pub cancellation_requested: bool,
+    #[prost(uint32, tag = "4")]
+    pub attempt: u32,
+}

@@ -41,6 +41,7 @@ sha2 = { workspace = true }
 # Serialization
 prost = { workspace = true, features = ["derive", "std"] }
 prost-types = { workspace = true, features = ["std"] }
+prost-reflect = { workspace = true }
 
 # Configuration
 
@@ -116,6 +117,10 @@ path = "tests/integration/main.rs"
 # === Bench Targets === #
 
 # === Example Targets === #
+
+[[example]]
+name = "generate"
+path = "examples/generate.rs"
 
 # === Workspace Lints === #
 

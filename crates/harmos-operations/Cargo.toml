@@ -17,12 +17,12 @@ version = { workspace = true }
 # === Features === #
 
 [features]
-default = []
+default = ["runtime"]
 lifecycle = []
 derive = ["harmos-domain/derive"]
 grpc = ["dep:prost-reflect", "dep:prost-types"]
 streaming = []
-runtime = ["lifecycle", "dep:harmos-storage"]
+runtime = ["lifecycle", "dep:harmos-storage", "grpc", "streaming"]
 
 # === Dependencies === #
 

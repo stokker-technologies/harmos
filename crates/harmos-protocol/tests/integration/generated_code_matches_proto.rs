@@ -11,6 +11,9 @@
 
 /* === Modules === */
 
+#[path = "../../codegen.rs"]
+mod codegen;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -46,7 +49,6 @@ use std::{fs, path::Path};
 fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
     // Locate the Wire Definition and Disposable Output.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let proto = root.join("proto");
     let output_root = root.join("target/generated/rust/harmos-protocol");
     fs::create_dir_all(&output_root)?;
     let output = tempfile::tempdir_in(output_root)?;
@@ -84,15 +86,7 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Regenerate With the Pinned Compiler, Without Mutating the Environment.
-    let mut config = prost_build::Config::new();
-    config.protoc_executable(compiler);
-    tonic_prost_build::configure()
-        .client_mod_attribute("harmos.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
-        .server_mod_attribute("harmos.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
-        .build_client(true)
-        .build_server(true)
-        .out_dir(output.path())
-        .compile_with_config(config, &[proto.join("harmos/v1/plugin.proto"), proto.join("harmos/v1/host.proto")], &[proto, includes])?;
+    codegen::generate(&compiler, &includes, output.path())?;
 
     // Compare the Complete Generated Source, Retaining Evidence on Failure.
     let generated = fs::read(output.path().join("harmos.v1.rs"))?;
@@ -107,5 +101,6 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
         let output = output.keep();
         panic!("generated Rust differs from src/host.rs; regenerated source retained in {}", output.display());
     }
+    assert_eq!(fs::read(output.path().join("descriptors.bin"))?, include_bytes!("../../src/descriptors.bin"));
     Ok(())
 }
