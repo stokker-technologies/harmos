@@ -7,124 +7,48 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-use super::POLICY;
-use harmos_domain::MemorySize;
-use harmos_domain::model::storage::codec::{Nested, product};
-use harmos_domain::model::storage::{MutationId, SchemaInput, StorageCursor};
-use harmos_domain::operations::ReplaySafety;
-
-#[cfg(feature = "runtime")]
+use crate::execution::operations::{ExecutionContext, ProtobufOperation, Resource, ServingError};
+use harmos_domain::operations::{FailureKind, ReplaySafety};
 use harmos_storage::{ErasedCatalog, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-product!(WriteSchema {
-    mutation: Nested<MutationId> => 1,
-    schema: Nested<SchemaInput> => 2,
-});
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
-// Register One Payload Schema, Exactly Once Per Mutation.
-#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
-    id = "storage.write_schema",
-    response = StorageCursor,
-    policy = POLICY,
-    visibility = Private,
-    replay = ReplaySafety::Idempotent)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteSchema {
-    pub mutation: MutationId,
-    pub schema: SchemaInput,
-}
-
-/* === Enums === */
-
-/* === Traits === */
+pub struct WriteSchema;
 
 /* === Implementations === */
 
-impl MemorySize for WriteSchema {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.mutation.memory_size().saturating_sub(std::mem::size_of_val(&self.mutation)))
-            .saturating_add(self.schema.memory_size().saturating_sub(std::mem::size_of_val(&self.schema)))
-    }
-}
+impl ProtobufOperation for WriteSchema {
+    type Request = harmos_protocol::storage::WriteSchema;
+    type Response = harmos_protocol::storage::StorageCursor;
+    type Endpoints = ();
+    const ID: &'static str = "storage.write_schema";
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager<ErasedCatalog>>()];
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-#[cfg(feature = "runtime")]
-mod execution {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-    use crate::execution::operations::Operation;
-    use crate::{Error, Result};
-    use harmos_storage::StorageCursor;
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    impl Operation for super::WriteSchema {
-        type Error = Error;
-
-        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<crate::execution::operations::Response<StorageCursor>> {
-            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-
-            let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
-                storage.write_schema_once(&self.mutation, self.schema.key.clone(), self.schema.graph_owner()).await.map_err(Into::into)
-            }
-            .await;
-            result.map(::core::convert::Into::into)
+    async fn run(context: ExecutionContext, request: Self::Request, _output: &()) -> Result<Self::Response, ServingError> {
+        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        let result: crate::Result<harmos_storage::StorageCursor> = async {
+            let mutation: harmos_storage::MutationId =
+                request.mutation.ok_or(crate::Error::InvalidInput { field: "mutation", reason: "required" })?.try_into()?;
+            let schema = request.schema.ok_or(crate::Error::InvalidInput { field: "schema", reason: "required" })?;
+            let key: harmos_storage::SchemaKey =
+                schema.key.ok_or(crate::Error::InvalidInput { field: "key", reason: "required" })?.try_into()?;
+            let graph: harmos_domain::schema::graph::Schema =
+                schema.graph.ok_or(crate::Error::InvalidInput { field: "graph", reason: "required" })?.try_into()?;
+            graph.prepare(&harmos_domain::config::SchemaSettings::default()).map_err(|_| crate::Error::InvalidInput {
+                field: "storage schema",
+                reason: "invalid finite schema graph",
+            })?;
+            Ok(storage.write_schema_once(&mutation, key, graph).await?)
         }
-
-        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
-            crate::storage::classify(error)
-        }
+        .await;
+        result.map(Into::into).map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
     }
 
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(FailureKind::Permanent)
+    }
 }
-
-/* === Tests === */

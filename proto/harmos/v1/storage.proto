@@ -74,3 +74,24 @@ message HashFile { FileSource source = 1; ByteRange range = 2; }
 message CaptureFile { FileSource source = 1; ByteRange range = 2; FileMetadata metadata = 3; CaptureConsistency consistency = 4; }
 message FollowFile { FileSource source = 1; FollowStart start = 2; }
 message FollowProduction { StagedFile file = 1; uint64 offset = 2; }
+
+// Storage schema graphs describe persisted payloads; they do not change their encoding.
+enum PayloadEncoding { PAYLOAD_ENCODING_UNSPECIFIED = 0; POSTCARD_V1 = 1; }
+message SchemaKey { string id = 1; uint32 version = 2; PayloadEncoding payload_encoding = 3; }
+enum SchemaCardinality { REQUIRED = 0; OPTIONAL = 1; REPEATED = 2; VARIANT = 3; }
+enum SchemaKind { BOOL = 0; UINT32 = 1; UINT64 = 2; INT32 = 3; INT64 = 4; FLOAT32 = 5; FLOAT64 = 6; STRING = 7; BYTES = 8; MESSAGE = 9; }
+message SchemaField { string name = 1; uint32 tag = 2; SchemaKind kind = 3; SchemaCardinality cardinality = 4; optional uint64 definition = 5; }
+message SchemaDefinition { repeated SchemaField fields = 1; }
+enum SchemaForm { OBJECT = 0; UNIT = 1; VALUE = 2; TUPLE = 3; EXTERNAL = 4; INTERNAL = 5; ADJACENT = 6; UNTAGGED = 7; }
+enum SchemaOmission { OMIT_NONE = 0; OMIT_EMPTY = 1; }
+message SchemaRepresentation {
+  uint64 definition = 1;
+  SchemaForm form = 2;
+  optional string tag = 3;
+  optional string content = 4;
+  map<string, SchemaOmission> omissions = 5;
+  repeated string maps = 6;
+}
+message SchemaGraph { uint64 root = 1; repeated SchemaDefinition definitions = 2; repeated SchemaRepresentation representations = 3; }
+message SchemaInput { SchemaKey key = 1; SchemaGraph graph = 2; }
+message WriteSchema { MutationId mutation = 1; SchemaInput schema = 2; }

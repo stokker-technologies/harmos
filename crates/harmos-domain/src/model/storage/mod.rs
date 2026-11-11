@@ -24,7 +24,6 @@ pub mod mutations;
 pub mod objects;
 pub mod position;
 pub mod query;
-pub mod schema_input;
 pub mod time;
 pub mod writes;
 
@@ -47,7 +46,6 @@ pub use query::{
     FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, QueryOutput, RecordSelection, RowSlice, SchemaSelection, Source,
     StreamSelection,
 };
-pub use schema_input::{SchemaInfo, SchemaInput};
 pub use writes::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt};
 
 /* === Imports === */

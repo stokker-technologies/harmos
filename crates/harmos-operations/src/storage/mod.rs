@@ -50,6 +50,7 @@ mod watch_directory;
 mod write_file;
 mod write_objects;
 mod write_records;
+#[cfg(feature = "runtime")]
 mod write_schema;
 mod write_streams;
 
@@ -91,6 +92,7 @@ pub use watch_directory::WatchDirectory;
 pub use write_file::WriteFile;
 pub use write_objects::WriteObjects;
 pub use write_records::WriteRecords;
+#[cfg(feature = "runtime")]
 pub use write_schema::WriteSchema;
 pub use write_streams::WriteStreams;
 
@@ -145,7 +147,6 @@ enum Legacy {
     WriteRecords(WriteRecords),
     WriteStreams(WriteStreams),
     WriteFile(WriteFile),
-    WriteSchema(WriteSchema),
     WriteObjects(WriteObjects),
     FollowObjects(FollowObjects),
 }

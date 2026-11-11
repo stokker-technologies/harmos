@@ -154,6 +154,35 @@ impl ObjectRetention {
     }
 }
 
+impl From<SchemaKey> for harmos_protocol::storage::SchemaKey {
+    fn from(value: SchemaKey) -> Self {
+        Self {
+            id: value.id.to_string(),
+            version: value.version.get(),
+            payload_encoding: value.payload_encoding as i32,
+        }
+    }
+}
+impl TryFrom<harmos_protocol::storage::SchemaKey> for SchemaKey {
+    type Error = Error;
+    fn try_from(value: harmos_protocol::storage::SchemaKey) -> Result<Self> {
+        if value.payload_encoding != harmos_protocol::storage::PayloadEncoding::PostcardV1 as i32 {
+            return Err(Error::InvalidInput {
+                field: "payload_encoding",
+                reason: "unsupported storage encoding",
+            });
+        }
+        Ok(Self {
+            id: Identifier::new(value.id)?,
+            version: NonZeroU32::new(value.version).ok_or(Error::InvalidInput {
+                field: "version",
+                reason: "must be nonzero",
+            })?,
+            payload_encoding: PayloadEncoding::PostcardV1,
+        })
+    }
+}
+
 /* === Public Functions === */
 
 pub fn object_key<K: fmt::Display + ?Sized>(key: &K, limit: NonZeroUsize) -> Result<ObjectKey> {

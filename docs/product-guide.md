@@ -931,6 +931,10 @@ Storage status, file mutation, read/capture/follow and directory operations also
 use `Manager::call_protobuf` for unary calls or `Manager::submit_protobuf` for native streams.
 Supply the caller's preparation budget and stream limits in operation settings and submission.
 Storage kernels retain their native storage values and persisted encodings.
+Schema registration uses the generated `SchemaGraph`: references index its definition table,
+scalar fields cannot reference definitions, and representation indices must be unique.
+The storage schema validator checks the graph before mutation admission.
+
 
 The declaration's `GRPC` is optional; private native operations leave it `None`.
 Declare typed callees in `OPERATIONS` and invoke them through the execution context:

@@ -377,6 +377,78 @@ pub struct FollowProduction {
     pub offset: u64,
 }
 #[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SchemaKey {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "2")]
+    pub version: u32,
+    #[prost(enumeration = "PayloadEncoding", tag = "3")]
+    pub payload_encoding: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SchemaField {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "2")]
+    pub tag: u32,
+    #[prost(enumeration = "SchemaKind", tag = "3")]
+    pub kind: i32,
+    #[prost(enumeration = "SchemaCardinality", tag = "4")]
+    pub cardinality: i32,
+    #[prost(uint64, optional, tag = "5")]
+    pub definition: ::core::option::Option<u64>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SchemaDefinition {
+    #[prost(message, repeated, tag = "1")]
+    pub fields: ::prost::alloc::vec::Vec<SchemaField>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SchemaRepresentation {
+    #[prost(uint64, tag = "1")]
+    pub definition: u64,
+    #[prost(enumeration = "SchemaForm", tag = "2")]
+    pub form: i32,
+    #[prost(string, optional, tag = "3")]
+    pub tag: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "4")]
+    pub content: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(map = "string, enumeration(SchemaOmission)", tag = "5")]
+    pub omissions: ::std::collections::HashMap<::prost::alloc::string::String, i32>,
+    #[prost(string, repeated, tag = "6")]
+    pub maps: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SchemaGraph {
+    #[prost(uint64, tag = "1")]
+    pub root: u64,
+    #[prost(message, repeated, tag = "2")]
+    pub definitions: ::prost::alloc::vec::Vec<SchemaDefinition>,
+    #[prost(message, repeated, tag = "3")]
+    pub representations: ::prost::alloc::vec::Vec<SchemaRepresentation>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SchemaInput {
+    #[prost(message, optional, tag = "1")]
+    pub key: ::core::option::Option<SchemaKey>,
+    #[prost(message, optional, tag = "2")]
+    pub graph: ::core::option::Option<SchemaGraph>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WriteSchema {
+    #[prost(message, optional, tag = "1")]
+    pub mutation: ::core::option::Option<MutationId>,
+    #[prost(message, optional, tag = "2")]
+    pub schema: ::core::option::Option<SchemaInput>,
+}
+#[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum FilePhase {
@@ -429,6 +501,190 @@ impl CaptureConsistency {
         match value {
             "BOUNDED" => Some(Self::Bounded),
             "STABLE" => Some(Self::Stable),
+            _ => None,
+        }
+    }
+}
+/// Storage schema graphs describe persisted payloads; they do not change their encoding.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PayloadEncoding {
+    Unspecified = 0,
+    PostcardV1 = 1,
+}
+impl PayloadEncoding {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "PAYLOAD_ENCODING_UNSPECIFIED",
+            Self::PostcardV1 => "POSTCARD_V1",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PAYLOAD_ENCODING_UNSPECIFIED" => Some(Self::Unspecified),
+            "POSTCARD_V1" => Some(Self::PostcardV1),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum SchemaCardinality {
+    Required = 0,
+    Optional = 1,
+    Repeated = 2,
+    Variant = 3,
+}
+impl SchemaCardinality {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Required => "REQUIRED",
+            Self::Optional => "OPTIONAL",
+            Self::Repeated => "REPEATED",
+            Self::Variant => "VARIANT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "REQUIRED" => Some(Self::Required),
+            "OPTIONAL" => Some(Self::Optional),
+            "REPEATED" => Some(Self::Repeated),
+            "VARIANT" => Some(Self::Variant),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum SchemaKind {
+    Bool = 0,
+    Uint32 = 1,
+    Uint64 = 2,
+    Int32 = 3,
+    Int64 = 4,
+    Float32 = 5,
+    Float64 = 6,
+    String = 7,
+    Bytes = 8,
+    Message = 9,
+}
+impl SchemaKind {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Bool => "BOOL",
+            Self::Uint32 => "UINT32",
+            Self::Uint64 => "UINT64",
+            Self::Int32 => "INT32",
+            Self::Int64 => "INT64",
+            Self::Float32 => "FLOAT32",
+            Self::Float64 => "FLOAT64",
+            Self::String => "STRING",
+            Self::Bytes => "BYTES",
+            Self::Message => "MESSAGE",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "BOOL" => Some(Self::Bool),
+            "UINT32" => Some(Self::Uint32),
+            "UINT64" => Some(Self::Uint64),
+            "INT32" => Some(Self::Int32),
+            "INT64" => Some(Self::Int64),
+            "FLOAT32" => Some(Self::Float32),
+            "FLOAT64" => Some(Self::Float64),
+            "STRING" => Some(Self::String),
+            "BYTES" => Some(Self::Bytes),
+            "MESSAGE" => Some(Self::Message),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum SchemaForm {
+    Object = 0,
+    Unit = 1,
+    Value = 2,
+    Tuple = 3,
+    External = 4,
+    Internal = 5,
+    Adjacent = 6,
+    Untagged = 7,
+}
+impl SchemaForm {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Object => "OBJECT",
+            Self::Unit => "UNIT",
+            Self::Value => "VALUE",
+            Self::Tuple => "TUPLE",
+            Self::External => "EXTERNAL",
+            Self::Internal => "INTERNAL",
+            Self::Adjacent => "ADJACENT",
+            Self::Untagged => "UNTAGGED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "OBJECT" => Some(Self::Object),
+            "UNIT" => Some(Self::Unit),
+            "VALUE" => Some(Self::Value),
+            "TUPLE" => Some(Self::Tuple),
+            "EXTERNAL" => Some(Self::External),
+            "INTERNAL" => Some(Self::Internal),
+            "ADJACENT" => Some(Self::Adjacent),
+            "UNTAGGED" => Some(Self::Untagged),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum SchemaOmission {
+    OmitNone = 0,
+    OmitEmpty = 1,
+}
+impl SchemaOmission {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::OmitNone => "OMIT_NONE",
+            Self::OmitEmpty => "OMIT_EMPTY",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "OMIT_NONE" => Some(Self::OmitNone),
+            "OMIT_EMPTY" => Some(Self::OmitEmpty),
             _ => None,
         }
     }

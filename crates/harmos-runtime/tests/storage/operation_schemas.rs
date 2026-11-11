@@ -26,7 +26,7 @@ use harmos_runtime::Identifier;
 use harmos_runtime::schema::Cardinality;
 use harmos_runtime::schema::graph::{Field, Kind, Schema};
 use harmos_runtime::storage::query::{QueryArrow, RowSlice, SchemaSelection, Source};
-use harmos_runtime::storage::{MutationId, SchemaInput, SchemaKey};
+use harmos_runtime::storage::{MutationId, SchemaKey};
 
 /* === Constants === */
 
@@ -46,50 +46,64 @@ use harmos_runtime::storage::{MutationId, SchemaInput, SchemaKey};
 
 /* === Private Functions === */
 
-fn schema(name: &str) -> SchemaInput {
-    SchemaInput::new(
-        SchemaKey {
-            payload_encoding: harmos_runtime::storage::PayloadEncoding::PostcardV1,
-            id: Identifier::new(name).unwrap(),
-            version: NonZeroU32::MIN,
-        },
-        Schema {
-            representations: ::std::collections::BTreeMap::new(),
-            root: 0,
-            definitions: vec![
-                vec![Field {
-                    name: Cow::Borrowed("rows"),
-                    tag: 1,
-                    cardinality: Cardinality::Repeated,
-                    kind: Kind::Message { definition: 1 },
-                }],
-                vec![
-                    Field {
-                        name: Cow::Borrowed("value"),
+fn schema(name: &str) -> harmos_protocol::storage::SchemaInput {
+    harmos_protocol::storage::SchemaInput {
+        key: Some(
+            SchemaKey {
+                payload_encoding: harmos_runtime::storage::PayloadEncoding::PostcardV1,
+                id: Identifier::new(name).unwrap(),
+                version: NonZeroU32::MIN,
+            }
+            .into(),
+        ),
+        graph: Some(
+            Schema {
+                representations: ::std::collections::BTreeMap::from([(
+                    0,
+                    harmos_runtime::schema::wire::Representation {
+                        omissions: ::std::collections::BTreeMap::from([("rows".into(), harmos_runtime::schema::wire::Omission::Empty)]),
+                        ..Default::default()
+                    },
+                )]),
+                root: 0,
+                definitions: vec![
+                    vec![Field {
+                        name: Cow::Borrowed("rows"),
                         tag: 1,
-                        cardinality: Cardinality::Required,
-                        kind: Kind::F64,
-                    },
-                    Field {
-                        name: Cow::Borrowed("next"),
-                        tag: 2,
-                        cardinality: Cardinality::Optional,
+                        cardinality: Cardinality::Repeated,
                         kind: Kind::Message { definition: 1 },
-                    },
+                    }],
+                    vec![
+                        Field {
+                            name: Cow::Borrowed("value"),
+                            tag: 1,
+                            cardinality: Cardinality::Required,
+                            kind: Kind::F64,
+                        },
+                        Field {
+                            name: Cow::Borrowed("next"),
+                            tag: 2,
+                            cardinality: Cardinality::Optional,
+                            kind: Kind::Message { definition: 1 },
+                        },
+                    ],
                 ],
-            ],
-        },
-    )
-    .unwrap()
+            }
+            .into(),
+        ),
+    }
 }
 
-fn request(f: &Fixture, name: &str) -> harmos_operations::storage::WriteSchema {
-    harmos_operations::storage::WriteSchema {
-        mutation: MutationId {
-            window: f.storage.mutation_window().unwrap().id,
-            key: Identifier::new(name).unwrap(),
-        },
-        schema: schema(name),
+fn request(f: &Fixture, name: &str) -> harmos_protocol::storage::WriteSchema {
+    harmos_protocol::storage::WriteSchema {
+        mutation: Some(
+            MutationId {
+                window: f.storage.mutation_window().unwrap().id,
+                key: Identifier::new(name).unwrap(),
+            }
+            .into(),
+        ),
+        schema: Some(schema(name).into()),
     }
 }
 
@@ -103,17 +117,24 @@ async fn setup() -> Fixture {
 async fn schema_registry_roundtrip() {
     let f = setup().await;
     let request = request(&f, "nested");
-    let accepted = f.runtime.operation(request.clone()).await.unwrap();
-    let repeated = f.runtime.operation(request.clone()).await.unwrap();
-    assert_eq!(*accepted, *repeated);
-    assert_eq!(f.storage.cursor_accepted(), *accepted);
+    let accepted = f.runtime.operations.call_protobuf::<harmos_operations::storage::WriteSchema>(request.clone()).await.unwrap();
+    let repeated = f.runtime.operations.call_protobuf::<harmos_operations::storage::WriteSchema>(request.clone()).await.unwrap();
+    assert_eq!(accepted, repeated);
+    assert_eq!(harmos_protocol::storage::StorageCursor::from(f.storage.cursor_accepted()), accepted);
     let mut conflict = request.clone();
-    conflict.schema.key.version = NonZeroU32::new(2).unwrap();
-    assert!(f.runtime.operation(conflict).await.is_err());
+    conflict.schema.as_mut().unwrap().key.as_mut().unwrap().version = 2;
+    assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::WriteSchema>(conflict).await.is_err());
+    let mut malformed = request.clone();
+    malformed.mutation.as_mut().unwrap().key = "malformed".into();
+    malformed.schema.as_mut().unwrap().graph.as_mut().unwrap().root = u64::MAX;
+    assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::WriteSchema>(malformed).await.is_err());
+    assert_eq!(harmos_protocol::storage::StorageCursor::from(f.storage.cursor_accepted()), accepted);
     let at = f.storage.flush().await.unwrap();
     let query = Query {
         at: at.clone(),
-        source: Source::Schemas(SchemaSelection { schema: Some(request.schema.key.clone()) }),
+        source: Source::Schemas(SchemaSelection {
+            schema: Some(request.schema.as_ref().unwrap().key.clone().unwrap().try_into().unwrap()),
+        }),
         transforms: vec![],
         slice: RowSlice { offset: 0, limit: None },
     };
@@ -147,7 +168,8 @@ async fn schema_registry_roundtrip() {
     assert_eq!(completed.rows, 1);
     assert_eq!(rows, 1);
     let persisted = f.data.schemas.lock().unwrap().values().next().unwrap().clone();
-    assert_eq!(*persisted.schema, *request.schema.graph());
+    let expected: Schema = request.schema.unwrap().graph.unwrap().try_into().unwrap();
+    assert_eq!(*persisted.schema, expected);
     let encoded = serde_json::to_value(&persisted).unwrap();
     let decoded: harmos_runtime::storage::StorageSchema = serde_json::from_value(encoded).unwrap();
     assert_eq!(decoded, persisted);
