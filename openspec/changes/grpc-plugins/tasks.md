@@ -246,7 +246,7 @@
 - [ ] 6.1 Delete the framed wire, handshake, credits, control pipe and binary carriers.
 - [ ] 6.2 Delete publication leases, admission, cadence reports and the native observer runner.
 - [ ] 6.3 Delete the plugin graph, start ordering and reload plans; grants and provider selection; generation tokens and stale-call fencing.
-- [ ] 6.4 Delete `crates/harmos-ffi` and its remaining manifest, task and consumer references.
+- [x] 6.4 Delete `crates/harmos-ffi` and its remaining manifest, task and consumer references.
 - [x] 6.4.1 Replace the C ABI bridge under `sdk/cpp` with the gRPC SDK.
 - [ ] 6.5 Migrate remaining host/guest operation payloads and catalogs to protobuf-derived definitions and remove Postcard message encoding from the wire; the native plugin derive is covered by 4.2.1.
 - [ ] 6.6 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.

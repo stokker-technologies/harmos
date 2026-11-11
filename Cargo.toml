@@ -29,7 +29,6 @@ harmos-protocol = { path = "crates/harmos-protocol", version = "=0.1.14", defaul
 harmos-runtime = { path = "crates/harmos-runtime", version = "=0.1.14", default-features = false }
 harmos-sdk-grpc = { path = "sdk/rust", version = "=0.1.14" }
 harmos-sdk-derive = { path = "sdk/rust/derive", version = "=0.1.14" }
-harmos-sidecar = { path = "crates/harmos-sidecar", version = "=0.1.14", default-features = false }
 harmos-storage = { path = "crates/harmos-storage", version = "=0.1.14", default-features = false }
 
 # Git
@@ -44,7 +43,6 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 
 # Utilities
 bytes = { version = "1.12.1", default-features = false }
-cbindgen = "=0.29.2"
 getrandom = { version = "0.4.3", default-features = false }
 heck = { version = "0.5.0", default-features = false }
 libc = { version = "0.2.191", default-features = false }
