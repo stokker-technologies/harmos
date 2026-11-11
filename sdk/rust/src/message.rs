@@ -165,7 +165,12 @@ mod tests {
 
         // Omit Defaults and Encode Nondefault Scalars
         assert!(Scalars::default().encode_to_vec().is_empty());
-        let value = Scalars { enabled: true, signed: -7, unsigned: 9, fraction: 1.5 };
+        let value = Scalars {
+            enabled: true,
+            signed: -7,
+            unsigned: 9,
+            fraction: 1.5,
+        };
         let bytes = value.encode_to_vec();
         assert_eq!(value.encoded_len(), bytes.len());
         let decoded = Scalars::decode(bytes.as_slice()).unwrap();

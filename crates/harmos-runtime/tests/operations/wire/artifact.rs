@@ -52,15 +52,6 @@ macro_rules! inert_plugin {
     };
 }
 
-#[cfg(feature = "plugin-sidecar")]
-inert_plugin!(Native, "selected_native", harmos_runtime::sidecar::Supervisor, &[Operations::CATALOG]);
-
-#[cfg(feature = "plugin-sidecar")]
-inert_plugin!(EmptyNative, "empty_native", harmos_runtime::sidecar::Supervisor, &[]);
-
-#[cfg(feature = "plugin-sidecar")]
-inert_plugin!(ExplicitEmptyNative, "explicit_empty_native", harmos_runtime::sidecar::Supervisor, &[]);
-
 #[cfg(feature = "plugin-guest")]
 inert_plugin!(Guest, "selected_guest", harmos_runtime::guest::kit::Context, &[Operations::CATALOG]);
 
@@ -114,15 +105,6 @@ struct EmptyGuest;
 
 #[cfg(feature = "plugin-guest")]
 struct ExplicitEmptyGuest;
-
-#[cfg(feature = "plugin-sidecar")]
-struct Native;
-
-#[cfg(feature = "plugin-sidecar")]
-struct EmptyNative;
-
-#[cfg(feature = "plugin-sidecar")]
-struct ExplicitEmptyNative;
 
 /* === Enums === */
 
@@ -199,24 +181,6 @@ mod facade {
 }
 
 /* === Tests === */
-
-#[cfg(feature = "plugin-sidecar")]
-#[test]
-fn native_inventory_contains() {
-    use harmos_domain::inventory::{Declaration, Facility};
-    use harmos_domain::plugin::Declared;
-
-    let bytes = <Native as Declared>::markers().unwrap().concat();
-    let inspected = Declaration::inspect(&bytes, Facility::Sidecar).unwrap();
-    let expected = Declarations::of::<Operations>().unwrap();
-    assert_eq!(inspected.operations, expected.clone());
-    assert_eq!(harmos_runtime::operations::Contracts::from_tree(Native::PROVIDES).unwrap()[0].operation().clone(), expected[0]);
-    assert_ne!(expected[0].id.as_str(), UnselectedDeclaration::ID);
-
-    for bytes in [<EmptyNative as Declared>::markers().unwrap().concat(), <ExplicitEmptyNative as Declared>::markers().unwrap().concat()] {
-        assert_eq!(Declaration::inspect(&bytes, Facility::Sidecar).unwrap().operations, vec![]);
-    }
-}
 
 #[cfg(feature = "plugin-guest")]
 #[test]

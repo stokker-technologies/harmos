@@ -144,7 +144,12 @@ impl Fixture {
                 }
             }
         });
-        Self { runtime, _attached: attached, failed, relay }
+        Self {
+            runtime,
+            _attached: attached,
+            failed,
+            relay,
+        }
     }
 
     pub async fn acknowledged(&self, rows: u64) -> Acknowledged {

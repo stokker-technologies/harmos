@@ -200,6 +200,35 @@ fn main() -> Result<()> {
             .stream(stream)
             .observer(observer)
             .operation(Operation::new("fixture.echo", echo))
+    } else if mode == "retry" {
+        Plugin::new("retry", "1.0.0").operation(Operation::new("fixture.retry", retry).policy(v1::OperationPolicy {
+            attempts: 3,
+            backoff: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+            ..Default::default()
+        }))
+    } else if mode == "deadline" {
+        Plugin::new("deadline", "1.0.0").requires::<harmos_sdk_grpc::clock::Now>().requires::<harmos_sdk_grpc::clock::Sleep>().operation(
+            Operation::new("fixture.clock", clock).policy(v1::OperationPolicy {
+                timeout: Some(prost_types::Duration { seconds: 3, nanos: 0 }),
+                attempt_timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+                ..Default::default()
+            }),
+        )
+    } else if mode == "twins" {
+        let left = harmos_sdk_grpc::Stream::<Value>::new("fixture.left");
+        let right = harmos_sdk_grpc::Stream::<Value>::new("fixture.right");
+        let left_observer = harmos_sdk_grpc::Observer::new(&left, observe).every_ms(1000);
+        let right_observer = harmos_sdk_grpc::Observer::new(&right, observe).every_ms(2000);
+        Plugin::new("twins", "1.0.0")
+            .stream(left)
+            .stream(right)
+            .observer(left_observer)
+            .observer(right_observer)
+            .operation(Operation::new("fixture.echo", echo))
+    } else if mode == "stop-failure" {
+        Plugin::new("stop_failure", "1.0.0")
+            .operation(Operation::new("fixture.echo", echo))
+            .on_stop(|| Err(harmos_sdk_grpc::Error::Invalid("Cleanup Failed".into())))
     } else if mode == "device" {
         let stream = harmos_sdk_grpc::Stream::<Value>::new("fixture.device").publish_on(device);
         Plugin::new("device", "1.0.0").stream(stream).operation(Operation::new("fixture.echo", echo)).on_stop(|| {
@@ -227,6 +256,7 @@ fn main() -> Result<()> {
             .operation(Operation::new("fixture.clock", clock))
             .operation(Operation::new("fixture.echo", echo))
             .operation(Operation::new("fixture.forward", forward))
+            .operation(Operation::new("fixture.failure", failure))
             .operation(Operation::new("fixture.wait", wait).policy(v1::OperationPolicy {
                 cancellation_timeout: Some(prost_types::Duration { seconds: 30, nanos: 0 }),
                 ..Default::default()
@@ -265,6 +295,32 @@ async fn empty(_: &Context, _: ()) -> Result<()> {
 
 async fn echo(_: &Context, input: Value) -> Result<Value> {
     Ok(input)
+}
+
+async fn retry(context: &Context, input: Value) -> Result<Value> {
+    if context.attempt < 3 {
+        return Err(harmos_sdk_grpc::Error::failure(v1::Classification::Transient, "retry", "Retry", "Try Again"));
+    }
+    Ok(input)
+}
+
+async fn failure(_: &Context, _: Value) -> Result<Value> {
+    Err(v1::Failure {
+        classification: v1::Classification::Permanent as i32,
+        code: "fixture_failure".into(),
+        message: "Fixture Failed".into(),
+        action: "Use Another Input".into(),
+        details: [("fixture".into(), "value".into())].into(),
+        diagnostics: "Fixture Diagnostics".into(),
+        cause: Some(Box::new(v1::Failure {
+            classification: v1::Classification::Transient as i32,
+            code: "fixture_cause".into(),
+            message: "Fixture Cause".into(),
+            ..Default::default()
+        })),
+        ..Default::default()
+    }
+    .into())
 }
 
 async fn forward(context: &Context, input: Value) -> Result<Value> {

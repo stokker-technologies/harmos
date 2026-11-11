@@ -15,15 +15,8 @@ mod application;
 #[path = "../filesystem/main.rs"]
 mod publication;
 
-#[path = "../observers/main.rs"]
-mod observers;
-
 #[path = "../operations/main.rs"]
 mod operations;
-
-#[cfg(feature = "plugin")]
-#[path = "../plugin/main.rs"]
-mod plugin;
 
 #[cfg(feature = "plugin-grpc")]
 #[path = "../plugin_grpc/main.rs"]
@@ -38,10 +31,6 @@ mod runtime;
 
 #[path = "../services/main.rs"]
 mod services;
-
-#[cfg(feature = "plugin-sidecar")]
-#[path = "../sidecar/main.rs"]
-mod sidecar;
 
 #[cfg(feature = "simulation")]
 #[path = "../simulation/main.rs"]

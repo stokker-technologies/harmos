@@ -9,7 +9,7 @@
 
 /* === Modules === */
 
-#[cfg(any(feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 mod artifact;
 mod authored;
 mod authored_lifecycle;
@@ -21,11 +21,7 @@ mod endpoints;
 mod grpc;
 #[cfg(feature = "grpc")]
 mod grpc_manager;
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-mod host;
 mod owned_wire;
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-mod plugin;
 
 /* === Re-Exports === */
 

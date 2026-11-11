@@ -7,7 +7,7 @@
  * ***
  */
 
-// Enforce Request Grants for External Callers Across Sidecar and In-Process Bindings
+// External Client Authorization Remains Enforced
 
 /* === Modules === */
 
@@ -16,18 +16,16 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::operations::{Lanes, Managed};
 use harmos_domain::plugin::Grant;
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::Invocation;
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
-use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
 
@@ -39,8 +37,6 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
-static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
-static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Runs>>> = Mutex::new(std::collections::BTreeMap::new());
 
 /* === Macros === */
 
@@ -51,10 +47,6 @@ static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Runs>>> = Mutex::new(
 #[derive(Default)]
 struct Runs(AtomicUsize);
 
-struct Seed {
-    id: usize,
-}
-
 struct Principal(&'static str);
 
 struct Bearers;
@@ -63,25 +55,9 @@ struct Bearers;
 // Bearers Are Denied.
 struct Holdings;
 
-struct Provider {
-    runs: Arc<Runs>,
-}
-
 #[harmos_runtime::message]
 #[derive(Clone)]
 struct Fetch {
-    value: u32,
-}
-
-#[harmos_runtime::operation(resources = [Runs], id = "gated.remote",
-    policy = POLICY,
-    response = Fetch,
-    visibility = Public,
-    grpc(package = "fixture.gated.v1", service = "Remote", method = "Fetch"),
-    grant = |request: &RemoteFetchDeclaration| scoped("gated.remote", request.value),
-)]
-#[derive(Clone)]
-struct RemoteFetchDeclaration {
     value: u32,
 }
 
@@ -100,11 +76,6 @@ struct LocalFetchDeclaration {
 /* === Enums === */
 
 #[harmos_runtime::catalog]
-enum Gated {
-    Fetch(RemoteFetchDeclaration),
-}
-
-#[harmos_runtime::catalog]
 enum LocalOperations {
     Fetch(LocalFetchDeclaration),
 }
@@ -112,22 +83,6 @@ enum LocalOperations {
 /* === Traits === */
 
 /* === Implementations === */
-
-impl Seed {
-    fn new(runs: &Arc<Runs>) -> Self {
-        let id = NEXT_SEED.try_update(Ordering::SeqCst, Ordering::SeqCst, |id| id.checked_add(1)).unwrap();
-        let mut seeds = SEEDS.lock().unwrap();
-        assert!(seeds.len() < 64, "fixture handoff stays bounded");
-        assert!(seeds.insert(id, Arc::downgrade(runs)).is_none());
-        Self { id }
-    }
-}
-
-impl Drop for Seed {
-    fn drop(&mut self) {
-        SEEDS.lock().unwrap().remove(&self.id);
-    }
-}
 
 impl Authenticator for Bearers {
     type Principal = Principal;
@@ -148,7 +103,7 @@ impl harmos_runtime::operations::authorization::Authorizer for Holdings {
         &self, context: &harmos_runtime::operations::CallContext, provider: harmos_runtime::operations::authorization::Provider<'_>,
     ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Authorization>> {
         use harmos_runtime::operations::authorization::{Authorization, Required};
-        assert_eq!(provider.plugin, provider.owner.as_str() == "gated", "provenance comes from the original plugin scope");
+        assert!(!provider.plugin);
         let grants = match context.get::<Principal>().map(|principal| principal.0) {
             Some("full") => return Ok(Some(Authorization::Full(provider.contract.clone()))),
             Some("holder") => vec![Grant::of(provider.contract.operation().id.as_str().to_owned(), ALLOWED)],
@@ -159,44 +114,6 @@ impl harmos_runtime::operations::authorization::Authorizer for Holdings {
             contract: provider.contract.clone(),
             grants,
         })))
-    }
-}
-
-impl harmos_operations::lifecycle::Policy for Provider {
-    const INITIALIZATION_POLICY: OperationPolicy = POLICY;
-    const SHUTDOWN_POLICY: OperationPolicy = POLICY;
-}
-
-impl harmos_runtime::Lifecycle for Provider {
-    type Config = usize;
-    type Context = Supervisor;
-    type Error = Refusal;
-
-    async fn prepare(id: usize, setup: &mut harmos_sdk::Setup<Self>) -> Result<Self, Self::Error> {
-        let runs = SEEDS
-            .lock()
-            .unwrap()
-            .remove(&id)
-            .and_then(|runs| runs.upgrade())
-            .ok_or_else(|| Refusal::of("original gated resources unavailable"))?;
-        let plugin = Self { runs };
-        setup.resource::<Runs>(plugin.runs.clone());
-        Ok(plugin)
-    }
-}
-
-#[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "gated", requires = ())]
-impl harmos_runtime::Plugin for Provider {
-    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[Gated::CATALOG];
-}
-
-impl harmos_runtime::Operation for RemoteFetchDeclaration {
-    type Error = Refusal;
-
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Fetch>, Refusal> {
-        let runs = ctx.resource::<Runs>();
-        runs.0.fetch_add(1, Ordering::SeqCst);
-        Ok(Fetch { value: self.value + 1 }.into())
     }
 }
 
@@ -239,40 +156,13 @@ async fn fetch(channel: tonic::transport::Channel, bearer: &'static str, path: &
     Ok(response.into_inner().value)
 }
 
-// Each binding refuses a caller lacking the request's grant before it runs.
-async fn enforced(channel: &tonic::transport::Channel, path: &'static str, runs: &Runs) {
-    let denied = |result: Result<u32, tonic::Status>| {
-        assert_eq!(result.unwrap_err().code(), tonic::Code::PermissionDenied);
-    };
-    assert_eq!(fetch(channel.clone(), "Bearer lacking", path, 1).await.unwrap(), 2);
-    denied(fetch(channel.clone(), "Bearer lacking", path, 20).await);
-    denied(fetch(channel.clone(), "Bearer lacking", path, 21).await);
-    assert_eq!(runs.0.load(Ordering::SeqCst), 1, "refusals never run");
-    assert_eq!(fetch(channel.clone(), "Bearer holder", path, 20).await.unwrap(), 21);
-    denied(fetch(channel.clone(), "Bearer holder", path, 21).await);
-    // A grant is permission to call one operation: the held scope does not
-    // carry over to a grant the request resolves on another operation.
-    denied(fetch(channel.clone(), "Bearer holder", path, 22).await);
-    assert_eq!(runs.0.load(Ordering::SeqCst), 2, "refusals never run");
-    assert_eq!(fetch(channel.clone(), "Bearer full", path, 20).await.unwrap(), 21);
-    assert_eq!(fetch(channel.clone(), "Bearer full", path, 21).await.unwrap(), 22);
-    denied(fetch(channel.clone(), "Bearer full", path, 22).await);
-    assert_eq!(runs.0.load(Ordering::SeqCst), 4, "full control still refuses a foreign-operation grant");
-}
-
 #[tokio::test]
 async fn external_request_grants() {
-    let remote = Arc::new(Runs::default());
+    // Register A Public Host Operation And The Product Authorization Hook
     let local = Arc::new(Runs::default());
-    let seed = Seed::new(&remote);
-    let capacity = std::num::NonZeroUsize::new(2).unwrap();
-    let source = harmos_sidecar::PluginNative::<Provider>::new(capacity).unwrap();
-    let definitions = super::operations::inspected(&source, serde_json::to_vec(&seed.id).unwrap());
-    let resident = harmos_runtime::sidecar::Supervised::new(
-        source,
-        notices as fn(&harmos_runtime::services::ServiceContext<super::Bank>, harmos_runtime::sidecar::Notice),
-    );
-    let runtime = super::assembly(|setup| {
+    let (clock, _) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
+    let runtime = crate::support::booted(Default::default(), |setup| {
+        setup.settings().clock(clock);
         setup.resource::<Runs>(local.clone());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
@@ -280,11 +170,11 @@ async fn external_request_grants() {
         });
     })
     .await;
-    let mut fixture = Managed::from_runtime(runtime, definitions, resident, Lanes::Open, capacity, harmos_runtime::services::POLICY);
-    fixture.initialize().await.unwrap();
-    fixture.runtime.operations.register::<LocalOperations>(Lanes::Open).await.unwrap();
-    fixture.runtime.operations.register_authorizer(Arc::new(Holdings)).unwrap();
-    fixture.runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Bearers)))).unwrap();
+    runtime.operations.register::<LocalOperations>(crate::support::Lanes::Open).await.unwrap();
+    runtime.operations.register_authorizer(Arc::new(Holdings)).unwrap();
+    runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Bearers)))).unwrap();
+
+    // Authenticate Real gRPC Requests Before Authorizing Their Request Scope
     let settings = harmos_runtime::grpc::Settings {
         address: "127.0.0.1:0".parse().unwrap(),
         operations: harmos_runtime::grpc::server::Settings::default(),
@@ -295,16 +185,30 @@ async fn external_request_grants() {
         request_timeout: Duration::from_secs(2),
         shutdown_timeout: Duration::from_secs(2),
     };
-    let attached = fixture.runtime.grpc().attach(settings).await.unwrap();
+    let attached = runtime.grpc().attach(settings).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
-    enforced(&channel, "/fixture.gated.v1.Remote/Fetch", &remote).await;
-    enforced(&channel, "/fixture.gated.v1.Local/Fetch", &local).await;
+    let denied = |result: Result<u32, tonic::Status>| {
+        assert_eq!(result.unwrap_err().code(), tonic::Code::PermissionDenied);
+    };
+    assert_eq!(fetch(channel.clone(), "Bearer lacking", "/fixture.gated.v1.Local/Fetch", 1).await.unwrap(), 2);
+    denied(fetch(channel.clone(), "Bearer lacking", "/fixture.gated.v1.Local/Fetch", 20).await);
+    denied(fetch(channel.clone(), "Bearer lacking", "/fixture.gated.v1.Local/Fetch", 21).await);
+    assert_eq!(local.0.load(Ordering::SeqCst), 1, "refusals never run");
+    assert_eq!(fetch(channel.clone(), "Bearer holder", "/fixture.gated.v1.Local/Fetch", 20).await.unwrap(), 21);
+    denied(fetch(channel.clone(), "Bearer holder", "/fixture.gated.v1.Local/Fetch", 21).await);
+    // A grant is permission to call one operation: the held scope does not
+    // carry over to a grant the request resolves on another operation.
+    denied(fetch(channel.clone(), "Bearer holder", "/fixture.gated.v1.Local/Fetch", 22).await);
+    assert_eq!(local.0.load(Ordering::SeqCst), 2, "refusals never run");
+    assert_eq!(fetch(channel.clone(), "Bearer full", "/fixture.gated.v1.Local/Fetch", 20).await.unwrap(), 21);
+    assert_eq!(fetch(channel.clone(), "Bearer full", "/fixture.gated.v1.Local/Fetch", 21).await.unwrap(), 22);
+    denied(fetch(channel.clone(), "Bearer full", "/fixture.gated.v1.Local/Fetch", 22).await);
+    assert_eq!(local.0.load(Ordering::SeqCst), 4, "full control still refuses a foreign-operation grant");
+
+    // Shut Down The External Interface And Host
     drop(channel);
     attached.detach().await.unwrap();
-    fixture.shutdown().await.unwrap();
-    fixture.runtime.shutdown().await.unwrap();
+    runtime.shutdown().await.unwrap();
 }
 
 /* === Tests === */
-
-fn notices(_: &harmos_runtime::services::ServiceContext<super::Bank>, _: harmos_runtime::sidecar::Notice) {}

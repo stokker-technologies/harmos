@@ -455,8 +455,8 @@ mod counter {
     /* === Tests === */
 }
 
-#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
-mod unified_plugins {
+#[cfg(feature = "plugin-guest")]
+mod guest_plugins {
     /* === Modules === */
 
     /* === Re-Exports === */
@@ -476,7 +476,6 @@ mod unified_plugins {
 
     /* === Constants === */
 
-    const PROJECTED: &[PluginInventory::publications::Entry] = &[PluginInventory::publications::Entry::of::<Extra>()];
     const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(15),
         attempt_timeout: Duration::from_secs(5),
@@ -500,34 +499,7 @@ mod unified_plugins {
         value: u32,
     }
 
-    #[harmos_runtime::stream(id = "unified_extra", window = 2)]
-    #[harmos_runtime::message]
-    #[derive(Clone, PartialEq, serde::Deserialize, serde::Serialize)]
-    struct Extra {
-        value: u64,
-    }
-
-    struct Native;
-
-    struct CustomHost;
-
-    struct InertObserver;
-
-    struct SdkAuthored;
-
-    #[derive(Default, serde::Deserialize)]
-    struct SdkInitialization {
-        settings: String,
-        snapshot: Vec<u8>,
-    }
-
     struct Guest;
-
-    struct Catalog;
-
-    struct Panels;
-
-    struct Contributing;
 
     #[harmos_runtime::listener(
         id = "fixture.row-listener",
@@ -542,8 +514,6 @@ mod unified_plugins {
     #[derive(Clone)]
     struct RowCallback(harmos_runtime::listeners::Delivery<RowListener>);
 
-    struct Listening;
-
     struct ListeningGuest;
 
     /* === Enums === */
@@ -557,23 +527,6 @@ mod unified_plugins {
     enum Selected {
         #[nested]
         Leaves(Leaves),
-    }
-
-    #[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
-    enum ObserverOperations {
-        #[nested]
-        Selected(Selected),
-    }
-
-    #[harmos_domain::catalog]
-    enum ObserverLeaves {
-        Inert(InertObserver),
-    }
-
-    #[harmos_domain::catalog]
-    enum ObserverCatalog {
-        #[nested]
-        Leaves(ObserverLeaves),
     }
 
     #[harmos_domain::catalog]
@@ -595,79 +548,6 @@ mod unified_plugins {
         async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
             panic!("metadata inspection must not execute operations")
         }
-    }
-
-    impl lifecycle::Policy for Native {
-        const INITIALIZATION_POLICY: OperationPolicy = POLICY;
-        const SHUTDOWN_POLICY: OperationPolicy = POLICY;
-    }
-
-    impl harmos_runtime::Lifecycle for Native {
-        type Config = ();
-        type Error = Infallible;
-        type Context = harmos_runtime::sidecar::Supervisor;
-
-        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-            Ok(Self)
-        }
-    }
-
-    #[harmos_runtime::plugin(description = "Native Authored Plugin",
-        id = "unified_native",
-        requires = Selected,
-        streams(Row),
-        stream_entries = PROJECTED
-    )]
-    impl harmos_runtime::Plugin for Native {
-        const CATALOGS: &'static [harmos_runtime::Catalog] = &[Selected::CATALOG];
-    }
-
-    impl harmos_runtime::sidecar::ObserverHost for CustomHost {
-        fn bind(_: std::sync::Arc<harmos_sdk::ExecutionContext>, _: harmos_runtime::sidecar::Supervisor) -> Self {
-            Self
-        }
-    }
-
-    #[harmos_runtime::observer(interval_ms = 100, id = "fixture.unified.inert-observer")]
-    impl InertObserver {
-        fn interval(_: &harmos_sdk::ExecutionContext) -> Result<std::time::Duration, Infallible> {
-            panic!("metadata inspection must not resolve observer cadence")
-        }
-
-        async fn initialize(_: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
-            panic!("metadata inspection must not initialize callback resources")
-        }
-        async fn observe(&mut self, _: &harmos_runtime::sidecar::ObserverContext<'_, CustomHost>) -> Result<(), Infallible> {
-            panic!("metadata inspection must not start a callback")
-        }
-    }
-
-    impl harmos_runtime::Lifecycle for SdkAuthored {
-        type Config = SdkInitialization;
-        type Error = Infallible;
-        type Context = harmos_runtime::sidecar::Supervisor;
-        async fn prepare(_: SdkInitialization, _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-            panic!("inert inspection must not prepare the product plugin")
-        }
-    }
-
-    impl lifecycle::Policy for SdkAuthored {
-        const INITIALIZATION_POLICY: OperationPolicy = POLICY;
-        const SHUTDOWN_POLICY: OperationPolicy = POLICY;
-    }
-
-    #[harmos_runtime::plugin(
-        id = "unified_sdk_projection",
-        description = "Inert Product SDK Declaration",
-        requires(
-            harmos_operations::streams::Publish,
-            harmos_operations::lifecycle::Status: scope("reading", "power")
-        ),
-        observers = ObserverCatalog,
-        restart = "never"
-    )]
-    impl harmos_runtime::Plugin for SdkAuthored {
-        const CATALOGS: &'static [harmos_runtime::Catalog] = &[ObserverOperations::CATALOG];
     }
 
     impl lifecycle::Policy for Guest {
@@ -695,46 +575,6 @@ mod unified_plugins {
         const CATALOGS: &'static [harmos_runtime::Catalog] = &[Selected::CATALOG];
     }
 
-    impl harmos_domain::plugin::Contribution for Catalog {
-        const NAMESPACE: &'static str = "dokime.catalog";
-        const SECTION: harmos_domain::inventory::Section =
-            harmos_domain::inventory::Section::new(Self::NAMESPACE, r#"{"kinds":["bench"]}"#);
-        fn register(registrar: &mut harmos_domain::Registrar) -> Result<(), harmos_domain::RegistrationError> {
-            registrar.register(Self::NAMESPACE, 1, &["bench"])
-        }
-    }
-
-    impl harmos_domain::plugin::Contribution for Panels {
-        const NAMESPACE: &'static str = "studio.panels";
-        const SECTION: harmos_domain::inventory::Section = harmos_domain::inventory::Section::new(Self::NAMESPACE, "[]");
-        fn register(registrar: &mut harmos_domain::Registrar) -> Result<(), harmos_domain::RegistrationError> {
-            registrar.register(Self::NAMESPACE, 2, &Vec::<String>::new())
-        }
-    }
-
-    impl lifecycle::Policy for Contributing {
-        const INITIALIZATION_POLICY: OperationPolicy = POLICY;
-        const SHUTDOWN_POLICY: OperationPolicy = POLICY;
-    }
-
-    impl harmos_runtime::Lifecycle for Contributing {
-        type Config = ();
-        type Error = Infallible;
-        type Context = harmos_runtime::sidecar::Supervisor;
-        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-            Ok(Self)
-        }
-    }
-
-    #[harmos_runtime::plugin(
-        id = "unified_contributing",
-        requires = (),
-        contributions(Catalog, Panels)
-    )]
-    impl harmos_runtime::Plugin for Contributing {
-        const CATALOGS: &'static [harmos_runtime::Catalog] = &[];
-    }
-
     impl harmos_runtime::Message for RowCallback {
         const CODEC: &'static str = <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::Message>::CODEC;
         fn encode(&self) -> Vec<u8> {
@@ -758,6 +598,8 @@ mod unified_plugins {
     }
 
     impl harmos_runtime::schema::Described for RowCallback {
+        const DEFINITION: harmos_runtime::schema::declaration::Definition =
+            <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::schema::Described>::DEFINITION;
         const NAME: &'static str = <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::schema::Described>::NAME;
         const FIELDS: &'static [harmos_runtime::schema::Field] =
             <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::schema::Described>::FIELDS;
@@ -769,25 +611,6 @@ mod unified_plugins {
         async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
             panic!("metadata inspection must not execute callbacks")
         }
-    }
-
-    impl lifecycle::Policy for Listening {
-        const INITIALIZATION_POLICY: OperationPolicy = POLICY;
-        const SHUTDOWN_POLICY: OperationPolicy = POLICY;
-    }
-
-    impl harmos_runtime::Lifecycle for Listening {
-        type Config = ();
-        type Error = Infallible;
-        type Context = harmos_runtime::sidecar::Supervisor;
-        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-            Ok(Self)
-        }
-    }
-
-    #[harmos_runtime::plugin(id = "unified_listening", requires = (), listeners = Audience)]
-    impl harmos_runtime::Plugin for Listening {
-        const CATALOGS: &'static [harmos_runtime::Catalog] = &[Callbacks::CATALOG];
     }
 
     impl lifecycle::Policy for ListeningGuest {
@@ -813,7 +636,7 @@ mod unified_plugins {
 
     /* === Private Functions === */
 
-    fn inspect<P: PluginDeclared>(facility: &str, streams: usize, requires: usize) {
+    fn inspect<P: PluginDeclared>(streams: usize, requires: usize) {
         assert_eq!(harmos_runtime::catalog::count(P::PROVIDES), 1);
         assert_eq!(harmos_runtime::catalog::count(P::REQUIRES), requires);
         assert_eq!(P::STREAMS.len(), streams);
@@ -823,15 +646,7 @@ mod unified_plugins {
             assert!(marker.starts_with(harmos_domain::PREFIX));
             bytes.extend_from_slice(marker);
         }
-        let declaration = PluginInventory::Declaration::inspect(
-            &bytes,
-            match facility {
-                "sidecar" => PluginInventory::Facility::Sidecar,
-                "guest" => PluginInventory::Facility::Guest,
-                _ => unreachable!("fixture selects one supported carrier"),
-            },
-        )
-        .unwrap();
+        let declaration = PluginInventory::Declaration::inspect(&bytes, PluginInventory::Facility::Guest).unwrap();
         assert_eq!(declaration.id, P::ID);
         assert_eq!(declaration.version.to_string(), env!("CARGO_PKG_VERSION"));
         assert_eq!(declaration.description, P::DESCRIPTION);
@@ -849,184 +664,57 @@ mod unified_plugins {
         assert_eq!(contracts.lifecycle[1].contract().operation().policy, POLICY);
         assert_eq!(declaration.streams.len(), streams);
 
-        let inspected = match facility {
-            "sidecar" => {
-                let declaration =
-                    harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes, harmos_runtime::sidecar::inventory::Facility::Sidecar)
-                        .unwrap();
-                assert_eq!(declaration.restart(), None);
-                assert_eq!(declaration.operations.len(), contracts.provides.len());
-                assert_eq!(declaration.streams.len(), streams);
-                declaration.contracts
-            }
-            "guest" => {
-                let declaration =
-                    harmos_runtime::guest::inventory::Declaration::inspect(&bytes, harmos_runtime::guest::inventory::Facility::Guest)
-                        .unwrap();
-                assert_eq!(declaration.operations.len(), contracts.provides.len());
-                assert_eq!(declaration.streams.len(), streams);
-                declaration.contracts
-            }
-            _ => unreachable!("only actual SDK contexts are authored"),
-        };
+        let declaration =
+            harmos_runtime::guest::inventory::Declaration::inspect(&bytes, harmos_runtime::guest::inventory::Facility::Guest).unwrap();
+        assert_eq!(declaration.operations.len(), contracts.provides.len());
+        assert_eq!(declaration.streams.len(), streams);
+        let inspected = declaration.contracts;
         assert_eq!(inspected, contracts);
     }
 
     /* === Tests === */
 
     #[test]
-    fn metadata_never_require() {
-        let initialization = SdkInitialization::default();
-        assert!(initialization.settings.is_empty());
-        assert!(initialization.snapshot.is_empty());
-        let markers = SdkAuthored::markers().unwrap();
-        let declaration = harmos_runtime::sidecar::inventory::Declaration::inspect(
-            &markers.concat(),
-            harmos_runtime::sidecar::inventory::Facility::Sidecar,
+    fn listener_inventory_contract() {
+        let bytes = ListeningGuest::markers().unwrap().concat();
+        let declaration =
+            harmos_runtime::guest::inventory::Declaration::inspect(&bytes, harmos_runtime::guest::inventory::Facility::Guest).unwrap();
+        assert_eq!(declaration.listeners, harmos_runtime::listeners::Declarations::of::<Audience>().unwrap());
+        assert_eq!(declaration.listeners[0].callback(), &declaration.contracts.provides[0]);
+        let bytes = Guest::markers().unwrap().concat();
+        let declaration =
+            harmos_runtime::guest::inventory::Declaration::inspect(&bytes, harmos_runtime::guest::inventory::Facility::Guest).unwrap();
+        assert!(declaration.listeners.is_empty());
+        let mut parts = harmos_domain::artifacts::fragments::<serde_json::Value>(
+            &ListeningGuest::markers().unwrap().concat(),
+            &["contracts", "listeners", "plugin", "contributions", "publications", "observers", "schema"],
         )
         .unwrap();
-        assert_eq!(declaration.id, SdkAuthored::ID);
-        let required = &declaration.contracts.requires;
-        assert_eq!(required.len(), 2);
-        assert_eq!(
-            required[0].contract.operation().id.as_str(),
-            <harmos_operations::streams::Publish as harmos_runtime::operations::OperationDeclaration>::ID
-        );
-        assert!(required[0].grants.is_empty());
-        assert_eq!(
-            required[1].grants,
-            [
-                harmos_domain::plugin::Grant::of("host.operations.status", "reading"),
-                harmos_domain::plugin::Grant::of("host.operations.status", "power"),
-            ]
-        );
-        // A grant names the operation it permits and, for a scoped
-        // operation, the stream; the retired kinded shape is refused.
-        assert_eq!(serde_json::to_string(&required[1].grants[0]).unwrap(), r#"{"operation":"host.operations.status","scope":"reading"}"#);
-        assert!(serde_json::from_str::<harmos_domain::plugin::Grant>(r#"{"survey":"reading"}"#).is_err());
-        assert_eq!(declaration.config, "SdkInitialization");
-        let provides = Contracts::of::<ObserverOperations>().unwrap();
-        assert_eq!(declaration.contracts.provides, provides);
-        assert_eq!(
-            declaration.restart().unwrap(),
-            harmos_runtime::sidecar::inventory::RestartPolicy {
-                credit: 0,
-                sustained_health_ms: 30_000,
-                backoff_base_ms: 250,
-                backoff_cap_ms: 10_000,
+        let bytes = |parts: &[serde_json::Value]| {
+            let mut bytes = Vec::new();
+            for part in parts {
+                bytes.extend_from_slice(harmos_domain::PREFIX);
+                bytes.extend_from_slice(&serde_json::to_vec(part).unwrap());
+                bytes.push(0);
             }
+            bytes
+        };
+        parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 2.into();
+        assert!(
+            harmos_runtime::guest::inventory::Declaration::inspect(&bytes(&parts), harmos_runtime::guest::inventory::Facility::Guest)
+                .is_err()
         );
-        assert_eq!(declaration.observers.len(), 1);
-        assert_eq!(declaration.observers[0].id, "fixture.unified.inert-observer");
-        let inert = <InertObserver as harmos_domain::inventory::observers::Declared>::ENTRY;
-        let physical =
-            <harmos_runtime::sidecar::__private::ObserverInventory<CustomHost> as harmos_runtime::catalog::Member<InertObserver>>::ENTRY;
-        assert_eq!(inert.id, physical.id);
-        assert_eq!(inert.streams.len(), physical.streams.len());
-        // The Observe Control Is Built In, Never An Authored Provision.
-        let control = <harmos_runtime::operations::observers::Control as harmos_runtime::operations::OperationDeclaration>::ID;
-        assert_eq!(control, "harmos.observe");
-        assert!(provides.iter().all(|contract| contract.operation().id.as_str() != control));
-    }
-
-    #[test]
-    fn contributions_carry_inert() {
-        use harmos_domain::inventory::{Declaration, Facility};
-        let declaration = Declaration::inspect(&Contributing::markers().unwrap().concat(), Facility::Sidecar).unwrap();
-        let namespaces = declaration.sections.iter().map(|section| section.namespace.as_ref()).collect::<Vec<_>>();
-        assert_eq!(namespaces, ["dokime.catalog", "studio.panels"]);
-        let catalog = declaration.section("dokime.catalog").unwrap();
-        assert_eq!(catalog.decode::<serde_json::Value>().unwrap()["kinds"][0], "bench");
-        // A Host That Does Not Own a Namespace Simply Never Asks for It
-        assert!(declaration.section("unknown.host").is_none());
-        let mut registrar = harmos_domain::Registrar::new();
-        <Contributing as harmos_runtime::Plugin>::register(&mut registrar).unwrap();
-        let registered =
-            registrar.finish().into_iter().map(|registration| (registration.namespace, registration.schema)).collect::<Vec<_>>();
-        assert_eq!(registered, [("dokime.catalog".to_owned(), 1), ("studio.panels".to_owned(), 2)]);
-        harmos_runtime::sidecar::PluginNative::<Contributing>::new(std::num::NonZeroUsize::new(1).unwrap())
-            .expect("the native owner accepts the inspected sections");
-    }
-
-    #[test]
-    fn listener_inventory_contract() {
-        {
-            let bytes: Vec<_> = Listening::markers().unwrap().into_iter().flatten().copied().collect();
-            let declaration =
-                harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes, harmos_runtime::sidecar::inventory::Facility::Sidecar)
-                    .unwrap();
-            let selected = declaration.listeners;
-            assert_eq!(selected, harmos_runtime::listeners::Declarations::of::<Audience>().unwrap());
-            assert_eq!(selected[0].callback(), &declaration.contracts.provides[0]);
-            let guest_markers: Vec<_> = ListeningGuest::markers().unwrap().into_iter().flatten().copied().collect();
-            let guest =
-                harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest)
-                    .unwrap();
-            assert_eq!(&guest.listeners, &selected);
-            assert_eq!(guest.listeners[0].callback(), &guest.contracts.provides[0]);
-
-            let guest_markers: Vec<_> = Guest::markers().unwrap().into_iter().flatten().copied().collect();
-            assert_eq!(
-                harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest)
-                    .unwrap()
-                    .listeners,
-                Vec::new()
-            );
-        }
-        {
-            let mut parts = harmos_domain::artifacts::fragments::<serde_json::Value>(
-                &Listening::markers().unwrap().concat(),
-                &["contracts", "listeners", "plugin", "contributions", "publications", "observers", "schema"],
-            )
-            .unwrap();
-            let bytes = |parts: &[serde_json::Value]| {
-                let mut bytes = Vec::new();
-                for part in parts {
-                    bytes.extend_from_slice(harmos_domain::PREFIX);
-                    bytes.extend_from_slice(&serde_json::to_vec(part).unwrap());
-                    bytes.push(0);
-                }
-                bytes
-            };
-            parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 2.into();
-            assert!(
-                harmos_runtime::sidecar::inventory::Declaration::inspect(
-                    &bytes(&parts),
-                    harmos_runtime::sidecar::inventory::Facility::Sidecar
-                )
+        parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 1.into();
+        parts.retain(|part| part["kind"] != "contracts" || part["entry"]["direction"] != "provides");
+        assert!(
+            harmos_runtime::guest::inventory::Declaration::inspect(&bytes(&parts), harmos_runtime::guest::inventory::Facility::Guest)
                 .is_err()
-            );
-            parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 1.into();
-            parts.retain(|part| part["kind"] != "contracts" || part["entry"]["direction"] != "provides");
-            assert!(
-                harmos_runtime::sidecar::inventory::Declaration::inspect(
-                    &bytes(&parts),
-                    harmos_runtime::sidecar::inventory::Facility::Sidecar
-                )
-                .is_err()
-            );
-        }
-    }
-
-    #[test]
-    fn context_selects_native() {
-        inspect::<Native>("sidecar", 2, 1);
-        let native = harmos_runtime::sidecar::PluginNative::<Native>::new(std::num::NonZeroUsize::new(1).unwrap()).unwrap();
-        assert_eq!(harmos_runtime::sidecar::Attach::operation_contracts(&native).unwrap().unwrap(), Contracts::of::<Selected>().unwrap());
-        let required = harmos_runtime::sidecar::Attach::required_contracts(&native)
-            .unwrap()
-            .unwrap()
-            .into_iter()
-            .map(|required| required.contract)
-            .collect::<Vec<_>>();
-        assert_eq!(required, Contracts::of::<Selected>().unwrap());
-        assert_eq!(Native::STREAMS[1].id, "unified_extra");
-        assert_eq!(Native::DESCRIPTION, "Native Authored Plugin");
+        );
     }
 
     #[test]
     fn context_selects_guest() {
-        inspect::<Guest>("guest", 1, 0);
+        inspect::<Guest>(1, 0);
         assert_eq!(Guest::DESCRIPTION, "Guest Authored Plugin");
     }
 }
