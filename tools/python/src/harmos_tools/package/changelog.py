@@ -76,7 +76,7 @@ def staged(directory: Path, packages: dict):
             body = re.sub(r"(?ms)^exclude\s*=\s*\[.*?\][^\n]*\n?", "", body)
             body = "include = " + json.dumps(include) + "\n" + body
             originals[manifest] = original
-            manifest.write_text(text[: match.start(1)] + body + text[match.end(1) :], encoding="utf-8")
+            manifest.write_text(text[: match.start(1)] + body + text[match.end(1) :], encoding="utf-8", newline="")
         yield
     finally:
         for path, data in reversed(list(originals.items())):
