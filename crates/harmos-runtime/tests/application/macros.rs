@@ -501,18 +501,10 @@ mod guest_plugins {
 
     struct Guest;
 
-    #[harmos_runtime::listener(
-        id = "fixture.row-listener",
-        stream = Row,
-        callback = "fixture.unified.heard",
-        policy = POLICY
-    )]
-    struct RowListener;
-
     #[harmos_runtime::operation(codec = manual, resources = [], id = "fixture.unified.heard", response = (),
-    policy = <RowListener as harmos_runtime::listeners::Listener>::POLICY, visibility = Public)]
+    policy = POLICY, visibility = Public)]
     #[derive(Clone)]
-    struct RowCallback(harmos_runtime::listeners::Delivery<RowListener>);
+    struct RowCallback(harmos_runtime::listeners::Delivery<Row>);
 
     struct ListeningGuest;
 
@@ -529,10 +521,12 @@ mod guest_plugins {
         Leaves(Leaves),
     }
 
-    #[harmos_domain::catalog]
-    enum Audience {
-        Row(RowListener),
-    }
+    const AUDIENCE: &[harmos_runtime::catalog::Node<harmos_runtime::listeners::Entry>] =
+        &[harmos_runtime::catalog::Node::Leaf(harmos_runtime::listeners::Entry::stream::<Row>(
+            "fixture.row-listener",
+            "unified_rows",
+            harmos_runtime::operations::WireDeclaration::of::<RowCallback>(),
+        ))];
 
     #[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
     enum Callbacks {
@@ -576,7 +570,7 @@ mod guest_plugins {
     }
 
     impl harmos_runtime::Message for RowCallback {
-        const CODEC: &'static str = <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::Message>::CODEC;
+        const CODEC: &'static str = <harmos_runtime::listeners::Delivery<Row> as harmos_runtime::Message>::CODEC;
         fn encode(&self) -> Vec<u8> {
             harmos_runtime::Message::encode(&self.0)
         }
@@ -584,10 +578,10 @@ mod guest_plugins {
             harmos_runtime::Message::encoded_size(&self.0)
         }
         fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
-            <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::Message>::decoding_memory(bytes)
+            <harmos_runtime::listeners::Delivery<Row> as harmos_runtime::Message>::decoding_memory(bytes)
         }
         fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
-            <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::Message>::decode(bytes).map(Self)
+            <harmos_runtime::listeners::Delivery<Row> as harmos_runtime::Message>::decode(bytes).map(Self)
         }
     }
 
@@ -599,11 +593,11 @@ mod guest_plugins {
 
     impl harmos_runtime::schema::Described for RowCallback {
         const DEFINITION: harmos_runtime::schema::declaration::Definition =
-            <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::schema::Described>::DEFINITION;
-        const NAME: &'static str = <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::schema::Described>::NAME;
+            <harmos_runtime::listeners::Delivery<Row> as harmos_runtime::schema::Described>::DEFINITION;
+        const NAME: &'static str = <harmos_runtime::listeners::Delivery<Row> as harmos_runtime::schema::Described>::NAME;
         const FIELDS: &'static [harmos_runtime::schema::Field] =
-            <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::schema::Described>::FIELDS;
-        const MARKER: &'static [u8] = <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::schema::Described>::MARKER;
+            <harmos_runtime::listeners::Delivery<Row> as harmos_runtime::schema::Described>::FIELDS;
+        const MARKER: &'static [u8] = <harmos_runtime::listeners::Delivery<Row> as harmos_runtime::schema::Described>::MARKER;
     }
 
     impl harmos_runtime::operations::Operation for RowCallback {
@@ -627,7 +621,7 @@ mod guest_plugins {
         }
     }
 
-    #[harmos_runtime::guest(id = "unified_listening_guest", requires = (), listeners = Audience)]
+    #[harmos_runtime::guest(id = "unified_listening_guest", requires = (), listeners = AUDIENCE)]
     impl harmos_runtime::guest::Plugin for ListeningGuest {
         const CATALOGS: &'static [harmos_runtime::Catalog] = &[Callbacks::CATALOG];
     }
@@ -679,7 +673,7 @@ mod guest_plugins {
         let bytes = ListeningGuest::markers().unwrap().concat();
         let declaration =
             harmos_runtime::guest::inventory::Declaration::inspect(&bytes, harmos_runtime::guest::inventory::Facility::Guest).unwrap();
-        assert_eq!(declaration.listeners, harmos_runtime::listeners::Declarations::of::<Audience>().unwrap());
+        assert_eq!(declaration.listeners, harmos_runtime::listeners::Declarations::from_tree(AUDIENCE).unwrap());
         assert_eq!(declaration.listeners[0].callback(), &declaration.contracts.provides[0]);
         let bytes = Guest::markers().unwrap().concat();
         let declaration =

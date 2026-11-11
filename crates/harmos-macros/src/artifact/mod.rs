@@ -9,8 +9,6 @@
 
 /* === Modules === */
 
-pub(crate) mod listener;
-
 /* === Re-Exports === */
 
 /* === Imports === */

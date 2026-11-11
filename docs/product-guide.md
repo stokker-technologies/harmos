@@ -112,8 +112,12 @@ refused at compile time with the attribute and enclosing type. Such forms requir
 an explicit, accurate `Described` implementation. Serde wire metadata survives
 schema serialization and participates in the same canonical encoding used by
 revisions and fingerprints. Existing schemas without that metadata retain their
-canonical bytes. Record listeners declare `record = "identity", row = Type`
-without `version =`; binding checks identity and the declared row schema.
+canonical bytes. Listener values use `listeners::Entry::record::<Row>(id, record_id, callback)`
+or `Entry::stream::<Row>(id, stream_id, callback)`. The callback is a wire
+declaration with a `Delivery<Row>` request and unit response; building checks its
+policy, visibility and schema. Binding checks source identity and row schema and
+refuses a missing callback at startup. Deferred guest declarations accept an
+explicit constant `listeners = ENTRIES` slice of listener entry nodes.
 System facts use `SystemFact::new(source, name, bytes)` for opaque bytes or
 `SystemFact::encode(source, name, &value)` for a described Serde payload. Their
 stored revision carrier remains necessary; callers no longer supply its value.

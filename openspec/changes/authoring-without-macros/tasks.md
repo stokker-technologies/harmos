@@ -15,6 +15,9 @@ local commit and focused proof for each complete macro family.
 
 - [x] 2.1 Inventory live `domain_catalog`, `runtime_catalog`, `domain_operation` and `runtime_operation` consumers and re-exports in domain, runtime, operations, examples and fixtures. Keep aliases until their families migrate in 3.1/3.2; only genuinely unreferenced variants may be deleted now.
 - [ ] 2.2 Replace `listener`, `streams` and `lanes` with values checked when built.
+- [x] 2.2.1 Replace `listener`, migrate deliveries and guest constant descriptions, and delete its generator and exports.
+- [ ] 2.2.2 Replace `streams` and its membership projections with stream value lists.
+- [ ] 2.2.3 Replace `lanes` and its typed catalogs with validated lane values.
 - [ ] 2.3 Replace `record` with a typed entry and split `stream` into a row derive and a stream value.
 
 ## 3. Operations and Messages

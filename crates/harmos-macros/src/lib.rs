@@ -140,11 +140,6 @@ pub fn streams(attribute: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn listener(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    artifact::listener::declare(attribute.into(), item.into()).into()
-}
-
-#[proc_macro_attribute]
 pub fn message(attribute: TokenStream, item: TokenStream) -> TokenStream {
     message::declare(attribute.into(), item.into()).into()
 }

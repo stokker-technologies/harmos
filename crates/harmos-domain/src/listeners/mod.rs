@@ -13,7 +13,7 @@ mod delivery;
 
 /* === Re-Exports === */
 
-pub use delivery::{Callback, Context, ContextError, Delivery, EncodingError, Listener, encode_borrowed, encoding_memory_bytes};
+pub use delivery::{Context, ContextError, Delivery, EncodingError, encode_borrowed, encoding_memory_bytes};
 
 /* === Imports === */
 
@@ -23,7 +23,6 @@ use std::collections::BTreeSet;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use crate::catalog::{Catalog, Projection, Visitor};
 use crate::config::SchemaSettings;
 use crate::operations::{Contract, ContractError, ReplaySafety, RetryPolicy, Visibility, WireDeclaration};
 use crate::schema::declaration::Definition as SchemaDefinition;
@@ -151,6 +150,22 @@ impl SourceDeclaration {
 }
 
 impl Entry {
+    pub const fn record<R: crate::Portable>(id: &'static str, record: &'static str, callback: WireDeclaration) -> Self {
+        Self {
+            id,
+            source: SourceDeclaration::Record { id: record, row: R::DEFINITION },
+            callback,
+        }
+    }
+
+    pub const fn stream<R: crate::Portable>(id: &'static str, stream: &'static str, callback: WireDeclaration) -> Self {
+        Self {
+            id,
+            source: SourceDeclaration::Stream { id: stream, row: R::DEFINITION },
+            callback,
+        }
+    }
+
     pub fn definition(&self) -> Result<Definition, Error> {
         let id = Identifier::new(self.id)?;
         let source = self.source.source()?;
@@ -198,16 +213,7 @@ impl TryFrom<DecodedDefinition> for Definition {
     }
 }
 
-impl Visitor for Declarations {
-    type Entry = Entry;
-}
-
 impl Declarations {
-    pub fn of<C: Catalog<Self>>() -> Result<Vec<Definition>, Error> {
-        let expected = <C::Entries as Projection<Entry>>::LEN;
-        collect(expected, |visit| C::ENTRIES.try_for_each(visit))
-    }
-
     pub fn from_tree(entries: &[crate::catalog::Node<Entry>]) -> Result<Vec<Definition>, Error> {
         let expected = crate::catalog::count(entries);
         collect(expected, |visit| crate::catalog::try_for_each(entries, visit))
@@ -255,3 +261,55 @@ fn collect(
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::operations::{NoStream, OperationDeclaration};
+
+    struct Heard;
+
+    impl OperationDeclaration for Heard {
+        type Request = Delivery<()>;
+        type Response = ();
+        type Input = NoStream;
+        type Output = NoStream;
+        const ID: &'static str = "fixture.heard";
+        const POLICY: crate::operations::OperationPolicy = crate::model::operations::lifecycle::POLICY;
+        const VISIBILITY: Visibility = Visibility::Public;
+    }
+
+    #[test]
+    fn values_validate_sources_and_callback_shapes() {
+        let listener = Entry::stream::<()>("fixture.rows", "fixture.samples", WireDeclaration::of::<Heard>());
+        let definition = listener.definition().unwrap();
+        assert_eq!(definition.source().id(), "fixture.samples");
+        assert_eq!(definition.callback().operation().id.as_str(), "fixture.heard");
+        assert!(matches!(
+            crate::inventory::listeners::validate(&[definition], &[]),
+            Err(crate::inventory::listeners::Error::Callback { id }) if id == "fixture.heard"
+        ));
+
+        let listener = Entry::record::<()>("fixture.rows", "", WireDeclaration::of::<Heard>());
+        assert!(matches!(listener.definition(), Err(Error::Source { .. })));
+
+        let mut callback = WireDeclaration::of::<Heard>();
+        callback.operation.visibility = Visibility::Private;
+        let listener = Entry::stream::<()>("fixture.rows", "fixture.samples", callback);
+        assert!(matches!(listener.definition(), Err(Error::Callback { .. })));
+
+        let mut callback = WireDeclaration::of::<Heard>();
+        callback.request = <() as crate::schema::Described>::DEFINITION;
+        let listener = Entry::stream::<()>("fixture.rows", "fixture.samples", callback);
+        assert!(listener.definition().is_err());
+    }
+
+    #[test]
+    fn duplicate_callbacks_are_refused_when_values_are_composed() {
+        const ENTRIES: &[crate::catalog::Node<Entry>] = &[
+            crate::catalog::Node::Leaf(Entry::stream::<()>("fixture.first", "fixture.samples", WireDeclaration::of::<Heard>())),
+            crate::catalog::Node::Leaf(Entry::record::<()>("fixture.second", "fixture.record", WireDeclaration::of::<Heard>())),
+        ];
+        assert!(matches!(Declarations::from_tree(ENTRIES), Err(Error::Duplicate { id }) if id == "fixture.heard"));
+    }
+}

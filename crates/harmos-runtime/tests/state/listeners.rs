@@ -22,7 +22,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
-use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
+use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Source};
 use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition, Router,
@@ -112,8 +112,8 @@ enum Rows {
 
 #[harmos_domain::catalog]
 enum Callbacks {
-    First(harmos_runtime::listeners::Callback<Heard<true>>),
-    Second(harmos_runtime::listeners::Callback<Heard<false>>),
+    First(HearingFirst),
+    Second(HearingSecond),
 }
 
 #[harmos_runtime::lanes]
@@ -187,8 +187,7 @@ impl harmos_runtime::Application for Model {
     type Streams = ();
 }
 
-impl<const FIRST: bool> Listener for Heard<FIRST> {
-    type Row = WireFact;
+impl<const FIRST: bool> Heard<FIRST> {
     const CALLBACK: &'static str = if FIRST { "heard.z" } else { "heard.a" };
     const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
@@ -205,13 +204,13 @@ impl Drop for AttemptGuard {
         self.0.settled.notify_one();
     }
 }
-#[harmos_runtime::operation(codec = manual, resources = [OwnerResource], id = <Heard<true> as Listener>::CALLBACK, response = (),
-    policy = <Heard<true> as Listener>::POLICY, visibility = Public)]
+#[harmos_runtime::operation(codec = manual, resources = [OwnerResource], id = Heard::<true>::CALLBACK, response = (),
+    policy = Heard::<true>::POLICY, visibility = Public)]
 #[derive(Clone)]
-struct HearingFirst(Delivery<Heard<true>>);
+struct HearingFirst(Delivery<WireFact>);
 
 impl harmos_runtime::Message for HearingFirst {
-    const CODEC: &'static str = <Delivery<Heard<true>> as harmos_runtime::Message>::CODEC;
+    const CODEC: &'static str = <Delivery<WireFact> as harmos_runtime::Message>::CODEC;
     fn encode(&self) -> Vec<u8> {
         harmos_runtime::Message::encode(&self.0)
     }
@@ -219,10 +218,10 @@ impl harmos_runtime::Message for HearingFirst {
         harmos_runtime::Message::encoded_size(&self.0)
     }
     fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, harmos_runtime::MessageError> {
-        <Delivery<Heard<true>> as harmos_runtime::Message>::decoding_memory(bytes)
+        <Delivery<WireFact> as harmos_runtime::Message>::decoding_memory(bytes)
     }
     fn decode(bytes: &[u8]) -> std::result::Result<Self, harmos_runtime::MessageError> {
-        <Delivery<Heard<true>> as harmos_runtime::Message>::decode(bytes).map(Self)
+        <Delivery<WireFact> as harmos_runtime::Message>::decode(bytes).map(Self)
     }
 }
 impl harmos_runtime::MemorySize for HearingFirst {
@@ -231,9 +230,9 @@ impl harmos_runtime::MemorySize for HearingFirst {
     }
 }
 impl harmos_runtime::schema::Described for HearingFirst {
-    const NAME: &'static str = <Delivery<Heard<true>> as harmos_runtime::schema::Described>::NAME;
-    const FIELDS: &'static [harmos_runtime::schema::Field] = <Delivery<Heard<true>> as harmos_runtime::schema::Described>::FIELDS;
-    const MARKER: &'static [u8] = <Delivery<Heard<true>> as harmos_runtime::schema::Described>::MARKER;
+    const NAME: &'static str = <Delivery<WireFact> as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] = <Delivery<WireFact> as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <Delivery<WireFact> as harmos_runtime::schema::Described>::MARKER;
 }
 impl harmos_runtime::Operation for HearingFirst {
     type Error = Failed;
@@ -264,13 +263,13 @@ impl harmos_runtime::Operation for HearingFirst {
         result.map(::core::convert::Into::into)
     }
 }
-#[harmos_runtime::operation(codec = manual, resources = [OwnerResource], id = <Heard<false> as Listener>::CALLBACK, response = (),
-    policy = <Heard<false> as Listener>::POLICY, visibility = Public)]
+#[harmos_runtime::operation(codec = manual, resources = [OwnerResource], id = Heard::<false>::CALLBACK, response = (),
+    policy = Heard::<false>::POLICY, visibility = Public)]
 #[derive(Clone)]
-struct HearingSecond(Delivery<Heard<false>>);
+struct HearingSecond(Delivery<WireFact>);
 
 impl harmos_runtime::Message for HearingSecond {
-    const CODEC: &'static str = <Delivery<Heard<false>> as harmos_runtime::Message>::CODEC;
+    const CODEC: &'static str = <Delivery<WireFact> as harmos_runtime::Message>::CODEC;
     fn encode(&self) -> Vec<u8> {
         harmos_runtime::Message::encode(&self.0)
     }
@@ -278,10 +277,10 @@ impl harmos_runtime::Message for HearingSecond {
         harmos_runtime::Message::encoded_size(&self.0)
     }
     fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, harmos_runtime::MessageError> {
-        <Delivery<Heard<false>> as harmos_runtime::Message>::decoding_memory(bytes)
+        <Delivery<WireFact> as harmos_runtime::Message>::decoding_memory(bytes)
     }
     fn decode(bytes: &[u8]) -> std::result::Result<Self, harmos_runtime::MessageError> {
-        <Delivery<Heard<false>> as harmos_runtime::Message>::decode(bytes).map(Self)
+        <Delivery<WireFact> as harmos_runtime::Message>::decode(bytes).map(Self)
     }
 }
 impl harmos_runtime::MemorySize for HearingSecond {
@@ -290,9 +289,9 @@ impl harmos_runtime::MemorySize for HearingSecond {
     }
 }
 impl harmos_runtime::schema::Described for HearingSecond {
-    const NAME: &'static str = <Delivery<Heard<false>> as harmos_runtime::schema::Described>::NAME;
-    const FIELDS: &'static [harmos_runtime::schema::Field] = <Delivery<Heard<false>> as harmos_runtime::schema::Described>::FIELDS;
-    const MARKER: &'static [u8] = <Delivery<Heard<false>> as harmos_runtime::schema::Described>::MARKER;
+    const NAME: &'static str = <Delivery<WireFact> as harmos_runtime::schema::Described>::NAME;
+    const FIELDS: &'static [harmos_runtime::schema::Field] = <Delivery<WireFact> as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <Delivery<WireFact> as harmos_runtime::schema::Described>::MARKER;
 }
 impl harmos_runtime::Operation for HearingSecond {
     type Error = Failed;
@@ -407,8 +406,8 @@ fn fact(value: u32) -> Fact {
 fn candidate() -> PluginDefinitions {
     let mut listeners = Vec::new();
     for (id, callback) in [
-        ("listener.first", WireDeclaration::of::<harmos_runtime::listeners::Callback<Heard<true>>>().contract().unwrap()),
-        ("listener.second", WireDeclaration::of::<harmos_runtime::listeners::Callback<Heard<false>>>().contract().unwrap()),
+        ("listener.first", WireDeclaration::of::<HearingFirst>().contract().unwrap()),
+        ("listener.second", WireDeclaration::of::<HearingSecond>().contract().unwrap()),
     ] {
         listeners.push(
             harmos_domain::listeners::Definition::new(

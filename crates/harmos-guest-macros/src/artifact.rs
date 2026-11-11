@@ -38,7 +38,7 @@ struct Declaration {
     id: LitStr,
     description: Option<LitStr>,
     requires: Required,
-    listeners: Type,
+    listeners: Expr,
     observers: Type,
     contributions: Vec<Type>,
     streams: Vec<Path>,
@@ -111,8 +111,7 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
                 set_once(&mut requires, Required::Listed(listed), list.span(), "requires")?;
             }
             Meta::NameValue(named) if named.path.is_ident("listeners") => {
-                let catalog = syn::parse2::<Type>(named.value.to_token_stream())?;
-                set_once(&mut listeners, catalog, named.span(), "listeners")?;
+                set_once(&mut listeners, named.value.clone(), named.span(), "listeners")?;
             }
             Meta::NameValue(named) if named.path.is_ident("observers") => {
                 set_once(&mut observers, syn::parse2::<Type>(named.value.to_token_stream())?, named.span(), "observers")?;
@@ -129,7 +128,7 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
                 set_once(&mut stream_entries, named.value.clone(), named.span(), "stream_entries")?;
             }
             other if other.path().is_ident("listeners") || other.path().is_ident("observers") => {
-                return Err(Error::new(other.span(), "use typed `listeners = Audience` and `observers = Observers` selectors"));
+                return Err(Error::new(other.span(), "use `listeners = ENTRIES` and typed `observers = Observers` selectors"));
             }
             other if other.path().is_ident("version") => {
                 return Err(crate::version_argument(other.span()));
@@ -147,7 +146,7 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
         id,
         description,
         requires: requires.unwrap_or_else(|| Required::Listed(Vec::new())),
-        listeners: listeners.unwrap_or_else(|| syn::parse_quote!(())),
+        listeners: listeners.unwrap_or_else(|| syn::parse_quote!(&[])),
         observers: observers.unwrap_or_else(|| syn::parse_quote!(())),
         contributions: contributions.unwrap_or_default(),
         streams: streams.unwrap_or_default(),
@@ -358,7 +357,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
                     #harmos::__private::plugin::aggregate(EXPLICIT, <#name as #declarations>::PROVIDES, CALLEES);
                 &REQUIRED
             };
-            const LISTENERS: &'static [#harmos::catalog::Node<#harmos::listeners::Entry>] = <#audience as #harmos::catalog::InertCatalog<#harmos::listeners::Declarations, #harmos::listeners::Entry>>::ENTRIES;
+            const LISTENERS: &'static [#harmos::catalog::Node<#harmos::listeners::Entry>] = #audience;
             const OBSERVERS: &'static [#harmos::catalog::Node<#inventory::observers::Entry>] =
                 <#observed as #harmos::catalog::InertCatalog<
                     #inventory::observers::Descriptors,

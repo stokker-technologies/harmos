@@ -77,11 +77,6 @@ struct Leaf {
     payload: Vec<u8>,
 }
 
-// The Listeners Whose Deliveries Carry One Leaf Or One Selection.
-struct Leaves;
-
-struct Selections;
-
 #[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 struct Selection {
@@ -131,18 +126,6 @@ enum Choice {
 /* === Traits === */
 
 /* === Implementations === */
-
-impl harmos_domain::listeners::Listener for Selections {
-    type Row = Selection;
-    const CALLBACK: &'static str = "allocation.selections";
-    const POLICY: harmos_domain::operations::OperationPolicy = harmos_domain::model::operations::lifecycle::POLICY;
-}
-
-impl harmos_domain::listeners::Listener for Leaves {
-    type Row = Leaf;
-    const CALLBACK: &'static str = "allocation.leaves";
-    const POLICY: harmos_domain::operations::OperationPolicy = harmos_domain::model::operations::lifecycle::POLICY;
-}
 
 // A Pass-Through Allocator Measures Only This Test Thread's Encoding Buffers
 #[allow(unsafe_code, reason = "observing allocation peaks requires an allocator shim")]
@@ -258,7 +241,7 @@ fn peak_fits_preflight() {
     assert_eq!(measured.allocations, 2, "{measured:?}");
     assert!(measured.peak <= budget, "{measured:?}, budget {budget}");
     assert_eq!(measured.peak, harmos_domain::Message::encoded_size(&row) + encoded.capacity());
-    assert_eq!(encoded, harmos_domain::Message::encode(&Delivery::<Selections>::new(context, row).unwrap()));
+    assert_eq!(encoded, harmos_domain::Message::encode(&Delivery::<Selection>::new(context, row).unwrap()));
 }
 
 #[test]
@@ -356,9 +339,9 @@ fn listener_decode_borrows() {
     let context = Context::Record { position: Position(7) };
     let encoding = harmos_domain::listeners::encoding_memory_bytes(context, &row).unwrap();
     let encoded = harmos_domain::listeners::encode_borrowed(context, &row, encoding).unwrap();
-    let (bound, inspected) = measure(|| <Delivery<Leaves> as harmos_domain::Message>::decoding_memory(&encoded).unwrap());
+    let (bound, inspected) = measure(|| <Delivery<Leaf> as harmos_domain::Message>::decoding_memory(&encoded).unwrap());
     assert_eq!(inspected.allocations, 0, "{inspected:?}");
-    let (decoded, allocated) = measure(|| <Delivery<Leaves> as harmos_domain::Message>::decode(&encoded).unwrap());
+    let (decoded, allocated) = measure(|| <Delivery<Leaf> as harmos_domain::Message>::decode(&encoded).unwrap());
     assert_eq!(decoded.row(), &row);
     assert_eq!(allocated.allocations, 1, "{allocated:?}");
     assert!(allocated.peak <= bound, "{allocated:?}, bound {bound}");
@@ -368,10 +351,10 @@ fn listener_decode_borrows() {
 fn context_refuses_allocations() {
     // Record Context with an Invalid Zero Journal Position
     let bytes = [0, 0, 0];
-    let (refused, inspected) = measure(|| <Delivery<Leaves> as harmos_domain::Message>::decoding_memory(&bytes));
+    let (refused, inspected) = measure(|| <Delivery<Leaf> as harmos_domain::Message>::decoding_memory(&bytes));
     assert!(refused.is_err());
     assert_eq!(inspected.allocations, 0, "{inspected:?}");
-    let (refused, decoded) = measure(|| <Delivery<Leaves> as harmos_domain::Message>::decode(&bytes));
+    let (refused, decoded) = measure(|| <Delivery<Leaf> as harmos_domain::Message>::decode(&bytes));
     assert!(refused.is_err());
     assert_eq!(decoded.allocations, 0, "{decoded:?}");
 }
