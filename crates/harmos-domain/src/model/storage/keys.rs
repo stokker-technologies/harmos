@@ -72,6 +72,7 @@ pub enum ObjectRetention {
 
     Latest,
     Versions(NonZeroUsize),
+    All,
 }
 
 /* === Traits === */
@@ -146,6 +147,7 @@ impl fmt::Write for KeyWriter {
 impl ObjectRetention {
     pub const fn versions(self) -> NonZeroUsize {
         match self {
+            Self::All => NonZeroUsize::new(usize::MAX).unwrap(),
             Self::UntilReleased | Self::Latest => NonZeroUsize::MIN,
             Self::Versions(count) => count,
         }

@@ -44,7 +44,7 @@ pub enum Streams {
 
 /* === Public Functions === */
 
-/// Publishes one row on a declared stream through the host's `host.publish` operation.
+// Publishes one row on a declared stream through the host's `host.publish` operation.
 #[cfg(feature = "lifecycle")]
 pub fn publish_on<H, S>(host: &H, row: &S::Row) -> impl std::future::Future<Output = std::result::Result<(), H::Error>> + Send
 where
@@ -56,7 +56,6 @@ where
     let published = host.resolve::<Publish, ()>(
         Publish {
             stream: S::ID.to_owned(),
-            schema: S::VERSION,
             sequence: None,
             published_unix_micros: None,
             context: None,

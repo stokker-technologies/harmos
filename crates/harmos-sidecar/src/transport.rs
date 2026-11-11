@@ -12,17 +12,6 @@
 mod connection;
 mod consumption;
 mod credit;
-mod payload {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_bytes(bytes)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<&'de [u8], D::Error> {
-        <&[u8]>::deserialize(deserializer)
-    }
-}
 
 /* === Re-Exports === */
 
@@ -36,9 +25,11 @@ pub use credit::{Credit, Reservation};
 use std::io::{self, IoSlice};
 use std::ops::Range;
 use std::sync::Arc;
+
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+
 // Local Imports
 use crate::{Frame, FramePayload};
 
@@ -327,10 +318,78 @@ fn invalid(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Er
     io::Error::new(io::ErrorKind::InvalidData, error)
 }
 
+mod payload {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bytes(bytes)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<&'de [u8], D::Error> {
+        <&[u8]>::deserialize(deserializer)
+    }
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
+
 /* === Tests === */
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn cadence_report_round_trips_and_rejects_another_shape() {
+        let report = crate::CadenceReport {
+            observer: "cadence.test".to_owned(),
+            activation: "activation".to_owned(),
+            interval: std::time::Duration::from_secs(1),
+            scheduled_at: std::time::Duration::from_secs(2),
+            started_at: Some(std::time::Duration::from_millis(2100)),
+            callback_duration: std::time::Duration::from_millis(250),
+            skipped: false,
+            refused: true,
+        };
+        let encoded = super::Packet::Frame(report.frame()).encode().unwrap();
+        let decoded = super::Packet::decode(super::Role::Data, encoded[4..].to_vec()).unwrap();
+        let super::Packet::Frame(crate::Frame::Push { method, params }) = decoded else { panic!("cadence push") };
+        assert_eq!(method, crate::Frame::OBSERVER_CADENCE);
+        assert_eq!(crate::CadenceReport::decode(&params).unwrap(), report);
+        let changed = postcard::to_allocvec(&(crate::CadenceReport::revision().wrapping_add(1), &report)).unwrap();
+        assert!(crate::CadenceReport::decode(&changed).is_err());
+        let mut skipped = report;
+        skipped.skipped = true;
+        let crate::Frame::Push { params, .. } = skipped.frame() else { unreachable!() };
+        assert!(crate::CadenceReport::decode(&params).is_err());
+    }
+
     use super::*;
     use std::pin::Pin;
     use std::task::{Context, Poll};

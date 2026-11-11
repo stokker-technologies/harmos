@@ -62,12 +62,22 @@ impl StorageSchema {
 
 impl Serialize for StorageSchema {
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
-        let mut output = serializer.serialize_struct("StorageSchema", 5)?;
+        let mut output = serializer.serialize_struct("StorageSchema", 5 + usize::from(!self.schema.representations.is_empty()))?;
         output.serialize_field("position", &self.position)?;
         output.serialize_field("key", &self.key)?;
         output.serialize_field("encoding", "graph_v1")?;
         output.serialize_field("root", &self.schema.root)?;
         output.serialize_field("definitions", &self.schema.definitions)?;
+        if !self.schema.representations.is_empty() {
+            // Use The Graph's Bounded Representation Encoding For Stored Definitions.
+            struct Representations<'a>(&'a harmos_domain::schema::graph::Schema);
+            impl Serialize for Representations<'_> {
+                fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+                    harmos_domain::schema::wire::serialize(&self.0.representations, serializer)
+                }
+            }
+            output.serialize_field("representations", &Representations(&self.schema))?;
+        }
         output.end()
     }
 }
@@ -152,3 +162,47 @@ fn invalid() -> Error {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use harmos_domain::config::SchemaSettings;
+    use harmos_domain::model::storage::StoreHistory;
+    use harmos_domain::schema::{graph::Schema, identity, json::JsonCodec};
+    use harmos_domain::{Described, Identifier};
+
+    #[derive(Serialize, Described)]
+    #[harmos_path(::harmos_domain)]
+    #[serde(tag = "kind", rename_all = "snake_case")]
+    enum Stored {
+        Value { value: u32 },
+    }
+
+    #[test]
+    fn stored_schema_retains_serde_representation() {
+        let schema =
+            Schema::from_declaration(<Stored as harmos_domain::schema::Described>::DEFINITION, &SchemaSettings::default()).unwrap();
+        let revision = identity::revision(&schema).unwrap();
+        let position = StorageCursor {
+            history: StoreHistory {
+                store: Identifier::new("store").unwrap(),
+                epoch: Identifier::new("epoch").unwrap(),
+            },
+            sequence: 1,
+        };
+        let key = SchemaKey {
+            id: Identifier::new("record").unwrap(),
+            version: std::num::NonZeroU32::new(revision).unwrap(),
+            payload_encoding: crate::PayloadEncoding::PostcardV1,
+        };
+        let stored = StorageSchema::new(position, key, schema);
+        let bytes = serde_json::to_vec(&stored).unwrap();
+        let decoded: StorageSchema = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(decoded, stored);
+        assert_eq!(identity::revision(&decoded.schema).unwrap(), revision);
+        let value = serde_json::to_value(Stored::Value { value: 7 }).unwrap();
+        let codec = JsonCodec::new(decoded.schema.root().unwrap(), &SchemaSettings::default()).unwrap();
+        let payload = codec.encode(&value).unwrap();
+        assert_eq!(codec.decode(&payload).unwrap(), value);
+    }
+}

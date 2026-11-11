@@ -190,7 +190,7 @@ async fn sidecar_composition_walks() {
     assert_eq!(routed.points, [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 }]);
 
     // Scene 4: Upload Progress Proves The Child Holds Its Shared Analysis Permit
-    let published = runtime.streams.publication("schematic.analysis_progress", 1).expect("the ready sidecar owns its progress stream");
+    let published = runtime.streams.current_publication("schematic.analysis_progress").expect("the ready sidecar owns its progress stream");
     assert_eq!(published.definition().owner(), Some(PLUGIN));
     let mut progress = published.watch();
     let upload = runtime.operations.upload::<AnalyzeUpload>(AnalyzeUpload { title: "Held Upload".into() }, stream_settings()).unwrap();

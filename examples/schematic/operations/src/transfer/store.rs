@@ -15,9 +15,14 @@
 
 /* === Imports === */
 
-use schematic_domain::model::transfer::Batch;
+// Standard Library Imports
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Mutex;
+
+// Third Party Imports
+use schematic_domain::model::transfer::Batch;
+
+// Local Imports
 
 /* === Constants === */
 

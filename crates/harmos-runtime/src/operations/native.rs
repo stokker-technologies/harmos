@@ -1088,8 +1088,9 @@ pub(super) fn dispatch(
     // Bytes Are Already Encoded; The Selected Remote WireTable Owns Decoding.
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
+    let operation = submission.entry.id().to_owned();
     let target = Arc::downgrade(&submission.entry);
-    super::wire::budget(timeout, submitted)?;
+    super::wire::budget(&operation, 1, timeout, submitted)?;
     let (scope, ancestors) = parent.map_or((None, &[][..]), |parent| (Some(parent.scope), parent.ancestors));
     let mut request = super::binding::Request::from(request);
     request.retry = input.retry;
@@ -1098,14 +1099,15 @@ pub(super) fn dispatch(
     let generation = invocation.generation();
     let control = Arc::clone(&invocation.control);
     let invocation = invocation.unguarded();
+    let outcome_control = Arc::clone(&control);
     let outcome = Box::pin(async move {
         let response = invocation.await?;
         super::wire::available(&target, &source)?;
-        super::wire::budget(timeout, submitted)?;
+        super::wire::budget(&operation, outcome_control.status().attempt() + 1, timeout, submitted)?;
         // No Cache Opt-In Exists For An Opaque Inspected Request.
         let payload = response.try_unwrap().unwrap_or_else(|response| (*response).clone()).0;
         super::wire::available(&target, &source)?;
-        super::wire::budget(timeout, submitted)?;
+        super::wire::budget(&operation, outcome_control.status().attempt() + 1, timeout, submitted)?;
         Ok(payload)
     });
     Ok(super::EncodedInvocation {

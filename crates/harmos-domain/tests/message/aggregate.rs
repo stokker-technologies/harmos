@@ -11,25 +11,6 @@
 
 /* === Modules === */
 
-// The Shape `#[harmos::message]` Derives For The Same Vocabulary
-mod twin {
-    use harmos_domain::message;
-
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Copy, PartialEq)]
-    pub enum Aggregate {
-        Count,
-        Sum,
-        Mean,
-        Median,
-        Min,
-        Max,
-        Rms,
-        Std,
-        Percentile { rank: u32 },
-    }
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -83,6 +64,74 @@ struct Summary {
 /* === Implementations === */
 
 /* === Public Functions === */
+
+/* === Private Functions === */
+
+fn twin(value: Aggregate) -> twin::Aggregate {
+    match value {
+        Aggregate::Count => twin::Aggregate::Count,
+        Aggregate::Sum => twin::Aggregate::Sum,
+        Aggregate::Mean => twin::Aggregate::Mean,
+        Aggregate::Median => twin::Aggregate::Median,
+        Aggregate::Min => twin::Aggregate::Min,
+        Aggregate::Max => twin::Aggregate::Max,
+        Aggregate::Rms => twin::Aggregate::Rms,
+        Aggregate::Std => twin::Aggregate::Std,
+        Aggregate::Percentile(rank) => twin::Aggregate::Percentile { rank: u32::from(rank) },
+    }
+}
+
+// The Shape `#[harmos::message]` Derives For The Same Vocabulary
+mod twin {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+    use harmos_domain::message;
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Clone, Copy, PartialEq)]
+    pub enum Aggregate {
+        Count,
+        Sum,
+        Mean,
+        Median,
+        Min,
+        Max,
+        Rms,
+        Std,
+        Percentile { rank: u32 },
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
+
+/* === Tests === */
 
 #[test]
 fn aggregate_protobuf_contract() {
@@ -171,21 +220,3 @@ fn schema_matches_derive() {
     assert!(left.equivalent(left.root, &right, right.root, &settings).unwrap());
     Schema::from_declaration(Summary::DEFINITION, &settings).unwrap();
 }
-
-/* === Private Functions === */
-
-fn twin(value: Aggregate) -> twin::Aggregate {
-    match value {
-        Aggregate::Count => twin::Aggregate::Count,
-        Aggregate::Sum => twin::Aggregate::Sum,
-        Aggregate::Mean => twin::Aggregate::Mean,
-        Aggregate::Median => twin::Aggregate::Median,
-        Aggregate::Min => twin::Aggregate::Min,
-        Aggregate::Max => twin::Aggregate::Max,
-        Aggregate::Rms => twin::Aggregate::Rms,
-        Aggregate::Std => twin::Aggregate::Std,
-        Aggregate::Percentile(rank) => twin::Aggregate::Percentile { rank: u32::from(rank) },
-    }
-}
-
-/* === Tests === */

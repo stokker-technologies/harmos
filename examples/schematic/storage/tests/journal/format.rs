@@ -33,7 +33,7 @@ use support::{Bank, Ledger, Noted, alice, booted, deposit, ledger, scratch, with
 
 const GOLDEN: &str = include_str!("../fixtures/journal.v1.jsonl");
 
-const NON_CANONICAL: &str = r#"{ "kind": "Transaction", "version": 1, "position": 4, "id": "ledger.bonus", "payload": { "amount": 3 }, "metadata": { "at_us": -1000001, "correlation": 4, "principal": null, "causation": null, "request": null, "link": null } }"#;
+const NON_CANONICAL: &str = r#"{ "kind": "Transaction", "version": 3575448456, "position": 4, "id": "ledger.bonus", "payload": { "amount": 3 }, "metadata": { "at_us": -1000001, "correlation": 4, "principal": null, "causation": null, "request": null, "link": null } }"#;
 
 const SYSTEM_FACTS: &str = include_str!("../fixtures/system-facts.v1.jsonl");
 
@@ -147,7 +147,7 @@ fn contract_scenario() {
     assert_eq!(
         lines[1],
         format!(
-            r#"{{"position":1,"kind":"Transaction","id":"ledger.deposit","version":1,"metadata":{{"principal":"alice","correlation":1,"causation":null,"request":null,"link":null,"at_us":{}}},"payload":{{"amount":7}}}}"#,
+            r#"{{"position":1,"kind":"Transaction","id":"ledger.deposit","version":3575448456,"metadata":{{"principal":"alice","correlation":1,"causation":null,"request":null,"link":null,"at_us":{}}},"payload":{{"amount":7}}}}"#,
             stamps[0]
         ),
         "an entry line is the documented members in the documented order"
@@ -155,7 +155,7 @@ fn contract_scenario() {
     assert_eq!(
         lines[2],
         format!(
-            r#"{{"position":2,"kind":"Transaction","id":"ledger.withdraw","version":1,"metadata":{{"principal":"alice","correlation":1,"causation":1,"request":"pay-once","link":null,"at_us":{}}},"payload":{{"amount":2}}}}"#,
+            r#"{{"position":2,"kind":"Transaction","id":"ledger.withdraw","version":3575448456,"metadata":{{"principal":"alice","correlation":1,"causation":1,"request":"pay-once","link":null,"at_us":{}}},"payload":{{"amount":2}}}}"#,
             stamps[1]
         ),
         "a caused, keyed commit writes every witness member it carries"
@@ -163,7 +163,7 @@ fn contract_scenario() {
     assert_eq!(
         lines[3],
         format!(
-            r#"{{"position":3,"kind":"Record","id":"ledger.noted","version":1,"metadata":{{"principal":null,"correlation":3,"causation":null,"request":null,"link":null,"at_us":{}}},"payload":"audited"}}"#,
+            r#"{{"position":3,"kind":"Record","id":"ledger.noted","version":2802045344,"metadata":{{"principal":null,"correlation":3,"causation":null,"request":null,"link":null,"at_us":{}}},"payload":"audited"}}"#,
             stamps[2]
         ),
         "a record line carries the same frame, and an absent witness member is null"
@@ -171,7 +171,7 @@ fn contract_scenario() {
     assert_eq!(
         lines[4],
         format!(
-            r#"{{"position":4,"kind":"Transaction","id":"ledger.deposit","version":1,"metadata":{{"principal":"alice","correlation":4,"causation":null,"request":null,"link":{{"UndoOf":2}},"at_us":{}}},"payload":{{"amount":2}}}}"#,
+            r#"{{"position":4,"kind":"Transaction","id":"ledger.deposit","version":3575448456,"metadata":{{"principal":"alice","correlation":4,"causation":null,"request":null,"link":{{"UndoOf":2}},"at_us":{}}},"payload":{{"amount":2}}}}"#,
             stamps[3]
         ),
         "an undo writes its inverse linked to the entry it answers"
@@ -268,24 +268,8 @@ fn contract_scenario() {
                     .await
                     .map(|entry| entry.expect("the golden is inside the tail").value)
                     .collect();
-                assert_eq!(
-                    facts[0],
-                    SystemFact {
-                        source: FactSource::Work("autoroute".to_owned()),
-                        name: "finding".to_owned(),
-                        version: 1,
-                        payload: vec![1, 2, 3],
-                    }
-                );
-                assert_eq!(
-                    facts[1],
-                    SystemFact {
-                        source: FactSource::Work("exporter".to_owned()),
-                        name: "deactivated".to_owned(),
-                        version: 1,
-                        payload: vec![9, 8],
-                    }
-                );
+                assert_eq!(facts[0], SystemFact::new(FactSource::Work("autoroute".to_owned()), "finding".to_owned(), vec![1, 2, 3]));
+                assert_eq!(facts[1], SystemFact::new(FactSource::Work("exporter".to_owned()), "deactivated".to_owned(), vec![9, 8]));
 
                 recovered.shutdown().await.unwrap();
                 assert_eq!(
@@ -306,7 +290,7 @@ fn contract_scenario() {
         &copy,
         concat!(
             "{\"schema\":1,\"generation\":0,\"origin\":0}\n",
-            r#"{"position":1,"kind":"Transaction","id":"ledger.deposit","version":1,"metadata":{"principal":null,"correlation":1,"causation":null,"request":null,"link":null,"at":{"secs_since_epoch":0,"nanos_since_epoch":0}},"payload":{"amount":40}}"#,
+            r#"{"position":1,"kind":"Transaction","id":"ledger.deposit","version":3575448456,"metadata":{"principal":null,"correlation":1,"causation":null,"request":null,"link":null,"at":{"secs_since_epoch":0,"nanos_since_epoch":0}},"payload":{"amount":40}}"#,
             "\n"
         ),
     )
@@ -334,7 +318,7 @@ fn contract_scenario() {
         &copy,
         concat!(
             "{\"schema\":1,\"generation\":0,\"origin\":0}\n",
-            r#"{"position":1,"kind":"Transaction","id":"ledger.deposit","version":1,"metadata":{"principal":null,"correlation":1,"causation":null,"request":null,"link":null,"at_us":0,"at":{"secs_since_epoch":0,"nanos_since_epoch":0}},"payload":{"amount":40}}"#,
+            r#"{"position":1,"kind":"Transaction","id":"ledger.deposit","version":3575448456,"metadata":{"principal":null,"correlation":1,"causation":null,"request":null,"link":null,"at_us":0,"at":{"secs_since_epoch":0,"nanos_since_epoch":0}},"payload":{"amount":40}}"#,
             "\n"
         ),
     )

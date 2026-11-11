@@ -93,7 +93,7 @@ impl Children {
         let invocation = tokio::select! {
             biased;
             _ = &mut cancelled => {
-                let error: Error = Error::OperationRefused(crate::Refusal::Cancelled);
+                let error: Error = Error::OperationRefused(crate::Refusal::Cancelled { operation: operation.clone(), attempt: 1 });
                 return Err(refusal(error));
             }
             admitted = admission => admitted.map_err(refusal)?,
@@ -194,7 +194,7 @@ pub(crate) fn refused(error: Error) -> Refusal {
         Error::OperationUnauthorized { .. } | Error::OperationLaneCycle { .. } => Refusal::new(-32_604, error),
         Error::NotRegistered { .. } => Refusal::new(harmos_domain::UNKNOWN, error),
         Error::OperationPayload { .. } => Refusal::new(harmos_domain::UNREADABLE, error),
-        Error::OperationRefused(crate::Refusal::TimedOut) => Refusal::new(-32_607, error),
+        Error::OperationRefused(crate::Refusal::TimedOut { .. }) => Refusal::new(-32_607, error),
         Error::OperationRefused(_) | Error::Closing { .. } => Refusal::new(-32_606, error),
         error => Refusal::originate(
             harmos_domain::FAILED,

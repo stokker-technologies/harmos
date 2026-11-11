@@ -274,6 +274,7 @@ mod tests {
     enum Lanes {
         #[default]
         Open,
+
         #[lane(serial)]
         Serial,
     }
@@ -466,7 +467,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn retry_override_keeps_declared_attempt_deadline() {
         let evidence = Evidence::default();
         let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
@@ -482,12 +483,178 @@ mod tests {
                 jitter: crate::Jitter::None,
             },
         };
-        assert!(runtime.operation(Deadline {}).retry(retry).await.is_err());
+        let error = runtime.operation(Deadline {}).retry(retry).await.unwrap_err();
+        assert!(
+            matches!(error, crate::Error::OperationRefused(crate::Refusal::TimedOut { ref operation, attempt: 2, timeout, configured_by: "operation policy.attempt_timeout" }) if operation == "test.deadline" && timeout == std::time::Duration::from_millis(10))
+        );
+        let displayed = error.to_string();
+        assert!(displayed.contains("test.deadline") && displayed.contains("0.01 s deadline") && displayed.contains("attempt 2"));
         let observed = evidence.lock().unwrap().iter().map(|entry| (entry.1, entry.2)).collect::<Vec<_>>();
         assert_eq!(observed, [(0, crate::operations::OperationOutcome::TimedOut), (1, crate::operations::OperationOutcome::TimedOut)]);
         assert!(runtime.operation(Deadline {}).await.is_err());
         assert_eq!(evidence.lock().unwrap().len(), 3);
         runtime.shutdown().await.unwrap();
+    }
+
+    struct TimingProbe {
+        now: Mutex<crate::operations::middleware::AttemptStartedAt>,
+        observed: Mutex<Vec<crate::operations::middleware::AttemptObservation>>,
+    }
+
+    impl TimingProbe {
+        fn advance(&self, elapsed: std::time::Duration) {
+            self.now.lock().unwrap().instant += elapsed;
+        }
+    }
+
+    struct TimingRecorder(Arc<TimingProbe>);
+
+    impl crate::operations::middleware::Middleware for TimingRecorder {
+        fn enter<'a>(&'a self, _: &'a mut crate::operations::middleware::Invocation) -> crate::operations::middleware::Enter<'a> {
+            Box::pin(async move {
+                self.0.advance(std::time::Duration::from_secs(3));
+                Ok(())
+            })
+        }
+
+        fn attempt<'a>(
+            &'a self, _: &'a crate::operations::middleware::Invocation, observation: crate::operations::middleware::AttemptObservation,
+        ) -> crate::operations::middleware::Enter<'a> {
+            Box::pin(async move {
+                self.0.observed.lock().unwrap().push(observation);
+                self.0.advance(std::time::Duration::from_secs(5));
+                Ok(())
+            })
+        }
+    }
+
+    #[crate::operation(harmos_path = crate, resources = [TimingProbe, super::HostContext], id = "test.timed_attempt", response = (),
+        policy = crate::OperationPolicy { attempt_timeout: std::time::Duration::from_millis(10), ..POLICY },
+        replay = crate::operations::ReplaySafety::Idempotent)]
+    struct TimedAttempt {
+        refuse: bool,
+        timeout: bool,
+    }
+
+    impl Operation for TimedAttempt {
+        type Error = std::io::Error;
+
+        async fn run(self, ctx: Context<'_, Self>) -> Result<Response<()>, Self::Error> {
+            let attempt = ctx.resource::<super::HostContext>().borrow().attempt();
+            ctx.resource::<TimingProbe>().advance(std::time::Duration::from_millis(17 + attempt as u64));
+            if self.timeout {
+                return std::future::pending().await;
+            }
+            if self.refuse && attempt == 0 {
+                return Err(std::io::Error::other("refused"));
+            }
+            Ok(().into())
+        }
+
+        fn classify(_: &Self::Error) -> crate::operations::FailureKind {
+            crate::operations::FailureKind::Transient
+        }
+    }
+
+    async fn timed_attempt(refuse: bool, timeout: bool, retry: bool) {
+        use crate::operations::middleware::{AttemptClock, AttemptStartedAt};
+        use std::time::Duration;
+        let initial = AttemptStartedAt {
+            instant: crate::supervision::executor::now(),
+            timestamp: crate::state::Timestamp::UNIX_EPOCH + Duration::from_secs(123),
+        };
+        let probe = Arc::new(TimingProbe {
+            now: Mutex::new(initial),
+            observed: Mutex::new(Vec::new()),
+        });
+        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+            setup.resource::<TimingProbe>(probe.clone());
+            setup.settings().operation_middleware(Arc::new(TimingRecorder(probe.clone())));
+        })
+        .await
+        .unwrap();
+        let clock = probe.clone();
+        runtime.operations.set_attempt_clock(AttemptClock::new(move || *clock.now.lock().unwrap())).unwrap();
+        runtime
+            .register_batch(harmos_sdk::__private::RegistrationBatch::new().operation::<TimedAttempt>().lane(Lanes::Open))
+            .await
+            .unwrap();
+        let policy = if retry {
+            crate::RetryPolicy::OnTransient {
+                max_retries: 1,
+                backoff: crate::Backoff::Fixed {
+                    delay: Duration::from_millis(1),
+                    jitter: crate::Jitter::None,
+                },
+            }
+        } else {
+            crate::RetryPolicy::Never
+        };
+        let result = runtime.operation(TimedAttempt { refuse, timeout }).retry(policy).await;
+        assert_eq!(result.is_ok(), !timeout && (!refuse || retry));
+        {
+            let observations = probe.observed.lock().unwrap();
+            assert_eq!(observations.len(), if retry { 2 } else { 1 });
+            for (attempt, observation) in observations.iter().enumerate() {
+                let outcome = if timeout {
+                    crate::operations::OperationOutcome::TimedOut
+                } else if refuse && attempt == 0 {
+                    crate::operations::OperationOutcome::Failed
+                } else {
+                    crate::operations::OperationOutcome::Succeeded
+                };
+                assert_eq!(observation.attempt, attempt);
+                assert_eq!(observation.outcome, outcome);
+                assert_eq!(observation.elapsed, Duration::from_millis(17 + attempt as u64));
+                assert_eq!(observation.started_at.timestamp, initial.timestamp);
+                let prior = if attempt == 0 { Duration::ZERO } else { Duration::from_secs(5) + Duration::from_millis(17) };
+                assert_eq!(observation.started_at.instant, initial.instant + Duration::from_secs(3) + prior);
+            }
+        }
+        runtime.shutdown().await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn attempt_timing_success_excludes_middleware() {
+        timed_attempt(false, false, false).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn attempt_timing_refusal() {
+        timed_attempt(true, false, false).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn attempt_timing_timeout() {
+        timed_attempt(false, true, false).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn attempt_timing_retry_is_per_handler() {
+        timed_attempt(true, false, true).await;
+    }
+
+    #[cfg(feature = "grpc")]
+    mod deadline_overrides {
+        use super::*;
+
+        #[tokio::test(start_paused = true)]
+        async fn inherited_deadline_reports_applied_override() {
+            let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
+            runtime
+                .register_batch(harmos_sdk::__private::RegistrationBatch::new().operation::<Deadline>().lane(Lanes::Open))
+                .await
+                .unwrap();
+            let timeout = std::time::Duration::from_millis(5);
+            let mut context = crate::operations::CallContext::default();
+            context.insert(crate::operations::context::Deadline(crate::supervision::executor::now() + timeout)).unwrap();
+            let operations = runtime.operations.with_context(context);
+            let error = operations.operation::<Deadline>(Deadline {}).await.unwrap_err();
+            assert!(matches!(error, crate::Error::OperationRefused(crate::Refusal::TimedOut {
+                ref operation, attempt: 1, timeout: applied, configured_by: "per-call gRPC deadline override",
+            }) if operation == "test.deadline" && applied == timeout));
+            runtime.shutdown().await.unwrap();
+        }
     }
 
     struct CancellationProbe {
@@ -532,7 +699,9 @@ mod tests {
         runtime.register_batch(batch.lane(Lanes::Open)).await.unwrap();
         let running = runtime.operation(WaitParent {}).start().await.unwrap();
         probe.started.notified().await;
-        assert!(matches!(running.cancel().await, Err(crate::Error::OperationRefused(crate::Refusal::Cancelled))));
+        assert!(
+            matches!(running.cancel().await, Err(crate::Error::OperationRefused(crate::Refusal::Cancelled { operation, attempt: 1 })) if operation == "test.wait_parent")
+        );
         assert!(probe.cancelled.load(std::sync::atomic::Ordering::SeqCst));
         runtime.shutdown().await.unwrap();
     }

@@ -12,6 +12,9 @@
 mod carrier;
 mod catalog;
 mod connection;
+
+#[cfg(feature = "arrow")]
+pub mod dynamic;
 mod host;
 mod identity;
 mod instance;
@@ -22,24 +25,15 @@ mod plugin;
 mod publisher;
 mod task;
 
-pub mod __private {
-    pub use super::observer::{Declarations as ObserverDeclarations, Inventory as ObserverInventory, Outputs as ObserverOutputs};
-    pub use super::task::spawn as spawn_observer;
-    pub use crate as sidecar;
-    pub use harmos_domain::{qualified, qualified_len, qualify};
-    pub use harmos_sdk::__private::*;
-}
-
 /* === Re-Exports === */
 
-pub use harmos_sdk::{ExecutionContext, Operation, Service};
-
 pub use catalog::{CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT};
+pub use harmos_sdk::{ExecutionContext, Operation, Service};
 pub use host::{CallError, PublicationError, Supervisor};
 pub use identity::ActivationId;
 pub use instance::OperationInstance;
 pub use observer::{Activation, Activity, DemandKey, Instance, Observer, ObserverAttachment, ObserverContext, ObserverError, Tick};
-pub use observer_host::{ObserverHost, ObserverPublisher, ObserverStreamPublisher};
+pub use observer_host::{CadenceReporter, ObserverHost, ObserverPublisher, ObserverStreamPublisher};
 pub use plugin::{PluginNative, run_plugin, run_plugin_with_settings, serve_plugin_channels, serve_plugin_channels_with_settings};
 pub use publisher::{Batch, PublishError, Publisher};
 
@@ -50,8 +44,10 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+
 // Third Party Imports
 use tokio::sync::{mpsc, oneshot};
+
 // Local Imports
 use crate::Frame;
 use carrier::{Failure, Input, Sender};
@@ -67,7 +63,6 @@ const INCOMING_REQUESTS: usize = 128;
 /* === Type Aliases === */
 
 type Prepare = Box<dyn Fn(&str) -> Result<Serving, Refusal> + Send + Sync>;
-
 type Cancellations = Arc<Mutex<BTreeMap<u64, Option<oneshot::Sender<()>>>>>;
 type Table = Arc<Mutex<harmos_sdk::__private::WireTable>>;
 type SharedOpening = Arc<tokio::sync::Mutex<Opening>>;
@@ -620,6 +615,46 @@ async fn send(outgoing: &Sender, frame: Frame) -> std::io::Result<()> {
         _ => frame,
     };
     outgoing.send(frame).await
+}
+
+pub mod __private {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    pub use super::observer::{Declarations as ObserverDeclarations, Inventory as ObserverInventory, Outputs as ObserverOutputs};
+    pub use super::task::spawn as spawn_observer;
+    pub use crate as sidecar;
+    pub use harmos_domain::{qualified, qualified_len, qualify};
+    pub use harmos_sdk::__private::*;
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

@@ -216,6 +216,10 @@ impl<A: Application> StreamManager<A> {
         self.windows.ingest.wake();
     }
 
+    pub(crate) fn drained(&self, cursor: u64) {
+        self.windows.drained(cursor);
+    }
+
     pub(crate) fn delivery(&self) -> watch::Receiver<()> {
         self.windows.delivery()
     }
@@ -237,8 +241,8 @@ impl<A: Application> StreamManager<A> {
 
     fn stream<S: Stream<A>>(&self) -> Arc<Wired> {
         self.windows
-            .wired(S::ID, S::VERSION)
-            .filter(|wired| wired.definition.row() == TypeId::of::<S>() && wired.definition.version() == S::VERSION)
+            .current(S::ID)
+            .filter(|wired| wired.definition.row() == TypeId::of::<S>() && wired.definition.owner().is_none())
             .unwrap_or_else(|| {
                 panic!(
                     "the stream \"{}\" is not in the registered catalog; \

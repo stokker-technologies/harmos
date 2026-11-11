@@ -30,15 +30,12 @@ use harmos_sdk::grpc::{self, DecodeInput, prost};
 
 /* === Structs === */
 
-// The Previous Wire Schema Is an Independent Compatibility Oracle
+// An Independent Protobuf Oracle For The Current Publication Shape
 #[derive(Clone, PartialEq, prost::Message)]
 #[prost(prost_path = "harmos_sdk::grpc::prost")]
-struct PreviousPublication {
+struct SinglePublication {
     #[prost(string, tag = "1")]
     stream: String,
-
-    #[prost(uint32, tag = "2")]
-    schema: u32,
 
     #[prost(uint64, optional, tag = "3")]
     sequence: Option<u64>,
@@ -112,7 +109,6 @@ fn publication_keeps_tags() {
         Publish::default(),
         Publish {
             stream: "records".into(),
-            schema: u32::MAX,
             sequence: Some(0),
             published_unix_micros: Some(i64::MIN),
             context: Some(String::new()),
@@ -120,9 +116,8 @@ fn publication_keeps_tags() {
             following: Vec::new(),
         },
     ] {
-        let previous = PreviousPublication {
+        let previous = SinglePublication {
             stream: value.stream.clone(),
-            schema: value.schema,
             sequence: value.sequence,
             published_unix_micros: value.published_unix_micros,
             context: value.context.clone(),
@@ -131,7 +126,7 @@ fn publication_keeps_tags() {
         let bytes = prost::Message::encode_to_vec(&previous);
         assert_eq!(crate::encode(&value), bytes);
         assert_eq!(grpc::decode::<Publish>(DecodeInput::new(&bytes)).unwrap(), value);
-        assert_eq!(<PreviousPublication as prost::Message>::decode(bytes.as_slice()).unwrap(), previous);
+        assert_eq!(<SinglePublication as prost::Message>::decode(bytes.as_slice()).unwrap(), previous);
         roundtrip(value);
     }
 }

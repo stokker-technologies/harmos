@@ -65,10 +65,10 @@ pub struct Transcoded;
 pub trait Wire<T>: Send + Sync + 'static {
     fn encode(value: &T, bytes: &mut Vec<u8>) -> Result<(), MessageError>;
 
-    /// Admits Encoding Workspace Through The Caller's Existing Native Owner.
-    ///
-    /// The Default Supports Cooperative Handwritten Codecs. Override It To Admit
-    /// Their Actual Workspace Before Construction; Internal User Allocations Are Not Governed.
+    // Admits Encoding Workspace Through The Caller's Existing Native Owner.
+    //
+    // The Default Supports Cooperative Handwritten Codecs. Override It To Admit
+    // Their Actual Workspace Before Construction; Internal User Allocations Are Not Governed.
     fn encode_admitted(
         value: &T, bytes: &mut Vec<u8>, limit: usize, admit: &mut dyn FnMut(usize) -> Result<(), Status>,
     ) -> Result<(), Status> {
@@ -81,7 +81,7 @@ pub trait Wire<T>: Send + Sync + 'static {
 pub trait Encode<W>: Send + 'static {
     fn write(&self, bytes: &mut Vec<u8>) -> Result<(), MessageError>;
 
-    /// Uses The Same Native Admission Owner As The Containing Encoder.
+    // Uses The Same Native Admission Owner As The Containing Encoder.
     fn write_admitted(&self, bytes: &mut Vec<u8>, limit: usize, admit: &mut dyn FnMut(usize) -> Result<(), Status>) -> Result<(), Status> {
         cooperative(bytes, limit, admit, |bytes| self.write(bytes))
     }
@@ -177,10 +177,10 @@ impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> Codec<W, D, E> {
         self
     }
 
-    /// Creates A Standalone Codec With Per-Message Limits.
-    ///
-    /// Runtime Server Routes Also Supply Their Existing Optional Operation Preparation Owner.
-    /// An Absent Owner Preserves Unbounded Aggregate Encoding, Rather Than Claiming Admission.
+    // Creates A Standalone Codec With Per-Message Limits.
+    //
+    // Runtime Server Routes Also Supply Their Existing Optional Operation Preparation Owner.
+    // An Absent Owner Preserves Unbounded Aggregate Encoding, Rather Than Claiming Admission.
     pub fn new(decode: DecodeSettings, encode: EncodeSettings) -> Result<Self, Status> {
         encode.validate()?;
         Ok(Self {
@@ -196,6 +196,7 @@ impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> Codec<W, D, E> {
         self
     }
 }
+
 impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> tonic::codec::Codec for Codec<W, D, E> {
     type Encode = E;
     type Decode = StreamItem<D>;
@@ -215,6 +216,7 @@ impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> tonic::codec::Cod
         self.decoder.fork()
     }
 }
+
 impl<W, E: Encode<W>> Encoder<W, E> {
     #[tracing::instrument(target = "harmos::grpc", name = "grpc.encode", level = "trace", skip_all)]
     fn message(&mut self, value: &E) -> Result<&[u8], Status> {
@@ -239,6 +241,7 @@ impl<W, E: Encode<W>> Encoder<W, E> {
         Ok(&self.scratch)
     }
 }
+
 impl<W: Send + 'static, E: Encode<W>> tonic::codec::Encoder for Encoder<W, E> {
     type Item = E;
     type Error = Status;
@@ -254,6 +257,30 @@ impl<W: Send + 'static, E: Encode<W>> tonic::codec::Encoder for Encoder<W, E> {
 }
 
 /* === Public Functions === */
+
+pub(crate) fn encode_bytes(
+    payload: &[u8], bytes: &mut Vec<u8>, limit: usize, admit: &mut dyn FnMut(usize) -> Result<(), Status>,
+) -> Result<(), Status> {
+    let length = bytes.len().checked_add(payload.len()).ok_or_else(|| Status::resource_exhausted("gRPC encoding size overflows"))?;
+    if length > limit {
+        return Err(Status::resource_exhausted("gRPC encoded message exceeds wire ceiling"));
+    }
+    reserve(bytes, length, admit)?;
+    bytes.extend_from_slice(payload);
+    Ok(())
+}
+
+pub(super) fn reserve(bytes: &mut Vec<u8>, length: usize, admit: &mut dyn FnMut(usize) -> Result<(), Status>) -> Result<(), Status> {
+    let mut peak = bytes.capacity();
+    if length > bytes.capacity() {
+        peak = peak.checked_add(length).ok_or_else(|| Status::resource_exhausted("gRPC encoding size overflows"))?;
+    }
+    admit(peak)?;
+    bytes
+        .try_reserve_exact(length.saturating_sub(bytes.len()))
+        .map_err(|_| Status::resource_exhausted("gRPC encoding allocation failed"))?;
+    admit(bytes.capacity())
+}
 
 /* === Private Functions === */
 
@@ -295,30 +322,6 @@ fn cooperative(
     if bytes.len() > limit {
         return Err(Status::resource_exhausted("gRPC encoded message exceeds wire ceiling"));
     }
-    admit(bytes.capacity())
-}
-
-pub(crate) fn encode_bytes(
-    payload: &[u8], bytes: &mut Vec<u8>, limit: usize, admit: &mut dyn FnMut(usize) -> Result<(), Status>,
-) -> Result<(), Status> {
-    let length = bytes.len().checked_add(payload.len()).ok_or_else(|| Status::resource_exhausted("gRPC encoding size overflows"))?;
-    if length > limit {
-        return Err(Status::resource_exhausted("gRPC encoded message exceeds wire ceiling"));
-    }
-    reserve(bytes, length, admit)?;
-    bytes.extend_from_slice(payload);
-    Ok(())
-}
-
-pub(super) fn reserve(bytes: &mut Vec<u8>, length: usize, admit: &mut dyn FnMut(usize) -> Result<(), Status>) -> Result<(), Status> {
-    let mut peak = bytes.capacity();
-    if length > bytes.capacity() {
-        peak = peak.checked_add(length).ok_or_else(|| Status::resource_exhausted("gRPC encoding size overflows"))?;
-    }
-    admit(peak)?;
-    bytes
-        .try_reserve_exact(length.saturating_sub(bytes.len()))
-        .map_err(|_| Status::resource_exhausted("gRPC encoding allocation failed"))?;
     admit(bytes.capacity())
 }
 

@@ -165,7 +165,7 @@ async fn services_stop_first() {
     runtime.shutdown().await.unwrap();
     assert_eq!(cancelled.get(), Some(&false));
     assert!(lease.status().cancellation_requested());
-    assert!(matches!(operation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    assert!(matches!(operation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     assert_eq!(trace.finalized.load(Ordering::SeqCst), 1);
     lease.settle().await.unwrap();
 }

@@ -9,20 +9,6 @@
 
 /* === Modules === */
 
-pub mod __harmos {
-    pub use harmos::{
-        __private, MemorySize, Message, MessageError, Metadata, OperationDeclaration, OperationDefinition, OperationPolicy, RowMetadata,
-        StreamField, StreamSpec,
-    };
-    #[cfg(feature = "runtime")]
-    pub use harmos::runtime;
-    #[cfg(feature = "runtime")]
-    pub use harmos::{Context, Dependent, Operation, ExecutionContext, Resource, Response};
-    #[cfg(feature = "runtime")]
-    pub use harmos::operations::OperationCatalog;
-    pub use harmos::{builtins, catalog, guest, listeners, model, operations, plugin, schema, sidecar, streams};
-}
-
 /* === Re-Exports === */
 
 pub use harmos::{catalog, lanes, listener, message, observer, operation, plugin, stream};
@@ -60,5 +46,54 @@ pub struct Reading {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+pub mod __harmos {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    pub use harmos::{
+        __private, MemorySize, Message, MessageError, Metadata, OperationDeclaration, OperationDefinition, OperationPolicy, RowMetadata,
+        StreamField, StreamSpec,
+    };
+
+    #[cfg(feature = "runtime")]
+    pub use harmos::runtime;
+
+    #[cfg(feature = "runtime")]
+    pub use harmos::{Context, Dependent, Operation, ExecutionContext, Resource, Response};
+
+    #[cfg(feature = "runtime")]
+    pub use harmos::operations::OperationCatalog;
+    pub use harmos::{builtins, catalog, guest, listeners, model, operations, plugin, schema, sidecar, streams};
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
 
 /* === Tests === */

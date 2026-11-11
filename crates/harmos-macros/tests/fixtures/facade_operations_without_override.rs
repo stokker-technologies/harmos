@@ -9,14 +9,6 @@
 
 /* === Modules === */
 
-mod relative {
-    #[facade::message]
-    pub struct WireReply {
-        pub value: String,
-    }
-    pub type Reply = WireReply;
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -67,5 +59,46 @@ pub enum Operations {
 /* === Private Functions === */
 
 fn main() {}
+
+mod relative {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    pub type Reply = WireReply;
+
+    /* === Structs === */
+
+    #[facade::message]
+    pub struct WireReply {
+        pub value: String,
+    }
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
 
 /* === Tests === */

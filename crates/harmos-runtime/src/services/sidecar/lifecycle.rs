@@ -50,7 +50,7 @@ where
         }
         // Callers Awaiting Staging Receive The Original Attempt Failure.
         if let Err(reason) = &result {
-            self.calls.refuse(reason.clone());
+            self.calls.refuse(reason.as_ref());
         }
         result.map_err(std::io::Error::other)
     }
@@ -76,7 +76,7 @@ where
     H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
 {
     // One physical attempt; its Attach guard closes the call surface when it ends.
-    async fn attempt(&mut self, mut context: ServiceContext<A>) -> Result<(), String> {
+    async fn attempt(&mut self, mut context: ServiceContext<A>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.calls.begin();
         let _attempt = Attempt(&self.calls);
         if context.is_stopping() {
@@ -106,10 +106,10 @@ where
         let sdk = self.attach.sdk_lifecycle().map_err(|error| error.to_string())?;
         let scope = instance.as_ref().and_then(|endpoint| endpoint.scope());
         if sdk.is_none() || scope.is_none() {
-            return Err("native SDK transport requires the original manager-issued scope".to_owned());
+            return Err("native SDK transport requires the original manager-issued scope".into());
         }
         if sdk.as_ref() != scope.and_then(|scope| scope.lifecycle()) {
-            return Err("native SDK pair differs from the original admitted generation".to_owned());
+            return Err("native SDK pair differs from the original admitted generation".into());
         }
         let control = self.attach.observe_contract().map_err(|error| error.to_string())?;
         let mut required = self.attach.required_contracts().map_err(|error| error.to_string())?;
@@ -117,12 +117,12 @@ where
             required.sort_by(|a, b| a.contract.operation().id.cmp(&b.contract.operation().id));
         }
         if required.as_deref() != scope.and_then(|scope| scope.required_contracts()) {
-            return Err("native required contracts differ from the original admitted generation".to_owned());
+            return Err("native required contracts differ from the original admitted generation".into());
         }
         if control.as_ref() != scope.and_then(|scope| scope.observe_contract())
             || scope.is_some_and(|scope| normalized_observers(scope.observers().to_vec()) != normalized_observers(observers.clone()))
         {
-            return Err("native observer roles or inventory differ from the original admitted generation".to_owned());
+            return Err("native observer roles or inventory differ from the original admitted generation".into());
         }
         harmos_sidecar::inventory::observers::validate(&observers, &declarations).map_err(|error| error.to_string())?;
         let plugin = instance.as_ref().and_then(|endpoint| endpoint.scope()).cloned();
@@ -147,10 +147,12 @@ where
         let cleanup = self.cleanup.get_mut().as_mut().expect("the attempt owns its cleanup");
         let admitted: BTreeMap<String, Arc<crate::streams::PublicationLease>> = executor::timeout(self.handshake, async {
             let scope = plugin.as_ref().expect("SDK transport retains its original admitted scope");
-            let registration = context.streams().stage_plugin(scope, declarations.clone()).await.map_err(|error| error.to_string())?;
+            let registration = context.streams().stage_plugin(scope, declarations.clone()).await?;
             let leases = registration.leases().to_vec();
             cleanup.registration = Some(registration);
-            Ok::<_, String>(declarations.iter().zip(leases).map(|(declaration, lease)| (declaration.id.clone(), lease)).collect())
+            Ok::<_, crate::streams::StreamAdmissionError>(
+                declarations.iter().zip(leases).map(|(declaration, lease)| (declaration.id.clone(), lease)).collect(),
+            )
         })
         .await
         .map_err(|_| "stream admission exceeded the handshake deadline".to_owned())??;
@@ -185,7 +187,7 @@ where
         disposition?;
         settled?;
         if let Some(failure) = &cleanup.logical_failure {
-            return Err(failure.clone());
+            return Err(failure.clone().into());
         }
         Ok(())
     }

@@ -9,19 +9,6 @@
 
 /* === Modules === */
 
-mod hygiene {
-    mod harmos {}
-
-    #[::harmos_runtime::lanes]
-    pub enum Lanes {
-        #[default]
-        Open,
-
-        #[lane(concurrent(2))]
-        Probe,
-    }
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -38,6 +25,7 @@ use tokio::sync::{Semaphore, mpsc};
 
 // Local Imports
 use super::app::App;
+use super::support::Lanes;
 use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Runtime, operations::Capacity, operations::Lane};
 
@@ -57,10 +45,6 @@ struct Gauge {
     release: Semaphore,
 }
 
-/* === Enums === */
-
-use super::support::Lanes;
-
 #[harmos_runtime::operation(resources = [Gauge, harmos_runtime::operations::HostContext], response = (),
         id = "lanes.measure",
         policy = harmos_runtime::OperationPolicy {
@@ -71,6 +55,8 @@ use super::support::Lanes;
         },
     )]
 struct MeasureContractDeclaration {}
+
+/* === Enums === */
 
 #[harmos_runtime::catalog]
 enum Operations {
@@ -140,8 +126,6 @@ async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
     runtime.shutdown().await.unwrap();
 }
 
-/* === Tests === */
-
 #[tokio::test]
 async fn capacity_bounds_admission() {
     assert_admission(Lanes::Serial, 3, 1).await;
@@ -155,6 +139,85 @@ async fn unbounded_lanes_admit() {
         assert_admission(lane, 8, 8).await;
     }
 }
+
+mod hygiene {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    #[::harmos_runtime::lanes]
+    pub enum Lanes {
+        #[default]
+        Open,
+
+        #[lane(concurrent(2))]
+        Probe,
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    mod harmos {
+        /* === Modules === */
+
+        /* === Re-Exports === */
+
+        /* === Imports === */
+
+        // Standard Library Imports
+
+        // Third Party Imports
+
+        // Local Imports
+
+        /* === Constants === */
+
+        /* === Macros === */
+
+        /* === Type Aliases === */
+
+        /* === Structs === */
+
+        /* === Enums === */
+
+        /* === Traits === */
+
+        /* === Implementations === */
+
+        /* === Public Functions === */
+
+        /* === Private Functions === */
+
+        /* === Tests === */
+    }
+
+    /* === Tests === */
+}
+
+/* === Tests === */
 
 #[test]
 fn catalog_resolves_crate() {

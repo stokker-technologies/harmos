@@ -9,12 +9,175 @@
 
 /* === Modules === */
 
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+use support::journal::{Journal, Store, Wire};
+use support::{Bank, Ledger, Noted, booted, deposit, ledger, withdraw};
+
+// Local Imports
+use super::support;
+use harmos_runtime::{DefinitionId, Runtime, state::Kind, state::Position, state::Recorded, state::Transaction};
+
+/* === Constants === */
+
+const VARIANTS: [&str; 9] = ["Deposit", "Withdraw", "Pay", "Explode", "Noted", "Paid", "Took", "Put", "Remark"];
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+#[tokio::test]
+async fn payload_own_shape() {
+    let copy = Store::default();
+
+    let runtime = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy));
+    })
+    .await;
+    let deposited = runtime.state.commit(deposit(7)).await.expect("accepted");
+    let noted = runtime.records.publish(Noted("audited".to_owned())).await.expect("a fact cannot be refused");
+    runtime.state.wait_until_stored(noted.position).await;
+    runtime.shutdown().await.unwrap();
+
+    let lines = copy.members();
+
+    assert_eq!(
+        lines[0].get("payload"),
+        Some(&serde_json::json!({ "amount": 7 })),
+        "the payload is what the definition's own serde derive writes"
+    );
+    assert_eq!(lines[1].get("payload"), Some(&serde_json::json!("audited")), "a fact is its own shape too, whatever shape that is");
+    for line in &lines {
+        let keys = line["payload"].as_object().into_iter().flat_map(|payload| payload.keys().map(String::as_str).collect::<Vec<_>>());
+
+        for key in keys {
+            assert!(!VARIANTS.contains(&key), "no catalog variant name reaches the wire: {line}");
+        }
+    }
+
+    // What names the payload is the pair beside it, and only that pair.
+    assert_eq!(lines[0].get("id").and_then(serde_json::Value::as_str), Some("ledger.deposit"));
+    assert_eq!(lines[0].get("version"), Some(&serde_json::json!(<super::support::Deposit as harmos_runtime::Identified>::definition().1)));
+    assert_eq!(lines[0].get("kind"), Some(&serde_json::json!("Transaction")));
+    assert_eq!(lines[0].get("position"), Some(&serde_json::json!(deposited.position.0)));
+}
+
+#[tokio::test]
+async fn another_build_reads() {
+    let copy = Store::default();
+
+    let runtime = booted(Ledger::default(), |setup| {
+        setup.settings().recover(Journal::<Bank>::open(&copy));
+    })
+    .await;
+    runtime.state.commit(deposit(10)).await.expect("accepted");
+    runtime.state.commit(withdraw(4)).await.expect("accepted");
+    runtime.records.publish(Noted("audited".to_owned())).await.expect("a fact cannot be refused");
+    let expected = ledger(&runtime).await;
+    let frontier = runtime.state.applied();
+    runtime.shutdown().await.unwrap();
+
+    // The other build's catalogs share not one variant name or position with
+    // the ones that wrote this file, and share every definition.
+    let recovered = Runtime::<other::Branch>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(other::Movement::catalog());
+        setup.settings().register(other::Observed::catalog());
+        setup.settings().recover(Journal::<other::Branch>::open(&copy));
+    })
+    .await
+    .expect("every definition is declared, under the names the file carries");
+
+    assert_eq!(
+        recovered.state.state().read(Clone::clone).await.expect("reads are open").value,
+        expected,
+        "the stored pair `(id, version)` is the whole of what a payload is read by"
+    );
+    assert_eq!(recovered.state.applied(), frontier);
+    assert_ne!(frontier, Position::ORIGIN);
+}
+
+#[tokio::test]
+async fn decode_matches_recovery() {
+    let runtime = Runtime::<other::Branch>::launch_with(Ledger::default(), (), |setup| {
+        setup.settings().register(other::Movement::catalog());
+        setup.settings().register(other::Observed::catalog());
+    })
+    .await
+    .expect("the generated catalogs freeze");
+    let id = DefinitionId::new("ledger.deposit");
+    let value = serde_json::json!({ "amount": 7 });
+    let bytes = serde_json::to_vec(&value).expect("the envelope payload is JSON");
+
+    let live = runtime
+        .state
+        .decode_transaction(&id, <super::support::Deposit as harmos_runtime::Identified>::definition().1, &bytes)
+        .expect("the registered restore decodes live bytes");
+    let recovered = <other::Branch as Wire>::decode(
+        Kind::Transaction,
+        &id,
+        <super::support::Deposit as harmos_runtime::Identified>::definition().1,
+        &value,
+    )
+    .expect("the recovery decoder accepts the same payload")
+    .expect("the recovery catalog declares the pair");
+    let Recorded::Transaction(recovered) = recovered.value else {
+        panic!("a transaction envelope decodes as a transaction");
+    };
+    let mut live_state = Ledger::default();
+    let mut recovery_state = Ledger::default();
+
+    live.apply(&mut live_state);
+    recovered.apply(&mut recovery_state);
+
+    assert_eq!(live_state, recovery_state, "the same envelope payload reaches the same generated restore path");
+}
+
 mod other {
-    use harmos_runtime::{Application, DefinitionId, state::Kind, state::Recorded, storage::Payload};
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
     use serde::{Deserializer, Serializer};
 
+    // Local Imports
     use super::super::support::journal::Wire;
     use super::super::support::{Deposit, Explode, Ledger, Noted, Pay, Refusal, Withdraw};
+    use harmos_runtime::{Application, DefinitionId, state::Kind, state::Recorded, storage::Payload};
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct Branch;
+
+    /* === Enums === */
 
     #[harmos_runtime::transactions(state = Ledger, error = Refusal)]
     #[derive(Clone, Debug)]
@@ -31,14 +194,16 @@ mod other {
         Remark(Noted),
     }
 
-    #[derive(Clone, Copy, Debug)]
-    pub struct Branch;
-
     #[harmos_runtime::lanes]
     pub enum BranchLanes {
         #[default]
         Open,
     }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
     impl harmos_runtime::Lifecycle for Branch {
         type Config = ();
         type Error = std::convert::Infallible;
@@ -93,137 +258,12 @@ mod other {
             })
         }
     }
-}
 
-/* === Re-Exports === */
+    /* === Public Functions === */
 
-/* === Imports === */
+    /* === Private Functions === */
 
-// Standard Library Imports
-
-// Third Party Imports
-use support::{Bank, Ledger, Noted, booted, deposit, ledger, withdraw};
-// Local Imports
-use super::support;
-use harmos_runtime::{DefinitionId, Runtime, state::Kind, state::Position, state::Recorded, state::Transaction};
-use support::journal::{Journal, Store, Wire};
-
-/* === Constants === */
-
-const VARIANTS: [&str; 9] = ["Deposit", "Withdraw", "Pay", "Explode", "Noted", "Paid", "Took", "Put", "Remark"];
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-#[tokio::test]
-async fn payload_own_shape() {
-    let copy = Store::default();
-
-    let runtime = booted(Ledger::default(), |setup| {
-        setup.settings().recover(Journal::<Bank>::open(&copy));
-    })
-    .await;
-    let deposited = runtime.state.commit(deposit(7)).await.expect("accepted");
-    let noted = runtime.records.publish(Noted("audited".to_owned())).await.expect("a fact cannot be refused");
-    runtime.state.wait_until_stored(noted.position).await;
-    runtime.shutdown().await.unwrap();
-
-    let lines = copy.members();
-
-    assert_eq!(
-        lines[0].get("payload"),
-        Some(&serde_json::json!({ "amount": 7 })),
-        "the payload is what the definition's own serde derive writes"
-    );
-    assert_eq!(lines[1].get("payload"), Some(&serde_json::json!("audited")), "a fact is its own shape too, whatever shape that is");
-    for line in &lines {
-        let keys = line["payload"].as_object().into_iter().flat_map(|payload| payload.keys().map(String::as_str).collect::<Vec<_>>());
-
-        for key in keys {
-            assert!(!VARIANTS.contains(&key), "no catalog variant name reaches the wire: {line}");
-        }
-    }
-
-    // What names the payload is the pair beside it, and only that pair.
-    assert_eq!(lines[0].get("id").and_then(serde_json::Value::as_str), Some("ledger.deposit"));
-    assert_eq!(lines[0].get("version"), Some(&serde_json::json!(1)));
-    assert_eq!(lines[0].get("kind"), Some(&serde_json::json!("Transaction")));
-    assert_eq!(lines[0].get("position"), Some(&serde_json::json!(deposited.position.0)));
-}
-
-#[tokio::test]
-async fn another_build_reads() {
-    let copy = Store::default();
-
-    let runtime = booted(Ledger::default(), |setup| {
-        setup.settings().recover(Journal::<Bank>::open(&copy));
-    })
-    .await;
-    runtime.state.commit(deposit(10)).await.expect("accepted");
-    runtime.state.commit(withdraw(4)).await.expect("accepted");
-    runtime.records.publish(Noted("audited".to_owned())).await.expect("a fact cannot be refused");
-    let expected = ledger(&runtime).await;
-    let frontier = runtime.state.applied();
-    runtime.shutdown().await.unwrap();
-
-    // The other build's catalogs share not one variant name or position with
-    // the ones that wrote this file, and share every definition.
-    let recovered = Runtime::<other::Branch>::launch_with(Ledger::default(), (), |setup| {
-        setup.settings().register(other::Movement::catalog());
-        setup.settings().register(other::Observed::catalog());
-        setup.settings().recover(Journal::<other::Branch>::open(&copy));
-    })
-    .await
-    .expect("every definition is declared, under the names the file carries");
-
-    assert_eq!(
-        recovered.state.state().read(Clone::clone).await.expect("reads are open").value,
-        expected,
-        "the stored pair `(id, version)` is the whole of what a payload is read by"
-    );
-    assert_eq!(recovered.state.applied(), frontier);
-    assert_ne!(frontier, Position::ORIGIN);
-}
-
-#[tokio::test]
-async fn decode_matches_recovery() {
-    let runtime = Runtime::<other::Branch>::launch_with(Ledger::default(), (), |setup| {
-        setup.settings().register(other::Movement::catalog());
-        setup.settings().register(other::Observed::catalog());
-    })
-    .await
-    .expect("the generated catalogs freeze");
-    let id = DefinitionId::new("ledger.deposit");
-    let value = serde_json::json!({ "amount": 7 });
-    let bytes = serde_json::to_vec(&value).expect("the envelope payload is JSON");
-
-    let live = runtime.state.decode_transaction(&id, 1, &bytes).expect("the registered restore decodes live bytes");
-    let recovered = <other::Branch as Wire>::decode(Kind::Transaction, &id, 1, &value)
-        .expect("the recovery decoder accepts the same payload")
-        .expect("the recovery catalog declares the pair");
-    let Recorded::Transaction(recovered) = recovered.value else {
-        panic!("a transaction envelope decodes as a transaction");
-    };
-    let mut live_state = Ledger::default();
-    let mut recovery_state = Ledger::default();
-
-    live.apply(&mut live_state);
-    recovered.apply(&mut recovery_state);
-
-    assert_eq!(live_state, recovery_state, "the same envelope payload reaches the same generated restore path");
+    /* === Tests === */
 }
 
 /* === Tests === */

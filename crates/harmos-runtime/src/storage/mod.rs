@@ -14,7 +14,6 @@ pub(crate) mod capture;
 pub(crate) mod consumer;
 mod manager;
 pub mod state;
-pub mod writes;
 
 /* === Re-Exports === */
 

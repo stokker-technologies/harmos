@@ -44,7 +44,7 @@ pub struct Settings {
     pub input: crate::operations::StreamSettings,
 }
 
-/// One Managed Remote Call. Cancel Signals The Server And Awaits Its Typed Response.
+// One Managed Remote Call. Cancel Signals The Server And Awaits Its Typed Response.
 #[must_use = "dropping a remote operation abandons its response and requests cancellation"]
 pub struct Running<O: OperationDeclaration> {
     outgoing: StreamOutput<Input<O>>,
@@ -54,6 +54,7 @@ pub struct Running<O: OperationDeclaration> {
 }
 
 struct Frame<T>(StreamItem<T>);
+
 struct Received<T> {
     value: T,
     _claims: RequestClaims,
@@ -153,7 +154,7 @@ impl<O: OperationDeclaration> Running<O> {
 
 /* === Public Functions === */
 
-/// Starts A Managed Call With Consumer-Supplied Transport And Buffer Limits.
+// Starts A Managed Call With Consumer-Supplied Transport And Buffer Limits.
 pub async fn start<O: OperationDeclaration>(
     channel: Channel, request: Request<O::Request>, settings: Settings,
 ) -> Result<Running<O>, Status> {

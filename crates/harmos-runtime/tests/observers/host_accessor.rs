@@ -48,7 +48,7 @@ struct Recorded(u64);
 
 struct Denied;
 
-struct WrongVersion;
+struct Undeclared;
 
 struct Dropped(Arc<AtomicBool>);
 
@@ -88,10 +88,9 @@ enum Failure {
 
 /* === Implementations === */
 
-impl StreamSpec for WrongVersion {
+impl StreamSpec for Undeclared {
     type Row = Pulse;
-    const ID: &'static str = Pulse::ID;
-    const VERSION: u32 = Pulse::VERSION + 1;
+    const ID: &'static str = "undeclared.pulse";
     const WINDOW: usize = Pulse::WINDOW;
 }
 
@@ -124,7 +123,7 @@ impl ObserverPublisher<Pulse> for Host {
 
 impl ObserverPublisher<Denied> for Host {
     type Error = Failure;
-    const STREAM: Option<publications::Entry> = Some(publications::Entry::of::<WrongVersion>());
+    const STREAM: Option<publications::Entry> = Some(publications::Entry::of::<Undeclared>());
 
     async fn publish(&self, _: &Context<'_>, _: Denied) -> Result<(), Failure> {
         panic!("an undeclared stream must not reach its backend");
@@ -155,7 +154,7 @@ impl CheckGrants {
     async fn observe(&mut self, ctx: &ObserverContext<'_, Host>) -> Result<(), Failure> {
         assert!(matches!(ctx.publish(Denied).await, Err(Failure::Publication(PublicationError::Undeclared { .. }))));
         assert!(matches!(
-            ctx.publish_on::<WrongVersion>(&Pulse { sample: 0 }).await,
+            ctx.publish_on::<Undeclared>(&Pulse { sample: 0 }).await,
             Err(Failure::Publication(PublicationError::Undeclared { .. }))
         ));
         ctx.host().events.send(Event::GrantsChecked).await.unwrap();

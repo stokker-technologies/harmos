@@ -175,7 +175,6 @@ impl<A: Application> ReplayPayload<A> for Payload<A> {
         Ok(match catalog.restore(envelope, state)? {
             Restored::Applied => forward.map(Recorded::Transaction),
             Restored::Recorded(record) => Some(Recorded::Record(record)),
-            Restored::Skipped => None,
         })
     }
 }

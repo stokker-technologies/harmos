@@ -120,13 +120,20 @@ async fn redelivery_forwards_stored() {
     // produces — so any re-encoding, of the payload or of the frame, fails
     // the byte comparison below.
     let original = r#"[{"kind":"Transaction","position":9,"id":"ledger.bonus","version":1,"metadata":{"principal":null,"correlation":9,"causation":null,"request":null,"link":null,"at":{"secs_since_epoch":0,"nanos_since_epoch":0}},"payload":{ "amount":3 }}]"#;
-    // And one record this build has never heard of: it is skipped by the
-    // fold, yet its line must still reach a durable copy whole.
-    let unreadable = frame(10, Kind::Record, "ledger.audited", 1, serde_json::json!({ "note": "kept" }));
+    let original = original
+        .replace("\"version\":1", &format!("\"version\":{}", <super::support::Bonus as harmos_runtime::Identified>::definition().1));
+    // A Matching Record Is Forwarded Without Re-encoding Its Frame.
+    let recorded = frame(
+        10,
+        Kind::Record,
+        "ledger.noted",
+        <super::support::Noted as harmos_runtime::Identified>::definition().1,
+        serde_json::json!("kept"),
+    );
 
     seeded(&copy).await;
-    copy.push(original);
-    copy.push(unreadable.clone());
+    copy.push(original.clone());
+    copy.push(recorded.clone());
 
     // A fresh mirror lags behind everything, so boot redelivers it the whole
     // recovered history.
@@ -140,7 +147,7 @@ async fn redelivery_forwards_stored() {
     .await;
 
     assert_eq!(ledger(&recovered).await.balance, 13, "the current bonus applies once");
-    assert_eq!(recovered.state.applied(), Position(10), "the unknown record was skipped, and its position was taken all the same");
+    assert_eq!(recovered.state.applied(), Position(10), "the matching record retains its position");
     recovered.shutdown().await.unwrap();
 
     let written = mirror.lines();
@@ -151,8 +158,8 @@ async fn redelivery_forwards_stored() {
         "a lagging durable copy is redelivered history's own bytes, so the \
          mirror equals its source frame for frame"
     );
-    assert!(written.iter().any(|line| line == original), "the original entry arrived verbatim, spacing and member order intact");
-    assert!(written.contains(&unreadable), "a record this build cannot decode is still forwarded, not silently dropped");
+    assert!(written.iter().any(|line| line == &original), "the original entry arrived verbatim, spacing and member order intact");
+    assert!(written.contains(&recorded), "a matching record reaches the copy intact");
 
     let source_allocations = copy.shared_lines();
     let first_allocations = mirror.shared_lines();
@@ -165,34 +172,6 @@ async fn redelivery_forwards_stored() {
     }
     drop((copy, mirror, recovered, source_allocations, first_allocations, second_allocations));
     assert_eq!(second_mirror.lines(), written);
-}
-
-#[tokio::test]
-async fn undecodable_history_forwarded() {
-    let copy = Store::default();
-    let mirror = Store::default();
-
-    // More lines than the redelivery window holds of entries, and not one of
-    // them decodable by this build: the byte lane is the only way any of them
-    // travels, so a window on that lane would silently amputate the copy.
-    let history: Vec<String> =
-        (1..=1030).map(|position| frame(position, Kind::Record, "ledger.audited", 1, serde_json::json!({ "note": "kept" }))).collect();
-    copy.replace(history.clone());
-
-    let recovered = booted(Ledger::default(), |setup| {
-        setup.settings().recover(Journal::<Bank>::open(&copy)).attach(Journal::<Bank>::open(&mirror));
-    })
-    .await;
-
-    assert_eq!(recovered.state.applied(), Position(1030), "every skipped record's position was taken all the same");
-    recovered.shutdown().await.unwrap();
-
-    assert_eq!(
-        mirror.lines(),
-        history,
-        "a history of records only a later build can read reaches a fresh \
-         mirror whole and byte-identical, with no window shortening it"
-    );
 }
 
 #[tokio::test]

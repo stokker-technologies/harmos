@@ -160,6 +160,7 @@ fn contracts() -> Vec<Contract> {
     let template = contracts[0].clone();
     let checkpoint: Schema = serde_json::from_str(CHECKPOINT).unwrap();
     let recursive = Schema {
+        representations: ::std::collections::BTreeMap::new(),
         root: 0,
         definitions: vec![vec![Field {
             name: Cow::Borrowed("next"),
@@ -205,6 +206,7 @@ fn export() -> Exported {
 
 fn reserved() -> Schema {
     Schema {
+        representations: ::std::collections::BTreeMap::new(),
         root: 0,
         definitions: vec![
             vec![Field {

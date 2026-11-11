@@ -10,45 +10,29 @@
 /* === Modules === */
 
 pub mod authentication;
-pub mod dynamic;
-
 pub mod client;
 mod codec;
 mod controlled;
-
 mod decoding;
+pub mod dynamic;
 mod envelope;
-
 mod inbound;
-
 mod input;
-
 mod listener;
-
 mod manager;
-pub(crate) mod native;
-mod tls;
-
 pub mod middleware;
-
+pub(crate) mod native;
 mod reflection;
-
 pub(crate) mod routing;
-
 pub mod server;
-
-pub mod __private {
-    pub use tonic;
-}
+mod tls;
 
 /* === Re-Exports === */
 
 #[cfg(feature = "plugin-sidecar")]
 pub(crate) use codec::encode_bytes;
-
 pub use codec::{Codec, Encode, EncodeSettings, Encoder, Transcoded, Wire};
 pub use controlled::ControlEnvelope;
-
 pub use decoding::{DecodeSettings, Decoder};
 pub use envelope::{InputEnvelope, OutputEnvelope};
 pub use envelope::{
@@ -57,16 +41,13 @@ pub use envelope::{
 };
 pub use harmos_packaging::proto::{DescriptorError, descriptor};
 pub use harmos_sdk::grpc::{encoded_len, encoded_len_admitted};
-
 pub use input::{InputError, input, open};
-
 pub use manager::{Attached, GrpcManager, Settings};
 pub use tls::ServerCertificate;
 
 /* === Imports === */
 
 // Standard Library Imports
-
 use std::{
     future::Future,
     pin::Pin,
@@ -74,9 +55,7 @@ use std::{
 };
 
 // Third Party Imports
-
 use futures_core::Stream;
-
 use tokio::sync::mpsc;
 use tonic::Status;
 
@@ -322,5 +301,41 @@ pub fn response<O: crate::operations::OperationDeclaration>(
 }
 
 /* === Private Functions === */
+
+pub mod __private {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    pub use tonic;
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
 
 /* === Tests === */

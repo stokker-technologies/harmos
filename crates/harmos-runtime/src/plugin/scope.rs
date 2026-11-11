@@ -359,38 +359,37 @@ impl PluginScope {
             && definitions.iter().all(|definition| {
                 self.streams.binary_search_by(|declared| declared.id.as_str().cmp(definition.id())).ok().is_some_and(|index| {
                     let declared = &self.streams[index];
-                    definition.version() == declared.schema
-                        && definition.window() == declared.window
+                    definition.window() == declared.window
                         && definition.metadata() == &declared.metadata
                         && definition.row_metadata() == declared.row_metadata
-                        && definition.schema() == Some(&declared.row)
+                        && definition.schema() == &declared.row
                 })
             })
     }
 
-    pub fn publication(&self, id: &str, schema: u32) -> crate::Result<Arc<crate::streams::PublicationLease>> {
+    pub fn publication(&self, id: &str) -> crate::Result<Arc<crate::streams::PublicationLease>> {
         if self.is_closed() {
             return Err(crate::Error::Closing { domain: "publication generation" });
         }
-        self.selected_publication(id, schema)
+        self.selected_publication(id)
     }
 
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn publication_in(
-        &self, context: &crate::operations::Context<'_>, id: &str, schema: u32,
+        &self, context: &crate::operations::Context<'_>, id: &str,
     ) -> crate::Result<Arc<crate::streams::PublicationLease>> {
         if self.is_closed() && !(self.has_committed() && context.retains_publication(self)) {
             return Err(crate::Error::Closing { domain: "publication generation" });
         }
-        self.selected_publication(id, schema)
+        self.selected_publication(id)
     }
 
-    fn selected_publication(&self, id: &str, schema: u32) -> crate::Result<Arc<crate::streams::PublicationLease>> {
+    fn selected_publication(&self, id: &str) -> crate::Result<Arc<crate::streams::PublicationLease>> {
         let selected = self.streams.binary_search_by(|stream| stream.id.as_str().cmp(id)).ok().map(|index| &self.streams[index]);
-        if !selected.is_some_and(|stream| stream.schema == schema) {
+        if selected.is_none() {
             return Err(crate::Error::InvalidInput {
                 field: "publication stream",
-                reason: "stream or schema differs from the frozen generation inventory",
+                reason: "stream differs from the frozen generation inventory",
             });
         }
         let activation = self
@@ -405,7 +404,7 @@ impl PluginScope {
             .iter()
             .find(|lease| {
                 let definition = lease.stream().definition();
-                definition.id() == id && definition.version() == schema
+                definition.id() == id
             })
             .cloned()
             .ok_or(crate::Error::NotReady { domain: "publication generation" })
@@ -844,6 +843,33 @@ mod tests {
         assert!(stale.start().await.is_err());
         assert!(scope.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.is_err());
         assert!(runtime.operations.definitions().iter().all(|definition| definition.id.as_str() != "read"));
+        runtime.shutdown().await.unwrap();
+    }
+    #[tokio::test]
+    async fn transport_restart_renews_only_the_committed_inventory() {
+        let stream = harmos_domain::StreamDeclaration {
+            id: "frozen.samples".into(),
+            metadata: crate::Metadata::new(crate::Identifier::new("frozen.samples").unwrap(), "Samples", None),
+            row_metadata: Vec::new(),
+            window: 4,
+            row: crate::schema::graph::Schema {
+                representations: Default::default(),
+                root: 0,
+                definitions: vec![vec![]],
+            },
+        };
+        let scope = PluginScope::new("worker", PluginGeneration::fresh().unwrap()).with_streams(std::slice::from_ref(&stream));
+        let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
+        let registration = runtime.streams.stage_plugin(&scope, [stream.clone()]).await.unwrap();
+        assert!(scope.commit());
+        let revision = registration.leases()[0].stream().definition().version();
+        drop(registration);
+        let renewed = runtime.streams.stage_plugin(&scope, [stream.clone()]).await.unwrap();
+        assert_eq!(renewed.leases()[0].stream().definition().version(), revision);
+        drop(renewed);
+        let mut changed = stream;
+        changed.window += 1;
+        assert!(matches!(runtime.streams.stage_plugin(&scope, [changed]).await, Err(crate::streams::StreamAdmissionError::Inventory)));
         runtime.shutdown().await.unwrap();
     }
 }

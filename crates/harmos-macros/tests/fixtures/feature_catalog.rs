@@ -9,20 +9,6 @@
 
 /* === Modules === */
 
-#[cfg(feature = "optional_operation")]
-mod optional {
-    #[harmos::operation(harmos_path = ::harmos, id = "fixture.optional", policy = super::POLICY)]
-    pub struct Read;
-
-    impl harmos::Operation for Read {
-        type Error = std::convert::Infallible;
-
-        async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<()>, Self::Error> {
-            Ok(().into())
-        }
-    }
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -91,6 +77,52 @@ fn main() {
     if cfg!(feature = "optional_operation") {
         assert_eq!(definitions[1].id.as_str(), "fixture.optional");
     }
+}
+
+#[cfg(feature = "optional_operation")]
+mod optional {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    #[harmos::operation(harmos_path = ::harmos, id = "fixture.optional", policy = super::POLICY)]
+    pub struct Read;
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    impl harmos::Operation for Read {
+        type Error = std::convert::Infallible;
+
+        async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<()>, Self::Error> {
+            Ok(().into())
+        }
+    }
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

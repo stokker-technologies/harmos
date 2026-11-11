@@ -41,6 +41,12 @@ struct PendingCalls {
     capacity: Semaphore,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct StreamIdentity<'a> {
+    pub id: &'a str,
+    pub window: usize,
+}
+
 struct PendingState {
     closed: bool,
     next_id: u64,
@@ -57,7 +63,7 @@ struct PendingCall<'a> {
 #[derive(Clone)]
 pub struct Supervisor {
     outgoing: mpsc::Sender<Outgoing>,
-    sequences: Arc<Mutex<BTreeMap<&'static str, u64>>>,
+    sequences: Arc<Mutex<BTreeMap<String, u64>>>,
     pending: Arc<PendingCalls>,
     operation_context: Option<[u8; 32]>,
     generation_context: Option<[u8; 32]>,
@@ -107,10 +113,10 @@ pub enum CallError {
     Publication(#[from] PublicationError),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum PublicationError {
     #[error("publication sequence exhausted for stream `{stream}`")]
-    SequenceExhausted { stream: &'static str },
+    SequenceExhausted { stream: String },
 
     #[error("the observer did not declare stream `{stream}` in streams(...)")]
     Undeclared { stream: &'static str },
@@ -276,6 +282,18 @@ impl Drop for PendingCall<'_> {
 }
 
 impl Supervisor {
+    pub(super) fn send_cadence(&self, report: &crate::CadenceReport) {
+        let frame = match self.outgoing.try_send(Outgoing::Frame(report.frame())) {
+            Ok(()) | Err(mpsc::error::TrySendError::Closed(_)) => return,
+            Err(mpsc::error::TrySendError::Full(frame)) => frame,
+        };
+        // Transport Capacity Must Not Delay the Observer's Next Tick.
+        let outgoing = self.outgoing.clone();
+        tokio::spawn(async move {
+            let _ = outgoing.send(frame).await;
+        });
+    }
+
     pub(crate) fn new(outgoing: mpsc::Sender<Outgoing>, clock: fn() -> Option<i64>) -> Self {
         Self {
             outgoing,
@@ -328,6 +346,40 @@ impl Supervisor {
         }
         self.exchange_with(|id, call| {
             let params = self.child::<O>(request, submit, retry)?;
+            let frame = Self::request_frame(id, CHILD_METHOD, params)?;
+            call.send(Outgoing::Frame(frame));
+            Ok::<(), CallError>(())
+        })
+        .await
+    }
+
+    #[cfg(feature = "arrow")]
+    pub(super) async fn encoded_call(
+        &self, contract: &harmos_domain::operations::Contract, payload: Vec<u8>,
+    ) -> Result<crate::FramePayload, CallError> {
+        if self.operation_context.is_none() && self.generation_context.is_none() {
+            return Err(CallError::Unavailable);
+        }
+        let target = self.assignments.resolve_contract(contract).map_err(|error| CallError::Malformed {
+            method: CHILD_METHOD,
+            message: error.to_string(),
+        })?;
+        let command = harmos_sdk::operations::WireChildCall {
+            context: self.operation_context.unwrap_or([0; 32]),
+            generation_context: self.generation_context,
+            values: self.call.portable(),
+            operation: target.operation.clone(),
+            fingerprint: target.fingerprint,
+            generation: target.generation,
+            payload,
+            submit: false,
+            retry: None,
+        };
+        let params = command.encode().map_err(|error| CallError::Malformed {
+            method: CHILD_METHOD,
+            message: error.to_string(),
+        })?;
+        self.exchange_with(|id, call| {
             let frame = Self::request_frame(id, CHILD_METHOD, params)?;
             call.send(Outgoing::Frame(frame));
             Ok::<(), CallError>(())
@@ -507,6 +559,12 @@ impl Supervisor {
     pub(super) async fn publication<S: crate::StreamSpec>(
         &self, rows: &[Vec<u8>], stamps: &[Option<i64>], context: Option<&str>,
     ) -> Result<(), super::PublishError> {
+        self.publication_with(StreamIdentity { id: S::ID, window: S::WINDOW }, rows, stamps, context).await
+    }
+
+    pub(super) async fn publication_with(
+        &self, stream: StreamIdentity<'_>, rows: &[Vec<u8>], stamps: &[Option<i64>], context: Option<&str>,
+    ) -> Result<(), super::PublishError> {
         debug_assert_eq!(rows.len(), stamps.len());
         if rows.is_empty() {
             return Ok(());
@@ -535,7 +593,7 @@ impl Supervisor {
                         method: harmos_operations::streams::Publish::ID,
                         message: error.to_string(),
                     })?;
-                    sent = self.with_publication::<S, super::PublishError>(rest.0, rest.1, context, envelope, |request| {
+                    sent = self.with_publication_for::<super::PublishError>(stream, rest.0, rest.1, context, envelope, |request| {
                         let params = self.child_with_values::<harmos_operations::streams::Publish>(&request, false, values, None)?;
                         let frame = Self::request_frame(id, CHILD_METHOD, params)?;
                         call.send(Outgoing::Frame(frame));
@@ -560,17 +618,25 @@ impl Supervisor {
     // its stamp; each following row carries its delta from its predecessor,
     // and a stamp no delta can express starts the next call. A call carries
     // at most one window of rows, so the host never evicts its own rows.
+    #[cfg(test)]
     pub(super) fn with_publication<S: crate::StreamSpec, E: From<PublicationError>>(
         &self, rows: &[Vec<u8>], stamps: &[Option<i64>], context: Option<&str>, empty_envelope: usize,
         send: impl FnOnce(harmos_operations::streams::Publish) -> Result<(), E>,
     ) -> Result<usize, E> {
+        self.with_publication_for(StreamIdentity { id: S::ID, window: S::WINDOW }, rows, stamps, context, empty_envelope, send)
+    }
+
+    fn with_publication_for<E: From<PublicationError>>(
+        &self, stream: StreamIdentity<'_>, rows: &[Vec<u8>], stamps: &[Option<i64>], context: Option<&str>, empty_envelope: usize,
+        send: impl FnOnce(harmos_operations::streams::Publish) -> Result<(), E>,
+    ) -> Result<usize, E> {
         let fits = |body: usize| Frame::child_encoded_from_empty(empty_envelope, body) <= Frame::LIMIT;
         let mut sequences = self.sequences.lock().expect("the publication sequence lock is healthy");
-        let next = sequences.entry(S::ID).or_insert(0);
-        let first = next.checked_add(1).ok_or(PublicationError::SequenceExhausted { stream: S::ID })?;
+        let next = sequences.entry(stream.id.to_owned()).or_insert(0);
+        let first = next.checked_add(1).ok_or(PublicationError::SequenceExhausted { stream: stream.id.to_owned() })?;
         *next = first;
         let published_unix_micros = stamps[0];
-        let head = crate::wire::publication_encoded_len(S::ID, S::VERSION, first, rows[0].len(), published_unix_micros, context);
+        let head = crate::wire::publication_encoded_len(stream.id, first, rows[0].len(), published_unix_micros, context);
         let encoded = |count: usize, following: usize| head.saturating_add(crate::wire::varint_len(count as u64)).saturating_add(following);
         if !fits(encoded(0, 0)) {
             return Err(PublicationError::Oversized {
@@ -582,7 +648,7 @@ impl Supervisor {
         let mut following = 0_usize;
         let mut deltas = Vec::with_capacity(rows.len() - 1);
         for (row, pair) in rows[1..].iter().zip(stamps.windows(2)) {
-            if deltas.len() + 1 >= S::WINDOW {
+            if deltas.len() + 1 >= stream.window {
                 break;
             }
             let delta = match (pair[0], pair[1]) {
@@ -604,8 +670,7 @@ impl Supervisor {
         }
         let taken = deltas.len() + 1;
         send(harmos_operations::streams::Publish {
-            stream: S::ID.to_owned(),
-            schema: S::VERSION,
+            stream: stream.id.to_owned(),
             sequence: Some(first),
             published_unix_micros,
             context: context.map(str::to_owned),
@@ -637,9 +702,8 @@ impl Supervisor {
 
 fn refused_line(code: i64, failure: &harmos_domain::Failure) -> String {
     match failure.context().operation() {
-        Some(operation) if matches!(code, -32_606 | -32_607) => {
-            format!("operation `{operation}` refused ({code}): {}", failure.cause())
-        }
+        Some(_) if code == -32_607 => format!("host call refused ({code}): {}", failure.cause()),
+        Some(operation) if code == -32_606 => format!("operation `{operation}` refused ({code}): {}", failure.cause()),
         Some(operation) => format!("operation `{operation}` failed"),
         None => format!("host call refused ({code}): {}", failure.cause()),
     }
@@ -664,11 +728,17 @@ mod tests {
 
     #[test]
     fn deadline_cause_survives() {
-        let failure =
-            harmos_domain::Failure::new(harmos_domain::operations::FailureKind::Permanent, "deadline elapsed").in_operation("device.read");
+        let failure = harmos_domain::Failure::new(
+            harmos_domain::operations::FailureKind::Permanent,
+            "operation device.read attempt 1 exceeded its 10 s deadline (configured by operation policy.attempt_timeout)",
+        )
+        .in_operation("device.read");
         let error = CallError::Refused { code: -32_607, failure };
         let displayed = error.to_string();
-        assert!(displayed.contains("device.read") && displayed.contains("deadline elapsed") && displayed.contains("-32607"));
+        assert_eq!(
+            displayed,
+            "host call refused (-32607): operation device.read attempt 1 exceeded its 10 s deadline (configured by operation policy.attempt_timeout)"
+        );
     }
 
     struct Samples;
@@ -676,7 +746,6 @@ mod tests {
     impl crate::StreamSpec for Samples {
         type Row = FileBatch;
         const ID: &'static str = "context.samples";
-        const VERSION: u32 = 1;
         const WINDOW: usize = 8;
     }
 
@@ -729,7 +798,7 @@ mod tests {
         let empty = WireChildCall::payload_encoded_len(&format!("host.{}", Publish::ID), u64::MAX, 0, false, &values, None).unwrap();
         let fits = |bytes: usize| {
             let row = FileBatch { offset: 0, bytes: vec![0; bytes] };
-            let body = crate::wire::publication_encoded_len("context.samples", 1, 1, row.encoded_size(), None, None) + 1;
+            let body = crate::wire::publication_encoded_len("context.samples", 1, row.encoded_size(), None, None) + 1;
             Frame::child_encoded_from_empty(empty, body) <= Frame::LIMIT
         };
         let mut low = 0;

@@ -27,6 +27,11 @@ mod typed;
 
 /* === Re-Exports === */
 
+#[cfg(feature = "testing")]
+pub use reduction::testing::Coordinates;
+#[cfg(feature = "testing")]
+pub use source::testing::PayloadDecoder;
+
 pub use accumulate::Accumulator;
 pub use harmos_domain::model::storage::query::{
     FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, QueryOutput, RecordSelection, RowSlice, SchemaSelection, Source,

@@ -21,7 +21,7 @@ use quote::{ToTokens, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Error, Fields, ItemStruct, LitInt, LitStr, Meta, Token, Type};
+use syn::{Error, Fields, ItemStruct, LitStr, Meta, Token, Type};
 // Local Imports
 use crate::path::{self, HarmosPath};
 use crate::set_once;
@@ -50,7 +50,6 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attributes)?;
     let mut id = None;
     let mut record = None;
-    let mut version = None;
     let mut row = None;
     let mut stream = None;
     let mut callback = None;
@@ -64,7 +63,7 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
         let Meta::NameValue(named) = argument else {
             return Err(Error::new(
                 argument.span(),
-                "listener declarations use id, record/version/row or stream, callback, policy and harmos_path",
+                "listener declarations use id, record/row or stream, callback, policy and harmos_path",
             ));
         };
         let tokens = named.value.to_token_stream();
@@ -78,12 +77,6 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
             } else {
                 set_once(&mut record, value, named.span(), "record")?;
             }
-        } else if named.path.is_ident("version") {
-            let value: LitInt = syn::parse2(tokens)?;
-            if value.base10_parse::<u32>()? == 0 {
-                return Err(Error::new(value.span(), "record semantic version must be positive"));
-            }
-            set_once(&mut version, value, named.span(), "version")?;
         } else if named.path.is_ident("callback") {
             let value: LitStr = syn::parse2(tokens)?;
             set_once(&mut callback, value, named.span(), "callback")?;
@@ -98,10 +91,7 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
                 set_once(&mut stream, value, named.span(), "stream")?;
             }
         } else {
-            return Err(Error::new(
-                named.span(),
-                "listener declarations use id, record/version/row or stream, callback, policy and harmos_path",
-            ));
+            return Err(Error::new(named.span(), "listener declarations use id, record/row or stream, callback, policy and harmos_path"));
         }
     }
     let span = declaration.span();
@@ -109,25 +99,24 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     let callback = callback.ok_or_else(|| Error::new(span, "a portable listener requires its callback operation id"))?;
     let policy = policy.ok_or_else(|| Error::new(span, "a portable listener requires its callback policy"))?;
     let harmos = HarmosPath::resolve(facade);
-    let (source, row) = match (record, version, row, stream) {
-        (Some(record), Some(version), Some(row), None) => {
+    let (source, row) = match (record, row, stream) {
+        (Some(record), Some(row), None) => {
             let source = quote!(#harmos::listeners::SourceDeclaration::Record {
-                id: #record, version: #version,
+                id: #record,
                 row: <#row as #harmos::schema::Described>::DEFINITION,
             });
             (source, quote!(#row))
         }
-        (None, None, None, Some(stream)) => {
+        (None, None, Some(stream)) => {
             let row = quote!(<#stream as #harmos::StreamSpec>::Row);
             let source = quote!(#harmos::listeners::SourceDeclaration::Stream {
                 id: <#stream as #harmos::StreamSpec>::ID,
-                schema_ordinal: <#stream as #harmos::StreamSpec>::VERSION,
                 row: <#row as #harmos::schema::Described>::DEFINITION,
             });
             (source, row)
         }
         _ => {
-            return Err(Error::new(span, "select exactly record/version/row or a typed stream declaration"));
+            return Err(Error::new(span, "select exactly record/row or a typed stream declaration"));
         }
     };
     let name = &declaration.ident;

@@ -178,7 +178,10 @@ impl Prepared {
         let prepared = Self {
             id,
             version,
-            payload: serde_json::json!(fact.payload),
+            payload: match fact.schema() {
+                Some(schema) => serde_json::json!({ "schema": schema, "payload": fact.payload }),
+                None => serde_json::json!(fact.payload),
+            },
         };
         if prepared.bytes()? > Records::MAX_BYTES {
             return Err(PreparationError::Limit);

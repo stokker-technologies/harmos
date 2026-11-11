@@ -11,54 +11,13 @@
 
 /* === Modules === */
 
-// Plain Nested Messages Own the Reference Wire Shape
-mod plain {
-    use super::Leaf;
-    use harmos_domain::message;
-
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Holder {
-        pub row: Leaf,
-        pub count: u32,
-    }
-
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
-    pub enum Choice {
-        Empty,
-        Tuple(Leaf, u32),
-        Named { row: Leaf, note: Option<String> },
-    }
-}
-
-// Boxed Twins Keep Every Authored Name and Shape
-mod heap {
-    use super::Leaf;
-    use harmos_domain::message;
-
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Holder {
-        pub row: Box<Leaf>,
-        pub count: u32,
-    }
-
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
-    pub enum Choice {
-        Empty,
-        Tuple(Box<Leaf>, u32),
-        Named { row: Box<Leaf>, note: Option<String> },
-    }
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
 
 // Standard Library Imports
 use std::fmt::Debug;
+
 // Third Party Imports
 
 // Local Imports
@@ -107,102 +66,6 @@ impl From<heap::Choice> for plain::Choice {
 }
 
 /* === Public Functions === */
-
-#[test]
-fn boxed_descriptors_match() {
-    descriptors::<plain::Holder, heap::Holder>();
-    descriptors::<plain::Choice, heap::Choice>();
-    let row = heap::Holder::FIELDS.iter().find(|field| field.name == "row").unwrap();
-    let Kind::Message { definition } = &row.kind else { panic!("boxed field describes its nested message") };
-    assert_eq!((definition.identity)(), std::any::TypeId::of::<Leaf>());
-    assert_eq!((definition.fields)(), Leaf::FIELDS);
-}
-
-#[test]
-fn boxed_codec_parity() {
-    let (plain, boxed) = holders();
-    assert_eq!(crate::encode(&boxed), crate::encode(&plain));
-    assert_eq!(crate::encode(&boxed).len(), crate::encode(&plain).len());
-    assert_eq!(Message::encode(&boxed), Message::encode(&plain));
-    assert_eq!(Message::encoded_size(&boxed), Message::encoded_size(&plain));
-    for (plain, boxed) in choices() {
-        assert_eq!(crate::encode(&boxed), crate::encode(&plain));
-        assert_eq!(crate::encode(&boxed).len(), crate::encode(&plain).len());
-        assert_eq!(Message::encode(&boxed), Message::encode(&plain));
-        assert_eq!(Message::encoded_size(&boxed), Message::encoded_size(&plain));
-    }
-
-    // Both Representations Decode Default, Repeated And Segmented Fields.
-    let encoded = crate::encode(&plain);
-    let mut duplicate = encoded.clone();
-    duplicate.extend(crate::encode(&plain::Holder {
-        row: Leaf {
-            value: 0,
-            payload: vec![4],
-            label: "second".into(),
-        },
-        count: 9,
-    }));
-    let segmented = segmented();
-    for bytes in [&[][..], &encoded[..], &duplicate[..], &segmented[..]] {
-        let decoded = agree::<plain::Holder, heap::Holder>(bytes, 1).unwrap();
-        assert_eq!(decoded.row.payload.capacity(), decoded.row.payload.len());
-    }
-    let empty = agree::<plain::Holder, heap::Holder>(&[], 1).unwrap();
-    assert_eq!(empty.row, Leaf::default());
-    let merged = agree::<plain::Holder, heap::Holder>(&duplicate, 1).unwrap();
-    assert_eq!(merged.row.value, plain.row.value);
-    assert_eq!(merged.row.payload, [4], "bytes keep the last occurrence");
-    assert_eq!(merged.row.label, "second");
-    assert_eq!(merged.count, 9);
-    let segments = agree::<plain::Holder, heap::Holder>(&segmented, 1).unwrap();
-    assert_eq!(segments.row.value, 7);
-    assert_eq!(segments.row.label, "split");
-
-    for (plain, _) in choices() {
-        let boxes = usize::from(!matches!(plain, plain::Choice::Empty));
-        let bytes = crate::encode(&plain);
-        let decoded = agree::<plain::Choice, heap::Choice>(&bytes, boxes).unwrap();
-        assert_eq!(decoded, plain);
-        let postcard = Message::encode(&plain);
-        let decoded = <heap::Choice as Message>::decode(&postcard).unwrap();
-        assert_eq!(plain::Choice::from(decoded), plain);
-    }
-
-    // Portable Preflight Includes The Box Pointee And Bounds Resident Memory.
-    let bytes = Message::encode(&plain);
-    let plain_bound = <plain::Holder as Message>::decoding_memory(&bytes).unwrap();
-    let boxed_bound = <heap::Holder as Message>::decoding_memory(&bytes).unwrap();
-    assert_eq!(
-        boxed_bound - std::mem::size_of::<heap::Holder>(),
-        plain_bound - std::mem::size_of::<plain::Holder>() + std::mem::size_of::<Leaf>()
-    );
-    let decoded = <heap::Holder as Message>::decode(&bytes).unwrap();
-    assert_eq!(decoded, boxed);
-    assert!(decoded.memory_size() <= boxed_bound);
-    assert_eq!(
-        boxed.memory_size(),
-        plain.memory_size() - std::mem::size_of::<plain::Holder>() + std::mem::size_of::<heap::Holder>() + std::mem::size_of::<Leaf>()
-    );
-}
-
-#[test]
-fn boxed_refuses_malformed() {
-    let mut truncated = crate::encode(&holders().0);
-    truncated.pop();
-    let wrong_wire = wrong_wire();
-    let deep_group = deep_group();
-    for bytes in [&[0xff][..], &truncated[..], &wrong_wire[..], &deep_group[..]] {
-        assert!(agree::<plain::Holder, heap::Holder>(bytes, 1).is_none());
-    }
-    let postcard = Message::encode(&holders().0);
-    let trailing = [postcard.clone(), vec![0]].concat();
-    for bytes in [&postcard[..postcard.len() - 1], &trailing[..]] {
-        assert!(<plain::Holder as Message>::decode(bytes).is_err());
-        assert!(<heap::Holder as Message>::decode(bytes).is_err());
-        assert!(<heap::Holder as Message>::decoding_memory(bytes).is_err());
-    }
-}
 
 /* === Private Functions === */
 
@@ -324,4 +187,204 @@ fn deep_group() -> Vec<u8> {
     bytes
 }
 
+// Plain Nested Messages Own the Reference Wire Shape
+mod plain {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+    use super::Leaf;
+    use harmos_domain::message;
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct Holder {
+        pub row: Leaf,
+        pub count: u32,
+    }
+
+    /* === Enums === */
+
+    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Clone, Debug, PartialEq)]
+    pub enum Choice {
+        Empty,
+        Tuple(Leaf, u32),
+        Named { row: Leaf, note: Option<String> },
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
+
+// Boxed Twins Keep Every Authored Name and Shape
+mod heap {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+    use super::Leaf;
+    use harmos_domain::message;
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct Holder {
+        pub row: Box<Leaf>,
+        pub count: u32,
+    }
+
+    /* === Enums === */
+
+    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Clone, Debug, PartialEq)]
+    pub enum Choice {
+        Empty,
+        Tuple(Box<Leaf>, u32),
+        Named { row: Box<Leaf>, note: Option<String> },
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
+
 /* === Tests === */
+
+#[test]
+fn boxed_descriptors_match() {
+    descriptors::<plain::Holder, heap::Holder>();
+    descriptors::<plain::Choice, heap::Choice>();
+    let row = heap::Holder::FIELDS.iter().find(|field| field.name == "row").unwrap();
+    let Kind::Message { definition } = &row.kind else { panic!("boxed field describes its nested message") };
+    assert_eq!((definition.identity)(), std::any::TypeId::of::<Leaf>());
+    assert_eq!((definition.fields)(), Leaf::FIELDS);
+}
+
+#[test]
+fn boxed_codec_parity() {
+    let (plain, boxed) = holders();
+    assert_eq!(crate::encode(&boxed), crate::encode(&plain));
+    assert_eq!(crate::encode(&boxed).len(), crate::encode(&plain).len());
+    assert_eq!(Message::encode(&boxed), Message::encode(&plain));
+    assert_eq!(Message::encoded_size(&boxed), Message::encoded_size(&plain));
+    for (plain, boxed) in choices() {
+        assert_eq!(crate::encode(&boxed), crate::encode(&plain));
+        assert_eq!(crate::encode(&boxed).len(), crate::encode(&plain).len());
+        assert_eq!(Message::encode(&boxed), Message::encode(&plain));
+        assert_eq!(Message::encoded_size(&boxed), Message::encoded_size(&plain));
+    }
+
+    // Both Representations Decode Default, Repeated And Segmented Fields.
+    let encoded = crate::encode(&plain);
+    let mut duplicate = encoded.clone();
+    duplicate.extend(crate::encode(&plain::Holder {
+        row: Leaf {
+            value: 0,
+            payload: vec![4],
+            label: "second".into(),
+        },
+        count: 9,
+    }));
+    let segmented = segmented();
+    for bytes in [&[][..], &encoded[..], &duplicate[..], &segmented[..]] {
+        let decoded = agree::<plain::Holder, heap::Holder>(bytes, 1).unwrap();
+        assert_eq!(decoded.row.payload.capacity(), decoded.row.payload.len());
+    }
+    let empty = agree::<plain::Holder, heap::Holder>(&[], 1).unwrap();
+    assert_eq!(empty.row, Leaf::default());
+    let merged = agree::<plain::Holder, heap::Holder>(&duplicate, 1).unwrap();
+    assert_eq!(merged.row.value, plain.row.value);
+    assert_eq!(merged.row.payload, [4], "bytes keep the last occurrence");
+    assert_eq!(merged.row.label, "second");
+    assert_eq!(merged.count, 9);
+    let segments = agree::<plain::Holder, heap::Holder>(&segmented, 1).unwrap();
+    assert_eq!(segments.row.value, 7);
+    assert_eq!(segments.row.label, "split");
+
+    for (plain, _) in choices() {
+        let boxes = usize::from(!matches!(plain, plain::Choice::Empty));
+        let bytes = crate::encode(&plain);
+        let decoded = agree::<plain::Choice, heap::Choice>(&bytes, boxes).unwrap();
+        assert_eq!(decoded, plain);
+        let postcard = Message::encode(&plain);
+        let decoded = <heap::Choice as Message>::decode(&postcard).unwrap();
+        assert_eq!(plain::Choice::from(decoded), plain);
+    }
+
+    // Portable Preflight Includes The Box Pointee And Bounds Resident Memory.
+    let bytes = Message::encode(&plain);
+    let plain_bound = <plain::Holder as Message>::decoding_memory(&bytes).unwrap();
+    let boxed_bound = <heap::Holder as Message>::decoding_memory(&bytes).unwrap();
+    assert_eq!(
+        boxed_bound - std::mem::size_of::<heap::Holder>(),
+        plain_bound - std::mem::size_of::<plain::Holder>() + std::mem::size_of::<Leaf>()
+    );
+    let decoded = <heap::Holder as Message>::decode(&bytes).unwrap();
+    assert_eq!(decoded, boxed);
+    assert!(decoded.memory_size() <= boxed_bound);
+    assert_eq!(
+        boxed.memory_size(),
+        plain.memory_size() - std::mem::size_of::<plain::Holder>() + std::mem::size_of::<heap::Holder>() + std::mem::size_of::<Leaf>()
+    );
+}
+
+#[test]
+fn boxed_refuses_malformed() {
+    let mut truncated = crate::encode(&holders().0);
+    truncated.pop();
+    let wrong_wire = wrong_wire();
+    let deep_group = deep_group();
+    for bytes in [&[0xff][..], &truncated[..], &wrong_wire[..], &deep_group[..]] {
+        assert!(agree::<plain::Holder, heap::Holder>(bytes, 1).is_none());
+    }
+    let postcard = Message::encode(&holders().0);
+    let trailing = [postcard.clone(), vec![0]].concat();
+    for bytes in [&postcard[..postcard.len() - 1], &trailing[..]] {
+        assert!(<plain::Holder as Message>::decode(bytes).is_err());
+        assert!(<heap::Holder as Message>::decode(bytes).is_err());
+        assert!(<heap::Holder as Message>::decoding_memory(bytes).is_err());
+    }
+}

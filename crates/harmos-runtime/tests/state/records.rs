@@ -29,7 +29,7 @@ use harmos_runtime::{Error, Runtime, state::DecodeError, state::Position, state:
 /* === Structs === */
 
 #[harmos_runtime::record(id = "manager.note")]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, Serialize, Deserialize)]
 struct Noted(String);
 
 struct Model;
@@ -171,7 +171,15 @@ async fn discovery_shares_producer() {
     );
     assert!(
         producer
-            .register("plugin", schema.clone(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] })
+            .register(
+                "plugin",
+                schema.clone(),
+                harmos_runtime::schema::graph::Schema {
+                    representations: Default::default(),
+                    root: 0,
+                    definitions: vec![vec![]]
+                }
+            )
             .await
             .is_err()
     );

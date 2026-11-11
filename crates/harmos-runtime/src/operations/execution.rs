@@ -48,6 +48,8 @@ type Completed<O> = Box<dyn Fn(&O) + Send>;
 pub(crate) struct Prepared<O> {
     pub(super) body: Box<dyn Body<O>>,
     pub(super) policy: OperationPolicy,
+    pub(super) operation: String,
+    pub(super) timeout_source: &'static str,
     pub(super) replay: ReplaySafety,
     pub(super) id: OperationInstanceId,
     pub(super) completed: Option<Completed<O>>,
@@ -65,6 +67,8 @@ pub(super) struct Execution {
 
 struct Budget {
     submitted: tokio::time::Instant,
+    operation: String,
+    timeout_source: &'static str,
     timeout: Duration,
     progress: Vec<watch::Receiver<Option<tokio::time::Instant>>>,
 }
@@ -111,6 +115,22 @@ pub(super) trait Body<O>: Send {
 /* === Implementations === */
 
 impl Budget {
+    fn timed_out(&self, attempt: usize) -> Refusal {
+        Refusal::TimedOut {
+            operation: self.operation.clone(),
+            attempt,
+            timeout: self.timeout,
+            configured_by: self.timeout_source,
+        }
+    }
+
+    fn cancelled(&self, attempt: usize) -> Refusal {
+        Refusal::Cancelled {
+            operation: self.operation.clone(),
+            attempt,
+        }
+    }
+
     fn remaining(&self) -> Duration {
         let last = self.progress.iter().filter_map(|receiver| *receiver.borrow()).max().unwrap_or(self.submitted);
         self.timeout.saturating_sub(executor::now().saturating_duration_since(last.max(self.submitted)))
@@ -149,6 +169,8 @@ pub(super) async fn execute<O: Send + 'static>(
     } = execution;
     let budget = Budget {
         submitted,
+        operation: prepared.operation.clone(),
+        timeout_source: prepared.timeout_source,
         timeout: prepared.policy.timeout,
         progress: prepared.body.progress(),
     };
@@ -159,8 +181,8 @@ pub(super) async fn execute<O: Send + 'static>(
     {
         refusal = match bounded(budget.remaining(), Box::pin(session.enter()), &mut cancelled).await {
             Stage::Completed(answer) => answer.err(),
-            Stage::Cancelled => Some(Refusal::Cancelled.into()),
-            Stage::Expired => Some(Refusal::TimedOut.into()),
+            Stage::Cancelled => Some(budget.cancelled(1).into()),
+            Stage::Expired => Some(budget.timed_out(instance.status().attempt() + 1).into()),
         };
     }
     let was_refused = refusal.is_some();
@@ -192,7 +214,7 @@ pub(super) async fn execute<O: Send + 'static>(
     {
         let logical = match answer {
             Err(error) => Some(error),
-            Ok(_) if !*cancelled.borrow() && budget.remaining().is_zero() => Some(Refusal::TimedOut.into()),
+            Ok(_) if !*cancelled.borrow() && budget.remaining().is_zero() => Some(budget.timed_out(instance.status().attempt() + 1).into()),
             Ok(_) => None,
         };
         instance.complete(logical.as_ref().map_or(Outcome::Succeeded, failure_outcome));
@@ -218,7 +240,7 @@ pub(super) async fn execute<O: Send + 'static>(
     let answer = if was_refused {
         answer
     } else if !*cancelled.borrow() && budget.remaining().is_zero() {
-        Err(Refusal::TimedOut.into())
+        Err(budget.timed_out(instance.status().attempt() + 1).into())
     } else {
         answer
     };
@@ -240,15 +262,15 @@ pub(super) async fn execute<O: Send + 'static>(
 #[tracing::instrument(target = "harmos::operations", name = "operations.acquire", level = "debug", skip_all)]
 async fn acquire(admission: &Admission, budget: &Budget, cancelled: &mut watch::Receiver<bool>) -> Result<OwnedSemaphorePermit> {
     if *cancelled.borrow() {
-        return Err(Refusal::Cancelled.into());
+        return Err(budget.cancelled(1).into());
     }
     if budget.remaining().is_zero() {
-        return Err(Refusal::TimedOut.into());
+        return Err(budget.timed_out(1).into());
     }
     let waiting = interruptible(admission.semaphore().acquire_owned(), cancelled);
     match executor::timeout(budget.remaining(), waiting).await {
-        Err(_) => Err(Refusal::TimedOut.into()),
-        Ok(None) => Err(Refusal::Cancelled.into()),
+        Err(_) => Err(budget.timed_out(1).into()),
+        Ok(None) => Err(budget.cancelled(1).into()),
         Ok(Some(Err(_))) => Err(Refusal::Unavailable.into()),
         Ok(Some(Ok(permit))) => Ok(permit),
     }
@@ -264,12 +286,12 @@ async fn initialize<O: Send + 'static>(
     let answer = bounded(budget.remaining(), body.initialize(Scope::over(&core)), cancelled).await;
     core.close().drain().await;
     if *cancelled.borrow() {
-        return Err(Refusal::Cancelled.into());
+        return Err(budget.cancelled(1).into());
     }
     match answer {
         Stage::Completed(answer) => answer,
-        Stage::Cancelled => Err(Refusal::Cancelled.into()),
-        Stage::Expired => Err(Refusal::TimedOut.into()),
+        Stage::Cancelled => Err(budget.cancelled(1).into()),
+        Stage::Expired => Err(budget.timed_out(1).into()),
     }
 }
 
@@ -281,16 +303,17 @@ async fn attempts<O: Send + 'static>(
     let mut attempt = 0;
     loop {
         if *cancelled.borrow() {
-            return Err(Refusal::Cancelled.into());
+            return Err(budget.cancelled(attempt + 1).into());
         }
         let remaining = budget.remaining();
         if remaining.is_zero() {
-            return Err(Refusal::TimedOut.into());
+            return Err(budget.timed_out(attempt + 1).into());
         }
         if !instance.attempt(attempt) {
-            return Err(Refusal::Cancelled.into());
+            return Err(budget.cancelled(attempt + 1).into());
         }
         let core = ScopeCore::new(instances.clone(), admission.clone(), cause, Arc::downgrade(instance));
+        let started_at = prepared.middleware.as_ref().map(super::middleware::Session::now);
         let answer = cooperative(
             prepared.policy.attempt_timeout.min(remaining),
             budget,
@@ -305,16 +328,19 @@ async fn attempts<O: Send + 'static>(
             cancelled,
         )
         .await;
+        let finished_at = prepared.middleware.as_ref().map(super::middleware::Session::now);
         let mut children = core.close();
         if let Some(middleware) = &prepared.middleware {
             let outcome = match &answer {
                 Stage::Completed(Ok(_)) => Outcome::Succeeded,
-                Stage::Completed(Err(Error::OperationRefused(Refusal::Cancelled))) | Stage::Cancelled => Outcome::Cancelled,
-                Stage::Completed(Err(Error::OperationRefused(Refusal::TimedOut))) | Stage::Expired => Outcome::TimedOut,
+                Stage::Completed(Err(Error::OperationRefused(Refusal::Cancelled { .. }))) | Stage::Cancelled => Outcome::Cancelled,
+                Stage::Completed(Err(Error::OperationRefused(Refusal::TimedOut { .. }))) | Stage::Expired => Outcome::TimedOut,
                 Stage::Completed(Err(_)) => Outcome::Failed,
             };
             // Record Each Completed Attempt Before Its Result Or Retry Is Exposed.
-            if let Err(error) = middleware.attempt(super::middleware::AttemptObservation { attempt, outcome }).await {
+            let started_at = started_at.expect("middleware attempt start");
+            let elapsed = finished_at.expect("middleware attempt end").instant.saturating_duration_since(started_at.instant);
+            if let Err(error) = middleware.attempt(super::middleware::AttemptObservation { attempt, outcome, started_at, elapsed }).await {
                 children.drain().await;
                 return Err(error);
             }
@@ -323,13 +349,17 @@ async fn attempts<O: Send + 'static>(
             children.drain().await;
             return match answer {
                 Stage::Completed(answer) => answer,
-                Stage::Cancelled | Stage::Expired => Err(Refusal::Cancelled.into()),
+                Stage::Cancelled | Stage::Expired => Err(budget.cancelled(attempt + 1).into()),
             };
         }
         let (error, failure) = match answer {
             Stage::Completed(Ok(response)) => {
                 children.drain().await;
-                return if !*cancelled.borrow() && budget.remaining().is_zero() { Err(Refusal::TimedOut.into()) } else { Ok(response) };
+                return if !*cancelled.borrow() && budget.remaining().is_zero() {
+                    Err(budget.timed_out(attempt + 1).into())
+                } else {
+                    Ok(response)
+                };
             }
             Stage::Completed(Err(error)) => {
                 let failure = prepared.body.classify(&error);
@@ -337,9 +367,21 @@ async fn attempts<O: Send + 'static>(
             }
             Stage::Cancelled => {
                 children.drain().await;
-                return Err(Refusal::Cancelled.into());
+                return Err(budget.cancelled(attempt + 1).into());
             }
-            Stage::Expired => (Refusal::TimedOut.into(), FailureKind::Ambiguous),
+            Stage::Expired => {
+                let refusal = if budget.remaining().is_zero() || !budget.progress.is_empty() {
+                    budget.timed_out(attempt + 1)
+                } else {
+                    Refusal::TimedOut {
+                        operation: prepared.operation.clone(),
+                        attempt: attempt + 1,
+                        timeout: prepared.policy.attempt_timeout,
+                        configured_by: "operation policy.attempt_timeout",
+                    }
+                };
+                (refusal.into(), FailureKind::Ambiguous)
+            }
         };
         if prepared.body.transferred() {
             children.drain().await;
@@ -358,10 +400,10 @@ async fn attempts<O: Send + 'static>(
         })
         .await;
         if *cancelled.borrow() {
-            return Err(Refusal::Cancelled.into());
+            return Err(budget.cancelled(attempt + 1).into());
         }
         if budget.remaining().is_zero() {
-            return Err(Refusal::TimedOut.into());
+            return Err(budget.timed_out(attempt + 1).into());
         }
         // A Caller Can Transfer Input While The Retry Delay Is Pending.
         if prepared.body.transferred() {
@@ -430,8 +472,8 @@ fn outcome<O>(answer: &Result<O>) -> Outcome {
 
 fn failure_outcome(error: &Error) -> Outcome {
     match error {
-        Error::OperationRefused(Refusal::Cancelled) => Outcome::Cancelled,
-        Error::OperationRefused(Refusal::TimedOut) => Outcome::TimedOut,
+        Error::OperationRefused(Refusal::Cancelled { .. }) => Outcome::Cancelled,
+        Error::OperationRefused(Refusal::TimedOut { .. }) => Outcome::TimedOut,
         Error::OperationRefused(Refusal::Unavailable) => Outcome::Unavailable,
         _ => Outcome::Failed,
     }
@@ -455,6 +497,8 @@ mod tests {
         });
         let budget = Budget {
             submitted: executor::now(),
+            operation: "test.cancel".into(),
+            timeout_source: "operation policy.timeout",
             timeout: Duration::from_millis(10),
             progress: Vec::new(),
         };

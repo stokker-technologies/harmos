@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/stokker-technologies/harmos)](https://github.com/stokker-technologies/harmos/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/stokker-technologies/harmos/ci.yml?branch=dev&label=CI)](https://github.com/stokker-technologies/harmos/actions/workflows/ci.yml)
-[![Nightly](https://img.shields.io/github/actions/workflow/status/stokker-technologies/harmos/nightly.yml?branch=dev&label=Nightly)](https://github.com/stokker-technologies/harmos/actions/workflows/nightly.yml)
+[![CI / Nightly](https://img.shields.io/github/actions/workflow/status/stokker-technologies/harmos/nightly.yml?branch=dev&label=CI%20%2F%20Nightly)](https://github.com/stokker-technologies/harmos/actions/workflows/nightly.yml)
 [![crates.io](https://img.shields.io/crates/v/harmos)](https://crates.io/crates/harmos)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
@@ -41,8 +41,8 @@ Your application defines each change; Harmos manages its accepted history.
 - **Managed State** [`runtime`]: Apply typed transactions, inspect history and scope undo or redo to selected changes.
 - **Operations and Services** [`runtime`]: Define requests and streams with explicit timeout, retry and cancellation policies, including typed final responses from cooperative cancellation; keep resources with the work that owns them.
 - **Streams and Storage** [`runtime`]: Capture bounded live measurements and supply adapters for history, snapshots and streams.
-- **Crash Recovery** [`runtime`]: Reconstruct state and undo history according to your storage adapter's durability policy.
-- **Plugin Lifecycle** [`plugin`]: Register typed plugin contracts and manage activation, routing and reload.
+- **Crash Recovery** [`runtime`]: Reconstruct host state and undo history from bounded snapshot segments and journal replay; retain plugin history with its written definitions.
+- **Plugin Lifecycle** [`plugin`]: Register typed plugin contracts and manage activation, routing and reload, with automatic stream schema revisions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **Native Sidecars** [`plugin-sidecar`]: Integrate supervised executables through typed contracts; native processes do not provide a Wasm sandbox.
 - **gRPC Interfaces** [`grpc`, `generate-proto`]: Expose typed operations and generate client contracts.
@@ -104,6 +104,23 @@ feature for the [performance suites](docs/product-guide.md#performance).
 Harmos also ships a filesystem `JsonStorage` backend for records, streams, objects
 and files; see the [storage configuration guide](docs/product-guide.md).
 
+### C++
+
+Rust remains the nominal SDK. The C++20 sidecar prototype is a thin layer over
+the shared Rust core through `harmos-ffi`; it has no stable ABI promise.
+See the [C++ guide](docs/sidecar-cpp-prototype.md) for toolchain setup and ownership.
+
+#### Examples
+
+Build the SDK and run the simulated instrument through its native Rust host:
+
+```sh
+mise run build:cpp
+mise run test:rust:cpp
+```
+
+These opt-in tasks require a C++20 compiler and CMake; ordinary Rust builds do not.
+
 ## Quick Start
 
 Try the Schematic application with the repository's pinned tools:
@@ -134,7 +151,10 @@ nightly run, and its notes record whether that run's suite passed.
 
 Harmos is pre-1.0; public APIs and plugin contracts can change. Keep application
 and plugin revisions aligned and review release notes before updating. Stored data
-and wire formats support only the current v1 shape; no migration is provided.
+formats have no migrations. Managed recovery refuses changed host state types;
+choose a fresh storage root for those product changes. Plugin history retains its
+written definitions across shape changes and plugin removal. Wire compatibility
+versions remain explicit.
 
 Built-in operation contracts live in `harmos-operations`, re-exported as
 `harmos::builtins`. Its `host`, `lifecycle`, `storage` and `streams` catalogs
@@ -144,6 +164,7 @@ and `Builtins::catalog()` are available without runtime dependencies.
 
 Focused fixes, API feedback and useful examples are welcome. Read
 [Contributing](CONTRIBUTING.md) for setup, validation and pull requests.
+Run targeted tasks locally; hosted CI and Nightly provide full validation.
 
 ## About
 

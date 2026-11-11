@@ -32,7 +32,7 @@ use harmos::{state::Invertible, state::Transaction};
 /* === Structs === */
 
 #[harmos::transaction(id = "net.rename", inverse = Self)]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct RenameNet {
     pub net: NetId,
     pub to: NetName,

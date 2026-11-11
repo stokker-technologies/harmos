@@ -247,7 +247,7 @@ impl ObserverBackend for Backend {
             Ok(_) => Ok(()),
             Err(_) if stopped => Ok(()),
             // Cancelled from outside, as runtime admission closes.
-            Err(crate::Error::OperationRefused(crate::Refusal::Cancelled)) => Ok(()),
+            Err(crate::Error::OperationRefused(crate::Refusal::Cancelled { .. })) => Ok(()),
             Err(error) => Err(error),
         }
     }

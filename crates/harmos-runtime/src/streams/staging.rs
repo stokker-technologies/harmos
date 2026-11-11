@@ -161,7 +161,17 @@ impl Activation {
         if state.committed {
             return true;
         }
-        let windows = table.windows.read().expect("stream registry poisoned");
+        let mut windows = table.windows.write().expect("stream registry poisoned");
+        for lease in self.leases() {
+            let wired = &lease.stream.wired;
+            if !windows
+                .get(wired.definition.id())
+                .and_then(|revisions| revisions.wires.get(&wired.definition.version()))
+                .is_some_and(|current| Arc::ptr_eq(current, wired))
+            {
+                return false;
+            }
+        }
         let mut added = 0u64;
         for pending in &state.rows {
             let Some(wired) = pending.wired.upgrade() else {
@@ -169,7 +179,7 @@ impl Activation {
             };
             if !windows
                 .get(wired.definition.id())
-                .and_then(|revisions| revisions.get(&wired.definition.version()))
+                .and_then(|revisions| revisions.wires.get(&wired.definition.version()))
                 .is_some_and(|current| Arc::ptr_eq(current, &wired))
             {
                 return false;
@@ -192,6 +202,13 @@ impl Activation {
                 .append_locked(pending.position, Arc::new(pending.publication.clone()), pending.publication.missed())
                 .expect("validated complete cursor span");
             evicted.extend(previous);
+        }
+        for lease in self.leases() {
+            let wired = &lease.stream.wired;
+            let Some(revisions) = windows.get_mut(wired.definition.id()) else {
+                return false;
+            };
+            revisions.current = Some(wired.definition.version());
         }
         state.evicted = evicted;
         state.committed = true;

@@ -24,6 +24,14 @@ diagnostics across carriers. Applications can attach named, non-secret context
 with `Failure::with_detail` and read it with `Failure::detail`; a plugin admission
 consumer can use these fields for actionable errors without parsing prose.
 
+Deadline refusals name the operation, one-based attempt, applied budget and its
+configuration source (`operation policy.timeout`, `operation policy.attempt_timeout`
+or a per-call gRPC deadline override). For example: `host call refused (-32607):
+operation connectivity.grpc_wait_until_grpc_ready attempt 1 exceeded its 10 s deadline
+(configured by operation policy.attempt_timeout)`. Cancellation refusals also name
+the operation and attempt. Retry exhaustion preserves the last attempt failure;
+retry overrides do not change either deadline.
+
 Startup configuration errors expose `StartupError::report()` with separate root
 failures and consequences. Each issue retains its original `Failure` together
 with resource and operation identity where applicable. Carriers preserve that
@@ -31,6 +39,115 @@ report as the `harmos.startup` structured detail on the existing failure;
 `operations::StartupReport::from_failure` reads it without parsing messages.
 Original refusal codes, detail maps and diagnostics remain in the report. Display
 renders readable root prose rather than Rust Debug output.
+
+Native and plugin stream revisions are derived automatically in the Rust core when a declaration
+becomes a runtime definition. The input is `harmos.stream.v1\0`, the window as a
+little-endian `u64`, and the canonical row-schema encoding in
+`crates/harmos-domain/src/schema/identity.rs`. SHA-256's first four bytes are read
+as a little-endian `u32`, with zero mapped to one. Field order, names, wire tags,
+kinds, cardinalities and graph edges participate; graph indices and presentation
+metadata do not. Field order remains significant for the Postcard row encoding.
+
+A changed row or window receives a new revision on reload, without an author
+version or backend restart. Atomic activation commits select the current revision;
+failed staging preserves the previous selection. Revisions are opaque hashes:
+never choose current by comparing their numbers. `StreamManager::definitions()`
+returns current definitions, `current_publication(id)` selects the committed
+publication, and `publication(id, revision)` pins a retained revision. Existing
+queries and watchers retain their descriptors; live `StreamFeed` batches carry
+each row's definition, including newly committed revisions. Retired live windows
+are released after storage consumers and live feeds have taken their rows;
+readers retain only the windows they still own.
+
+Persist stream rows with `Definition::version()` as the storage `SchemaKey.version`
+and `Definition::schema()` as that revision's definition. Keep each revision's
+rows under its own key, including across process restarts. A different plugin owner, native collision
+or equal hash with a different canonical row remains an admission error. Rename
+the stream and report a hash collision. A transport restart inside one committed
+activation may only renew its frozen inventory; reload the plugin to change it.
+
+Streams expose `ID`, `WINDOW` and `definition()`; `StreamSpec`, `StreamRow` and
+native `Stream<A>` have no authored `VERSION`. Typed native readers select the
+current definition by identity and compiled row type. Low-level declarations use
+`Definition::declared::<Row>(id, schema, window)` and return a derived definition.
+Every stream definition owns a schema; `Definition::schema()` returns it directly.
+Publication inventories,
+listener sources and `host.publish` do not accept schema ordinals. Listener
+publication binding uses `(id, after)` and `frontier(id)`.
+
+`#[record]` and `#[transaction]` derive schema-only revisions through
+`harmos_domain::schema::identity::revision(schema)`. Its input is
+`harmos.record.v1\0` followed by the same canonical graph encoding; SHA-256's
+first four bytes become a little-endian nonzero `u32`. Presentation labels,
+Rust module paths and graph indices do not participate. Generated `DEFINITION`
+identity tuples are removed: use `T::ID` and `T::definition()` through `Identified`.
+Manual `Identified` implementations declare only `const ID: &'static str` and
+provide `Described`; the default derives the revision. Typed stored objects use
+the same rule, including `ValidatedSchematic`.
+`restore(revision, payload)` now accepts only the derived revision.
+
+Records, transactions and their nested Serde domain types declare their schema
+with `#[derive(harmos::Described)]`; an existing `#[message]`
+already supplies the schema. This schema-only derive retains the existing
+Serde payload codec. It describes named and tuple structs, transparent newtypes,
+and externally, internally, adjacently tagged or untagged enums. Serialization
+names follow `rename`, `rename_all` and `rename_all_fields`, including directional
+names. `default` and deserialization-only attributes do not change the stored
+shape. `skip` and `skip_serializing` remove named fields or variants;
+`skip_serializing_if = "Option::is_none"` and `"Vec::is_empty"` describe omission
+separately from nullability and repeated values. Skipped positional fields,
+arbitrary omission predicates, `flatten`, custom serializers and conversions are
+refused at compile time with the attribute and enclosing type. Such forms require
+an explicit, accurate `Described` implementation. Serde wire metadata survives
+schema serialization and participates in the same canonical encoding used by
+revisions and fingerprints. Existing schemas without that metadata retain their
+canonical bytes. Record listeners declare `record = "identity", row = Type`
+without `version =`; binding checks identity and the declared row schema.
+System facts use `SystemFact::new(source, name, bytes)` for opaque bytes or
+`SystemFact::encode(source, name, &value)` for a described Serde payload. Their
+stored revision carrier remains necessary; callers no longer supply its value.
+
+Managed journal entries and snapshot definition inventories store derived
+revisions. Open refuses a stored host record or transaction whose definition differs,
+naming its identity and directing the caller to choose a fresh storage root.
+Snapshots check the frozen definition inventory even when the record precedes
+the retained tail. Failed open preserves the stored history. Development storage
+has no migration; use a fresh root after a host state shape change. Unused group and snapshot
+wrapper ordinals are removed. ABI, failure details, transport framing, journal
+file framing, artifact manifests and `PayloadEncoding::PostcardV1` retain their
+existing compatibility versions. Schema encoding stays v1. Rebuild plugin artifacts
+with the matching SDK.
+
+
+Plugin scopes register streams and listeners, operations and services/observers,
+and inert registrations/sections. They do not register typed state records,
+transactions or object catalogs: those belong to the compiled host composition.
+Listeners and observer activations have no runtime state replayed from snapshots
+or the state journal. A plugin requests host transactions through operations;
+the host owns their persistent types.
+
+Plugin storage records, objects and streams reference the exact `SchemaKey` and
+persisted `StorageSchema` graph written with their bytes. Historical queries
+resolve those stored graphs, independently of the installed plugin. Select an
+exact schema for incompatible shapes, or explicitly project compatible fields.
+A typed object read of an old revision with a different current definition
+refuses; it never interprets old bytes as the new type. Current writes follow the
+current definition. No automatic conversion feeds old values into current state.
+Object revisions whose exact definition is absent from the current catalog are
+retained, including after new shapes are written. Backend adapters must honor
+`ObjectRetention::All` by leaving those revisions untouched.
+
+`SystemFact::new` and `SystemFact::encode` retain a schema graph for `Guest` and
+`Sidecar` sources inside the journal payload and snapshot tail. Recovery checks
+that graph against the stored revision and exposes it with `SystemFact::schema()`;
+the original payload remains available even without the plugin. Encoded facts
+contain their original Serde JSON bytes; opaque facts retain their original bytes
+and the byte-vector definition. These historical facts do not mutate host state.
+`Work` facts retain their host representation. Rebuild consumers and plugins with
+the matching SDK, and use `Prepared::system` and `SystemFact::restore` in custom
+journal adapters so definitions survive capture, snapshots and replay. Roots with
+older plugin facts lacking their definitions may need a fresh root once. Schema,
+storage and payload encoding versions stay v1; there is no migration or reset.
 
 Classification is scoped to one startup/prepare pass. If the pass contains a
 runtime preparation/construction failure, every `MissingResource` in that pass
@@ -322,10 +439,32 @@ with `setup.settings().store_records(projection)`. Managed state requires Serde 
 and decoding. Backend journal-entry and checkpoint bounds remain physical storage
 limits, separate from runtime snapshot cadence and payload limits.
 
-`SnapshotPolicy.max_bytes` limits logical snapshot payload bytes at both capture
-and recovery. Harmos derives the backend read bound with the same JSON/base64
-size calculation used for write reservations; encoded queue and physical backend
-limits still apply independently.
+`SnapshotPolicy.max_bytes` bounds each logical snapshot segment at capture and
+recovery. Large state values span segments; undo, receipt and recorded-tail entries must
+individually fit that bound. State, undo history, request receipts and the retained
+tail remain in the checkpoint. A refusal reports the entry size, segment bound and
+number of journal groups the next boot must replay. Unavailable sizes are marked
+with `size_known = false` rather than presented as a measured zero.
+
+`RecoverySnapshot.payload` is a `SnapshotPayload`: an immutable temporary-file spool
+with an ordered `SnapshotManifest` (logical position, count, total bytes and each
+segment's SHA-256). `SnapshotWriter` fills segments up to the bound; `finish_segment`
+also permits an earlier boundary when importing stored segments. `reader()` provides
+an independent read-only cursor. Readers verify the manifest and all segment hashes
+before using the snapshot, then decode in order without a whole-payload byte buffer.
+Queue admission reserves a segment rather than the whole checkpoint; the small
+manifest remains resident with the spool owner through retries.
+
+The filesystem backend writes a manifest header, ordered checksummed segment frames
+and a matching commit manifest to `state.json.pending`. Each frame carries the raw
+segment SHA-256; the manifest digest binds their ordered lengths and hashes. Manifest
+records have a protocol bound of 4096 bytes. `max_checkpoint_bytes` bounds each encoded
+segment frame, including its integrity envelope. The file is flushed and synced before
+atomic replacement of `state.json`; only then may the covered journal be compacted.
+An interruption between segments leaves the previous snapshot and journal intact.
+The journal format is unchanged. Existing single-payload checkpoint files remain
+readable; their imported manifest has no separate logical position, so runtime recovery
+uses the position in the original payload and its journal-boundary validation.
 
 For filesystem persistence, use the shipped JSON backend:
 
@@ -786,7 +925,27 @@ Pass `.retry(settings.retry)` from settings, parameters or configuration. Retry 
 Enabling call-site retry requires declared `Idempotent` or `Deduplicated` replay safety; unknown safety is refused before execution.
 Declaration defaults retain their existing semantics: transient failures may retry with unknown safety, while ambiguous failures require replay safety.
 Sidecar and guest child envelopes carry the optional retry policy to host admission. The host execution loop owns every attempt;
-`operations::middleware::Middleware::attempt` observes each completed attempt with its number and outcome for durable application evidence.
+`operations::middleware::Middleware::attempt` receives this process-local observation for every handler attempt, including refusals, timeouts and retries:
+
+```rust,ignore
+AttemptObservation {
+    attempt: usize, // Zero-based, matching the handler context.
+    outcome: OperationOutcome,
+    started_at: AttemptStartedAt {
+        instant: tokio::time::Instant,
+        timestamp: state::Timestamp,
+    },
+    elapsed: std::time::Duration,
+}
+```
+
+Timing surrounds the handler call, including asynchronous suspension and cancellation grace.
+It excludes queueing, admission, initialization, child draining, cleanup and middleware callbacks.
+Each retry takes fresh readings. The timestamp identifies the start; elapsed uses only the
+monotonic readings. Before the first invocation, `operations.set_attempt_clock(AttemptClock::new(clock))`
+can inject a clock returning `AttemptStartedAt`; the default reads the operation executor's
+monotonic clock and the system timestamp. This does not change deadline clocks or timers.
+No attempt observation is emitted for admission refusals that never enter a handler.
 
 Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
 Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.
@@ -1074,6 +1233,7 @@ in its output. HTML rendering uses Plotters and does not require Gnuplot.
 
 - [Repository Tooling](tooling.md) — workstation builds and shared compiler cache.
 - [Runnable Examples](examples.md) — application composition and plugin integration.
+- [C++ Sidecar Prototype](sidecar-cpp-prototype.md) — C++20 authoring over the shared Rust core through a C ABI, with build and demo commands.
 - [Schematic Walkthrough](schematic.md) — the example application, its crates and backends.
 - [Public Rust API](../crates/harmos/src/lib.rs) — the SDK facade and module documentation.
 - [Cargo Features](../crates/harmos/Cargo.toml) — select the facilities your application needs.
@@ -1193,6 +1353,46 @@ demand keys; it does not advertise the declared default as an effective interval
 A zero runtime duration, resolution error or panic refuses activation before
 initialization. Initialization retries and sampling use the captured interval;
 changed resources apply on the next activation.
+
+Cadence evidence uses `harmos_sidecar::CadenceReport`:
+
+```rust,ignore
+CadenceReport {
+    observer: String,
+    activation: String,
+    interval: Duration,
+    scheduled_at: Duration,
+    started_at: Option<Duration>,
+    callback_duration: Duration,
+    skipped: bool,
+    refused: bool,
+}
+```
+
+Scheduled and actual start times are monotonic offsets from the activation's sampling
+origin, after initialization. A skipped slot has no actual start, zero callback duration
+and `refused = false`. A completed callback records its duration before reporting;
+errors and panics set `refused`. Late callbacks still run under the existing Tokio Skip
+policy; gaps between returned scheduled deadlines identify omitted slots. Skipped slots
+are reported when the next scheduled tick is observed. Cancellation of an unfinished
+callback produces no completion report. Existing refused/recovered log lines remain unchanged.
+
+`ObserverHost::report_cadence(&self, &CadenceReport)` defaults to no action. Attachments
+invoke that hook and send a `harmos.observer.cadence` push over the existing bounded
+transport. A full outgoing queue defers delivery in a task instead of suspending the
+observer; reporting adds no timer. Pending reports share the connection/runtime lifetime.
+Consumers order received evidence by activation and scheduled time. Direct/native instances
+opt in with `Instance::with_cadence_reporting`, which can call the same host hook.
+There are no additional timers or sidecar log lines.
+
+The receiver validates the report's schema-derived revision, invokes an optional
+`CadenceReporter` application resource and delivers `Notice::ObserverCadence` through
+`Supervised`'s existing notice callback. Register `CadenceReporter::for_host(host)` to
+forward remote reports to the same `ObserverHost` hook, or `CadenceReporter::new(callback)`
+for an application callback. The report is an additive push payload; other transport
+shapes and tags are unchanged. Group by observer and activation; differences between
+non-skipped actual starts give mean interval and maximum gap, while the maximum
+callback duration identifies the longest callback.
 
 ## Reloadable gRPC Certificates
 

@@ -139,15 +139,15 @@ enum Failed {
 /* === Implementations === */
 
 impl Fact {
-    const DEFINITION: (&'static str, u32, usize) = ("listener.samples", 1, 512);
+    const ID: &'static str = "listener.samples";
+    const WINDOW: usize = 512;
     fn definition() -> harmos_runtime::streams::Definition {
-        harmos_runtime::__private::stream_definition::<Self>(Self::DEFINITION.0, Self::DEFINITION.1, Self::DEFINITION.2)
+        harmos_runtime::__private::stream_definition::<Self>(Self::ID, Self::WINDOW)
     }
 }
 
 impl harmos_runtime::__private::StreamRow for Fact {
     const ID: &'static str = "listener.samples";
-    const VERSION: u32 = 1;
     const WINDOW: usize = 512;
 }
 
@@ -371,13 +371,13 @@ impl PluginLifecycle for Host {
         if self.managed {
             resources.streams = Some(self.owner.streams.stage_plugin(scope, [publication()]).await.unwrap());
             self.lease = Some(resources.streams.as_ref().unwrap().leases()[0].clone());
-            let original = scope.publication("listener.samples", 1).unwrap();
+            let original = scope.publication("listener.samples").unwrap();
             assert!(Arc::ptr_eq(&original, self.lease.as_ref().unwrap()));
-            assert!(matches!(scope.publication("listener.samples", 2), Err(Error::InvalidInput { field: "publication stream", .. })));
+            assert!(matches!(scope.publication("undeclared.samples"), Err(Error::InvalidInput { field: "publication stream", .. })));
         }
         if !self.skip_sources {
             let original = Arc::new(tokio::sync::Mutex::new(self.owner.streams.stage_listeners(scope, &self.operations, |bindings| {
-                if self.managed { bindings.publication("listener.samples", 1, 0) } else { bindings.stream::<Fact>(0) }
+                if self.managed { bindings.publication("listener.samples", 0) } else { bindings.stream::<Fact>(0) }
             })?));
             self.view = Some(original.clone());
             resources.listeners = Some(original);
@@ -417,7 +417,7 @@ impl PluginLifecycle for Host {
         }
         if resources.managed {
             let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
-            assert!(matches!(scope.publication("listener.samples", 1), Err(Error::Closing { domain: "publication generation" })));
+            assert!(matches!(scope.publication("listener.samples"), Err(Error::Closing { domain: "publication generation" })));
         }
         resources.streams.take();
         resources.endpoint.take();
@@ -441,7 +441,6 @@ fn publication() -> harmos_domain::StreamDeclaration {
         metadata: harmos_runtime::Metadata::new(harmos_runtime::Identifier::new("listener.samples").unwrap(), "Samples", None),
         row_metadata: vec![],
         id: "listener.samples".into(),
-        schema: 1,
         window: 512,
         row: harmos_runtime::schema::graph::Schema::from_declaration(
             <Fact as harmos_runtime::schema::Described>::DEFINITION,
@@ -470,7 +469,6 @@ fn candidate(managed: bool) -> PluginDefinitions {
                 harmos_runtime::Identifier::new(id).unwrap(),
                 Source::Stream {
                     id: "listener.samples".into(),
-                    schema_ordinal: 1,
                     row: harmos_runtime::schema::graph::Schema::from_declaration(
                         <Fact as harmos_runtime::schema::Described>::DEFINITION,
                         &harmos_runtime::config::SchemaSettings::default(),
@@ -706,7 +704,7 @@ async fn pages_deliver_native() {
     // more row's first callback proves every earlier page settled.
     runtime.streams.publish(fact(261));
     observed(&host.owner, 523).await;
-    let frontier = host.view.as_ref().unwrap().lock().await.frontier("listener.samples", 1);
+    let frontier = host.view.as_ref().unwrap().lock().await.frontier("listener.samples");
     assert!(matches!(frontier, Some(261 | 262)));
     {
         let seen = host.owner.seen.lock().unwrap();
@@ -776,7 +774,7 @@ async fn source_preserves_staged() {
         host.owner.seen.lock().unwrap()[2..],
         [(true, 5, DeliveryContext::Stream { sequence: 5, missed: 3 }), (false, 5, DeliveryContext::Stream { sequence: 5, missed: 3 }),]
     );
-    assert_eq!(host.view.as_ref().unwrap().lock().await.frontier("listener.samples", 1), Some(5));
+    assert_eq!(host.view.as_ref().unwrap().lock().await.frontier("listener.samples"), Some(5));
     manager.shutdown(&mut host).await.unwrap();
     assert!(lease.admit_row(publication_row(6), 6, 0).is_err());
     runtime.shutdown().await.unwrap();

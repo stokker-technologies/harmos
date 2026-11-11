@@ -83,7 +83,7 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
         let definition = &member.definition;
 
         quote! {
-            if id == <#definition>::DEFINITION.0 {
+            if id == <#definition as #harmos::__private::StreamRow>::ID {
                 return ::core::option::Option::Some(
                     <#definition>::definition(),
                 );

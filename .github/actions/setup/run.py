@@ -7,14 +7,19 @@ import argparse
 import contextlib
 import ctypes
 import hashlib
+import http.client
 import json
 import os
+import random
 import re
 import runpy
 import shlex
 import shutil
+import ssl
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -33,6 +38,9 @@ ZSTD_URL = "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-v1.5.
 ZSTD_SHA256 = "acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9"
 MISE_URL = "https://github.com/jdx/mise/releases/download/v2026.10.17/mise-v2026.10.17-windows-x64.zip"
 MISE_SHA256 = "32bcfda5f72bf7cb189e18ba93c2798bffcb4a678fd004e3127780363f2d8c8c"
+DOWNLOAD_ATTEMPTS = 6
+DOWNLOAD_PAUSE_SECONDS = 2
+DOWNLOAD_TIMEOUT_SECONDS = 120
 EXPORTED = {}
 
 # === Types === #
@@ -79,13 +87,38 @@ def export(values):
                 stream.write(f"{name}={value}\n")
 
 
-def download(url, checksum, destination):
+def download(url, checksum, destination, opener=urllib.request.urlopen, sleep=time.sleep):
+    """Fetch A Pinned Archive, Retrying Transient Release CDN Failures With Bounded Backoff."""
     destination.parent.mkdir(parents=True, exist_ok=True)
-    if not destination.is_file() or hashlib.sha256(destination.read_bytes()).hexdigest() != checksum:
-        with urllib.request.urlopen(url, timeout=120) as response:
-            destination.write_bytes(response.read())
-    if hashlib.sha256(destination.read_bytes()).hexdigest() != checksum:
-        raise ValueError("pinned bootstrap archive checksum mismatch")
+    if destination.is_file() and hashlib.sha256(destination.read_bytes()).hexdigest() == checksum:
+        return destination.read_bytes()
+    cause = None
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        try:
+            with opener(url, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
+                content = response.read()
+            break
+        except urllib.error.HTTPError as error:
+            if error.code < 500 and error.code != 429:
+                raise RuntimeError(f"bootstrap archive download failed: {url}: HTTP {error.code}; check the pinned URL") from error
+            cause = f"HTTP {error.code}"
+        except (urllib.error.URLError, TimeoutError, ssl.SSLError, ConnectionError, http.client.HTTPException) as error:
+            cause = f"{type(error).__name__}: {error}"
+        if attempt == DOWNLOAD_ATTEMPTS:
+            raise RuntimeError(
+                f"bootstrap archive download failed after {DOWNLOAD_ATTEMPTS} attempts: {url}: {cause}; "
+                "GitHub release downloads are degraded, rerun the job"
+            )
+        wait = DOWNLOAD_PAUSE_SECONDS * 2 ** (attempt - 1) + random.uniform(0, 1)
+        print(f"bootstrap archive download attempt {attempt}/{DOWNLOAD_ATTEMPTS} failed: {cause}; retrying in {wait:.1f} s", flush=True)
+        sleep(wait)
+    if hashlib.sha256(content).hexdigest() != checksum:
+        raise ValueError(f"pinned bootstrap archive checksum mismatch: {url}")
+    # A Partial Or Interrupted Write Never Passes As The Archive.
+    partial = destination.with_name(destination.name + ".partial")
+    partial.write_bytes(content)
+    partial.replace(destination)
+    return content
 
 
 def windows(workspace):

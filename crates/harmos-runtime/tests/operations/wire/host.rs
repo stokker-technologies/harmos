@@ -9,6 +9,7 @@
 
 /* === Modules === */
 
+#[path = "runtime_defined.rs"]
 mod runtime_defined;
 
 /* === Re-Exports === */

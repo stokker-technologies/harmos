@@ -36,7 +36,7 @@ const CACHE_PAGES: usize = 4;
 
 /* === Structs === */
 
-/// Temporary Complex Samples With A Fixed 256 KiB Page Cache.
+// Temporary Complex Samples With A Fixed 256 KiB Page Cache.
 pub struct FftBuffer {
     file: tempfile::NamedTempFile,
     length: usize,

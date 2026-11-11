@@ -110,7 +110,7 @@ enum Staging {
     Pending,
     Staged,
     // Preserve The Attempt Refusal For Callers Awaiting Staging.
-    Refused(String),
+    Refused(SidecarError),
 }
 
 struct Request {
@@ -192,6 +192,7 @@ struct Exchange<'a, A: Application, H> {
 
 #[derive(Clone, Debug)]
 pub enum Notice {
+    ObserverCadence { report: harmos_sidecar::CadenceReport },
     Logged { line: String },
     Published { publication: ManagedPublication },
 }
@@ -258,7 +259,7 @@ impl Notice {
     pub fn published(&self) -> Option<&ManagedPublication> {
         match self {
             Self::Published { publication } => Some(publication),
-            Self::Logged { .. } => None,
+            Self::Logged { .. } | Self::ObserverCadence { .. } => None,
         }
     }
 }

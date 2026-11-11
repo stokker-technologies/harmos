@@ -29,7 +29,6 @@ const HEAD: &[u8] = b"\0HARMOS:ARTIFACT:V1:{\"kind\":\"publications\",\"facility
 const OWNER: &[u8] = b",\"owner\":";
 const STREAMS: &[u8] = b",\"streams\":[";
 const ID: &[u8] = b"{\"id\":";
-const SCHEMA: &[u8] = b",\"schema\":";
 const WINDOW: &[u8] = b",\"window\":";
 const METADATA: &[u8] = b",\"metadata\":";
 const ROW_METADATA: &[u8] = b",\"row_metadata\":";
@@ -49,7 +48,6 @@ pub struct Entry {
     pub id: &'static str,
     pub metadata_json: &'static str,
     pub row_metadata_json: &'static str,
-    pub schema: u32,
     pub window: usize,
     pub row: Definition,
 }
@@ -71,7 +69,6 @@ pub struct NamedStream {
     pub row_metadata: Vec<crate::StreamField>,
 
     pub id: String,
-    pub schema: u32,
     pub window: usize,
     pub row: String,
 }
@@ -103,9 +100,6 @@ pub enum Error {
     #[error("`{id}` is not a portable Harmos stream id")]
     InvalidId { id: String },
 
-    #[error("the stream `{id}` has a zero schema ordinal")]
-    ZeroSchema { id: String },
-
     #[error("the stream `{id}` has a zero window")]
     ZeroWindow { id: String },
 
@@ -131,7 +125,6 @@ pub enum Error {
 pub trait StreamSpec {
     type Row;
     const ID: &'static str;
-    const VERSION: u32;
     const WINDOW: usize;
     const METADATA_JSON: &'static str = "";
     const ROW_METADATA_JSON: &'static str = "[]";
@@ -172,7 +165,6 @@ impl NamedManifest {
                     metadata: stream.metadata,
                     row_metadata: stream.row_metadata,
                     id: stream.id,
-                    schema: stream.schema,
                     window: stream.window,
                     row,
                 };
@@ -209,7 +201,6 @@ impl Entry {
             id: S::ID,
             metadata_json: S::METADATA_JSON,
             row_metadata_json: S::ROW_METADATA_JSON,
-            schema: S::VERSION,
             window: S::WINDOW,
             row: <S::Row as crate::schema::Described>::DEFINITION,
         }
@@ -223,7 +214,6 @@ pub const fn merge<const N: usize>(named: &[Entry], sampled: &[Entry]) -> [Entry
         id: "",
         metadata_json: "",
         row_metadata_json: "[]",
-        schema: 0,
         window: 0,
         row: Definition::of::<()>(),
     }; N];
@@ -262,7 +252,7 @@ pub const fn require_subset(outputs: &[&[Entry]], grants: &[Entry]) {
             let mut found = false;
             while grant < grants.len() {
                 let declared = &grants[grant];
-                if same_bytes(required.id, declared.id) && required.schema == declared.schema && required.window == declared.window {
+                if same_bytes(required.id, declared.id) && required.window == declared.window {
                     found = true;
                     break;
                 }
@@ -331,7 +321,6 @@ pub fn validate_match_with_settings(expected: &[Entry], actual: &[StreamDeclarat
             metadata,
             row_metadata,
             id: entry.id.to_owned(),
-            schema: entry.schema,
             window: entry.window,
             row: Schema::from_declaration(entry.row, settings).map_err(|source| Error::Fields {
                 id: entry.id.to_owned(),
@@ -363,9 +352,6 @@ pub fn validate(stream: &StreamDeclaration) -> Result<(), Error> {
 pub fn validate_with_settings(stream: &StreamDeclaration, settings: &SchemaSettings) -> Result<(), Error> {
     if !crate::stream_subset(&stream.id) {
         return Err(Error::InvalidId { id: stream.id.clone() });
-    }
-    if stream.schema == 0 {
-        return Err(Error::ZeroSchema { id: stream.id.clone() });
     }
     if stream.window == 0 {
         return Err(Error::ZeroWindow { id: stream.id.clone() });
@@ -400,8 +386,6 @@ pub const fn encoded_len(facility: &str, owner: &str, streams: &[Entry]) -> usiz
     while index < streams.len() {
         len += ID.len()
             + quoted_len(streams[index].id)
-            + SCHEMA.len()
-            + digits(streams[index].schema as u64)
             + WINDOW.len()
             + digits(streams[index].window as u64)
             + ROW.len()
@@ -435,8 +419,6 @@ pub const fn encode<const N: usize>(facility: &str, owner: &str, streams: &[Entr
         }
         write(&mut output, &mut cursor, ID);
         quoted(&mut output, &mut cursor, streams[index].id);
-        write(&mut output, &mut cursor, SCHEMA);
-        super::number(&mut output, &mut cursor, streams[index].schema as u64);
         write(&mut output, &mut cursor, WINDOW);
         super::number(&mut output, &mut cursor, streams[index].window as u64);
         write(&mut output, &mut cursor, ROW);

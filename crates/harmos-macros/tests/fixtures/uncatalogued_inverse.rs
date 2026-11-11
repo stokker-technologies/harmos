@@ -31,10 +31,12 @@ use serde::{Deserialize, Serialize};
 struct Sheet;
 
 #[harmos::transaction(id = "sheet.place",  inverse = Remove)]
+#[derive(harmos::Described)]
 #[derive(Deserialize, Serialize)]
 struct Place;
 
 #[harmos::transaction(id = "sheet.remove",  inverse = Place)]
+#[derive(harmos::Described)]
 #[derive(Deserialize, Serialize)]
 struct Remove;
 

@@ -59,9 +59,16 @@ pub struct Requirement {
 
 /* === Traits === */
 
-// The Stable Identity And Semantic Version Of A Declared Definition.
-pub trait Identified {
-    fn definition() -> (DefinitionId, u32);
+// The Stable Identity And Opaque Shape Revision Of A Declared Definition.
+pub trait Identified: crate::schema::Described {
+    const ID: &'static str;
+
+    fn definition() -> (DefinitionId, u32) {
+        let schema = crate::schema::graph::Schema::from_declaration(Self::DEFINITION, &crate::config::SchemaSettings::default())
+            .expect("valid data shape");
+        let version = crate::schema::identity::revision(&schema).expect("valid data shape revision");
+        (DefinitionId::new(Self::ID), version)
+    }
 }
 
 /* === Implementations === */
@@ -117,9 +124,7 @@ impl DefinitionId {
 
 // The Unit Definition Of A Catalog That Declares Nothing.
 impl Identified for () {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new("harmos:unit"), 1)
-    }
+    const ID: &'static str = "harmos:unit";
 }
 
 impl fmt::Display for DefinitionId {

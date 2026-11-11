@@ -8,7 +8,7 @@
 
 ## Validation
 
-<!-- List commands and results, platform, and relevant Cargo features. Repository gate: mise run ci:simulate. State checks not run or failing and why. Include comparable evidence for performance claims. -->
+<!-- List targeted local tasks and results, platform, and relevant Cargo features. Hosted CI and Nightly provide full validation. State checks not run or failing and why. Include comparable evidence for performance claims. -->
 
 ## Compatibility and Documentation
 

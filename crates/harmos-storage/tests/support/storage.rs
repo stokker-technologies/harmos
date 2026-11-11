@@ -406,6 +406,9 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 // Only a bounded removal list is allocated, independent of key count.
                 for (&position, object) in objects.range(..=through.sequence) {
                     let retention = retention(&object.value.schema)?;
+                    if retention == ObjectRetention::All {
+                        continue;
+                    }
                     if retention == ObjectRetention::UntilReleased
                         && !self.object_releases.lock().unwrap().iter().any(|release| {
                             release.schema == object.value.schema

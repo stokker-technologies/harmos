@@ -36,9 +36,24 @@ use crate::{Application, state::Position, storage::Cursor};
 
 /* === Type Aliases === */
 
-pub(super) type Windows = HashMap<Arc<str>, HashMap<u32, Arc<Wired>>>;
+pub(super) type Windows = HashMap<Arc<str>, Revisions>;
 
 /* === Structs === */
+
+#[derive(Debug, Default)]
+pub(super) struct Revisions {
+    pub(super) current: Option<u32>,
+    pub(super) wires: HashMap<u32, Arc<Wired>>,
+    pub(super) definitions: HashMap<u32, Contract>,
+}
+
+// Historical Collision Evidence Retains No Live Window Or Row Descriptor.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Contract {
+    pub(super) owner: Option<Arc<str>>,
+    row: harmos_domain::Fingerprint,
+    window: usize,
+}
 
 pub(crate) struct Delivery {
     pub(crate) rows: Vec<(Cursor, Definition, Position, Row)>,
@@ -61,6 +76,7 @@ pub(crate) struct Wired {
 pub(crate) struct Table {
     pub(super) windows: RwLock<Windows>,
     pub(super) sequence: Arc<AtomicU64>,
+    drained: AtomicU64,
     pub(super) pump: watch::Sender<()>,
     pub(super) visibility: Arc<RwLock<()>>,
     pub(super) publications: Arc<super::publication::Pool>,
@@ -86,10 +102,8 @@ pub(crate) enum Refused {
 
 /* === Traits === */
 
-pub trait Stream<A: Application>: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {
+pub trait Stream<A: Application>: crate::schema::Described + Clone + Send + Sync + Serialize + DeserializeOwned + 'static {
     const ID: &'static str;
-
-    const VERSION: u32;
 
     const WINDOW: usize;
 
@@ -106,7 +120,7 @@ pub trait Stream<A: Application>: Clone + Send + Sync + Serialize + DeserializeO
     }
 
     fn definition() -> Definition {
-        Definition::declared::<Self>(Self::ID, Self::VERSION, Self::WINDOW)
+        Definition::native::<Self>(Self::ID, Self::WINDOW)
             .batching(Self::batch_definition())
             .presentation(Self::metadata(), Self::row_metadata())
     }
@@ -121,7 +135,6 @@ where
     A::Streams: StreamCatalog<S>,
 {
     const ID: &'static str = S::ID;
-    const VERSION: u32 = S::VERSION;
     const WINDOW: usize = S::WINDOW;
     fn metadata() -> crate::Metadata {
         S::metadata()
@@ -136,12 +149,27 @@ where
     }
 }
 
+impl Contract {
+    pub(super) fn of(definition: &Definition) -> Self {
+        Self {
+            owner: definition.owner().map(Arc::from),
+            row: harmos_domain::schema::identity::fingerprint(
+                definition.schema().root().expect("validated row schema"),
+                "harmos.postcard.v1",
+            )
+            .expect("validated canonical row schema"),
+            window: definition.window(),
+        }
+    }
+}
+
 impl Table {
     pub(crate) fn resuming(definitions: impl IntoIterator<Item = Definition>, floor: Position, resume: Cursor) -> Result<Self, Refused> {
         let (pump, _) = watch::channel(());
         let table = Self {
             windows: RwLock::new(HashMap::new()),
             sequence: Arc::new(AtomicU64::new(resume.0)),
+            drained: AtomicU64::new(resume.0),
             pump,
             visibility: Arc::new(RwLock::new(())),
             publications: Arc::new(super::publication::Pool::new()),
@@ -181,7 +209,14 @@ impl Table {
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             staged: None,
         });
-        windows.insert(Arc::<str>::from(wired.definition.id()), HashMap::from([(wired.definition.version(), Arc::clone(&wired))]));
+        windows.insert(
+            Arc::<str>::from(wired.definition.id()),
+            Revisions {
+                current: Some(wired.definition.version()),
+                definitions: HashMap::from([(wired.definition.version(), Contract::of(&wired.definition))]),
+                wires: HashMap::from([(wired.definition.version(), Arc::clone(&wired))]),
+            },
+        );
 
         Ok(wired)
     }
@@ -189,21 +224,45 @@ impl Table {
     pub(crate) fn wired(&self, id: &str, version: u32) -> Option<Arc<Wired>> {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
         let wired =
-            self.windows.read().expect("stream registry poisoned").get(id).and_then(|revisions| revisions.get(&version)).cloned()?;
+            self.windows.read().expect("stream registry poisoned").get(id).and_then(|revisions| revisions.wires.get(&version)).cloned()?;
         wired.admitted()
     }
 
     pub(crate) fn declared(&self) -> Vec<Arc<Wired>> {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
-        visible(
-            self.windows
-                .read()
-                .expect("stream registry poisoned")
-                .values()
-                .flat_map(|revisions| revisions.values())
-                .cloned()
-                .collect::<Vec<_>>(),
-        )
+        self.windows
+            .read()
+            .expect("stream registry poisoned")
+            .values()
+            .filter_map(|revisions| revisions.current.and_then(|current| revisions.wires.get(&current)).and_then(Wired::admitted))
+            .collect()
+    }
+
+    pub(crate) fn current(&self, id: &str) -> Option<Arc<Wired>> {
+        let _visibility = self.visibility.read().expect("stream visibility poisoned");
+        let windows = self.windows.read().expect("stream registry poisoned");
+        let revisions = windows.get(id)?;
+        revisions.wires.get(&revisions.current?).and_then(Wired::admitted)
+    }
+
+    // Retain Only Windows Still Needed By A Live Feed Or Staging.
+    pub(super) fn retire(&self, windows: &mut Windows) {
+        let taken = self.ingest.taken().min(self.drained.load(std::sync::atomic::Ordering::Acquire));
+        for revisions in windows.values_mut() {
+            revisions.wires.retain(|revision, wired| {
+                let pending = {
+                    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                    {
+                        wired.staged.as_ref().is_some_and(|staged| !staged.scope.has_committed())
+                    }
+                    #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
+                    {
+                        false
+                    }
+                };
+                revisions.current == Some(*revision) || pending || wired.window.latest_locked() > taken
+            });
+        }
     }
 
     pub(crate) fn hold(&self, selections: impl IntoIterator<Item = Vec<Definition>>) -> Result<Vec<Holding>, Refused> {
@@ -224,6 +283,13 @@ impl Table {
         Ok(held)
     }
 
+    pub(crate) fn drained(&self, cursor: u64) {
+        self.drained.store(cursor, std::sync::atomic::Ordering::Release);
+        let _visibility = self.visibility.read().expect("stream visibility poisoned");
+        let mut windows = self.windows.write().expect("stream registry poisoned");
+        self.retire(&mut windows);
+    }
+
     pub(crate) fn delivery(&self) -> watch::Receiver<()> {
         self.pump.subscribe()
     }
@@ -232,20 +298,21 @@ impl Table {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
         // Hold admission until the global cut is assembled. A new window
         // publishing below `reaches` must not be absent from this delivery.
-        let windows = self.windows.read().expect("stream registry poisoned");
+        let mut windows = self.windows.write().expect("stream registry poisoned");
+        self.retire(&mut windows);
         // Include every physical window in the cut. A shared generation may
         // commit while this read lock is held; its first rows must remain part
         // of the global cursor span even when catalog discovery began earlier.
         let reaches = windows
             .values()
-            .flat_map(|revisions| revisions.values())
+            .flat_map(|revisions| revisions.wires.values())
             .map(|wired| wired.window.latest_locked())
             .max()
             .unwrap_or(resume.0)
             .max(resume.0);
         let mut rows = Vec::new();
         let mut incomplete = Vec::new();
-        for wired in windows.values().flat_map(|revisions| revisions.values()) {
+        for wired in windows.values().flat_map(|revisions| revisions.wires.values()) {
             let (retained, lost) = wired.window.recorded_after_locked(resume.0, reaches);
             let Some(wired) = wired.admitted() else {
                 continue;
@@ -266,8 +333,7 @@ impl Table {
 
     pub(crate) fn frontier(&self) -> Cursor {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
-        let windows = self.windows.read().expect("stream registry poisoned");
-        Cursor(windows.values().flat_map(|revisions| revisions.values()).map(|wired| wired.window.latest_locked()).max().unwrap_or(0))
+        Cursor(self.sequence.load(std::sync::atomic::Ordering::Acquire))
     }
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
@@ -299,22 +365,51 @@ impl Wired {
 
 /* === Private Functions === */
 
-fn visible(wires: impl IntoIterator<Item = Arc<Wired>>) -> Vec<Arc<Wired>> {
-    let wires = wires.into_iter();
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-    let wires = {
-        let mut commits = std::collections::BTreeMap::new();
-        wires.filter_map(move |wired| {
-            if let Some(staged) = &wired.staged {
-                let committed = *commits.entry(staged.scope.generation()).or_insert_with(|| staged.scope.has_committed());
-                if !committed {
-                    return staged.previous.clone();
-                }
-            }
-            Some(wired)
-        })
-    };
-    wires.collect()
-}
-
 /* === Tests === */
+
+#[cfg(all(test, any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retired_windows_release_after_feeds_and_readers_release_them() {
+        let table = Table::resuming([], Position::ORIGIN, Cursor::ORIGIN).unwrap();
+        let feed = table.ingest.engage(0);
+        let mut weak = Vec::new();
+        let mut readers = Vec::new();
+        for index in 1..=64 {
+            let definition = Definition::native::<u64>("samples", index);
+            let revision = definition.version();
+            let window = Arc::new(
+                Window::wired(4, Position::ORIGIN, table.sequence.clone(), table.pump.clone()).visible_with(table.visibility.clone()),
+            );
+            window.publish(Position::ORIGIN, Arc::new(index as u64));
+            weak.push(Arc::downgrade(&window));
+            if index == 1 {
+                readers.push(window.clone());
+            }
+            let wired = Arc::new(Wired {
+                definition: definition.clone(),
+                window,
+                validation: None,
+                publisher: Mutex::new(Weak::new()),
+                staged: None,
+            });
+            {
+                let mut windows = table.windows.write().unwrap();
+                let revisions = windows.entry("samples".into()).or_default();
+                revisions.current = Some(revision);
+                revisions.definitions.insert(revision, Contract::of(&definition));
+                revisions.wires.insert(revision, wired);
+            }
+            table.drained(u64::MAX);
+        }
+        assert_eq!(weak.iter().filter(|window| window.strong_count() > 0).count(), 64);
+        feed.took(64);
+        table.drained(64);
+        assert_eq!(weak.iter().filter(|window| window.strong_count() > 0).count(), 2);
+        readers.clear();
+        assert_eq!(weak.iter().filter(|window| window.strong_count() > 0).count(), 1);
+        assert_eq!(table.declared()[0].definition.version(), Definition::native::<u64>("samples", 64).version());
+    }
+}

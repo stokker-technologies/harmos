@@ -66,13 +66,13 @@ struct State {
 }
 
 #[harmos_runtime::transaction(id = "bench.advance")]
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Serialize, Deserialize)]
 struct Advance {
     payload: String,
 }
 
 #[harmos_runtime::record(id = "bench.observed")]
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Serialize, Deserialize)]
 struct Observed {
     payload: String,
 }

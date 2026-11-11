@@ -160,7 +160,7 @@ impl Endpoint {
         // Calls on One Stream Stage in Arrival Order
         let turn = self.turns.lock().expect("native publication turns poisoned").entry(request.stream.to_owned()).or_default().clone();
         let _turn = turn.lock().await;
-        let lease = scope.publication_in(context, request.stream, request.schema)?;
+        let lease = scope.publication_in(context, request.stream)?;
 
         // Every Row Published Before This Call Is Ingested Before It Stages
         let mut ended = self.ended.clone();
