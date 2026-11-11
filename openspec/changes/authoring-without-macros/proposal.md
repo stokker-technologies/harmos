@@ -6,8 +6,8 @@ to the macros used on the host side and by applications.
 
 ## Why
 
-`harmos-macros` is about 5,900 lines with 3,700 lines of tests. No concept it serves needs an
-attribute macro. Only reading a type's fields justifies generated code, and a derive does that.
+`harmos-macros` still generates host, data and guest declarations. No declaration it serves
+needs an attribute macro. Only reading a type's fields justifies generated code, and a derive does that.
 Everything else is data an application can build as ordinary values, composed and passed by
 value, and checked when it starts.
 
@@ -18,7 +18,7 @@ the cheapest and safest to the riskiest:
 
 | Step | Macro | Becomes |
 | --- | --- | --- |
-| 1 | Unused `domain_` and `runtime_` variants | Deleted |
+| 1 | `domain_` and `runtime_` catalog/operation aliases | Inventory live consumers; migrate with steps 7–8 before deleting exports |
 | 2 | `listener` | A typed listener value; its callback is looked up at start |
 | 3 | `streams` | A list of stream values |
 | 4 | `lanes` | Lane values in a set that checks its capacities when built |
@@ -48,8 +48,18 @@ let changes = StateCatalog::new().transaction(movement).build()?;
 application.state(changes);
 ```
 
-After the change about 2,000 lines of derives remain: the portable message derive, `Described`
-for stored data, and row field access.
+The `domain_catalog`, `runtime_catalog`, `domain_operation` and `runtime_operation` aliases
+are live through domain/runtime/operations re-exports and their consumers. Step 1 inventories
+and schedules their migration; it does not delete live aliases. Replace them with their
+operation/catalog families at steps 7–8, then remove their exports and generators.
+
+After step 11, consolidate surviving field-reading derives in `sdk/rust/derive`
+(`harmos-sdk-derive`) and delete `harmos-macros`, coordinated with `grpc-plugins` 6.10.
+Keep stored-data `Described`, protobuf Message and row field access semantically distinct;
+the SDK must gain no host dependencies. The `grpc-plugins` order is authoritative host
+protobuf, this change's ordered replacements and derive consolidation, domain reduction,
+then guests with 7.1. Guest builder registration and deletion of `harmos-guest-macros`
+belong to that deferred guest lifecycle/SDK adapter migration.
 
 ## What Is Given Up
 
