@@ -84,7 +84,7 @@
   - `crates/harmos-runtime/tests/streams/main.rs` — Migrate native plugin fixtures to `plugin-grpc`; retain host stream/history behaviour and guest fixtures without graph-order assumptions.
   - `crates/harmos-runtime/tests/streams/revisions.rs` — Migrate native plugin fixtures to `plugin-grpc`; retain host stream/history behaviour and guest fixtures without graph-order assumptions.
   - `crates/harmos-runtime/tests/support/fixtures.rs` — Migrate native fixture inspection/library selectors as their consumers move to SDK Describe; retain stamped guest artifacts and shared fixture verification.
-  - `crates/harmos-runtime/tests/support/native_publications.rs` — Migrate sidecar fixture/support consumers to `plugin-grpc` as their stories move; retain shared host/guest support.
+  - `crates/harmos-runtime/tests/support/native_publications.rs` — Delete the fixture used only by the retired native publication transport benchmark; it has no guest consumer.
   - `crates/harmos-runtime/tests/support/native_streams.rs` — Migrate retained host-to-plugin listener consumption to protobuf SDK operations through `plugin-grpc`; delete framed-carrier mechanics.
   - `crates/harmos-runtime/tests/support/native_streams/plugin.rs` — Migrate retained host-to-plugin listener consumption to protobuf SDK operations through `plugin-grpc`; delete framed-carrier mechanics.
   - `crates/harmos-runtime/tests/support/operations_fixture.rs` — Migrate sidecar fixture/support consumers to `plugin-grpc` as their stories move; retain shared host/guest support.
@@ -212,7 +212,7 @@
 - [ ] 4.4 Migrate the examples and fixtures.
   - [x] 4.4.1 Migrate Schematic advice to SDK protobuf builders and managed placement, host analysis and transfer streaming, native packaging and benchmark selectors.
   - [x] 4.4.2 Migrate the stream-consumer fixture and its host-row journey to SDK unary calls on managed placement.
-  - [ ] 4.4.3 Retire or migrate crates/harmos-sidecar/tests/fixtures, crates/harmos-runtime/tests/fixtures/process_client.rs and process_provider.rs, and the native macro fixture consumers under crates/harmos-macros/tests; authoring fixture libraries now select harmos_sdk_grpc instead of harmos_sidecar.
+  - [ ] 4.4.3 Retire or migrate crates/harmos-sidecar/tests/fixtures/catalog_sidecar.rs, crates/harmos-runtime/tests/fixtures/process_client.rs and process_provider.rs, and the native macro fixture consumers under crates/harmos-macros/tests; authoring fixture libraries now select harmos_sdk_grpc instead of harmos_sidecar.
 
 ## 5. Pilot SDKs
 
@@ -230,7 +230,7 @@
 - [ ] 6.6 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.
   - [x] 6.6.1 Complete targeted proof of the replacement Schematic composition and host-row consumption journeys.
   - [ ] 6.6.2 Migrate the remaining retained behaviour under crates/harmos-runtime/tests/{sidecar,observers,operations/wire,application,plugin,runtime,integration} and remove assertions for retired graph/grant/token/lease/cadence mechanisms.
-  - [ ] 6.6.3 Delete framed transport tests and benches in crates/harmos-sidecar and native transport benchmark branches in crates/harmos-runtime/benches, preserving guest-used support.
+  - [x] 6.6.3 Delete framed transport tests and benches in crates/harmos-sidecar and native transport benchmark branches in crates/harmos-runtime/benches, preserving guest-used support.
 - [ ] 6.7 Update the product guide, README and authoring guidance.
 
 ## 7. Guests

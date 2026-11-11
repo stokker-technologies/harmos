@@ -7,7 +7,7 @@
 # ***
 
 
-"""Build Benchmarks And Their Matching Schematic Carrier Fixtures."""
+"""Build Benchmarks and Their Matching Schematic Guest Fixture."""
 
 # === Imports === #
 
@@ -54,7 +54,6 @@ def build(extra: list[str]) -> Path:
     with temporary.directory() as scratch:
         tool = fixtures.driver("bench", scratch)
         for package, backend, target in (
-            ("schematic-sidecar", "sidecar", []),
             ("schematic-guest", "guest", ["--features", "benchmark", "--target", "wasm32-unknown-unknown"]),
         ):
             capture = fixtures.capture(

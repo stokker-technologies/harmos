@@ -75,23 +75,6 @@ impl harmos_runtime::Application for Model {
 }
 
 impl Fixture {
-    #[cfg(feature = "plugin-sidecar")]
-    #[allow(dead_code, reason = "Each Carrier Benchmark Selects Its Matching Constructor")]
-    pub async fn sidecar() -> Self {
-        let (runtime, host_elapsed) = runtime().await;
-        let started = Instant::now();
-        let executable = harmos_runtime::sidecar::Executable::at(artifact("schematic-sidecar")).unwrap();
-        let mut plugin = plugin_settings();
-        plugin.host_operations.push(harmos_runtime::Identifier::new("host.publish").unwrap());
-        let settings = harmos_runtime::config::PluginSidecarSettings { plugin, calls: nz(8) };
-        runtime.plugin.register_sidecar::<schematic_operations::transfer::Native>(executable, settings, Lanes::Open).await.unwrap();
-        runtime.plugin.initialize().await.unwrap();
-        Self {
-            runtime,
-            startup_elapsed: host_elapsed + started.elapsed(),
-        }
-    }
-
     #[cfg(feature = "plugin-guest")]
     #[allow(dead_code, reason = "Each Carrier Benchmark Selects Its Matching Constructor")]
     pub async fn guest() -> Self {

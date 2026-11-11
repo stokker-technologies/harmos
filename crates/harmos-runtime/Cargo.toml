@@ -298,18 +298,6 @@ path = "benches/streams/main.rs"
 harness = false
 
 [[bench]]
-name = "integration-sidecar"
-path = "benches/sidecar/main.rs"
-harness = false
-required-features = ["plugin-sidecar"]
-
-[[bench]]
-name = "system-sidecar-host"
-path = "benches/sidecar/system.rs"
-harness = false
-required-features = ["plugin-sidecar"]
-
-[[bench]]
 name = "system-guest"
 path = "benches/guest/main.rs"
 harness = false

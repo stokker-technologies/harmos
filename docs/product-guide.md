@@ -1193,10 +1193,9 @@ Context propagation restores the owning subscriber during polling and cancellati
 Some asynchronous handoffs allocate a boxed future for this teardown guarantee;
 instrumentation overhead has not been benchmarked.
 
-Storage, sidecar hosts, Wasm guests and external gRPC commands have separate
-benchmark suites. Lower-level stream and framing suites retain their codec and
-transport measurements. The carrier suites enable the `benchmark` feature on the
-shipped Schematic sidecar and guest, sharing their transfer contracts and handlers.
+Storage, Wasm guests and external gRPC commands have separate benchmark suites.
+The guest suite enables the `benchmark` feature on the shipped Schematic guest.
+Native gRPC plugins build without the retired framed-transport benchmark feature.
 Each direction uses 256-record, 4096-sample or 1 MiB file batches, comparing unary
 calls against a stream. Generation and content verification are outside timing;
 completion includes the receiver acknowledgment. Records, files and samples run
@@ -1208,17 +1207,14 @@ cases measure crossing the carrier boundary.
 | Suite | What It Measures |
 | --- | --- |
 | [Storage Transforms](../crates/harmos-runtime/benches/storage/transforms.rs) | In-memory RMS, histogram and downsampling kernels over balanced three-phase samples. |
-| [Sidecar Host](../crates/harmos-runtime/benches/sidecar/system.rs) | Real native process: bidirectional 10,000-record, 30 MiB file and 1,000,000-sample transfers, comparing unary batches and streams; startup and command latency. |
 | [Guest](../crates/harmos-runtime/benches/guest/main.rs) | Real Wasm component: the same bidirectional unary/streamed transfer workloads, plus startup and command latency. |
 | [External gRPC](../crates/harmos-runtime/benches/grpc/main.rs) | Separate server-process startup, client commands over a socket, and isolated Postcard/Protobuf codec costs. |
-| [Streams](../crates/harmos-runtime/benches/streams/main.rs) | Concurrent waveform work, codec costs, and native consumers using 64 KiB and 1 MiB payloads. |
-| [Plugin Transport](../crates/harmos-sidecar/benches/transport/main.rs) | Native transport throughput and latency, including 64-byte, 1 KiB, and 64 KiB bursts and a paced 10 MiB/s workload. |
+| [Streams](../crates/harmos-runtime/benches/streams/main.rs) | Concurrent waveform work and codec costs. |
 
-Build matching executables and carrier fixtures with `mise run build:rust:bench`,
+Build matching executables and carrier fixtures with `mise run build -- --artifact bench`,
 then run `mise run bench`.
 
 One million samples represent one second at 1 MHz without pacing ingestion.
-The paced transport rate is also an input, not a claimed throughput result.
 Published comparisons need the revision, hardware, payload, batching and carrier
 alongside native Criterion results.
 

@@ -135,8 +135,8 @@ The guest feature also exposes a `Hash` bridge to the host `HashFile` operation.
 benchmark verifies a local-file range and digest through this bridge
 before timing transfers.
 
-`mise run build -- --artifact bench` builds and stamps the guest with `benchmark`
-and the native gRPC plugin without the removed native benchmark feature.
+`mise run build -- --artifact bench` builds and stamps the guest with `benchmark`.
+The native gRPC plugin is a Product artifact; its framed transport benchmarks are removed.
 The host benchmarks transfer 10,000 records, 30 MiB of file bytes and 1,000,000
 samples in both directions, running the datasets concurrently on one reused
 host/guest instance. Setup and verification are outside timing.

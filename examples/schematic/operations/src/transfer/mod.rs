@@ -7,7 +7,7 @@
  * ***
  */
 
-// Transfer Catalogs for Both Plugin Carriers.
+// Transfer Operations for the Host and Guest.
 
 /* === Modules === */
 
@@ -60,15 +60,6 @@ pub enum Transfers {
 pub enum Guest {
     #[nested]
     Shared(crate::Operations),
-
-    #[nested]
-    Transfers(Transfers),
-}
-
-#[harmos::catalog]
-pub enum Native {
-    #[nested]
-    Shared(crate::Native),
 
     #[nested]
     Transfers(Transfers),

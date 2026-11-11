@@ -19,13 +19,6 @@ required-features = ["kit", "derive"]
 test = false
 bench = false
 
-[[bin]]
-name = "harmos-sidecar-throughput-fixture"
-path = "tests/fixtures/throughput_sidecar.rs"
-required-features = ["kit", "derive"]
-test = false
-bench = false
-
 # === Features === #
 
 [features]
@@ -165,7 +158,6 @@ tokio = { workspace = true, default-features = true, features = ["time", "test-u
 # UI
 
 # Testing
-criterion = { workspace = true, default-features = false }
 
 # === Target Dependencies === #
 
@@ -245,12 +237,6 @@ path = "tests/system/main.rs"
 required-features = ["kit", "derive"]
 
 # === Bench Targets === #
-
-[[bench]]
-name = "system-transport"
-path = "benches/transport/main.rs"
-required-features = ["kit"]
-harness = false
 
 # === Example Targets === #
 
