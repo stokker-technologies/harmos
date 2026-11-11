@@ -75,6 +75,9 @@ The checked-in Rust messages and descriptor set come from `proto/harmos/v1`:
 mise run build -- --package harmos-protocol --example generate
 mise run generate -- --sdk rust
 mise run test -- --package harmos-protocol --target integration --exact generated_code_matches_proto::generated_code_matches_proto
+mise run generate -- --sdk python
+mise run generate -- --sdk csharp
+mise run generate -- --sdk cpp
 ```
 
 `harmos-protocol` supplies reflection for generated host messages. Lifecycle

@@ -45,6 +45,33 @@ def run(root: Path, command: str, profile: str = "dev", *, check: bool = False) 
     dotnet = str(Path(dotnet_root) / ("dotnet.exe" if os.name == "nt" else "dotnet")) if dotnet_root else "dotnet"
     projects = ("Harmos/Harmos.csproj", "Conformance/Conformance.csproj", "Tests/Tests.csproj")
 
+    # Regenerate Each Configured Protocol with the SDK's Pinned Compiler.
+    if command == "generate":
+        for project in projects[:2]:
+            result = subprocess.run(
+                [dotnet, "restore", project, "--locked-mode"],
+                cwd=directory,
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                creationflags=spawn_flags(),
+            )
+            print(result.stdout, flush=True)
+            result.check_returncode()
+            result = subprocess.run(
+                [dotnet, "build", project, "--no-restore", "--configuration", configuration, "-target:Protobuf_Clean,Protobuf_Compile"],
+                cwd=directory,
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                creationflags=spawn_flags(),
+            )
+            print(result.stdout, flush=True)
+            result.check_returncode()
+        return 0
+
     # Build the SDK, Managed Fixture and Story as Explicit Producer Outputs.
     if command == "build":
         for project in projects:

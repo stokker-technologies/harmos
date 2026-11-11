@@ -41,6 +41,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=("dev", "release"), default="dev")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--generate", action="store_true")
     options = parser.parse_args()
     root = Path.cwd()
     directory = root / "target/cpp" / options.profile
@@ -73,6 +74,18 @@ def main() -> None:
     if options.check:
         return
 
+    if options.generate:
+        for relative in (
+            "harmos/v1/plugin.pb.cc",
+            "harmos/v1/plugin.pb.h",
+            "harmos/v1/plugin.grpc.pb.cc",
+            "harmos/v1/plugin.grpc.pb.h",
+            "harmos/conformance/v1/fixture.pb.cc",
+            "harmos/conformance/v1/fixture.pb.h",
+        ):
+            (directory / "generated" / relative).unlink(missing_ok=True)
+    targets = ("harmos_cpp_protocol", "harmos_cpp_fixture") if options.generate else ("harmos-cpp-conformance", "harmos-cpp-tests")
+
     # Compile the Runtime and Code Generator with Bounded Parallelism.
     log = directory / "build.log"
     if log.exists():
@@ -89,8 +102,7 @@ def main() -> None:
                 "--config",
                 configuration,
                 "--target",
-                "harmos-cpp-conformance",
-                "harmos-cpp-tests",
+                *targets,
                 "--parallel",
                 "4",
             ],
