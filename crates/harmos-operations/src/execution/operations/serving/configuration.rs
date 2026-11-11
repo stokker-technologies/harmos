@@ -45,31 +45,31 @@ impl WireTable {
             });
             return self;
         }
-        if let Err(crate::operations::ResourceError::Duplicate { name }) = self.resources.insert(value.into()) {
+        if let Err(crate::execution::operations::ResourceError::Duplicate { name }) = self.resources.insert(value.into()) {
             self.configuration_errors.push(StartupError::DuplicateResource { name });
         }
         self
     }
 
     #[doc(hidden)]
-    pub fn owner_resources(&self) -> &crate::operations::ResourceSet {
+    pub fn owner_resources(&self) -> &crate::execution::operations::ResourceSet {
         &self.resources
     }
 
     #[doc(hidden)]
     pub fn context(&self) -> ExecutionContext {
-        let context = ExecutionContext::new(self.trusted_resources.clone(), crate::operations::CallContext::default());
+        let context = ExecutionContext::new(self.trusted_resources.clone(), crate::execution::operations::CallContext::default());
         context.with_resources(self.resources.clone())
     }
 
     #[doc(hidden)]
-    pub fn provide_resource<T: Send + Sync + 'static>(&mut self, value: Arc<T>) -> Result<(), crate::operations::ResourceError> {
+    pub fn provide_resource<T: Send + Sync + 'static>(&mut self, value: Arc<T>) -> Result<(), crate::execution::operations::ResourceError> {
         self.trusted_resources.insert(value)?;
         self.provide(std::any::TypeId::of::<T>());
         Ok(())
     }
 
-    pub(crate) fn catalog(&mut self, catalog: &crate::operations::Catalog) -> &mut Self {
+    pub(crate) fn catalog(&mut self, catalog: &crate::execution::operations::Catalog) -> &mut Self {
         if !self.catalogs.insert(catalog.identity()) {
             self.configuration_errors.push(StartupError::DuplicateCatalog { name: catalog.name });
             return self;
@@ -154,7 +154,7 @@ impl WireTable {
     }
 }
 
-impl crate::setup::SetupConfiguration for WireTable {
+impl crate::execution::setup::SetupConfiguration for WireTable {
     fn resource<T: Send + Sync + 'static>(&mut self, value: Arc<T>, replace: bool) {
         if replace && !self.resources_frozen {
             self.resources.replace(value);

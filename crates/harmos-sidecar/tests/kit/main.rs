@@ -33,11 +33,11 @@ mod task;
 
 /* === Structs === */
 
-#[harmos_sdk::operation(harmos_path = ::harmos_sdk, id = "storage.read_file", policy = harmos_sdk::OperationPolicy {
+#[harmos_operations::execution::operation(harmos_path = ::harmos_operations::execution, id = "storage.read_file", policy = harmos_operations::execution::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos_sdk::RetryPolicy::Never,
+    retries: harmos_operations::execution::RetryPolicy::Never,
 })]
 struct OwnerRead;
 
@@ -47,11 +47,13 @@ struct OwnerRead;
 
 /* === Implementations === */
 
-impl harmos_sdk::Operation for OwnerRead {
+impl harmos_operations::execution::Operation for OwnerRead {
     type Error = std::convert::Infallible;
 
-    async fn run(self, _: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::Response<()>, Self::Error> {
-        Ok(harmos_sdk::Response::new(()))
+    async fn run(
+        self, _: harmos_operations::execution::Context<'_, Self>,
+    ) -> Result<harmos_operations::execution::Response<()>, Self::Error> {
+        Ok(harmos_operations::execution::Response::new(()))
     }
 }
 
@@ -59,8 +61,8 @@ impl harmos_sdk::Operation for OwnerRead {
 
 /* === Private Functions === */
 
-fn validate_table(mut table: harmos_sdk::__private::WireTable) {
-    let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<OwnerRead>();
+fn validate_table(mut table: harmos_operations::execution::__private::WireTable) {
+    let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<OwnerRead>();
     table.register(batch).unwrap();
     table.validate_binding().unwrap();
     table.validate(&[<OwnerRead as harmos_sidecar::OperationDeclaration>::definition()]).unwrap();
@@ -75,7 +77,7 @@ fn owner_registration_records() {
     let cases: Vec<(String, bool)> =
         serde_json::from_str(include_str!("../../../harmos-domain/tests/fixtures/owner-identities.json")).unwrap();
     for (owner, valid) in cases {
-        let table = harmos_sdk::__private::WireTable::new(&owner);
+        let table = harmos_operations::execution::__private::WireTable::new(&owner);
         assert_eq!(table.is_ok(), valid, "registration {owner:?}");
         let _registered = table.map(validate_table);
         let fact = SystemFact::new(FactSource::Sidecar(owner.clone()), "result/sample".to_owned(), vec![0, 255, 17]);

@@ -92,7 +92,7 @@ enum Envelope<'a> {
         payload: &'a [u8],
     },
     Failed {
-        failure: crate::Failure,
+        failure: crate::execution::Failure,
     },
     Child {
         context: [u8; 32],
@@ -548,7 +548,7 @@ mod payload {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operations::{CallValue, PORTABLE_BYTES, PORTABLE_VALUES};
+    use crate::execution::operations::{CallValue, PORTABLE_BYTES, PORTABLE_VALUES};
 
     #[test]
     fn rejects_previous_envelope_before_decoding_changed_child_shape() {
@@ -559,13 +559,13 @@ mod tests {
     fn child_retry_roundtrip_and_exact_size() {
         let retries = [
             None,
-            Some(crate::RetryPolicy::Never),
-            Some(crate::RetryPolicy::OnTransient {
+            Some(crate::execution::RetryPolicy::Never),
+            Some(crate::execution::RetryPolicy::OnTransient {
                 max_retries: usize::MAX,
-                backoff: crate::Backoff::Exponential {
+                backoff: crate::execution::Backoff::Exponential {
                     initial: std::time::Duration::from_millis(1),
                     maximum: std::time::Duration::from_secs(5),
-                    jitter: crate::Jitter::Deterministic,
+                    jitter: crate::execution::Jitter::Deterministic,
                 },
             }),
         ];

@@ -25,7 +25,7 @@ use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 // Local Imports
 use super::{Codec, InputEnvelope, server};
 use crate::operations::{EncodedInvocation, GrpcBinding, StreamItem};
-use harmos_sdk::operations::{WireStreamLimits, WireStreams};
+use harmos_operations::execution::operations::{WireStreamLimits, WireStreams};
 
 /* === Constants === */
 
@@ -80,7 +80,7 @@ impl super::Wire<Vec<u8>> for Raw {
     }
 
     fn decode_admitted<C>(
-        input: harmos_sdk::grpc::DecodeInput<'_>, admit: impl FnOnce(usize) -> Result<C, Status>,
+        input: harmos_operations::execution::grpc::DecodeInput<'_>, admit: impl FnOnce(usize) -> Result<C, Status>,
     ) -> Result<(Vec<u8>, C), Status> {
         let bytes = input.contiguous().map_err(|error| Status::invalid_argument(error.to_string()))?;
         let claim = admit(bytes.len().saturating_add(std::mem::size_of::<Vec<u8>>()))?;
@@ -353,7 +353,7 @@ pub(crate) fn serve(authority: server::Authority, settings: server::Settings, re
             Err(error) => return server::status(error).into_http(),
         };
         let memory: super::decoding::AdditionalMemory = std::sync::Arc::new(move |bytes| {
-            let encoded = harmos_sdk::grpc::DecodeInput::new(bytes);
+            let encoded = harmos_operations::execution::grpc::DecodeInput::new(bytes);
             let payload = if input || managed {
                 let (tag, payload) = encoded
                     .variant(if managed { &[1, 2, 3, 4] } else { &[1, 2] })
@@ -400,7 +400,7 @@ pub(crate) fn serve(authority: server::Authority, settings: server::Settings, re
 
 /* === Private Functions === */
 
-fn serving(error: harmos_sdk::ServingError) -> Status {
+fn serving(error: harmos_operations::execution::ServingError) -> Status {
     Status::internal(error.to_string())
 }
 

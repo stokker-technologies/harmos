@@ -37,13 +37,13 @@ use super::*;
 impl Manager {
     pub(crate) fn provided_resources() -> Vec<std::any::TypeId> {
         vec![
-            std::any::TypeId::of::<harmos_sdk::operations::Calls>(),
-            std::any::TypeId::of::<harmos_sdk::operations::access::DiscoveryAccess>(),
-            std::any::TypeId::of::<harmos_sdk::operations::access::GrantAccess>(),
-            std::any::TypeId::of::<harmos_sdk::operations::instances::InstanceAccess>(),
+            std::any::TypeId::of::<harmos_operations::execution::operations::Calls>(),
+            std::any::TypeId::of::<harmos_operations::execution::operations::access::DiscoveryAccess>(),
+            std::any::TypeId::of::<harmos_operations::execution::operations::access::GrantAccess>(),
+            std::any::TypeId::of::<harmos_operations::execution::operations::instances::InstanceAccess>(),
             std::any::TypeId::of::<crate::operations::HostContext>(),
             #[cfg(feature = "plugin-sidecar")]
-            std::any::TypeId::of::<harmos_sdk::operations::publication::PublicationAccess>(),
+            std::any::TypeId::of::<harmos_operations::execution::operations::publication::PublicationAccess>(),
         ]
     }
 
@@ -116,7 +116,7 @@ impl Manager {
             })?;
             factory.definition.validate().map_err(|source| Error::OperationDeclaration { source })?;
             factory.validate().map_err(|source| match source {
-                harmos_sdk::ServingError::EndpointTypes => Error::InvalidInput {
+                harmos_operations::execution::ServingError::EndpointTypes => Error::InvalidInput {
                     field: "operation endpoint types",
                     reason: "endpoints differ from the declaration",
                 },
@@ -164,16 +164,16 @@ impl Manager {
     }
     #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(in crate::operations) fn bind_native<D, O>(
-        &self, owner: &str, lane: &'static str, dependencies: harmos_sdk::__private::ResourceSet, definition: OperationDefinition,
-        wire: Option<crate::operations::wire::Dispatch>, plugin: Option<PluginScope>,
+        &self, owner: &str, lane: &'static str, dependencies: harmos_operations::execution::__private::ResourceSet,
+        definition: OperationDefinition, wire: Option<crate::operations::wire::Dispatch>, plugin: Option<PluginScope>,
     ) -> Result<Arc<Entry>>
     where
         D: OperationDeclaration,
-        O: harmos_sdk::operations::Carrier<Declaration = D>,
+        O: harmos_operations::execution::operations::Carrier<Declaration = D>,
     {
-        let mut batch = harmos_sdk::__private::RegistrationBatch::new().carrier::<D, O>();
+        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new().carrier::<D, O>();
         let factory = batch.operations.pop().expect("one native implementation");
-        let resources = harmos_sdk::ExecutionContext::new(dependencies, super::super::CallContext::default())
+        let resources = harmos_operations::execution::ExecutionContext::new(dependencies, super::super::CallContext::default())
             .with_resources(self.resources().clone())
             .resources()
             .clone();
@@ -205,7 +205,7 @@ impl Manager {
         })?;
         let generation = OperationGeneration::fresh()?;
         Ok(Arc::new(Entry {
-            carrier: harmos_sdk::__private::ResourceSet::new(),
+            carrier: harmos_operations::execution::__private::ResourceSet::new(),
             owner,
             definition,
             contract: None,

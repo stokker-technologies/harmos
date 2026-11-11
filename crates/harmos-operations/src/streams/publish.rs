@@ -21,7 +21,7 @@ pub use harmos_domain::model::operations::publication::FollowingRow;
 
 // Local Imports
 #[cfg(feature = "runtime")]
-use harmos_sdk::operations::publication::PublicationAccess;
+use crate::execution::operations::publication::PublicationAccess;
 
 /* === Constants === */
 
@@ -53,10 +53,10 @@ harmos_domain::builtin_payload! {
 impl crate::Operation for Publish {
     type Error = crate::Error;
 
-    async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<crate::Response<()>, Self::Error> {
-        let access = context.resource::<harmos_sdk::operations::publication::PublicationAccess>();
+    async fn run(mut self, context: crate::execution::Context<'_, Self>) -> Result<crate::Response<()>, Self::Error> {
+        let access = context.resource::<crate::execution::operations::publication::PublicationAccess>();
 
-        let publication = harmos_sdk::operations::publication::Publication {
+        let publication = crate::execution::operations::publication::Publication {
             stream: &self.stream,
             sequence: self.sequence,
             published_unix_micros: self.published_unix_micros,

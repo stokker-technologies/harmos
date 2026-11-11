@@ -203,8 +203,8 @@ mod execution {
     // Local Imports
     use super::*;
     use crate::MemorySize;
+    use crate::execution::operations::Operation;
     use crate::{Error, Result};
-    use harmos_sdk::operations::Operation;
     use harmos_storage::{StorageCursor, StoredRecord};
 
     /* === Constants === */
@@ -224,7 +224,7 @@ mod execution {
     impl Operation for super::FollowRecords {
         type Error = Error;
 
-        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<StorageCursor>> {
+        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<crate::execution::operations::Response<StorageCursor>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
             let output = context.streams();
 

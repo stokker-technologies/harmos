@@ -38,7 +38,7 @@ pub struct CadenceReporter(Arc<dyn Fn(&crate::CadenceReport) + Send + Sync>);
 /* === Traits === */
 
 pub trait ObserverHost: Send + Sync + Sized + 'static {
-    fn bind(resources: Arc<harmos_sdk::ExecutionContext>, supervisor: Supervisor) -> Self;
+    fn bind(resources: Arc<harmos_operations::execution::ExecutionContext>, supervisor: Supervisor) -> Self;
 
     fn report_cadence(&self, _report: &crate::CadenceReport) {}
 }
@@ -76,7 +76,7 @@ impl CadenceReporter {
 }
 
 impl ObserverHost for Supervisor {
-    fn bind(_: Arc<harmos_sdk::ExecutionContext>, supervisor: Supervisor) -> Self {
+    fn bind(_: Arc<harmos_operations::execution::ExecutionContext>, supervisor: Supervisor) -> Self {
         supervisor
     }
 }
@@ -95,7 +95,7 @@ mod tests {
     struct Host(Arc<std::sync::Mutex<Vec<crate::CadenceReport>>>);
 
     impl ObserverHost for Host {
-        fn bind(resources: Arc<harmos_sdk::ExecutionContext>, _: Supervisor) -> Self {
+        fn bind(resources: Arc<harmos_operations::execution::ExecutionContext>, _: Supervisor) -> Self {
             resources.resource::<Self>().unwrap().as_ref().clone()
         }
 

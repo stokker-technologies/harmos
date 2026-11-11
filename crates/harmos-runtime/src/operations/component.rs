@@ -29,7 +29,7 @@ use crate::guest::Error as GuestError;
 use crate::guest::host::session::Endpoint;
 use crate::operations::{Declarations, FailureKind, OperationDeclaration, OperationDefinition, WireAnswer, WireCommand};
 use crate::{Error, Identifier, Message, operations::Lane};
-use harmos_sdk::operations::Carrier;
+use harmos_operations::execution::operations::Carrier;
 
 /* === Constants === */
 
@@ -82,7 +82,7 @@ enum Phase {
 #[derive(Debug, thiserror::Error)]
 pub enum ComponentError {
     #[error(transparent)]
-    Dependency(#[from] harmos_sdk::ResourceError),
+    Dependency(#[from] harmos_operations::execution::ResourceError),
 
     #[error(transparent)]
     Stream(#[from] super::RemoteStreamError),
@@ -168,7 +168,7 @@ where
     type StreamEndpoints = E;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn bind(context: harmos_sdk::ExecutionContext) -> Result<Self, ComponentError> {
+    async fn bind(context: harmos_operations::execution::ExecutionContext) -> Result<Self, ComponentError> {
         let component = context.resource::<Component>()?;
         Ok(Self {
             component,
@@ -181,7 +181,7 @@ where
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
     async fn attempt(
-        &mut self, context: harmos_sdk::ExecutionContext, request: &mut O::Request, endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_operations::execution::ExecutionContext, request: &mut O::Request, endpoints: &mut Self::StreamEndpoints,
     ) -> Result<crate::operations::Response<O::Response>, ComponentError> {
         let host = context.resource::<super::HostContext>()?;
         let context = host.borrow();
@@ -310,10 +310,11 @@ impl Component {
             };
             // The guest decoded the request; refuse it before any attempt runs.
             let payload = ready(answer)?;
-            let grant = harmos_sdk::operations::decode_prepared_grant(&payload).map_err(|error| GuestError::Malformed {
-                method: "operate".to_owned(),
-                message: format!("prepared grant is malformed: {error}"),
-            })?;
+            let grant =
+                harmos_operations::execution::operations::decode_prepared_grant(&payload).map_err(|error| GuestError::Malformed {
+                    method: "operate".to_owned(),
+                    message: format!("prepared grant is malformed: {error}"),
+                })?;
             context.admit_grant(grant.as_ref()).map_err(ComponentError::Unauthorized)?;
         }
         let answer = self.phase_encoded(state, context, Phase::Initialize).await?;
@@ -425,7 +426,7 @@ impl Component {
                     scope.owner(),
                     lane.name(),
                     {
-                        let mut dependencies = harmos_sdk::__private::ResourceSet::new();
+                        let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
                         dependencies.insert(handler)?;
                         dependencies
                     },
@@ -451,14 +452,15 @@ impl Carrier for SdkOperation {
     type StreamEndpoints = ();
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn bind(context: harmos_sdk::ExecutionContext) -> Result<Self, ComponentError> {
+    async fn bind(context: harmos_operations::execution::ExecutionContext) -> Result<Self, ComponentError> {
         let binding = context.resource::<SdkBinding>()?;
         Ok(Self { binding, state: None })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
     async fn attempt(
-        &mut self, context: harmos_sdk::ExecutionContext, payload: &mut super::sdk::Encoded, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_operations::execution::ExecutionContext, payload: &mut super::sdk::Encoded,
+        _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<crate::operations::Response<Vec<u8>>, ComponentError> {
         let host = context.resource::<super::HostContext>()?;
         let context = host.borrow();
@@ -526,7 +528,7 @@ where
     use crate::operations::Direction;
     type In<O> = super::StreamInput<<<O as crate::operations::OperationDeclaration>::Input as Direction>::Item>;
     type Out<O> = super::StreamOutput<<<O as crate::operations::OperationDeclaration>::Output as Direction>::Item>;
-    let mut dependencies = harmos_sdk::__private::ResourceSet::new();
+    let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
     dependencies.insert(component)?;
     match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {
         (false, false) => bindings.stage_implementation::<O, ComponentOperation<O, ()>>(lane, dependencies),

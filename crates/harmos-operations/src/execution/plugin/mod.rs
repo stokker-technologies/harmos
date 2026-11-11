@@ -13,7 +13,7 @@ mod owner;
 
 /* === Re-Exports === */
 
-pub use crate::error::Error;
+pub use crate::execution::error::Error;
 pub use harmos_domain::plugin::*;
 pub use owner::{Owner, Table};
 
@@ -27,7 +27,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use crate::operations::{ServingError, WireTable};
+use crate::execution::operations::{ServingError, WireTable};
 use harmos_domain::model::operations::lifecycle;
 
 /* === Constants === */
@@ -42,15 +42,15 @@ use harmos_domain::model::operations::lifecycle;
 
 /* === Traits === */
 
-pub trait Context: crate::lifecycle::Context<Configuration = WireTable> {
+pub trait Context: crate::execution::lifecycle::Context<Configuration = WireTable> {
     fn assign_operations(&self, bytes: &[u8]) -> Result<(), ServingError>;
     fn with_generation(&self, token: [u8; 32]) -> Self;
 }
 
-pub trait Plugin: crate::Lifecycle<Context: Context> + lifecycle::Policy + Sync {
-    const CATALOGS: &'static [crate::operations::Catalog];
+pub trait Plugin: crate::execution::Lifecycle<Context: Context> + lifecycle::Policy + Sync {
+    const CATALOGS: &'static [crate::execution::operations::Catalog];
 
-    fn register(_registrar: &mut crate::Registrar) -> Result<(), crate::RegistrationError> {
+    fn register(_registrar: &mut crate::execution::Registrar) -> Result<(), crate::execution::RegistrationError> {
         Ok(())
     }
 
@@ -63,13 +63,13 @@ pub trait Attachment<C>: Send + Sync + 'static {
     #[doc(hidden)]
     fn bind(self: Arc<Self>, table: &mut WireTable) -> Result<(), ServingError>;
 
-    fn observers(&self) -> Vec<crate::inventory::observers::Declaration>;
+    fn observers(&self) -> Vec<crate::execution::inventory::observers::Declaration>;
     fn quiesce(&self) -> Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + '_>>;
 }
 
 /* === Implementations === */
 
-impl crate::lifecycle::Context for () {
+impl crate::execution::lifecycle::Context for () {
     type Configuration = WireTable;
 }
 

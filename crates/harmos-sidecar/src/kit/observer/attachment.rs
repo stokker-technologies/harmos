@@ -31,9 +31,9 @@ use tokio::sync::oneshot;
 use super::{Activity, Instance, ObserverError, ObserverHost};
 use crate::{Refusal, Supervisor};
 use harmos_domain::observers::Control;
-use harmos_sdk::__private::{RegistrationBatch, WireTable};
-use harmos_sdk::operations::{Carrier, ExecutionContext, ServingError};
-use harmos_sdk::plugin::Attachment;
+use harmos_operations::execution::__private::{RegistrationBatch, WireTable};
+use harmos_operations::execution::operations::{Carrier, ExecutionContext, ServingError};
+use harmos_operations::execution::plugin::Attachment;
 
 /* === Constants === */
 

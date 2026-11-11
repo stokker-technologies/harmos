@@ -33,9 +33,9 @@ use wasmtime::{Config, Engine, Store};
 use harmos::guest::capabilities::Refusal as BridgeRefusal;
 use harmos_domain::inventory::{Declaration, Facility};
 use harmos_domain::{Message, Refusal};
+use harmos_operations::execution::operations::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
 use harmos_operations::lifecycle::Initialize;
 use harmos_operations::lifecycle::InstanceState;
-use harmos_sdk::operations::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
 use sandbox::{EchoOperation, Echoed};
 
 /* === Constants === */
@@ -224,15 +224,15 @@ impl Session {
         let request = Initialize {
             config_json: config.as_bytes().to_vec(),
             generation_context: vec![2; 32],
-            assignments: harmos_sdk::operations::AssignedOperation::encode(&[
-                harmos_sdk::operations::AssignedOperation {
+            assignments: harmos_operations::execution::operations::AssignedOperation::encode(&[
+                harmos_operations::execution::operations::AssignedOperation {
                     operation: "provider.provider.echo".into(),
                     fingerprint: <sandbox::ProviderEchoOperation as harmos_domain::operations::OperationDeclaration>::definition()
                         .fingerprint
                         .0,
                     generation: 1,
                 },
-                harmos_sdk::operations::AssignedOperation {
+                harmos_operations::execution::operations::AssignedOperation {
                     operation: "host.host.publish".into(),
                     fingerprint: <harmos_operations::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition()
                         .fingerprint

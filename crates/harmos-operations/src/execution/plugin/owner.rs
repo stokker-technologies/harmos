@@ -22,8 +22,8 @@ use std::sync::{Arc, Mutex, Weak};
 
 // Local Imports
 use super::{Attachment, Context as PluginContext, Error, Plugin};
-use crate::Setup;
-use crate::operations::{Contract, ExecutionContext, ServingError, StartupError, WireTable};
+use crate::execution::Setup;
+use crate::execution::operations::{Contract, ExecutionContext, ServingError, StartupError, WireTable};
 use harmos_domain::model::operations::lifecycle;
 
 /* === Constants === */
@@ -41,7 +41,7 @@ pub struct Owner<P: Plugin> {
     slot: Arc<Mutex<Slot<P>>>,
     table: Weak<Mutex<WireTable>>,
     contracts: Arc<[Contract]>,
-    observers: Arc<[crate::inventory::observers::Declaration]>,
+    observers: Arc<[crate::execution::inventory::observers::Declaration]>,
     retirement: Mutex<Retirement<P>>,
 }
 
@@ -121,14 +121,15 @@ impl<P: Plugin> Owner<P> {
     }
 
     pub fn new_with_observers(
-        assigned_owner: &str, contracts: Vec<Contract>, capacity: NonZeroUsize, observers: Vec<crate::inventory::observers::Declaration>,
+        assigned_owner: &str, contracts: Vec<Contract>, capacity: NonZeroUsize,
+        observers: Vec<crate::execution::inventory::observers::Declaration>,
     ) -> Result<(Arc<Self>, Table), Error<P>> {
         let definitions: Vec<_> = contracts.iter().map(|contract| contract.operation().clone()).collect();
-        crate::inventory::operations::validate(&definitions).map_err(|error| Error::Inventory(Arc::new(error)))?;
+        crate::execution::inventory::operations::validate(&definitions).map_err(|error| Error::Inventory(Arc::new(error)))?;
         let mut serving = WireTable::new(assigned_owner).map_err(|error| Error::Serving(Arc::new(error)))?;
         serving.capacity(capacity);
         serving.provide(std::any::TypeId::of::<P::Context>());
-        serving.provide(std::any::TypeId::of::<crate::operations::Calls>());
+        serving.provide(std::any::TypeId::of::<crate::execution::operations::Calls>());
         let table = Arc::new(Mutex::new(serving));
         let owner = Arc::new(Self {
             slot: Arc::new(Mutex::new(Slot {
@@ -234,7 +235,7 @@ impl<P: Plugin> Owner<P> {
             }
             Some(token)
         };
-        let config = crate::decode_config(config_json).map_err(|error| Error::Configuration(Arc::new(error)))?;
+        let config = crate::execution::decode_config(config_json).map_err(|error| Error::Configuration(Arc::new(error)))?;
         let mut slot = self.slot.lock().map_err(|_| Error::Poisoned)?;
         if slot.phase != Phase::Empty {
             return Err(Error::Phase);
@@ -312,15 +313,15 @@ impl<P: Plugin> Owner<P> {
     }
 }
 
-impl<P: Plugin> crate::operations::lifecycle::PluginLifecycle for Owner<P> {
-    fn begin(self: Arc<Self>, action: lifecycle::Action) -> Box<dyn crate::operations::lifecycle::LifecycleInstance> {
+impl<P: Plugin> crate::execution::operations::lifecycle::PluginLifecycle for Owner<P> {
+    fn begin(self: Arc<Self>, action: lifecycle::Action) -> Box<dyn crate::execution::operations::lifecycle::LifecycleInstance> {
         Box::new(LifecycleInvocation { owner: self, state: None, action })
     }
 }
-impl<P: Plugin> crate::operations::lifecycle::LifecycleInstance for LifecycleInvocation<P> {
+impl<P: Plugin> crate::execution::operations::lifecycle::LifecycleInstance for LifecycleInvocation<P> {
     fn run<'a>(
         &'a mut self, context: ExecutionContext, config: &'a [u8], generation: &'a [u8], assignments: &'a [u8],
-    ) -> crate::operations::lifecycle::Transition<'a> {
+    ) -> crate::execution::operations::lifecycle::Transition<'a> {
         Box::pin(async move {
             let result: Result<(), Error<P>> = async {
                 match self.action {
@@ -351,7 +352,7 @@ impl<P: Plugin> crate::operations::lifecycle::LifecycleInstance for LifecycleInv
             result.map_err(Into::into)
         })
     }
-    fn cleanup(&mut self) -> crate::operations::lifecycle::Transition<'_> {
+    fn cleanup(&mut self) -> crate::execution::operations::lifecycle::Transition<'_> {
         Box::pin(async {
             match self.state.as_mut() {
                 Some(state) => state.finalize().await.map_err(Into::into),
@@ -479,7 +480,7 @@ impl<P: Plugin> State<P> {
 
 async fn prepare<P: Plugin>(
     config: P::Config, configuration: WireTable, context: P::Context, contracts: Arc<[Contract]>,
-    observers: Arc<[crate::inventory::observers::Declaration]>, assignments: Vec<u8>,
+    observers: Arc<[crate::execution::inventory::observers::Declaration]>, assignments: Vec<u8>,
 ) -> Completed<P> {
     let mut setup = Setup::<P>::new(configuration);
     for catalog in P::CATALOGS {
@@ -573,32 +574,34 @@ async fn guarded<P: Plugin, T>(future: impl Future<Output = Result<T, Error<P>>>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Message;
-    use crate::operations::{OperationCatalog, RegistrationBatch, WireDeclaration};
+    use crate::execution::Message;
+    use crate::execution::operations::{OperationCatalog, RegistrationBatch, WireDeclaration};
 
     struct Events(Arc<Mutex<Vec<&'static str>>>);
     struct ServedCatalog;
 
-    static SERVED: [crate::catalog::Node<WireDeclaration>; 1] = [crate::catalog::Node::Leaf(WireDeclaration::of::<Serve>())];
+    static SERVED: [crate::execution::catalog::Node<WireDeclaration>; 1] =
+        [crate::execution::catalog::Node::Leaf(WireDeclaration::of::<Serve>())];
 
     impl OperationCatalog for ServedCatalog {
-        const CATALOG: crate::operations::Catalog = crate::operations::Catalog::of::<Self>("ServedCatalog", &SERVED, &[]);
+        const CATALOG: crate::execution::operations::Catalog =
+            crate::execution::operations::Catalog::of::<Self>("ServedCatalog", &SERVED, &[]);
 
         fn batch() -> RegistrationBatch {
             RegistrationBatch::new().operation::<Serve>()
         }
     }
 
-    #[crate::operation(harmos_path = crate, resources = [Events, u32], id = "serve", response = u32,
+    #[crate::execution::operation(harmos_path = crate::execution, resources = [Events, u32], id = "serve", response = u32,
         policy = <TestPlugin as lifecycle::Policy>::INITIALIZATION_POLICY)]
     struct Serve;
 
-    impl crate::Operation for Serve {
+    impl crate::execution::Operation for Serve {
         type Error = std::convert::Infallible;
 
-        async fn run(self, context: crate::Context<'_, Self>) -> Result<crate::Response<u32>, Self::Error> {
+        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<crate::execution::Response<u32>, Self::Error> {
             context.resource::<Events>().0.lock().unwrap().push("serve");
-            Ok(crate::Response::from_owner(context.resource::<u32>()))
+            Ok(crate::execution::Response::from_owner(context.resource::<u32>()))
         }
     }
 
@@ -622,16 +625,16 @@ mod tests {
     struct TestPlugin(Config);
 
     impl lifecycle::Policy for TestPlugin {
-        const INITIALIZATION_POLICY: crate::OperationPolicy = crate::OperationPolicy {
+        const INITIALIZATION_POLICY: crate::execution::OperationPolicy = crate::execution::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
-            retries: crate::RetryPolicy::Never,
+            retries: crate::execution::RetryPolicy::Never,
         };
-        const SHUTDOWN_POLICY: crate::OperationPolicy = Self::INITIALIZATION_POLICY;
+        const SHUTDOWN_POLICY: crate::execution::OperationPolicy = Self::INITIALIZATION_POLICY;
     }
 
-    impl crate::Lifecycle for TestPlugin {
+    impl crate::execution::Lifecycle for TestPlugin {
         type Config = Config;
         type Error = std::io::Error;
         type Context = ();
@@ -672,7 +675,7 @@ mod tests {
     }
 
     impl Plugin for TestPlugin {
-        const CATALOGS: &'static [crate::operations::Catalog] = &[ServedCatalog::CATALOG];
+        const CATALOGS: &'static [crate::execution::operations::Catalog] = &[ServedCatalog::CATALOG];
     }
 
     fn ready<T>(future: impl Future<Output = T>) -> T {
@@ -758,7 +761,8 @@ mod tests {
     #[test]
     fn setup_replaces_resource() {
         let mut setup = Setup::<TestPlugin>::new(WireTable::new("fixture").unwrap());
-        let _plugin = ready(<TestPlugin as crate::Lifecycle>::prepare(Config { value: 1, ..Default::default() }, &mut setup)).unwrap();
+        let _plugin =
+            ready(<TestPlugin as crate::execution::Lifecycle>::prepare(Config { value: 1, ..Default::default() }, &mut setup)).unwrap();
         let replacement = Arc::new(2u32);
         setup.overrides(|setup| {
             setup.resource::<u32>(replacement.clone());

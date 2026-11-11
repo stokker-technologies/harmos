@@ -24,8 +24,8 @@ use tokio::sync::{Mutex, watch};
 
 // Local Imports
 use super::ServingError;
-use crate::operations::{EndpointSet, StreamInput, StreamOutput, StreamSettings, streaming};
-use crate::{MemorySize, Message};
+use crate::execution::operations::{EndpointSet, StreamInput, StreamOutput, StreamSettings, streaming};
+use crate::execution::{MemorySize, Message};
 
 /* === Constants === */
 
@@ -342,7 +342,9 @@ impl<T: Message + MemorySize + Send + 'static> Input for Sending<T> {
                     .send_with(bytes, || {
                         let mut item = None::<T>;
                         (codec.decode)(&postcard, &mut item).map_err(streaming::Error::Codec)?;
-                        item.ok_or_else(|| streaming::Error::Codec(crate::MessageError::borrowed("protobuf stream item projection failed")))
+                        item.ok_or_else(|| {
+                            streaming::Error::Codec(crate::execution::MessageError::borrowed("protobuf stream item projection failed"))
+                        })
                     })
                     .await
                     .map_err(ServingError::Stream);

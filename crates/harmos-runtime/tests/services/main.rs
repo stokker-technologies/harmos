@@ -130,7 +130,7 @@ async fn handle_shares_manager() {
                 id: "dynamic".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |_: Arc<harmos_sdk::ExecutionContext>| resident,
+            |_: Arc<harmos_operations::execution::ExecutionContext>| resident,
         )
         .unwrap();
     let dynamic = manager.submit_resident("dynamic").await.unwrap();
@@ -153,7 +153,7 @@ async fn duplicate_service_refused() {
                 id: "boot".into(),
                 policy: harmos_runtime::services::POLICY
             },
-            |_: Arc<harmos_sdk::ExecutionContext>| resident
+            |_: Arc<harmos_operations::execution::ExecutionContext>| resident
         ),
         Err(Error::AlreadyRegistered { domain: "service", name }) if name == "boot"
     ));
@@ -189,7 +189,7 @@ async fn admission_rejects_reserved() {
                 id: String::new(),
                 policy: harmos_runtime::services::POLICY
             },
-            |_: Arc<harmos_sdk::ExecutionContext>| resident
+            |_: Arc<harmos_operations::execution::ExecutionContext>| resident
         ),
         Err(Error::InvalidInput { field: "service name", .. })
     ));
@@ -221,7 +221,7 @@ async fn shutdown_join_started() {
                     id: id.clone(),
                     policy: harmos_runtime::services::POLICY,
                 },
-                move |_: Arc<harmos_sdk::ExecutionContext>| {
+                move |_: Arc<harmos_operations::execution::ExecutionContext>| {
                     let entered = entered.clone();
                     let exited = exited.clone();
                     move |mut context: ServiceContext<Bank>| {

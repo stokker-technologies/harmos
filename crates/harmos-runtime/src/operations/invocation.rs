@@ -24,8 +24,8 @@ use std::sync::{Arc, Mutex};
 // Local Imports
 use super::HostContext;
 use harmos_domain::{MemorySize, Message, MessageError, OperationDeclaration};
-use harmos_sdk::__private::ErasedResponse;
-use harmos_sdk::operations::{CallFuture, Caller, ChildInstance, ControlFuture, InvocationError, StartFuture, Target};
+use harmos_operations::execution::__private::ErasedResponse;
+use harmos_operations::execution::operations::{CallFuture, Caller, ChildInstance, ControlFuture, InvocationError, StartFuture, Target};
 
 /* === Constants === */
 
@@ -103,7 +103,8 @@ impl Caller for HostContext {
                         reason: "callee fingerprint differs",
                     });
                 }
-                let Some(factory) = entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>().cloned() else {
+                let Some(factory) = entry.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>().cloned()
+                else {
                     let payload = (target.encode)(request.as_ref()).ok_or(crate::Error::InvalidInput {
                         field: "declared operation",
                         reason: "callee payload differs",
@@ -140,7 +141,7 @@ impl ChildInstance for NativeChild {
     fn id(&self) -> super::OperationInstanceId {
         self.0.id()
     }
-    fn status(&self) -> ControlFuture<'_, harmos_sdk::operations::instance::Status> {
+    fn status(&self) -> ControlFuture<'_, harmos_operations::execution::operations::instance::Status> {
         Box::pin(std::future::ready(Ok(self.0.control.status().portable())))
     }
     fn request_cancel(&self) -> ControlFuture<'_, ()> {
@@ -161,7 +162,7 @@ impl ChildInstance for EncodedChild {
     fn id(&self) -> super::OperationInstanceId {
         self.invocation.as_ref().expect("owned child").id()
     }
-    fn status(&self) -> ControlFuture<'_, harmos_sdk::operations::instance::Status> {
+    fn status(&self) -> ControlFuture<'_, harmos_operations::execution::operations::instance::Status> {
         Box::pin(std::future::ready(Ok(self.invocation.as_ref().expect("owned child").control.status().portable())))
     }
     fn request_cancel(&self) -> ControlFuture<'_, ()> {
@@ -228,7 +229,7 @@ impl MemorySize for Answer {
 
 fn admit_native<P: Send + 'static>(
     context: &super::Context<'_>, target: Target, request: Box<dyn Any + Send>, retry: Option<super::RetryPolicy>, endpoints: P,
-    factory: harmos_sdk::operations::OperationFactory, erase: fn(P) -> Box<dyn Any + Send>,
+    factory: harmos_operations::execution::operations::OperationFactory, erase: fn(P) -> Box<dyn Any + Send>,
 ) -> crate::Result<super::Running<NativeCall>> {
     let grant = (target.grant)(request.as_ref());
     let memory = (target.memory)(request.as_ref());
@@ -237,11 +238,14 @@ fn admit_native<P: Send + 'static>(
     let binding = super::authored::factory_projected::<NativeCall, P>(
         &context.operations,
         move |request, endpoints| {
-            let payload =
-                request.payload.into_inner().map_err(|_| harmos_sdk::ServingError::Catalog)?.ok_or(harmos_sdk::ServingError::Catalog)?;
+            let payload = request
+                .payload
+                .into_inner()
+                .map_err(|_| harmos_operations::execution::ServingError::Catalog)?
+                .ok_or(harmos_operations::execution::ServingError::Catalog)?;
             factory.prepare_native(resources.clone(), payload, erase(endpoints))
         },
-        |response| Some(harmos_sdk::Response::new(Answer(response))),
+        |response| Some(harmos_operations::execution::Response::new(Answer(response))),
     );
     let mut input = super::binding::Request::from(Request {
         payload: Mutex::new(Some(request)),
@@ -267,7 +271,7 @@ fn admit_native<P: Send + 'static>(
 mod tests {
     use super::*;
     use crate::operations::{Lane, RegistrationExt};
-    use harmos_sdk::{Context, Operation, Response};
+    use harmos_operations::execution::{Context, Operation, Response};
 
     #[crate::lanes]
     enum Lanes {
@@ -427,8 +431,10 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch =
-            harmos_sdk::__private::RegistrationBatch::new().operation::<RetryParent>().operation::<RetryChild>().operation::<Uncertain>();
+        let batch = harmos_operations::execution::__private::RegistrationBatch::new()
+            .operation::<RetryParent>()
+            .operation::<RetryChild>()
+            .operation::<Uncertain>();
         runtime.register_batch(batch.lane(<Lanes as Lane>::default_lane())).await.unwrap();
         assert_eq!(*runtime.operation(RetryParent { value: 42, override_retry: true }).await.unwrap(), 42);
         assert!(runtime.operation(RetryParent { value: 42, override_retry: false }).await.is_err());
@@ -473,7 +479,10 @@ mod tests {
         })
         .await
         .unwrap();
-        runtime.register_batch(harmos_sdk::__private::RegistrationBatch::new().operation::<Deadline>().lane(Lanes::Open)).await.unwrap();
+        runtime
+            .register_batch(harmos_operations::execution::__private::RegistrationBatch::new().operation::<Deadline>().lane(Lanes::Open))
+            .await
+            .unwrap();
         let retry = crate::RetryPolicy::OnTransient {
             max_retries: 1,
             backoff: crate::Backoff::Fixed {
@@ -574,7 +583,7 @@ mod tests {
         let clock = probe.clone();
         runtime.operations.set_attempt_clock(AttemptClock::new(move || *clock.now.lock().unwrap())).unwrap();
         runtime
-            .register_batch(harmos_sdk::__private::RegistrationBatch::new().operation::<TimedAttempt>().lane(Lanes::Open))
+            .register_batch(harmos_operations::execution::__private::RegistrationBatch::new().operation::<TimedAttempt>().lane(Lanes::Open))
             .await
             .unwrap();
         let policy = if retry {
@@ -640,7 +649,7 @@ mod tests {
         async fn inherited_deadline_reports_applied_override() {
             let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
             runtime
-                .register_batch(harmos_sdk::__private::RegistrationBatch::new().operation::<Deadline>().lane(Lanes::Open))
+                .register_batch(harmos_operations::execution::__private::RegistrationBatch::new().operation::<Deadline>().lane(Lanes::Open))
                 .await
                 .unwrap();
             let timeout = std::time::Duration::from_millis(5);
@@ -693,7 +702,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<WaitParent>().operation::<WaitChild>();
+        let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<WaitParent>().operation::<WaitChild>();
         runtime.register_batch(batch.lane(Lanes::Open)).await.unwrap();
         let running = runtime.operation(WaitParent {}).start().await.unwrap();
         probe.started.notified().await;
@@ -712,7 +721,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<RetryParent>().operation::<RetryChild>();
+        let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<RetryParent>().operation::<RetryChild>();
         runtime.register_batch(batch.lane(Lanes::Serial)).await.unwrap();
         let error = runtime.operation(RetryParent { value: 42, override_retry: false }).await.unwrap_err();
         let crate::Error::OperationFailed { source, .. } = error else {
@@ -728,9 +737,9 @@ mod tests {
     #[tokio::test]
     async fn declared_calls_verify_activation_and_run_with_resources() {
         let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
-        let missing = harmos_sdk::__private::RegistrationBatch::new().operation::<Parent>();
+        let missing = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Parent>();
         assert!(runtime.register_batch(missing.lane(<Lanes as crate::operations::Lane>::default_lane())).await.is_err());
-        let missing = harmos_sdk::__private::RegistrationBatch::new().operation::<Leaf>();
+        let missing = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Leaf>();
         assert!(runtime.register_batch(missing.lane(<Lanes as crate::operations::Lane>::default_lane())).await.is_err());
         runtime.shutdown().await.unwrap();
         let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
@@ -738,7 +747,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<Parent>().operation::<Leaf>();
+        let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Parent>().operation::<Leaf>();
         runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
         let direct = runtime.operation(Leaf { value: 5 }).await.unwrap();
         let child = runtime.operation(Parent { value: 5 }).await.unwrap();
@@ -751,18 +760,18 @@ mod tests {
     async fn typed_calls_keep_carrier_and_runtime_resources() {
         struct Carrier(u32);
 
-        impl harmos_sdk::operations::Carrier for Carrier {
+        impl harmos_operations::execution::operations::Carrier for Carrier {
             type Declaration = Leaf;
-            type Error = harmos_sdk::ResourceError;
+            type Error = harmos_operations::execution::ResourceError;
             type StreamEndpoints = ();
 
-            async fn bind(context: harmos_sdk::ExecutionContext) -> Result<Self, Self::Error> {
+            async fn bind(context: harmos_operations::execution::ExecutionContext) -> Result<Self, Self::Error> {
                 let handle = context.resource::<u32>()?;
                 Ok(Self(*handle))
             }
 
             async fn attempt(
-                &mut self, context: harmos_sdk::ExecutionContext, request: &mut Leaf, _: &mut (),
+                &mut self, context: harmos_operations::execution::ExecutionContext, request: &mut Leaf, _: &mut (),
             ) -> Result<Response<u64>, Self::Error> {
                 let resource = context.resource::<u64>()?;
                 let response = request.value + u64::from(self.0) + *resource;
@@ -776,7 +785,7 @@ mod tests {
         .await
         .unwrap();
 
-        let mut batch = harmos_sdk::__private::RegistrationBatch::new().carrier::<Leaf, Carrier>();
+        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new().carrier::<Leaf, Carrier>();
         let factory = batch.operations.pop().unwrap();
         let binding = Arc::new(factory);
         let lane = <Lanes as Lane>::default_lane().name();

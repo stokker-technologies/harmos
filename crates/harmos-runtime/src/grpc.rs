@@ -39,8 +39,8 @@ pub use envelope::{
     PreparedFrame, input_payload_limit, input_payload_limit_admitted, output_item_len, output_item_len_admitted, output_payload_limit,
     output_payload_limit_admitted, prepare_input_item, prepare_input_request,
 };
+pub use harmos_operations::execution::grpc::{encoded_len, encoded_len_admitted};
 pub use harmos_packaging::proto::{DescriptorError, descriptor};
-pub use harmos_sdk::grpc::{encoded_len, encoded_len_admitted};
 pub use input::{InputError, input, open};
 pub use manager::{Attached, GrpcManager, Settings};
 pub use tls::ServerCertificate;

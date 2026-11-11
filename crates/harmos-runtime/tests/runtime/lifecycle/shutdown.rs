@@ -138,7 +138,7 @@ async fn services_stop_first() {
                 id: "caller".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |_: Arc<harmos_sdk::ExecutionContext>| {
+            |_: Arc<harmos_operations::execution::ExecutionContext>| {
                 |mut context: harmos_runtime::services::ServiceContext<Editor>| async move {
                     context.ready();
                     context.stopping().await;

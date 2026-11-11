@@ -108,7 +108,7 @@ impl Manager {
                 })
             }
         };
-        let mut peak = std::mem::size_of::<Vec<harmos_sdk::operations::AssignedOperation>>() + 20;
+        let mut peak = std::mem::size_of::<Vec<harmos_operations::execution::operations::AssignedOperation>>() + 20;
         for contract in contracts() {
             let entry = select(contract)?;
             if entry.contract.as_ref() != Some(contract) {
@@ -121,7 +121,7 @@ impl Manager {
                 entry.owner.as_str().len().checked_add(entry.id().len()).and_then(|length| length.checked_add(1)).ok_or_else(exhausted)?;
             let encoded = name.checked_add(52).and_then(|length| length.checked_mul(2)).ok_or_else(exhausted)?;
             peak = peak
-                .checked_add(std::mem::size_of::<harmos_sdk::operations::AssignedOperation>())
+                .checked_add(std::mem::size_of::<harmos_operations::execution::operations::AssignedOperation>())
                 .and_then(|length| length.checked_add(name))
                 .and_then(|length| length.checked_add(encoded))
                 .ok_or_else(exhausted)?;
@@ -135,14 +135,14 @@ impl Manager {
         let assignments = contracts()
             .map(|contract| {
                 let entry = select(contract)?;
-                Ok(harmos_sdk::operations::AssignedOperation {
+                Ok(harmos_operations::execution::operations::AssignedOperation {
                     operation: format!("{}.{}", entry.owner, entry.id()),
                     fingerprint: entry.definition.fingerprint.0,
                     generation: entry.generation.value(),
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        harmos_sdk::operations::AssignedOperation::encode(&assignments).map_err(|source| Error::OperationFailed {
+        harmos_operations::execution::operations::AssignedOperation::encode(&assignments).map_err(|source| Error::OperationFailed {
             operation: "SDK assignments".into(),
             source: Arc::new(source),
         })

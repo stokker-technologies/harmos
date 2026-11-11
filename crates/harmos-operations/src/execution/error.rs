@@ -19,8 +19,8 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use crate::operations::ServingError;
-use crate::plugin::Plugin;
+use crate::execution::operations::ServingError;
+use crate::execution::plugin::Plugin;
 
 /* === Constants === */
 
@@ -35,16 +35,16 @@ use crate::plugin::Plugin;
 #[derive(thiserror::Error)]
 pub enum Error<P: Plugin> {
     #[error(transparent)]
-    Resource(Arc<crate::ResourceError>),
+    Resource(Arc<crate::execution::ResourceError>),
 
     #[error("invalid plugin configuration: {0}")]
-    Configuration(#[source] Arc<crate::ConfigError>),
+    Configuration(#[source] Arc<crate::execution::ConfigError>),
 
     #[error("plugin lifecycle machinery failed: {0}")]
     Plugin(#[source] Arc<P::Error>),
 
     #[error("plugin operation inventory failed: {0}")]
-    Inventory(#[source] Arc<crate::inventory::operations::Error>),
+    Inventory(#[source] Arc<crate::execution::inventory::operations::Error>),
 
     #[error("plugin operation table failed: {0}")]
     Serving(#[source] Arc<ServingError>),

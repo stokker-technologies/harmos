@@ -236,7 +236,7 @@ impl harmos_runtime::Lifecycle for NativeProviderPlugin {
     type Config = u64;
     type Error = std::io::Error;
 
-    async fn prepare(id: u64, setup: &mut harmos_sdk::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+    async fn prepare(id: u64, setup: &mut harmos_operations::execution::Setup<Self>) -> std::result::Result<Self, Self::Error> {
         let provider = NATIVE_SEEDS
             .lock()
             .unwrap()
@@ -251,7 +251,7 @@ impl harmos_runtime::Lifecycle for NativeProviderPlugin {
 
 #[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "provider", requires = ())]
 impl harmos_runtime::Plugin for NativeProviderPlugin {
-    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[ProviderOperations::CATALOG];
+    const CATALOGS: &'static [harmos_operations::execution::operations::Catalog] = &[ProviderOperations::CATALOG];
 }
 
 impl harmos_operations::lifecycle::Policy for NativeClientPlugin {
@@ -264,7 +264,7 @@ impl harmos_runtime::Lifecycle for NativeClientPlugin {
     type Config = ();
     type Error = std::io::Error;
 
-    async fn prepare(_: (), setup: &mut harmos_sdk::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+    async fn prepare(_: (), setup: &mut harmos_operations::execution::Setup<Self>) -> std::result::Result<Self, Self::Error> {
         let plugin = Self {
             resources: std::sync::Arc::new(NativeClient),
         };
@@ -275,7 +275,7 @@ impl harmos_runtime::Lifecycle for NativeClientPlugin {
 
 #[harmos_macros::plugin(harmos_path = ::harmos_runtime, id = "client", requires = NativeRequirements)]
 impl harmos_runtime::Plugin for NativeClientPlugin {
-    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[ForwardOperations::CATALOG];
+    const CATALOGS: &'static [harmos_operations::execution::operations::Catalog] = &[ForwardOperations::CATALOG];
 }
 
 impl harmos_sidecar::Attach for NativeAttachment {
@@ -363,7 +363,7 @@ impl harmos_runtime::plugin::PluginLifecycle for DependencyHost {
                         id: definition.id.clone(),
                         policy: harmos_runtime::services::POLICY,
                     },
-                    move |_: std::sync::Arc<harmos_sdk::ExecutionContext>| resident.clone(),
+                    move |_: std::sync::Arc<harmos_operations::execution::ExecutionContext>| resident.clone(),
                 )?;
                 resources.registered = true;
                 resources.lease = Some(self.operations.submit_resident(&definition.id).await?);

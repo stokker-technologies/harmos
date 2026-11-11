@@ -35,7 +35,7 @@ pub enum Error<E = Infallible> {
     SnapshotEntry { bytes: usize, limit: usize },
 
     #[error(transparent)]
-    Dependency(#[from] harmos_sdk::ResourceError),
+    Dependency(#[from] harmos_operations::execution::ResourceError),
 
     #[error("runtime shutdown budget expired during {phase}; cleanup remains owned")]
     ShutdownTimeout { phase: &'static str },
@@ -106,7 +106,7 @@ pub enum Error<E = Infallible> {
     },
 
     #[error(transparent)]
-    OperationInvocation(#[from] harmos_sdk::operations::InvocationError),
+    OperationInvocation(#[from] harmos_operations::execution::operations::InvocationError),
 
     // Prints its own line; the cause is the source, read through `failure()`.
     #[error("operation `{operation}` failed")]

@@ -65,8 +65,11 @@ pub const POLICY: ServicePolicy = ServicePolicy {
 
 /* === Type Aliases === */
 
-pub(crate) type ServiceRunner =
-    fn(ServiceDefinition, harmos_sdk::operations::ServiceFactory, ServiceOwner) -> Arc<dyn crate::operations::resident::Runner>;
+pub(crate) type ServiceRunner = fn(
+    ServiceDefinition,
+    harmos_operations::execution::operations::ServiceFactory,
+    ServiceOwner,
+) -> Arc<dyn crate::operations::resident::Runner>;
 
 #[derive(Clone)]
 pub(crate) enum ServiceOwner {
@@ -77,9 +80,9 @@ pub(crate) enum ServiceOwner {
 }
 
 pub(crate) fn authored_runner<A: Application>(
-    definition: ServiceDefinition, factory: harmos_sdk::operations::ServiceFactory, owner: ServiceOwner,
+    definition: ServiceDefinition, factory: harmos_operations::execution::operations::ServiceFactory, owner: ServiceOwner,
 ) -> Arc<dyn crate::operations::resident::Runner> {
-    Arc::new(Typed::<A, harmos_sdk::ExecutionContext, _>::new(definition, move |_| AuthoredService {
+    Arc::new(Typed::<A, harmos_operations::execution::ExecutionContext, _>::new(definition, move |_| AuthoredService {
         factory: factory.clone(),
         instance: None,
         owner: owner.clone(),
@@ -110,8 +113,8 @@ pub struct ServiceManager {
 
 struct AuthoredService {
     owner: ServiceOwner,
-    factory: harmos_sdk::operations::ServiceFactory,
-    instance: Option<Box<dyn harmos_sdk::operations::ServiceInstance>>,
+    factory: harmos_operations::execution::operations::ServiceFactory,
+    instance: Option<Box<dyn harmos_operations::execution::operations::ServiceInstance>>,
 }
 
 pub struct ServiceContext<A: Application> {
@@ -193,19 +196,19 @@ impl ServiceManager {
         }
     }
 
-    pub async fn register<S: harmos_sdk::Service>(&self, id: &str, policy: crate::ServicePolicy) -> Result<()> {
-        let batch = harmos_sdk::__private::RegistrationBatch::new().service::<S>(id, policy);
+    pub async fn register<S: harmos_operations::execution::Service>(&self, id: &str, policy: crate::ServicePolicy) -> Result<()> {
+        let batch = harmos_operations::execution::__private::RegistrationBatch::new().service::<S>(id, policy);
         self.register_batch(batch).await
     }
 
-    pub(crate) async fn register_batch(&self, batch: harmos_sdk::__private::RegistrationBatch) -> Result<()> {
+    pub(crate) async fn register_batch(&self, batch: harmos_operations::execution::__private::RegistrationBatch) -> Result<()> {
         let (staged, ids) = self.stage(batch)?;
         staged.commit()?;
         self.activate(&ids).await
     }
 
     pub(crate) fn stage(
-        &self, batch: harmos_sdk::__private::RegistrationBatch,
+        &self, batch: harmos_operations::execution::__private::RegistrationBatch,
     ) -> Result<(crate::operations::resident::Staged, Vec<String>)> {
         if !batch.operations.is_empty() {
             return Err(Error::InvalidInput {
@@ -261,20 +264,24 @@ impl ServiceManager {
 }
 
 impl<A: Application> Resident<A> for AuthoredService {
-    type Error = harmos_sdk::ServingError;
+    type Error = harmos_operations::execution::ServingError;
 
     async fn run(&mut self, context: ServiceContext<A>) -> std::result::Result<(), Self::Error> {
         let mut stopping = context.stopping.clone();
         let context = Arc::new(context);
-        let mut dependencies = harmos_sdk::__private::ResourceSet::new();
+        let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
         match &self.owner {
-            ServiceOwner::Host => dependencies.insert(context.clone()).map_err(|_| harmos_sdk::ServingError::Catalog)?,
+            ServiceOwner::Host => dependencies.insert(context.clone()).map_err(|_| harmos_operations::execution::ServingError::Catalog)?,
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-            ServiceOwner::Plugin(scope) => dependencies.insert(Arc::new(scope.clone())).map_err(|_| harmos_sdk::ServingError::Catalog)?,
+            ServiceOwner::Plugin(scope) => {
+                dependencies.insert(Arc::new(scope.clone())).map_err(|_| harmos_operations::execution::ServingError::Catalog)?
+            }
         }
-        let call =
-            harmos_sdk::ExecutionContext::new(dependencies, harmos_sdk::operations::OperationHost::context(&context.operations).clone())
-                .with_resources(context.operations.resources().clone());
+        let call = harmos_operations::execution::ExecutionContext::new(
+            dependencies,
+            harmos_operations::execution::operations::OperationHost::context(&context.operations).clone(),
+        )
+        .with_resources(context.operations.resources().clone());
         self.instance = Some(self.factory.initialize(call.clone()).await?);
         context.ready();
         tokio::select! {
@@ -338,7 +345,7 @@ impl<A: Application> Clone for Handles<A> {
 }
 
 impl<A: Application> ServiceContext<A> {
-    pub fn resource<T: Send + Sync + 'static>(&self) -> std::result::Result<Arc<T>, harmos_sdk::ResourceError> {
+    pub fn resource<T: Send + Sync + 'static>(&self) -> std::result::Result<Arc<T>, harmos_operations::execution::ResourceError> {
         self.operations.resources().resource::<T>()
     }
 
@@ -400,11 +407,11 @@ impl<A: Application> ServiceContext<A> {
     }
 }
 
-impl<A: Application> harmos_sdk::operations::OperationHost for ServiceContext<A> {
-    async fn invoke<O: crate::operations::OperationDeclaration, E: harmos_sdk::operations::EndpointSet>(
+impl<A: Application> harmos_operations::execution::operations::OperationHost for ServiceContext<A> {
+    async fn invoke<O: crate::operations::OperationDeclaration, E: harmos_operations::execution::operations::EndpointSet>(
         &self, request: O::Request, retry: Option<crate::RetryPolicy>, endpoints: E,
     ) -> Result<Self::Instance<O>> {
-        harmos_sdk::operations::OperationHost::invoke::<O, E>(&self.operations, request, retry, endpoints).await
+        harmos_operations::execution::operations::OperationHost::invoke::<O, E>(&self.operations, request, retry, endpoints).await
     }
 
     fn publish_on<S: harmos_domain::StreamSpec>(
@@ -420,24 +427,24 @@ impl<A: Application> harmos_sdk::operations::OperationHost for ServiceContext<A>
     type Instance<O: OperationDeclaration> = Running<O>;
 
     fn context(&self) -> &CallContext {
-        harmos_sdk::operations::OperationHost::context(&self.operations)
+        harmos_operations::execution::operations::OperationHost::context(&self.operations)
     }
 
     fn with_value<T: ContextValue>(&self, value: T) -> std::result::Result<Self, ContextError> {
-        let operations = harmos_sdk::operations::OperationHost::with_value(&self.operations, value)?;
+        let operations = harmos_operations::execution::operations::OperationHost::with_value(&self.operations, value)?;
         let mut child = self.clone();
         child.operations = operations;
         Ok(child)
     }
 
     fn submit<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Running<O>>> + Send {
-        harmos_sdk::operations::OperationHost::submit::<O>(&self.operations, request)
+        harmos_operations::execution::operations::OperationHost::submit::<O>(&self.operations, request)
     }
 
     fn submit_owned<O: OperationDeclaration>(
         &self, request: O::Request, claims: crate::operations::RequestClaims,
     ) -> impl Future<Output = Result<Running<O>>> + Send {
-        harmos_sdk::operations::OperationHost::submit_owned::<O>(&self.operations, request, claims)
+        harmos_operations::execution::operations::OperationHost::submit_owned::<O>(&self.operations, request, claims)
     }
 }
 
@@ -537,16 +544,16 @@ mod tests {
         attempt: usize,
     }
 
-    impl harmos_sdk::Service for Worker {
+    impl harmos_operations::execution::Service for Worker {
         type Error = crate::Error;
 
-        async fn initialize(context: harmos_sdk::ExecutionContext) -> Result<Self> {
+        async fn initialize(context: harmos_operations::execution::ExecutionContext) -> Result<Self> {
             let counts = context.resource::<Counts>()?;
             let attempt = counts.initialized.fetch_add(1, Ordering::SeqCst);
             Ok(Self { counts, attempt })
         }
 
-        async fn run(&mut self, context: harmos_sdk::ExecutionContext) -> Result<()> {
+        async fn run(&mut self, context: harmos_operations::execution::ExecutionContext) -> Result<()> {
             if self.attempt == 0 {
                 return Err(Error::InvalidInput {
                     field: "fixture",
@@ -592,7 +599,7 @@ mod tests {
                 },
             },
         };
-        let batch = harmos_sdk::__private::RegistrationBatch::new().service::<Worker>("worker", policy);
+        let batch = harmos_operations::execution::__private::RegistrationBatch::new().service::<Worker>("worker", policy);
         runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
         executor::timeout(Duration::from_secs(2), counts.running.notified()).await.unwrap();
         assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);

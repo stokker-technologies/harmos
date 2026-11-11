@@ -23,7 +23,7 @@ use tokio::io::AsyncWriteExt;
 use super::{Opening, Serving, Supervisor, catalog, local};
 use crate::inventory::{Declaration, Facility};
 use crate::{Attach, Attached, PluginCatalog, Refusal, StreamDeclaration};
-use harmos_sdk::plugin::{Declared, Owner, Plugin};
+use harmos_operations::execution::plugin::{Declared, Owner, Plugin};
 
 /* === Constants === */
 

@@ -23,7 +23,7 @@ pub use harmos_runtime::*;
 pub use harmos_sdk_grpc as sdk;
 
 #[cfg(all(feature = "runtime", target_arch = "wasm32"))]
-pub use harmos_sdk::*;
+pub use harmos_operations::execution::*;
 
 // Portable operation declarations remain portable even when the same dependency graph
 // enables runtime execution for another crate.
@@ -190,7 +190,7 @@ pub mod __private {
     pub use harmos_domain::plugin::{Contribution as PluginContribution, Grant as PluginGrant};
     pub use harmos_domain::plugin::{Declared as PluginDeclared, Requirement as PluginRequirement, Requirements as PluginRequirements};
     pub use harmos_domain::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
-    pub use harmos_sdk::__private::*;
+    pub use harmos_operations::execution::__private::*;
 
     /* === Imports === */
 
@@ -234,7 +234,7 @@ pub mod prelude {
     };
 
     #[cfg(feature = "runtime")]
-    pub use harmos_sdk::{Context, ExecutionContext, Invocation, Operation, OperationHost, Response, Service};
+    pub use harmos_operations::execution::{Context, ExecutionContext, Invocation, Operation, OperationHost, Response, Service};
 
     /* === Imports === */
 

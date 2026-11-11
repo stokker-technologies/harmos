@@ -45,8 +45,9 @@ fn roundtrip<T: Message + MemorySize + harmos_domain::schema::Described + Partia
     let bytes = value.encode();
     assert_eq!(T::decode(&bytes).unwrap(), value);
     let mut protobuf = Vec::new();
-    harmos_sdk::grpc::encode(&value, &mut protobuf).unwrap();
-    let prepared = harmos_sdk::grpc::prepare::<T>(harmos_sdk::grpc::DecodeInput::new(&protobuf)).unwrap();
+    harmos_operations::execution::grpc::encode(&value, &mut protobuf).unwrap();
+    let prepared =
+        harmos_operations::execution::grpc::prepare::<T>(harmos_operations::execution::grpc::DecodeInput::new(&protobuf)).unwrap();
     assert!(prepared.memory() >= value.memory_size());
     assert_eq!(prepared.decode().unwrap(), value);
 }
@@ -151,7 +152,8 @@ fn path_transport_rejects() {
     let source = FileSource::Local(path);
     assert!(FileSource::decode(&source.encode()).is_err());
     let mut protobuf = Vec::new();
-    harmos_sdk::grpc::encode(&source, &mut protobuf).unwrap();
-    let prepared = harmos_sdk::grpc::prepare::<FileSource>(harmos_sdk::grpc::DecodeInput::new(&protobuf)).unwrap();
+    harmos_operations::execution::grpc::encode(&source, &mut protobuf).unwrap();
+    let prepared =
+        harmos_operations::execution::grpc::prepare::<FileSource>(harmos_operations::execution::grpc::DecodeInput::new(&protobuf)).unwrap();
     assert!(prepared.decode().is_err());
 }

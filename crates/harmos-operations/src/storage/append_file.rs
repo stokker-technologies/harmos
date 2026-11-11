@@ -90,8 +90,8 @@ mod execution {
     // Third Party Imports
 
     // Local Imports
+    use crate::execution::operations::Operation;
     use crate::{Error, Result};
-    use harmos_sdk::operations::Operation;
     use harmos_storage::{FileChunk, FileProducer};
 
     /* === Constants === */
@@ -112,7 +112,9 @@ mod execution {
         type Error = Error;
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.append_file", level = "trace", skip_all)]
-        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileProducer>> {
+        async fn run(
+            mut self, context: crate::execution::Context<'_, Self>,
+        ) -> Result<crate::execution::operations::Response<FileProducer>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
 
             let payload = FileChunk::new(std::mem::take(&mut self.bytes));
@@ -122,7 +124,7 @@ mod execution {
             result.map(::core::convert::Into::into)
         }
 
-        fn classify(error: &Error) -> harmos_sdk::operations::FailureKind {
+        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
             crate::storage::classify(error)
         }
     }

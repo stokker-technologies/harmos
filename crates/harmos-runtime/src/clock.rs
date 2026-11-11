@@ -131,9 +131,9 @@ pub(crate) mod tests {
         })]
     struct Wait {}
 
-    impl harmos_sdk::Operation for Wait {
+    impl harmos_operations::execution::Operation for Wait {
         type Error = std::convert::Infallible;
-        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<crate::Response<()>, Self::Error> {
+        async fn run(self, context: harmos_operations::execution::Context<'_, Self>) -> Result<crate::Response<()>, Self::Error> {
             let host = context.resource::<crate::operations::HostContext>();
             host.borrow().scope().clock().sleep(Duration::from_secs(5)).await;
             Ok(().into())
@@ -197,7 +197,7 @@ pub(crate) mod tests {
         })
         .await
         .unwrap();
-        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<Wait>();
+        let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Wait>();
         runtime.register_batch(batch.lane(Lanes::Open)).await.unwrap();
 
         // Record Evidence Before And After A Host Wait

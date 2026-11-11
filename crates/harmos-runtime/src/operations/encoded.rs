@@ -22,8 +22,8 @@ use std::sync::Arc;
 
 // Local Imports
 use super::{Bindings, Contract, Lane};
-use harmos_sdk::__private::{PreparedNative, ResourceSet};
-use harmos_sdk::operations::{NativeInstance, ServingError};
+use harmos_operations::execution::__private::{PreparedNative, ResourceSet};
+use harmos_operations::execution::operations::{NativeInstance, ServingError};
 
 /* === Constants === */
 

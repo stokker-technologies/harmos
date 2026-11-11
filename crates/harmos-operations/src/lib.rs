@@ -11,6 +11,7 @@
 
 #[cfg(feature = "runtime")]
 mod error;
+pub mod execution;
 pub mod host;
 pub mod lifecycle;
 pub mod storage;
@@ -24,7 +25,7 @@ pub use harmos_domain::*;
 pub use harmos_macros::{catalog, operation};
 
 #[cfg(feature = "lifecycle")]
-pub use harmos_sdk::{Context, Dependent, Executable, ExecutionContext, Operation, Resource, ResourceError, Response};
+pub use crate::execution::{Context, Dependent, Executable, ExecutionContext, Operation, Resource, ResourceError, Response};
 pub use host::Host;
 pub use lifecycle::Lifecycle;
 pub use storage::Storage;
@@ -39,7 +40,7 @@ extern crate self as harmos;
 
 // Local Imports
 #[cfg(feature = "runtime")]
-use harmos_sdk::__private::RegistrationBatch;
+use crate::execution::__private::RegistrationBatch;
 
 /* === Constants === */
 
@@ -91,9 +92,9 @@ impl Builtins {
 }
 
 #[cfg(feature = "runtime")]
-impl harmos_sdk::operations::OperationCatalog for Builtins {
-    const CATALOG: harmos_sdk::operations::Catalog =
-        harmos_sdk::operations::Catalog::of::<Self>("harmos.builtins", &BUILTIN_DECLARATIONS, &BUILTIN_CALLEES);
+impl crate::execution::operations::OperationCatalog for Builtins {
+    const CATALOG: crate::execution::operations::Catalog =
+        crate::execution::operations::Catalog::of::<Self>("harmos.builtins", &BUILTIN_DECLARATIONS, &BUILTIN_CALLEES);
 
     fn batch() -> RegistrationBatch {
         let mut batch = Host::batch();
@@ -118,7 +119,7 @@ pub mod operations {
     pub use harmos_domain::operations::*;
 
     #[cfg(feature = "lifecycle")]
-    pub use harmos_sdk::operations::{Catalog, Executable, OperationCatalog};
+    pub use crate::execution::operations::{Catalog, Executable, OperationCatalog};
 
     /* === Imports === */
 
@@ -158,7 +159,7 @@ pub mod __private {
     pub use harmos_domain::__private::*;
 
     #[cfg(feature = "lifecycle")]
-    pub use harmos_sdk::__private::RegistrationBatch;
+    pub use crate::execution::__private::RegistrationBatch;
 
     /* === Imports === */
 

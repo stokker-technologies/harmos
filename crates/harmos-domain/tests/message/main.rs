@@ -30,7 +30,7 @@ mod serde;
 
 // Local Imports
 use harmos_domain::{MemorySize, Message, message};
-use harmos_sdk::grpc::{self, DecodeInput, prost};
+use harmos_operations::execution::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
 

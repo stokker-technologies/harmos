@@ -83,7 +83,7 @@ pub struct EncodedInvocation {
     pub(crate) control: Arc<crate::supervision::instance::Instance>,
 
     #[cfg(feature = "plugin-sidecar")]
-    pub(crate) observer_stop: Option<harmos_sdk::operations::Cancellation>,
+    pub(crate) observer_stop: Option<harmos_operations::execution::operations::Cancellation>,
 }
 
 /* === Enums === */
@@ -481,7 +481,7 @@ pub(super) fn dispatch_native(
     budget(operations.clock(), submission.entry.id(), 1, timeout, submitted)?;
     #[cfg(feature = "plugin-grpc")]
     if let Some(binding) = submission.entry.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() {
-        let prepared = harmos_sdk::__private::PreparedNative {
+        let prepared = harmos_operations::execution::__private::PreparedNative {
             instance: binding.prepare(input.payload),
             grant: None,
             streams: None,
@@ -490,7 +490,7 @@ pub(super) fn dispatch_native(
         request.retry = input.retry;
         return dispatch_prepared(operations, submission, source, parent, prepared, request);
     }
-    let factory = submission.entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>();
+    let factory = submission.entry.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>();
     let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
         Some(original) => Some(original),
@@ -525,7 +525,7 @@ pub(super) fn dispatch_native(
         if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {
             return binding.prepare(resources, &input.payload);
         }
-        Err(harmos_sdk::ServingError::Catalog)
+        Err(harmos_operations::execution::ServingError::Catalog)
     }))
     .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
     .map_err(|source| Error::OperationFailed {
@@ -540,15 +540,15 @@ pub(super) fn dispatch_native(
 
 pub(super) fn dispatch_prepared(
     operations: &Manager, submission: Submission, source: Source, parent: Option<Parent<'_>>,
-    prepared: harmos_sdk::__private::PreparedNative, mut request: super::binding::Request<Vec<u8>>,
+    prepared: harmos_operations::execution::__private::PreparedNative, mut request: super::binding::Request<Vec<u8>>,
 ) -> Result<EncodedInvocation> {
     let submitted = submission.submitted;
     let timeout = request.policy.unwrap_or(submission.entry.declared().policy).timeout;
     let streaming = submission.entry.contract.as_ref().is_some_and(|contract| contract.input().is_some() || contract.output().is_some());
-    let harmos_sdk::__private::PreparedNative { instance, grant, .. } = prepared;
+    let harmos_operations::execution::__private::PreparedNative { instance, grant, .. } = prepared;
     let instance = std::sync::Mutex::new(Some(instance));
     let binding = super::authored::factory_with::<Encoded, ()>(operations, move |_, ()| {
-        instance.lock().expect("native preparation lock is healthy").take().ok_or(harmos_sdk::ServingError::Uninitialized)
+        instance.lock().expect("native preparation lock is healthy").take().ok_or(harmos_operations::execution::ServingError::Uninitialized)
     });
     request.binding = Some(Arc::new(binding));
     request.grant = grant;
@@ -666,7 +666,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<Probe>();
+        let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Probe>();
         runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
 
         let source = Source::Host.external().unwrap();
@@ -685,7 +685,7 @@ mod tests {
     #[tokio::test]
     async fn assigned_identity_fences_before_decoding() {
         let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
-        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<Probe>();
+        let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Probe>();
         runtime.register_batch(batch.clone().lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
         let entry = runtime.operations.entry(Probe::ID).unwrap();
         let fingerprint = entry.declared().fingerprint.0;

@@ -38,10 +38,10 @@ pub use harmos_domain::{
     reserved, validate_config,
 };
 pub use harmos_domain::{failure, listeners};
-pub use harmos_sdk::operations;
-pub use harmos_sdk::operations::OperationHost;
-pub use harmos_sdk::operations::{Backoff, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
-pub use harmos_sdk::{Context, Dependent, ExecutionContext, Lifecycle, Operation, Plugin, Resource, Service, Setup};
+pub use harmos_operations::execution::operations;
+pub use harmos_operations::execution::operations::OperationHost;
+pub use harmos_operations::execution::operations::{Backoff, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+pub use harmos_operations::execution::{Context, Dependent, ExecutionContext, Lifecycle, Operation, Plugin, Resource, Service, Setup};
 
 #[cfg(feature = "kit")]
 pub use kit::{
@@ -69,7 +69,7 @@ pub use harmos_domain::{listener, message, stream};
 
 #[cfg(feature = "derive")]
 pub use harmos_macros::{sidecar_catalog as catalog, sidecar_operation as operation};
-pub use harmos_sdk::plugin;
+pub use harmos_operations::execution::plugin;
 
 #[cfg(feature = "kit")]
 pub use kit::__private;

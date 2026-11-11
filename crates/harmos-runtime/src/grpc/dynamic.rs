@@ -24,7 +24,7 @@ use tonic::Status;
 use tonic::codec::{BufferSettings, DecodeBuf, EncodeBuf};
 // Local Imports
 use crate::operations::Contract;
-use harmos_sdk::grpc::{DecodeInput, Validator as ProtobufValidator, prost};
+use harmos_operations::execution::grpc::{DecodeInput, Validator as ProtobufValidator, prost};
 use prost::Message;
 
 /* === Constants === */

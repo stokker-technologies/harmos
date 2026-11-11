@@ -17,7 +17,7 @@ mod lifecycle;
 
 pub use boot::{BootstrapCleanup, BootstrapStatus};
 pub use harmos_macros::{runtime_catalog as catalog, runtime_operation as operation};
-pub use harmos_sdk::StartupError;
+pub use harmos_operations::execution::StartupError;
 
 /* === Imports === */
 
@@ -116,7 +116,7 @@ pub struct Builder<A: Application> {
     application: Option<A>,
     cleanup: BootstrapCleanup,
     origin: Origin<A::State>,
-    resources: harmos_sdk::__private::ResourceSet,
+    resources: harmos_operations::execution::__private::ResourceSet,
     configuration_errors: Vec<StartupError>,
     operation_catalogs: HashSet<TypeId>,
     inverses: Inverting<A>,
@@ -378,7 +378,7 @@ impl<A: Application> Runtime<A> {
             application: None,
             cleanup: BootstrapCleanup::new(),
             origin: origin.into(),
-            resources: harmos_sdk::__private::ResourceSet::new(),
+            resources: harmos_operations::execution::__private::ResourceSet::new(),
             configuration_errors: Vec::new(),
             operation_catalogs: HashSet::new(),
             inverses: none::<A>,
@@ -474,7 +474,7 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub(crate) fn operations<C: harmos_sdk::operations::OperationCatalog>(&mut self, lane: A::Lanes) -> &mut Self {
+    pub(crate) fn operations<C: harmos_operations::execution::operations::OperationCatalog>(&mut self, lane: A::Lanes) -> &mut Self {
         use crate::operations::RegistrationExt;
         if !self.operation_catalogs.insert(TypeId::of::<C>()) {
             self.configuration_errors.push(StartupError::DuplicateCatalog { name: type_name::<C>() });

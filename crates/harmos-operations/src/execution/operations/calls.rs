@@ -24,7 +24,7 @@ use std::sync::Arc;
 // Local Imports
 use super::response::ErasedResponse;
 use super::{OperationDeclaration, OperationDefinition, Response};
-use crate::{Message, MessageError};
+use crate::execution::{Message, MessageError};
 
 /* === Constants === */
 
@@ -54,7 +54,7 @@ pub struct Target {
     pub response: fn() -> TypeId,
     pub encode: fn(&(dyn Any + Send)) -> Option<Vec<u8>>,
     pub decode: fn(&[u8]) -> Result<ErasedResponse, MessageError>,
-    pub grant: fn(&(dyn Any + Send)) -> Option<crate::plugin::Grant>,
+    pub grant: fn(&(dyn Any + Send)) -> Option<crate::execution::plugin::Grant>,
 }
 
 /* === Enums === */
@@ -100,7 +100,7 @@ impl Target {
             id: T::ID,
             definition: T::definition,
             request: TypeId::of::<T::Request>,
-            memory: |request| request.downcast_ref::<T::Request>().map_or(0, crate::MemorySize::memory_size),
+            memory: |request| request.downcast_ref::<T::Request>().map_or(0, crate::execution::MemorySize::memory_size),
             response: TypeId::of::<T::Response>,
             encode: |request| request.downcast_ref::<T::Request>().map(Message::encode),
             decode: decode::<T>,
@@ -109,7 +109,7 @@ impl Target {
     }
 }
 
-impl From<InvocationError> for crate::Refusal {
+impl From<InvocationError> for crate::execution::Refusal {
     fn from(error: InvocationError) -> Self {
         let operation = match &error {
             InvocationError::Unavailable { operation }
@@ -118,8 +118,9 @@ impl From<InvocationError> for crate::Refusal {
             | InvocationError::Failed { operation, .. } => *operation,
         };
         let failure =
-            crate::Failure::originate(super::FailureKind::Permanent, &error, crate::failure::Origin::Plugin).in_operation(operation);
-        Self::failed(failure.refusal_code().unwrap_or(crate::FAILED), failure)
+            crate::execution::Failure::originate(super::FailureKind::Permanent, &error, crate::execution::failure::Origin::Plugin)
+                .in_operation(operation);
+        Self::failed(failure.refusal_code().unwrap_or(crate::execution::FAILED), failure)
     }
 }
 
@@ -146,9 +147,9 @@ mod tests {
 
     #[test]
     fn refusal_conversion_preserves_child_failure_and_code() {
-        let original = crate::Failure::new(super::super::FailureKind::Transient, "transport failed").in_operation("child");
-        let child = crate::Refusal::failed(-32_100, original.clone());
-        let forwarded = crate::Refusal::from(InvocationError::failed("child", child));
+        let original = crate::execution::Failure::new(super::super::FailureKind::Transient, "transport failed").in_operation("child");
+        let child = crate::execution::Refusal::failed(-32_100, original.clone());
+        let forwarded = crate::execution::Refusal::from(InvocationError::failed("child", child));
         assert_eq!(forwarded.code(), -32_100);
         let failure = forwarded.failure();
         assert_eq!(failure.code(), original.code());

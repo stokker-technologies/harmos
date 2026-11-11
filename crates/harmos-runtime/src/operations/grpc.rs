@@ -68,16 +68,18 @@ impl GrpcBinding {
         self.entry.contract.as_ref().expect("gRPC binding owns a contract")
     }
 
-    pub(crate) fn native_factory(&self) -> Result<harmos_sdk::operations::OperationFactory> {
-        self.entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>().cloned().ok_or(crate::Error::InvalidInput {
-            field: "gRPC native binding",
-            reason: "native factory required",
-        })
+    pub(crate) fn native_factory(&self) -> Result<harmos_operations::execution::operations::OperationFactory> {
+        self.entry.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>().cloned().ok_or(
+            crate::Error::InvalidInput {
+                field: "gRPC native binding",
+                reason: "native factory required",
+            },
+        )
     }
 
     pub(crate) fn submit_native(
-        &self, payload: StreamItem<Vec<u8>>, limits: harmos_sdk::operations::WireStreamLimits,
-    ) -> Result<(super::EncodedInvocation, Option<harmos_sdk::operations::WireStreams>)> {
+        &self, payload: StreamItem<Vec<u8>>, limits: harmos_operations::execution::operations::WireStreamLimits,
+    ) -> Result<(super::EncodedInvocation, Option<harmos_operations::execution::operations::WireStreams>)> {
         let source = Source::Host.external()?;
         let origin = source.check()?;
         self.entry.available_to(&origin)?;

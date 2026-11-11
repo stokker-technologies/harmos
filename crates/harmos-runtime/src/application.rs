@@ -61,7 +61,7 @@ impl<A: Application> Clone for Startup<A> {
     }
 }
 
-impl<A: Application> harmos_sdk::lifecycle::Context for Startup<A> {
+impl<A: Application> harmos_operations::execution::lifecycle::Context for Startup<A> {
     type Configuration = crate::runtime::Builder<A>;
 }
 

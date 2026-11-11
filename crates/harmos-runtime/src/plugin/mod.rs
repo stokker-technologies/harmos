@@ -33,7 +33,7 @@ pub use events::{PluginEvent, PluginEventKind, PluginEvents};
 // `Requirement` The Plugin Dependency; Grant Requirements Are
 // `catalog::RequirementEntry`.
 pub use harmos_domain::{Refusal, Registrar, Registration, RegistrationError, Requirement, StreamDeclaration, inventory};
-pub use harmos_sdk::plugin::*;
+pub use harmos_operations::execution::plugin::*;
 pub use host::PluginHost;
 
 #[cfg(feature = "plugin-sidecar")]

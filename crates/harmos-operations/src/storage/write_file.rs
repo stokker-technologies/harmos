@@ -25,7 +25,7 @@ use harmos_domain::model::storage::{FileBatch, FileMetadata, FileReference};
 use harmos_domain::operations::ReplaySafety;
 
 #[cfg(feature = "runtime")]
-use harmos_sdk::operations::access::GrantAccess;
+use crate::execution::operations::access::GrantAccess;
 
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
@@ -97,8 +97,8 @@ mod execution {
 
     // Local Imports
     use super::*;
+    use crate::execution::operations::{Operation, OperationDeclaration};
     use crate::{Error, Result};
-    use harmos_sdk::operations::{Operation, OperationDeclaration};
     use harmos_storage::FileReference;
 
     /* === Constants === */
@@ -118,9 +118,9 @@ mod execution {
     impl Operation for super::WriteFile {
         type Error = Error;
 
-        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileReference>> {
+        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<crate::execution::operations::Response<FileReference>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let grants = context.resource::<harmos_sdk::operations::access::GrantAccess>();
+            let grants = context.resource::<crate::execution::operations::access::GrantAccess>();
             let input = context.streams();
 
             let host = grants;
@@ -154,7 +154,7 @@ mod execution {
             Ok(reference.into())
         }
 
-        fn classify(error: &Error) -> harmos_sdk::operations::FailureKind {
+        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
             crate::storage::classify(error)
         }
     }

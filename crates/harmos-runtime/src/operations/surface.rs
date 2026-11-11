@@ -54,7 +54,7 @@ pub trait InvocationExt<L: Lane>: Sized {
 /* === Implementations === */
 
 impl<L: Lane, O: OperationDeclaration, E: EndpointSet> InvocationExt<L>
-    for harmos_sdk::operations::Invocation<RuntimeOperationHost<L>, O, E>
+    for harmos_operations::execution::operations::Invocation<RuntimeOperationHost<L>, O, E>
 {
     fn lane(mut self, lane: L) -> Self {
         self.host_mut().lane = Some(lane);
@@ -86,7 +86,7 @@ impl<L: Lane> RuntimeOperationHost<L> {
     }
 }
 
-impl<L: Lane> harmos_sdk::operations::OperationHost for RuntimeOperationHost<L> {
+impl<L: Lane> harmos_operations::execution::operations::OperationHost for RuntimeOperationHost<L> {
     type Error = Error;
     type Instance<O: OperationDeclaration> = Running<O>;
     fn context(&self) -> &CallContext {
@@ -134,17 +134,17 @@ pub(super) fn validate_endpoints<O: OperationDeclaration, E: EndpointSet>() -> R
 impl crate::plugin::PluginScope {
     pub fn operation<O: OperationDeclaration<Request = O>, L: Lane>(
         &self, request: O,
-    ) -> harmos_sdk::operations::Invocation<RuntimeOperationHost<L>, O> {
+    ) -> harmos_operations::execution::operations::Invocation<RuntimeOperationHost<L>, O> {
         let host = RuntimeOperationHost {
             operations: None,
             source: Source::Scope(self.clone()),
             context: CallContext::default(),
             lane: None,
         };
-        harmos_sdk::operations::Invocation::new(host, request)
+        harmos_operations::execution::operations::Invocation::new(host, request)
     }
 
-    pub async fn register<C: harmos_sdk::operations::OperationCatalog, L: Lane>(&self, lane: L) -> Result<()> {
+    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog, L: Lane>(&self, lane: L) -> Result<()> {
         use super::RegistrationExt;
         self.register_batch(C::batch().lane(lane)).await
     }
@@ -159,7 +159,7 @@ impl crate::plugin::PluginScope {
             let entries = operations.native_entries(registration, self.owner(), Some(self))?;
             return operations.reserve(&entries);
         }
-        let mut batch = harmos_sdk::__private::RegistrationBatch::new();
+        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new();
         batch.services = services;
         let manager = crate::ServiceManager::scoped(operations.clone(), self.clone());
         let (staged, ids) = manager.stage(batch)?;
@@ -185,7 +185,7 @@ impl<A: crate::Application> crate::Runtime<A> {
         crate::ServiceManager::new(self.operations.execution())
     }
 
-    pub async fn register<C: harmos_sdk::operations::OperationCatalog>(&self, lane: A::Lanes) -> Result<()> {
+    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(&self, lane: A::Lanes) -> Result<()> {
         use super::RegistrationExt;
         self.register_batch(C::batch().lane(lane)).await
     }
@@ -195,7 +195,7 @@ impl<A: crate::Application> crate::Runtime<A> {
         if services.is_empty() {
             return self.operations.register_batch(registration).await;
         }
-        let mut batch = harmos_sdk::__private::RegistrationBatch::new();
+        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new();
         batch.services = services;
         let manager = self.services();
         let (staged, ids) = manager.stage(batch)?;
@@ -215,8 +215,8 @@ impl<A: crate::Application> crate::Runtime<A> {
 
     pub fn operation<O: OperationDeclaration<Request = O>>(
         &self, request: O,
-    ) -> harmos_sdk::operations::Invocation<RuntimeOperationHost<A::Lanes>, O> {
-        harmos_sdk::operations::Invocation::new(RuntimeOperationHost::new(self.operations.execution()), request)
+    ) -> harmos_operations::execution::operations::Invocation<RuntimeOperationHost<A::Lanes>, O> {
+        harmos_operations::execution::operations::Invocation::new(RuntimeOperationHost::new(self.operations.execution()), request)
     }
 }
 
@@ -225,7 +225,7 @@ impl<A: crate::Application> crate::runtime::Handle<A> {
         crate::ServiceManager::new(self.operations.execution())
     }
 
-    pub async fn register<C: harmos_sdk::operations::OperationCatalog>(&self, lane: A::Lanes) -> Result<()> {
+    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(&self, lane: A::Lanes) -> Result<()> {
         use super::RegistrationExt;
         self.register_batch(C::batch().lane(lane)).await
     }
@@ -235,7 +235,7 @@ impl<A: crate::Application> crate::runtime::Handle<A> {
         if services.is_empty() {
             return self.operations.register_batch(registration).await;
         }
-        let mut batch = harmos_sdk::__private::RegistrationBatch::new();
+        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new();
         batch.services = services;
         let manager = self.services();
         let (staged, ids) = manager.stage(batch)?;
@@ -255,20 +255,20 @@ impl<A: crate::Application> crate::runtime::Handle<A> {
 
     pub fn operation<O: OperationDeclaration<Request = O>>(
         &self, request: O,
-    ) -> harmos_sdk::operations::Invocation<RuntimeOperationHost<A::Lanes>, O> {
-        harmos_sdk::operations::Invocation::new(RuntimeOperationHost::new(self.operations.execution()), request)
+    ) -> harmos_operations::execution::operations::Invocation<RuntimeOperationHost<A::Lanes>, O> {
+        harmos_operations::execution::operations::Invocation::new(RuntimeOperationHost::new(self.operations.execution()), request)
     }
 }
 
 impl<L: Lane> super::OperationManager<L> {
     pub fn operation<O: OperationDeclaration>(
         &self, request: O::Request,
-    ) -> harmos_sdk::operations::Invocation<RuntimeOperationHost<L>, O> {
-        harmos_sdk::operations::Invocation::new(RuntimeOperationHost::new(self.execution()), request)
+    ) -> harmos_operations::execution::operations::Invocation<RuntimeOperationHost<L>, O> {
+        harmos_operations::execution::operations::Invocation::new(RuntimeOperationHost::new(self.execution()), request)
     }
 }
 
-impl<L: Lane> harmos_sdk::operations::OperationHost for super::OperationManager<L> {
+impl<L: Lane> harmos_operations::execution::operations::OperationHost for super::OperationManager<L> {
     async fn invoke<O: OperationDeclaration, E: EndpointSet>(
         &self, request: O::Request, retry: Option<RetryPolicy>, endpoints: E,
     ) -> Result<Running<O>> {
@@ -307,7 +307,7 @@ impl<L: Lane> harmos_sdk::operations::OperationHost for super::OperationManager<
     }
 }
 
-impl harmos_sdk::operations::OperationHost for Manager {
+impl harmos_operations::execution::operations::OperationHost for Manager {
     async fn invoke<O: OperationDeclaration, E: EndpointSet>(
         &self, request: O::Request, retry: Option<RetryPolicy>, endpoints: E,
     ) -> Result<Running<O>> {
@@ -349,7 +349,7 @@ impl harmos_sdk::operations::OperationHost for Manager {
     }
 }
 
-impl harmos_sdk::operations::OperationHost for Context<'_> {
+impl harmos_operations::execution::operations::OperationHost for Context<'_> {
     async fn invoke<O: OperationDeclaration, E: EndpointSet>(
         &self, request: O::Request, retry: Option<RetryPolicy>, endpoints: E,
     ) -> Result<Running<O>> {
@@ -473,12 +473,12 @@ mod tests {
 
     struct Idle;
 
-    impl harmos_sdk::Service for Idle {
+    impl harmos_operations::execution::Service for Idle {
         type Error = std::io::Error;
-        async fn initialize(_: harmos_sdk::ExecutionContext) -> std::io::Result<Self> {
+        async fn initialize(_: harmos_operations::execution::ExecutionContext) -> std::io::Result<Self> {
             Ok(Self)
         }
-        async fn run(&mut self, _: harmos_sdk::ExecutionContext) -> std::io::Result<()> {
+        async fn run(&mut self, _: harmos_operations::execution::ExecutionContext) -> std::io::Result<()> {
             std::future::pending().await
         }
     }
@@ -490,7 +490,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<Probe>().service::<Idle>(
+        let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Probe>().service::<Idle>(
             "idle",
             crate::ServicePolicy {
                 stop_timeout: std::time::Duration::from_secs(1),
@@ -520,12 +520,12 @@ mod tests {
         })
         .await
         .unwrap();
-        let operation = harmos_sdk::__private::RegistrationBatch::new().operation::<Probe>();
+        let operation = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Probe>();
         let policy = crate::ServicePolicy {
             stop_timeout: std::time::Duration::from_secs(1),
             restart: crate::RestartPolicy::Never,
         };
-        let service = harmos_sdk::__private::RegistrationBatch::new().service::<Idle>("test.probe", policy);
+        let service = harmos_operations::execution::__private::RegistrationBatch::new().service::<Idle>("test.probe", policy);
         assert!(
             runtime
                 .register_batch(
@@ -553,7 +553,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<Probe>();
+        let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Probe>();
         assert!(
             runtime
                 .register_batch(batch.clone().operation::<Probe>().lane(<Lanes as crate::operations::Lane>::default_lane()))

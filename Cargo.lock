@@ -1199,7 +1199,6 @@ dependencies = [
  "harmos-macros",
  "harmos-operations",
  "harmos-runtime",
- "harmos-sdk",
  "harmos-sdk-grpc",
  "harmos-sidecar",
 ]
@@ -1225,7 +1224,6 @@ dependencies = [
  "harmos-macros",
  "harmos-operations",
  "harmos-packaging",
- "harmos-sdk",
  "memchr",
  "postcard",
  "prost-reflect",
@@ -1258,7 +1256,6 @@ dependencies = [
  "harmos-domain",
  "harmos-macros",
  "harmos-operations",
- "harmos-sdk",
  "schematic-operations",
  "serde_json",
  "sha2 0.11.1",
@@ -1293,8 +1290,9 @@ version = "0.1.14"
 dependencies = [
  "harmos-domain",
  "harmos-macros",
- "harmos-sdk",
  "harmos-storage",
+ "postcard",
+ "prost",
  "serde",
  "serde_json",
  "thiserror",
@@ -1307,8 +1305,8 @@ name = "harmos-packaging"
 version = "0.1.14"
 dependencies = [
  "harmos-domain",
+ "harmos-operations",
  "harmos-protocol",
- "harmos-sdk",
  "heck",
  "notify",
  "process-wrap",
@@ -1363,7 +1361,6 @@ dependencies = [
  "harmos-operations",
  "harmos-packaging",
  "harmos-protocol",
- "harmos-sdk",
  "harmos-sdk-grpc",
  "harmos-sidecar",
  "harmos-storage",
@@ -1395,22 +1392,6 @@ dependencies = [
  "tracing-subscriber",
  "wasmtime",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "harmos-sdk"
-version = "0.1.14"
-dependencies = [
- "criterion",
- "harmos-domain",
- "harmos-macros",
- "postcard",
- "prost",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -1456,7 +1437,6 @@ dependencies = [
  "harmos-domain",
  "harmos-macros",
  "harmos-operations",
- "harmos-sdk",
  "libc",
  "postcard",
  "serde",

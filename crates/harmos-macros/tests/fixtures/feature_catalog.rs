@@ -18,6 +18,7 @@
 // Third Party Imports
 
 // Local Imports
+use harmos_operations::execution as harmos;
 
 /* === Constants === */
 
@@ -34,12 +35,12 @@ const POLICY: harmos::OperationPolicy = harmos::OperationPolicy {
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = ::harmos, id = "fixture.always", policy = POLICY)]
+#[harmos::operation(harmos_path = ::harmos_operations::execution, id = "fixture.always", policy = POLICY)]
 struct Read;
 
 /* === Enums === */
 
-#[harmos::catalog(harmos_path = ::harmos)]
+#[harmos::catalog(harmos_path = ::harmos_operations::execution)]
 enum Operations {
     Read(Read),
 
@@ -92,6 +93,7 @@ mod optional {
     // Third Party Imports
 
     // Local Imports
+use harmos_operations::execution as harmos;
 
     /* === Constants === */
 
@@ -101,7 +103,7 @@ mod optional {
 
     /* === Structs === */
 
-    #[harmos::operation(harmos_path = ::harmos, id = "fixture.optional", policy = super::POLICY)]
+    #[harmos::operation(harmos_path = ::harmos_operations::execution, id = "fixture.optional", policy = super::POLICY)]
     pub struct Read;
 
     /* === Enums === */

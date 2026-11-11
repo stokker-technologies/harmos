@@ -188,42 +188,46 @@ impl<S: StreamSpec> Batch<S> {
     }
 }
 
-impl<P: Declared> harmos_sdk::operations::OperationHost for Publisher<P> {
+impl<P: Declared> harmos_operations::execution::operations::OperationHost for Publisher<P> {
     type Error = CallError;
-    type Instance<O: harmos_sdk::OperationDeclaration> = super::OperationInstance<O>;
+    type Instance<O: harmos_operations::execution::OperationDeclaration> = super::OperationInstance<O>;
 
-    fn context(&self) -> &harmos_sdk::operations::CallContext {
+    fn context(&self) -> &harmos_operations::execution::operations::CallContext {
         self.supervisor.context()
     }
-    fn with_value<T: harmos_sdk::operations::ContextValue>(&self, value: T) -> Result<Self, harmos_sdk::operations::ContextError> {
+    fn with_value<T: harmos_operations::execution::operations::ContextValue>(
+        &self, value: T,
+    ) -> Result<Self, harmos_operations::execution::operations::ContextError> {
         Ok(Self {
             supervisor: self.supervisor.with_value(value)?,
             _plugin: PhantomData,
         })
     }
-    async fn invoke<O: harmos_sdk::OperationDeclaration, E: harmos_sdk::EndpointSet>(
-        &self, request: O::Request, retry: Option<harmos_sdk::RetryPolicy>, endpoints: E,
+    async fn invoke<O: harmos_operations::execution::OperationDeclaration, E: harmos_operations::execution::EndpointSet>(
+        &self, request: O::Request, retry: Option<harmos_operations::execution::RetryPolicy>, endpoints: E,
     ) -> Result<Self::Instance<O>, CallError> {
-        harmos_sdk::OperationHost::invoke::<O, E>(&self.supervisor, request, retry, endpoints).await
+        harmos_operations::execution::OperationHost::invoke::<O, E>(&self.supervisor, request, retry, endpoints).await
     }
-    async fn submit<O: harmos_sdk::OperationDeclaration>(&self, request: O::Request) -> Result<Self::Instance<O>, CallError> {
-        harmos_sdk::OperationHost::submit::<O>(&self.supervisor, request).await
-    }
-    async fn submit_owned<O: harmos_sdk::OperationDeclaration>(
-        &self, request: O::Request, claims: harmos_sdk::operations::RequestClaims,
+    async fn submit<O: harmos_operations::execution::OperationDeclaration>(
+        &self, request: O::Request,
     ) -> Result<Self::Instance<O>, CallError> {
-        harmos_sdk::OperationHost::submit_owned::<O>(&self.supervisor, request, claims).await
+        harmos_operations::execution::OperationHost::submit::<O>(&self.supervisor, request).await
+    }
+    async fn submit_owned<O: harmos_operations::execution::OperationDeclaration>(
+        &self, request: O::Request, claims: harmos_operations::execution::operations::RequestClaims,
+    ) -> Result<Self::Instance<O>, CallError> {
+        harmos_operations::execution::OperationHost::submit_owned::<O>(&self.supervisor, request, claims).await
     }
     async fn publish_on<S: StreamSpec>(&self, row: &S::Row) -> Result<(), CallError>
     where
         S::Row: Message,
     {
-        harmos_sdk::OperationHost::publish_on::<S>(&self.supervisor, row).await
+        harmos_operations::execution::OperationHost::publish_on::<S>(&self.supervisor, row).await
     }
 }
 
 impl<P: Declared> ObserverHost for Publisher<P> {
-    fn bind(_: Arc<harmos_sdk::ExecutionContext>, supervisor: Supervisor) -> Self {
+    fn bind(_: Arc<harmos_operations::execution::ExecutionContext>, supervisor: Supervisor) -> Self {
         supervisor.publisher::<P>()
     }
 }

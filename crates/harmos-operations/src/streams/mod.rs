@@ -48,7 +48,7 @@ pub enum Streams {
 #[cfg(feature = "lifecycle")]
 pub fn publish_on<H, S>(host: &H, row: &S::Row) -> impl std::future::Future<Output = std::result::Result<(), H::Error>> + Send
 where
-    H: harmos_sdk::operations::OperationHost,
+    H: crate::execution::operations::OperationHost,
     S: harmos_domain::StreamSpec,
     S::Row: harmos_domain::Message,
 {

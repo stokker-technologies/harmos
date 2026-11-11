@@ -25,7 +25,7 @@ use std::hash::{BuildHasher, BuildHasherDefault, DefaultHasher};
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::{Cardinality, Described, graph::Schema};
 use harmos_domain::{MemorySize, Message, Portable, message};
-use harmos_sdk::grpc::{self, DecodeInput};
+use harmos_operations::execution::grpc::{self, DecodeInput};
 
 /* === Constants === */
 

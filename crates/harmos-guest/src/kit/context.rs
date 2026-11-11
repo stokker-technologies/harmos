@@ -39,7 +39,7 @@ type Child =
 pub struct Context {
     pub(super) context: Option<[u8; 32]>,
     pub(super) generation_context: Option<[u8; 32]>,
-    pub(super) assignments: harmos_sdk::operations::OperationAssignments,
+    pub(super) assignments: harmos_operations::execution::operations::OperationAssignments,
     pub(super) call: std::sync::Arc<crate::operations::CallContext>,
 }
 
@@ -49,12 +49,12 @@ pub struct Context {
 
 /* === Implementations === */
 
-impl harmos_sdk::lifecycle::Context for Context {
-    type Configuration = harmos_sdk::__private::WireTable;
+impl harmos_operations::execution::lifecycle::Context for Context {
+    type Configuration = harmos_operations::execution::__private::WireTable;
 }
 
-impl harmos_sdk::plugin::Context for Context {
-    fn assign_operations(&self, bytes: &[u8]) -> Result<(), harmos_sdk::operations::ServingError> {
+impl harmos_operations::execution::plugin::Context for Context {
+    fn assign_operations(&self, bytes: &[u8]) -> Result<(), harmos_operations::execution::operations::ServingError> {
         self.assignments.install(bytes)
     }
 

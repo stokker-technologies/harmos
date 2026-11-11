@@ -115,7 +115,7 @@ impl Manager {
                 }
             }
             for caller in entries {
-                let Some(factory) = caller.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>() else {
+                let Some(factory) = caller.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>() else {
                     continue;
                 };
                 for required in factory.operations {

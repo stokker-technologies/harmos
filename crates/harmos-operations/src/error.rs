@@ -35,7 +35,7 @@ pub enum Error {
     Domain(#[from] harmos_domain::Error),
 
     #[error("host state access failed: {0}")]
-    Access(#[source] harmos_sdk::operations::access::AccessError),
+    Access(#[source] crate::execution::operations::access::AccessError),
 
     #[error(transparent)]
     Storage(#[from] harmos_storage::Error),
@@ -53,13 +53,13 @@ pub enum Error {
     InvalidInput { field: &'static str, reason: &'static str },
 
     #[error(transparent)]
-    Dependency(#[from] harmos_sdk::ResourceError),
+    Dependency(#[from] crate::execution::ResourceError),
 
     #[error("operation instance `{0}` is not registered for this caller")]
     UnknownInstance(u64),
 
     #[error(transparent)]
-    Stream(#[from] harmos_sdk::operations::StreamError),
+    Stream(#[from] crate::execution::operations::StreamError),
 }
 
 /* === Traits === */

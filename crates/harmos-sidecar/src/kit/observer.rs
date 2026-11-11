@@ -48,7 +48,7 @@ use harmos_domain::inventory::publications;
 type ContextFactory<H> = Arc<dyn Fn(&H) -> Arc<dyn Any + Send + Sync> + Send + Sync>;
 type Reporting<H> = Arc<dyn Fn(&H, &crate::CadenceReport) + Send + Sync>;
 type Open<H> = fn(
-    Arc<harmos_sdk::ExecutionContext>,
+    Arc<harmos_operations::execution::ExecutionContext>,
     H,
     Option<ContextFactory<H>>,
     Identity,
@@ -74,7 +74,7 @@ pub struct Tick {
 
 pub struct ObserverContext<'a, H = Supervisor> {
     identity: Identity,
-    resources: &'a harmos_sdk::ExecutionContext,
+    resources: &'a harmos_operations::execution::ExecutionContext,
     tick: &'a Tick,
     host: &'a H,
     streams: &'static [publications::Entry],
@@ -84,7 +84,7 @@ pub struct ObserverContext<'a, H = Supervisor> {
 pub struct Instance<H = Supervisor> {
     entry: harmos_domain::inventory::observers::Entry,
     open: Open<H>,
-    interval: fn(&harmos_sdk::ExecutionContext) -> Result<Duration, ObserverError>,
+    interval: fn(&harmos_operations::execution::ExecutionContext) -> Result<Duration, ObserverError>,
     context: Option<ContextFactory<H>>,
     reporting: Option<Reporting<H>>,
 }
@@ -99,7 +99,7 @@ pub struct Activity {
 
 struct Bound<S: Observer<H>, H: Send + Sync + 'static> {
     identity: Identity,
-    resources: Arc<harmos_sdk::ExecutionContext>,
+    resources: Arc<harmos_operations::execution::ExecutionContext>,
     host: H,
     extension: Option<Arc<dyn Any + Send + Sync>>,
     observer: Option<S>,
@@ -174,11 +174,11 @@ pub trait Observer<H: Send + Sync + 'static = Supervisor>: Sized + Send + 'stati
 
     const INTERVAL: Duration;
 
-    fn interval(_: &harmos_sdk::ExecutionContext) -> Result<Duration, Self::Error> {
+    fn interval(_: &harmos_operations::execution::ExecutionContext) -> Result<Duration, Self::Error> {
         Ok(Self::INTERVAL)
     }
 
-    fn initialize(resources: &harmos_sdk::ExecutionContext) -> impl Future<Output = Result<Self, Self::Error>> + Send;
+    fn initialize(resources: &harmos_operations::execution::ExecutionContext) -> impl Future<Output = Result<Self, Self::Error>> + Send;
 
     fn observe(&mut self, ctx: &ObserverContext<'_, H>) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
@@ -249,7 +249,7 @@ impl<H> ObserverContext<'_, H> {
         self.identity.activation
     }
 
-    pub fn resource<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, harmos_sdk::operations::ResourceError> {
+    pub fn resource<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, harmos_operations::execution::operations::ResourceError> {
         self.resources.resource::<T>()
     }
 
@@ -293,12 +293,12 @@ impl<H> ObserverContext<'_, H> {
         self.host.publish_on(self, row).await
     }
 
-    pub fn operation<C>(&self, request: C) -> harmos_sdk::operations::Invocation<H, C>
+    pub fn operation<C>(&self, request: C) -> harmos_operations::execution::operations::Invocation<H, C>
     where
-        H: harmos_sdk::operations::OperationHost + Clone,
-        C: harmos_sdk::operations::OperationDeclaration<Request = C>,
+        H: harmos_operations::execution::operations::OperationHost + Clone,
+        C: harmos_operations::execution::operations::OperationDeclaration<Request = C>,
     {
-        harmos_sdk::operations::Invocation::new(self.host.clone(), request)
+        harmos_operations::execution::operations::Invocation::new(self.host.clone(), request)
     }
 
     fn check_stream(&self, id: &'static str) -> Result<(), PublicationError> {
@@ -366,12 +366,13 @@ impl<H: Send + Sync + 'static> Instance<H> {
 
     // Resolve cadence and bind one activation to its resources and host.
     // Initialization and sampling run when the caller drives `observe`.
-    pub fn activate(&self, resources: Arc<harmos_sdk::ExecutionContext>, host: H) -> Result<Activity, ObserverError> {
+    pub fn activate(&self, resources: Arc<harmos_operations::execution::ExecutionContext>, host: H) -> Result<Activity, ObserverError> {
         self.activate_reporting(resources, host, None, None)
     }
 
     pub(super) fn activate_reporting(
-        &self, resources: Arc<harmos_sdk::ExecutionContext>, host: H, reporting: Option<Reporting<H>>, transport: Option<Supervisor>,
+        &self, resources: Arc<harmos_operations::execution::ExecutionContext>, host: H, reporting: Option<Reporting<H>>,
+        transport: Option<Supervisor>,
     ) -> Result<Activity, ObserverError> {
         let reporting = match (self.reporting.clone(), reporting) {
             (Some(registered), Some(host)) => Some(Arc::new(move |owner: &H, report: &crate::CadenceReport| {
@@ -391,8 +392,8 @@ impl<H: Send + Sync + 'static> Instance<H> {
 
 impl Activity {
     fn open<S: Observer<H>, H: Send + Sync + 'static>(
-        resources: Arc<harmos_sdk::ExecutionContext>, host: H, context: Option<ContextFactory<H>>, identity: Identity, interval: Duration,
-        reporting: Option<Reporting<H>>, transport: Option<Supervisor>,
+        resources: Arc<harmos_operations::execution::ExecutionContext>, host: H, context: Option<ContextFactory<H>>, identity: Identity,
+        interval: Duration, reporting: Option<Reporting<H>>, transport: Option<Supervisor>,
     ) -> Result<Self, ObserverError> {
         let create_extension = || match context {
             Some(factory) => {
@@ -589,7 +590,9 @@ pub(super) fn validate_outputs<H>(instances: &[Instance<H>], grants: &[publicati
 
 /* === Private Functions === */
 
-fn resolve_interval<S: Observer<H>, H: Send + Sync + 'static>(resources: &harmos_sdk::ExecutionContext) -> Result<Duration, ObserverError> {
+fn resolve_interval<S: Observer<H>, H: Send + Sync + 'static>(
+    resources: &harmos_operations::execution::ExecutionContext,
+) -> Result<Duration, ObserverError> {
     match std::panic::catch_unwind(AssertUnwindSafe(|| S::interval(resources))) {
         Ok(Ok(interval)) if interval.is_zero() => Err(ObserverError::InvalidInterval),
         Ok(Ok(interval)) => Ok(interval),
@@ -680,7 +683,7 @@ mod tests {
         const ID: &'static str = "slow.observer";
         const INTERVAL: Duration = Duration::from_millis(10);
 
-        async fn initialize(_: &harmos_sdk::ExecutionContext) -> Result<Self, Self::Error> {
+        async fn initialize(_: &harmos_operations::execution::ExecutionContext) -> Result<Self, Self::Error> {
             Ok(Self(false))
         }
 
@@ -700,7 +703,7 @@ mod tests {
         let instance = super::Instance::<()>::of::<SlowObserver>().with_cadence_reporting(move |_, report| {
             sending.send(report.clone()).unwrap();
         });
-        let mut activity = instance.activate(Arc::new(harmos_sdk::ExecutionContext::default()), ()).unwrap();
+        let mut activity = instance.activate(Arc::new(harmos_operations::execution::ExecutionContext::default()), ()).unwrap();
         let observing = activity.observe(|| {});
         tokio::pin!(observing);
         let mut reports = Vec::new();
@@ -743,7 +746,7 @@ mod tests {
     #[test]
     fn context_resource_resolution() {
         let value = Arc::new(17_u32);
-        let mut table = harmos_sdk::__private::WireTable::new("observer").unwrap();
+        let mut table = harmos_operations::execution::__private::WireTable::new("observer").unwrap();
         table.provide_resource(Arc::clone(&value)).unwrap();
         let resources = table.context();
         let tick = Tick { ordinal: 1, elapsed: Duration::ZERO };

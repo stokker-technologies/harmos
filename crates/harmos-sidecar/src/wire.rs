@@ -22,7 +22,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
 
 // Local Imports
 use harmos_domain::Message;
-use harmos_sdk::operations::{CHILD_METHOD, CallValue, OperationDeclaration, WIRE_METHOD, WireChildCall, WireCommand};
+use harmos_operations::execution::operations::{CHILD_METHOD, CallValue, OperationDeclaration, WIRE_METHOD, WireChildCall, WireCommand};
 
 /* === Constants === */
 
@@ -303,7 +303,7 @@ impl Frame {
     // Only the unknown outer identifier is bounded by its maximal encoded width.
     pub fn child_payload_encoded_len(
         operation: &str, generation: u64, payload: usize, generation_context: bool, values: &[CallValue],
-        retry: Option<harmos_sdk::operations::RetryPolicy>,
+        retry: Option<harmos_operations::execution::operations::RetryPolicy>,
     ) -> usize {
         let child =
             WireChildCall::payload_encoded_len(operation, generation, payload, generation_context, values, retry).unwrap_or(usize::MAX);

@@ -116,8 +116,8 @@ impl Settings {
         Calls::validate(self.calls)?;
         self.decode.validate()?;
         self.encode.validate()?;
-        harmos_sdk::operations::streaming::validate(&self.input).map_err(|error| status(error.into()))?;
-        harmos_sdk::operations::streaming::validate(&self.output).map_err(|error| status(error.into()))?;
+        harmos_operations::execution::operations::streaming::validate(&self.input).map_err(|error| status(error.into()))?;
+        harmos_operations::execution::operations::streaming::validate(&self.output).map_err(|error| status(error.into()))?;
         if self.opening_timeout.is_zero() {
             return Err(Status::invalid_argument("gRPC opening timeout must be positive"));
         }

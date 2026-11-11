@@ -84,8 +84,8 @@ mod execution {
     // Third Party Imports
 
     // Local Imports
+    use crate::execution::operations::Operation;
     use crate::{Error, Result};
-    use harmos_sdk::operations::Operation;
     use harmos_storage::StagedFile;
 
     /* === Constants === */
@@ -105,7 +105,7 @@ mod execution {
     impl Operation for super::DeleteFile {
         type Error = Error;
 
-        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<StagedFile>> {
+        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<crate::execution::operations::Response<StagedFile>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
 
             let result: ::core::result::Result<StagedFile, Self::Error> =
@@ -113,7 +113,7 @@ mod execution {
             result.map(::core::convert::Into::into)
         }
 
-        fn classify(error: &Error) -> harmos_sdk::operations::FailureKind {
+        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
             crate::storage::classify(error)
         }
     }

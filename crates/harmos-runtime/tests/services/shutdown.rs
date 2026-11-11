@@ -199,7 +199,7 @@ async fn service_stop_observer() {
             })
         }
         async fn run(
-            &self, _: Arc<harmos_sdk::ExecutionContext>, mut activation: harmos_runtime::observers::ObserverActivation,
+            &self, _: Arc<harmos_operations::execution::ExecutionContext>, mut activation: harmos_runtime::observers::ObserverActivation,
         ) -> harmos_runtime::Result<()> {
             activation.ready();
             let gates = &self.0;
@@ -465,7 +465,7 @@ async fn unregister_retains_ownership() {
                 let entered = entered.clone();
                 let stopping = stopping.clone();
                 let dropped = dropped.clone();
-                move |_: Arc<harmos_sdk::ExecutionContext>| {
+                move |_: Arc<harmos_operations::execution::ExecutionContext>| {
                     let entered = entered.clone();
                     let stopping = stopping.clone();
                     let dropped = dropped.clone();

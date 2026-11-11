@@ -768,9 +768,9 @@ mod tests {
     }
 
     struct Worker(Arc<AtomicUsize>);
-    impl harmos_sdk::services::Service for Worker {
-        type Error = harmos_sdk::ResourceError;
-        async fn initialize(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, Self::Error> {
+    impl harmos_operations::execution::services::Service for Worker {
+        type Error = harmos_operations::execution::ResourceError;
+        async fn initialize(context: harmos_operations::execution::ExecutionContext) -> std::result::Result<Self, Self::Error> {
             assert_eq!(context.resource::<PluginScope>()?.owner(), "worker");
             assert!(context.resource::<crate::services::ServiceContext<Model>>().is_err());
             let calls = context.resource::<AtomicUsize>()?;
@@ -778,7 +778,7 @@ mod tests {
             context.resource::<tokio::sync::Notify>()?.notify_one();
             Ok(Self(calls))
         }
-        async fn run(&mut self, _: harmos_sdk::ExecutionContext) -> std::result::Result<(), Self::Error> {
+        async fn run(&mut self, _: harmos_operations::execution::ExecutionContext) -> std::result::Result<(), Self::Error> {
             std::future::pending().await
         }
         async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
@@ -802,7 +802,7 @@ mod tests {
         assert!(scope.commit());
         scope
             .register_batch(
-                harmos_sdk::__private::RegistrationBatch::new()
+                harmos_operations::execution::__private::RegistrationBatch::new()
                     .operation::<Read>()
                     .service::<Worker>("service", crate::services::POLICY)
                     .lane(<Lanes as crate::operations::Lane>::default_lane()),
@@ -830,7 +830,7 @@ mod tests {
         .unwrap();
         let mut receipt = runtime.operations.stage_plugin(&scope, |_| Ok(())).unwrap();
         assert!(scope.commit());
-        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<Read>();
+        let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Read>();
         let invocation = scope.operation::<Read, Lanes>(Read);
         scope.register_batch(batch.clone().lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
         assert_eq!(initialized.load(Ordering::SeqCst), 0);

@@ -976,7 +976,6 @@ dependencies = [
  "harmos-macros",
  "harmos-operations",
  "harmos-runtime",
- "harmos-sdk",
  "harmos-sdk-grpc",
 ]
 
@@ -1002,7 +1001,6 @@ dependencies = [
  "harmos-domain",
  "harmos-macros",
  "harmos-operations",
- "harmos-sdk",
  "thiserror",
  "tracing",
  "wit-bindgen 0.61.1",
@@ -1026,8 +1024,9 @@ version = "0.1.14"
 dependencies = [
  "harmos-domain",
  "harmos-macros",
- "harmos-sdk",
  "harmos-storage",
+ "postcard",
+ "prost",
  "serde",
  "serde_json",
  "thiserror",
@@ -1083,7 +1082,6 @@ dependencies = [
  "harmos-operations",
  "harmos-packaging",
  "harmos-protocol",
- "harmos-sdk",
  "harmos-storage",
  "http-body",
  "hyper-util",
@@ -1106,21 +1104,6 @@ dependencies = [
  "tracing",
  "wasmtime",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "harmos-sdk"
-version = "0.1.14"
-dependencies = [
- "harmos-domain",
- "harmos-macros",
- "postcard",
- "prost",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
 ]
 
 [[package]]

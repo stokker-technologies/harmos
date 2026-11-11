@@ -30,7 +30,7 @@ use std::{
 // Local Imports
 use super::instance::Instance;
 use super::{CallContext, ContextError, ContextValue, EndpointSet, OperationDeclaration, Response, RetryPolicy};
-use crate::{Message, StreamSpec};
+use crate::execution::{Message, StreamSpec};
 
 /* === Constants === */
 

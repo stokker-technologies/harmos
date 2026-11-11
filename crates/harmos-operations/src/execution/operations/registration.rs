@@ -25,8 +25,8 @@ use super::{
     Carrier, Contract, Executable, ExecutionContext, OperationDeclaration, OperationDefinition, Resource, ResourceSet, ServingError,
     WireDeclaration, WireTable,
 };
-use crate::services::Service;
-use crate::{Message, ServicePolicy};
+use crate::execution::services::Service;
+use crate::execution::{Message, ServicePolicy};
 
 /* === Constants === */
 
@@ -45,8 +45,8 @@ type PrepareEncoded = fn(ResourceSet, &[u8]) -> Result<PreparedNative, ServingEr
 #[derive(Clone, Copy)]
 pub struct Catalog {
     pub name: &'static str,
-    pub declarations: &'static [crate::catalog::Node<WireDeclaration>],
-    pub callees: &'static [crate::catalog::Node<&'static [WireDeclaration]>],
+    pub declarations: &'static [crate::execution::catalog::Node<WireDeclaration>],
+    pub callees: &'static [crate::execution::catalog::Node<&'static [WireDeclaration]>],
     identity: fn() -> std::any::TypeId,
     factory: fn() -> RegistrationBatch,
 }
@@ -62,7 +62,7 @@ pub struct PreparedNative {
     pub streams: Option<super::WireStreams>,
 
     pub instance: Box<dyn NativeInstance>,
-    pub grant: Option<crate::plugin::Grant>,
+    pub grant: Option<crate::execution::plugin::Grant>,
 }
 
 #[derive(Clone)]
@@ -71,8 +71,8 @@ pub struct OperationFactory {
     pub operations: &'static [WireDeclaration],
     declared: fn() -> OperationDefinition,
     named: fn(&str) -> Result<OperationDefinition, ServingError>,
-    registered_id: Option<crate::Identifier>,
-    grant: fn(&str, Option<crate::plugin::Grant>) -> Option<crate::plugin::Grant>,
+    registered_id: Option<crate::execution::Identifier>,
+    grant: fn(&str, Option<crate::execution::plugin::Grant>) -> Option<crate::execution::plugin::Grant>,
     builtin: bool,
     resources: &'static [Resource],
     contract: fn(&harmos_domain::config::SchemaSettings) -> Result<Contract, super::ContractError>,
@@ -86,9 +86,9 @@ pub struct OperationFactory {
     grpc: fn(ResourceSet, &[u8], super::WireStreamLimits) -> Result<PreparedNative, ServingError>,
 
     #[cfg(all(feature = "grpc", feature = "streaming"))]
-    grpc_memory: fn(&[u8]) -> Result<usize, crate::MessageError>,
+    grpc_memory: fn(&[u8]) -> Result<usize, crate::execution::MessageError>,
 
-    decoding_memory: fn(&[u8]) -> Result<usize, crate::MessageError>,
+    decoding_memory: fn(&[u8]) -> Result<usize, crate::execution::MessageError>,
 }
 
 #[derive(Clone)]
@@ -138,7 +138,7 @@ pub trait ServiceInstance: Send {
 }
 
 pub trait NativeInstance: Send {
-    fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> crate::operations::FailureKind;
+    fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> crate::execution::operations::FailureKind;
     fn initialize(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ()>;
     fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, super::response::ErasedResponse>;
     fn stop(&mut self) -> ServiceFuture<'_, ()>;
@@ -153,8 +153,8 @@ pub trait NativeInstance: Send {
 
 impl Catalog {
     pub const fn of<C: OperationCatalog>(
-        name: &'static str, declarations: &'static [crate::catalog::Node<WireDeclaration>],
-        callees: &'static [crate::catalog::Node<&'static [WireDeclaration]>],
+        name: &'static str, declarations: &'static [crate::execution::catalog::Node<WireDeclaration>],
+        callees: &'static [crate::execution::catalog::Node<&'static [WireDeclaration]>],
     ) -> Self {
         Self {
             name,
@@ -215,10 +215,10 @@ impl RegistrationBatch {
             named: |id| OperationDefinition::named::<D>(id).map_err(ServingError::from),
             registered_id: None,
             grant: registered_grant::<D>,
-            builtin: std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>(),
+            builtin: std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::execution::observers::Control>(),
             contract: |settings| {
-                if std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>() {
-                    return crate::observers::contract();
+                if std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::execution::observers::Control>() {
+                    return crate::execution::observers::contract();
                 }
                 WireDeclaration::of::<D>().contract_with_settings(settings)
             },
@@ -259,8 +259,8 @@ impl RegistrationBatch {
             encoded: |dependencies, payload| {
                 use super::EndpointSet;
                 let endpoints = O::StreamEndpoints::empty().ok_or(ServingError::StreamUnsupported)?;
-                let request =
-                    <<O::Declaration as OperationDeclaration>::Request as crate::Message>::decode(payload).map_err(ServingError::Codec)?;
+                let request = <<O::Declaration as OperationDeclaration>::Request as crate::execution::Message>::decode(payload)
+                    .map_err(ServingError::Codec)?;
                 let grant = D::grant(&request);
                 let instance = NativeOperation::<O> {
                     dependencies,
@@ -286,9 +286,10 @@ impl RegistrationBatch {
             #[cfg(all(feature = "grpc", feature = "streaming"))]
             grpc: |dependencies, payload, limits| {
                 use super::EndpointSet;
-                let request =
-                    crate::grpc::decode::<<O::Declaration as OperationDeclaration>::Request>(crate::grpc::DecodeInput::new(payload))
-                        .map_err(ServingError::Codec)?;
+                let request = crate::execution::grpc::decode::<<O::Declaration as OperationDeclaration>::Request>(
+                    crate::execution::grpc::DecodeInput::new(payload),
+                )
+                .map_err(ServingError::Codec)?;
                 let (endpoints, streams) = match O::StreamEndpoints::empty() {
                     Some(endpoints) => (endpoints, None),
                     None => {
@@ -316,10 +317,12 @@ impl RegistrationBatch {
             },
             #[cfg(all(feature = "grpc", feature = "streaming"))]
             grpc_memory: |payload| {
-                crate::grpc::prepare::<<O::Declaration as OperationDeclaration>::Request>(crate::grpc::DecodeInput::new(payload))
-                    .map(|prepared| prepared.memory())
+                crate::execution::grpc::prepare::<<O::Declaration as OperationDeclaration>::Request>(
+                    crate::execution::grpc::DecodeInput::new(payload),
+                )
+                .map(|prepared| prepared.memory())
             },
-            decoding_memory: <D::Request as crate::Message>::decoding_memory,
+            decoding_memory: <D::Request as crate::execution::Message>::decoding_memory,
         });
         self
     }
@@ -389,7 +392,7 @@ impl OperationFactory {
             .collect()
     }
 
-    pub fn decoding_memory(&self, payload: &[u8]) -> Result<usize, crate::MessageError> {
+    pub fn decoding_memory(&self, payload: &[u8]) -> Result<usize, crate::execution::MessageError> {
         (self.decoding_memory)(payload)
     }
 
@@ -408,11 +411,11 @@ impl OperationFactory {
         Ok(prepared)
     }
 
-    pub fn grant(&self, grant: Option<crate::plugin::Grant>) -> Option<crate::plugin::Grant> {
+    pub fn grant(&self, grant: Option<crate::execution::plugin::Grant>) -> Option<crate::execution::plugin::Grant> {
         (self.grant)(self.definition.id.as_str(), grant)
     }
     #[cfg(all(feature = "grpc", feature = "streaming"))]
-    pub fn grpc_decoding_memory(&self, payload: &[u8]) -> Result<usize, crate::MessageError> {
+    pub fn grpc_decoding_memory(&self, payload: &[u8]) -> Result<usize, crate::execution::MessageError> {
         (self.grpc_memory)(payload)
     }
 
@@ -444,8 +447,8 @@ impl OperationFactory {
 }
 
 impl<O: Carrier> NativeInstance for NativeOperation<O> {
-    fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> crate::operations::FailureKind {
-        error.downcast_ref::<O::Error>().map_or(crate::operations::FailureKind::Permanent, O::classify)
+    fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> crate::execution::operations::FailureKind {
+        error.downcast_ref::<O::Error>().map_or(crate::execution::operations::FailureKind::Permanent, O::classify)
     }
 
     fn initialize(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ()> {
@@ -477,7 +480,7 @@ impl<O: Carrier> NativeInstance for NativeOperation<O> {
             #[cfg(all(feature = "grpc", feature = "streaming"))]
             if self.protobuf {
                 let mut bytes = Vec::new();
-                crate::grpc::encode(&*response, &mut bytes).map_err(ServingError::Codec)?;
+                crate::execution::grpc::encode(&*response, &mut bytes).map_err(ServingError::Codec)?;
                 return Ok(super::Response::new(bytes).into_erased());
             }
             if self.encoded {
@@ -543,7 +546,9 @@ impl<S: Service> ServiceInstance for InitializedService<S> {
 
 /* === Private Functions === */
 
-pub(crate) fn registered_grant<D: OperationDeclaration>(id: &str, grant: Option<crate::plugin::Grant>) -> Option<crate::plugin::Grant> {
+pub(crate) fn registered_grant<D: OperationDeclaration>(
+    id: &str, grant: Option<crate::execution::plugin::Grant>,
+) -> Option<crate::execution::plugin::Grant> {
     grant.map(|mut grant| {
         if grant.operation() == D::ID && id != D::ID {
             grant.operation = id.to_owned().into();
@@ -553,7 +558,7 @@ pub(crate) fn registered_grant<D: OperationDeclaration>(id: &str, grant: Option<
 }
 
 fn service_error(error: impl std::error::Error + 'static) -> ServingError {
-    ServingError::Handler(super::StartupError::failure(&error, crate::operations::FailureKind::Permanent))
+    ServingError::Handler(super::StartupError::failure(&error, crate::execution::operations::FailureKind::Permanent))
 }
 
 fn operation_error<O: Carrier>(error: O::Error) -> ServingError {
@@ -581,21 +586,21 @@ mod tests {
         }
     }
 
-    #[crate::operation(harmos_path = crate, resources = [u64], id = "fixture.read", response = u64,
-        policy = crate::OperationPolicy {
+    #[crate::execution::operation(harmos_path = crate::execution, resources = [u64], id = "fixture.read", response = u64,
+        policy = crate::execution::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
-            retries: crate::RetryPolicy::Never,
+            retries: crate::execution::RetryPolicy::Never,
         },
     )]
     struct Read;
 
-    impl crate::Operation for Read {
+    impl crate::execution::Operation for Read {
         type Error = std::convert::Infallible;
 
-        async fn run(self, ctx: crate::Context<'_, Self>) -> Result<crate::Response<u64>, Self::Error> {
-            Ok(crate::Response::from_owner(ctx.resource::<u64>()))
+        async fn run(self, ctx: crate::execution::Context<'_, Self>) -> Result<crate::execution::Response<u64>, Self::Error> {
+            Ok(crate::execution::Response::from_owner(ctx.resource::<u64>()))
         }
     }
 
@@ -619,9 +624,9 @@ mod tests {
         assert_eq!(contract.operation(), &definition);
         assert_eq!(contract.schema(), WireDeclaration::of::<Read>().contract().unwrap().schema());
         assert_eq!(contract.operation().policy, Read::POLICY);
-        let granted = factory.grant(Some(crate::plugin::Grant::of(Read::ID, "device"))).unwrap();
+        let granted = factory.grant(Some(crate::execution::plugin::Grant::of(Read::ID, "device"))).unwrap();
         assert_eq!((granted.operation(), granted.scope()), (id.as_str(), Some("device")));
-        let foreign = crate::plugin::Grant::of("foreign.operation", "device");
+        let foreign = crate::execution::plugin::Grant::of("foreign.operation", "device");
         assert_eq!(factory.grant(Some(foreign.clone())), Some(foreign));
 
         let mut table = WireTable::new("fixture").unwrap();
@@ -632,7 +637,7 @@ mod tests {
         assert!(table.register(batch.clone()).is_err());
 
         let mut changed = factory.clone();
-        changed.definition.id = crate::Identifier::new("fixture.changed").unwrap();
+        changed.definition.id = crate::execution::Identifier::new("fixture.changed").unwrap();
         assert!(changed.validate().is_err());
         let mut changed = factory.clone();
         changed.definition.fingerprint.0[0] ^= 1;
@@ -648,7 +653,7 @@ mod tests {
 
     #[test]
     fn carrier_assignments_are_immutable() {
-        use crate::operations::{AssignedOperation, OperationAssignments};
+        use crate::execution::operations::{AssignedOperation, OperationAssignments};
         let first = AssignedOperation {
             operation: format!("fixture.{}", Read::ID),
             fingerprint: Read::definition().fingerprint.0,
@@ -677,7 +682,7 @@ mod tests {
 
     #[test]
     fn encoded_factory_preserves_response() {
-        use crate::Message;
+        use crate::execution::Message;
 
         let mut dependencies = ResourceSet::new();
         dependencies.insert(Arc::new(42u64)).unwrap();
@@ -692,7 +697,7 @@ mod tests {
     }
 
     impl Service for Worker {
-        type Error = crate::ResourceError;
+        type Error = crate::execution::ResourceError;
 
         async fn initialize(context: ExecutionContext) -> Result<Self, Self::Error> {
             let counter = context.resource::<AtomicUsize>()?;
@@ -709,16 +714,16 @@ mod tests {
     #[test]
     fn factory_rejects_a_substituted_declaration() {
         let mut batch = RegistrationBatch::new().operation::<Read>();
-        batch.operations[0].definition.id = crate::Identifier::new("different").unwrap();
+        batch.operations[0].definition.id = crate::execution::Identifier::new("different").unwrap();
         assert!(matches!(batch.operations[0].validate(), Err(ServingError::Catalog)));
     }
 
     #[test]
     fn wire_identity_fences_replacement_before_decoding() {
-        use crate::operations::{ServingError, WireTable};
-        use crate::{Message, QualifiedId};
+        use crate::execution::operations::{ServingError, WireTable};
+        use crate::execution::{Message, QualifiedId};
         let batch = RegistrationBatch::new().operation::<Read>();
-        let fingerprint = crate::OperationDefinition::of::<Read>().unwrap().fingerprint.0;
+        let fingerprint = crate::execution::OperationDefinition::of::<Read>().unwrap().fingerprint.0;
         let mut table = WireTable::new("fixture").unwrap();
         table.resource(42u64);
         table.capacity(std::num::NonZeroUsize::MIN);
@@ -743,7 +748,7 @@ mod tests {
         dependencies.insert(counter.clone()).unwrap();
         let policy = ServicePolicy {
             stop_timeout: std::time::Duration::from_secs(1),
-            restart: crate::RestartPolicy::Never,
+            restart: crate::execution::RestartPolicy::Never,
         };
         let batch = RegistrationBatch::new().service::<Worker>("worker", policy);
         let factory = &batch.services[0];
@@ -758,7 +763,7 @@ mod tests {
 
     #[test]
     fn binding_errors_aggregate() {
-        use crate::StartupError;
+        use crate::execution::StartupError;
         let mut table = WireTable::new("fixture").unwrap();
         table.resource(7u32).resource(8u32);
         table.catalog(&ReadCatalog::CATALOG).catalog(&ReadCatalog::CATALOG);

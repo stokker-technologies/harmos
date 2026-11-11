@@ -29,7 +29,7 @@ use crate::catalog::{Catalog, Member, Visitor};
 use crate::operations::{FailureKind, OperationDeclaration, OperationDefinition, OperationPolicy, RetryPolicy, WireAnswer, WireCommand};
 use crate::services::{NativeEndpoint, SidecarError};
 use crate::{Error, Identifier, Message, Result, operations::Lane};
-use harmos_sdk::operations::Carrier;
+use harmos_operations::execution::operations::Carrier;
 
 /* === Constants === */
 
@@ -57,7 +57,7 @@ struct NativeState {
     fingerprint: [u8; 32],
     sdk: Option<harmos_operations::lifecycle::Action>,
     acknowledged: bool,
-    observer_stop: Option<harmos_sdk::operations::Cancellation>,
+    observer_stop: Option<harmos_operations::execution::operations::Cancellation>,
     _capacity: Option<OwnedSemaphorePermit>,
 }
 
@@ -92,7 +92,7 @@ pub(crate) struct Encoded<E = ()> {
     grpc: bool,
     payload: Vec<u8>,
     capacity: Option<OwnedSemaphorePermit>,
-    observer_stop: Option<harmos_sdk::operations::Cancellation>,
+    observer_stop: Option<harmos_operations::execution::operations::Cancellation>,
     endpoints: PhantomData<fn() -> E>,
 }
 
@@ -120,7 +120,7 @@ enum Selection {
 #[derive(Debug, thiserror::Error)]
 pub enum NativeError {
     #[error(transparent)]
-    Dependency(#[from] harmos_sdk::ResourceError),
+    Dependency(#[from] harmos_operations::execution::ResourceError),
 
     #[error(transparent)]
     Stream(#[from] super::RemoteStreamError),
@@ -293,7 +293,7 @@ impl<E: 'static> crate::grpc::Wire<Encoded<E>> for Forwarded {
     }
 
     fn decode_admitted<C>(
-        input: harmos_sdk::grpc::DecodeInput<'_>, admit: impl FnOnce(usize) -> std::result::Result<C, tonic::Status>,
+        input: harmos_operations::execution::grpc::DecodeInput<'_>, admit: impl FnOnce(usize) -> std::result::Result<C, tonic::Status>,
     ) -> std::result::Result<(Encoded<E>, C), tonic::Status> {
         let payload = input.contiguous().map_err(|error| tonic::Status::invalid_argument(error.to_string()))?;
         let bytes = std::mem::size_of::<Encoded<E>>()
@@ -319,7 +319,7 @@ impl crate::grpc::Wire<super::NoStream> for Forwarded {
         Err(crate::MessageError::borrowed("operation has no stream"))
     }
     fn decode_admitted<C>(
-        _: harmos_sdk::grpc::DecodeInput<'_>, _: impl FnOnce(usize) -> std::result::Result<C, tonic::Status>,
+        _: harmos_operations::execution::grpc::DecodeInput<'_>, _: impl FnOnce(usize) -> std::result::Result<C, tonic::Status>,
     ) -> std::result::Result<(super::NoStream, C), tonic::Status> {
         Err(tonic::Status::invalid_argument("operation has no stream"))
     }
@@ -339,7 +339,7 @@ impl crate::grpc::Wire<Opaque> for Forwarded {
     }
 
     fn decode_admitted<C>(
-        input: harmos_sdk::grpc::DecodeInput<'_>, admit: impl FnOnce(usize) -> std::result::Result<C, tonic::Status>,
+        input: harmos_operations::execution::grpc::DecodeInput<'_>, admit: impl FnOnce(usize) -> std::result::Result<C, tonic::Status>,
     ) -> std::result::Result<(Opaque, C), tonic::Status> {
         let payload = input.contiguous().map_err(|error| tonic::Status::invalid_argument(error.to_string()))?;
         let bytes = std::mem::size_of::<Opaque>()
@@ -387,7 +387,7 @@ impl Native {
                     scope.owner(),
                     lane.name(),
                     {
-                        let mut dependencies = harmos_sdk::__private::ResourceSet::new();
+                        let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
                         dependencies.insert(Arc::clone(&handler))?;
                         dependencies
                     },
@@ -419,7 +419,7 @@ where
     type StreamEndpoints = E;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn bind(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, NativeError> {
+    async fn bind(context: harmos_operations::execution::ExecutionContext) -> std::result::Result<Self, NativeError> {
         let native = context.resource::<Native>()?;
         Ok(Self {
             native,
@@ -432,7 +432,7 @@ where
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
     async fn attempt(
-        &mut self, context: harmos_sdk::ExecutionContext, request: &mut O::Request, endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_operations::execution::ExecutionContext, request: &mut O::Request, endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<crate::operations::Response<O::Response>, NativeError> {
         let host = context.resource::<super::HostContext>()?;
         let context = host.borrow();
@@ -581,7 +581,7 @@ impl Native {
             };
             // The provider decoded the request; refuse it before any attempt runs.
             let payload = ready(answer)?;
-            let grant = harmos_sdk::operations::decode_prepared_grant(&payload)
+            let grant = harmos_operations::execution::operations::decode_prepared_grant(&payload)
                 .map_err(|error| SidecarError::Malformed(format!("prepared grant is malformed: {error}")))?;
             context.admit_grant(grant.as_ref()).map_err(NativeError::Unauthorized)?;
         }
@@ -733,7 +733,7 @@ impl<E: super::StreamEndpoints + Shape> Carrier for EncodedOperation<E> {
     type StreamEndpoints = E;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn bind(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, NativeError> {
+    async fn bind(context: harmos_operations::execution::ExecutionContext) -> std::result::Result<Self, NativeError> {
         let binding = context.resource::<Binding>()?;
         Ok(Self {
             binding,
@@ -746,7 +746,7 @@ impl<E: super::StreamEndpoints + Shape> Carrier for EncodedOperation<E> {
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
     async fn attempt(
-        &mut self, context: harmos_sdk::ExecutionContext, request: &mut Encoded<E>, endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_operations::execution::ExecutionContext, request: &mut Encoded<E>, endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<crate::operations::Response<Opaque>, NativeError> {
         let host = context.resource::<super::HostContext>()?;
         let context = host.borrow();
@@ -937,11 +937,12 @@ impl super::Bindings<'_> {
             });
             let entry = Arc::get_mut(entry).expect("new typed native entry has one owner");
             if entry.contract.as_ref().is_some_and(|contract| contract.input().is_none() && contract.output().is_none()) {
-                let mut dependencies = harmos_sdk::__private::ResourceSet::new();
+                let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
                 dependencies.insert(Arc::clone(&handler))?;
-                let mut batch = harmos_sdk::__private::RegistrationBatch::new().carrier::<Encoded<()>, EncodedOperation>();
+                let mut batch =
+                    harmos_operations::execution::__private::RegistrationBatch::new().carrier::<Encoded<()>, EncodedOperation>();
                 let factory = batch.operations.pop().expect("one encoded implementation");
-                let resources = harmos_sdk::ExecutionContext::new(dependencies, super::CallContext::default())
+                let resources = harmos_operations::execution::ExecutionContext::new(dependencies, super::CallContext::default())
                     .with_resources(self.operations.resources().clone())
                     .resources()
                     .clone();
@@ -1077,7 +1078,8 @@ pub(super) fn dispatch(
         ))));
     }
     // Stop Observers Cooperatively Before Retiring Their Attempt Context.
-    let observer_stop = matches!(binding.selection, Selection::Observe(_)).then(harmos_sdk::operations::Cancellation::default);
+    let observer_stop =
+        matches!(binding.selection, Selection::Observe(_)).then(harmos_operations::execution::operations::Cancellation::default);
     let request = Encoded {
         grpc: false,
         payload: input.payload,
@@ -1128,7 +1130,7 @@ fn encoded_binding<E: super::StreamEndpoints + Shape>(
         scope.owner(),
         lane,
         {
-            let mut dependencies = harmos_sdk::__private::ResourceSet::new();
+            let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
             dependencies.insert(Arc::clone(handler))?;
             dependencies
         },
@@ -1145,7 +1147,7 @@ where
     use crate::operations::Direction;
     type In<O> = super::StreamInput<<<O as crate::operations::OperationDeclaration>::Input as Direction>::Item>;
     type Out<O> = super::StreamOutput<<<O as crate::operations::OperationDeclaration>::Output as Direction>::Item>;
-    let mut dependencies = harmos_sdk::__private::ResourceSet::new();
+    let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
     dependencies.insert(native)?;
     match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {
         (false, false) => bindings.stage_implementation::<O, NativeOperation<O, ()>>(lane, dependencies),

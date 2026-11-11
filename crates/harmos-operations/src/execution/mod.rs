@@ -31,7 +31,6 @@ pub use plugin::Plugin;
 pub use services::Service;
 pub use setup::Setup;
 
-#[cfg(feature = "derive")]
 pub use harmos_macros::{runtime_catalog as catalog, runtime_operation as operation};
 
 /* === Imports === */
@@ -39,7 +38,6 @@ pub use harmos_macros::{runtime_catalog as catalog, runtime_operation as operati
 // Standard Library Imports
 
 // Third Party Imports
-extern crate self as harmos;
 
 // Local Imports
 
@@ -103,10 +101,10 @@ pub mod __private {
 
     /* === Re-Exports === */
 
-    pub use crate::operations::registration::{PreparedNative, RegistrationBatch, ServiceFuture};
-    pub use crate::operations::resources::ResourceSet;
-    pub use crate::operations::response::ErasedResponse;
-    pub use crate::operations::serving::WireTable;
+    pub use crate::execution::operations::registration::{PreparedNative, RegistrationBatch, ServiceFuture};
+    pub use crate::execution::operations::resources::ResourceSet;
+    pub use crate::execution::operations::response::ErasedResponse;
+    pub use crate::execution::operations::serving::WireTable;
     pub use harmos_domain::__private::*;
 
     /* === Imports === */

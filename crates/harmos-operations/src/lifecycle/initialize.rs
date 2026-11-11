@@ -41,7 +41,7 @@ pub struct Initialize {
 #[cfg(feature = "lifecycle")]
 pub struct Control {
     #[cfg(feature = "lifecycle")]
-    instance: Box<dyn harmos_sdk::operations::lifecycle::LifecycleInstance>,
+    instance: Box<dyn crate::execution::operations::lifecycle::LifecycleInstance>,
 }
 
 /* === Enums === */
@@ -50,10 +50,10 @@ pub struct Control {
 #[derive(Debug, thiserror::Error)]
 pub enum ControlError {
     #[error(transparent)]
-    Dependency(#[from] harmos_sdk::ResourceError),
+    Dependency(#[from] crate::execution::ResourceError),
 
     #[error("plugin lifecycle access failed: {0}")]
-    Access(#[source] harmos_sdk::operations::access::AccessError),
+    Access(#[source] crate::execution::operations::access::AccessError),
 }
 
 /* === Traits === */
@@ -77,12 +77,12 @@ impl MemorySize for Initialize {
 }
 
 #[cfg(feature = "lifecycle")]
-impl harmos_sdk::operations::Carrier for Control {
+impl crate::execution::operations::Carrier for Control {
     type Declaration = Initialize;
     type Error = super::ControlError;
     type StreamEndpoints = ();
     async fn bind(context: crate::ExecutionContext) -> Result<Self, Self::Error> {
-        let access = context.resource::<harmos_sdk::operations::lifecycle::LifecycleAccess>()?;
+        let access = context.resource::<crate::execution::operations::lifecycle::LifecycleAccess>()?;
         Ok(Self {
             instance: access.0.clone().begin(super::Action::Initialize),
         })

@@ -145,21 +145,22 @@ impl crate::operations::Context<'_> {
             });
         }
         let prepared = if let Some(binding) = plugin {
-            harmos_sdk::__private::PreparedNative {
+            harmos_operations::execution::__private::PreparedNative {
                 instance: binding.prepare(child.payload),
                 grant: None,
                 streams: None,
             }
         } else {
-            let factory = entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>().ok_or(Error::InvalidInput {
-                field: "child operation",
-                reason: "host operation has no protobuf codec",
-            })?;
+            let factory =
+                entry.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>().ok_or(Error::InvalidInput {
+                    field: "child operation",
+                    reason: "host operation has no protobuf codec",
+                })?;
             factory
                 .prepare_grpc(
                     self.operations.resources_for(&entry),
                     &child.payload,
-                    harmos_sdk::operations::WireStreamLimits {
+                    harmos_operations::execution::operations::WireStreamLimits {
                         input: crate::operations::StreamSettings {
                             items: std::num::NonZeroUsize::MIN,
                             bytes: std::num::NonZeroUsize::MIN,
@@ -184,8 +185,8 @@ impl crate::operations::Context<'_> {
 
 impl Manager {
     fn dispatch_grpc_prepared(
-        &self, entry: Arc<Entry>, prepared: harmos_sdk::__private::PreparedNative, context: &crate::operations::Context<'_>,
-        override_policy: Option<OperationPolicy>,
+        &self, entry: Arc<Entry>, prepared: harmos_operations::execution::__private::PreparedNative,
+        context: &crate::operations::Context<'_>, override_policy: Option<OperationPolicy>,
     ) -> Result<crate::operations::EncodedInvocation> {
         let mut request = crate::operations::binding::Request::from(Vec::new());
         request.policy = override_policy;

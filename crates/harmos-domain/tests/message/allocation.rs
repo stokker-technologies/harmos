@@ -22,7 +22,7 @@ use std::cell::Cell;
 use harmos_domain::journal::Position;
 use harmos_domain::listeners::{Context, Delivery};
 use harmos_domain::message;
-use harmos_sdk::grpc::{self, DecodeInput, prost};
+use harmos_operations::execution::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
 

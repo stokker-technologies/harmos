@@ -44,7 +44,7 @@ plugin-grpc = [
 plugin-sidecar = ["plugin", "dep:harmos-sidecar", "harmos-sidecar/kit", "harmos-sidecar/derive", "tokio/io-util", "tokio/process"]
 plugin-guest = ["plugin", "dep:harmos-guest", "harmos-guest/kit", "harmos-guest/derive", "dep:wasmtime"]
 grpc = [
-  "harmos-sdk/grpc",
+  "harmos-operations/grpc",
   "generate-proto",
   "dep:tonic-reflection",
   "dep:http-body",
@@ -66,10 +66,9 @@ simulation = []
 harmos-domain = { workspace = true, features = ["derive"] }
 harmos-guest = { workspace = true, optional = true }
 harmos-macros = { workspace = true, default-features = true }
-harmos-operations = { workspace = true, features = ["runtime"] }
+harmos-operations = { workspace = true, features = ["runtime", "streaming"] }
 harmos-packaging = { workspace = true, optional = true }
 harmos-protocol = { workspace = true, optional = true }
-harmos-sdk = { workspace = true, features = ["streaming"] }
 harmos-storage = { workspace = true }
 
 # Git
@@ -132,7 +131,7 @@ tower = { workspace = true, optional = true }
 # Local
 harmos-sdk-grpc = { workspace = true }
 harmos-packaging = { path = "../harmos-packaging", default-features = false, features = ["generate-proto", "guest"] }
-harmos-sdk = { path = "../harmos-sdk", default-features = false, features = ["grpc"] }
+harmos-operations = { path = "../harmos-operations", default-features = false, features = ["grpc"] }
 schematic-domain = { path = "../../examples/schematic/domain" }
 schematic-operations = { path = "../../examples/schematic/operations" }
 

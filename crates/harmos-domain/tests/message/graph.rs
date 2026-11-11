@@ -27,7 +27,7 @@ use harmos_domain::schema::Cardinality;
 use harmos_domain::schema::Described;
 use harmos_domain::schema::declaration::{self, Definition};
 use harmos_domain::schema::graph::{Error, Field, Kind, Schema};
-use harmos_sdk::grpc::{self, DecodeInput};
+use harmos_operations::execution::grpc::{self, DecodeInput};
 
 /* === Constants === */
 

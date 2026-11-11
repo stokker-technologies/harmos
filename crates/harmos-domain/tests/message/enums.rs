@@ -22,7 +22,7 @@ use std::fmt::Debug;
 
 // Local Imports
 use harmos_domain::Message;
-use harmos_sdk::grpc::{self, DecodeInput};
+use harmos_operations::execution::grpc::{self, DecodeInput};
 
 /* === Constants === */
 

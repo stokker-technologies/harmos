@@ -18,10 +18,10 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 // Third Party Imports
 // Local Imports
+use harmos_operations::execution::grpc::{self, DecodeInput};
 use harmos_runtime::grpc::dynamic::{Event, Operation};
 use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy, WireDeclaration};
-use harmos_sdk::grpc::{self, DecodeInput};
 
 /* === Constants === */
 

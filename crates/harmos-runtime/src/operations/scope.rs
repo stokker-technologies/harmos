@@ -42,7 +42,7 @@ pub struct Scope<'a> {
 #[derive(Clone)]
 pub(crate) struct ScopeCore {
     clock: crate::clock::Clock,
-    cancellation: harmos_sdk::operations::Cancellation,
+    cancellation: harmos_operations::execution::operations::Cancellation,
     instances: Arc<Instances>,
     parent: Weak<Instance>,
     admission: Admission,
@@ -67,7 +67,7 @@ pub(crate) struct Child {
 /* === Implementations === */
 
 impl<'a> Scope<'a> {
-    pub fn cancellation(&self) -> &harmos_sdk::operations::Cancellation {
+    pub fn cancellation(&self) -> &harmos_operations::execution::operations::Cancellation {
         &self.core.cancellation
     }
 
@@ -147,7 +147,7 @@ impl std::fmt::Debug for Scope<'_> {
 }
 
 impl ScopeCore {
-    pub(super) fn cancellation(&self) -> &harmos_sdk::operations::Cancellation {
+    pub(super) fn cancellation(&self) -> &harmos_operations::execution::operations::Cancellation {
         &self.cancellation
     }
 

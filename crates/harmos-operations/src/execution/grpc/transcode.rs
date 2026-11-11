@@ -777,14 +777,14 @@ mod tests {
         let mut bytes = Vec::with_capacity(length);
         let baseline = postcard.capacity() + bytes.capacity();
 
-        let refused = crate::grpc::encode_admitted(&value, &mut bytes, usize::MAX, &mut |required| {
+        let refused = crate::execution::grpc::encode_admitted(&value, &mut bytes, usize::MAX, &mut |required| {
             if required > baseline { Err(MessageError::borrowed("fixture index refusal")) } else { Ok(()) }
         });
         assert!(refused.is_err());
         assert!(bytes.is_empty());
 
         let mut claims = Vec::new();
-        crate::grpc::encode_admitted(&value, &mut bytes, usize::MAX, &mut |required| {
+        crate::execution::grpc::encode_admitted(&value, &mut bytes, usize::MAX, &mut |required| {
             claims.push(required);
             Ok(())
         })

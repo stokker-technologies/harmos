@@ -141,7 +141,7 @@ impl<A: Application> Runtime<A> {
     }
 }
 
-impl<A: Application> harmos_sdk::lifecycle::SetupConfiguration for Builder<A> {
+impl<A: Application> harmos_operations::execution::lifecycle::SetupConfiguration for Builder<A> {
     fn resource<T: Send + Sync + 'static>(&mut self, value: Arc<T>, replace: bool) {
         if replace {
             self.resources.replace(value);
@@ -155,7 +155,7 @@ impl<A: Application> harmos_sdk::lifecycle::SetupConfiguration for Builder<A> {
     }
 }
 
-impl<A: Application> harmos_sdk::lifecycle::ApplicationConfiguration for Builder<A> {
+impl<A: Application> harmos_operations::execution::lifecycle::ApplicationConfiguration for Builder<A> {
     type Lane = A::Lanes;
     type LaneSettings = LaneSettings;
 
@@ -165,7 +165,7 @@ impl<A: Application> harmos_sdk::lifecycle::ApplicationConfiguration for Builder
         }
     }
 
-    fn operations<C: harmos_sdk::operations::OperationCatalog>(&mut self, lane: A::Lanes) {
+    fn operations<C: harmos_operations::execution::operations::OperationCatalog>(&mut self, lane: A::Lanes) {
         self.operations::<C>(lane);
     }
 }

@@ -1246,9 +1246,10 @@ these catalogs under `harmos::builtins`; `Builtins::catalog()` includes the two
 reserved plugin lifecycle controls.
 
 The operations crate enables all built-in execution with `runtime`, which includes
-`harmos-sdk` and `harmos-storage`. Carrier kits select its lightweight `lifecycle`
-feature for the two SDK plugin controls, without linking host storage into a
-Wasm component. It never depends on `harmos-runtime`. Runtime composition supplies SDK-owned
+`harmos-storage`. The invocation and resource engine lives in
+`crates/harmos-operations/src/execution/`; the old `crates/harmos-sdk` is removed.
+Carrier kits select `lifecycle` for the two plugin controls, without linking host
+storage into a Wasm component. It never depends on `harmos-runtime`. Runtime composition supplies engine-owned
 instance, discovery, publication, lifecycle and grant-access handles through
 `ExecutionContext`, along with the erased storage engine. State owners retain
 authorization, generation fencing and resource lifecycle ownership.

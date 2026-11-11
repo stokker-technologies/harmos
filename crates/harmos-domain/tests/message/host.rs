@@ -19,8 +19,8 @@
 
 // Local Imports
 use harmos_domain::MemorySize;
+use harmos_operations::execution::grpc::{self, DecodeInput, prost};
 use harmos_operations::streams::{FollowingRow, Publish};
-use harmos_sdk::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
 
@@ -32,7 +32,7 @@ use harmos_sdk::grpc::{self, DecodeInput, prost};
 
 // An Independent Protobuf Oracle For The Current Publication Shape
 #[derive(Clone, PartialEq, prost::Message)]
-#[prost(prost_path = "harmos_sdk::grpc::prost")]
+#[prost(prost_path = "harmos_operations::execution::grpc::prost")]
 struct SinglePublication {
     #[prost(string, tag = "1")]
     stream: String,
@@ -52,7 +52,7 @@ struct SinglePublication {
 
 // A Batch Appends Following Rows as Repeated Tag 7 to the Single-Row Shape
 #[derive(Clone, PartialEq, prost::Message)]
-#[prost(prost_path = "harmos_sdk::grpc::prost")]
+#[prost(prost_path = "harmos_operations::execution::grpc::prost")]
 struct BatchedPublication {
     #[prost(string, tag = "1")]
     stream: String,
@@ -71,7 +71,7 @@ struct BatchedPublication {
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
-#[prost(prost_path = "harmos_sdk::grpc::prost")]
+#[prost(prost_path = "harmos_operations::execution::grpc::prost")]
 struct BatchedRow {
     #[prost(bytes = "vec", tag = "1")]
     payload: Vec<u8>,

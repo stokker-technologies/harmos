@@ -24,7 +24,7 @@ use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::graph::Schema;
 use harmos_domain::schema::{Cardinality, Described, Kind};
 use harmos_domain::{Aggregate, MemorySize, Message, message};
-use harmos_sdk::grpc::{self, DecodeInput, prost};
+use harmos_operations::execution::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
 

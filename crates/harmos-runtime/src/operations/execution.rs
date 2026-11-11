@@ -420,8 +420,8 @@ async fn bounded<O>(timeout: Duration, future: Attempt<'_, O>, cancelled: &mut w
 }
 
 async fn cooperative<O>(
-    timeout: Duration, budget: &Budget, grace: Duration, signal: &harmos_sdk::operations::Cancellation, future: Attempt<'_, O>,
-    cancelled: &mut watch::Receiver<bool>,
+    timeout: Duration, budget: &Budget, grace: Duration, signal: &harmos_operations::execution::operations::Cancellation,
+    future: Attempt<'_, O>, cancelled: &mut watch::Receiver<bool>,
 ) -> Stage<O> {
     let running = async {
         if budget.progress.is_empty() {
@@ -485,7 +485,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn cancel_final_response_grace_is_bounded_by_attempt() {
         let (cancel, mut cancelled) = watch::channel(false);
-        let signal = harmos_sdk::operations::Cancellation::default();
+        let signal = harmos_operations::execution::operations::Cancellation::default();
         let entered = Arc::new(tokio::sync::Notify::new());
         let started = entered.clone();
         let work: Attempt<'_, ()> = Box::pin(async move {

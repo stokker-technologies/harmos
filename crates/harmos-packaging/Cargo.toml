@@ -89,7 +89,7 @@ tokio = { workspace = true, optional = true, features = ["rt", "net", "time"] }
 [dev-dependencies]
 # Local
 harmos-domain = { path = "../harmos-domain", default-features = false, features = ["derive"] }
-harmos-sdk = { path = "../harmos-sdk", default-features = false, features = ["grpc"] }
+harmos-operations = { path = "../harmos-operations", default-features = false, features = ["grpc"] }
 
 # Git
 

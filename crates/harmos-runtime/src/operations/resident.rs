@@ -90,7 +90,7 @@ pub(crate) struct WeakRegistry(Weak<Shared>);
 
 pub(crate) struct Shared {
     identity: Arc<()>,
-    root_resources: Arc<harmos_sdk::ExecutionContext>,
+    root_resources: Arc<harmos_operations::execution::ExecutionContext>,
     index: Weak<Instances>,
     root: Arc<Scope>,
     state: Mutex<State>,
@@ -344,7 +344,8 @@ impl Registry {
     }
 
     pub(crate) fn new(index: &Arc<Instances>, reserved: BTreeSet<String>, identity: Arc<()>) -> Self {
-        let root_resources = Arc::new(harmos_sdk::ExecutionContext::new(index.resources.clone(), super::CallContext::default()));
+        let root_resources =
+            Arc::new(harmos_operations::execution::ExecutionContext::new(index.resources.clone(), super::CallContext::default()));
         let resources: Resources = Arc::clone(&root_resources) as Resources;
         let root = Arc::new(Scope {
             owner: Arc::downgrade(&identity),
@@ -383,7 +384,7 @@ impl Registry {
         Arc::clone(&self.shared.identity)
     }
 
-    pub(crate) fn root_resources(&self) -> Arc<harmos_sdk::ExecutionContext> {
+    pub(crate) fn root_resources(&self) -> Arc<harmos_operations::execution::ExecutionContext> {
         Arc::clone(&self.shared.root_resources)
     }
 

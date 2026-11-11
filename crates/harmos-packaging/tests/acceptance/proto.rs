@@ -28,8 +28,8 @@ use prost_reflect::DescriptorPool;
 
 use contracts::{AnnotatedOperation, Boxed, Delivered, EnvelopeOperation, Portable, Routes, annotated};
 use harmos_domain::operations::Contracts;
+use harmos_operations::execution::grpc::{self, DecodeInput};
 use harmos_packaging::proto::{self, Artifacts};
-use harmos_sdk::grpc::{self, DecodeInput};
 
 /* === Constants === */
 

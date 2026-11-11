@@ -84,8 +84,8 @@ mod execution {
     // Third Party Imports
 
     // Local Imports
+    use crate::execution::operations::Operation;
     use crate::{Error, Result};
-    use harmos_sdk::operations::Operation;
     use harmos_storage::FileProgress;
 
     /* === Constants === */
@@ -106,7 +106,7 @@ mod execution {
         type Error = Error;
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.abandon_file", level = "trace", skip_all)]
-        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileProgress>> {
+        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<crate::execution::operations::Response<FileProgress>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
 
             let result: ::core::result::Result<FileProgress, Self::Error> =
@@ -114,7 +114,7 @@ mod execution {
             result.map(::core::convert::Into::into)
         }
 
-        fn classify(error: &Error) -> harmos_sdk::operations::FailureKind {
+        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
             crate::storage::classify(error)
         }
     }

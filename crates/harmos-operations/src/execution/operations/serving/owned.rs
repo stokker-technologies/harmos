@@ -19,9 +19,9 @@
 
 // Local Imports
 use super::{Answer, Finalization, Finished, Prepare, Prepared, Route, ServingError, WireTable, guarded};
-use crate::Message;
-use crate::QualifiedId;
-use crate::operations::{Carrier, EndpointSet, ExecutionContext, OperationDeclaration, ResourceSet};
+use crate::execution::Message;
+use crate::execution::QualifiedId;
+use crate::execution::operations::{Carrier, EndpointSet, ExecutionContext, OperationDeclaration, ResourceSet};
 
 /* === Constants === */
 
@@ -45,7 +45,7 @@ struct State<T: Carrier> {
     protobuf: Option<super::protobuf::Codec>,
 
     // The grant the decoded request needs; the host checks it before any attempt.
-    grant: Option<crate::plugin::Grant>,
+    grant: Option<crate::execution::plugin::Grant>,
 }
 
 struct Physical<T: Carrier> {
@@ -76,7 +76,9 @@ enum Initialization {
 /* === Implementations === */
 
 impl WireTable {
-    pub(crate) fn install<D, T>(&mut self, dependencies: ResourceSet, contract: crate::operations::Contract) -> Result<(), ServingError>
+    pub(crate) fn install<D, T>(
+        &mut self, dependencies: ResourceSet, contract: crate::execution::operations::Contract,
+    ) -> Result<(), ServingError>
     where
         D: OperationDeclaration,
         T: Carrier<Declaration = D>,
@@ -95,7 +97,7 @@ impl WireTable {
         if T::StreamEndpoints::item_types() != (None, None) {
             return Err(ServingError::StreamUnsupported);
         }
-        let observe = std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>();
+        let observe = std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::execution::observers::Control>();
         self.bind_owned_contract::<D, T>(
             dependencies,
             contract,
@@ -131,7 +133,7 @@ impl WireTable {
         &mut self, dependencies: ResourceSet, descriptor: harmos_domain::model::operations::lifecycle::Descriptor,
     ) -> Result<(), ServingError>
     where
-        D: crate::OperationDeclaration,
+        D: crate::execution::OperationDeclaration,
         T: Carrier<Declaration = D, StreamEndpoints = ()>,
     {
         if self.closed || self.ordinary_closed {
@@ -161,7 +163,7 @@ impl WireTable {
     }
 
     fn bind_owned_contract<D, T>(
-        &mut self, dependencies: ResourceSet, contract: crate::operations::Contract, lifecycle: bool, builtin: bool,
+        &mut self, dependencies: ResourceSet, contract: crate::execution::operations::Contract, lifecycle: bool, builtin: bool,
         endpoints: impl Fn() -> Result<StreamEndpoints<T::StreamEndpoints>, ServingError> + Send + Sync + 'static,
         #[cfg(feature = "grpc")] protobuf: Option<super::protobuf::Codec>,
     ) -> Result<(), ServingError>
@@ -172,36 +174,41 @@ impl WireTable {
         let qualified = QualifiedId::qualify(&self.owner, contract.operation().id.as_str()).map_err(|_| ServingError::Catalog)?;
         let id = qualified.as_str();
         let (input, output) = T::StreamEndpoints::item_types();
-        if (input, output) != crate::operations::item_types::<D>()
+        if (input, output) != crate::execution::operations::item_types::<D>()
             || input.is_some() != contract.input().is_some()
             || output.is_some() != contract.output().is_some()
         {
             return Err(ServingError::Catalog);
         }
         if self.handlers.contains_key(id) {
-            return Err(crate::Error::DuplicateOperation { id: id.to_owned() }.into());
+            return Err(crate::execution::Error::DuplicateOperation { id: id.to_owned() }.into());
         }
         let marked = contract.grpc().is_some();
         #[cfg(not(feature = "grpc"))]
         if marked {
-            return Err(ServingError::Codec(crate::MessageError::borrowed("gRPC operation requires provider protobuf support")));
+            return Err(ServingError::Codec(crate::execution::MessageError::borrowed("gRPC operation requires provider protobuf support")));
         }
         #[cfg(feature = "grpc")]
         if marked && protobuf.is_none() {
-            return Err(ServingError::Codec(crate::MessageError::borrowed("gRPC operation has no provider protobuf projection")));
+            return Err(ServingError::Codec(crate::execution::MessageError::borrowed(
+                "gRPC operation has no provider protobuf projection",
+            )));
         }
         let grant_operation = contract.operation().id.to_string();
         let prepare: Prepare = Box::new(move |payload, grpc| {
             if grpc && !marked {
-                return Err(ServingError::Codec(crate::MessageError::borrowed("operation has no gRPC contract")));
+                return Err(ServingError::Codec(crate::execution::MessageError::borrowed("operation has no gRPC contract")));
             }
             #[cfg(not(feature = "grpc"))]
             if grpc {
-                return Err(ServingError::Codec(crate::MessageError::borrowed("provider protobuf codec is disabled")));
+                return Err(ServingError::Codec(crate::execution::MessageError::borrowed("provider protobuf codec is disabled")));
             }
             #[cfg(feature = "grpc")]
             let selected = if grpc {
-                Some(protobuf.ok_or_else(|| ServingError::Codec(crate::MessageError::borrowed("provider has no protobuf codec")))?)
+                Some(
+                    protobuf
+                        .ok_or_else(|| ServingError::Codec(crate::execution::MessageError::borrowed("provider has no protobuf codec")))?,
+                )
             } else {
                 None
             };
@@ -211,12 +218,13 @@ impl WireTable {
                 (codec.decode)(&payload, &mut request).map_err(ServingError::Codec)?;
                 request.ok_or(ServingError::Catalog)?
             } else {
-                <<T::Declaration as OperationDeclaration>::Request as crate::Message>::decode(&payload).map_err(ServingError::Codec)?
+                <<T::Declaration as OperationDeclaration>::Request as crate::execution::Message>::decode(&payload)
+                    .map_err(ServingError::Codec)?
             };
             #[cfg(not(feature = "grpc"))]
-            let request =
-                <<T::Declaration as OperationDeclaration>::Request as crate::Message>::decode(&payload).map_err(ServingError::Codec)?;
-            let grant = crate::operations::registration::registered_grant::<D>(&grant_operation, D::grant(&request));
+            let request = <<T::Declaration as OperationDeclaration>::Request as crate::execution::Message>::decode(&payload)
+                .map_err(ServingError::Codec)?;
+            let grant = crate::execution::operations::registration::registered_grant::<D>(&grant_operation, D::grant(&request));
             let endpoints = endpoints()?;
             #[cfg(all(feature = "grpc", feature = "streaming"))]
             let endpoints = StreamEndpoints {
@@ -267,7 +275,7 @@ impl<T: Carrier> Prepared for State<T> {
         self.streams.clone()
     }
 
-    fn grant(&self) -> Option<crate::plugin::Grant> {
+    fn grant(&self) -> Option<crate::execution::plugin::Grant> {
         self.grant.clone()
     }
 

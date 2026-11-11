@@ -258,7 +258,7 @@ impl<O: OperationDeclaration> Drop for Running<O> {
     }
 }
 
-impl<O> harmos_sdk::operations::Instance<O> for Running<O>
+impl<O> harmos_operations::execution::operations::Instance<O> for Running<O>
 where
     O: OperationDeclaration,
 {
@@ -411,8 +411,10 @@ impl Context<'_> {
         self.operations.submit_scoped::<O, ()>((request.into(), ()), &self.scope, &self.admission, &self.source, Some(cause))
     }
 
-    pub fn operation<O: OperationDeclaration>(&self, request: O::Request) -> harmos_sdk::operations::Invocation<HostContext, O> {
-        harmos_sdk::operations::Invocation::new(self.owned(), request)
+    pub fn operation<O: OperationDeclaration>(
+        &self, request: O::Request,
+    ) -> harmos_operations::execution::operations::Invocation<HostContext, O> {
+        harmos_operations::execution::operations::Invocation::new(self.owned(), request)
     }
 }
 
@@ -439,11 +441,11 @@ impl HostContext {
     }
 }
 
-impl harmos_sdk::operations::OperationHost for HostContext {
+impl harmos_operations::execution::operations::OperationHost for HostContext {
     async fn invoke<O: OperationDeclaration, E: super::EndpointSet>(
         &self, request: O::Request, retry: Option<super::RetryPolicy>, endpoints: E,
     ) -> Result<Running<O>> {
-        harmos_sdk::operations::OperationHost::invoke::<O, E>(&self.borrow(), request, retry, endpoints).await
+        harmos_operations::execution::operations::OperationHost::invoke::<O, E>(&self.borrow(), request, retry, endpoints).await
     }
 
     fn publish_on<S: harmos_domain::StreamSpec>(
@@ -490,36 +492,41 @@ pub(crate) fn fresh_instance() -> Result<OperationInstanceId> {
 
 /* === Tests === */
 
-impl harmos_sdk::operations::instances::Instances for HostContext {
-    fn owned(&self, id: OperationInstanceId) -> Option<Arc<dyn harmos_sdk::operations::instances::InstanceControl>> {
-        self.borrow().owned_instance(id).map(|instance| instance as Arc<dyn harmos_sdk::operations::instances::InstanceControl>)
+impl harmos_operations::execution::operations::instances::Instances for HostContext {
+    fn owned(&self, id: OperationInstanceId) -> Option<Arc<dyn harmos_operations::execution::operations::instances::InstanceControl>> {
+        self.borrow()
+            .owned_instance(id)
+            .map(|instance| instance as Arc<dyn harmos_operations::execution::operations::instances::InstanceControl>)
     }
 }
-impl harmos_sdk::operations::instances::InstanceControl for crate::supervision::instance::Instance {
+impl harmos_operations::execution::operations::instances::InstanceControl for crate::supervision::instance::Instance {
     fn status(&self) -> harmos_domain::operations::instance::Status {
         self.status().portable()
     }
     fn request_cancel(&self) {
         self.request_cancel();
     }
-    fn subscribe(&self) -> Box<dyn harmos_sdk::operations::instances::InstanceChanges> {
+    fn subscribe(&self) -> Box<dyn harmos_operations::execution::operations::instances::InstanceChanges> {
         Box::new(InstanceChanges(self.settlement()))
     }
 }
 struct InstanceChanges(tokio::sync::watch::Receiver<super::OperationStatus>);
-impl harmos_sdk::operations::instances::InstanceChanges for InstanceChanges {
+impl harmos_operations::execution::operations::instances::InstanceChanges for InstanceChanges {
     fn current(&mut self) -> harmos_domain::operations::instance::Status {
         self.0.borrow_and_update().portable()
     }
-    fn changed(&mut self) -> harmos_sdk::operations::instances::Changed<'_> {
+    fn changed(&mut self) -> harmos_operations::execution::operations::instances::Changed<'_> {
         Box::pin(async { self.0.changed().await.is_ok() })
     }
 }
 
-impl harmos_sdk::operations::access::Discovery for HostContext {
+impl harmos_operations::execution::operations::access::Discovery for HostContext {
     fn discover(
         &self, after: Option<&str>, rows: usize, bytes: usize,
-    ) -> std::result::Result<harmos_sdk::operations::access::DiscoveryPage, harmos_sdk::operations::access::AccessError> {
+    ) -> std::result::Result<
+        harmos_operations::execution::operations::access::DiscoveryPage,
+        harmos_operations::execution::operations::access::AccessError,
+    > {
         let context = self.borrow();
         let request = harmos_operations::host::Catalog {
             kind: harmos_operations::host::CatalogKind::Operations,
@@ -532,17 +539,20 @@ impl harmos_sdk::operations::access::Discovery for HostContext {
         Ok((page.entries, page.next))
     }
 }
-impl harmos_sdk::operations::access::GrantAuthority for HostContext {
-    fn admit(&self, grant: &harmos_domain::plugin::Grant) -> std::result::Result<(), harmos_sdk::operations::access::AccessError> {
+impl harmos_operations::execution::operations::access::GrantAuthority for HostContext {
+    fn admit(
+        &self, grant: &harmos_domain::plugin::Grant,
+    ) -> std::result::Result<(), harmos_operations::execution::operations::access::AccessError> {
         self.borrow().admit_stream_grant(grant).map_err(Into::into)
     }
 }
 
 #[cfg(feature = "plugin-sidecar")]
-impl harmos_sdk::operations::publication::PublicationHost for HostContext {
+impl harmos_operations::execution::operations::publication::PublicationHost for HostContext {
     fn publish<'a>(
-        &'a self, _: harmos_sdk::operations::CallContext, publication: harmos_sdk::operations::publication::Publication<'a>,
-    ) -> harmos_sdk::operations::publication::Published<'a> {
+        &'a self, _: harmos_operations::execution::operations::CallContext,
+        publication: harmos_operations::execution::operations::publication::Publication<'a>,
+    ) -> harmos_operations::execution::operations::publication::Published<'a> {
         Box::pin(async move {
             let context = self.borrow();
             let scope = context.caller_scope().ok_or(Error::<std::convert::Infallible>::InvalidInput {

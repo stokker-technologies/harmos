@@ -189,13 +189,13 @@ impl Caller {
         self.operations.submit_by::<O, P>((super::binding::Request::charged(request)?, endpoints), &Source::Plugin(self.source.clone()))
     }
 
-    pub fn operation<O: OperationDeclaration>(&self, request: O::Request) -> harmos_sdk::operations::Invocation<Self, O> {
-        harmos_sdk::operations::Invocation::new(self.clone(), request)
+    pub fn operation<O: OperationDeclaration>(&self, request: O::Request) -> harmos_operations::execution::operations::Invocation<Self, O> {
+        harmos_operations::execution::operations::Invocation::new(self.clone(), request)
     }
 }
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-impl harmos_sdk::operations::OperationHost for Caller {
+impl harmos_operations::execution::operations::OperationHost for Caller {
     type Error = Error;
     type Instance<O: OperationDeclaration> = Running<O>;
     fn context(&self) -> &super::CallContext {

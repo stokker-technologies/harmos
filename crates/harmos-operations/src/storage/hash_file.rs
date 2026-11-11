@@ -91,9 +91,9 @@ mod execution {
     // Third Party Imports
 
     // Local Imports
+    use crate::execution::operations::Operation;
     use crate::{Error, Result};
     use harmos_domain::model::storage::files::FileHash;
-    use harmos_sdk::operations::Operation;
 
     /* === Constants === */
 
@@ -113,7 +113,7 @@ mod execution {
         type Error = Error;
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.hash_file", level = "trace", skip_all)]
-        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileHash>> {
+        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<crate::execution::operations::Response<FileHash>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
 
             Ok(storage
@@ -125,7 +125,7 @@ mod execution {
                 .into())
         }
 
-        fn classify(error: &Error) -> harmos_sdk::operations::FailureKind {
+        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
             crate::storage::classify(error)
         }
     }

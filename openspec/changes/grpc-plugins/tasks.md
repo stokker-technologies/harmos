@@ -229,7 +229,7 @@
   - [x] 4.4.1 Migrate Schematic advice to SDK protobuf builders and managed placement, host analysis and transfer streaming, native packaging and benchmark selectors.
   - [x] 4.4.2 Migrate the stream-consumer fixture and its host-row journey to SDK unary calls on managed placement.
   - [x] 4.4.3 Retire or migrate crates/harmos-sidecar/tests/fixtures/catalog_sidecar.rs, crates/harmos-runtime/tests/fixtures/process_client.rs and process_provider.rs, and the native macro fixture consumers under crates/harmos-macros/tests; authoring fixture libraries now select harmos_sdk_grpc instead of harmos_sidecar.
-- [ ] 4.5 Move surviving native invocation, resource and serving engine code from `crates/harmos-sdk` to host owners with narrow resources for operations; retain guest transport in the SDK and guest loading in runtime.
+- [ ] 4.5 Move surviving native invocation, resource and serving engine code from `crates/harmos-sdk` to host owners with narrow resources for operations; isolate guest dispatch, envelopes and authoring support privately in `harmos-guest` and the runtime guest host, with guest protocol migration deferred under 7.1.
 - [ ] 4.6 Verify plugin and client SDK dependency closures contain no host crates; migrate example/build-script imports to protocol or runtime as appropriate, and update README/product guidance for the public entry point.
 
 ## 5. Pilot SDKs

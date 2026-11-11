@@ -37,7 +37,7 @@ pub struct Shutdown {}
 #[cfg(feature = "lifecycle")]
 pub struct Control {
     #[cfg(feature = "lifecycle")]
-    instance: Box<dyn harmos_sdk::operations::lifecycle::LifecycleInstance>,
+    instance: Box<dyn crate::execution::operations::lifecycle::LifecycleInstance>,
 }
 
 /* === Enums === */
@@ -60,12 +60,12 @@ impl MemorySize for Shutdown {
 }
 
 #[cfg(feature = "lifecycle")]
-impl harmos_sdk::operations::Carrier for Control {
+impl crate::execution::operations::Carrier for Control {
     type Declaration = Shutdown;
     type Error = super::ControlError;
     type StreamEndpoints = ();
     async fn bind(context: crate::ExecutionContext) -> Result<Self, Self::Error> {
-        let access = context.resource::<harmos_sdk::operations::lifecycle::LifecycleAccess>()?;
+        let access = context.resource::<crate::execution::operations::lifecycle::LifecycleAccess>()?;
         Ok(Self {
             instance: access.0.clone().begin(super::Action::Shutdown),
         })

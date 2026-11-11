@@ -33,9 +33,9 @@ use harmos_domain::model::storage::ArrowIpc;
 use harmos_domain::operations::{Codec, Contract, FailureKind, OperationDefinition, OperationPolicy, ReplaySafety, Visibility};
 use harmos_domain::schema::{Described, graph::Schema, json::JsonCodec};
 use harmos_domain::{Failure, Identifier, Message, Refusal, StreamDeclaration};
-use harmos_sdk::__private::{ErasedResponse, ServiceFuture, WireTable};
-use harmos_sdk::operations::{ExecutionContext, NativeInstance, Response, ServingError};
-use harmos_sdk::plugin::{Attachment, Owner, Plugin};
+use harmos_operations::execution::__private::{ErasedResponse, ServiceFuture, WireTable};
+use harmos_operations::execution::operations::{ExecutionContext, NativeInstance, Response, ServingError};
+use harmos_operations::execution::plugin::{Attachment, Owner, Plugin};
 
 /* === Constants === */
 
@@ -76,7 +76,7 @@ struct Invocation {
     registry: Arc<Registry>,
     request: Value,
     worker: Option<tokio::task::JoinHandle<Result<Vec<u8>, ServingError>>>,
-    cancellation: Option<harmos_sdk::operations::Cancellation>,
+    cancellation: Option<harmos_operations::execution::operations::Cancellation>,
 }
 
 #[derive(Clone)]
@@ -220,19 +220,19 @@ impl lifecycle::Policy for RuntimePlugin {
     const SHUTDOWN_POLICY: OperationPolicy = lifecycle::POLICY;
 }
 
-impl harmos_sdk::Lifecycle for RuntimePlugin {
+impl harmos_operations::execution::Lifecycle for RuntimePlugin {
     type Config = ();
     type Error = std::io::Error;
     type Context = Supervisor;
 
-    async fn prepare(_: (), setup: &mut harmos_sdk::Setup<Self>) -> std::io::Result<Self> {
+    async fn prepare(_: (), setup: &mut harmos_operations::execution::Setup<Self>) -> std::io::Result<Self> {
         let registry = setup.settings().context().resource::<Registry>().map_err(std::io::Error::other)?;
         Ok(Self(registry))
     }
 }
 
 impl Plugin for RuntimePlugin {
-    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[];
+    const CATALOGS: &'static [harmos_operations::execution::operations::Catalog] = &[];
     fn attachment(&self) -> Option<Arc<dyn Attachment<Supervisor>>> {
         Some(self.0.clone())
     }

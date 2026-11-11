@@ -23,9 +23,9 @@ use std::sync::{Arc, Mutex};
 
 // Local Imports
 use super::context::Context;
-use harmos_sdk::__private::WireTable;
-use harmos_sdk::operations::{Contracts, WireCommand};
-use harmos_sdk::plugin::{Declared, Owner, Plugin};
+use harmos_operations::execution::__private::WireTable;
+use harmos_operations::execution::operations::{Contracts, WireCommand};
+use harmos_operations::execution::plugin::{Declared, Owner, Plugin};
 
 /* === Constants === */
 
@@ -70,7 +70,7 @@ struct Instance {
     assigned_owner: String,
     capacity: NonZeroUsize,
     table: Table,
-    assignments: harmos_sdk::operations::OperationAssignments,
+    assignments: harmos_operations::execution::operations::OperationAssignments,
 }
 
 /* === Enums === */
@@ -86,7 +86,7 @@ pub fn registrations<P: Plugin + Declared>() -> Result<Vec<__bindings::harmos::g
     super::context::retain();
     std::hint::black_box(P::markers().map_err(|error| error.to_string())?);
     let mut registrar = harmos_domain::Registrar::new();
-    <P as harmos_sdk::Plugin>::register(&mut registrar).map_err(|error| error.to_string())?;
+    <P as harmos_operations::execution::Plugin>::register(&mut registrar).map_err(|error| error.to_string())?;
     Ok(registrar
         .finish()
         .into_iter()
@@ -139,7 +139,7 @@ where
         }
         let (owner, table) = Owner::<P>::new(assigned_owner, provides, capacity).map_err(refusal)?;
         harmos_operations::lifecycle::bind(owner, &table).map_err(refusal)?;
-        let assignments = harmos_sdk::operations::OperationAssignments::default();
+        let assignments = harmos_operations::execution::operations::OperationAssignments::default();
         *active = Some(Instance {
             owner: TypeId::of::<P>(),
             assigned_owner: assigned_owner.to_owned(),
@@ -167,10 +167,10 @@ where
         call: Arc::new(call),
     });
     let call = context.context().clone();
-    let mut dependencies = harmos_sdk::__private::ResourceSet::new();
-    dependencies.insert(Arc::new(harmos_sdk::operations::Calls(context.clone()))).map_err(refusal)?;
+    let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
+    dependencies.insert(Arc::new(harmos_operations::execution::operations::Calls(context.clone()))).map_err(refusal)?;
     dependencies.insert(context).map_err(refusal)?;
-    let context = harmos_sdk::operations::ExecutionContext::new(dependencies, call);
+    let context = harmos_operations::execution::operations::ExecutionContext::new(dependencies, call);
     let phase = table.lock().map_err(refusal)?.begin(command, Arc::new(context));
     // The Original Slot Owns Work While Both Instance and Table Borrows Are Free
     let answer = phase.await;

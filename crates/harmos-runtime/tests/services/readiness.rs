@@ -271,7 +271,7 @@ async fn activated_service_starting() {
                 id: "tenant".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |_: Arc<harmos_sdk::ExecutionContext>| {
+            |_: Arc<harmos_operations::execution::ExecutionContext>| {
                 |context: harmos_runtime::services::ServiceContext<Bank>| async move {
                     let mut context = context;
                     context.ready();

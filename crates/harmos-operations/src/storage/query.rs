@@ -30,7 +30,7 @@ use harmos_domain::model::storage::query::{QueryCompletion, QueryOutput, RowSlic
 use harmos_domain::operations::ReplaySafety;
 
 #[cfg(feature = "runtime")]
-use harmos_sdk::operations::access::GrantAccess;
+use crate::execution::operations::access::GrantAccess;
 
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
@@ -111,10 +111,10 @@ mod execution {
 
     // Local Imports
     use super::*;
+    use crate::execution::operations::{Operation, OperationDeclaration};
     use crate::storage::IO_TIMEOUT;
     use crate::{Error, Result};
     use harmos_domain::plugin::Grant;
-    use harmos_sdk::operations::{Operation, OperationDeclaration};
     use harmos_storage::query::QueryCompletion;
 
     /* === Constants === */
@@ -134,9 +134,11 @@ mod execution {
     impl Operation for super::Query {
         type Error = Error;
 
-        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<QueryCompletion>> {
+        async fn run(
+            self, context: crate::execution::Context<'_, Self>,
+        ) -> Result<crate::execution::operations::Response<QueryCompletion>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let grants = context.resource::<harmos_sdk::operations::access::GrantAccess>();
+            let grants = context.resource::<crate::execution::operations::access::GrantAccess>();
             let output = context.streams();
 
             let host = grants;
@@ -162,7 +164,7 @@ mod execution {
             }
             Ok(reader.completion()?.into())
         }
-        fn classify(error: &Error) -> harmos_sdk::operations::FailureKind {
+        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
             crate::storage::classify(error)
         }
     }

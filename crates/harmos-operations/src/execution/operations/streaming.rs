@@ -29,7 +29,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
 
 // Local Imports
 use super::RequestClaims;
-use crate::{MemorySize, Message};
+use crate::execution::{MemorySize, Message};
 
 /* === Constants === */
 
@@ -96,7 +96,7 @@ pub enum Error {
     Ownership,
 
     #[error("operation stream decode failed: {0}")]
-    Codec(#[source] crate::MessageError),
+    Codec(#[source] crate::execution::MessageError),
 }
 
 /* === Traits === */
@@ -481,7 +481,7 @@ fn owned<T: Send + Sync + 'static>(response: &super::response::ErasedResponse) -
 fn closed() -> Error {
     Error::Closed
 }
-fn decoding(source: crate::MessageError) -> Error {
+fn decoding(source: crate::execution::MessageError) -> Error {
     Error::Codec(source)
 }
 

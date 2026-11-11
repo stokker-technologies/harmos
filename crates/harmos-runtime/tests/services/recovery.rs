@@ -127,7 +127,7 @@ async fn unregister_retains_cleanup() {
                     id: "reload".into(),
                     policy: harmos_runtime::services::POLICY,
                 },
-                move |_: Arc<harmos_sdk::ExecutionContext>| {
+                move |_: Arc<harmos_operations::execution::ExecutionContext>| {
                     let signals = signals.clone();
                     move |mut context: harmos_runtime::services::ServiceContext<App>| {
                         let (entered, release, cleaned) = signals.clone();
@@ -211,7 +211,7 @@ async fn stop_joins_cleanup() {
                         id: "cleanup".into(),
                         policy: harmos_runtime::services::POLICY,
                     },
-                    move |_: Arc<harmos_sdk::ExecutionContext>| resident.clone(),
+                    move |_: Arc<harmos_operations::execution::ExecutionContext>| resident.clone(),
                 )
                 .unwrap();
             lease = Some(runtime.operations.submit_resident("cleanup").await.unwrap());
@@ -267,7 +267,7 @@ async fn timeout_retains_cleanup() {
                         ..harmos_runtime::services::POLICY
                     },
                 },
-                move |_: Arc<harmos_sdk::ExecutionContext>| {
+                move |_: Arc<harmos_operations::execution::ExecutionContext>| {
                     let (gate, factories, attempts, completed, finalizing) = &resources;
                     factories.fetch_add(1, Ordering::AcqRel);
                     RetainedCleanup {
@@ -353,7 +353,7 @@ async fn exit_cause_preserved() {
                 id: "environmental-cleanup".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            move |_: Arc<harmos_sdk::ExecutionContext>| RetainedCleanup {
+            move |_: Arc<harmos_operations::execution::ExecutionContext>| RetainedCleanup {
                 gate: gate.lock().unwrap().take(),
                 join: None,
                 finalizing: Arc::new(Notify::new()),

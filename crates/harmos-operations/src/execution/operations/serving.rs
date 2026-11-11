@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 use tracing::Instrument;
 // Local Imports
 use super::{Contract, ContractError, ExecutionContext, FailureKind, OperationDefinition, RegistrationBatch, StartupError};
-use crate::QualifiedId;
+use crate::execution::QualifiedId;
 
 /* === Constants === */
 
@@ -201,7 +201,7 @@ pub enum WireCommand {
 pub enum WireAnswer {
     Stream { epoch: u64, transferred: bool, payload: Option<Vec<u8>> },
     Ready { payload: Vec<u8> },
-    Failed { failure: crate::Failure },
+    Failed { failure: crate::execution::Failure },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -244,7 +244,7 @@ pub enum ServingError {
     Contract(#[from] ContractError),
 
     #[error(transparent)]
-    Declaration(#[from] crate::Error),
+    Declaration(#[from] crate::execution::Error),
 
     #[error("operation `{operation}` declares resource `{resource}` that its registration does not provide")]
     Resource { operation: String, resource: &'static str },
@@ -283,14 +283,14 @@ pub enum ServingError {
     Catalog,
 
     #[error("operation payload codec failed")]
-    Codec(#[source] crate::MessageError),
+    Codec(#[source] crate::execution::MessageError),
 
     #[error("carrier handler panicked")]
     Panicked,
 
     // The handler's failure, written once at its origin.
     #[error(transparent)]
-    Handler(crate::Failure),
+    Handler(crate::execution::Failure),
 
     #[error("native handler failed: {0}")]
     Native(#[source] std::sync::Arc<dyn std::error::Error + Send + Sync>),
@@ -315,7 +315,7 @@ trait Prepared: Send {
     }
 
     // The grant the prepared request needs, answered to the host with Prepare.
-    fn grant(&self) -> Option<crate::plugin::Grant> {
+    fn grant(&self) -> Option<crate::execution::plugin::Grant> {
         None
     }
     fn bind<'a>(&'a mut self, context: &'a ExecutionContext) -> Finished<'a>;
@@ -1020,11 +1020,11 @@ impl ServingError {
 /* === Public Functions === */
 
 // A Prepare answer is empty when the request needs no grant, else the grant as JSON.
-pub fn encode_prepared_grant(grant: Option<&crate::plugin::Grant>) -> Vec<u8> {
+pub fn encode_prepared_grant(grant: Option<&crate::execution::plugin::Grant>) -> Vec<u8> {
     grant.map_or_else(Vec::new, |grant| serde_json::to_vec(grant).expect("a grant serializes to JSON"))
 }
 
-pub fn decode_prepared_grant(payload: &[u8]) -> Result<Option<crate::plugin::Grant>, serde_json::Error> {
+pub fn decode_prepared_grant(payload: &[u8]) -> Result<Option<crate::execution::plugin::Grant>, serde_json::Error> {
     if payload.is_empty() {
         return Ok(None);
     }

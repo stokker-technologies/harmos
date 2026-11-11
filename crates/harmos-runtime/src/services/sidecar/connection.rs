@@ -154,7 +154,7 @@ impl Endpoint {
     }
 
     pub(crate) async fn publish(
-        &self, scope: &crate::plugin::PluginScope, request: harmos_sdk::operations::publication::Publication<'_>,
+        &self, scope: &crate::plugin::PluginScope, request: harmos_operations::execution::operations::publication::Publication<'_>,
         context: &crate::operations::Context<'_>,
     ) -> crate::Result<()> {
         // Calls on One Stream Stage in Arrival Order
@@ -293,7 +293,7 @@ impl Endpoint {
             return Err(SidecarError::Unavailable);
         }
         let params = command.encode().map_err(|error| match error {
-            harmos_sdk::operations::WireCodecError::Oversized => {
+            harmos_operations::execution::operations::WireCodecError::Oversized => {
                 SidecarError::refused(Frame::OVERSIZED, "operation control exceeds the native frame limit")
             }
             error => SidecarError::Malformed(error.to_string()),

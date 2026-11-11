@@ -27,7 +27,9 @@ A handoff is at most ten lines: task, owned paths, changes, focused proof, forma
 SDK system suites run in Nightly only. No full lane has been established for this candidate; native Linux proof remains open.
 
 Status: implementation is partial. The new `plugin-grpc` feature coexists with the framed path;
-`sdk/rust` supplies the plugin authoring half while `crates/harmos-sdk` still supplies host APIs.
+`sdk/rust` supplies plugin authoring under its temporary package name; the former
+`crates/harmos-sdk` engine now lives in `crates/harmos-operations/src/execution/`.
+Guest-private dispatch extraction, the public SDK rename and facade removal remain open.
 The intended final contracts below do not imply that the remaining removal and migration tasks are complete.
 
 ## Crate Structure
@@ -94,8 +96,7 @@ wave (Dokime wave 2). Generated protobuf request/result types plus authoritative
 must register directly, retaining decoding-memory admission, fingerprints, method paths,
 cancellation, backpressure and unary/client-stream/server-stream/bidirectional envelopes.
 The affected seam is `crates/harmos-runtime/src/grpc/{codec,routing,native,input,envelope}.rs`,
-operation registration and `crates/harmos-sdk/src/operations/serving/protobuf.rs` as the engine
-moves. A declaration owns its gRPC mapping; the host exposes that declaration without a
+operation registration and `crates/harmos-operations/src/execution/operations/serving/protobuf.rs`. A declaration owns its gRPC mapping; the host exposes that declaration without a
 per-service adapter or a duplicate native request/response model.
 
 ### Dokime Consumer Layout and Sequence

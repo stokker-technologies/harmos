@@ -57,8 +57,10 @@ pub use harmos_domain::{
     Backoff, Digest, Fingerprint, Jitter, OperationDeclaration, OperationDefinition, OperationPolicy, Portable, QualifiedId, RestartPolicy,
     RetryPolicy, ServicePolicy,
 };
-pub use harmos_sdk::operations::{EndpointSet, OperationHost, Response};
-pub use harmos_sdk::{Context, Dependent, Executable, ExecutionContext, Lifecycle, Operation, Resource, ResourceError, Service, Setup};
+pub use harmos_operations::execution::operations::{EndpointSet, OperationHost, Response};
+pub use harmos_operations::execution::{
+    Context, Dependent, Executable, ExecutionContext, Lifecycle, Operation, Resource, ResourceError, Service, Setup,
+};
 pub use operations::refusal::Refusal;
 pub use operations::{Catalog, Invocation, InvocationExt, Lane, Running};
 pub use runtime::{Handle, Runtime, StartupError};
@@ -69,7 +71,7 @@ pub use harmos_macros::plugin as sidecar;
 
 #[cfg(feature = "plugin-guest")]
 pub use harmos_macros::plugin as guest;
-pub use harmos_sdk::plugin::Plugin;
+pub use harmos_operations::execution::plugin::Plugin;
 
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
 
@@ -125,8 +127,8 @@ pub mod __private {
     pub use harmos_domain::inventory as PluginInventory;
     pub use harmos_domain::plugin::schema_markers as PluginSchemaMarkers;
     pub use harmos_domain::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
-    pub use harmos_sdk::__private::RegistrationBatch;
-    pub use harmos_sdk::plugin::{
+    pub use harmos_operations::execution::__private::RegistrationBatch;
+    pub use harmos_operations::execution::plugin::{
         Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant, Requirement as PluginRequirement,
         Requirements as PluginRequirements,
     };

@@ -652,7 +652,7 @@ async fn runtime_signals_listener() {
             })
         }
         async fn run(
-            &self, _: Arc<harmos_sdk::ExecutionContext>, mut activation: harmos_runtime::observers::ObserverActivation,
+            &self, _: Arc<harmos_operations::execution::ExecutionContext>, mut activation: harmos_runtime::observers::ObserverActivation,
         ) -> Result<()> {
             let gates = &self.0;
             activation.ready();

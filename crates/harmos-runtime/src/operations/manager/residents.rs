@@ -84,8 +84,10 @@ impl Manager {
                 generation: scope.generation(),
             },
         };
-        let lease =
-            self.resident.activate(self, id, &root, std::any::TypeId::of::<harmos_sdk::ExecutionContext>(), identity, false).await?;
+        let lease = self
+            .resident
+            .activate(self, id, &root, std::any::TypeId::of::<harmos_operations::execution::ExecutionContext>(), identity, false)
+            .await?;
         self.resident.hold(lease);
         Ok(())
     }
@@ -104,7 +106,7 @@ impl Manager {
     }
 
     pub(crate) fn stage_observers_in<B: ObserverBackend>(
-        &self, resources: &Arc<harmos_sdk::ExecutionContext>, backends: impl IntoIterator<Item = B>,
+        &self, resources: &Arc<harmos_operations::execution::ExecutionContext>, backends: impl IntoIterator<Item = B>,
     ) -> Result<ObserverRegistration> {
         self.stage_scoped(
             resources,
@@ -116,13 +118,14 @@ impl Manager {
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub fn stage_plugin_observers<B: ObserverBackend>(
-        &self, resources: &Arc<harmos_sdk::ExecutionContext>, plugin: &crate::plugin::PluginScope, backends: impl IntoIterator<Item = B>,
+        &self, resources: &Arc<harmos_operations::execution::ExecutionContext>, plugin: &crate::plugin::PluginScope,
+        backends: impl IntoIterator<Item = B>,
     ) -> Result<ObserverRegistration> {
         self.stage_scoped(resources, backends, Some(plugin.clone()))
     }
 
     fn stage_scoped<B: ObserverBackend>(
-        &self, resources: &Arc<harmos_sdk::ExecutionContext>, backends: impl IntoIterator<Item = B>,
+        &self, resources: &Arc<harmos_operations::execution::ExecutionContext>, backends: impl IntoIterator<Item = B>,
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] plugin: Option<crate::plugin::PluginScope>,
     ) -> Result<ObserverRegistration> {
         let scope = self.resident.scope(Arc::clone(resources))?;
@@ -148,7 +151,7 @@ impl Manager {
     pub fn register_native_observer<H, F>(&self, instance: harmos_sidecar::Instance<H>, factory: F) -> Result<()>
     where
         H: Send + Sync + 'static,
-        F: Fn(Arc<harmos_sdk::ExecutionContext>) -> H + Send + Sync + 'static,
+        F: Fn(Arc<harmos_operations::execution::ExecutionContext>) -> H + Send + Sync + 'static,
     {
         self.register_observer(crate::observers::Native {
             instance,
@@ -163,7 +166,7 @@ impl Manager {
     ) -> Result<ObserverRegistration>
     where
         H: Send + Sync + 'static,
-        F: Fn(Arc<harmos_sdk::ExecutionContext>) -> H + Send + Sync + 'static,
+        F: Fn(Arc<harmos_operations::execution::ExecutionContext>) -> H + Send + Sync + 'static,
     {
         let factory = Arc::new(factory);
         self.stage_observers(instances.into_iter().map(|instance| crate::observers::Native {
@@ -178,10 +181,10 @@ impl Manager {
     pub fn register_service<A, F, T>(&self, definition: ServiceDefinition, factory: F) -> Result<()>
     where
         A: Application,
-        F: Fn(Arc<harmos_sdk::ExecutionContext>) -> T + Send + Sync + 'static,
+        F: Fn(Arc<harmos_operations::execution::ExecutionContext>) -> T + Send + Sync + 'static,
         T: Resident<A>,
     {
-        self.register_service_with_context::<A, harmos_sdk::ExecutionContext, F, T>(definition, factory)
+        self.register_service_with_context::<A, harmos_operations::execution::ExecutionContext, F, T>(definition, factory)
     }
 
     pub(crate) fn register_service_with_context<A, R, F, T>(&self, definition: ServiceDefinition, factory: F) -> Result<()>
@@ -226,11 +229,15 @@ impl Manager {
     // Activate the resident `id` over `resources`. Activations sharing the same
     // resources share its instance; each handle holds one lease.
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-    pub async fn submit_resident_in(&self, id: &str, resources: Arc<harmos_sdk::ExecutionContext>) -> Result<Running<Activation>> {
+    pub async fn submit_resident_in(
+        &self, id: &str, resources: Arc<harmos_operations::execution::ExecutionContext>,
+    ) -> Result<Running<Activation>> {
         // Retirement Must Not Recreate A Scope For An Old Connection.
         let scope = self.resident.scope_of(&resources).ok_or(crate::Error::Closing { domain: "observer scope" })?;
-        let lease =
-            self.resident.activate(self, id, &scope, std::any::TypeId::of::<harmos_sdk::ExecutionContext>(), Identity::Host, false).await?;
+        let lease = self
+            .resident
+            .activate(self, id, &scope, std::any::TypeId::of::<harmos_operations::execution::ExecutionContext>(), Identity::Host, false)
+            .await?;
         Ok(Self::resident_instance(lease))
     }
 
@@ -244,8 +251,10 @@ impl Manager {
     // Activate the resident `id` over the runtime's own resources.
     pub async fn submit_resident(&self, id: &str) -> Result<Running<Activation>> {
         let root = self.resident.root();
-        let lease =
-            self.resident.activate(self, id, &root, std::any::TypeId::of::<harmos_sdk::ExecutionContext>(), Identity::Host, false).await?;
+        let lease = self
+            .resident
+            .activate(self, id, &root, std::any::TypeId::of::<harmos_operations::execution::ExecutionContext>(), Identity::Host, false)
+            .await?;
         Ok(Self::resident_instance(lease))
     }
 
@@ -275,7 +284,7 @@ impl Manager {
     }
 
     // The resources the runtime's own residents share.
-    pub fn context(&self) -> harmos_sdk::ExecutionContext {
+    pub fn context(&self) -> harmos_operations::execution::ExecutionContext {
         self.resident.root_resources().as_ref().clone()
     }
 

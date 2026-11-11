@@ -72,7 +72,9 @@ pub struct AttemptInstance<O: OperationDeclaration> {
 /* === Traits === */
 
 // An Operation Whose Struct Is Its Request Message.
-pub trait Operation: OperationDeclaration<Request = Self> + crate::Portable + Streams + Dependent + Clone + Send + 'static {
+pub trait Operation:
+    OperationDeclaration<Request = Self> + crate::execution::Portable + Streams + Dependent + Clone + Send + 'static
+{
     type Error: std::error::Error + Send + Sync + 'static;
 
     fn run(self, context: Context<'_, Self>) -> impl Future<Output = Result<Response<Self::Response>, Self::Error>> + Send;
@@ -178,9 +180,9 @@ impl OperationHost for AttemptOperationHost {
     ) -> Result<AttemptInstance<T>, InvocationError> {
         Err(InvocationError::Options { operation: T::ID })
     }
-    async fn publish_on<S: crate::StreamSpec>(&self, _: &S::Row) -> Result<(), InvocationError>
+    async fn publish_on<S: crate::execution::StreamSpec>(&self, _: &S::Row) -> Result<(), InvocationError>
     where
-        S::Row: crate::Message,
+        S::Row: crate::execution::Message,
     {
         Err(InvocationError::Unavailable { operation: S::ID })
     }
@@ -246,17 +248,17 @@ impl Shape for (NoStream, NoStream) {
 }
 
 #[cfg(feature = "streaming")]
-impl<T: crate::Portable> Shape for (Stream<T>, NoStream) {
+impl<T: crate::execution::Portable> Shape for (Stream<T>, NoStream) {
     type StreamEndpoints = super::StreamInput<T>;
 }
 
 #[cfg(feature = "streaming")]
-impl<T: crate::Portable> Shape for (NoStream, Stream<T>) {
+impl<T: crate::execution::Portable> Shape for (NoStream, Stream<T>) {
     type StreamEndpoints = super::StreamOutput<T>;
 }
 
 #[cfg(feature = "streaming")]
-impl<I: crate::Portable, T: crate::Portable> Shape for (Stream<I>, Stream<T>) {
+impl<I: crate::execution::Portable, T: crate::execution::Portable> Shape for (Stream<I>, Stream<T>) {
     type StreamEndpoints = (super::StreamInput<I>, super::StreamOutput<T>);
 }
 
@@ -269,14 +271,14 @@ impl<I: crate::Portable, T: crate::Portable> Shape for (Stream<I>, Stream<T>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operations::{RegistrationBatch, ResourceSet};
+    use crate::execution::operations::{RegistrationBatch, ResourceSet};
 
-    #[crate::operation(harmos_path = crate, resources = [u64], id = "test.increment", response = u64,
-        policy = crate::OperationPolicy {
+    #[crate::execution::operation(harmos_path = crate::execution, resources = [u64], id = "test.increment", response = u64,
+        policy = crate::execution::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
-            retries: crate::RetryPolicy::Never,
+            retries: crate::execution::RetryPolicy::Never,
         },
     )]
     struct Increment {

@@ -17,8 +17,8 @@
 use std::collections::VecDeque;
 // Third Party Imports
 // Local Imports
+use crate::execution::operations::{StreamInput, StreamOutput};
 use crate::{Error, MemorySize, Result};
-use harmos_sdk::operations::{StreamInput, StreamOutput};
 use harmos_storage::StorageManager;
 use harmos_storage::writes::{BatchReceipt, DataBatch, DecodedBatch, WriteCompletion, WriteReceipt};
 
@@ -49,7 +49,7 @@ pub(crate) enum WriteKind {
 
 #[tracing::instrument(target = "harmos::storage", name = "storage.exchange", level = "debug", skip_all)]
 pub(crate) async fn exchange<C>(
-    storage: &StorageManager<C>, ctx: &std::sync::Arc<dyn harmos_sdk::operations::access::GrantAuthority>,
+    storage: &StorageManager<C>, ctx: &std::sync::Arc<dyn crate::execution::operations::access::GrantAuthority>,
     scope: Option<&crate::Identifier>, endpoints: &(StreamInput<DataBatch>, StreamOutput<WriteReceipt>), kind: WriteKind,
     operation: &'static str,
 ) -> Result<WriteCompletion> {

@@ -27,7 +27,7 @@ use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 use super::{Codec, Event, Wire, server};
 use crate::operations::{Direction, OperationDeclaration, StreamItem};
 use crate::{MemorySize, MessageError};
-use harmos_sdk::grpc::DecodeInput;
+use harmos_operations::execution::grpc::DecodeInput;
 
 /* === Constants === */
 

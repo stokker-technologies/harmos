@@ -122,7 +122,7 @@ struct State {
 }
 
 pub(super) struct Entry {
-    pub(super) carrier: harmos_sdk::__private::ResourceSet,
+    pub(super) carrier: harmos_operations::execution::__private::ResourceSet,
     owner: Identifier,
     definition: OperationDefinition,
     pub(super) contract: Option<crate::operations::Contract>,
@@ -200,12 +200,12 @@ impl Manager {
         &self.instances.clock
     }
 
-    pub(crate) fn resources(&self) -> &harmos_sdk::__private::ResourceSet {
+    pub(crate) fn resources(&self) -> &harmos_operations::execution::__private::ResourceSet {
         &self.instances.resources
     }
 
-    pub(super) fn resources_for(&self, entry: &Entry) -> harmos_sdk::__private::ResourceSet {
-        harmos_sdk::ExecutionContext::new(entry.carrier.clone(), super::CallContext::default())
+    pub(super) fn resources_for(&self, entry: &Entry) -> harmos_operations::execution::__private::ResourceSet {
+        harmos_operations::execution::ExecutionContext::new(entry.carrier.clone(), super::CallContext::default())
             .with_resources(self.resources().clone())
             .resources()
             .clone()
@@ -265,7 +265,7 @@ impl<L: Lane> OperationManager<L> {
         self.inner.clone()
     }
 
-    pub async fn register<C: harmos_sdk::operations::OperationCatalog>(&self, lane: L) -> Result<()> {
+    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(&self, lane: L) -> Result<()> {
         use crate::operations::RegistrationExt;
         self.register_batch(C::batch().lane(lane)).await
     }

@@ -36,11 +36,11 @@ use harmos_domain::schema::{
     graph::{Field, Kind, Schema},
 };
 use harmos_domain::{Aggregate, Identifier, QualifiedId};
+use harmos_operations::execution::grpc::{self, DecodeInput};
 use harmos_packaging::{
     proto::Artifacts,
     python::{self, Settings},
 };
-use harmos_sdk::grpc::{self, DecodeInput};
 
 /* === Constants === */
 

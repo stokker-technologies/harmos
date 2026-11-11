@@ -60,7 +60,7 @@ impl crate::supervision::cleanup::Resource for Retained {
 impl<H, F> ObserverBackend for Native<H, F>
 where
     H: Send + Sync + 'static,
-    F: Fn(Arc<harmos_sdk::ExecutionContext>) -> H + Send + Sync + 'static,
+    F: Fn(Arc<harmos_operations::execution::ExecutionContext>) -> H + Send + Sync + 'static,
 {
     fn definition(&self) -> Result<ObserverDefinition> {
         Ok(ObserverDefinition {
@@ -84,7 +84,7 @@ where
         })
     }
 
-    async fn run(&self, resources: Arc<harmos_sdk::ExecutionContext>, mut activation: ObserverActivation) -> Result<()> {
+    async fn run(&self, resources: Arc<harmos_operations::execution::ExecutionContext>, mut activation: ObserverActivation) -> Result<()> {
         let host = (self.factory)(Arc::clone(&resources));
         let mut activity = self.instance.activate(resources, host).map_err(failed)?;
 

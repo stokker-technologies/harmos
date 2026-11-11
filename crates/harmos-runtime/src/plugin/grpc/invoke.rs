@@ -125,20 +125,20 @@ impl NativeInstance for Invocation {
         }
     }
 
-    fn initialize(&mut self, _: harmos_sdk::ExecutionContext) -> ServiceFuture<'_, ()> {
+    fn initialize(&mut self, _: harmos_operations::execution::ExecutionContext) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
     }
 
-    fn run(&mut self, context: harmos_sdk::ExecutionContext) -> ServiceFuture<'_, ErasedResponse> {
+    fn run(&mut self, context: harmos_operations::execution::ExecutionContext) -> ServiceFuture<'_, ErasedResponse> {
         Box::pin(async move {
-            let host = context.resource::<HostContext>().map_err(|_| harmos_sdk::ServingError::Catalog)?;
+            let host = context.resource::<HostContext>().map_err(|_| harmos_operations::execution::ServingError::Catalog)?;
             let result = match &self.binding.target {
                 Target::Plugin(_) => invoke(&self.binding, self.payload.clone(), &context, &host).await,
                 Target::Clock(clock) => super::clock::run(clock, &self.binding.contract.id, &self.payload).await,
             };
             result
                 .map(|bytes| crate::operations::Response::from(bytes).into_erased())
-                .map_err(|error| harmos_sdk::ServingError::Native(Arc::new(error)))
+                .map_err(|error| harmos_operations::execution::ServingError::Native(Arc::new(error)))
         })
     }
 
@@ -161,7 +161,7 @@ impl NativeInstance for Invocation {
 /* === Private Functions === */
 
 async fn invoke(
-    binding: &Binding, payload: Vec<u8>, context: &harmos_sdk::ExecutionContext, host: &HostContext,
+    binding: &Binding, payload: Vec<u8>, context: &harmos_operations::execution::ExecutionContext, host: &HostContext,
 ) -> Result<Vec<u8>, CallError> {
     let Target::Plugin(connection) = &binding.target else { unreachable!() };
     let closed = connection.closed.subscribe();

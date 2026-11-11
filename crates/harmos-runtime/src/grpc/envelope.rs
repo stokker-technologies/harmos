@@ -22,7 +22,7 @@ use super::codec::{Encode, Transcoded, Wire};
 use crate::{MemorySize, MessageError};
 use harmos_domain::__private::decoding_add;
 use harmos_domain::Portable;
-use harmos_sdk::grpc::{DecodeInput, prost};
+use harmos_operations::execution::grpc::{DecodeInput, prost};
 
 /* === Constants === */
 
@@ -189,7 +189,7 @@ pub fn input_payload_limit_admitted<O: crate::operations::OperationDeclaration>(
     template: &<O::Input as crate::operations::Direction>::Item, path: &[&str], maximum_payload: usize, frame_limit: usize,
     admit: &mut dyn FnMut(usize) -> Result<(), MessageError>,
 ) -> Result<usize, MessageError> {
-    harmos_sdk::grpc::bytes_field_limit_admitted(template, path, maximum_payload, payload_limit(2, frame_limit), admit)
+    harmos_operations::execution::grpc::bytes_field_limit_admitted(template, path, maximum_payload, payload_limit(2, frame_limit), admit)
 }
 
 // Finds An Output Item's Bytes Allowance Including Its Native Envelope.
@@ -203,7 +203,7 @@ pub fn output_payload_limit<T: Portable>(
 pub fn output_payload_limit_admitted<T: Portable>(
     template: &T, path: &[&str], maximum_payload: usize, frame_limit: usize, admit: &mut dyn FnMut(usize) -> Result<(), MessageError>,
 ) -> Result<usize, MessageError> {
-    harmos_sdk::grpc::bytes_field_limit_admitted(template, path, maximum_payload, payload_limit(1, frame_limit), admit)
+    harmos_operations::execution::grpc::bytes_field_limit_admitted(template, path, maximum_payload, payload_limit(1, frame_limit), admit)
 }
 
 // Counts The Complete Output Item Frame Without Allocating Its Wire Buffer.
@@ -215,7 +215,7 @@ pub fn output_item_len<T: Portable>(item: &T) -> Result<usize, MessageError> {
 pub fn output_item_len_admitted<T: Portable>(
     item: &T, admit: &mut dyn FnMut(usize) -> Result<(), MessageError>,
 ) -> Result<usize, MessageError> {
-    let payload = harmos_sdk::grpc::encoded_len_admitted(item, admit)?;
+    let payload = harmos_operations::execution::grpc::encoded_len_admitted(item, admit)?;
     let (_, prefix) = header(1, payload);
     decoding_add(payload, prefix)
 }

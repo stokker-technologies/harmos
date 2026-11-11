@@ -53,7 +53,7 @@ type BindCatalog = dyn Fn(&Manager) -> Result<()> + Send + Sync;
 
 #[derive(Clone)]
 pub struct Registration<L: Lane> {
-    pub(crate) batch: harmos_sdk::__private::RegistrationBatch,
+    pub(crate) batch: harmos_operations::execution::__private::RegistrationBatch,
     pub(crate) lane: Option<L>,
     pub(crate) defaults: std::collections::BTreeMap<&'static str, L>,
 }
@@ -61,7 +61,7 @@ pub struct Registration<L: Lane> {
 #[derive(Clone)]
 pub(crate) struct CatalogBinding {
     bind: Arc<BindCatalog>,
-    factories: Vec<harmos_sdk::operations::OperationFactory>,
+    factories: Vec<harmos_operations::execution::operations::OperationFactory>,
     lanes: Vec<&'static str>,
 }
 
@@ -96,10 +96,10 @@ pub(crate) trait RegistrationExt {
 
 impl<L: Lane> Registration<L> {
     pub fn new(lane: L) -> Self {
-        harmos_sdk::__private::RegistrationBatch::new().lane(lane)
+        harmos_operations::execution::__private::RegistrationBatch::new().lane(lane)
     }
 
-    pub fn operation<O: harmos_sdk::operations::Executable>(mut self, id: impl AsRef<str>) -> Result<Self> {
+    pub fn operation<O: harmos_operations::execution::operations::Executable>(mut self, id: impl AsRef<str>) -> Result<Self> {
         self.batch = self.batch.operation_named::<O>(id.as_ref()).map_err(|source| crate::Error::OperationFailed {
             operation: id.as_ref().to_owned(),
             source: Arc::new(source),
@@ -108,7 +108,7 @@ impl<L: Lane> Registration<L> {
     }
 }
 
-impl RegistrationExt for harmos_sdk::__private::RegistrationBatch {
+impl RegistrationExt for harmos_operations::execution::__private::RegistrationBatch {
     fn lane<L: Lane>(self, lane: L) -> Registration<L> {
         Registration {
             batch: self,
@@ -141,8 +141,8 @@ impl CatalogBinding {
     }
 
     pub(crate) fn validate(
-        &self, resources: &harmos_sdk::__private::ResourceSet, lanes: &crate::operations::LaneSet,
-    ) -> Vec<harmos_sdk::StartupError> {
+        &self, resources: &harmos_operations::execution::__private::ResourceSet, lanes: &crate::operations::LaneSet,
+    ) -> Vec<harmos_operations::execution::StartupError> {
         let provided = Manager::provided_resources();
         let mut errors = Vec::new();
         for factory in &self.factories {
@@ -150,7 +150,7 @@ impl CatalogBinding {
         }
         for lane in &self.lanes {
             if !lanes.contains(lane) {
-                errors.push(harmos_sdk::StartupError::UnknownLane { lane });
+                errors.push(harmos_operations::execution::StartupError::UnknownLane { lane });
             }
         }
         errors
@@ -214,7 +214,7 @@ impl Manager {
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl Bindings<'_> {
-    pub fn operations<C: harmos_sdk::operations::OperationCatalog>(&mut self, lane: impl Lane) -> Result<()> {
+    pub fn operations<C: harmos_operations::execution::operations::OperationCatalog>(&mut self, lane: impl Lane) -> Result<()> {
         self.register(C::batch().lane(lane))
     }
 
@@ -225,12 +225,14 @@ impl Bindings<'_> {
     }
 
     #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
-    pub(super) fn stage_implementation<D, O>(&mut self, lane: &'static str, dependencies: harmos_sdk::__private::ResourceSet) -> Result<()>
+    pub(super) fn stage_implementation<D, O>(
+        &mut self, lane: &'static str, dependencies: harmos_operations::execution::__private::ResourceSet,
+    ) -> Result<()>
     where
         D: OperationDeclaration,
-        O: harmos_sdk::operations::Carrier<Declaration = D>,
+        O: harmos_operations::execution::operations::Carrier<Declaration = D>,
     {
-        let contract = harmos_sdk::operations::WireDeclaration::of::<D>()
+        let contract = harmos_operations::execution::operations::WireDeclaration::of::<D>()
             .contract_with_settings(&self.operations.schema_settings)
             .map_err(|source| Error::OperationFailed {
                 operation: D::ID.to_owned(),
@@ -238,7 +240,7 @@ impl Bindings<'_> {
             })?;
         let wire = (contract.input().is_none() && contract.output().is_none())
             .then_some(crate::operations::wire::dispatch_native as crate::operations::wire::Dispatch);
-        let mut batch = harmos_sdk::__private::RegistrationBatch::new().carrier::<D, O>();
+        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new().carrier::<D, O>();
         let factory = batch.operations.pop().expect("one native implementation");
         let mut entry = self.operations.binding_erased(self.owner, lane, Arc::new(factory), D::definition(), wire, self.scope.cloned())?;
         Arc::get_mut(&mut entry).expect("new native entry").carrier = dependencies;

@@ -21,7 +21,7 @@
 
 // Local Imports
 use super::{Answer, Finalization, Finished, Prepared, Route, ServingError, WireTable, guarded};
-use crate::operations::{Contract, ExecutionContext, NativeInstance};
+use crate::execution::operations::{Contract, ExecutionContext, NativeInstance};
 
 /* === Constants === */
 
@@ -56,7 +56,7 @@ impl WireTable {
         if contract.input().is_some() || contract.output().is_some() || contract.grpc().is_some() {
             return Err(ServingError::Catalog);
         }
-        let id = crate::QualifiedId::qualify(&self.owner, contract.operation().id.as_str())
+        let id = crate::execution::QualifiedId::qualify(&self.owner, contract.operation().id.as_str())
             .map_err(|_| ServingError::Catalog)?
             .as_str()
             .to_owned();

@@ -67,7 +67,7 @@ pub struct ObserverDefinition {
 pub trait ObserverBackend: Send + Sync + 'static {
     fn definition(&self) -> crate::Result<ObserverDefinition>;
     fn run(
-        &self, resources: Arc<harmos_sdk::ExecutionContext>, activation: ObserverActivation,
+        &self, resources: Arc<harmos_operations::execution::ExecutionContext>, activation: ObserverActivation,
     ) -> impl Future<Output = crate::Result<()>> + Send;
 }
 

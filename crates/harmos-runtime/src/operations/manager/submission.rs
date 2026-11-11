@@ -57,8 +57,8 @@ impl Manager {
         self.admit_at::<O, ()>(id, (request.into(), ()), None, &[], &Source::Host, None)
     }
 
-    pub fn operation<O: OperationDeclaration>(&self, request: O::Request) -> harmos_sdk::operations::Invocation<Self, O> {
-        harmos_sdk::operations::Invocation::new(self.clone(), request)
+    pub fn operation<O: OperationDeclaration>(&self, request: O::Request) -> harmos_operations::execution::operations::Invocation<Self, O> {
+        harmos_operations::execution::operations::Invocation::new(self.clone(), request)
     }
 
     pub fn submit_caused<O: OperationDeclaration>(&self, request: O::Request, cause: Position) -> Result<Running<O>> {
@@ -126,7 +126,7 @@ impl Manager {
         let authorization = self.authorize_external(&entry, &origin)?;
         let authority = entry.grant_authority(&origin, authorization);
         let grant = O::grant(&request.value).or(request.grant.take());
-        let grant = match entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>() {
+        let grant = match entry.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>() {
             Some(factory) => factory.grant(grant),
             None => grant,
         };
@@ -149,7 +149,7 @@ impl Manager {
             }
         });
         let binding = binding.or_else(|original| {
-            let Some(factory) = original.downcast_ref::<harmos_sdk::operations::OperationFactory>() else {
+            let Some(factory) = original.downcast_ref::<harmos_operations::execution::operations::OperationFactory>() else {
                 return Err(original);
             };
             let expected = crate::operations::OperationDefinition::named::<O>(entry.id());

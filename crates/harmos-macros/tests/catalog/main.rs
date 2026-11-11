@@ -42,7 +42,7 @@ use crate::fixtures;
 
 #[test]
 fn feature_catalog_compiles() {
-    let sdk = fixtures::library("harmos_sdk");
+    let sdk = fixtures::library("harmos_operations");
     let dependencies = fixtures::dependencies();
 
     let source = fixtures::manifest().join("tests/fixtures/feature_catalog.rs");
@@ -59,7 +59,7 @@ fn feature_catalog_compiles() {
             .args(["--edition=2024", "--crate-type=bin", "--crate-name=feature_catalog"])
             .arg(&source)
             .arg("--extern")
-            .arg(format!("harmos={}", sdk.display()))
+            .arg(format!("harmos_operations={}", sdk.display()))
             .arg("-L")
             .arg(format!("dependency={}", dependencies.display()))
             .arg("--out-dir")
@@ -244,7 +244,7 @@ fn authoring_refusals_compile() {
 
 #[test]
 fn grpc_visibility_compiles() {
-    let sdk = fixtures::library("harmos_sdk");
+    let sdk = fixtures::library("harmos_operations");
     let dependencies = fixtures::dependencies();
     let output = tempfile::tempdir().unwrap();
     let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
@@ -270,9 +270,10 @@ fn grpc_visibility_compiles() {
             format!(
                 r#"
 #![allow(dead_code)]
+use harmos_operations::execution as harmos;
 const PRIVATE: harmos::operations::Visibility = harmos::operations::Visibility::Private;
 const PUBLIC: harmos::operations::Visibility = harmos::operations::Visibility::Public;
-#[harmos::operation(harmos_path = ::harmos, id = "visibility.call",
+#[harmos::operation(harmos_path = ::harmos_operations::execution, id = "visibility.call",
     policy = harmos::model::operations::lifecycle::POLICY, {visibility}
     grpc(package = "visibility.v1", service = "Operations", method = "Call"))]
 struct Call;
@@ -285,7 +286,7 @@ fn main() {{}}
             .args(["--edition=2024", "--crate-type=bin", "--emit=metadata"])
             .arg(&source)
             .arg("--extern")
-            .arg(format!("harmos={}", sdk.display()))
+            .arg(format!("harmos_operations={}", sdk.display()))
             .arg("-L")
             .arg(format!("dependency={}", dependencies.display()))
             .arg("--out-dir")

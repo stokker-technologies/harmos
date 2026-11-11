@@ -59,7 +59,7 @@ fn register(manager: &OperationManager<<Bank as harmos_runtime::Application>::La
                 id: "scoped".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            move |_: Arc<harmos_sdk::ExecutionContext>| {
+            move |_: Arc<harmos_operations::execution::ExecutionContext>| {
                 let resources = resources.clone();
                 move |mut service: ServiceContext<Bank>| {
                     let resources = resources.clone();
@@ -226,7 +226,7 @@ async fn unregister_reserves_name() {
                     id: "scoped".into(),
                     policy: harmos_runtime::services::POLICY
                 },
-                |_: Arc<harmos_sdk::ExecutionContext>| super::resident
+                |_: Arc<harmos_operations::execution::ExecutionContext>| super::resident
             ),
             Err(Error::AlreadyRegistered { .. })
         ));
@@ -276,7 +276,7 @@ async fn shutdown_preserve_typed() {
                 id: "broken".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |_: Arc<harmos_sdk::ExecutionContext>| |_service: ServiceContext<Bank>| async { Err::<(), _>(Refused(42)) },
+            |_: Arc<harmos_operations::execution::ExecutionContext>| |_service: ServiceContext<Bank>| async { Err::<(), _>(Refused(42)) },
         )
         .unwrap();
     let lease = runtime.operations.submit_resident("broken").await.unwrap();
@@ -317,7 +317,7 @@ async fn unregister_drops_factory() {
                 id: "unused".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            move |_: Arc<harmos_sdk::ExecutionContext>| {
+            move |_: Arc<harmos_operations::execution::ExecutionContext>| {
                 let _owner = resource.clone();
                 super::resident
             },
@@ -362,7 +362,7 @@ async fn factory_panic_reported() {
                 id: "factory".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |_: Arc<harmos_sdk::ExecutionContext>| {
+            |_: Arc<harmos_operations::execution::ExecutionContext>| {
                 assert!(std::hint::black_box(false), "factory initialization failed");
                 super::resident
             },

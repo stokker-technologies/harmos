@@ -79,9 +79,9 @@ mod execution {
     // Third Party Imports
 
     // Local Imports
+    use crate::execution::operations::{Operation, Response};
     use crate::{Error, Result};
     use harmos_domain::model::storage::DirectoryCompletion;
-    use harmos_sdk::operations::{Operation, Response};
 
     /* === Constants === */
 
@@ -101,7 +101,7 @@ mod execution {
         type Error = Error;
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.list_directory", level = "trace", skip_all)]
-        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<Response<DirectoryCompletion>> {
+        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<Response<DirectoryCompletion>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
             let output = context.streams();
 
@@ -117,7 +117,7 @@ mod execution {
             Ok(reader.completion()?.into())
         }
 
-        fn classify(error: &Error) -> harmos_sdk::operations::FailureKind {
+        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
             crate::storage::classify(error)
         }
     }

@@ -18,7 +18,7 @@
 use prost::encoding::{WireType, encode_key, encode_varint};
 // Local Imports
 use harmos_domain::{MemorySize, MessageError, message, schema::Described};
-use harmos_sdk::grpc::{self, DecodeInput, prost};
+use harmos_operations::execution::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
 

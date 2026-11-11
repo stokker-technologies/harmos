@@ -141,7 +141,7 @@ async fn runtime(
             },
             {
                 let trace = trace.clone();
-                move |_: Arc<harmos_sdk::ExecutionContext>| {
+                move |_: Arc<harmos_operations::execution::ExecutionContext>| {
                     trace.factories.fetch_add(1, Ordering::SeqCst);
                     Worker(trace.clone())
                 }

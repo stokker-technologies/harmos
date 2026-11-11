@@ -165,9 +165,13 @@ fn codecs(criterion: &mut Criterion) {
         };
         let postcard = value.encode();
         let mut protobuf = Vec::new();
-        harmos_sdk::grpc::encode(&value, &mut protobuf).unwrap();
-        let decoded =
-            harmos_sdk::grpc::prepare::<protocol::Payload>(harmos_sdk::grpc::DecodeInput::new(&protobuf)).unwrap().decode().unwrap();
+        harmos_operations::execution::grpc::encode(&value, &mut protobuf).unwrap();
+        let decoded = harmos_operations::execution::grpc::prepare::<protocol::Payload>(
+            harmos_operations::execution::grpc::DecodeInput::new(&protobuf),
+        )
+        .unwrap()
+        .decode()
+        .unwrap();
         assert_eq!(decoded.bytes, value.bytes);
         group.throughput(if bytes == 0 { Throughput::Elements(1) } else { Throughput::Bytes(bytes as u64) });
         group.bench_function(BenchmarkId::new("postcard-encode", bytes), |bencher| {
@@ -179,16 +183,18 @@ fn codecs(criterion: &mut Criterion) {
         group.bench_function(BenchmarkId::new("protobuf-encode", bytes), |bencher| {
             bencher.iter(|| {
                 let mut output = Vec::new();
-                harmos_sdk::grpc::encode(std::hint::black_box(&value), &mut output).unwrap();
+                harmos_operations::execution::grpc::encode(std::hint::black_box(&value), &mut output).unwrap();
                 output
             });
         });
         group.bench_function(BenchmarkId::new("protobuf-prepare-decode", bytes), |bencher| {
             bencher.iter(|| {
-                harmos_sdk::grpc::prepare::<protocol::Payload>(harmos_sdk::grpc::DecodeInput::new(std::hint::black_box(&protobuf)))
-                    .unwrap()
-                    .decode()
-                    .unwrap()
+                harmos_operations::execution::grpc::prepare::<protocol::Payload>(harmos_operations::execution::grpc::DecodeInput::new(
+                    std::hint::black_box(&protobuf),
+                ))
+                .unwrap()
+                .decode()
+                .unwrap()
             });
         });
     }

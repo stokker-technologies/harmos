@@ -23,12 +23,12 @@ use serde::Serialize;
 
 // Local Imports
 #[cfg(feature = "runtime")]
+use crate::execution::operations::access::DiscoveryAccess;
+#[cfg(feature = "runtime")]
 use crate::{Error, Operation, Response};
 use harmos_domain::model::storage::codec::{Bytes, Code, Id, Index, Optional, Text, coded, product};
 use harmos_domain::plugin::Grant;
 use harmos_domain::{Identifier, MemorySize};
-#[cfg(feature = "runtime")]
-use harmos_sdk::operations::access::DiscoveryAccess;
 #[cfg(feature = "runtime")]
 use harmos_storage::{
     ErasedCatalog, IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection,
@@ -142,9 +142,9 @@ type Result<T> = std::result::Result<T, Error>;
 impl Operation for Catalog {
     type Error = Error;
 
-    async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<Response<CatalogPage>> {
+    async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<Response<CatalogPage>> {
         let storage = context.resource::<Option<std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>>>();
-        let access = context.resource::<harmos_sdk::operations::access::DiscoveryAccess>();
+        let access = context.resource::<crate::execution::operations::access::DiscoveryAccess>();
 
         let host = access;
 

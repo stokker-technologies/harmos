@@ -18,11 +18,11 @@ use std::any::Any;
 // Third Party Imports
 
 // Local Imports
-use crate::grpc::{self, DecodeInput};
+use crate::execution::grpc::{self, DecodeInput};
 #[cfg(feature = "streaming")]
-use crate::operations::Direction;
-use crate::operations::OperationDeclaration;
-use crate::{MessageError, Portable};
+use crate::execution::operations::Direction;
+use crate::execution::operations::OperationDeclaration;
+use crate::execution::{MessageError, Portable};
 
 /* === Constants === */
 

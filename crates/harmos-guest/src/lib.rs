@@ -24,10 +24,10 @@ pub use harmos_domain::{
     ConfigError, Failure, Refusal, Registrar, Registration, RegistrationError, StreamSpec, encode_config, reserved, validate_config,
 };
 pub use harmos_operations as builtins;
-pub use harmos_sdk::operations;
-pub use harmos_sdk::operations::OperationHost;
-pub use harmos_sdk::operations::{Backoff, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
-pub use harmos_sdk::{Context, Dependent, Executable, Lifecycle, Operation, Plugin, Resource, Response, Service, Setup};
+pub use harmos_operations::execution::operations;
+pub use harmos_operations::execution::operations::OperationHost;
+pub use harmos_operations::execution::operations::{Backoff, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+pub use harmos_operations::execution::{Context, Dependent, Executable, Lifecycle, Operation, Plugin, Resource, Response, Service, Setup};
 
 pub use harmos_domain::schema;
 pub use harmos_domain::streams;
@@ -36,7 +36,7 @@ pub use harmos_domain::{
     Storable,
 };
 pub use harmos_domain::{Metadata, StreamField};
-pub use harmos_sdk::__private;
+pub use harmos_operations::execution::__private;
 #[cfg(feature = "kit")]
 pub use kit::{OperationInstance, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREADABLE, WIT};
 
@@ -45,7 +45,7 @@ pub use harmos_domain::{listener, message, stream};
 
 #[cfg(feature = "derive")]
 pub use harmos_macros::{guest_catalog as catalog, guest_operation as operation};
-pub use harmos_sdk::plugin;
+pub use harmos_operations::execution::plugin;
 
 /* === Imports === */
 

@@ -72,27 +72,27 @@ pub enum Lifecycle {
 /* === Public Functions === */
 
 #[cfg(feature = "lifecycle")]
-pub fn bind<P: harmos_sdk::Plugin>(
-    owner: std::sync::Arc<harmos_sdk::plugin::Owner<P>>, table: &harmos_sdk::plugin::Table,
-) -> Result<(), harmos_sdk::plugin::Error<P>> {
-    use harmos_sdk::operations::lifecycle::LifecycleAccess;
-    let mut dependencies = harmos_sdk::__private::ResourceSet::new();
+pub fn bind<P: crate::execution::Plugin>(
+    owner: std::sync::Arc<crate::execution::plugin::Owner<P>>, table: &crate::execution::plugin::Table,
+) -> Result<(), crate::execution::plugin::Error<P>> {
+    use crate::execution::operations::lifecycle::LifecycleAccess;
+    let mut dependencies = crate::execution::__private::ResourceSet::new();
     dependencies
         .insert(std::sync::Arc::new(LifecycleAccess(owner)))
-        .map_err(|error| harmos_sdk::plugin::Error::Resource(std::sync::Arc::new(error)))?;
-    let mut table = table.lock().map_err(|_| harmos_sdk::plugin::Error::Poisoned)?;
+        .map_err(|error| crate::execution::plugin::Error::Resource(std::sync::Arc::new(error)))?;
+    let mut table = table.lock().map_err(|_| crate::execution::plugin::Error::Poisoned)?;
     let initialize = Descriptor::of_initialize::<P>()
-        .map_err(harmos_sdk::ServingError::from)
-        .map_err(|error| harmos_sdk::plugin::Error::Serving(std::sync::Arc::new(error)))?;
+        .map_err(crate::execution::ServingError::from)
+        .map_err(|error| crate::execution::plugin::Error::Serving(std::sync::Arc::new(error)))?;
     let shutdown = Descriptor::of_shutdown::<P>()
-        .map_err(harmos_sdk::ServingError::from)
-        .map_err(|error| harmos_sdk::plugin::Error::Serving(std::sync::Arc::new(error)))?;
+        .map_err(crate::execution::ServingError::from)
+        .map_err(|error| crate::execution::plugin::Error::Serving(std::sync::Arc::new(error)))?;
     table
         .install_lifecycle::<Initialize, initialize::Control>(dependencies.clone(), initialize)
-        .map_err(|error| harmos_sdk::plugin::Error::Serving(std::sync::Arc::new(error)))?;
+        .map_err(|error| crate::execution::plugin::Error::Serving(std::sync::Arc::new(error)))?;
     table
         .install_lifecycle::<Shutdown, shutdown::Control>(dependencies, shutdown)
-        .map_err(|error| harmos_sdk::plugin::Error::Serving(std::sync::Arc::new(error)))
+        .map_err(|error| crate::execution::plugin::Error::Serving(std::sync::Arc::new(error)))
 }
 
 /* === Private Functions === */

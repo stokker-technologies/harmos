@@ -55,7 +55,7 @@ pub(crate) struct Instances {
     lifecycle: Queue,
     supervisor: Task<()>,
     application_state: Box<dyn Any + Send + Sync>,
-    pub(crate) resources: harmos_sdk::__private::ResourceSet,
+    pub(crate) resources: harmos_operations::execution::__private::ResourceSet,
 }
 
 pub(crate) struct Reservation<O> {
@@ -110,7 +110,8 @@ enum Event {
 
 impl Instances {
     pub(crate) fn start(
-        lanes: Lanes, application_state: Box<dyn Any + Send + Sync>, resources: harmos_sdk::__private::ResourceSet, settings: &Settings,
+        lanes: Lanes, application_state: Box<dyn Any + Send + Sync>, resources: harmos_operations::execution::__private::ResourceSet,
+        settings: &Settings,
     ) -> Arc<Self> {
         let (ordinary, ordinary_receiving) = Queue::new(settings.queued.get());
         let (lifecycle, lifecycle_receiving) = Queue::new(settings.lifecycle_queued.get());

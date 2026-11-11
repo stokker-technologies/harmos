@@ -24,7 +24,7 @@ use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::files::{FileCompletion, FileEvent, FileSource, FollowStart};
 
 #[cfg(feature = "runtime")]
-use harmos_sdk::operations::access::GrantAccess;
+use crate::execution::operations::access::GrantAccess;
 
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
@@ -98,10 +98,10 @@ mod execution {
 
     // Local Imports
     use super::*;
+    use crate::execution::operations::{Operation, OperationDeclaration};
     use crate::storage::IO_TIMEOUT;
     use crate::{Error, Result};
     use harmos_domain::model::storage::files::FileCompletion;
-    use harmos_sdk::operations::{Operation, OperationDeclaration};
 
     /* === Constants === */
 
@@ -121,9 +121,9 @@ mod execution {
         type Error = Error;
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.follow_file", level = "trace", skip_all)]
-        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileCompletion>> {
+        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<crate::execution::operations::Response<FileCompletion>> {
             let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let grants = context.resource::<harmos_sdk::operations::access::GrantAccess>();
+            let grants = context.resource::<crate::execution::operations::access::GrantAccess>();
             let output = context.streams();
 
             let host = grants;
@@ -142,13 +142,13 @@ mod execution {
                 if let Some(grant) = &grant {
                     ctx.admit(grant).map_err(Error::Access)?;
                 }
-                let response = harmos_sdk::operations::Response::from_owner(event.owner());
+                let response = crate::execution::operations::Response::from_owner(event.owner());
                 storage.clock().timeout(IO_TIMEOUT, output.send_owned(response)).await.map_err(|_| crate::storage::output_timeout())??;
             }
             Ok(follower.completion()?.into())
         }
 
-        fn classify(error: &Error) -> harmos_sdk::operations::FailureKind {
+        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
             crate::storage::classify(error)
         }
     }

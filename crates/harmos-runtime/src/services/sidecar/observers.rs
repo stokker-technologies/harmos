@@ -51,7 +51,7 @@ pub(super) struct Remote {
     fenced: watch::Sender<bool>,
     expected_end: std::sync::atomic::AtomicBool,
     retirement: OnceLock<Weak<Retirement>>,
-    context: OnceLock<Weak<harmos_sdk::ExecutionContext>>,
+    context: OnceLock<Weak<harmos_operations::execution::ExecutionContext>>,
     outcome: Arc<Mutex<Option<Arc<crate::Error>>>>,
 }
 
@@ -68,7 +68,7 @@ pub(super) struct Session {
 
 struct Retirement {
     operations: Manager,
-    context: Arc<harmos_sdk::ExecutionContext>,
+    context: Arc<harmos_operations::execution::ExecutionContext>,
 }
 
 struct Closing {
@@ -182,7 +182,9 @@ impl ObserverBackend for Backend {
         Ok(self.definition.clone())
     }
 
-    async fn run(&self, context: Arc<harmos_sdk::ExecutionContext>, mut activation: ObserverActivation) -> crate::Result<()> {
+    async fn run(
+        &self, context: Arc<harmos_operations::execution::ExecutionContext>, mut activation: ObserverActivation,
+    ) -> crate::Result<()> {
         let remote = context.resource::<Remote>().map_err(|_| crate::Error::InvalidInput {
             field: "observer context",
             reason: "remote observer resource is missing",
@@ -268,7 +270,7 @@ impl Session {
     }
 
     // Bind retirement of this connection's observers to the session.
-    pub(super) fn bind(&mut self, context: Arc<harmos_sdk::ExecutionContext>) -> Result<(), String> {
+    pub(super) fn bind(&mut self, context: Arc<harmos_operations::execution::ExecutionContext>) -> Result<(), String> {
         let closing = self.closing.as_mut().ok_or("native session already ended")?;
         if closing.scope.is_some() {
             return Err("native observer scope already bound".to_owned());
@@ -365,13 +367,13 @@ impl Closing {
 pub(super) fn stage(
     operations: &Manager, remote: &Arc<Remote>, plugin: Option<&crate::plugin::PluginScope>, definitions: &[Declaration],
     publications: &[harmos_sidecar::StreamDeclaration],
-) -> crate::Result<(ObserverRegistration, Arc<harmos_sdk::ExecutionContext>)> {
-    let mut resources = harmos_sdk::__private::ResourceSet::new();
+) -> crate::Result<(ObserverRegistration, Arc<harmos_operations::execution::ExecutionContext>)> {
+    let mut resources = harmos_operations::execution::__private::ResourceSet::new();
     resources.insert(Arc::clone(remote)).map_err(|_| crate::Error::InvalidInput {
         field: "observer context",
         reason: "remote observer resource already configured",
     })?;
-    let context = Arc::new(harmos_sdk::ExecutionContext::new(resources, Default::default()));
+    let context = Arc::new(harmos_operations::execution::ExecutionContext::new(resources, Default::default()));
     remote.context.set(Arc::downgrade(&context)).map_err(|_| crate::Error::InvalidInput {
         field: "observer context",
         reason: "remote observer context already configured",

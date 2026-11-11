@@ -19,7 +19,7 @@
 
 // Local Imports
 #[cfg(feature = "runtime")]
-use harmos_sdk::operations::instances::InstanceAccess;
+use crate::execution::operations::instances::InstanceAccess;
 
 #[cfg(feature = "runtime")]
 use crate::{Error, Operation, Response};
@@ -72,8 +72,8 @@ impl Status {
 impl Operation for Status {
     type Error = Error;
 
-    async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<Response<super::InstanceState>, Error> {
-        let access = context.resource::<harmos_sdk::operations::instances::InstanceAccess>();
+    async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<Response<super::InstanceState>, Error> {
+        let access = context.resource::<crate::execution::operations::instances::InstanceAccess>();
 
         let instance = access.0.owned(Id::new(self.instance)).ok_or(Error::UnknownInstance(self.instance))?;
         Ok(super::InstanceState::from(instance.status()).into())

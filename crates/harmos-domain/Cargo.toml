@@ -72,9 +72,8 @@ memchr = { workspace = true, default-features = true }
 [dev-dependencies]
 # Local
 harmos-macros = { path = "../harmos-macros" }
-harmos-operations = { path = "../harmos-operations", default-features = false }
 harmos-packaging = { path = "../harmos-packaging", features = ["generate-proto"] }
-harmos-sdk = { path = "../harmos-sdk", features = ["grpc"] }
+harmos-operations = { path = "../harmos-operations", features = ["grpc"] }
 
 # Git
 

@@ -28,7 +28,7 @@ mod task;
 /* === Re-Exports === */
 
 pub use catalog::{CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT};
-pub use harmos_sdk::{ExecutionContext, Operation, Service};
+pub use harmos_operations::execution::{ExecutionContext, Operation, Service};
 pub use host::{CallError, PublicationError, Supervisor};
 pub use identity::ActivationId;
 pub use instance::OperationInstance;
@@ -64,7 +64,7 @@ const INCOMING_REQUESTS: usize = 128;
 
 type Prepare = Box<dyn Fn(&str) -> Result<Serving, Refusal> + Send + Sync>;
 type Cancellations = Arc<Mutex<BTreeMap<u64, Option<oneshot::Sender<()>>>>>;
-type Table = Arc<Mutex<harmos_sdk::__private::WireTable>>;
+type Table = Arc<Mutex<harmos_operations::execution::__private::WireTable>>;
 type SharedOpening = Arc<tokio::sync::Mutex<Opening>>;
 type Retirement = Box<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), Refusal>> + Send>> + Send + Sync>;
 
@@ -545,8 +545,8 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
         let phase = match table.lock() {
             Ok(mut table) => {
                 let call = operation_host.context().clone();
-                let mut dependencies = harmos_sdk::__private::ResourceSet::new();
-                let caller = Arc::new(harmos_sdk::operations::Calls(Arc::new(operation_host.clone())));
+                let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
+                let caller = Arc::new(harmos_operations::execution::operations::Calls(Arc::new(operation_host.clone())));
                 if let Err(error) = dependencies.insert(caller).and_then(|()| dependencies.insert(Arc::new(operation_host))) {
                     return Answered::Frame(Frame::Refusal { id, refusal: Refusal::of(error) });
                 }
@@ -574,7 +574,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
             }
             match answer.encode() {
                 Ok(result) => Frame::Answer { id, result: result.into() },
-                Err(harmos_sdk::operations::WireCodecError::Oversized) => oversized_reply(id),
+                Err(harmos_operations::execution::operations::WireCodecError::Oversized) => oversized_reply(id),
                 Err(error) => Frame::Refusal {
                     id,
                     refusal: Refusal::new(UNREADABLE, error.to_string()),
@@ -626,7 +626,7 @@ pub mod __private {
     pub use super::task::spawn as spawn_observer;
     pub use crate as sidecar;
     pub use harmos_domain::{qualified, qualified_len, qualify};
-    pub use harmos_sdk::__private::*;
+    pub use harmos_operations::execution::__private::*;
 
     /* === Imports === */
 

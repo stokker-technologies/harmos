@@ -29,11 +29,11 @@ use super::context::Context;
 use crate::OperationRefusal;
 use harmos_domain::Message;
 use harmos_domain::operations::instance::{Id, Status};
-use harmos_operations::lifecycle::InstanceState;
-use harmos_sdk::operations::{
+use harmos_operations::execution::operations::{
     CallContext, ContextError, ContextValue, Instance, OperationDeclaration, OperationHost, Response, WireChildAction, WireChildCall,
     WireChildControl,
 };
+use harmos_operations::lifecycle::InstanceState;
 
 /* === Constants === */
 
@@ -54,7 +54,7 @@ pub struct OperationInstance<O> {
 pub(super) struct Child {
     pub(super) host: Context,
     pub(super) id: Id,
-    pub(super) target: harmos_sdk::operations::Target,
+    pub(super) target: harmos_operations::execution::operations::Target,
     pub(super) released: bool,
 }
 
@@ -76,7 +76,7 @@ impl Context {
     }
 
     async fn child_call<O: OperationDeclaration>(
-        &self, request: &O::Request, submit: bool, retry: Option<harmos_sdk::operations::RetryPolicy>,
+        &self, request: &O::Request, submit: bool, retry: Option<harmos_operations::execution::operations::RetryPolicy>,
     ) -> Result<Vec<u8>, OperationRefusal> {
         let context = self.calling_context()?;
         let target = self.assignments.resolve::<O>().map_err(OperationRefusal::of)?;
@@ -122,11 +122,11 @@ impl Context {
     }
 }
 
-impl harmos_sdk::operations::Caller for Context {
+impl harmos_operations::execution::operations::Caller for Context {
     fn start(
-        &self, target: harmos_sdk::operations::Target, request: Box<dyn std::any::Any + Send>,
-        retry: Option<harmos_sdk::operations::RetryPolicy>, endpoints: Box<dyn std::any::Any + Send>, call: CallContext,
-    ) -> harmos_sdk::operations::StartFuture<'_> {
+        &self, target: harmos_operations::execution::operations::Target, request: Box<dyn std::any::Any + Send>,
+        retry: Option<harmos_operations::execution::operations::RetryPolicy>, endpoints: Box<dyn std::any::Any + Send>, call: CallContext,
+    ) -> harmos_operations::execution::operations::StartFuture<'_> {
         Box::pin(async move {
             let result = async move {
                 if !endpoints.is::<()>() {
@@ -153,10 +153,10 @@ impl harmos_sdk::operations::Caller for Context {
                     id: Id::new(id),
                     target,
                     released: false,
-                }) as Box<dyn harmos_sdk::operations::ChildInstance>)
+                }) as Box<dyn harmos_operations::execution::operations::ChildInstance>)
             }
             .await;
-            result.map_err(|error| harmos_sdk::operations::InvocationError::failed(target.id, error))
+            result.map_err(|error| harmos_operations::execution::operations::InvocationError::failed(target.id, error))
         })
     }
 }
@@ -232,8 +232,8 @@ impl<O: OperationDeclaration> Instance<O> for OperationInstance<O> {
 }
 
 impl OperationHost for Context {
-    async fn resolve<O: OperationDeclaration, E: harmos_sdk::operations::EndpointSet>(
-        &self, request: O::Request, retry: Option<harmos_sdk::operations::RetryPolicy>, _endpoints: E,
+    async fn resolve<O: OperationDeclaration, E: harmos_operations::execution::operations::EndpointSet>(
+        &self, request: O::Request, retry: Option<harmos_operations::execution::operations::RetryPolicy>, _endpoints: E,
     ) -> Result<Response<O::Response>, OperationRefusal> {
         if E::item_types() != (None, None) {
             return Err(OperationRefusal::of("guest calls do not accept native endpoints"));
@@ -242,8 +242,8 @@ impl OperationHost for Context {
         O::Response::decode(&bytes).map(Response::new).map_err(OperationRefusal::of)
     }
 
-    async fn invoke<O: OperationDeclaration, E: harmos_sdk::operations::EndpointSet>(
-        &self, request: O::Request, retry: Option<harmos_sdk::operations::RetryPolicy>, _endpoints: E,
+    async fn invoke<O: OperationDeclaration, E: harmos_operations::execution::operations::EndpointSet>(
+        &self, request: O::Request, retry: Option<harmos_operations::execution::operations::RetryPolicy>, _endpoints: E,
     ) -> Result<Self::Instance<O>, OperationRefusal> {
         if E::item_types() != (None, None) {
             return Err(OperationRefusal::new(UNKNOWN, "native endpoints are unavailable across the guest boundary"));
@@ -288,17 +288,17 @@ impl OperationHost for Context {
     }
 
     async fn submit_owned<O: OperationDeclaration>(
-        &self, _: O::Request, _: harmos_sdk::operations::RequestClaims,
+        &self, _: O::Request, _: harmos_operations::execution::operations::RequestClaims,
     ) -> Result<OperationInstance<O>, OperationRefusal> {
         Err(OperationRefusal::of(format!("`{}` needs process-local request ownership a guest cannot carry", O::ID)))
     }
 }
 
-impl harmos_sdk::operations::ChildInstance for Child {
+impl harmos_operations::execution::operations::ChildInstance for Child {
     fn id(&self) -> Id {
         self.id
     }
-    fn status(&self) -> harmos_sdk::operations::ControlFuture<'_, Status> {
+    fn status(&self) -> harmos_operations::execution::operations::ControlFuture<'_, Status> {
         Box::pin(async move {
             let result = async {
                 let bytes = self.host.child_control(self.id, WireChildAction::Status).await?;
@@ -307,27 +307,29 @@ impl harmos_sdk::operations::ChildInstance for Child {
                     .and_then(|state| Status::try_from(&state).map_err(OperationRefusal::of))
             }
             .await;
-            result.map_err(|error: OperationRefusal| harmos_sdk::operations::InvocationError::failed(self.target.id, error))
+            result
+                .map_err(|error: OperationRefusal| harmos_operations::execution::operations::InvocationError::failed(self.target.id, error))
         })
     }
-    fn request_cancel(&self) -> harmos_sdk::operations::ControlFuture<'_, ()> {
+    fn request_cancel(&self) -> harmos_operations::execution::operations::ControlFuture<'_, ()> {
         Box::pin(async move {
             self.host
                 .child_control(self.id, WireChildAction::Cancel)
                 .await
                 .map(|_| ())
-                .map_err(|error| harmos_sdk::operations::InvocationError::failed(self.target.id, error))
+                .map_err(|error| harmos_operations::execution::operations::InvocationError::failed(self.target.id, error))
         })
     }
-    fn join(mut self: Box<Self>) -> harmos_sdk::operations::CallFuture<'static> {
+    fn join(mut self: Box<Self>) -> harmos_operations::execution::operations::CallFuture<'static> {
         Box::pin(async move {
             let bytes = self
                 .host
                 .child_control(self.id, WireChildAction::Join)
                 .await
-                .map_err(|error| harmos_sdk::operations::InvocationError::failed(self.target.id, error))?;
+                .map_err(|error| harmos_operations::execution::operations::InvocationError::failed(self.target.id, error))?;
             self.released = true;
-            (self.target.decode)(&bytes).map_err(|error| harmos_sdk::operations::InvocationError::failed(self.target.id, error))
+            (self.target.decode)(&bytes)
+                .map_err(|error| harmos_operations::execution::operations::InvocationError::failed(self.target.id, error))
         })
     }
     fn detach(mut self: Box<Self>) -> Id {

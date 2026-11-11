@@ -22,7 +22,7 @@ use tokio::sync::{Semaphore, SemaphorePermit, mpsc, oneshot};
 use crate::Frame;
 use harmos_domain::Message;
 use harmos_domain::operations::instance::Id;
-use harmos_sdk::operations::{CHILD_METHOD, OperationDeclaration, WireChildAction, WireChildControl};
+use harmos_operations::execution::operations::{CHILD_METHOD, OperationDeclaration, WireChildAction, WireChildControl};
 
 /* === Constants === */
 
@@ -67,7 +67,7 @@ pub struct Supervisor {
     pending: Arc<PendingCalls>,
     operation_context: Option<[u8; 32]>,
     generation_context: Option<[u8; 32]>,
-    assignments: harmos_sdk::operations::OperationAssignments,
+    assignments: harmos_operations::execution::operations::OperationAssignments,
     call: Arc<harmos_domain::operations::CallContext>,
     clock: fn() -> Option<i64>,
 }
@@ -140,12 +140,12 @@ impl From<CallError> for harmos_domain::Refusal {
     }
 }
 
-impl harmos_sdk::lifecycle::Context for Supervisor {
-    type Configuration = harmos_sdk::__private::WireTable;
+impl harmos_operations::execution::lifecycle::Context for Supervisor {
+    type Configuration = harmos_operations::execution::__private::WireTable;
 }
 
-impl harmos_sdk::plugin::Context for Supervisor {
-    fn assign_operations(&self, bytes: &[u8]) -> Result<(), harmos_sdk::operations::ServingError> {
+impl harmos_operations::execution::plugin::Context for Supervisor {
+    fn assign_operations(&self, bytes: &[u8]) -> Result<(), harmos_operations::execution::operations::ServingError> {
         self.assignments.install(bytes)
     }
 
@@ -156,12 +156,12 @@ impl harmos_sdk::plugin::Context for Supervisor {
     }
 }
 
-impl harmos_sdk::operations::Caller for Supervisor {
+impl harmos_operations::execution::operations::Caller for Supervisor {
     fn start(
-        &self, target: harmos_sdk::operations::Target, request: Box<dyn std::any::Any + Send>,
-        retry: Option<harmos_sdk::operations::RetryPolicy>, endpoints: Box<dyn std::any::Any + Send>,
-        call: harmos_sdk::operations::CallContext,
-    ) -> harmos_sdk::operations::StartFuture<'_> {
+        &self, target: harmos_operations::execution::operations::Target, request: Box<dyn std::any::Any + Send>,
+        retry: Option<harmos_operations::execution::operations::RetryPolicy>, endpoints: Box<dyn std::any::Any + Send>,
+        call: harmos_operations::execution::operations::CallContext,
+    ) -> harmos_operations::execution::operations::StartFuture<'_> {
         Box::pin(async move {
             let result = async move {
                 if !endpoints.is::<()>() {
@@ -188,7 +188,7 @@ impl harmos_sdk::operations::Caller for Supervisor {
                         limit: Frame::LIMIT,
                     });
                 }
-                let command = harmos_sdk::operations::WireChildCall {
+                let command = harmos_operations::execution::operations::WireChildCall {
                     context: self.operation_context.unwrap_or([0; 32]),
                     generation_context: self.generation_context,
                     values,
@@ -219,10 +219,10 @@ impl harmos_sdk::operations::Caller for Supervisor {
                     id: Id::new(id),
                     target,
                     released: false,
-                }) as Box<dyn harmos_sdk::operations::ChildInstance>)
+                }) as Box<dyn harmos_operations::execution::operations::ChildInstance>)
             }
             .await;
-            result.map_err(|error| harmos_sdk::operations::InvocationError::failed(target.id, error))
+            result.map_err(|error| harmos_operations::execution::operations::InvocationError::failed(target.id, error))
         })
     }
 }
@@ -336,7 +336,7 @@ impl Supervisor {
     // One child call on this attempt or generation; a submitted child answers
     // its instance id and stays owned by the attempt.
     pub(super) async fn child_call<O>(
-        &self, request: &O::Request, submit: bool, retry: Option<harmos_sdk::operations::RetryPolicy>,
+        &self, request: &O::Request, submit: bool, retry: Option<harmos_operations::execution::operations::RetryPolicy>,
     ) -> Result<crate::FramePayload, CallError>
     where
         O: OperationDeclaration,
@@ -364,7 +364,7 @@ impl Supervisor {
             method: CHILD_METHOD,
             message: error.to_string(),
         })?;
-        let command = harmos_sdk::operations::WireChildCall {
+        let command = harmos_operations::execution::operations::WireChildCall {
             context: self.operation_context.unwrap_or([0; 32]),
             generation_context: self.generation_context,
             values: self.call.portable(),
@@ -439,7 +439,7 @@ impl Supervisor {
     }
 
     fn child<O: OperationDeclaration>(
-        &self, request: &O::Request, submit: bool, retry: Option<harmos_sdk::operations::RetryPolicy>,
+        &self, request: &O::Request, submit: bool, retry: Option<harmos_operations::execution::operations::RetryPolicy>,
     ) -> Result<Vec<u8>, CallError> {
         if self.operation_context.is_none() && self.generation_context.is_none() {
             return Err(CallError::Unavailable);
@@ -450,7 +450,7 @@ impl Supervisor {
 
     fn child_with_values<O: OperationDeclaration>(
         &self, request: &O::Request, submit: bool, values: Vec<harmos_domain::operations::CallValue>,
-        retry: Option<harmos_sdk::operations::RetryPolicy>,
+        retry: Option<harmos_operations::execution::operations::RetryPolicy>,
     ) -> Result<Vec<u8>, CallError> {
         let context = self.operation_context.unwrap_or([0; 32]);
         let target = self.assignments.resolve::<O>().map_err(|_| CallError::Unassigned { operation: O::ID })?;
@@ -471,7 +471,7 @@ impl Supervisor {
             });
         }
         let payload = harmos_domain::Message::encode(request);
-        let command = harmos_sdk::operations::WireChildCall {
+        let command = harmos_operations::execution::operations::WireChildCall {
             context,
             generation_context: self.generation_context,
             values,
@@ -581,7 +581,7 @@ impl Supervisor {
             let bytes = self
                 .exchange_with(|id, call| {
                     let values = self.call.portable();
-                    let envelope = harmos_sdk::operations::WireChildCall::payload_encoded_len(
+                    let envelope = harmos_operations::execution::operations::WireChildCall::payload_encoded_len(
                         &target.operation,
                         target.generation,
                         0,
@@ -723,8 +723,8 @@ mod tests {
     use super::*;
     use harmos_domain::model::storage::files::{ByteRange, FileBatch, FileSource};
     use harmos_domain::operations::CallValue;
+    use harmos_operations::execution::operations::WireChildCall;
     use harmos_operations::{storage::ReadFile, streams::Publish};
-    use harmos_sdk::operations::WireChildCall;
 
     #[test]
     fn deadline_cause_survives() {
@@ -754,13 +754,13 @@ mod tests {
         let host = Supervisor::new(outgoing, || None).for_attempt([7; 32], values).unwrap();
         let assignments = [ReadFile::definition(), Publish::definition()]
             .into_iter()
-            .map(|definition| harmos_sdk::operations::AssignedOperation {
+            .map(|definition| harmos_operations::execution::operations::AssignedOperation {
                 operation: format!("host.{}", definition.id),
                 fingerprint: definition.fingerprint.0,
                 generation: u64::MAX,
             })
             .collect::<Vec<_>>();
-        host.assignments.install(&harmos_sdk::operations::AssignedOperation::encode(&assignments).unwrap()).unwrap();
+        host.assignments.install(&harmos_operations::execution::operations::AssignedOperation::encode(&assignments).unwrap()).unwrap();
         host
     }
 
