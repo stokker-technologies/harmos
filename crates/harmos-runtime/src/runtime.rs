@@ -195,9 +195,10 @@ enum Stopping<A: Application> {
 pub enum Catalog<A: Application> {
     Transactions {
         definitions: Vec<(Kind, DefinitionId, u32)>,
-        decode: fn(&DefinitionId, u32, &[u8]) -> Result<Option<A::Transaction>, DecodeError>,
-        inverses: Option<fn(&A::Transaction, &A::State) -> Option<A::Transaction>>,
+        decode: harmos_domain::state::StateDecoder<A::Transaction>,
+        inverses: Option<Inverting<A>>,
         records: Option<harmos_domain::state::RecordRegistry<A::Record>>,
+        states: Option<harmos_domain::state::StateCatalog<A::State, A::Transaction>>,
     },
     Streams(Vec<Definition>),
 }
@@ -252,16 +253,19 @@ pub trait Registration<A: Application>: Clone + Send {
 
 /* === Implementations === */
 
-impl<A, S, T> Registration<A> for harmos_domain::state::TransactionDefinitions<S, T>
+impl<A, S: 'static, T: 'static> Registration<A> for harmos_domain::state::StateCatalog<S, T>
 where
     A: Application<State = S, Transaction = T>,
 {
     fn register(self) -> Catalog<A> {
+        let decoder = self.clone();
+        let inverses = self.clone();
         Catalog::Transactions {
-            definitions: self.definitions,
-            decode: self.decode,
-            inverses: Some(self.inverses),
+            definitions: self.definitions(),
+            decode: Arc::new(move |id, version, bytes| decoder.decode(id, version, bytes)),
+            inverses: Some(Arc::new(move |change, before| inverses.inverse(change, before))),
             records: None,
+            states: Some(self),
         }
     }
 }
@@ -273,9 +277,10 @@ where
     fn register(self) -> Catalog<A> {
         Catalog::Transactions {
             definitions: self.definitions(),
-            decode: |_, _, _| Ok(None),
+            decode: Arc::new(|_, _, _| Ok(None)),
             inverses: None,
             records: Some(self),
+            states: None,
         }
     }
 }
@@ -383,7 +388,7 @@ impl<A: Application> Runtime<A> {
             resources: harmos_operations::execution::__private::ResourceSet::new(),
             configuration_errors: Vec::new(),
             operation_catalogs: HashSet::new(),
-            inverses: none::<A>,
+            inverses: Arc::new(none::<A>),
             catalog: Dispatch::default(),
             definitions: Vec::new(),
             attachments: Attachments::new(),
@@ -417,7 +422,7 @@ impl<A: Application> Runtime<A> {
         let anchor = origin.position;
         let mut state = At { value: origin.value, position: anchor };
         let entries = recovery.entries.into_iter().filter(|entry| entry.position > anchor).collect();
-        replay(None, entries, &mut state, &mut Undos::default(), none::<A>, 0).map_err(Incompatible::of)?;
+        replay(None, entries, &mut state, &mut Undos::default(), Arc::new(none::<A>), 0).map_err(Incompatible::of)?;
         state.position = state.position.max(recovery.frontier).max(anchor);
 
         let (reads, requests) = crate::state::Reads::channel(REQUESTS);
@@ -502,7 +507,16 @@ impl<A: Application> Builder<A> {
         self.simulation.register(catalog.clone());
 
         match catalog.register() {
-            Catalog::Transactions { definitions, decode, inverses, records } => {
+            Catalog::Transactions {
+                definitions,
+                decode,
+                inverses,
+                records,
+                states,
+            } => {
+                if let Some(states) = states {
+                    self.catalog.states = self.catalog.states.clone().extend(states);
+                }
                 if let Some(records) = records {
                     self.catalog.record_registry = self.catalog.record_registry.clone().extend(records);
                     if let Err(source) = self.catalog.record_registry.validate() {
@@ -515,7 +529,7 @@ impl<A: Application> Builder<A> {
                     self.inverses = inverses;
                 }
                 for (kind, id, version) in definitions {
-                    declare(&mut self.catalog, kind, id, version, decode);
+                    declare(&mut self.catalog, kind, id, version, decode.clone());
                 }
             }
             Catalog::Streams(definitions) => self.definitions.extend(definitions),
@@ -739,6 +753,11 @@ impl<A: Application> Builder<A> {
                 source: Box::new(Incompatible::simulation(self.live_only.join(", "))),
             });
         }
+        if let Err(source) = self.catalog.states.validate() {
+            self.configuration_errors.push(StartupError::Binding {
+                source: Box::new(harmos_operations::execution::ServingError::Declaration(source)),
+            });
+        }
         for binding in &self.operations {
             self.configuration_errors.extend(binding.validate(&self.resources, &self.lanes));
         }
@@ -817,13 +836,14 @@ impl<A: Application> Builder<A> {
         let mut state = At { value: origin.value, position: anchor };
         let mut undos = Undos::default();
         let entries = recovery.entries.into_iter().filter(|entry| entry.position > anchor).collect();
-        let mut recovered = replay(Some(&catalog), entries, &mut state, &mut undos, inverses, tail).map_err(Incompatible::of)?;
+        let mut recovered = replay(Some(&catalog), entries, &mut state, &mut undos, inverses.clone(), tail).map_err(Incompatible::of)?;
         let stored = recovery.encoded.into_iter().filter(|(position, _)| *position > anchor).collect();
         state.position = state.position.max(recovery.frontier).max(anchor);
         let mut managed_durable = None;
         if let Some(settings) = managed_storage {
             let storage = boot.storage.as_ref().expect("managed state requires storage");
-            let loaded = StateManager::recover(storage, state, &catalog, inverses, tail, settings.replay, snapshots.as_ref()).await?;
+            let loaded =
+                StateManager::recover(storage, state, &catalog, inverses.clone(), tail, settings.replay, snapshots.as_ref()).await?;
             state = loaded.state;
             undos = loaded.undos;
             recovered = loaded.tail;
@@ -844,7 +864,7 @@ impl<A: Application> Builder<A> {
         let catalog = Arc::new(catalog);
         let (journal, writer, requests) = StateManager::start(
             state,
-            inverses,
+            inverses.clone(),
             undos,
             REQUESTS,
             tail,
@@ -1139,7 +1159,7 @@ async fn supervise<A: Application>(supervision: Supervision<A>) -> Position {
                     deliver(&mut consumers, &streams).await;
                 }
             }
-            Turn::Read(request) => answer(request, &mut consumers, Some(&catalog), inverses).await,
+            Turn::Read(request) => answer(request, &mut consumers, Some(&catalog), inverses.clone()).await,
             Turn::Stopped => break,
         }
     }
@@ -1256,7 +1276,7 @@ async fn answer<A: Application>(
 
 async fn inspect_reads<A: Application>(mut consumers: Consumers<A>, mut requests: mpsc::Receiver<ReadRequest<A>>) {
     while let Some(request) = requests.recv().await {
-        answer(request, &mut consumers, None, none::<A>).await;
+        answer(request, &mut consumers, None, Arc::new(none::<A>)).await;
     }
 }
 

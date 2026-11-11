@@ -28,7 +28,7 @@ use crate::Application;
 
 /* === Type Aliases === */
 
-pub(crate) type Inverting<A> = fn(&<A as Application>::Transaction, &<A as Application>::State) -> Option<<A as Application>::Transaction>;
+pub(crate) type Inverting<A> = harmos_domain::state::StateInverse<<A as Application>::State, <A as Application>::Transaction>;
 pub(crate) type TransactionError<A> = <<A as Application>::Transaction as Transaction<<A as Application>::State>>::Error;
 
 /* === Structs === */
@@ -67,8 +67,8 @@ pub(crate) mod dispatch {
 
     /* === Type Aliases === */
 
-    pub(crate) type Restore<A, W> = fn(W, &mut <A as Application>::State) -> Result<(), DecodeError>;
-    pub(crate) type Decode<A> = fn(&DefinitionId, u32, &[u8]) -> Result<Option<<A as Application>::Transaction>, DecodeError>;
+    pub(crate) type Restore<A, W> = std::sync::Arc<dyn Fn(W, &mut <A as Application>::State) -> Result<(), DecodeError> + Send + Sync>;
+    pub(crate) type Decode<A> = harmos_domain::state::StateDecoder<<A as Application>::Transaction>;
 
     /* === Structs === */
 
@@ -76,6 +76,7 @@ pub(crate) mod dispatch {
         transactions: BTreeMap<(DefinitionId, u32), Restore<A, W>>,
         decoders: BTreeMap<(DefinitionId, u32), Decode<A>>,
         records: BTreeMap<(DefinitionId, u32), Upgrade<A, W>>,
+        pub(crate) states: harmos_domain::state::StateCatalog<A::State, A::Transaction>,
         pub(crate) record_registry: harmos_domain::state::RecordRegistry<A::Record>,
     }
 
@@ -102,7 +103,7 @@ pub(crate) mod dispatch {
 
         pub(crate) fn validate(&self, kind: Kind, id: &DefinitionId, version: u32) -> Result<(), DecodeError> {
             match kind {
-                Kind::Transaction => declared(&self.transactions, id, version).map(|_| ()),
+                Kind::Transaction => declared_cloned(&self.transactions, id, version).map(|_| ()),
                 Kind::Record => declared(&self.records, id, version).map(|_| ()),
             }
         }
@@ -121,7 +122,7 @@ pub(crate) mod dispatch {
 
             match kind {
                 Kind::Transaction => {
-                    let restore = declared(&self.transactions, &id, version)?;
+                    let restore = declared_cloned(&self.transactions, &id, version)?;
                     restore(payload, state)?;
                     Ok(Restored::Applied)
                 }
@@ -141,7 +142,7 @@ pub(crate) mod dispatch {
         }
 
         pub(crate) fn decode_transaction(&self, id: &DefinitionId, version: u32, bytes: &[u8]) -> Result<A::Transaction, DecodeError> {
-            let decode = declared(&self.decoders, id, version)?;
+            let decode = declared_cloned(&self.decoders, id, version)?;
 
             decode(id, version, bytes)?.ok_or_else(|| DecodeError::Malformed { id: id.clone(), version })
         }
@@ -153,6 +154,7 @@ pub(crate) mod dispatch {
                 transactions: BTreeMap::new(),
                 decoders: BTreeMap::new(),
                 records: BTreeMap::new(),
+                states: harmos_domain::state::StateCatalog::new(),
                 record_registry: harmos_domain::state::RecordRegistry::new(),
             }
         }
@@ -161,6 +163,18 @@ pub(crate) mod dispatch {
     /* === Public Functions === */
 
     /* === Private Functions === */
+
+    fn declared_cloned<F: Clone>(table: &BTreeMap<(DefinitionId, u32), F>, id: &DefinitionId, version: u32) -> Result<F, DecodeError> {
+        if let Some(found) = table.get(&(id.clone(), version)) {
+            return Ok(found.clone());
+        }
+        let known = table.range((id.clone(), u32::MIN)..=(id.clone(), u32::MAX)).next().is_some();
+        Err(if known {
+            DecodeError::UndeclaredVersion { id: id.clone(), version }
+        } else {
+            DecodeError::UnknownDefinition { id: id.clone() }
+        })
+    }
 
     fn declared<F: Copy>(table: &BTreeMap<(DefinitionId, u32), F>, id: &DefinitionId, version: u32) -> Result<F, DecodeError> {
         if let Some(found) = table.get(&(id.clone(), version)) {

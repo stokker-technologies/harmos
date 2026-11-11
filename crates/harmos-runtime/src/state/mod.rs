@@ -27,7 +27,7 @@ pub use crate::error::Error;
 pub use capture::{CaptureError, CaptureLimits, JournalCapture};
 pub use entry::{At, CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt, RequestKey, Timestamp};
 pub use envelope::{DefinitionId, Envelope, FactSource, Kind, Recorded, SystemFact};
-pub use harmos_domain::state::TransactionDefinitions;
+pub use harmos_domain::state::{StateCatalog, TransactionEntry};
 pub use history::{Focus, Origin, Reversals};
 pub use managed::ManagedState;
 pub use manager::StateManager;

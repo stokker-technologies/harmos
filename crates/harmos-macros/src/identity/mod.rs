@@ -118,9 +118,20 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         },
     };
 
+    let entry_bounds = declared.undo.as_ref().map(|inverse| quote!(+ #harmos::state::Invertible<S, Inverse = #inverse>));
+    let inverse_bounds = declared.undo.as_ref().map(|inverse| quote!(#inverse: #harmos::state::Transaction<S>,));
+    let disposition = if let Some(inverse) = &declared.undo { quote!(.reversible::<#inverse>()) } else { quote!(.barrier()) };
     let transaction = quote! {
+        impl #name {
+            pub fn __harmos_entry<S>() -> #harmos::state::TransactionEntry<S, Self>
+            where Self: #harmos::state::Transaction<S> #entry_bounds, #inverse_bounds
+            {
+                #harmos::state::TransactionEntry::<S, Self>::new(#id)#disposition
+            }
+        }
+
         impl<S> #harmos::state::TransactionCatalog<S> for #name
-        where Self: #harmos::state::Transaction<S>, S: 'static {
+        where Self: #harmos::state::Transaction<S> #entry_bounds, #inverse_bounds S: 'static {
             fn replay(&self, prepared: &#harmos::state::Prepared, state: &mut S) -> ::core::result::Result<(), #harmos::state::DecodeError> {
                 let refusal = || #harmos::state::DecodeError::Malformed { id: prepared.id.clone(), version: prepared.version };
                 if prepared.id.as_str() != Self::ID { return Err(refusal()); }

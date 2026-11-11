@@ -152,7 +152,8 @@ impl<A: Application> StateManager<A> {
                         decoded.push(envelope);
                     }
                 }
-                let recovered = replay(Some(catalog), decoded, &mut state, &mut undos, inverses, tail).map_err(Incompatible::unreadable)?;
+                let recovered =
+                    replay(Some(catalog), decoded, &mut state, &mut undos, inverses.clone(), tail).map_err(Incompatible::unreadable)?;
                 state.position = frontier;
                 if !recovered.is_empty() {
                     while retained.len() + recovered.len() > tail && !retained.is_empty() {

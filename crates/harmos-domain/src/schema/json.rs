@@ -261,8 +261,8 @@ fn memory_kind(schema: &Schema, kind: Kind, reader: &mut Reader<'_>) -> Result<u
 #[cfg(all(test, feature = "derive"))]
 mod tests {
     use super::*;
+    use crate::Message;
     use crate::schema::Described;
-    use crate::{Message, message};
     use serde_json::json;
 
     #[derive(Message, Clone, Debug, Default)]

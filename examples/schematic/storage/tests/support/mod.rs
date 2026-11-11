@@ -288,10 +288,11 @@ impl Registration<Bank> for Definitions {
         }
 
         Catalog::Transactions {
+            states: Some(Change::catalog()),
             records: Some(fact_registry()),
             definitions: self.0,
-            decode,
-            inverses: Some(Change::__harmos_inverses),
+            decode: std::sync::Arc::new(decode),
+            inverses: Some(std::sync::Arc::new(Change::__harmos_inverses)),
         }
     }
 }

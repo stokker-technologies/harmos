@@ -274,24 +274,20 @@ fn inverses(name: &Ident, members: &[Member], state: &Path, harmos: &HarmosPath)
 }
 
 fn registration(name: &Ident, visibility: &syn::Visibility, members: &[Member], state: &Path, harmos: &HarmosPath) -> TokenStream {
-    let definitions = members.iter().map(|member| {
+    let entries = members.iter().map(|member| {
         let definition = &member.definition;
-        quote! {
-            let (id, version) = <#definition as #harmos::Identified>::definition();
-            definitions.push((#harmos::state::Kind::Transaction, id, version));
-        }
+        let variant = &member.name;
+        let project = if members.len() == 1 {
+            quote!({ let #name::#variant(value) = value; Some(value) })
+        } else {
+            quote!(match value { #name::#variant(value) => Some(value), _ => None })
+        };
+        quote!(.transaction(<#definition>::__harmos_entry::<#state>(), #name::#variant, |value| #project))
     });
     quote! {
         impl #name {
-            #visibility fn catalog() -> #harmos::state::TransactionDefinitions<#state, #name> {
-                fn decode(id: &#harmos::DefinitionId, version: u32, bytes: &[u8]) -> ::core::result::Result<Option<#name>, #harmos::state::DecodeError> {
-                    let malformed = || #harmos::state::DecodeError::Malformed { id: id.clone(), version };
-                    let payload: #harmos::__private::serde_json::Value = #harmos::__private::serde_json::from_slice(bytes).map_err(|_| malformed())?;
-                    #name::restore(id, version, &payload).map_err(|_| malformed())
-                }
-                let mut definitions = ::std::vec::Vec::new();
-                #(#definitions)*
-                #harmos::state::TransactionDefinitions { definitions, decode, inverses: #name::__harmos_inverses }
+            #visibility fn catalog() -> #harmos::state::StateCatalog<#state, #name> {
+                #harmos::state::StateCatalog::new() #(#entries)*
             }
         }
     }

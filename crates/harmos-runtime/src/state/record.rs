@@ -50,7 +50,12 @@ pub(crate) struct PreparedCommit<A: Application> {
 pub(crate) fn prepare<A: Application>(
     transaction: &A::Transaction, state: &A::State, catalog: &super::dispatch::Dispatch<A, crate::storage::Payload<A>>,
 ) -> Result<PreparedCommit<A>, PreparationError> {
-    let (prepared, members) = Records::collect(transaction, state)?;
+    let (prepared, members) = if catalog.states.is_empty() {
+        Records::collect(transaction, state)?
+    } else {
+        let prepared = catalog.states.prepare(transaction)?.ok_or(PreparationError::Membership)?;
+        Records::collect_prepared(transaction, state, prepared)?
+    };
     let records = members
         .into_iter()
         .map(|(system, member)| {

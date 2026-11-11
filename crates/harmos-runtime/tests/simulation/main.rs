@@ -296,9 +296,10 @@ impl Registration<Divergent> for DivergentCatalog {
         }
 
         Catalog::Transactions {
+            states: None,
             records: None,
             definitions: vec![(Kind::Transaction, DefinitionId::new("sim.divergent"), 1)],
-            decode,
+            decode: std::sync::Arc::new(decode),
             inverses: None,
         }
     }

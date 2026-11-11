@@ -219,7 +219,7 @@ mod sheet {
     #[error("the title must not be empty")]
     pub struct Untitled;
 
-    #[harmos_runtime::transaction(id = "sheet.rename")]
+    #[harmos_runtime::transaction(id = "sheet.rename", inverse = Self)]
     #[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Rename {
         pub to: String,

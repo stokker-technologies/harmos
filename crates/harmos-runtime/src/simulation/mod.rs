@@ -40,7 +40,7 @@ use crate::{
 
 /* === Type Aliases === */
 
-type Inverting<A> = fn(&<A as Application>::Transaction, &<A as Application>::State) -> Option<<A as Application>::Transaction>;
+type Inverting<A> = harmos_domain::state::StateInverse<<A as Application>::State, <A as Application>::Transaction>;
 type Configure<A> = Arc<dyn Fn(&mut Setup<A>) + Send + Sync>;
 type UndoResult<A> = Result<Receipt, Error<<<A as Application>::Transaction as Transaction<<A as Application>::State>>::Error>>;
 
@@ -349,7 +349,7 @@ where
     }
 
     fn inverses_restore(&self) -> Result<(), Divergence<A::State>> {
-        let Some(inverses) = self.inverses else {
+        let Some(inverses) = &self.inverses else {
             // Nothing declared an inverse, so every entry is a barrier and the
             // law has no subject.
             return Ok(());

@@ -295,6 +295,12 @@ impl Records {
         transaction: &T, state: &S,
     ) -> Result<(Prepared, PreparedMembers), PreparationError> {
         let prepared = Prepared::encode(transaction)?;
+        Self::collect_prepared(transaction, state, prepared)
+    }
+
+    pub fn collect_prepared<S, T: super::Transaction<S>>(
+        transaction: &T, state: &S, prepared: Prepared,
+    ) -> Result<(Prepared, PreparedMembers), PreparationError> {
         let mut out = Self::default();
         out.reserve(prepared.bytes()?)?;
         transaction.records(state, &mut out);
