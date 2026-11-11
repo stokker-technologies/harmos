@@ -255,18 +255,22 @@ fn main() -> Result<()> {
 - A mistake such as a duplicate identifier is reported when the plugin starts and builds its
   catalog, not at compile time.
 - Derives remain for types whose fields must be read: messages, stream rows, settings.
-- The `sidecar` and `guest` variants of the catalog, operation and plugin macros are removed,
-  with the plugin, observer and catalog generators. Macros for host-side state (transactions,
-  records) are unaffected.
+- Plugin, observer and catalog attribute macros and their sidecar variants are removed.
+  Macros still required by guests or operation/state authoring remain until the separate
+  `authoring-without-macros` change replaces their consumers.
 - Concepts shared with a product keep the Harmos name in the product's SDK.
 
 ## Language SDKs
 
 The pilot covers Rust (`sdk/rust`), Python (`sdk/python`), C# (`sdk/csharp`) and C++
 (`sdk/cpp`). Go is outside the pilot. Python publishes as `harmos-plugin` and imports as `harmos`.
-The Rust plugin half currently uses the temporary package `harmos-sdk-grpc`; task 4.1 merges
-host APIs into `sdk/rust`, restores the `harmos-sdk` package name and removes the old crate root.
-This temporary name is not the final public package contract.
+The Rust SDK at `sdk/rust` is the public package and library `harmos`. Plugin and client
+authors depend on it and use `harmos::prelude::*;` without compiling host code. Task 4.1
+renames the current temporary package `harmos-sdk-grpc`, deletes `crates/harmos-sdk` and
+the `crates/harmos` facade, and migrates their consumers. Host APIs belong to
+`harmos-runtime`; a host embedder depends on that crate explicitly. This is the owner
+decision for the final entry point; the temporary package and facade still exist until
+task 4.1 is implemented.
 
 Every SDK, Rust included, is built over the `.proto` files: the authoring layer produces and
 consumes `harmos.v1` messages, and a transport adapter carries them (a gRPC server for a

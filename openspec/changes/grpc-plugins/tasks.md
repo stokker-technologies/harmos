@@ -216,9 +216,9 @@
 
 ## 4. Rust SDK
 
-- [ ] 4.1 Merge the host SDK into `sdk/rust`, restore the `harmos-sdk` package name, migrate dependencies and remove the old crate root and temporary package name.
+- [ ] 4.1 Make `sdk/rust` the public package and library `harmos`, compiling no host code; delete `crates/harmos-sdk` and the `crates/harmos` facade, move host exports to `harmos-runtime` and migrate every consumer.
 - [x] 4.1.1 Implement the native gRPC plugin SDK in `sdk/rust` with conformance fixtures.
-- [ ] 4.2 Integrate the builder surface across host consumers and guests with target-selected `serve`; delete plugin, observer and catalog macros and their sidecar and guest variants.
+- [ ] 4.2 Integrate the builder surface across consumers with target-selected `serve`; delete plugin, observer and catalog attribute macros with their sidecar variants, retaining macros required for guest or operation/state authoring until `authoring-without-macros`.
 - [x] 4.2.1 Add the Rust Message derive and native plugin, operation, stream and observer builder values.
 - [x] 4.3 Implement native plugin SDK observers answering host ticks, route its waits through the host clock, and share publish_on and its error type.
 - [x] 4.4 Migrate the examples and fixtures.
