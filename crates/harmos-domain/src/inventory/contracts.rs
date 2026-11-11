@@ -428,7 +428,7 @@ pub(crate) const fn wire<const N: usize>(out: &mut Encoder<N>, entry: &WireDecla
         out.raw(b",\"output_codec\":");
         out.quoted(codec);
     }
-    out.raw(b",\"codec\":\"postcard\",\"request\":");
+    out.raw(b",\"codec\":\"protobuf\",\"request\":");
     out.quoted(entry.request.name);
     out.raw(b",\"response\":");
     out.quoted(entry.response.name);

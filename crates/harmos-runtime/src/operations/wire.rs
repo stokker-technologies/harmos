@@ -437,6 +437,15 @@ pub(super) fn dispatch_native(
         return dispatch_prepared(operations, submission, source, parent, prepared, request);
     }
     let factory = submission.entry.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>();
+    // Guest Child Calls Retain Their Private Codec Until the Guest Envelope Migration.
+    let protobuf = match source.check()?.identity {
+        super::caller::Identity::Host => true,
+        #[cfg(feature = "grpc")]
+        super::caller::Identity::External(_) => true,
+        #[cfg(feature = "plugin-guest")]
+        super::caller::Identity::Plugin { .. } => false,
+    };
+
     let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
         Some(original) => Some(original),
@@ -444,7 +453,7 @@ pub(super) fn dispatch_native(
     };
     let decoding_bytes = catch_unwind(AssertUnwindSafe(|| {
         if let Some(factory) = factory {
-            return factory.decoding_memory(&input.payload);
+            return if protobuf { factory.grpc_decoding_memory(&input.payload) } else { factory.decoding_memory(&input.payload) };
         }
         #[cfg(feature = "plugin-guest")]
         if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {
@@ -465,7 +474,7 @@ pub(super) fn dispatch_native(
     let resources = operations.resources_for(&submission.entry);
     let prepared = catch_unwind(AssertUnwindSafe(|| {
         if let Some(factory) = factory {
-            return factory.prepare_encoded(resources, &input.payload);
+            return factory.prepare_envelope(resources, &input.payload, protobuf, None);
         }
         #[cfg(feature = "plugin-guest")]
         if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {

@@ -78,6 +78,7 @@ struct NativeChild(super::Running<NativeCall>, &'static str);
 struct EncodedChild {
     invocation: Option<super::EncodedInvocation>,
     target: Target,
+    protobuf: bool,
 }
 
 /* === Enums === */
@@ -105,10 +106,16 @@ impl Caller for HostContext {
                 }
                 let Some(factory) = entry.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>().cloned()
                 else {
-                    let payload = (target.encode)(request.as_ref()).ok_or(crate::Error::InvalidInput {
-                        field: "declared operation",
-                        reason: "callee payload differs",
-                    })?;
+                    let protobuf = entry.binding.is::<crate::plugin::grpc::invoke::Binding>();
+                    let payload = if protobuf {
+                        (target.encode_protobuf)(request.as_ref())
+                            .map_err(|source| crate::Error::OperationPayload { operation: target.id.into(), source })?
+                    } else {
+                        (target.encode)(request.as_ref()).ok_or(crate::Error::InvalidInput {
+                            field: "declared operation",
+                            reason: "callee payload differs",
+                        })?
+                    };
                     if !endpoints.is::<()>() {
                         return Err(crate::Error::InvalidInput {
                             field: "operation endpoints",
@@ -116,7 +123,11 @@ impl Caller for HostContext {
                         });
                     }
                     let invocation = context.submit_encoded_target(entry, payload, retry)?;
-                    return Ok(Box::new(EncodedChild { invocation: Some(invocation), target }) as Box<dyn ChildInstance>);
+                    return Ok(Box::new(EncodedChild {
+                        invocation: Some(invocation),
+                        target,
+                        protobuf,
+                    }) as Box<dyn ChildInstance>);
                 };
                 if !factory.accepts_target(&target, endpoints.as_ref().type_id()) {
                     return Err(crate::Error::InvalidInput {
@@ -186,7 +197,8 @@ impl ChildInstance for EncodedChild {
             let answer = crate::clock::waiting(invocation).await;
             cancel.0.take();
             let bytes = answer.map_err(|error| InvocationError::failed(self.target.id, error))?;
-            (self.target.decode)(&bytes).map_err(|error| InvocationError::failed(self.target.id, error))
+            let decode = if self.protobuf { self.target.decode_protobuf } else { self.target.decode };
+            decode(&bytes).map_err(|error| InvocationError::failed(self.target.id, error))
         })
     }
     fn detach(mut self: Box<Self>) -> super::OperationInstanceId {

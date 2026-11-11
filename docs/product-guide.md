@@ -9,7 +9,7 @@ fingerprint from an owned graph. The codec validates payloads and estimates deco
 allocation; its prepared `NativeInstance` runs through normal admission, retries,
 cancellation and settlement. Plugin staging validates the frozen contribution
 catalog and retains its original generation. Runtime bindings currently use the
-canonical encoded carrier without a gRPC projection or stream endpoints.
+protobuf encoded carrier without a gRPC projection or stream endpoints.
 
 `submit_encoded_with(operation, payload, retry)` and
 `PluginCallback::submit_with_retry(bytes, encode, retry)` apply policy overrides to
@@ -913,6 +913,23 @@ let summary = handle.cancel().await?;
 ctx.cancelled().await;
 Ok(summary.into())
 ```
+
+Host applications can register Prost-generated request, response and stream messages directly
+with `operations::ProtobufOperation` and `Registration::new(lane).protobuf::<Declaration>()`.
+Messages implement `prost_reflect::ReflectMessage` using their authoritative descriptor set.
+The declaration owns `ID`, `GRPC`, `POLICY`, `VISIBILITY`, `RESOURCES` and its handler; unary
+endpoints use `()`, input uses `ProtobufInput<T>`, output uses `ProtobufOutput<T>`, and a pair
+supports both directions. Handlers receive generated requests and return generated responses.
+See the [declaration example](../openspec/changes/grpc-plugins/design.md#generated-host-messages).
+Reflection preserves original protobuf names, field encodings and presence. Decoding-memory
+admission bounds generated allocations before Prost decoding. Existing `Portable` declarations
+continue through their projection codec.
+
+`operations.submit_encoded` and `call_encoded` accept and return protobuf payloads. For a
+`Portable` message, use `harmos_operations::execution::grpc::{encode, decode}` at that boundary;
+its `Message::{encode, decode}` methods remain the internal/stored-value codec. Assignment
+catalogs also use protobuf. The private guest command, lifecycle, child and streamed payload
+codecs retain Postcard until the guest envelope migration; persisted data is unchanged.
 
 For gRPC, every exported operation also has a bidirectional `Run<Method>` RPC.
 Its opening frame is `request` (tag 1), input rows are `item` (tag 2), and

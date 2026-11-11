@@ -69,7 +69,6 @@ pub use grpc::GrpcBinding;
 pub use grpc::GrpcMethod;
 pub use harmos_operations::execution::__private::{ErasedResponse, PreparedNative, ResourceSet, ServiceFuture};
 pub use harmos_operations::execution::operations::Invocation;
-pub use harmos_operations::execution::operations::NativeInstance;
 pub use harmos_operations::execution::operations::{
     Backoff, CallValue, Callees, Catalog, Codec, ContextError, ContextValue, Contract, ContractError, Contracts, Declarations, Dependent,
     Direction, Entry, Executable, FailureKind, Grpc, InvocationError, Invokes, Jitter, NoStream, Operation, OperationCatalog,
@@ -78,6 +77,9 @@ pub use harmos_operations::execution::operations::{
     WireStreamLimits, WireStreams, item_types,
 };
 pub use harmos_operations::execution::operations::{CallContext, Cancellation, Instance, OperationHost, RequestClaims, Response, instance};
+pub use harmos_operations::execution::operations::{ExecutionContext, NativeInstance};
+#[cfg(feature = "grpc")]
+pub use harmos_operations::execution::operations::{ProtobufEndpoints, ProtobufInput, ProtobufItem, ProtobufOperation, ProtobufOutput};
 pub use lane::{Capacity, Lane, LaneSet, LaneSettings};
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 pub use remote::{RemoteStreamError, StreamEndpoints, StreamPeer};

@@ -21,8 +21,8 @@ use std::time::Duration;
 
 // Local Imports
 use super::{Lanes, app::App};
+use harmos_runtime::Runtime;
 use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationDeclaration, OperationInstanceId, OperationPolicy, RetryPolicy};
-use harmos_runtime::{Message, Runtime};
 
 /* === Constants === */
 
@@ -134,10 +134,10 @@ async fn wire_bindings_execute() {
         assert!(resources.events.lock().unwrap().is_empty());
         let invocation = runtime
             .operations
-            .submit_encoded(&format!("host.{}", ReadContractDeclaration::ID), Text { value: "hello".into() }.encode())
+            .submit_encoded(&format!("host.{}", ReadContractDeclaration::ID), protobuf(&Text { value: "hello".into() }))
             .unwrap();
         let response = invocation.await.unwrap();
-        assert_eq!(Text::decode(&response).unwrap().value, "hello:1");
+        assert_eq!(decode_protobuf::<Text>(&response).value, "hello:1");
         assert_eq!(resources.events.lock().unwrap().iter().filter(|event| **event == "run").count(), 1);
         runtime.shutdown().await.unwrap();
     }
@@ -149,7 +149,7 @@ async fn wire_bindings_execute() {
             .unwrap()
             .await
             .unwrap();
-        assert_eq!(Text::decode(&encoded).unwrap().value, "complete:1");
+        assert_eq!(decode_protobuf::<Text>(&encoded).value, "complete:1");
         assert_eq!(*resources.events.lock().unwrap(), ["run", "drop"]);
         let answer = runtime.operation(ReadContractDeclaration { value: "local".to_owned() }).await.unwrap();
         assert_eq!(answer.value, "local:1");
@@ -208,7 +208,17 @@ async fn owner_assignments_isolate_instances() {
 }
 
 fn payload(value: &str) -> Vec<u8> {
-    Text { value: value.to_owned() }.encode()
+    protobuf(&Text { value: value.to_owned() })
+}
+
+fn protobuf<T: harmos_runtime::Portable>(value: &T) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    harmos_operations::execution::grpc::encode(value, &mut bytes).unwrap();
+    bytes
+}
+
+fn decode_protobuf<T: harmos_runtime::Portable>(bytes: &[u8]) -> T {
+    harmos_operations::execution::grpc::decode(harmos_operations::execution::grpc::DecodeInput::new(bytes)).unwrap()
 }
 
 /* === Tests === */

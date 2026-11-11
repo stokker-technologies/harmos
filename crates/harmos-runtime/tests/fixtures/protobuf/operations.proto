@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package generated.v1;
+
+message Request {
+  string text = 1;
+  sint64 offset = 2;
+  repeated uint32 samples = 3;
+  optional string annotation = 4;
+}
+
+message Reply {
+  string text = 1;
+  sint64 offset = 2;
+  repeated uint32 samples = 3;
+  optional string annotation = 4;
+}

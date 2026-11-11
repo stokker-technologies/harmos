@@ -107,9 +107,12 @@ tower = { workspace = true }
 
 # === Build Dependencies === #
 
+
 # === Dev Dependencies === #
 
 [dev-dependencies]
+prost-build = { workspace = true }
+protoc-bin-vendored = { workspace = true }
 # Local
 harmos = { workspace = true }
 harmos-packaging = { path = "../harmos-packaging", default-features = false, features = ["generate-proto", "guest"] }
@@ -158,6 +161,7 @@ tokio = { workspace = true, default-features = true, features = [
 
 # Networking
 http-body-util = { workspace = true }
+tonic-prost = { workspace = true }
 
 # Storage
 

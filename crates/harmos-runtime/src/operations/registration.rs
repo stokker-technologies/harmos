@@ -99,6 +99,18 @@ impl<L: Lane> Registration<L> {
         harmos_operations::execution::__private::RegistrationBatch::new().lane(lane)
     }
 
+    #[cfg(feature = "grpc")]
+    pub fn protobuf<O: harmos_operations::execution::operations::ProtobufOperation>(mut self) -> Result<Self> {
+        let factory = harmos_operations::execution::operations::OperationFactory::protobuf::<O>().map_err(|source| {
+            crate::Error::OperationFailed {
+                operation: O::ID.into(),
+                source: Arc::new(source),
+            }
+        })?;
+        self.batch.operations.push(factory);
+        Ok(self)
+    }
+
     pub fn operation<O: harmos_operations::execution::operations::Executable>(mut self, id: impl AsRef<str>) -> Result<Self> {
         self.batch = self.batch.operation_named::<O>(id.as_ref()).map_err(|source| crate::Error::OperationFailed {
             operation: id.as_ref().to_owned(),

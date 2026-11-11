@@ -318,8 +318,8 @@ impl harmos_runtime::Operation for NestedDeclaration {
         }
         let destination = ctx.resource::<Destination>();
         let result: ::core::result::Result<String, Self::Error> = async move {
-            let reply = context.call_encoded(&format!("{}.{}", destination.0, PrivateEchoDeclaration::ID), Message::encode(&self)).await?;
-            Ok(String::decode(&reply).unwrap())
+            let reply = context.call_encoded(&format!("{}.{}", destination.0, PrivateEchoDeclaration::ID), protobuf(&self)).await?;
+            Ok(decode_protobuf::<String>(&reply))
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -337,8 +337,8 @@ impl harmos_runtime::Operation for SameLaneDeclaration {
             resources.prepared.fetch_add(1, Ordering::SeqCst);
         }
         let result: ::core::result::Result<String, Self::Error> = async move {
-            let reply = context.call_encoded(&format!("host.{}", PrivateEchoDeclaration::ID), Message::encode(&self)).await?;
-            Ok(String::decode(&reply).unwrap())
+            let reply = context.call_encoded(&format!("host.{}", PrivateEchoDeclaration::ID), protobuf(&self)).await?;
+            Ok(decode_protobuf::<String>(&reply))
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -354,7 +354,7 @@ impl harmos_runtime::Operation for DetachedDeclaration {
         let context = host.borrow();
         let result: ::core::result::Result<String, Self::Error> = async move {
             let started = resources.wire_started.notified();
-            let _child = context.submit_encoded(&format!("host.{}", PrivateEchoDeclaration::ID), Text::from("block").encode())?;
+            let _child = context.submit_encoded(&format!("host.{}", PrivateEchoDeclaration::ID), protobuf(&Text::from("block")))?;
             started.await;
             Ok("parent".to_owned())
         }
@@ -396,7 +396,7 @@ async fn decode_panic_refused() {
     let runtime = runtime_with_owner(owner.clone()).await;
     runtime.operations.register::<crate::operations::Single<Codec>>(Lanes::Open).await.unwrap();
     assert!(matches!(
-        runtime.operations.submit_encoded(&format!("host.{}", Codec::ID), Text::from("decode_panic").encode()),
+        runtime.operations.submit_encoded(&format!("host.{}", Codec::ID), protobuf(&Text::from("decode_panic"))),
         Err(Error::OperationPanicked { .. })
     ));
     // The panic stays inside submission and constructs nothing.
@@ -410,7 +410,7 @@ async fn encode_panic_settles() {
     let runtime = runtime_with_owner(owner.clone()).await;
     runtime.operations.register::<crate::operations::Single<Codec>>(Lanes::Open).await.unwrap();
     assert!(matches!(
-        runtime.operations.call_encoded(&format!("host.{}", Codec::ID), Text::from("encode_panic").encode()).await,
+        runtime.operations.call_encoded(&format!("host.{}", Codec::ID), protobuf(&Text::from("encode_panic"))).await,
         Err(Error::OperationPanicked { .. })
     ));
     // The response panics after one completed run.
@@ -439,13 +439,13 @@ async fn decode_races_replacement() {
         }));
     });
     assert!(matches!(
-        runtime.operations.submit_encoded(&format!("host.{}", Codec::ID), Text::from("original").encode()),
+        runtime.operations.submit_encoded(&format!("host.{}", Codec::ID), protobuf(&Text::from("original"))),
         Err(Error::Closing { .. })
     ));
     assert_eq!(old.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(replacement.prepared.load(Ordering::SeqCst), 0);
-    let reply = runtime.operations.call_encoded(&format!("host.{}", Codec::ID), Text::from("replacement").encode()).await.unwrap();
-    assert_eq!(Text::decode(&reply).unwrap().value, "replacement");
+    let reply = runtime.operations.call_encoded(&format!("host.{}", Codec::ID), protobuf(&Text::from("replacement"))).await.unwrap();
+    assert_eq!(decode_protobuf::<Text>(&reply).value, "replacement");
     assert_eq!(replacement.prepared.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
 }
@@ -491,6 +491,16 @@ async fn cancellation_joins_child() {
     assert!(matches!(parent.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
+}
+
+fn protobuf<T: harmos_runtime::Portable>(value: &T) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    harmos_operations::execution::grpc::encode(value, &mut bytes).unwrap();
+    bytes
+}
+
+fn decode_protobuf<T: harmos_runtime::Portable>(bytes: &[u8]) -> T {
+    harmos_operations::execution::grpc::decode(harmos_operations::execution::grpc::DecodeInput::new(bytes)).unwrap()
 }
 
 /* === Tests === */

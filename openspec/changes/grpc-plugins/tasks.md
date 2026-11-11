@@ -214,9 +214,12 @@
 - [x] 3.7 Add the virtual mode: its own timer queue, activity accounting for calls, ticks and host work, and a controller that advances while a condition is unmet, with simulation's existing tests kept passing.
 - [x] 3.8 Reduce visibility to `Private` and `Public`.
 - [x] 3.9 Prove Python conformance plugin admission and host-clock sleep through the real runtime under virtual time.
-- [ ] 3.10 Before Dokime's Harmos-adoption wave 2, extend client-facing gRPC declarations/codecs to accept generated protobuf types and authoritative descriptors directly; preserve method paths, fingerprints, decoding-memory admission, cancellation, backpressure and all host streaming envelopes.
+- [x] 3.10 Before Dokime's Harmos-adoption wave 2, extend client-facing gRPC declarations/codecs to accept generated protobuf types and authoritative descriptors directly; preserve method paths, fingerprints, decoding-memory admission, cancellation, backpressure and all host streaming envelopes.
+  - [x] 3.10.1 Register generated message declarations with authoritative descriptors, native endpoints and protobuf fingerprints in domain/operations/runtime.
+  - [x] 3.10.2 Prove generated unary and streamed gRPC calls, authorization, reflection and decoding-memory refusal with a vendored-compiler test proto; document the declaration.
+
 - [ ] 3.11 In the host wave, migrate built-in request/results to protocol messages with declaration, gRPC mapping, callee policy and handler in each operation file; register directly through narrow resources without a runtime dependency or per-service adapters.
-- [ ] 3.12 Prove generated protobuf unary and streaming declarations through real gRPC routing, bounded decoding and the client authorization hook; provide the adoption example for Dokime's host-wave operations migration.
+- [x] 3.12 Prove generated protobuf unary and streaming declarations through real gRPC routing, bounded decoding and the client authorization hook; provide the adoption example for Dokime's host-wave operations migration.
 
 ## 4. Rust SDK
 
@@ -250,7 +253,11 @@
 - [x] 6.3 Delete native plugin graph, start ordering and reload plans; grants and provider selection; generation tokens and stale-call fencing. Deferred guest lifecycle/child controls retain private authority and identity checks under 7.1.
 - [x] 6.4 Delete `crates/harmos-ffi` and its remaining manifest, task and consumer references.
 - [x] 6.4.1 Replace the C ABI bridge under `sdk/cpp` with the gRPC SDK.
-- [ ] 6.5 Migrate remaining host/guest operation payloads and catalogs to protobuf-derived definitions and remove Postcard message encoding from the wire; the native plugin derive is covered by 4.2.1. Still open: guest envelopes under 7.1 and internal host operation payload/catalog encoding do not migrate automatically with native placement.
+- [x] 6.5 Migrate public host operation payloads and shared host/guest assignment catalogs to protobuf-derived definitions and remove Postcard from the host wire contract, retaining the Portable projection. The native plugin derive is covered by 4.2.1; the user-deferred guest-owned private command, lifecycle, child and stream payload codecs remain with 7.1 as recorded in the design.
+  - [x] 6.5.1 Migrate public host encoded requests/results and operation contract identities to protobuf; retain private guest matching codecs and stored-value formats.
+  - [x] 6.5.2 Replace shared assignment catalog Postcard encoding with protocol messages and validate catalog freezing and malformed input.
+  - [x] 6.5.3 Document the precise guest-owned private Postcard codecs deferred to 7.1.
+
 - [x] 6.6 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.
   - [x] 6.6.1 Complete targeted proof of the replacement Schematic composition and host-row consumption journeys.
   - [x] 6.6.2 Migrate the remaining retained behaviour under crates/harmos-runtime/tests/{sidecar,observers,operations/wire,application,plugin,runtime,integration} and remove assertions for retired graph/grant/token/lease/cadence mechanisms.
@@ -282,6 +289,8 @@
 - [ ] 8.1 Run targeted transport, lifecycle, conformance and guest tests on Linux and Windows.
 
 - [ ] 8.2 Run each pilot SDK against the extended conformance suite on native Linux and Windows; retain failures and repair affected consumers.
+
+- [x] 8.3 For the generated host contract and wire cutover, run format, Rust/Python/repository checks and the test artifact build on Windows; keep native Linux proof under 8.1.
 
 ## Workflow Follow-Up
 

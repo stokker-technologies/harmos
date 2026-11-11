@@ -18,6 +18,8 @@ mod cases;
 mod dynamic;
 mod endpoints;
 #[cfg(feature = "grpc")]
+mod generated;
+#[cfg(feature = "grpc")]
 mod grpc;
 #[cfg(feature = "grpc")]
 mod grpc_manager;

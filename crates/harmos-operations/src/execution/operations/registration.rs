@@ -9,6 +9,9 @@
 
 /* === Modules === */
 
+#[cfg(all(feature = "grpc", feature = "streaming"))]
+pub mod generated;
+
 /* === Re-Exports === */
 
 /* === Imports === */

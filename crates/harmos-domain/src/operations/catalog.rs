@@ -135,11 +135,12 @@ impl<M: OperationDeclaration> Member<M> for Callees {
 
 /* === Private Functions === */
 
-fn payload<T: crate::Portable>() -> Result<crate::Fingerprint> {
+pub(super) fn payload<T: crate::Portable>() -> Result<crate::Fingerprint> {
     let schema = crate::schema::graph::Schema::from_declaration(T::DEFINITION, &crate::config::SchemaSettings::default())
         .map_err(|error| crate::MessageError::new(error.to_string()))?;
     let root = schema.root().map_err(|error| crate::MessageError::new(error.to_string()))?;
-    crate::schema::identity::fingerprint(root, T::CODEC).map_err(|error| crate::MessageError::new(error.to_string()).into())
+    crate::schema::identity::fingerprint(root, super::Codec::Protobuf.id())
+        .map_err(|error| crate::MessageError::new(error.to_string()).into())
 }
 
 fn fingerprint<O: OperationDeclaration + ?Sized>() -> Result<crate::Fingerprint> {

@@ -54,6 +54,12 @@ pub struct Target {
     pub response: fn() -> TypeId,
     pub encode: fn(&(dyn Any + Send)) -> Option<Vec<u8>>,
     pub decode: fn(&[u8]) -> Result<ErasedResponse, MessageError>,
+
+    #[cfg(feature = "grpc")]
+    pub encode_protobuf: fn(&(dyn Any + Send)) -> Result<Vec<u8>, MessageError>,
+
+    #[cfg(feature = "grpc")]
+    pub decode_protobuf: fn(&[u8]) -> Result<ErasedResponse, MessageError>,
     pub grant: fn(&(dyn Any + Send)) -> Option<harmos_domain::plugin::Grant>,
 }
 
@@ -104,6 +110,18 @@ impl Target {
             response: TypeId::of::<T::Response>,
             encode: |request| request.downcast_ref::<T::Request>().map(Message::encode),
             decode: decode::<T>,
+            #[cfg(feature = "grpc")]
+            encode_protobuf: |request| {
+                let request = request.downcast_ref::<T::Request>().ok_or_else(|| MessageError::borrowed("callee payload differs"))?;
+                let mut bytes = Vec::new();
+                crate::execution::grpc::encode(request, &mut bytes)?;
+                Ok(bytes)
+            },
+            #[cfg(feature = "grpc")]
+            decode_protobuf: |bytes| {
+                let response = crate::execution::grpc::decode::<T::Response>(crate::execution::grpc::DecodeInput::new(bytes))?;
+                Ok(Response::new(response).into_erased())
+            },
             grant: |request| request.downcast_ref::<T::Request>().and_then(T::grant),
         }
     }

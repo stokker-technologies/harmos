@@ -47,6 +47,9 @@ pub struct Contract {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     grpc: Option<super::Grpc>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    protobuf: Option<super::Protobuf>,
 }
 
 #[derive(Deserialize)]
@@ -61,6 +64,9 @@ struct DecodedContract {
 
     #[serde(default)]
     grpc: Option<super::Grpc>,
+
+    #[serde(default)]
+    protobuf: Option<super::Protobuf>,
 }
 
 #[derive(Clone)]
@@ -85,13 +91,16 @@ pub struct Contracts;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Codec {
-    Postcard,
+    Protobuf,
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum ContractError {
     #[error("invalid or reserved gRPC binding name")]
     Grpc,
+
+    #[error("invalid protobuf operation: {0}")]
+    Protobuf(String),
 
     #[error("private operation `{id}` cannot declare a gRPC binding")]
     PrivateGrpc { id: String },
@@ -122,7 +131,7 @@ pub enum ContractError {
 impl Codec {
     pub const fn id(self) -> &'static str {
         match self {
-            Self::Postcard => "harmos.postcard.v1",
+            Self::Protobuf => "harmos.protobuf.v1",
         }
     }
 }
@@ -192,7 +201,7 @@ impl WireDeclaration {
             direction: "contract",
             source: source.into(),
         })?;
-        Contract::new_with_settings(operation.clone(), operation.fingerprint, Codec::Postcard, schema, settings)?
+        Contract::new_with_settings(operation.clone(), operation.fingerprint, Codec::Protobuf, schema, settings)?
             .with_grpc(self.grpc.clone())
     }
 }
@@ -252,6 +261,7 @@ impl Contract {
             codec,
             schema,
             grpc: None,
+            protobuf: None,
         };
         let computed = contract.computed_fingerprint()?;
         if fingerprint.is_some_and(|fingerprint| fingerprint != computed || contract.operation.fingerprint != computed) {
@@ -260,6 +270,33 @@ impl Contract {
         contract.fingerprint = computed;
         contract.operation.fingerprint = computed;
         Ok(contract)
+    }
+
+    pub fn from_protobuf(
+        mut operation: OperationDefinition, protobuf: super::Protobuf, binding: super::Grpc, settings: &SchemaSettings,
+    ) -> Result<Self, ContractError> {
+        operation.validate()?;
+        let schema = protobuf.schema()?;
+        schema.prepare(settings).map_err(|source| ContractError::Schema {
+            id: operation.id.to_string(),
+            direction: "protobuf",
+            source: source.into(),
+        })?;
+        let fingerprint = protobuf.fingerprint(operation.id.as_str())?;
+        operation.fingerprint = fingerprint;
+        Self {
+            operation,
+            fingerprint,
+            codec: Codec::Protobuf,
+            schema,
+            grpc: None,
+            protobuf: Some(protobuf),
+        }
+        .with_grpc(Some(binding))
+    }
+
+    pub fn protobuf(&self) -> Option<&super::Protobuf> {
+        self.protobuf.as_ref()
     }
 
     pub fn grpc(&self) -> Option<&super::Grpc> {
@@ -302,13 +339,13 @@ impl Contract {
                 source: source.into(),
             })?;
             let request_fingerprint =
-                crate::schema::identity::fingerprint(request_root, Codec::Postcard.id()).map_err(|source| ContractError::Schema {
+                crate::schema::identity::fingerprint(request_root, Codec::Protobuf.id()).map_err(|source| ContractError::Schema {
                     id: action.id().into(),
                     direction: "request",
                     source: source.into(),
                 })?;
             let fingerprint =
-                crate::schema::identity::operation(action.id(), request_fingerprint, <() as crate::Portable>::fingerprint(), None, None);
+                crate::schema::identity::operation(action.id(), request_fingerprint, super::catalog::payload::<()>()?, None, None);
             let operation = OperationDefinition {
                 id: crate::Identifier::new(action.id()).map_err(crate::Error::from)?,
                 description: String::new(),
@@ -324,7 +361,7 @@ impl Contract {
                         direction: "contract",
                         source: source.into(),
                     })?;
-            let contract = Self::canonical(operation, Some(fingerprint), Codec::Postcard, schema, &SchemaSettings::default())?;
+            let contract = Self::canonical(operation, Some(fingerprint), Codec::Protobuf, schema, &SchemaSettings::default())?;
             cache.get_or_init(|| contract)
         };
         let mut contract = template.clone();
@@ -353,7 +390,7 @@ impl Contract {
             direction: "contract",
             source: source.into(),
         })?;
-        Self::canonical(operation.clone(), Some(operation.fingerprint), Codec::Postcard, schema, &SchemaSettings::default())
+        Self::canonical(operation.clone(), Some(operation.fingerprint), Codec::Protobuf, schema, &SchemaSettings::default())
     }
 
     pub fn operation(&self) -> &OperationDefinition {
@@ -416,6 +453,9 @@ impl Contract {
     }
 
     fn computed_fingerprint(&self) -> Result<crate::Fingerprint, ContractError> {
+        if let Some(protobuf) = &self.protobuf {
+            return protobuf.fingerprint(self.operation.id.as_str());
+        }
         let payload = |view| {
             schema::identity::fingerprint(view, self.codec.id()).map_err(|source| ContractError::Schema {
                 id: self.operation.id.to_string(),
@@ -445,6 +485,22 @@ impl TryFrom<DecodedContract> for Contract {
     type Error = ContractError;
 
     fn try_from(decoded: DecodedContract) -> Result<Self, Self::Error> {
+        if let Some(protobuf) = decoded.protobuf {
+            let expected = Self::from_protobuf(
+                decoded.operation.clone(),
+                protobuf,
+                decoded.grpc.ok_or(ContractError::Grpc)?,
+                &SchemaSettings::default(),
+            )?;
+            if expected.fingerprint != decoded.fingerprint
+                || expected.operation != decoded.operation
+                || expected.schema != decoded.schema
+                || decoded.codec != Codec::Protobuf
+            {
+                return Err(ContractError::Fingerprint { id: decoded.operation.id.to_string() });
+            }
+            return Ok(expected);
+        }
         if !crate::reserved(decoded.operation.id.as_str()) {
             return Self::new(decoded.operation, decoded.fingerprint, decoded.codec, decoded.schema)?.with_grpc(decoded.grpc);
         }

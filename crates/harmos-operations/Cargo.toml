@@ -20,7 +20,7 @@ version = { workspace = true }
 default = []
 lifecycle = []
 derive = ["harmos-domain/derive"]
-grpc = ["dep:prost"]
+grpc = ["dep:prost-reflect", "dep:prost-types"]
 streaming = []
 runtime = ["lifecycle", "dep:harmos-storage"]
 
@@ -28,6 +28,7 @@ runtime = ["lifecycle", "dep:harmos-storage"]
 
 [dependencies]
 # Local
+harmos-protocol = { workspace = true }
 harmos-domain = { workspace = true, features = ["derive"] }
 harmos-macros = { workspace = true }
 harmos-storage = { workspace = true, optional = true }
@@ -43,8 +44,9 @@ tracing = { workspace = true, default-features = true }
 # Utilities
 
 # Serialization
-postcard = { workspace = true }
-prost = { workspace = true, optional = true }
+prost = { workspace = true }
+prost-reflect = { workspace = true, optional = true }
+prost-types = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
@@ -72,6 +74,7 @@ tokio = { workspace = true, features = ["sync", "macros", "time"] }
 # === Dev Dependencies === #
 
 [dev-dependencies]
+postcard = { workspace = true }
 # Local
 
 # Git

@@ -86,11 +86,13 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
     // Regenerate With the Pinned Compiler, Without Mutating the Environment.
     let mut config = prost_build::Config::new();
     config.protoc_executable(compiler);
-    tonic_prost_build::configure().build_client(true).build_server(true).out_dir(output.path()).compile_with_config(
-        config,
-        &[proto.join("harmos/v1/plugin.proto")],
-        &[proto, includes],
-    )?;
+    tonic_prost_build::configure()
+        .client_mod_attribute("harmos.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
+        .server_mod_attribute("harmos.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
+        .build_client(true)
+        .build_server(true)
+        .out_dir(output.path())
+        .compile_with_config(config, &[proto.join("harmos/v1/plugin.proto"), proto.join("harmos/v1/host.proto")], &[proto, includes])?;
 
     // Compare the Complete Generated Source, Retaining Evidence on Failure.
     let generated = fs::read(output.path().join("harmos.v1.rs"))?;
@@ -98,6 +100,12 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
     if generated != committed {
         let output = output.keep();
         panic!("generated Rust differs from src/v1.rs; regenerated source retained in {}", output.display());
+    }
+    let generated = fs::read(output.path().join("harmos.host.v1.rs"))?;
+    let committed = fs::read(root.join("crates/harmos-protocol/src/host.rs"))?;
+    if generated != committed {
+        let output = output.keep();
+        panic!("generated Rust differs from src/host.rs; regenerated source retained in {}", output.display());
     }
     Ok(())
 }
