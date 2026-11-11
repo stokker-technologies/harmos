@@ -1227,7 +1227,7 @@ in its output. HTML rendering uses Plotters and does not require Gnuplot.
 
 - [Repository Tooling](tooling.md) — workstation builds and shared compiler cache.
 - [Runnable Examples](examples.md) — application composition and plugin integration.
-- [C++ Sidecar Prototype](sidecar-cpp-prototype.md) — C++20 authoring over the shared Rust core through a C ABI, with build and demo commands.
+- [C++ Plugin SDK](tooling.md#c-plugin-sdk) — C++20 authoring with protobuf messages and gRPC plugin serving.
 - [Schematic Walkthrough](schematic.md) — the example application, its crates and backends.
 - [Public Rust API](../crates/harmos/src/lib.rs) — the SDK facade and module documentation.
 - [Cargo Features](../crates/harmos/Cargo.toml) — select the facilities your application needs.

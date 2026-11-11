@@ -104,17 +104,18 @@ for the [performance suites](docs/product-guide.md#performance).
 
 ### C++
 
-Rust remains the nominal SDK. The C++20 sidecar prototype is a thin layer over
-the shared Rust core through `harmos-ffi`; it has no stable ABI promise.
-See the [C++ guide](docs/sidecar-cpp-prototype.md) for toolchain setup and ownership.
+The C++20 SDK serves `harmos.v1` with protobuf messages and builder values for
+operations, streams and observers. See the [C++ SDK guide](docs/tooling.md#c-plugin-sdk)
+for toolchain setup and managed or remote serving.
 
 #### Examples
 
-Build the SDK and run the simulated instrument through its native Rust host:
+Build the SDK and run its plugin against the reference host:
 
 ```sh
-mise run build:cpp
-mise run test:rust:cpp
+mise run build -- --language cpp
+mise run build -- --package harmos-conformance
+mise run test -- --language cpp
 ```
 
 These opt-in tasks require a C++20 compiler and CMake; ordinary Rust builds do not.

@@ -15,11 +15,11 @@
   - `crates/harmos-macros/tests/fixtures/facade/lib.rs` — Remove the native sidecar re-export; retain guest and host macro-path coverage.
   - `crates/harmos-macros/tests/fixtures/facade_runtime_catalogs.rs` — Remove native plugin/catalog fixture declarations; retain guest and host catalog inspection.
   - `crates/harmos-macros/tests/fixtures/plugin_on_struct.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
-  - `crates/harmos-macros/tests/fixtures/plugin_setup_operations.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
-  - `crates/harmos-macros/tests/fixtures/synchronous_activation.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
-  - `crates/harmos-macros/tests/fixtures/synchronous_deactivation.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
-  - `crates/harmos-macros/tests/fixtures/undeclared_custom_observer_output.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
-  - `crates/harmos-macros/tests/fixtures/undeclared_observer_output.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
+  - `crates/harmos-macros/tests/fixtures/plugin_setup_operations.rs` — Delete the retired native plugin setup macro refusal fixture.
+  - `crates/harmos-macros/tests/fixtures/synchronous_activation.rs` — Delete the retired native observer activation macro refusal fixture.
+  - `crates/harmos-macros/tests/fixtures/synchronous_deactivation.rs` — Delete the retired native observer deactivation macro refusal fixture.
+  - `crates/harmos-macros/tests/fixtures/undeclared_custom_observer_output.rs` — Delete the retired custom observer output macro refusal fixture.
+  - `crates/harmos-macros/tests/fixtures/undeclared_observer_output.rs` — Delete the retired observer output macro refusal fixture.
   - `crates/harmos-macros/tests/fixtures/unknown_grant.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
   - `crates/harmos-packaging/examples/fixture-driver.rs` — Collect native identity/catalogs with Describe and Stop and package without embedded framed inventory; retain guest packaging.
   - `crates/harmos-packaging/tests/build/capture.rs` — Migrate native fixture build/inspection consumers from embedded sidecar inventory to SDK Describe catalogs; retain guest packaging (packaging owner follow-up).
@@ -95,6 +95,7 @@
   - `crates/harmos-runtime/tests/support/report.rs` — Migrate sidecar fixture/support consumers to `plugin-grpc` as their stories move; retain shared host/guest support.
   - `crates/harmos-runtime/tests/support/witness.rs` — Migrate sidecar fixture/support consumers to `plugin-grpc` as their stories move; retain shared host/guest support.
   - `crates/harmos-runtime/tests/system/cpp/main.rs` — Delete the old C ABI sidecar prototype story with that feature; SDK conformance replaces it (5.3/6.4).
+  - `crates/harmos-runtime/tests/system/cpp/domain.rs` — Delete the old C ABI prototype's nominal operation and stream fixture declarations with its story.
   - `crates/harmos-runtime/tests/system/guest_contract/dependencies.rs` — Keep for guests, untouched in this slice; mixed native/guest dependency fixtures still use the old path and require coordinated migration in 7.1.
   - `crates/harmos-runtime/tests/system/guest_contract/dependency_admission.rs` — Keep for guests, untouched in this slice; mixed native/guest dependency fixtures still use the old path and require coordinated migration in 7.1.
   - `crates/harmos-runtime/tests/system/guest_contract/lifecycle.rs` — Keep for guests, untouched in this slice; mixed native/guest dependency fixtures still use the old path and require coordinated migration in 7.1.
@@ -237,6 +238,7 @@
 - [ ] 6.6 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.
   - [x] 6.6.1 Complete targeted proof of the replacement Schematic composition and host-row consumption journeys.
   - [ ] 6.6.2 Migrate the remaining retained behaviour under crates/harmos-runtime/tests/{sidecar,observers,operations/wire,application,plugin,runtime,integration} and remove assertions for retired graph/grant/token/lease/cadence mechanisms.
+    - [x] 6.6.2.1 Retire the process graph and graph reload-plan stories, the framed plugin upload/download/exchange transport stories and their fixture registrations, and the C ABI prototype story, feature and guide.
   - [x] 6.6.3 Delete framed transport tests and benches in crates/harmos-sidecar and native transport benchmark branches in crates/harmos-runtime/benches, preserving guest-used support.
 - [ ] 6.7 Update the product guide, README and authoring guidance.
 

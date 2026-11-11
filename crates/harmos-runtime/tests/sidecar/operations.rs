@@ -12,9 +12,6 @@
 #[path = "operation_lifecycle.rs"]
 mod operation_lifecycle;
 
-#[path = "streams.rs"]
-mod streams;
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -182,9 +179,6 @@ enum Operations {
     CancellationExchange(crate::operations::cancellation::Exchange),
     RefreshDeclaration(RefreshDeclaration),
     ReadDeclaration(ReadDeclaration),
-    Upload(streams::UploadDeclaration),
-    Download(streams::DownloadDeclaration),
-    Exchange(streams::ExchangeDeclaration),
 }
 
 /* === Traits === */
@@ -290,7 +284,12 @@ impl harmos_runtime::Lifecycle for Endpoint {
         let plugin = Self { counts };
         setup.resource::<Counts>(plugin.counts.clone());
         setup.resource::<crate::operations::cancellation::Probe>(plugin.counts.cancellation.clone());
-        streams::configure(setup.settings()).map_err(std::io::Error::other)?;
+        let direction = harmos_runtime::operations::StreamSettings {
+            items: std::num::NonZeroUsize::MIN,
+            bytes: std::num::NonZeroUsize::new(64).unwrap(),
+        };
+        let limits = harmos_runtime::operations::WireStreamLimits { input: direction, output: direction };
+        setup.settings().stream_limits(limits).map_err(std::io::Error::other)?;
         Ok(plugin)
     }
 

@@ -225,7 +225,7 @@ async fn grpc_original_owner() {
     let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
     assert!(fixture.runtime.grpc().methods().is_empty());
     fixture.initialize().await.unwrap();
-    assert_eq!(fixture.runtime.grpc().methods().len(), 6);
+    assert_eq!(fixture.runtime.grpc().methods().len(), 3);
     let settings = harmos_runtime::grpc::Settings {
         address: "127.0.0.1:0".parse().unwrap(),
         operations: harmos_runtime::grpc::server::Settings::default(),
