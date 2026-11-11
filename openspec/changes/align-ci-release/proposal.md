@@ -8,7 +8,8 @@ green evidence for the exact release commit.
 
 ## What Changes
 
-- Keep hosted runners, caches, PR suites and the complete nightly workload.
+- Keep hosted runners, caches, every applicable PR job and the complete nightly workload.
+- Remove impact planning and its dependency graph; composite actions remain local setup only.
 - Run only quick checks and Product and Tests compilation on dev pushes; dev merges stay ungated.
 - Allow git dependencies in development; reject them on release reviews and publication.
 - Verify the release commit's required checks before tagging or publishing.

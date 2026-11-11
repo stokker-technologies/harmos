@@ -1,7 +1,6 @@
 # gRPC Plugins
 
-Status: locked by the owner on 2026-11-10; implementation has not started and waits for the
-owner's go.
+Status: partially implemented; `design.md` records landed boundaries, remaining waves and decisions awaiting confirmation.
 Replaces `plugin-grpc-protocol`. The Dokime change `grpc-plugins` is the product side.
 
 ## Why
@@ -13,7 +12,7 @@ nothing about tests or any product concept.
 
 ## What Changes
 
-- One protocol package, `harmos.v1`, with one service: `Plugin { Describe, Invoke, Publish }`.
+- One protocol package, `harmos.v1`, with one service: `Plugin { Describe, Invoke, Publish, Stop }`.
 - gRPC becomes the only sidecar protocol. The framed wire, its handshake, credits, control pipe
   and adapters are deleted.
 - The host always dials the plugin. A managed plugin is a process the host starts, which

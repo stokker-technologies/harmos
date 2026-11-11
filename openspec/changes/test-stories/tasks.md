@@ -19,7 +19,8 @@
 ## 4. Workloads and Time
 
 - [ ] 4.1 Move the large projection, journal and quantile workloads to benchmarks and keep the smallest boundary-crossing case as the test.
-- [ ] 4.2 Replace every real-time dependency listed in `design.md` with a controlled clock or an awaited event, keeping hang guards as guards.
+- [ ] 4.2 Replace the remaining real-time dependencies in design.md with a controlled clock or awaited event, preserving hang guards and existing System serialization.
+- [x] 4.2.1 Migrate the operation clock measurement fixture to the captured host clock.
 
 ## 5. Removal
 

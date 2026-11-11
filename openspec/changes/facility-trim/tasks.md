@@ -4,6 +4,8 @@
 
 - [x] 1.1 Lock the source inventory: features, exports, consumers, tests, benches, documents and tasks for each facility.
 
+- [ ] 1.2 Confirm retention of the hand-maintained downsampling kernels with the owner.
+
 ## 2. Removal
 
 - [x] 2.1 Delete `crates/cargo-harmos` with its templates and every reference to it.
@@ -14,7 +16,8 @@
 
 ## 3. Final Validation
 
-- [ ] 3.1 Run focused storage query, stream and state tests on Linux and Windows.
+- [ ] 3.1 Run the remaining focused storage query, stream and state proof on Linux and Windows after the combined removals.
+- [x] 3.1.1 Run focused native Windows storage tests for the JSON backend removal.
 
 ## Workflow Follow-Up
 

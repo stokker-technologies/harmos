@@ -2,7 +2,10 @@
 
 ## Ownership
 
-The upstream integration worktree is `harmos.wt/dokime-storage-facilities`, branch `feat/dokime-storage-facilities`. Its consumer is `dokime.wt/storage-optimization`, branch `perf/storage-optimization`, OpenSpec change `storage-optimization`. The parent chat owns both specifications and validation; assigned workers receive disjoint source inventories. No cross-chat coordination or publication is needed for local integration.
+All remaining Harmos work joins `feat/grpc-plugins` and ships with every open change.
+The paired consumer owns its adoption and published dependency pin. A worker receives only the
+paths for its whole task; native implementation and paired-consumer proof are separate tasks.
+No local override or path-resolved lockfile enters delivery.
 
 ## Consumer Evidence
 
@@ -38,7 +41,11 @@ Decode validated Postcard events directly into Arrow column builders, preserving
 
 Keep internal scans at 16,384 rows / 8 MiB. Query admission concurrency and response sizes remain explicit consumer settings. Cache at most 32 MiB of compact Arrow input pages and 32 MiB of coordinates, spilling above those bounds; external sort runs stay disk-backed so the number of runs cannot multiply retained memory. Exact LTTB, extrema and decimation selection remain unchanged.
 
-The native timing harness uses JsonStorage, not Dokime's separately owned SQLite backend. Measure end-to-end reads independently from payload decoding; neither a decoder microbenchmark nor an optimized build proves Dokime's 1M-sample deadline. SQLite implementation and the consumer's Arrow-to-Postcard conversion remain outside this worktree slice.
+The JSON backend and its timing harness are removed by `facility-trim`. Consumer-backend
+measurements must establish end-to-end projection and bounded-window latency; a decoder
+microbenchmark does not prove the consumer's one-million-sample acceptance. Backend implementation
+and the consumer's Arrow-to-Postcard conversion belong to the consumer. Do not restore JsonStorage
+or JSON-only fixtures to complete earlier measurement tasks.
 
 ## Publication Decision
 
@@ -47,3 +54,54 @@ Retain existing Harmos delivery rings and authored per-stream window sizes, as t
 ## Immutable Mutable-Source Snapshots
 
 Freeze an opened source into a private native-owned temporary file before backend creation or capture waits. The immutable FrozenFile exposes length and SHA-256 but no writable handle; its owner survives backend retries even if the original producer changes. StorageManager::freeze_opened_file reuses bounded opened-file reads and verifies source stability. StorageManager::capture_frozen_file retains that owner inside existing OpenedCapture. Partial freezes may be discarded on cancellation, with in-flight blocking IO retaining its actual file and batch owners until completion. Disk errors propagate; no replacement arbitrary total-size ceiling is introduced. Dokime retains digest-based deduplication and removes its duplicate copy/hash loop.
+
+## Current Source Inventory
+
+| Work | Harmos Ownership |
+| --- | --- |
+| Opened/frozen identity and follow/capture | Storage `local.rs`, `frozen_file.rs`, `opened_capture.rs`, `file_reads.rs`, `file_follow.rs`, `file_production.rs`, directory modules and manager/files fixtures |
+| Retained writes and admission | Storage backend/batch/read-batch, staging/producer and mutation modules, receipts, queue and manager lifecycle; runtime append-file and request ownership |
+| Read/query work | Storage `query/`, `arrow/`, `statistics/`, `state/file/`, config and backend-neutral integration fixtures |
+| Transactions | Runtime state manager/writer/envelope/history/recovery/snapshot codec and storage attachments; Schematic constructors and ownership fixtures |
+| Schema settings | Runtime setup/state/records/streams, operation contracts/registration/construction and native observers; existing record, wire and observer fixtures |
+| Framing | SDK grpc count/write traversal and runtime grpc codec/envelope; native preparation fixtures |
+| Guidance | Product guide and canonical/generated authoring references; README claims |
+
+The state-file journal builds a rebuildable temporary offset index on open and updates it after
+durable append and compaction. Recovery/retry pages seek directly; cancellation is checked while
+indexing. Only recovery.open uses its existing extended policy. JSON data-backend indexing and
+persistence fixtures are removed; the independent state-file journal remains.
+Queries use bounded private Arrow spill, stable external merge, grouped reduction, exact
+order-statistic selection and coordinate passes. The query slot survives through reduction and
+output; dropped callers cancel detached blocking work. Journal flushes use bounded chunks with
+unchanged durable acknowledgment and cadence. Listener catch-up uses bounded row/byte pages and
+yields between pages. Validate fairness and working-set peaks separately from correctness.
+
+Native transaction submission retains `Response<A::Transaction>` through the queue, recorded
+history, undo/replay and captures. `commit_owned` and `commit_keyed_owned` accept that owner;
+ordinary generic wrappers preserve their signatures and serialized enum.
+Native schema preparation shares the configured immutable SchemaSettings snapshot across
+records, streams, operations and native observers, while explicit default wrappers stay available.
+Parameterized frame allowances use schema/member identity and selected variants in the canonical
+count/write traversal. Prepared frames retain their encoded owner and are sent without re-encoding.
+
+## Storage Deletion and Windows Follow-Up
+
+In `crates/harmos-runtime/tests/storage/operation_deletion.rs`, `deletion_preserves_other`
+expects a reader opened before deletion to retain its bytes and fresh reads to fail. Its fixture
+uses the in-memory backend; that assertion alone establishes no consumer-backend guarantee.
+Review the intended deletion contract against backend-neutral storage ownership before treating
+this test repair as complete proof.
+Named temporary owners remain alive through reads and blocking workers. The reported Windows
+Access-is-denied failure did not reproduce locally; the private-source repair still needs native
+Windows failure-path verification, rather than a claim that its cause is established.
+
+## Open Points
+
+### Awaiting Owner Confirmation
+
+- Accept retained pre-deletion reader bytes, with fresh reads refused, as the intended backend-neutral contract after reviewing consumer backends.
+
+The consumer's one-million-sample latency acceptance and native Linux proof remain open;
+no removed JSON benchmark supplies either. The numerical consumer acceptance target must be
+recovered from its owning specification before a new measurement is judged.

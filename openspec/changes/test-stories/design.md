@@ -1,7 +1,7 @@
 # Test Stories Design
 
-Status: agreed on 2026-11-10; not implemented. Locations are from two read-only audits of the
-`dev` tree and are rechecked when each task starts. `R` is `crates/harmos-runtime`, `S` is
+Status: consolidation remains unimplemented. Recheck locations against the combined branch;
+removed facilities are outside the story inventory. `R` is `crates/harmos-runtime`, `S` is
 `crates/harmos-storage`, `P` is `crates/harmos-packaging`.
 
 ## Shape of a Story
@@ -34,7 +34,7 @@ async fn undo_and_redo_follow_commits() -> Result<(), TestError> {
 | --- | --- |
 | Runtime launch, catalog registration and shutdown | 219 launches, 100 registrations and 667 shutdowns written inline across `R/tests` |
 | One storage fixture | The two fixture shells in `R/tests/support/storage_fixture.rs` and `S/tests/integration/manager/fixture.rs`, which share 60 lines |
-| Wait for an event | One-poll and yield-loop helpers in `R/tests/support/pending.rs`, the storage fixtures, and the yield budgets in `R/tests/streams/series.rs:275` |
+| Wait for an event | One-poll and yield-loop helpers in `R/tests/support/pending.rs`, the storage fixtures, |
 | Providers and hosts | Repeated fake providers in `R/tests/sidecar/` (rewritten with `grpc-plugins`) and `R/tests/operations/` |
 
 ## Groups That Become One Story
@@ -67,7 +67,6 @@ Replaced by a controlled clock or an awaited event:
 | `R/tests/sidecar/dependency_routing.rs:363,437`, `listeners.rs:227` | Operations reach real policy deadlines |
 | `R/tests/services/recovery.rs:248` | 10 ms stop timeout |
 | `R/tests/services/shutdown.rs:508` | A 60 s rest raced against shutdown |
-| `R/tests/operations/clock.rs:135` | Reads the standard clock under paused time |
 | `S/tests/support/file_backend.rs:67,88` | Receipt expiry from the system clock |
 | `S/tests/integration/manager/mapping.rs:215` | Elapsed time in a correctness helper |
 | `R/tests/system/guest_contract/limits.rs:101`, `operations.rs:153` | Real guest deadline expiry |
@@ -85,3 +84,11 @@ that stop a hung test (`R/src/plugin/scope.rs:791`, `S/tests/integration/directo
 | `R/tests/state/managed.rs:111` | Reads back the value it set through a clone without mutating either handle |
 | `crates/harmos-operations/src/lib.rs:197` | Pins the catalog to 30 entries; uniqueness moves into a story |
 | `crates/harmos-guest/tests/kit/main.rs:75` | Pins fixture names and literal timeouts; useful checks move into a guest story |
+
+## Deferred Scope
+
+Relaxing System test serialization and splitting the largest crates are deferred until the
+removals have landed and can be measured. Keep current serial System execution while rewriting
+stories. The host-clock measurement fixture now uses the captured host clock; the other listed
+real-time dependencies still need individual inspection. JSON-backend-only workloads are removed
+by `facility-trim`, not recreated as benchmarks or counted as completed story consolidation.

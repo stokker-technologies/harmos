@@ -1,28 +1,25 @@
 # Tooling Streamline
 
-Status: direction agreed with the owner on 2026-11-10; implementation has not started and waits
-for the owner's go. The same change exists in Dokime; shared tooling is fixed once and adopted by
-both.
+Status: task dispatch and workflow matrices are implemented; native and hosted proof remains open.
+Each project owns its copy of the tooling and applies the same repairs independently.
 
 ## Why
 
-`mise.toml` defines 50 tasks and `tools/python` holds about 9,700 lines behind them, of which 78
-percent is line for line the same as Dokime's. Several tasks exist only for facilities that are
-being removed. Incremental compilation is switched off for local builds. The CI workflows are
-about 6,000 lines, most of it checkout, setup, cache and artifact steps written out per job and
-per operating system.
+Developers need a small task interface with focused selections, while CI carries only job
+transport and setup. Project-owned tooling must work in a standalone checkout and preserve
+local compiler reuse without machine storage checks.
 
 ## What Changes
 
 | Task | Arguments After `--` | Behaviour |
 | --- | --- | --- |
 | `prepare` | None | Synchronize all locked Python groups and prepare the environment. |
-| `generate` | `[--profile <dev\|release>]` | Regenerate Python clients from existing Product schemas. Retained while the client facility exists. |
-| `format` | `[--check] [--language <rust\|python\|toml>]` | Format selected maintained languages, or check their formatting. This repository has no TypeScript task. |
+| `generate` | `[--profile <dev\|release>] [--sdk python]` | Generate Python SDK protocol bindings, or Product-derived clients without the SDK selector. |
+| `format` | `[--check] [--language <rust\|python\|toml\|csharp>]` | Format selected maintained languages, or check their formatting. This repository has no TypeScript task. |
 | `lint` | `[--language <rust\|python\|toml>] [--extended]` | Lint selected languages; TOML has formatting checks only. Extended Rust lint covers optional compatibility configurations. |
-| `check` | `[--language <rust\|python\|toml>] [--extended] [--repository] [--generated]` | Check formatting, lint, repository configuration and selected generated drift; Python includes tooling tests and consumes generated Product clients. `--repository` or `--generated` selects only that check. |
-| `build` | `[--profile <dev\|release>] [--artifact <product\|tests\|bench\|fixtures>] [--package <name> [--check]] [--compatibility] [--cpp] [--extended]` | Fixtures joins existing Product and Tests inputs without compiling. Product by default; Tests exports an archive; Bench uses the fixed bench profile. Package selection invokes Cargo directly. Compatibility and C++ remain optional while their consumers exist; extended applies to Tests or Bench. |
-| `test` | `[--language <rust\|python>] [--layer <unit\|integration\|acceptance\|system>] [--package <name> --target <lib\|TEST_TARGET>] [--exact <name>] [--coverage] [--profile <dev\|release>] [--filter <expression>] [--stress-count <count>] [--starter] [--cpp] [--extended]` | Package selection runs one Cargo target without an archive; exact filtering belongs to that selection. Unit consumes only the test archive; integration, acceptance, system, coverage and starter consume the joined fixture bundle. Python has an integration tooling suite. Integration retains filter/stress options; starter retains its filter. Existing starter, C++ and extended facilities remain reachable. |
+| `check` | `[--language <rust\|python\|toml\|csharp\|cpp>] [--package harmos-plugin] [--extended] [--repository] [--generated]` | Check formatting, lint, repository configuration and selected generated drift; Python includes tooling tests and consumes generated Product clients. `--repository` or `--generated` selects only that check. |
+| `build` | `[--profile <dev\|release>] [--artifact <product\|tests\|bench\|fixtures>] [--language <rust\|csharp\|cpp>] [--package <name> [--check] [--features <features>] [--example <name>]] [--compatibility] [--extended]` | Fixtures joins existing Product and Tests inputs without compiling. Product by default; Tests exports an archive; Bench uses the fixed bench profile. Package selection invokes Cargo directly. C# and C++ use explicit language selections; compatibility and extended remain opt-in. |
+| `test` | `[--language <rust\|python\|csharp\|cpp>] [--layer <unit\|integration\|acceptance\|system>] [--package <name> --target <lib\|TEST_TARGET> [--features <features>]] [--exact <name>] [--coverage] [--profile <dev\|release>] [--filter <expression>] [--stress-count <count>] [--extended]` | Package selection runs one Cargo target without an archive; exact filtering belongs to that selection. Unit consumes the test archive; integration, acceptance, system and coverage consume the joined fixture bundle. Python supports focused tooling tests and harmos-plugin SDK integration. C# and C++ use language selections. |
 | `bench` | `[--layer <unit\|integration\|system>] [--refresh-baseline] [--extended]` | Consume existing benchmark executables and matching fixtures; retain baseline refresh and optional feature selection. |
 | `package` | `[--language <rust>] [--profile <dev\|release>]` | Assemble existing Rust Product outputs without compiling. |
 | `release:prepare` | `[--review]` | Prepare version and lock changes; `--review` also validates the configured runner allowlist, commits prepared changes and opens the release review in the existing hosted flow. |
@@ -38,9 +35,9 @@ per operating system.
   compiler cache stays for local builds.
 - **The storage preflight is gone** from the shared build tooling; this project adopts that
   tooling and drops the wrapper code that existed only for it.
-- **Tasks for removed facilities are deleted:** `build:cpp`, `test:rust:cpp`,
-  `test:rust:starter`, the generated Python client check and its producer, and the tooling that
-  collects and packages through the authoring tool.
+- **Tasks for removed facilities are deleted:** starter generation, collection and packaging
+  through the authoring tool disappear. The new C++ SDK uses language selections, and
+  generated protobuf Python SDK bindings retain explicit generation and drift checks.
 - **Compatibility and extended selections are pruned** to what still proves something after the
   removals.
 - **Tooling stays this project's own copy,** kept harmonized with Dokime's: the Cargo wrapper,
@@ -60,6 +57,19 @@ per operating system.
   deleted.
 - The composite actions stay in each repository, reduced to the setup action. The duplication
   between products is accepted, since shared tooling no longer renders CI.
+
+## Tooling Contracts
+
+The task interface uses `release:publish --dry` or `--stage <assets|rust|finalize|nightly>`
+and `build --artifact fixtures`, matching the paired project. Focused Rust `build` and `test`
+accept `--features` with `--package`; they do not require a full test archive.
+Python environments belong to their project roots; an SDK invocation must not redirect the
+repository tooling environment. The pinned `uv` is 0.13.6.
+
+Protocol-generated Rust and Python paths are declared as generated in `.stkr/project.toml`.
+The reported Hub check rejection of this declaration, the missing protocol error module and
+the entry-point task model remains a tooling-owner follow-up until the installed check accepts them.
+Do not restore task families or edit generated bindings merely to satisfy obsolete checks.
 
 ## Impact
 

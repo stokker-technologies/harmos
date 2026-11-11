@@ -1,7 +1,8 @@
-# Wire Format Draft
+# Wire Format
 
-Status: draft for owner review on 2026-11-10; not agreed and not implemented.
-`harmos/v1/plugin.proto` is the complete proposed `harmos.v1`.
+Status: implemented wire definition; remaining owner confirmations are listed in `../design.md`.
+`harmos/v1/plugin.proto` mirrors the landed definition at repository-root `proto/harmos/v1/plugin.proto`.
+The runtime behaviour and fingerprint rules are in repository-root `proto/harmos/v1/behaviour.md`.
 
 ## Compatibility Rules
 
@@ -24,9 +25,7 @@ These hold for every release of `harmos.v1` once the first one ships.
 - An operation failure is a `Failure` message. gRPC status codes report only
   transport faults.
 
-## Decisions Taken in the Draft
-
-Each is open to review.
+## Wire Contracts
 
 | Decision | Reason |
 | --- | --- |
@@ -42,6 +41,7 @@ Each is open to review.
 | Two visibility values | Plugins and clients are all trusted, so `Private` (the plugin and the host) and `Public` (everyone connected) are enough |
 | The host owns the clock: `Tick` on `Publish`, and `harmos.clock.sleep` | One clock for the host and every plugin gives one time base for evidence and lets a test advance time for a plugin in any language |
 
-## Questions for Review
+## Retry Policy
 
-None open. A retry carries its delay as `OperationPolicy.backoff`.
+A retry carries its delay as `OperationPolicy.backoff`. An absent policy has no deadline, zero
+cancellation grace and no retries. These defaults await confirmation in the owning design.
