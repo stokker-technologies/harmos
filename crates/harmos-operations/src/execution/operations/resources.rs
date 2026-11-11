@@ -134,14 +134,36 @@ impl ExecutionContext {
 
 impl AssignedOperation {
     pub fn encode(entries: &[Self]) -> Result<Vec<u8>, super::ServingError> {
-        postcard::to_allocvec(entries).map_err(|_| super::ServingError::Catalog)
+        use prost::Message;
+        let assignments = harmos_protocol::host::OperationAssignments {
+            operations: entries
+                .iter()
+                .map(|entry| harmos_protocol::host::AssignedOperation {
+                    operation: entry.operation.clone(),
+                    fingerprint: entry.fingerprint.to_vec(),
+                    generation: entry.generation,
+                })
+                .collect(),
+        };
+        Ok(assignments.encode_to_vec())
     }
 }
 
 impl OperationAssignments {
     pub fn install(&self, bytes: &[u8]) -> Result<(), super::ServingError> {
-        let entries: Vec<AssignedOperation> =
-            if bytes.is_empty() { Vec::new() } else { postcard::from_bytes(bytes).map_err(|_| super::ServingError::Catalog)? };
+        use prost::Message;
+        let assignments = harmos_protocol::host::OperationAssignments::decode(bytes).map_err(|_| super::ServingError::Catalog)?;
+        let entries = assignments
+            .operations
+            .into_iter()
+            .map(|entry| {
+                Ok(AssignedOperation {
+                    operation: entry.operation,
+                    fingerprint: entry.fingerprint.try_into().map_err(|_| super::ServingError::Catalog)?,
+                    generation: entry.generation,
+                })
+            })
+            .collect::<Result<Vec<_>, super::ServingError>>()?;
         let mut locals = std::collections::BTreeSet::new();
         for entry in &entries {
             harmos_domain::QualifiedId::parse(&entry.operation).map_err(|_| super::ServingError::Catalog)?;
@@ -196,6 +218,29 @@ impl OperationAssignments {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn protobuf_assignments_validate_and_freeze_the_catalog() {
+        use prost::Message;
+        let entry = AssignedOperation {
+            operation: "host.catalog.read".into(),
+            fingerprint: [7; 32],
+            generation: 1,
+        };
+        let encoded = AssignedOperation::encode(std::slice::from_ref(&entry)).unwrap();
+        let decoded = harmos_protocol::host::OperationAssignments::decode(encoded.as_slice()).unwrap();
+        assert_eq!(decoded.operations[0].operation, entry.operation);
+        let assignments = OperationAssignments::default();
+        assignments.install(&encoded).unwrap();
+        assignments.install(&encoded).unwrap();
+        let replacement = AssignedOperation { generation: 2, ..entry.clone() };
+        assert!(assignments.install(&AssignedOperation::encode(&[replacement]).unwrap()).is_err());
+        assert!(OperationAssignments::default().install(&AssignedOperation::encode(&[entry.clone(), entry]).unwrap()).is_err());
+        let mut invalid = decoded;
+        invalid.operations[0].fingerprint.pop();
+        assert!(OperationAssignments::default().install(&invalid.encode_to_vec()).is_err());
+        assert!(OperationAssignments::default().install(&[0xff]).is_err());
+    }
 
     #[test]
     fn independent_resource_snapshots() {

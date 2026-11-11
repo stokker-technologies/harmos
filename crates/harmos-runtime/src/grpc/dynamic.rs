@@ -103,14 +103,26 @@ impl Operation {
         let response = direction(method.output(), "response", contract.output().is_some())?;
         let input = contract.input().map(|_| direction(method.input(), "item", true)).transpose()?;
         let output = contract.output().map(|_| direction(method.output(), "item", true)).transpose()?;
-        let validators =
-            ProtobufValidator::from_schema(contract.schema(), &Default::default()).map_err(|error| invalid(error.to_string()))?;
-        let request_validator = validators.at(contract.request().index()).map_err(|error| invalid(error.to_string()))?;
-        let response_validator = validators.at(contract.response().index()).map_err(|error| invalid(error.to_string()))?;
-        let input_validator =
-            contract.input().map(|view| validators.at(view.index())).transpose().map_err(|error| invalid(error.to_string()))?;
-        let output_validator =
-            contract.output().map(|view| validators.at(view.index())).transpose().map_err(|error| invalid(error.to_string()))?;
+        let (request_validator, response_validator, input_validator, output_validator) = if contract.protobuf().is_some() {
+            let validator = |descriptor| {
+                ProtobufValidator::from_descriptor(descriptor, &Default::default()).map_err(|error| invalid(error.to_string()))
+            };
+            (
+                validator(request.clone())?,
+                validator(response.clone())?,
+                input.clone().map(validator).transpose()?,
+                output.clone().map(validator).transpose()?,
+            )
+        } else {
+            let validators =
+                ProtobufValidator::from_schema(contract.schema(), &Default::default()).map_err(|error| invalid(error.to_string()))?;
+            (
+                validators.at(contract.request().index()).map_err(|error| invalid(error.to_string()))?,
+                validators.at(contract.response().index()).map_err(|error| invalid(error.to_string()))?,
+                contract.input().map(|view| validators.at(view.index())).transpose().map_err(|error| invalid(error.to_string()))?,
+                contract.output().map(|view| validators.at(view.index())).transpose().map_err(|error| invalid(error.to_string()))?,
+            )
+        };
         Ok(Self {
             binding: Arc::new(Binding {
                 path: grpc.path(),

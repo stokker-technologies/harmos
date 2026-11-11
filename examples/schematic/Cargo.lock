@@ -979,8 +979,12 @@ name = "harmos-domain"
 version = "0.1.14"
 dependencies = [
  "harmos-macros",
+ "harmos-protocol",
  "memchr",
  "postcard",
+ "prost",
+ "prost-reflect",
+ "prost-types",
  "semver",
  "serde",
  "serde_json",
@@ -1034,9 +1038,11 @@ version = "0.1.14"
 dependencies = [
  "harmos-domain",
  "harmos-macros",
+ "harmos-protocol",
  "harmos-storage",
- "postcard",
  "prost",
+ "prost-reflect",
+ "prost-types",
  "serde",
  "serde_json",
  "thiserror",

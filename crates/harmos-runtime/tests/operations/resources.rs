@@ -95,7 +95,6 @@ impl harmos_runtime::Operation for ReadContractDeclaration {
 
 #[tokio::test]
 async fn runtime_selected_ids() {
-    use harmos_runtime::Message;
     use harmos_runtime::operations::{OperationDeclaration, OperationDefinition, Registration};
 
     #[harmos_runtime::operation(id = "resources.other", response = Reading, policy = ReadContractDeclaration::POLICY)]
@@ -134,8 +133,11 @@ async fn runtime_selected_ids() {
         runtime.operations.submit_at::<ReadContractDeclaration>(&id, ReadContractDeclaration { nested: false }).unwrap().await.unwrap();
     assert_eq!((typed.device.as_str(), typed.seen), ("configured", 0));
     let qualified = format!("host.{id}");
-    let bytes = runtime.operations.call_encoded(&qualified, ReadContractDeclaration { nested: false }.encode()).await.unwrap();
-    let encoded = Reading::decode(&bytes).unwrap();
+    let mut payload = Vec::new();
+    harmos_operations::execution::grpc::encode(&ReadContractDeclaration { nested: false }, &mut payload).unwrap();
+    let bytes = runtime.operations.call_encoded(&qualified, payload).await.unwrap();
+    let encoded: Reading =
+        harmos_operations::execution::grpc::decode(harmos_operations::execution::grpc::DecodeInput::new(&bytes)).unwrap();
     assert_eq!((encoded.device.as_str(), encoded.seen), ("configured", 1));
 
     assert!(matches!(runtime.register_batch(registration).await, Err(harmos_runtime::Error::AlreadyRegistered { .. })));

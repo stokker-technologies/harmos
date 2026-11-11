@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.host.v1;
+
+// Assignments are frozen for the lifetime of a private guest activation.
+message AssignedOperation {
+  string operation = 1;
+  bytes fingerprint = 2;
+  uint64 generation = 3;
+}
+
+message OperationAssignments {
+  repeated AssignedOperation operations = 1;
+}

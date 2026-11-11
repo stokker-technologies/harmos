@@ -4,6 +4,11 @@
 interface. [`harmos/v1/behaviour.md`](harmos/v1/behaviour.md) is its numbered
 behaviour contract and fixed cross-language conformance fixture catalog.
 
+[`harmos/v1/host.proto`](harmos/v1/host.proto) defines the shared protobuf assignment
+catalog under `harmos.host.v1`. Assignments retain a qualified operation name, a
+32-byte contract fingerprint and a nonzero activation generation. A receiver
+validates identities, refuses duplicate local names, and freezes the first accepted catalog.
+
 Rust bindings live in `crates/harmos-protocol`; the independent reference host
 and hand-written Rust fixture server live in `crates/harmos-conformance`.
 The behaviour contract includes build and invocation examples for every SDK.

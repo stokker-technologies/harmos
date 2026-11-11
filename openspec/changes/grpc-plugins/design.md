@@ -11,7 +11,7 @@ Final validation waits for source closure; completed source does not close nativ
 | --- | --- | --- | --- |
 | 1 | Protocol 2.x; `facility-trim`; `tooling-streamline`; `align-ci-release` | Source landed; tooling follow-ups and native proof remain | `proto/`, protocol/conformance crates; removed facilities; tooling and CI |
 | 2 | Host clock 3.5 | Landed | Runtime, storage and built-in operation time reads |
-| 3 | Host 3.1–3.4, 3.6, 3.8, 3.10–3.12; Rust SDK 4.x | Finish generated-protobuf declarations before consumer adoption; migrate host handlers and SDK boundaries | Protocol, domain, operations, runtime, SDK roots, derives and adapters |
+| 3 | Host 3.1–3.4, 3.6, 3.8, 3.10–3.12; Rust SDK 4.x | Generated-protobuf host declarations landed; migrate built-in handlers and SDK boundaries | Protocol, domain, operations, runtime, SDK roots, derives and adapters |
 | 4 | Removal 6.x; virtual mode 3.7; pilot SDKs 5.x | Finish host engine relocation, dead conversions and contract-only surface removal | Operations/domain/runtime; removed transport paths; simulation; pilot SDKs |
 | 5 | `authoring-without-macros` | Inventory, then declaration steps in task order | One writer across the workspace |
 | 6 | `test-stories`; guests 7.1; guides | Inventory, stories and guest envelopes remain; consumer adoption is separate proof | Tests; guest/host adapters; docs |
@@ -245,6 +245,67 @@ plugin. The network is trusted, as it is for clients.
 - Plugin operations are unary: one request and one result. Streaming requests and results remain
   available only to host-native operations. Streaming child calls stay unsupported. Examples and
   fixtures with streamed plugin operations must migrate to unary calls or declared sample streams.
+
+### Generated Host Messages
+
+Host declarations implement `ProtobufOperation`. Request, response and item types are
+Prost-generated messages implementing `prost_reflect::ReflectMessage` against their authoritative
+compiled descriptor set. The declaration owns its mapping, policy, visibility and resource list.
+`ProtobufInput<T>`, `ProtobufOutput<T>` and their input/output pair retain the normal host-native
+stream envelopes, credits, cancellation and retry fencing. There is no request/response mirror.
+
+```rust
+use harmos_runtime::operations::{
+    ExecutionContext, Grpc, OperationPolicy, ProtobufOperation, ProtobufOutput,
+    Registration, ServingError, Visibility,
+};
+use sensor_protocol::{ReadRequest, ReadResult};
+
+struct ReadSensor;
+
+impl ProtobufOperation for ReadSensor {
+    type Request = ReadRequest;
+    type Response = ReadResult;
+    type Endpoints = ProtobufOutput<ReadResult>; // Use () for unary.
+
+    const ID: &'static str = "sensor.read";
+    const GRPC: Grpc = Grpc::new("sensor.v1", "Sensors", "Read");
+    const POLICY: OperationPolicy = READ_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+
+    async fn run(
+        context: ExecutionContext, request: ReadRequest, output: &Self::Endpoints,
+    ) -> Result<ReadResult, ServingError> {
+        let result = read_sensor(context, request).await?;
+        output.send(result.clone()).await.map_err(ServingError::Stream)?;
+        Ok(result)
+    }
+}
+
+runtime.operations
+    .register_batch(Registration::new(lane).protobuf::<ReadSensor>()?)
+    .await?;
+```
+
+The server scans protobuf before Prost decoding, admitting a conservative bound for generated
+message layouts and vector growth through the existing decoding-memory owner. Authoritative
+message descriptors supply reflection, dynamic validation and canonical protobuf fingerprints;
+the host adds only its operation service and streaming/control envelopes. Existing `Portable`
+declarations keep their projection path. Their canonical Postcard values are internal codec
+workspace; host encoded calls and their results carry the protobuf projection.
+
+Assignment catalogs use `harmos.host.v1.OperationAssignments` from
+`proto/harmos/v1/host.proto`, including when passed inside guest initialization. Operation
+contracts advertise only `harmos.protobuf.v1`; storage codecs and schema revisions are unchanged.
+
+The task 6.5 boundary leaves the deferred task 7.1 guest transport private: `harmos-guest`
+continues to own Postcard command/answer envelopes, lifecycle requests, typed guest request/result
+and stream payloads, child requests/results and child-control replies. Runtime's private
+`src/guest/host/envelope/`, `operations/{component,remote,sdk,children}.rs` and guest-origin native
+dispatch retain that matching codec. Guest artifact inventories remain private JSON metadata;
+the assignment blob inside initialization is now protobuf. `harmos-domain::Message` and its
+Postcard value reader also remain for persisted data and the retained projection workspace.
+No native plugin, external gRPC payload or public host encoded call uses that message encoding.
 
 ## Calls Between Plugins
 

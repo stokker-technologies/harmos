@@ -145,6 +145,52 @@ impl Validator {
             definitions: definitions.into(),
         })
     }
+    pub fn from_descriptor(descriptor: prost_reflect::MessageDescriptor, settings: &SchemaSettings) -> Result<Self, graph::Error> {
+        let mut messages = vec![descriptor];
+        let mut definitions = Vec::new();
+        let mut cursor = 0;
+        let mut bytes = std::mem::size_of::<Self>();
+        while cursor < messages.len() {
+            let message = messages[cursor].clone();
+            let additional = message.fields().len().checked_mul(std::mem::size_of::<Checked>()).ok_or(graph::Error::Budget)?;
+            bytes = bytes
+                .checked_add(additional)
+                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Box<[Checked]>>()))
+                .ok_or(graph::Error::Budget)?;
+            if bytes > settings.preparation_bytes.get() {
+                return Err(graph::Error::Budget);
+            }
+            let mut fields = Vec::new();
+            for field in message.fields() {
+                let kind = match field.kind() {
+                    prost_reflect::Kind::Double | prost_reflect::Kind::Fixed64 | prost_reflect::Kind::Sfixed64 => Wire::Bits64,
+                    prost_reflect::Kind::Float | prost_reflect::Kind::Fixed32 | prost_reflect::Kind::Sfixed32 => Wire::Bits32,
+                    prost_reflect::Kind::String => Wire::String,
+                    prost_reflect::Kind::Bytes => Wire::Bytes,
+                    prost_reflect::Kind::Message(message) => {
+                        let index = if let Some(index) = messages.iter().position(|candidate| candidate == &message) {
+                            index
+                        } else {
+                            messages.push(message);
+                            messages.len() - 1
+                        };
+                        Wire::Message(index)
+                    }
+                    _ => Wire::Varint,
+                };
+                fields.push(Checked {
+                    tag: field.number(),
+                    repeated: field.is_list() || field.is_map(),
+                    kind,
+                });
+            }
+            fields.sort_by_key(|field| field.tag);
+            definitions.push(fields.into_boxed_slice());
+            cursor += 1;
+        }
+        Ok(Self { root: 0, definitions: definitions.into() })
+    }
+
     fn read(&self, definition: usize, mut bytes: &[u8], depth: usize) -> Result<(), PayloadError> {
         if depth > DEPTH {
             return Err(PayloadError::Depth);

@@ -13,6 +13,8 @@
 /* === Modules === */
 
 pub mod clock;
+#[rustfmt::skip]
+pub mod host;
 pub mod schema;
 
 // Checked-In Output of the Generator Exercised by the Integration Drift Check.

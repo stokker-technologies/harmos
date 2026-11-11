@@ -52,8 +52,6 @@ prost-types = { workspace = true, features = ["std"] }
 # Async
 
 # Networking
-tonic = { workspace = true, features = ["codegen", "transport"] }
-tonic-prost = { workspace = true }
 
 # Storage
 
@@ -101,6 +99,12 @@ tonic-prost-build = { workspace = true, features = ["transport"] }
 # Testing
 
 # === Target Dependencies === #
+
+# Guest Consumers Need Messages and Fingerprints Without Native Networking.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tonic = { workspace = true, features = ["codegen", "transport"] }
+tonic-prost = { workspace = true }
+
 
 # === Test Targets === #
 

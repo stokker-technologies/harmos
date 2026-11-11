@@ -26,6 +26,7 @@ derive = ["dep:harmos-macros"]
 
 [dependencies]
 # Local
+harmos-protocol = { workspace = true }
 harmos-macros = { workspace = true, default-features = true, optional = true }
 
 # Git
@@ -41,6 +42,9 @@ sha2 = { workspace = true }
 time = { workspace = true, default-features = true }
 
 # Serialization
+prost = { workspace = true }
+prost-reflect = { workspace = true }
+prost-types = { workspace = true }
 postcard = { workspace = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true }

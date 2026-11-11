@@ -250,9 +250,9 @@ fn contract(template: &Contract, id: &str, method: &'static str, mut schema: Sch
     schema.definitions.push(root);
 
     {
-        let fingerprint = harmos_domain::schema::identity::contract(id, &schema, "harmos.postcard.v1").unwrap();
+        let fingerprint = harmos_domain::schema::identity::contract(id, &schema, "harmos.protobuf.v1").unwrap();
         operation.fingerprint = fingerprint;
-        Contract::new(operation, fingerprint, Codec::Postcard, schema)
+        Contract::new(operation, fingerprint, Codec::Protobuf, schema)
     }
     .unwrap()
     .with_grpc(Some(Grpc::new("test.v1", "Shapes", method)))

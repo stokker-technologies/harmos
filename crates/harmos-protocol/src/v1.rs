@@ -452,6 +452,7 @@ impl Classification {
     }
 }
 /// Generated client implementations.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod plugin_client {
     #![allow(
         unused_variables,
@@ -638,6 +639,7 @@ pub mod plugin_client {
     }
 }
 /// Generated server implementations.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod plugin_server {
     #![allow(
         unused_variables,
