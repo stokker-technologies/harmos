@@ -787,6 +787,11 @@ mod tests {
             };
             let bundle = Bundle::build(identity, &[source], Limits::default()).unwrap();
             let reopened = Bundle::inspect(bundle.bytes(), Limits::default()).unwrap();
+            // Native Catalogs Are Discovered Through Describe.
+            if inspected == Facility::Sidecar {
+                assert!(reopened.declaration("plugin.bin").is_none());
+                continue;
+            }
             let packaged = reopened.declaration("plugin.bin").unwrap();
             assert_eq!(packaged.id, declaration.id);
             assert_eq!(serde_json::to_value(&packaged.contracts).unwrap(), serde_json::to_value(&declaration.contracts).unwrap());
