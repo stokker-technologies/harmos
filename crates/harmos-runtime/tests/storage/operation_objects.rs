@@ -9,6 +9,11 @@
 
 /* === Modules === */
 
+#[path = "generated_object_follow.rs"]
+mod follow;
+#[path = "generated_object_pruned.rs"]
+mod pruned;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -88,7 +93,10 @@ async fn object_exchange_saves() {
     )
     .unwrap();
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
-        setup.settings().storage(&storage).register(catalog());
+        setup.settings().storage(&storage).register(catalog()).operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
+            ..Default::default()
+        });
     })
     .await
     .unwrap();
@@ -150,7 +158,10 @@ async fn object_batch_atomic() {
     )
     .unwrap();
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
-        setup.settings().storage(&storage).register(catalog());
+        setup.settings().storage(&storage).register(catalog()).operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
+            ..Default::default()
+        });
     })
     .await
     .unwrap();
@@ -175,99 +186,6 @@ async fn object_batch_atomic() {
     runtime.shutdown().await.unwrap();
 }
 
-#[tokio::test]
-async fn object_follow_resumes() {
-    use harmos_operations::storage::FollowObjects;
-    use harmos_runtime::storage::{ObjectEntry, query::ObjectVersions};
-    let (runtime, storage, _) = query_fixture().await;
-    let first = storage.write_object(&Document { id: "key".into(), text: "saved".into() }).await.unwrap();
-    storage.flush().await.unwrap();
-    let mut request = harmos_operations::storage::FollowObjects {
-        after: None,
-        selection: harmos_runtime::storage::query::ObjectSelection {
-            schema: None,
-            key: None,
-            versions: ObjectVersions::Revisions,
-        },
-    };
-    let limits = harmos_runtime::operations::StreamSettings {
-        items: NonZeroUsize::MIN,
-        bytes: NonZeroUsize::new(4096).unwrap(),
-    };
-    let (sender, receiver) = harmos_runtime::operations::stream::<ObjectEntry>(limits).unwrap();
-    let call = runtime.operations.submit_endpoints::<FollowObjects, _>(request.clone(), sender).unwrap();
-    let received = receiver.recv().await.unwrap();
-    assert_eq!(received.version, first.version);
-    drop(received);
-    let second = storage.write_object(&Document { id: "key".into(), text: "live".into() }).await.unwrap();
-    let received = receiver.recv().await.unwrap();
-    assert_eq!(received.version, second.version);
-    drop(received);
-    storage.flush().await.unwrap();
-    call.request_cancel();
-    assert!(call.await.is_err());
-    drop(receiver);
-    request.after = Some(second.position);
-    let (sender, receiver) = harmos_runtime::operations::stream::<ObjectEntry>(limits).unwrap();
-    let call = runtime.operations.submit_endpoints::<FollowObjects, _>(request, sender).unwrap();
-    let third = storage
-        .write_object(&Document {
-            id: "key".into(),
-            text: "reconnected".into(),
-        })
-        .await
-        .unwrap();
-    let received = receiver.recv().await.unwrap();
-    assert_eq!(received.version, third.version);
-    drop(received);
-    call.request_cancel();
-    assert!(call.await.is_err());
-    drop(receiver);
-    runtime.shutdown().await.unwrap();
-}
-
-#[tokio::test]
-async fn follow_reports_pruned() {
-    use harmos_operations::storage::FollowObjects;
-    use harmos_runtime::storage::{ObjectEntry, query::ObjectVersions};
-    let (runtime, storage, data) = query_fixture().await;
-    for index in 0..9 {
-        storage
-            .write_object(&Document {
-                id: "key".into(),
-                text: index.to_string(),
-            })
-            .await
-            .unwrap();
-    }
-    storage.flush().await.unwrap();
-    while data.objects.lock().unwrap().len() != 8 {
-        data.control.pruned.notified().await;
-    }
-    let request = harmos_operations::storage::FollowObjects {
-        after: None,
-        selection: harmos_runtime::storage::query::ObjectSelection {
-            schema: None,
-            key: None,
-            versions: ObjectVersions::Revisions,
-        },
-    };
-    let (sender, receiver) = harmos_runtime::operations::stream::<ObjectEntry>(harmos_runtime::operations::StreamSettings {
-        items: NonZeroUsize::MIN,
-        bytes: NonZeroUsize::new(4096).unwrap(),
-    })
-    .unwrap();
-    let call = runtime.operations.submit_endpoints::<FollowObjects, _>(request, sender).unwrap();
-    let error = call.await.err().unwrap();
-    let error = std::iter::successors(Some(&error as &(dyn std::error::Error + 'static)), |error| error.source())
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(": ");
-    assert!(error.contains("retained data begins"), "{error}");
-    assert!(receiver.recv().await.is_none());
-    runtime.shutdown().await.unwrap();
-}
-
 async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Objects>>) {
     let data = Arc::new(Data::<Objects>::with_catalog(history()));
     let storage = StorageManager::new(
@@ -279,7 +197,10 @@ async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Ob
     )
     .unwrap();
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
-        setup.settings().storage(&storage).register(catalog());
+        setup.settings().storage(&storage).register(catalog()).operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
+            ..Default::default()
+        });
     })
     .await
     .unwrap();

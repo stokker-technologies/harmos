@@ -7,127 +7,46 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-use super::STREAM_POLICY;
-use harmos_domain::MemorySize;
-use harmos_domain::model::storage::codec::{Nested, Optional, product};
-use harmos_domain::model::storage::{ObjectEntry, ObjectSelection, StorageCursor};
-
-#[cfg(feature = "runtime")]
+use crate::execution::operations::{ExecutionContext, ProtobufOperation, ProtobufOutput, Resource, ServingError};
 use harmos_storage::{ErasedCatalog, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-product!(FollowObjects {
-    after: Optional<Nested<StorageCursor>> => 1,
-    selection: Nested<ObjectSelection> => 2,
-});
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
-    id = "storage.follow_objects",
-    response = StorageCursor,
-    policy = STREAM_POLICY,
-    output = ObjectEntry,
-    visibility = Private)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FollowObjects {
-    pub after: Option<StorageCursor>,
-    pub selection: ObjectSelection,
-}
-
-/* === Enums === */
-
-/* === Traits === */
+pub struct FollowObjects;
 
 /* === Implementations === */
 
-impl MemorySize for FollowObjects {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.after.memory_size().saturating_sub(std::mem::size_of_val(&self.after)))
-            .saturating_add(self.selection.memory_size().saturating_sub(std::mem::size_of_val(&self.selection)))
-    }
-}
+impl ProtobufOperation for FollowObjects {
+    type Request = harmos_protocol::storage::FollowObjects;
+    type Response = harmos_protocol::storage::StorageCursor;
+    type Endpoints = ProtobufOutput<harmos_protocol::storage::ObjectEntry>;
+    const ID: &'static str = "storage.follow_objects";
+    const POLICY: crate::OperationPolicy = super::STREAM_POLICY;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager<ErasedCatalog>>()];
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-#[cfg(feature = "runtime")]
-mod execution {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-    use crate::execution::operations::Operation;
-    use crate::{Error, MemorySize, Result};
-    use harmos_storage::{ObjectEntry, StorageCursor};
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    impl Operation for super::FollowObjects {
-        type Error = Error;
-
-        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<crate::execution::operations::Response<StorageCursor>> {
-            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let output = context.streams();
-
-            if !self.selection.follows_revisions() {
-                return Err(Error::InvalidInput {
+    async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        let result: crate::Result<harmos_storage::StorageCursor> = async {
+            let selection: harmos_domain::model::storage::ObjectSelection =
+                request.selection.ok_or(crate::Error::InvalidInput { field: "selection", reason: "required" })?.try_into()?;
+            let after = request.after.map(TryInto::try_into).transpose()?;
+            if !selection.follows_revisions() {
+                return Err(crate::Error::InvalidInput {
                     field: "storage follow",
                     reason: "following delivers every object revision",
                 });
             }
-            let mut follower = storage.follow::<ObjectEntry>(self.after.as_ref(), self.selection.clone()).await?;
+            let mut follower = storage.follow::<harmos_storage::ObjectEntry>(after.as_ref(), selection).await?;
             loop {
                 let page = follower.next().await?;
                 for entry in page.entries() {
-                    output.send_with(entry.memory_size(), || Ok(entry.clone())).await?;
+                    output.send(entry.clone().into()).await?;
                 }
             }
         }
+        .await;
+        result.map(Into::into).map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
     }
-
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
 }
-
-/* === Tests === */

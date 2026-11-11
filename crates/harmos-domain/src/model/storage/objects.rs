@@ -208,6 +208,47 @@ impl Described for ObjectVersionToken {
     >(Self::NAME, Self::FIELDS);
 }
 
+impl From<ObjectVersionToken> for harmos_protocol::storage::ObjectVersionToken {
+    fn from(value: ObjectVersionToken) -> Self {
+        Self {
+            history: Some(value.history.into()),
+            revision: value.revision.get(),
+        }
+    }
+}
+impl From<ObjectEntry> for harmos_protocol::storage::ObjectEntry {
+    fn from(value: ObjectEntry) -> Self {
+        Self {
+            position: Some(value.position.into()),
+            version: Some(value.version.into()),
+            value: Some(value.value.into()),
+        }
+    }
+}
+
+impl TryFrom<harmos_protocol::storage::ObjectVersionToken> for ObjectVersionToken {
+    type Error = crate::Error;
+    fn try_from(value: harmos_protocol::storage::ObjectVersionToken) -> Result<Self> {
+        Ok(Self {
+            history: value.history.ok_or(crate::Error::InvalidInput { field: "history", reason: "required" })?.try_into()?,
+            revision: NonZeroU64::new(value.revision).ok_or(crate::Error::InvalidInput {
+                field: "revision",
+                reason: "must be nonzero",
+            })?,
+        })
+    }
+}
+impl TryFrom<harmos_protocol::storage::ObjectEntry> for ObjectEntry {
+    type Error = crate::Error;
+    fn try_from(value: harmos_protocol::storage::ObjectEntry) -> Result<Self> {
+        Ok(Self {
+            position: value.position.ok_or(crate::Error::InvalidInput { field: "position", reason: "required" })?.try_into()?,
+            version: value.version.ok_or(crate::Error::InvalidInput { field: "version", reason: "required" })?.try_into()?,
+            value: value.value.ok_or(crate::Error::InvalidInput { field: "value", reason: "required" })?.try_into()?,
+        })
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */

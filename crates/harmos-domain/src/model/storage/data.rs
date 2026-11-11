@@ -171,6 +171,62 @@ impl<T: MemorySize> MemorySize for StoredRow<T> {
     }
 }
 
+impl From<StoredRecord> for harmos_protocol::storage::StoredRecord {
+    fn from(value: StoredRecord) -> Self {
+        Self {
+            position: Some(value.position.into()),
+            schema: Some(value.schema.into()),
+            scope: value.scope.map(|id| id.to_string()),
+            item: value.item.to_string(),
+            source: value.source.map(|id| id.to_string()),
+            source_time: value.source_time.map(Into::into),
+            payload: value.payload,
+        }
+    }
+}
+impl From<StoredRow> for harmos_protocol::storage::StoredRow {
+    fn from(value: StoredRow) -> Self {
+        Self {
+            record: Some(value.record.into()),
+            stream: value.stream.to_string(),
+            sequence: value.sequence,
+        }
+    }
+}
+
+impl TryFrom<harmos_protocol::storage::StoredRecord> for StoredRecord {
+    type Error = crate::Error;
+    fn try_from(value: harmos_protocol::storage::StoredRecord) -> crate::Result<Self> {
+        Ok(Self {
+            position: value.position.ok_or(crate::Error::InvalidInput { field: "position", reason: "required" })?.try_into()?,
+            schema: value.schema.ok_or(crate::Error::InvalidInput { field: "schema", reason: "required" })?.try_into()?,
+            scope: value.scope.map(Identifier::new).transpose()?,
+            item: Identifier::new(value.item)?,
+            source: value.source.map(Identifier::new).transpose()?,
+            source_time: value
+                .source_time
+                .map(|time| {
+                    time.try_into().map_err(|_| crate::Error::InvalidInput {
+                        field: "source_time",
+                        reason: "invalid timestamp",
+                    })
+                })
+                .transpose()?,
+            payload: value.payload,
+        })
+    }
+}
+impl TryFrom<harmos_protocol::storage::StoredRow> for StoredRow {
+    type Error = crate::Error;
+    fn try_from(value: harmos_protocol::storage::StoredRow) -> crate::Result<Self> {
+        Ok(Self {
+            record: value.record.ok_or(crate::Error::InvalidInput { field: "record", reason: "required" })?.try_into()?,
+            stream: Identifier::new(value.stream)?,
+            sequence: value.sequence,
+        })
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */

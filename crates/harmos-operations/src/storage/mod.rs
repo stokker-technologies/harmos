@@ -28,10 +28,13 @@ pub(crate) mod exchange;
 mod finish_file;
 #[cfg(feature = "runtime")]
 mod follow_file;
+#[cfg(feature = "runtime")]
 mod follow_objects;
 #[cfg(feature = "runtime")]
 mod follow_production;
+#[cfg(feature = "runtime")]
 mod follow_records;
+#[cfg(feature = "runtime")]
 mod follow_stream;
 mod hash_file;
 #[cfg(feature = "runtime")]
@@ -71,10 +74,13 @@ pub use delete_file::DeleteFile;
 pub use finish_file::FinishFile;
 #[cfg(feature = "runtime")]
 pub use follow_file::FollowFile;
+#[cfg(feature = "runtime")]
 pub use follow_objects::FollowObjects;
 #[cfg(feature = "runtime")]
 pub use follow_production::FollowProduction;
-pub use follow_records::{FollowBoundaries, FollowRecords, Followed};
+#[cfg(feature = "runtime")]
+pub use follow_records::FollowRecords;
+#[cfg(feature = "runtime")]
 pub use follow_stream::FollowStream;
 pub use hash_file::HashFile;
 #[cfg(feature = "runtime")]
@@ -143,13 +149,10 @@ pub const IO_POLICY: OperationPolicy = OperationPolicy {
 #[harmos::catalog(harmos_path = crate)]
 enum Legacy {
     HashFile(HashFile),
-    FollowRecords(FollowRecords),
-    FollowStream(FollowStream),
     WriteRecords(WriteRecords),
     WriteStreams(WriteStreams),
     WriteFile(WriteFile),
     WriteObjects(WriteObjects),
-    FollowObjects(FollowObjects),
 }
 
 /* === Type Aliases === */

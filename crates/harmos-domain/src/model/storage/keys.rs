@@ -183,6 +183,27 @@ impl TryFrom<harmos_protocol::storage::SchemaKey> for SchemaKey {
     }
 }
 
+impl From<ObjectValue> for harmos_protocol::storage::ObjectValue {
+    fn from(value: ObjectValue) -> Self {
+        Self {
+            schema: Some(value.schema.into()),
+            item: value.item.to_string(),
+            payload: value.payload,
+        }
+    }
+}
+
+impl TryFrom<harmos_protocol::storage::ObjectValue> for ObjectValue {
+    type Error = Error;
+    fn try_from(value: harmos_protocol::storage::ObjectValue) -> Result<Self> {
+        Ok(Self {
+            schema: value.schema.ok_or(Error::InvalidInput { field: "schema", reason: "required" })?.try_into()?,
+            item: ObjectKey::from_owned(value.item)?,
+            payload: value.payload,
+        })
+    }
+}
+
 /* === Public Functions === */
 
 pub fn object_key<K: fmt::Display + ?Sized>(key: &K, limit: NonZeroUsize) -> Result<ObjectKey> {
