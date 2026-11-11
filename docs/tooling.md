@@ -99,7 +99,17 @@ invocation-local resources; ordinary `self` fields retain the author's instance 
 
 Declare `harmos.SLEEP` and `harmos.NOW` in `requires` to use
 `await ctx.sleep(Duration(...))` and `await ctx.now()`. These are host child calls;
-the SDK has no local timer. Background work started independently by the author
+the SDK has no local timer. All SDKs fingerprint clock contracts with the shared
+[canonical projection](../proto/harmos/v1/behaviour.md#schema-fingerprints),
+which discards file options from imported well-known types. The runtime integration
+story `plugin_grpc::python_clock` starts the prepared `sdk/python/.venv/` interpreter,
+admits the full conformance catalog and invokes echo on the real host. It then
+closes that activation and uses `--clock-only` to drive the same clock handler
+through a virtual hour without stream demand: the full fixture's external device
+stream correctly prevents virtual-clock advancement. The harness owns process
+shutdown through `--shutdown-on-stdin`, after the host has sent Stop.
+
+Background work started independently by the author
 is invisible to virtual time. Observers answer host ticks and cannot call
 operations or wait on the host clock. An observer may declare `interval_setting`
 instead of a default `interval`; the host resolves that setting. Product settings
@@ -216,7 +226,7 @@ mise run check -- --language csharp
 ```
 
 The test consumes both build outputs without rebuilding. Its one managed-plugin story
-runs all 16 reference-host cases in managed and remote modes, including successful
+runs all 19 reference-host cases in managed and remote modes, including successful
 managed process exit and continued remote availability after Stop. A focused unit
 test also checks clock requirement descriptors and the Rust-compatible sleep fingerprint.
 `--profile release` selects matching Release C# and release Rust outputs. Formatting
