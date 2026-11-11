@@ -45,7 +45,7 @@ pub use position::{RecoveryPosition, StorageCursor, StoreHistory};
 pub use query::{
     FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, RecordSelection, RowSlice, SchemaSelection, Source, StreamSelection,
 };
-pub use writes::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt};
+pub use writes::DataBatch;
 
 /* === Imports === */
 

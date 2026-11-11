@@ -38,7 +38,9 @@ pub use harmos_domain::operations::*;
 pub use instance::Instance;
 pub use operation::{AttemptInstance, AttemptOperationHost, Authored, Context, Dependent, Operation, Resource, Shape, Streams};
 #[cfg(all(feature = "grpc", feature = "streaming"))]
-pub use registration::generated::{ProtobufDependency, ProtobufEndpoints, ProtobufInput, ProtobufItem, ProtobufOperation, ProtobufOutput};
+pub use registration::generated::{
+    ProtobufDependency, ProtobufEndpoints, ProtobufExchangeEndpoints, ProtobufInput, ProtobufItem, ProtobufOperation, ProtobufOutput,
+};
 pub use registration::{Catalog, NativeInstance, OperationCatalog, OperationFactory, ServiceFactory, ServiceInstance};
 pub(crate) use resources::ResourceSet;
 pub use resources::{AssignedOperation, ExecutionContext, OperationAssignments, ResourceError};

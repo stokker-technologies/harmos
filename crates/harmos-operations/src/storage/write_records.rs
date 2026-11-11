@@ -7,136 +7,43 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-use super::IO_POLICY;
-use harmos_domain::Identifier;
-use harmos_domain::MemorySize;
-use harmos_domain::model::storage::codec::{Id, Optional, product};
-use harmos_domain::model::storage::{DataBatch, WriteCompletion, WriteReceipt};
-use harmos_domain::operations::ReplaySafety;
-
-#[cfg(feature = "runtime")]
 use crate::execution::operations::access::GrantAccess;
-
-#[cfg(feature = "runtime")]
+use crate::execution::operations::{
+    ExecutionContext, Grpc, ProtobufInput, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility,
+};
+use harmos_domain::operations::FailureKind;
 use harmos_storage::{ErasedCatalog, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-product!(WriteRecords {
-    scope: Optional<Id> => 1,
-});
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
-// Admit Streamed Arrow Batches Of Records Into One Optional Scope.
-#[harmos::operation(
-    harmos_path = crate,
-    resources = [StorageManager<ErasedCatalog>, GrantAccess],
-    codec = manual,
-    id = "storage.write_records",
-    response = WriteCompletion,
-    policy = IO_POLICY,
-    input = DataBatch,
-    output = WriteReceipt,
-    visibility = Public,
-    replay = ReplaySafety::Unknown,
-    grpc(package = "harmos.storage.v1", service =  "Storage", method =  "WriteRecords"),
-)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteRecords {
-    pub scope: Option<Identifier>,
-}
-
-/* === Enums === */
-
-/* === Traits === */
+pub struct WriteRecords;
 
 /* === Implementations === */
 
-impl MemorySize for WriteRecords {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.scope.memory_size().saturating_sub(std::mem::size_of_val(&self.scope)))
-    }
-}
+impl ProtobufOperation for WriteRecords {
+    type Request = harmos_protocol::storage::WriteRecords;
+    type Response = harmos_protocol::storage::WriteCompletion;
+    type Endpoints = (ProtobufInput<harmos_protocol::storage::DataBatch>, ProtobufOutput<harmos_protocol::storage::WriteReceipt>);
+    const ID: &'static str = "storage.write_records";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.storage.v1", "Storage", "WriteRecords"));
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager<ErasedCatalog>>(), Resource::of::<GrantAccess>()];
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-#[cfg(feature = "runtime")]
-mod execution {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-    use super::*;
-    use crate::execution::operations::{Operation, OperationDeclaration};
-    use crate::storage::exchange::{WriteKind, exchange};
-    use crate::{Error, Result};
-    use harmos_storage::writes::WriteCompletion;
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    impl Operation for super::WriteRecords {
-        type Error = Error;
-
-        async fn run(
-            self, context: crate::execution::Context<'_, Self>,
-        ) -> Result<crate::execution::operations::Response<WriteCompletion>> {
-            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let grants = context.resource::<crate::execution::operations::access::GrantAccess>();
-            let endpoints = context.streams();
-
-            let host = grants;
-            let ctx = &host.0;
-            let completion = exchange(&storage, ctx, self.scope.as_ref(), endpoints, WriteKind::Records, WriteRecords::ID).await?;
-            Ok(completion.into())
+    async fn run(context: ExecutionContext, request: Self::Request, endpoints: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        let grants = context.resource::<GrantAccess>().map_err(|_| ServingError::Catalog)?;
+        let result: crate::Result<harmos_protocol::storage::WriteCompletion> = async {
+            let scope = request.scope.map(harmos_domain::Identifier::new).transpose().map_err(harmos_domain::Error::from)?;
+            super::exchange::exchange(&storage, &grants.0, scope.as_ref(), endpoints, super::exchange::WriteKind::Records, Self::ID).await
         }
-
-        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
-            crate::storage::classify(error)
-        }
+        .await;
+        result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
     }
 
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(FailureKind::Permanent)
+    }
 }
-
-/* === Tests === */

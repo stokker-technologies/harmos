@@ -9,6 +9,9 @@
 
 /* === Modules === */
 
+#[path = "generated_object_exchange.rs"]
+mod exchange;
+
 #[path = "generated_object_follow.rs"]
 mod follow;
 #[path = "generated_object_pruned.rs"]
@@ -30,11 +33,12 @@ use arrow_schema::{DataType, Field, Fields};
 use super::super::{Bank, Data, Ledger, Recovery, catalog, config, history};
 use super::Lanes;
 use harmos_operations::storage::WriteObjects;
+use harmos_protocol::storage::write_receipt::Receipt as WriteReceipt;
 use harmos_runtime::storage::{
     MutationId, ObjectCatalog, ObjectRetention, ObjectValue, ObjectVersion, StorageBackends, StorageManager, StoredObject,
 };
 use harmos_runtime::{Identified, Identifier, Runtime};
-use harmos_storage::writes::{DataBatch, WriteReceipt};
+use harmos_storage::writes::DataBatch;
 
 /* === Constants === */
 
@@ -80,71 +84,6 @@ impl StoredObject for Document {
 
 fn value(key: &str, text: &str) -> ObjectValue {
     Objects::encode(&Document { id: key.into(), text: text.into() }, NonZeroUsize::new(4096).unwrap()).unwrap()
-}
-
-#[tokio::test]
-async fn object_exchange_saves() {
-    let storage = StorageManager::<Objects>::new(
-        StorageBackends {
-            primary: Arc::new(Data::<Objects>::with_catalog(history())),
-            state: Arc::new(Recovery::new(history())),
-        },
-        config(),
-    )
-    .unwrap();
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
-        setup.settings().storage(&storage).register(catalog()).operation_settings(harmos_runtime::operations::Settings {
-            preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
-            ..Default::default()
-        });
-    })
-    .await
-    .unwrap();
-    runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
-    let first = value("a/b", "first");
-    let second = value("second", "two");
-    // Register Authored Schema Before Sending Its Typed Payload.
-    let document = Document {
-        id: "bootstrap".into(),
-        text: "schema".into(),
-    };
-    storage.write_object(&document).await.unwrap();
-    storage.flush().await.unwrap();
-    let fields: Fields = vec![Field::new("id", DataType::Utf8, false), Field::new("text", DataType::Utf8, false)].into();
-    let payload = StructArray::new(
-        fields,
-        vec![Arc::new(StringArray::from(vec!["a/b", "second"])), Arc::new(StringArray::from(vec!["first", "two"]))],
-        None,
-    );
-    let data = super::writes::envelope(payload, &[first.item.as_str(), second.item.as_str()], &[0, 1]);
-    let request = harmos_operations::storage::WriteObjects { scope: None };
-    let mut writer = runtime.operations.exchange::<WriteObjects>(request, super::writes::settings(), super::writes::settings()).unwrap();
-    writer
-        .send(DataBatch {
-            sequence: 1,
-            destination: first.schema.id.clone(),
-            schema: first.schema,
-            data: data.into(),
-        })
-        .await
-        .unwrap();
-    writer.finish_input();
-    let mut accepted = None;
-    while let Some(receipt) = writer.next().await.unwrap() {
-        match &*receipt {
-            WriteReceipt::Accepted(receipt) => accepted = Some(receipt.cursor.clone()),
-            WriteReceipt::Durable(receipt) => {
-                assert_eq!(accepted.as_ref(), Some(&receipt.cursor))
-            }
-        }
-    }
-    let completion = writer.join().await.unwrap();
-    assert_eq!(completion.batches, 1);
-    assert_eq!(storage.cursor_saved(), completion.cursor);
-    let exact = storage.read_object::<Document>(&"a/b".into(), ObjectVersion::Latest).await.unwrap().unwrap();
-    assert_eq!(exact.value.text, "first");
-    drop(exact);
-    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]

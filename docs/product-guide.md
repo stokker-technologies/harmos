@@ -933,6 +933,10 @@ use `Manager::call_protobuf` for unary calls or `Manager::submit_protobuf` for n
 completion through `join`. Plugin-scoped callers use the same helper with their original scope.
 Supply the caller's preparation budget and stream limits in operation settings and submission.
 Storage kernels retain their native storage values and persisted encodings.
+`Manager::exchange_protobuf` sends generated input and receives generated receipts; call
+`finish_input` before draining the final receipts and joining. `Manager::upload_protobuf`
+finishes file input and returns the generated durable file reference. Scope-aware callers
+keep per-batch grant checks throughout an exchange.
 Schema registration uses the generated `SchemaGraph`: references index its definition table,
 scalar fields cannot reference definitions, and representation indices must be unique.
 The storage schema validator checks the graph before mutation admission.

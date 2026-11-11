@@ -42,6 +42,18 @@ pub struct ProtobufDownload<O: ProtobufOperation> {
     declaration: std::marker::PhantomData<fn() -> O>,
 }
 
+pub struct ProtobufExchange<O: ProtobufOperation> {
+    invocation: EncodedInvocation,
+    streams: WireStreams,
+    declaration: std::marker::PhantomData<fn() -> O>,
+}
+
+pub struct ProtobufUpload<O: ProtobufOperation> {
+    invocation: EncodedInvocation,
+    streams: WireStreams,
+    declaration: std::marker::PhantomData<fn() -> O>,
+}
+
 /* === Enums === */
 
 /* === Traits === */
@@ -82,7 +94,111 @@ where
     }
 }
 
+impl<O: ProtobufOperation> ProtobufExchange<O>
+where
+    O::Endpoints: harmos_operations::execution::operations::ProtobufExchangeEndpoints,
+{
+    pub async fn send(
+        &mut self, value: <O::Endpoints as harmos_operations::execution::operations::ProtobufExchangeEndpoints>::Input,
+    ) -> Result<()> {
+        self.streams.send_current(&value.encode_to_vec()).await.map_err(|source| Error::OperationFailed {
+            operation: O::ID.into(),
+            source: Arc::new(source),
+        })
+    }
+    pub fn finish_input(&self) -> Result<()> {
+        self.streams.finish_current_input().map_err(|source| Error::OperationFailed {
+            operation: O::ID.into(),
+            source: Arc::new(source),
+        })
+    }
+    pub async fn next(
+        &mut self,
+    ) -> Result<Option<<O::Endpoints as harmos_operations::execution::operations::ProtobufExchangeEndpoints>::Output>> {
+        self.streams
+            .receive_current()
+            .await
+            .map_err(|source| Error::OperationFailed {
+                operation: O::ID.into(),
+                source: Arc::new(source),
+            })?
+            .map(|bytes| {
+                Message::decode(bytes.as_slice()).map_err(|error: prost::DecodeError| Error::OperationPayload {
+                    operation: O::ID.into(),
+                    source: crate::MessageError::new(error.to_string()),
+                })
+            })
+            .transpose()
+    }
+    pub async fn cancel_and_settle(self) -> Result<()> {
+        self.invocation.request_cancel();
+        self.invocation.settle().await
+    }
+    pub async fn join(self) -> Result<O::Response> {
+        O::Response::decode(self.invocation.await?.as_slice()).map_err(|error| Error::OperationPayload {
+            operation: O::ID.into(),
+            source: crate::MessageError::new(error.to_string()),
+        })
+    }
+}
+
+impl<O: ProtobufOperation> ProtobufUpload<O>
+where
+    O::Endpoints: harmos_operations::execution::operations::InputEndpoint,
+    <O::Endpoints as harmos_operations::execution::operations::InputEndpoint>::Item: Message + Default,
+{
+    pub async fn send(&mut self, value: <O::Endpoints as harmos_operations::execution::operations::InputEndpoint>::Item) -> Result<()> {
+        self.streams.send_current(&value.encode_to_vec()).await.map_err(|source| Error::OperationFailed {
+            operation: O::ID.into(),
+            source: Arc::new(source),
+        })
+    }
+    pub async fn finish(self) -> Result<O::Response> {
+        self.streams.finish_current_input().map_err(|source| Error::OperationFailed {
+            operation: O::ID.into(),
+            source: Arc::new(source),
+        })?;
+        O::Response::decode(self.invocation.await?.as_slice()).map_err(|error| Error::OperationPayload {
+            operation: O::ID.into(),
+            source: crate::MessageError::new(error.to_string()),
+        })
+    }
+}
+
 impl Manager {
+    pub fn exchange_protobuf<O: ProtobufOperation>(
+        &self, request: O::Request, input: super::StreamSettings, output: super::StreamSettings,
+    ) -> Result<ProtobufExchange<O>>
+    where
+        O::Endpoints: harmos_operations::execution::operations::ProtobufExchangeEndpoints,
+    {
+        let (invocation, streams) = self.submit_protobuf::<O>(request, Some(WireStreamLimits { input, output }))?;
+        Ok(ProtobufExchange {
+            invocation,
+            streams: streams.ok_or(Error::InvalidInput {
+                field: "protobuf exchange",
+                reason: "stream endpoints required",
+            })?,
+            declaration: std::marker::PhantomData,
+        })
+    }
+
+    pub fn upload_protobuf<O: ProtobufOperation>(&self, request: O::Request, input: super::StreamSettings) -> Result<ProtobufUpload<O>>
+    where
+        O::Endpoints: harmos_operations::execution::operations::InputEndpoint,
+        <O::Endpoints as harmos_operations::execution::operations::InputEndpoint>::Item: Message + Default,
+    {
+        let (invocation, streams) = self.submit_protobuf::<O>(request, Some(WireStreamLimits { input, output: input }))?;
+        Ok(ProtobufUpload {
+            invocation,
+            streams: streams.ok_or(Error::InvalidInput {
+                field: "protobuf upload",
+                reason: "input endpoint required",
+            })?,
+            declaration: std::marker::PhantomData,
+        })
+    }
+
     pub fn download_protobuf<O: ProtobufOperation>(&self, request: O::Request, output: super::StreamSettings) -> Result<ProtobufDownload<O>>
     where
         O::Endpoints: harmos_operations::execution::operations::OutputEndpoint,
@@ -170,6 +286,27 @@ impl Manager {
 
 #[cfg(feature = "plugin-guest")]
 impl super::Caller {
+    pub fn exchange_protobuf<O: ProtobufOperation>(
+        &self, request: O::Request, input: super::StreamSettings, output: super::StreamSettings,
+    ) -> Result<ProtobufExchange<O>>
+    where
+        O::Endpoints: harmos_operations::execution::operations::ProtobufExchangeEndpoints,
+    {
+        let (invocation, streams) = self.operations.submit_protobuf_as::<O>(
+            request,
+            Some(WireStreamLimits { input, output }),
+            Source::Plugin(self.source.clone()),
+        )?;
+        Ok(ProtobufExchange {
+            invocation,
+            streams: streams.ok_or(Error::InvalidInput {
+                field: "protobuf exchange",
+                reason: "stream endpoints required",
+            })?,
+            declaration: std::marker::PhantomData,
+        })
+    }
+
     pub fn download_protobuf<O: ProtobufOperation>(&self, request: O::Request, output: super::StreamSettings) -> Result<ProtobufDownload<O>>
     where
         O::Endpoints: harmos_operations::execution::operations::OutputEndpoint,

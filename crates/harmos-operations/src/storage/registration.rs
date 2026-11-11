@@ -17,7 +17,8 @@
 
 use super::{
     AbandonFile, AppendFile, CaptureFile, CreateFile, DeleteFile, FinishFile, FollowFile, FollowObjects, FollowProduction, FollowRecords,
-    FollowStream, ListDirectory, Query, ReadFile, ResumeFile, StorageStatus, WatchDirectory, WriteSchema,
+    FollowStream, ListDirectory, Query, ReadFile, ResumeFile, StorageStatus, WatchDirectory, WriteFile, WriteObjects, WriteRecords,
+    WriteSchema, WriteStreams,
 };
 
 // Standard Library Imports
@@ -57,6 +58,10 @@ impl crate::execution::operations::OperationCatalog for Storage {
     fn batch() -> crate::execution::__private::RegistrationBatch {
         let mut batch = super::Legacy::batch();
         batch.operations.extend([
+            crate::execution::operations::OperationFactory::protobuf::<WriteFile>().expect("WriteFile declaration"),
+            crate::execution::operations::OperationFactory::protobuf::<WriteRecords>().expect("WriteRecords declaration"),
+            crate::execution::operations::OperationFactory::protobuf::<WriteStreams>().expect("WriteStreams declaration"),
+            crate::execution::operations::OperationFactory::protobuf::<WriteObjects>().expect("WriteObjects declaration"),
             crate::execution::operations::OperationFactory::protobuf::<FollowRecords>().expect("FollowRecords declaration"),
             crate::execution::operations::OperationFactory::protobuf::<FollowStream>().expect("FollowStream declaration"),
             crate::execution::operations::OperationFactory::protobuf::<FollowObjects>().expect("FollowObjects declaration"),

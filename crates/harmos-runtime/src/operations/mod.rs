@@ -104,7 +104,7 @@ pub(crate) use manager::Manager;
 pub use manager::OperationManager;
 #[cfg(feature = "plugin-guest")]
 pub(crate) use manager::WeakOperationManager;
-pub use protobuf::ProtobufDownload;
+pub use protobuf::{ProtobufDownload, ProtobufExchange, ProtobufUpload};
 pub use session::{Completion, Download, Exchange, Session, SessionInput, SessionOutput, Upload};
 pub use streaming::{StreamInput, StreamItem, StreamOutput, StreamPermit, StreamSettings, stream};
 

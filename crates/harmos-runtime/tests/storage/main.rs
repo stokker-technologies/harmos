@@ -13,8 +13,12 @@
 mod generated_capture;
 #[path = "generated_directory.rs"]
 mod generated_directory;
+#[path = "generated_file_framing.rs"]
+mod generated_file_framing;
 #[path = "generated_file_mutations.rs"]
 mod generated_file_mutations;
+#[path = "generated_file_upload.rs"]
+mod generated_file_upload;
 #[path = "generated_status.rs"]
 mod generated_status;
 

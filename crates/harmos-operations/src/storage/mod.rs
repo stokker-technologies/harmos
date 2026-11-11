@@ -51,11 +51,15 @@ mod resume_file;
 mod storage_status;
 #[cfg(feature = "runtime")]
 mod watch_directory;
+#[cfg(feature = "runtime")]
 mod write_file;
+#[cfg(feature = "runtime")]
 mod write_objects;
+#[cfg(feature = "runtime")]
 mod write_records;
 #[cfg(feature = "runtime")]
 mod write_schema;
+#[cfg(feature = "runtime")]
 mod write_streams;
 
 /* === Re-Exports === */
@@ -97,11 +101,15 @@ pub use resume_file::ResumeFile;
 pub use storage_status::StorageStatus;
 #[cfg(feature = "runtime")]
 pub use watch_directory::WatchDirectory;
+#[cfg(feature = "runtime")]
 pub use write_file::WriteFile;
+#[cfg(feature = "runtime")]
 pub use write_objects::WriteObjects;
+#[cfg(feature = "runtime")]
 pub use write_records::WriteRecords;
 #[cfg(feature = "runtime")]
 pub use write_schema::WriteSchema;
+#[cfg(feature = "runtime")]
 pub use write_streams::WriteStreams;
 
 /* === Imports === */
@@ -149,10 +157,6 @@ pub const IO_POLICY: OperationPolicy = OperationPolicy {
 #[harmos::catalog(harmos_path = crate)]
 enum Legacy {
     HashFile(HashFile),
-    WriteRecords(WriteRecords),
-    WriteStreams(WriteStreams),
-    WriteFile(WriteFile),
-    WriteObjects(WriteObjects),
 }
 
 /* === Type Aliases === */

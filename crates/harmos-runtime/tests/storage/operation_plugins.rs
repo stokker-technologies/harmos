@@ -25,13 +25,14 @@ use super::{Fixture, Lanes, config};
 use harmos_domain::inventory::contracts::Required;
 use harmos_domain::plugin::Grant;
 use harmos_operations::storage::{Query, WriteRecords};
+use harmos_protocol::storage::write_receipt::Receipt as WriteReceipt;
 use harmos_runtime::Aggregate;
 use harmos_runtime::Message;
 use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
-use harmos_runtime::operations::{OperationDeclaration, OperationManager, ProtobufOperation, WireDeclaration};
+use harmos_runtime::operations::{OperationManager, ProtobufOperation};
 use harmos_runtime::storage::SchemaKey;
 use harmos_runtime::storage::query::transform::{
     Transform,
@@ -39,7 +40,6 @@ use harmos_runtime::storage::query::transform::{
 };
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 use harmos_runtime::{Error, Identifier, Result};
-use harmos_storage::writes::WriteReceipt;
 
 /* === Constants === */
 
@@ -105,13 +105,6 @@ impl PluginLifecycle for Host {
 fn required<O: ProtobufOperation>(grants: Vec<Grant>) -> Required {
     Required {
         contract: harmos_operations::execution::operations::OperationFactory::protobuf::<O>().unwrap().contract().unwrap(),
-        grants,
-    }
-}
-
-fn required_legacy<O: OperationDeclaration>(grants: Vec<Grant>) -> Required {
-    Required {
-        contract: WireDeclaration::of::<O>().contract().unwrap(),
         grants,
     }
 }
@@ -189,10 +182,7 @@ async fn write_grants_enforced() {
         callers: BTreeMap::new(),
     };
     let definitions = PluginDefinitions::new(
-        [
-            plugin("writer", vec![required_legacy::<WriteRecords>(vec![Grant::of(WriteRecords::ID, "bench")])]),
-            plugin("bystander", Vec::new()),
-        ],
+        [plugin("writer", vec![required::<WriteRecords>(vec![Grant::of(WriteRecords::ID, "bench")])]), plugin("bystander", Vec::new())],
         [],
     )
     .unwrap();
@@ -204,22 +194,22 @@ async fn write_grants_enforced() {
 
     super::writes::seed(&fixture).await;
     let mut exchange = writer
-        .exchange::<WriteRecords>(
-            harmos_operations::storage::WriteRecords { scope: None },
+        .exchange_protobuf::<WriteRecords>(
+            harmos_protocol::storage::WriteRecords { scope: None },
             super::writes::settings(),
             super::writes::settings(),
         )
         .unwrap();
-    exchange.send(super::writes::batch(1, "bench")).await.unwrap();
+    exchange.send(super::writes::batch(1, "bench").into()).await.unwrap();
     let cursor = loop {
         let receipt = exchange.next().await.unwrap().unwrap();
-        if let WriteReceipt::Durable(receipt) = &*receipt {
-            break Arc::new(receipt.cursor.clone());
+        if let Some(WriteReceipt::Durable(receipt)) = receipt.receipt {
+            break Arc::new(harmos_runtime::storage::StorageCursor::try_from(receipt.cursor.unwrap()).unwrap());
         }
     };
     // A Second Destination On The Same Invocation Needs Its Own Grant.
-    exchange.send(super::writes::batch(2, "other")).await.unwrap();
-    exchange.finish_input();
+    exchange.send(super::writes::batch(2, "other").into()).await.unwrap();
+    exchange.finish_input().unwrap();
     while exchange.next().await.unwrap().is_some() {}
     let failure = exchange.join().await.unwrap_err();
     assert!(
@@ -234,8 +224,8 @@ async fn write_grants_enforced() {
     assert_eq!(fixture.data.records.lock().unwrap().len(), 2);
     assert_eq!(fixture.storage.cursor_accepted(), *cursor);
     assert!(matches!(
-        bystander.exchange::<WriteRecords>(
-            harmos_operations::storage::WriteRecords { scope: None },
+        bystander.exchange_protobuf::<WriteRecords>(
+            harmos_protocol::storage::WriteRecords { scope: None },
             super::writes::settings(),
             super::writes::settings()
         ),

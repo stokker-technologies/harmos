@@ -47,6 +47,7 @@ pub struct ProtobufOutput<T>(StreamOutput<Encoded>, PhantomData<fn() -> T>);
 struct Encoded(Vec<u8>);
 pub struct ProtobufItem<T>(StreamItem<Value<T>>);
 
+#[derive(Clone)]
 struct Value<T> {
     value: T,
     memory: usize,
@@ -91,6 +92,11 @@ pub trait ProtobufOperation: Send + Sync + 'static {
     fn run(
         context: ExecutionContext, request: Self::Request, endpoints: &Self::Endpoints,
     ) -> impl Future<Output = Result<Self::Response, ServingError>> + Send;
+}
+
+pub trait ProtobufExchangeEndpoints: ProtobufEndpoints {
+    type Input: ReflectMessage + Default + Send + Sync + 'static;
+    type Output: ReflectMessage + Default + Send + Sync + 'static;
 }
 
 pub trait ProtobufEndpoints: EndpointSet {
@@ -156,6 +162,15 @@ impl ProtobufDependency {
             },
         }
     }
+}
+
+impl<I, O> ProtobufExchangeEndpoints for (ProtobufInput<I>, ProtobufOutput<O>)
+where
+    I: ReflectMessage + Default + Send + Sync + 'static,
+    O: ReflectMessage + Default + Send + Sync + 'static,
+{
+    type Input = I;
+    type Output = O;
 }
 
 impl ProtobufEndpoints for () {
@@ -246,6 +261,13 @@ impl<T: ReflectMessage + Default + Send + Sync + 'static> super::super::OutputEn
     }
     fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
         EndpointSet::progress(self)
+    }
+}
+
+impl<T: Clone + Send + Sync + 'static> ProtobufItem<T> {
+    pub fn into_owned_request(self) -> Result<(T, super::super::RequestClaims), super::super::StreamError> {
+        let (value, claims) = self.0.into_owned_request()?;
+        Ok((value.value, claims))
     }
 }
 

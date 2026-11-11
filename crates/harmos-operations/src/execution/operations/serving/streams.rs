@@ -191,6 +191,30 @@ impl WireStreams {
         self.output.as_ref().ok_or(ServingError::StreamPhase)?.receive(self, epoch).await
     }
 
+    pub async fn send_current(&self, payload: &[u8]) -> Result<(), ServingError> {
+        let mut changes = self.state.subscribe();
+        loop {
+            let state = *changes.borrow_and_update();
+            match self.send(state.epoch.max(1), payload).await {
+                Err(ServingError::StreamPhase) => {
+                    let current = *self.state.borrow();
+                    if current.epoch != state.epoch {
+                        continue;
+                    }
+                    if current.phase != Phase::Interrupted {
+                        return Err(ServingError::StreamPhase);
+                    }
+                    changes.changed().await.map_err(|_| ServingError::Closing)?;
+                }
+                result => return result,
+            }
+        }
+    }
+
+    pub fn finish_current_input(&self) -> Result<(), ServingError> {
+        self.input.as_ref().ok_or(ServingError::StreamPhase)?.finish()
+    }
+
     pub async fn receive_current(&self) -> Result<Option<Vec<u8>>, ServingError> {
         let mut changes = self.state.subscribe();
         loop {
